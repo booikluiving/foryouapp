@@ -1,0 +1,1579 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Live reacties</title>
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --ink: #16202b;
+        --muted: #5f6b7a;
+        --line: #d9e2ec;
+        --line-strong: #c3cfdb;
+        --surface: #ffffff;
+        --surface-soft: #f8fbff;
+        --surface-elevated: #ffffff;
+        --button-bg: #ffffff;
+        --accent: #2563eb;
+        --accent-soft: #dbeafe;
+        --poll-line: #cbd5e1;
+        --shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+        --toast-bg: rgba(28, 28, 28, 0.86);
+        --toast-subtle-bg: rgba(28, 28, 28, 0.74);
+        --toast-ink: #ffffff;
+      }
+      body.theme-dark {
+        --bg: #0f1722;
+        --ink: #e6edf5;
+        --muted: #9fb0c3;
+        --line: #26384c;
+        --line-strong: #314862;
+        --surface: #152233;
+        --surface-soft: #1a2b3f;
+        --surface-elevated: #152233;
+        --button-bg: #1a2b3f;
+        --accent: #6cb8ff;
+        --accent-soft: #223c5a;
+        --poll-line: #3b5470;
+        --shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
+        --toast-bg: rgba(11, 17, 26, 0.9);
+        --toast-subtle-bg: rgba(11, 17, 26, 0.82);
+        --toast-ink: #e6edf5;
+      }
+      body {
+        font-family: system-ui, -apple-system, Arial, sans-serif;
+        padding: 16px;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      input, textarea, button {
+        font-size: 18px;
+        padding: 12px;
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+      input, textarea {
+        background: var(--surface);
+        color: var(--ink);
+      }
+      input::placeholder, textarea::placeholder {
+        color: var(--muted);
+        opacity: 1;
+      }
+      button {
+        margin-top: 10px;
+        background: var(--button-bg);
+        color: var(--ink);
+      }
+      textarea {
+        resize: vertical;
+        min-height: 52px;
+        max-height: 220px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      #status { display: none; }
+      #nameRow { margin: 10px 0; opacity: 0.9; display: flex; gap: 10px; align-items: center; }
+      #nameRow span { flex: 1; }
+      .topBar { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+      #settingsMenu { position: relative; }
+      #settingsMenu summary {
+        list-style: none;
+        cursor: pointer;
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        padding: 4px 10px;
+        font-size: 18px;
+        user-select: none;
+        background: var(--button-bg);
+      }
+      #settingsMenu summary::-webkit-details-marker { display: none; }
+      .settingsContent {
+        position: absolute;
+        right: 0;
+        margin-top: 8px;
+        width: min(92vw, 420px);
+        background: var(--surface-elevated);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        padding: 8px;
+        z-index: 10;
+      }
+      .settingsContent button { margin-top: 0; }
+      #devPanel {
+        margin-top: 8px;
+        display: grid;
+        gap: 8px;
+      }
+      #devPanel[hidden] { display: none; }
+      .devLabel {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        opacity: 0.9;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .devLog {
+        min-height: 80px;
+        max-height: 180px;
+        overflow: auto;
+        margin: 0;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-soft);
+        color: var(--ink);
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 12px;
+        line-height: 1.35;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      #chatFeed {
+        min-height: 140px;
+        max-height: 46vh;
+        overflow: auto;
+        margin-top: 14px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface-soft);
+        color: var(--ink);
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.35;
+        font-size: 14px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      #chatFeed .chatLine {
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      #chatFeed .chatLine + .chatLine {
+        margin-top: 2px;
+      }
+      #chatFeed .chatTime {
+        opacity: 0.72;
+      }
+      #chatFeed .chatName {
+        font-weight: 700;
+      }
+      #reactionBar {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+        margin-bottom: 8px;
+      }
+      #reactionBar button {
+        width: auto;
+        min-width: 0;
+        flex: 1;
+        margin: 0;
+        padding: 10px 8px;
+        font-size: 20px;
+        line-height: 1.1;
+      }
+      .reactionCount {
+        display: block;
+        font-size: 12px;
+        opacity: 0.7;
+        margin-top: 4px;
+      }
+      #reactionBurstLayer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 90px;
+        height: 50vh;
+        pointer-events: none;
+        overflow: hidden;
+        z-index: 20;
+      }
+      .reactionBurst {
+        position: absolute;
+        bottom: 0;
+        font-size: 26px;
+        opacity: 0.95;
+        animation: burstUp 1500ms ease-out forwards;
+        will-change: transform, opacity;
+      }
+      @keyframes burstUp {
+        0% {
+          transform: translateY(0) scale(0.9);
+          opacity: 0;
+        }
+        10% {
+          opacity: 0.95;
+        }
+        100% {
+          transform: translateY(-220px) scale(1.15) translateX(var(--drift, 0px));
+          opacity: 0;
+        }
+      }
+      #pollBox {
+        margin-top: 12px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface);
+        display: grid;
+        gap: 8px;
+      }
+      #pollBox[hidden] { display: none; }
+      #pollQuestion {
+        font-weight: 600;
+        line-height: 1.3;
+      }
+      #pollOptions {
+        display: grid;
+        gap: 6px;
+      }
+      .pollOption {
+        width: 100%;
+        text-align: left;
+        margin: 0;
+        border: 1px solid var(--poll-line);
+        border-radius: 8px;
+        background: var(--surface-soft);
+        color: var(--ink);
+        padding: 8px 10px;
+      }
+      .pollOption.selected {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+      #pollActions {
+        display: flex;
+        gap: 8px;
+      }
+      #pollActions button {
+        margin: 0;
+      }
+      #pollMeta {
+        font-size: 12px;
+        opacity: 0.74;
+      }
+      #connectionToast {
+        position: fixed;
+        right: 14px;
+        bottom: 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        max-width: min(280px, calc(100vw - 28px));
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: var(--toast-bg);
+        color: var(--toast-ink);
+        font-size: 13px;
+        line-height: 1.2;
+        opacity: 0;
+        transform: translateY(8px);
+        pointer-events: none;
+        transition: opacity 180ms ease, transform 180ms ease;
+        z-index: 30;
+      }
+      #connectionToast.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      #connectionToast.subtle {
+        background: var(--toast-subtle-bg);
+        font-size: 12px;
+        padding: 7px 9px;
+      }
+      #toastIcon {
+        width: 14px;
+        text-align: center;
+        opacity: 0.92;
+      }
+      #toastIcon.spin { animation: spin 1s linear infinite; }
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="topBar">
+      <h2>Live reacties</h2>
+      <details id="settingsMenu">
+        <summary aria-label="Instellingen">⚙</summary>
+        <div class="settingsContent">
+          <button id="themeToggleBtn" type="button">Thema: Auto</button>
+          <button id="changeName" type="button">Naam wijzigen</button>
+          <button id="toggleDevPanel" type="button">Dev logs tonen</button>
+          <div id="devPanel" hidden>
+            <button id="refreshServerLog" type="button">Serverlog verversen</button>
+            <button id="clearClientLog" type="button">Clientlog legen</button>
+            <div class="devLabel">Client log</div>
+            <pre id="log" class="devLog">(nog leeg)</pre>
+            <div class="devLabel">Server debug.log</div>
+            <pre id="serverLog" class="devLog">(nog niet geladen)</pre>
+          </div>
+        </div>
+      </details>
+    </div>
+    <div id="status">Verbinden…</div>
+
+    <div id="nameRow">
+      <span id="nameLabel"></span>
+    </div>
+
+    <div id="reactionBar">
+      <button type="button" data-reaction="heart" aria-label="Hartje">❤️<span class="reactionCount" data-reaction-count="heart">0</span></button>
+      <button type="button" data-reaction="fire" aria-label="Vuur">🔥<span class="reactionCount" data-reaction-count="fire">0</span></button>
+      <button type="button" data-reaction="laugh" aria-label="Lachen">😂<span class="reactionCount" data-reaction-count="laugh">0</span></button>
+      <button type="button" data-reaction="bored" aria-label="Saai">👎<span class="reactionCount" data-reaction-count="bored">0</span></button>
+    </div>
+
+    <textarea
+      id="text"
+      maxlength="140"
+      rows="2"
+      placeholder="Typ je reactie"
+      autocomplete="off"
+      aria-autocomplete="none"
+      data-lpignore="true"
+      autocapitalize="none"
+      autocorrect="off"
+      spellcheck="false"
+      inputmode="text"
+      enterkeyhint="send"
+    ></textarea>
+    <button id="send" disabled>Send</button>
+    <div id="pollBox" hidden>
+      <div id="pollQuestion"></div>
+      <div id="pollOptions"></div>
+      <div id="pollActions">
+        <button id="pollSubmitBtn" type="button" disabled>Stem</button>
+      </div>
+      <div id="pollMeta"></div>
+    </div>
+    <div id="chatFeed"></div>
+    <div id="reactionBurstLayer" aria-hidden="true"></div>
+    <div id="connectionToast" role="status" aria-live="polite" aria-atomic="true">
+      <span id="toastIcon"></span>
+      <span id="toastText"></span>
+    </div>
+
+    <script>
+      const statusEl = document.getElementById("status");
+      const nameLabelEl = document.getElementById("nameLabel");
+      const themeToggleBtn = document.getElementById("themeToggleBtn");
+      const changeNameBtn = document.getElementById("changeName");
+      const toggleDevPanelBtn = document.getElementById("toggleDevPanel");
+      const refreshServerLogBtn = document.getElementById("refreshServerLog");
+      const clearClientLogBtn = document.getElementById("clearClientLog");
+      const settingsMenuEl = document.getElementById("settingsMenu");
+      const devPanelEl = document.getElementById("devPanel");
+      const logEl = document.getElementById("log");
+      const chatFeedEl = document.getElementById("chatFeed");
+      const serverLogEl = document.getElementById("serverLog");
+      const textEl = document.getElementById("text");
+      const sendBtn = document.getElementById("send");
+      const reactionBarEl = document.getElementById("reactionBar");
+      const reactionBurstLayerEl = document.getElementById("reactionBurstLayer");
+      const pollBoxEl = document.getElementById("pollBox");
+      const pollQuestionEl = document.getElementById("pollQuestion");
+      const pollOptionsEl = document.getElementById("pollOptions");
+      const pollSubmitBtn = document.getElementById("pollSubmitBtn");
+      const pollMetaEl = document.getElementById("pollMeta");
+      const toastEl = document.getElementById("connectionToast");
+      const toastIconEl = document.getElementById("toastIcon");
+      const toastTextEl = document.getElementById("toastText");
+      const clientTag = Math.random().toString(36).slice(2, 10);
+      let lastHttpDebugAt = 0;
+      let lastHttpDebugNote = "";
+      let ws = null;
+      let hasLoadedServerLog = false;
+      const CLIENT_LOG_LIMIT = 280;
+      const clientLogLines = [];
+      const CHAT_LOG_LIMIT = 240;
+      const chatLogEntries = [];
+      const reactionCounts = {
+        heart: 0,
+        fire: 0,
+        laugh: 0,
+        bored: 0,
+      };
+      const reactionEmoji = {
+        heart: "❤️",
+        fire: "🔥",
+        laugh: "😂",
+        bored: "👎",
+      };
+      let lastReactionSendAt = 0;
+      let activePoll = null;
+      let selectedPollOptionIndex = null;
+      let pollVotePending = false;
+      let pollCountdownTimer = null;
+      const VOTED_POLL_STORAGE_KEY = "live_voted_poll_id";
+      const THEME_PREF_KEY = "live_theme_pref_v1";
+      const THEME_MODES = ["auto", "light", "dark"];
+      const systemDarkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+      let themePreference = "auto";
+
+      function loadThemePreference() {
+        const saved = String(localStorage.getItem(THEME_PREF_KEY) || "").toLowerCase();
+        return THEME_MODES.includes(saved) ? saved : "auto";
+      }
+
+      function saveThemePreference() {
+        localStorage.setItem(THEME_PREF_KEY, themePreference);
+      }
+
+      function getEffectiveTheme(pref) {
+        if (pref === "light") return "light";
+        if (pref === "dark") return "dark";
+        return systemDarkQuery && systemDarkQuery.matches ? "dark" : "light";
+      }
+
+      function updateThemeToggleLabel() {
+        const labels = {
+          auto: "Thema: Auto",
+          light: "Thema: Licht",
+          dark: "Thema: Donker",
+        };
+        themeToggleBtn.textContent = labels[themePreference] || labels.auto;
+        themeToggleBtn.setAttribute("aria-label", "Wijzig thema");
+        themeToggleBtn.title = "Klik om te wisselen tussen Auto, Licht en Donker";
+      }
+
+      function applyTheme(pref, persist = false) {
+        themePreference = THEME_MODES.includes(pref) ? pref : "auto";
+        const effective = getEffectiveTheme(themePreference);
+        document.body.classList.toggle("theme-dark", effective === "dark");
+        updateThemeToggleLabel();
+        if (persist) saveThemePreference();
+      }
+
+      function cycleTheme() {
+        const idx = THEME_MODES.indexOf(themePreference);
+        const next = THEME_MODES[(idx + 1) % THEME_MODES.length];
+        applyTheme(next, true);
+      }
+
+      function getStoredVotedPollId() {
+        const raw = localStorage.getItem(VOTED_POLL_STORAGE_KEY);
+        const parsed = Number.parseInt(String(raw || ""), 10);
+        return Number.isInteger(parsed) ? parsed : null;
+      }
+
+      function setStoredVotedPollId(pollId) {
+        if (!Number.isInteger(Number(pollId))) return;
+        localStorage.setItem(VOTED_POLL_STORAGE_KEY, String(Number(pollId)));
+      }
+
+      function clearStoredVotedPollId() {
+        localStorage.removeItem(VOTED_POLL_STORAGE_KEY);
+      }
+
+      function formatCountdownMs(ms) {
+        const value = Number(ms || 0);
+        if (!Number.isFinite(value) || value <= 0) return "0:00";
+        const totalSeconds = Math.ceil(value / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return String(minutes) + ":" + String(seconds).padStart(2, "0");
+      }
+
+      function getPollRemainingMs() {
+        if (!activePoll || !Number.isFinite(Number(activePoll.endsAtMs))) return null;
+        return Math.max(0, Number(activePoll.endsAtMs) - Date.now());
+      }
+
+      function stopPollCountdownLoop() {
+        if (!pollCountdownTimer) return;
+        clearInterval(pollCountdownTimer);
+        pollCountdownTimer = null;
+      }
+
+      function startPollCountdownLoop() {
+        stopPollCountdownLoop();
+        if (!activePoll || !Number.isFinite(Number(activePoll.endsAtMs))) return;
+        pollCountdownTimer = setInterval(() => {
+          if (!activePoll) {
+            stopPollCountdownLoop();
+            return;
+          }
+          renderPollOptions();
+          renderPollMeta();
+        }, 1000);
+      }
+
+      function log(line) {
+        clientLogLines.unshift(line);
+        if (clientLogLines.length > CLIENT_LOG_LIMIT) {
+          clientLogLines.length = CLIENT_LOG_LIMIT;
+        }
+        logEl.textContent = clientLogLines.length ? clientLogLines.join("\n") : "(nog leeg)";
+      }
+
+      function sanitizeNameColor(input) {
+        const value = String(input || "").trim();
+        return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "";
+      }
+
+      function formatChatTime(value) {
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime())
+          ? String(value || "")
+          : parsed.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+      }
+
+      function renderChatFeed() {
+        chatFeedEl.textContent = "";
+        const fragment = document.createDocumentFragment();
+        for (const entry of chatLogEntries) {
+          const row = document.createElement("div");
+          row.className = "chatLine";
+
+          if (entry && entry.type === "comment") {
+            const timeNode = document.createElement("span");
+            timeNode.className = "chatTime";
+            timeNode.textContent = String(entry.time || "") + "  ";
+
+            const nameNode = document.createElement("span");
+            nameNode.className = "chatName";
+            nameNode.textContent = String(entry.name || "Anoniem");
+            if (entry.nameColor) nameNode.style.color = entry.nameColor;
+
+            const textNode = document.createElement("span");
+            textNode.textContent = ": " + String(entry.text || "");
+
+            row.appendChild(timeNode);
+            row.appendChild(nameNode);
+            row.appendChild(textNode);
+          } else {
+            row.textContent = String((entry && entry.text) || "");
+          }
+
+          fragment.appendChild(row);
+        }
+        chatFeedEl.appendChild(fragment);
+      }
+
+      function pushChatEntry(entry) {
+        chatLogEntries.unshift(entry);
+        if (chatLogEntries.length > CHAT_LOG_LIMIT) {
+          chatLogEntries.length = CHAT_LOG_LIMIT;
+        }
+        renderChatFeed();
+      }
+
+      function appendChat(line) {
+        const text = String(line || "").trim();
+        if (!text) return;
+        pushChatEntry({ type: "text", text });
+      }
+
+      function appendChatComment(msg) {
+        const text = String((msg && msg.text) || "").trim();
+        if (!text) return;
+        pushChatEntry({
+          type: "comment",
+          time: formatChatTime(msg && msg.time),
+          name: String((msg && msg.name) || "Anoniem").slice(0, 24),
+          text,
+          nameColor: sanitizeNameColor(msg && msg.nameColor),
+        });
+      }
+
+      function updateReactionCounterUi() {
+        const nodes = document.querySelectorAll("[data-reaction-count]");
+        for (const node of nodes) {
+          const key = String(node.getAttribute("data-reaction-count") || "");
+          if (!(key in reactionCounts)) continue;
+          node.textContent = String(Number(reactionCounts[key] || 0));
+        }
+      }
+
+      function setReactionCounts(nextCounts) {
+        if (!nextCounts || typeof nextCounts !== "object") return;
+        for (const key of Object.keys(reactionCounts)) {
+          reactionCounts[key] = Number(nextCounts[key] || 0);
+        }
+        updateReactionCounterUi();
+      }
+
+      function spawnReactionBurst(reactionKey, intensity = 1) {
+        const emoji = reactionEmoji[reactionKey];
+        if (!emoji || !reactionBurstLayerEl) return;
+        const count = Math.max(1, Math.min(4, Number(intensity) || 1));
+        for (let i = 0; i < count; i += 1) {
+          const node = document.createElement("span");
+          node.className = "reactionBurst";
+          node.textContent = emoji;
+          const leftPct = 8 + Math.random() * 84;
+          const drift = -36 + Math.random() * 72;
+          node.style.left = leftPct.toFixed(2) + "%";
+          node.style.setProperty("--drift", drift.toFixed(0) + "px");
+          reactionBurstLayerEl.appendChild(node);
+          setTimeout(() => node.remove(), 1600);
+        }
+      }
+
+      function sendReaction(reactionKey) {
+        if (!reactionEmoji[reactionKey]) return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          appendChat("Offline");
+          ensureFreshConnection();
+          return;
+        }
+        const now = Date.now();
+        if (now - lastReactionSendAt < 90) return;
+        lastReactionSendAt = now;
+        try {
+          ws.send(JSON.stringify({ type: "reaction", reaction: reactionKey, clientTag }));
+          reactionCounts[reactionKey] = Number(reactionCounts[reactionKey] || 0) + 1;
+          updateReactionCounterUi();
+          spawnReactionBurst(reactionKey, 1);
+        } catch {}
+      }
+
+      function renderPollOptions() {
+        if (!activePoll || !Array.isArray(activePoll.options) || !activePoll.options.length) {
+          pollOptionsEl.innerHTML = "";
+          return;
+        }
+        const remainingMs = getPollRemainingMs();
+        const pollExpired = remainingMs !== null && remainingMs <= 0;
+        pollOptionsEl.innerHTML = activePoll.options
+          .map((option, index) => {
+            const votes = Array.isArray(activePoll.counts) ? Number(activePoll.counts[index] || 0) : 0;
+            const isSelected = selectedPollOptionIndex === index;
+            return `<button type="button" class="pollOption${isSelected ? " selected" : ""}" data-poll-option="${index}" ${pollVotePending || pollExpired ? "disabled" : ""}>
+              ${option} <span class="muted">(${votes})</span>
+            </button>`;
+          })
+          .join("");
+      }
+
+      function renderPollMeta() {
+        if (!activePoll) {
+          pollMetaEl.textContent = "";
+          pollSubmitBtn.disabled = true;
+          return;
+        }
+        const totalVotes = Number(activePoll.totalVotes || 0);
+        const remainingMs = getPollRemainingMs();
+        const countdown = remainingMs === null ? "" : " • resterend: " + formatCountdownMs(remainingMs);
+        const pollExpired = remainingMs !== null && remainingMs <= 0;
+        if (pollVotePending) {
+          pollMetaEl.textContent = "Stem wordt verstuurd...";
+        } else if (pollExpired) {
+          pollMetaEl.textContent = "Poll is afgelopen. Wacht op sluiten.";
+        } else {
+          pollMetaEl.textContent = "Kies 1 optie en druk op Stem. Totaal stemmen: " + totalVotes + countdown;
+        }
+        pollSubmitBtn.disabled = pollVotePending || pollExpired || !Number.isInteger(selectedPollOptionIndex);
+      }
+
+      function showPoll(poll) {
+        if (!poll || !poll.question || !Array.isArray(poll.options)) {
+          activePoll = null;
+          selectedPollOptionIndex = null;
+          pollVotePending = false;
+          stopPollCountdownLoop();
+          pollBoxEl.hidden = true;
+          return;
+        }
+
+        const incomingPollId = Number(poll.id);
+        if (Number.isInteger(incomingPollId) && getStoredVotedPollId() === incomingPollId) {
+          activePoll = null;
+          selectedPollOptionIndex = null;
+          pollVotePending = false;
+          pollBoxEl.hidden = true;
+          return;
+        }
+
+        activePoll = {
+          id: incomingPollId,
+          question: String(poll.question),
+          options: poll.options.map((o) => String(o)),
+          counts: Array.isArray(poll.counts) ? poll.counts.map((n) => Number(n || 0)) : poll.options.map(() => 0),
+          totalVotes: Number(poll.totalVotes || 0),
+          endsAtMs: (() => {
+            const directTs = Date.parse(String(poll.endsAt || ""));
+            if (Number.isFinite(directTs)) return directTs;
+            const startedAtTs = Date.parse(String(poll.startedAt || ""));
+            const durationSeconds = Number(poll.durationSeconds || 0);
+            if (Number.isFinite(startedAtTs) && Number.isFinite(durationSeconds) && durationSeconds > 0) {
+              return startedAtTs + durationSeconds * 1000;
+            }
+            return null;
+          })(),
+        };
+        selectedPollOptionIndex = null;
+        pollVotePending = false;
+        pollQuestionEl.textContent = activePoll.question;
+        renderPollOptions();
+        renderPollMeta();
+        startPollCountdownLoop();
+        pollBoxEl.hidden = false;
+      }
+
+      function closePoll() {
+        activePoll = null;
+        selectedPollOptionIndex = null;
+        pollVotePending = false;
+        stopPollCountdownLoop();
+        pollBoxEl.hidden = true;
+      }
+
+      function resetPollVotePending() {
+        if (!pollVotePending) return;
+        pollVotePending = false;
+        if (!activePoll) return;
+        renderPollOptions();
+        renderPollMeta();
+      }
+
+      function sendDebugOverHttp(note) {
+        const now = Date.now();
+        if (note === lastHttpDebugNote && now - lastHttpDebugAt < 1200) return;
+        lastHttpDebugNote = note;
+        lastHttpDebugAt = now;
+
+        const state = [
+          "ws=" + (ws ? ws.readyState : -1),
+          "vis=" + document.visibilityState,
+          "online=" + (navigator.onLine ? "1" : "0"),
+        ].join(" ");
+        const payload = JSON.stringify({ clientTag, state, note });
+
+        if (typeof navigator.sendBeacon === "function") {
+          try {
+            const blob = new Blob([payload], { type: "application/json" });
+            if (navigator.sendBeacon("/client-debug", blob)) return;
+          } catch {}
+        }
+
+        fetch("/client-debug", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+          keepalive: true,
+          cache: "no-store",
+        }).catch(() => {});
+      }
+
+      function debugLog(note) {
+        const line = "[debug] " + note;
+        log(line);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send(JSON.stringify({ type: "client_debug", note: line }));
+            return;
+          } catch {}
+        }
+        sendDebugOverHttp(line);
+      }
+
+      let toastTimer = null;
+      function showToast(text, { subtle = false, spinning = false, autoHideMs = 0 } = {}) {
+        if (toastTimer) {
+          clearTimeout(toastTimer);
+          toastTimer = null;
+        }
+
+        toastTextEl.textContent = text;
+        toastIconEl.textContent = spinning ? "⚙" : "●";
+        toastIconEl.classList.toggle("spin", spinning);
+        toastEl.classList.toggle("subtle", subtle);
+        toastEl.classList.add("show");
+
+        if (autoHideMs > 0) {
+          toastTimer = setTimeout(() => {
+            toastEl.classList.remove("show");
+            toastTimer = null;
+          }, autoHideMs);
+        }
+      }
+
+      function hideToast() {
+        if (toastTimer) {
+          clearTimeout(toastTimer);
+          toastTimer = null;
+        }
+        toastEl.classList.remove("show");
+      }
+
+      function formatRemainingMs(ms) {
+        const value = Number(ms || 0);
+        if (!Number.isFinite(value) || value <= 0) return "";
+        const totalSeconds = Math.ceil(value / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        if (minutes <= 0) return totalSeconds + "s";
+        if (seconds === 0) return minutes + "m";
+        return minutes + "m " + seconds + "s";
+      }
+
+      function buildMuteNoticeText(msg) {
+        let remaining = "";
+        if (Number.isFinite(Number(msg.remainingMs))) {
+          remaining = formatRemainingMs(Number(msg.remainingMs));
+        } else if (msg.mutedUntil) {
+          const untilTs = Date.parse(String(msg.mutedUntil));
+          if (Number.isFinite(untilTs)) {
+            remaining = formatRemainingMs(untilTs - Date.now());
+          }
+        }
+        return remaining
+          ? "Je bent tijdelijk gemute door de moderator. Nog " + remaining + "."
+          : "Je bent tijdelijk gemute door de moderator.";
+      }
+
+      function showUserNotice(text, { autoHideMs = 4200 } = {}) {
+        appendChat(text);
+        showToast(text, { subtle: false, autoHideMs });
+      }
+
+      function sanitizeNameClient(input) {
+        const name = String(input || "").trim();
+        if (!name) return "";
+        return name.slice(0, 24).replace(/\s+/g, " ");
+      }
+
+      function getOrAskName() {
+        let name = sanitizeNameClient(localStorage.getItem("live_name"));
+        while (!name) {
+          const candidate = prompt("Wat is je naam");
+          name = sanitizeNameClient(candidate);
+        }
+        localStorage.setItem("live_name", name);
+        nameLabelEl.textContent = "Naam: " + name;
+        return name;
+      }
+
+      function changeName() {
+        const current = sanitizeNameClient(localStorage.getItem("live_name"));
+        const candidate = prompt("Wat is je naam", current || "");
+        const name = sanitizeNameClient(candidate);
+        if (!name) return;
+        localStorage.setItem("live_name", name);
+        nameLabelEl.textContent = "Naam: " + name;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send(JSON.stringify({ type: "register", clientTag, name }));
+          } catch {}
+        }
+      }
+
+      function setDevPanelOpen(open) {
+        devPanelEl.hidden = !open;
+        toggleDevPanelBtn.textContent = open ? "Dev logs verbergen" : "Dev logs tonen";
+      }
+
+      function refreshServerLog() {
+        refreshServerLogBtn.disabled = true;
+        fetch("/debug-log?lines=140&ts=" + Date.now(), { cache: "no-store" })
+          .then((res) => {
+            if (!res.ok) throw new Error("bad status");
+            return res.json();
+          })
+          .then((data) => {
+            const lines = Array.isArray(data.lines) ? data.lines : [];
+            serverLogEl.textContent = lines.length ? lines.join("\n") : "(nog leeg)";
+            hasLoadedServerLog = true;
+          })
+          .catch(() => {
+            serverLogEl.textContent = "Kon serverlog niet laden.";
+          })
+          .finally(() => {
+            refreshServerLogBtn.disabled = false;
+          });
+      }
+
+      themePreference = loadThemePreference();
+      applyTheme(themePreference, false);
+      if (systemDarkQuery && typeof systemDarkQuery.addEventListener === "function") {
+        systemDarkQuery.addEventListener("change", () => {
+          if (themePreference === "auto") applyTheme("auto", false);
+        });
+      } else if (systemDarkQuery && typeof systemDarkQuery.addListener === "function") {
+        systemDarkQuery.addListener(() => {
+          if (themePreference === "auto") applyTheme("auto", false);
+        });
+      }
+
+      let myName = getOrAskName();
+      themeToggleBtn.addEventListener("click", () => {
+        cycleTheme();
+      });
+      changeNameBtn.addEventListener("click", () => {
+        changeName();
+        myName = sanitizeNameClient(localStorage.getItem("live_name"));
+        settingsMenuEl.removeAttribute("open");
+      });
+      toggleDevPanelBtn.addEventListener("click", () => {
+        const open = devPanelEl.hidden;
+        setDevPanelOpen(open);
+        if (open && !hasLoadedServerLog) refreshServerLog();
+      });
+      refreshServerLogBtn.addEventListener("click", refreshServerLog);
+      clearClientLogBtn.addEventListener("click", () => {
+        clientLogLines.length = 0;
+        logEl.textContent = "(nog leeg)";
+      });
+      setDevPanelOpen(false);
+      updateReactionCounterUi();
+
+      let hasShownConnectedToast = false;
+      let connectTimeoutTimer = null;
+      let heartbeatTimer = null;
+      let pongTimeoutTimer = null;
+      let connectStartedAt = 0;
+      let connectionManagerTimer = null;
+      let forceCloseAt = 0;
+      let consecutiveConnectFailures = 0;
+      let reconnectTimer = null;
+      let reconnectDelayMs = 500;
+      let pendingReconnect = false;
+      let lastServerSeenAt = 0;
+      let healthProbeTimer = null;
+      let healthProbeInFlight = false;
+      let healthProbeFailCount = 0;
+      let pausedByServer = false;
+
+      const CONNECT_TIMEOUT_MS = 7000;
+      const CONNECTION_CHECK_MS = 2000;
+      const MAX_RECONNECT_DELAY_MS = 8000;
+      const STALE_CONNECTION_MS = 15000;
+      const HEALTH_PROBE_MS = 3000;
+      const HEALTH_TIMEOUT_MS = 2500;
+      const PROBE_STALE_OPEN_MS = 7000;
+
+      function clearConnectTimeout() {
+        if (!connectTimeoutTimer) return;
+        clearTimeout(connectTimeoutTimer);
+        connectTimeoutTimer = null;
+      }
+
+      function clearReconnectTimer() {
+        if (!reconnectTimer) return;
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+
+      function resetReconnectBackoff() {
+        reconnectDelayMs = 500;
+        pendingReconnect = false;
+        clearReconnectTimer();
+      }
+
+      function connectNow(reason) {
+        if (pausedByServer) return;
+        pendingReconnect = false;
+        clearReconnectTimer();
+        debugLog(reason + " -> connect now");
+        connect();
+      }
+
+      function scheduleReconnect(reason) {
+        if (pausedByServer) return;
+        pendingReconnect = true;
+        if (document.visibilityState !== "visible") {
+          debugLog(reason + " -> defer reconnect (hidden)");
+          return;
+        }
+        if (reconnectTimer) return;
+        const delay = reconnectDelayMs;
+        debugLog(reason + " -> reconnect in " + delay + "ms");
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          if (!pendingReconnect) return;
+          pendingReconnect = false;
+          connect();
+        }, delay);
+        reconnectDelayMs = Math.min(
+          MAX_RECONNECT_DELAY_MS,
+          Math.round(reconnectDelayMs * 1.6 + 120)
+        );
+      }
+
+      function noteServerSeen() {
+        lastServerSeenAt = Date.now();
+        healthProbeFailCount = 0;
+      }
+
+      function probeHealth(reason) {
+        if (pausedByServer) return;
+        if (healthProbeInFlight) return;
+        healthProbeInFlight = true;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          try { controller.abort(); } catch {}
+        }, HEALTH_TIMEOUT_MS);
+
+        fetch("/health?ts=" + Date.now(), {
+          cache: "no-store",
+          signal: controller.signal,
+        })
+          .then((res) => {
+            clearTimeout(timeoutId);
+            healthProbeInFlight = false;
+            if (!res.ok) throw new Error("bad status");
+
+            healthProbeFailCount = 0;
+            const openButStale = ws
+              && ws.readyState === WebSocket.OPEN
+              && lastServerSeenAt
+              && Date.now() - lastServerSeenAt > PROBE_STALE_OPEN_MS;
+            if (!ws || ws.readyState !== WebSocket.OPEN || openButStale) {
+              if (openButStale) {
+                debugLog(reason + " health ok + stale open -> reset socket");
+                try { ws.close(); } catch {}
+                ws = null;
+              } else {
+                debugLog(reason + " health ok -> reconnect");
+              }
+              connectNow(reason + " health");
+            }
+          })
+          .catch(() => {
+            clearTimeout(timeoutId);
+            healthProbeInFlight = false;
+            healthProbeFailCount += 1;
+            if (healthProbeFailCount === 1 || healthProbeFailCount % 4 === 0) {
+              debugLog(reason + " health failed x" + healthProbeFailCount);
+            }
+          });
+      }
+
+      function startHealthProbeLoop() {
+        if (healthProbeTimer) return;
+        healthProbeTimer = setInterval(() => {
+          if (pausedByServer) return;
+          if (document.visibilityState !== "visible") return;
+
+          const disconnected = !ws || ws.readyState !== WebSocket.OPEN;
+          const staleOpen = ws
+            && ws.readyState === WebSocket.OPEN
+            && lastServerSeenAt
+            && Date.now() - lastServerSeenAt > PROBE_STALE_OPEN_MS;
+          if (!disconnected && !staleOpen) return;
+
+          probeHealth("probe_loop");
+        }, HEALTH_PROBE_MS);
+      }
+
+      function forceCloseAndReconnect(reason) {
+        if (!ws) return;
+        const socket = ws;
+        if (socket.readyState === WebSocket.CLOSING || socket.readyState === WebSocket.CLOSED) return;
+        if (Date.now() - forceCloseAt < 1200) return;
+
+        forceCloseAt = Date.now();
+        debugLog(reason + " -> close socket");
+        clearConnectTimeout();
+        try { socket.close(); } catch {}
+
+        // Safari can keep sockets in limbo; force reset if close event never arrives.
+        setTimeout(() => {
+          if (ws !== socket) return;
+          if (socket.readyState === WebSocket.OPEN) return;
+          debugLog("force close fallback -> reset socket");
+          ws = null;
+          scheduleReconnect("force close fallback");
+        }, 2200);
+      }
+
+      function registerConnectFailure(reason) {
+        consecutiveConnectFailures += 1;
+        debugLog(reason + " (failures=" + consecutiveConnectFailures + ")");
+      }
+
+      function stopHeartbeat() {
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = null;
+        }
+        if (pongTimeoutTimer) {
+          clearTimeout(pongTimeoutTimer);
+          pongTimeoutTimer = null;
+        }
+      }
+
+      function startHeartbeat() {
+        stopHeartbeat();
+        debugLog("heartbeat started");
+        heartbeatTimer = setInterval(() => {
+          if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+          try {
+            ws.send(JSON.stringify({ type: "ping" }));
+            debugLog("heartbeat ping sent");
+          } catch {}
+
+          if (pongTimeoutTimer) clearTimeout(pongTimeoutTimer);
+          pongTimeoutTimer = setTimeout(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              debugLog("heartbeat pong timeout -> close socket");
+              try { ws.close(); } catch {}
+            }
+          }, 3500);
+        }, 6000);
+      }
+
+      function ensureFreshConnection() {
+        if (pausedByServer) return;
+        if (!ws) {
+          debugLog("ensureFreshConnection: no socket -> connect");
+          connectNow("ensureFreshConnection: no socket");
+          probeHealth("ensureFreshConnection: no socket");
+          return;
+        }
+        if (ws.readyState === WebSocket.CONNECTING) {
+          const elapsed = Date.now() - connectStartedAt;
+          if (connectStartedAt && elapsed > CONNECT_TIMEOUT_MS + 1000) {
+            forceCloseAndReconnect("ensureFreshConnection: stale connecting");
+            return;
+          }
+          return;
+        }
+        if (ws.readyState === WebSocket.OPEN) {
+          if (lastServerSeenAt && Date.now() - lastServerSeenAt > STALE_CONNECTION_MS) {
+            forceCloseAndReconnect("ensureFreshConnection: stale open");
+            probeHealth("ensureFreshConnection: stale open");
+          }
+          return;
+        }
+        if (ws.readyState !== WebSocket.OPEN) {
+          debugLog("ensureFreshConnection: socket not open -> recreate");
+          try { ws.close(); } catch {}
+          ws = null;
+          connectNow("ensureFreshConnection: recreate");
+          probeHealth("ensureFreshConnection: recreate");
+          return;
+        }
+      }
+
+      function setUiConnected(connected, { notify = true } = {}) {
+        statusEl.textContent = connected ? "Connected" : "Disconnected, reconnecting";
+        sendBtn.disabled = !connected;
+        if (!notify) return;
+
+        if (connected) {
+          hideToast();
+          if (!hasShownConnectedToast) {
+            showToast("Connected", { subtle: true, autoHideMs: 1800 });
+            hasShownConnectedToast = true;
+          }
+        } else {
+          showToast("Disconnected, reconnecting", { subtle: true, spinning: true });
+        }
+      }
+
+      function startConnectionManager() {
+        if (connectionManagerTimer) return;
+        connectionManagerTimer = setInterval(() => {
+          if (document.visibilityState !== "visible") return;
+          ensureFreshConnection();
+        }, CONNECTION_CHECK_MS);
+      }
+
+      function handleServerError(msg) {
+        const code = String(msg.code || "");
+        if (code === "moderation_blocked") {
+          appendChat("Bericht verwijderd vanwege ongewenst taalgebruik.");
+          return;
+        }
+        if (code === "link_blocked") {
+          appendChat("Bericht verwijderd: links zijn niet toegestaan.");
+          return;
+        }
+        if (code === "phone_blocked") {
+          appendChat("Bericht verwijderd: telefoonnummers zijn niet toegestaan.");
+          return;
+        }
+        if (code === "name_blocked" || code === "name_link_blocked" || code === "name_phone_blocked") {
+          const messageByCode = {
+            name_blocked: "Gebruikersnaam bevat ongewenst taalgebruik.",
+            name_link_blocked: "Gebruikersnaam mag geen links bevatten.",
+            name_phone_blocked: "Gebruikersnaam mag geen telefoonnummers bevatten.",
+          };
+          appendChat(messageByCode[code] || "Gebruikersnaam is niet toegestaan.");
+          setTimeout(() => {
+            changeName();
+            myName = sanitizeNameClient(localStorage.getItem("live_name"));
+          }, 60);
+          return;
+        }
+        if (code === "user_muted") {
+          resetPollVotePending();
+          showUserNotice(buildMuteNoticeText(msg));
+          return;
+        }
+        if (code === "user_blocked") {
+          resetPollVotePending();
+          showUserNotice("Je bent geblokkeerd door de moderator.");
+          return;
+        }
+        if (code === "kicked") {
+          showUserNotice("Je bent verwijderd door de moderator.");
+          return;
+        }
+        if (code === "user_unmuted") {
+          showUserNotice("Je mute is opgeheven. Je kunt weer reageren.", { autoHideMs: 3600 });
+          return;
+        }
+        if (code === "poll_vote_invalid") {
+          resetPollVotePending();
+          appendChat("Kon je stem niet verwerken.");
+          return;
+        }
+        if (code === "poll_vote_locked") {
+          if (activePoll && Number.isInteger(Number(activePoll.id))) {
+            setStoredVotedPollId(Number(activePoll.id));
+          }
+          closePoll();
+          appendChat("Je stem was al opgeslagen.");
+          return;
+        }
+
+        appendChat("ERROR: " + String(msg.message || "unknown"));
+      }
+
+      function handleModerationNotice(msg) {
+        const code = String(msg.code || "");
+        if (code === "user_muted") {
+          showUserNotice(buildMuteNoticeText(msg));
+          return;
+        }
+        if (code === "user_unmuted") {
+          showUserNotice("Je mute is opgeheven. Je kunt weer reageren.", { autoHideMs: 3600 });
+          return;
+        }
+        if (code === "user_blocked") {
+          showUserNotice("Je bent geblokkeerd door de moderator en wordt verwijderd.", { autoHideMs: 5000 });
+          return;
+        }
+        if (code === "kicked") {
+          showUserNotice("Je bent verwijderd door de moderator.", { autoHideMs: 4200 });
+          return;
+        }
+        if (msg.message) {
+          showUserNotice(String(msg.message));
+        }
+      }
+
+      function connect() {
+        if (pausedByServer) return;
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+        debugLog("connect() called");
+
+        const wsBaseUrl = (location.protocol === "https:" ? "wss://" : "ws://") + location.host;
+        const wsUrl = wsBaseUrl + "/?sid=" + Date.now();
+        debugLog("connecting to " + wsUrl);
+
+        let socket;
+        let opened = false;
+        let openedAt = 0;
+        try {
+          socket = new WebSocket(wsUrl);
+          ws = socket;
+          connectStartedAt = Date.now();
+        } catch {
+          debugLog("new WebSocket failed");
+          setUiConnected(false);
+          registerConnectFailure("new WebSocket failed");
+          scheduleReconnect("new WebSocket failed");
+          probeHealth("new WebSocket failed");
+          return;
+        }
+
+        setUiConnected(false, { notify: false });
+        clearConnectTimeout();
+        connectTimeoutTimer = setTimeout(() => {
+          if (socket !== ws) return;
+          if (socket.readyState === WebSocket.CONNECTING) {
+            registerConnectFailure("connect timeout");
+            forceCloseAndReconnect("connect timeout");
+            setUiConnected(false);
+            scheduleReconnect("connect timeout");
+            probeHealth("connect timeout");
+          }
+        }, CONNECT_TIMEOUT_MS);
+
+        socket.addEventListener("open", () => {
+          if (socket !== ws) return;
+          opened = true;
+          openedAt = Date.now();
+          consecutiveConnectFailures = 0;
+          forceCloseAt = 0;
+          noteServerSeen();
+          resetReconnectBackoff();
+          debugLog("ws open");
+          clearConnectTimeout();
+          stopHeartbeat();
+          connectStartedAt = 0;
+          setUiConnected(true);
+          startHeartbeat();
+          try {
+            const currentName = sanitizeNameClient(localStorage.getItem("live_name")) || myName;
+            socket.send(JSON.stringify({ type: "register", clientTag, name: currentName }));
+          } catch {}
+        });
+
+        socket.addEventListener("close", (ev) => {
+          if (socket !== ws) return;
+          if (ev.code === 4010 || pausedByServer) {
+            debugLog("ws close code=" + ev.code + " -> paused by server");
+            clearConnectTimeout();
+            stopHeartbeat();
+            connectStartedAt = 0;
+            ws = null;
+            pendingReconnect = false;
+            clearReconnectTimer();
+            setUiConnected(false, { notify: false });
+            showToast("Sessie gesloten. Ververs om opnieuw mee te doen.", { subtle: false });
+            sendBtn.disabled = true;
+            return;
+          }
+          if (!opened || (openedAt && Date.now() - openedAt < 1500)) {
+            registerConnectFailure("ws close shortly after connect");
+          }
+          forceCloseAt = 0;
+          debugLog("ws close code=" + ev.code + " clean=" + (ev.wasClean ? "1" : "0"));
+          clearConnectTimeout();
+          stopHeartbeat();
+          connectStartedAt = 0;
+          ws = null;
+          setUiConnected(false);
+          scheduleReconnect("ws close code=" + ev.code);
+          probeHealth("ws close");
+        });
+
+        socket.addEventListener("error", () => {
+          if (socket !== ws) return;
+          if (!opened) registerConnectFailure("ws error before open");
+          forceCloseAt = 0;
+          debugLog("ws error");
+          clearConnectTimeout();
+          stopHeartbeat();
+          connectStartedAt = 0;
+          ws = null;
+          setUiConnected(false);
+          try { socket.close(); } catch {}
+          scheduleReconnect("ws error");
+          probeHealth("ws error");
+        });
+
+        socket.addEventListener("message", (ev) => {
+          if (socket !== ws) return;
+          try {
+            const msg = JSON.parse(ev.data);
+            if (msg.type === "hello") {
+              noteServerSeen();
+              if (msg.poll) showPoll(msg.poll);
+              return;
+            }
+            if (msg.type === "pong") {
+              debugLog("pong received");
+              if (pongTimeoutTimer) {
+                clearTimeout(pongTimeoutTimer);
+                pongTimeoutTimer = null;
+              }
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "comment") {
+              appendChatComment(msg);
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "poll_started") {
+              if (msg.poll && Number.isInteger(Number(msg.poll.id))) {
+                const stored = getStoredVotedPollId();
+                if (stored !== Number(msg.poll.id)) clearStoredVotedPollId();
+              }
+              showPoll(msg.poll || null);
+              appendChat("Nieuwe poll gestart.");
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "poll_update") {
+              if (activePoll && Number(msg.pollId) === Number(activePoll.id)) {
+                activePoll.counts = Array.isArray(msg.counts)
+                  ? msg.counts.map((n) => Number(n || 0))
+                  : activePoll.counts;
+                activePoll.totalVotes = Number(msg.totalVotes || 0);
+                renderPollOptions();
+                renderPollMeta();
+              }
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "poll_vote_ok") {
+              const votedPollId = Number(msg.pollId);
+              if (Number.isInteger(votedPollId)) setStoredVotedPollId(votedPollId);
+              closePoll();
+              appendChat("Je stem is opgeslagen.");
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "poll_closed") {
+              const closedId = Number(msg.pollId);
+              if (Number.isInteger(closedId) && getStoredVotedPollId() === closedId) {
+                clearStoredVotedPollId();
+              }
+              closePoll();
+              appendChat(msg.reason === "timeout" ? "Poll afgelopen." : "Poll gesloten.");
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "session_reset") {
+              pausedByServer = true;
+              setReactionCounts({ heart: 0, fire: 0, laugh: 0, bored: 0 });
+              clearStoredVotedPollId();
+              closePoll();
+              appendChat("Nieuwe sessie gestart. Herverbinden...");
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "moderation_notice") {
+              handleModerationNotice(msg);
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "error") {
+              handleServerError(msg);
+              noteServerSeen();
+            }
+          } catch {}
+        });
+      }
+
+      function send() {
+        if (pausedByServer) {
+          appendChat("Deze sessie is gesloten. Ververs pagina om opnieuw mee te doen.");
+          return;
+        }
+        const text = textEl.value.trim();
+        if (!text) return;
+
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          appendChat("Offline");
+          ensureFreshConnection();
+          probeHealth("send offline");
+          return;
+        }
+
+        const name = sanitizeNameClient(localStorage.getItem("live_name"));
+        if (!name) {
+          myName = getOrAskName();
+        }
+
+        ws.send(JSON.stringify({ type: "comment", name: name || myName, text, clientTag }));
+        textEl.value = "";
+        textEl.focus();
+      }
+
+      sendBtn.addEventListener("click", send);
+      textEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          send();
+        }
+      });
+
+      function submitPollVote() {
+        if (!activePoll) return;
+        if (!Number.isInteger(selectedPollOptionIndex)) return;
+        const remainingMs = getPollRemainingMs();
+        if (remainingMs !== null && remainingMs <= 0) {
+          appendChat("Deze poll is al afgelopen.");
+          renderPollOptions();
+          renderPollMeta();
+          return;
+        }
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          appendChat("Offline");
+          ensureFreshConnection();
+          return;
+        }
+        pollVotePending = true;
+        renderPollOptions();
+        renderPollMeta();
+        ws.send(
+          JSON.stringify({
+            type: "poll_vote",
+            pollId: activePoll.id,
+            optionIndex: selectedPollOptionIndex,
+            clientTag,
+          })
+        );
+      }
+
+      pollOptionsEl.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-poll-option]");
+        if (!btn || !activePoll) return;
+        const optionIndex = Number.parseInt(btn.getAttribute("data-poll-option"), 10);
+        if (!Number.isInteger(optionIndex)) return;
+        selectedPollOptionIndex = optionIndex;
+        renderPollOptions();
+        renderPollMeta();
+      });
+      pollSubmitBtn.addEventListener("click", submitPollVote);
+      reactionBarEl.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-reaction]");
+        if (!btn) return;
+        const reactionKey = String(btn.getAttribute("data-reaction") || "");
+        sendReaction(reactionKey);
+      });
+
+      window.addEventListener("online", () => {
+        debugLog("browser online");
+        connectNow("online");
+        probeHealth("online");
+      });
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          if (pendingReconnect) scheduleReconnect("visibilitychange");
+          ensureFreshConnection();
+          probeHealth("visibilitychange");
+        }
+      });
+      window.addEventListener("focus", () => {
+        ensureFreshConnection();
+        probeHealth("focus");
+      });
+      window.addEventListener("pageshow", (ev) => {
+        if (ev.persisted) {
+          debugLog("pageshow persisted -> reset socket");
+          try { ws && ws.close(); } catch {}
+          ws = null;
+        }
+        if (pendingReconnect) scheduleReconnect("pageshow");
+        ensureFreshConnection();
+        probeHealth(ev.persisted ? "pageshow persisted" : "pageshow");
+      });
+      window.addEventListener("pagehide", (ev) => {
+        if (ev.persisted) {
+          debugLog("pagehide persisted -> close socket");
+          stopHeartbeat();
+          clearConnectTimeout();
+          clearReconnectTimer();
+          try { ws && ws.close(); } catch {}
+          ws = null;
+        }
+      });
+
+      startConnectionManager();
+      startHealthProbeLoop();
+      connect();
+      probeHealth("boot");
+    </script>
+  </body>
+</html>

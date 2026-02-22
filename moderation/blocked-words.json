@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "notes": "Vul deze lijsten aan met woorden/zinnen die je wilt blokkeren.",
+  "blockedWords": [],
+  "blockedPhrases": [],
+  "blockedFragments": []
+}

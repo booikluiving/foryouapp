@@ -1,0 +1,1563 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Live Reacties Admin</title>
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --card: #fff;
+        --ink: #16202b;
+        --muted: #5f6b7a;
+        --line: #d9e2ec;
+        --danger: #b42318;
+        --accent: #0b6bcb;
+        --field: #fff;
+        --subtle: #f8fbff;
+        --badge-active-bg: #e9f8ee;
+        --badge-active-ink: #146c2f;
+        --badge-active-line: #b7e4c4;
+        --badge-closed-bg: #f3f4f6;
+        --badge-closed-ink: #4b5563;
+        --badge-closed-line: #d1d5db;
+      }
+      body.theme-dark {
+        --bg: #0f1722;
+        --card: #152233;
+        --ink: #e6edf5;
+        --muted: #9fb0c3;
+        --line: #26384c;
+        --danger: #ff6b6b;
+        --accent: #6cb8ff;
+        --field: #1a2b3f;
+        --subtle: #1a2b3f;
+        --badge-active-bg: #1a3a28;
+        --badge-active-ink: #96f2b4;
+        --badge-active-line: #356148;
+        --badge-closed-bg: #1e2e42;
+        --badge-closed-ink: #c2d1df;
+        --badge-closed-line: #354a63;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .wrap {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 18px;
+        display: grid;
+        gap: 12px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .collapsibleCard {
+        display: block;
+        padding: 0;
+        overflow: hidden;
+      }
+      .sectionHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      .collapsibleCard:not(.isOpen) .sectionHeader {
+        border-bottom: 0;
+      }
+      .sectionHeaderMain {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex: 1;
+      }
+      .sectionHeaderMain h2 {
+        margin: 0;
+      }
+      .sectionHeaderMain > .row {
+        width: 100%;
+      }
+      .sectionToggle {
+        flex: 0 0 auto;
+        min-width: auto;
+        font-size: 12px;
+        padding: 4px 10px;
+        border-radius: 999px;
+      }
+      .sectionBody {
+        padding: 0 12px 12px;
+        display: grid;
+        gap: 6px;
+      }
+      .collapsibleCard:not(.isOpen) .sectionBody {
+        display: none;
+      }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: 20px; }
+      h2 { font-size: 16px; margin-bottom: 10px; }
+      .muted { color: var(--muted); font-size: 13px; }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid var(--line);
+      }
+      .badge.active {
+        background: var(--badge-active-bg);
+        color: var(--badge-active-ink);
+        border-color: var(--badge-active-line);
+      }
+      .badge.closed {
+        background: var(--badge-closed-bg);
+        color: var(--badge-closed-ink);
+        border-color: var(--badge-closed-line);
+      }
+      input, textarea, button {
+        font: inherit;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        box-sizing: border-box;
+      }
+      input, textarea {
+        background: var(--field);
+        color: var(--ink);
+      }
+      input::placeholder, textarea::placeholder {
+        color: var(--muted);
+        opacity: 1;
+      }
+      button { cursor: pointer; background: var(--field); color: var(--ink); }
+      button.primary { border-color: var(--accent); color: var(--accent); }
+      button.danger { border-color: var(--danger); color: var(--danger); }
+      textarea { width: 100%; min-height: 72px; resize: vertical; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      .row > * { flex: 1; min-width: 160px; }
+      .sliderField {
+        display: grid;
+        gap: 6px;
+        min-width: 180px;
+      }
+      .sliderLabel {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .sliderValue {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--ink);
+      }
+      .sliderField input[type="range"] {
+        width: 100%;
+        padding: 0;
+        border: 0;
+      }
+      .optionRow {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .optionRow input {
+        flex: 1;
+        min-width: 0;
+      }
+      .optionRow button {
+        flex: 0 0 auto;
+        min-width: auto;
+      }
+      .stats { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+      .stat { border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+      .stat .k { font-size: 12px; color: var(--muted); }
+      .stat .v { font-size: 20px; margin-top: 4px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td {
+        text-align: left;
+        border-bottom: 1px solid var(--line);
+        padding: 6px 4px;
+        font-size: 13px;
+        vertical-align: top;
+      }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+      .stack { display: grid; gap: 6px; }
+      .smallbtns { display: flex; gap: 4px; flex-wrap: wrap; }
+      .historyCell {
+        background: var(--subtle);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+      }
+      .historyLog {
+        margin: 0;
+        max-height: 170px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      #liveChatLog .chatLine {
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      #liveChatLog .chatLine + .chatLine {
+        margin-top: 2px;
+      }
+      #liveChatLog .chatTime {
+        opacity: 0.72;
+      }
+      #liveChatLog .chatName,
+      .userNameColor {
+        font-weight: 700;
+      }
+      #app { display: none; }
+      #loginError, #actionMsg { min-height: 18px; font-size: 13px; }
+      #loginError { color: var(--danger); }
+      #actionMsg { color: var(--accent); }
+      .rememberRow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .rememberRow input[type="checkbox"] {
+        min-width: auto;
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card row" style="justify-content: space-between;">
+        <div>
+          <h1>Admin Console</h1>
+          <p class="muted">Show controller + technische tools</p>
+        </div>
+        <div class="row" style="justify-content: flex-end;">
+          <button id="themeToggleBtn" type="button">Thema: Auto</button>
+          <button id="refreshBtn" type="button">Ververs</button>
+          <button id="restartBtn" class="danger" type="button">Restart server</button>
+          <button id="logoutBtn" type="button">Logout</button>
+        </div>
+      </div>
+
+      <div id="loginCard" class="card stack">
+        <h2>Login</h2>
+        <div class="row">
+          <input id="password" type="password" placeholder="Admin wachtwoord" autocomplete="current-password" />
+          <button id="loginBtn" class="primary" type="button">Inloggen</button>
+        </div>
+        <label class="rememberRow">
+          <input id="rememberDevice" type="checkbox" />
+          Onthoud dit apparaat
+        </label>
+        <div id="loginError"></div>
+      </div>
+
+      <div id="app" class="stack">
+        <div class="card stack">
+          <h2>Overzicht</h2>
+          <div class="stats" id="stats"></div>
+        </div>
+        <div id="actionMsg"></div>
+
+        <div class="card stack">
+          <h2>Sessie</h2>
+          <div class="row">
+            <input id="sessionName" type="text" placeholder="Nieuwe sessienaam" />
+            <button id="newSessionBtn" class="danger" type="button">Start nieuwe sessie</button>
+          </div>
+          <div class="muted">Start een nieuwe performance-sessie: chatlog rolt door naar nieuwe sessie en alle clients worden losgekoppeld.</div>
+        </div>
+
+        <div class="card stack">
+          <div class="row" style="justify-content: space-between;">
+            <h2 style="flex: 0 0 auto;">Poll (multiple choice)</h2>
+            <span id="pollStatusBadge" class="badge closed" style="flex: 0 0 auto;">Gesloten</span>
+          </div>
+          <input id="pollQuestion" type="text" placeholder="Vraag" maxlength="180" />
+          <div class="row">
+            <input id="pollDurationSeconds" type="number" min="5" max="3600" step="1" placeholder="Pollduur in seconden" />
+          </div>
+          <div id="pollOptionsList" class="stack"></div>
+          <div class="row">
+            <button id="addPollOptionBtn" type="button">+ Optie</button>
+            <button id="startPollBtn" class="primary" type="button">Start poll</button>
+            <button id="closePollBtn" type="button">Sluit actieve poll</button>
+          </div>
+          <div class="muted">Stel exact in hoe lang de poll open blijft (5-3600s).</div>
+          <div id="pollState" class="stack"></div>
+        </div>
+
+        <div class="card stack">
+          <h2>Bot Simulatie</h2>
+          <div class="row">
+            <div class="sliderField">
+              <div class="sliderLabel"><span>Aantal bots</span><span id="simClientsValue" class="sliderValue">50</span></div>
+              <input id="simClients" type="range" min="1" max="200" step="1" value="50" />
+            </div>
+            <div class="sliderField">
+              <div class="sliderLabel"><span>Praat-rate (0..1 => 0..0.1)</span><span id="simMsgRateValue" class="sliderValue">0.030</span></div>
+              <input id="simMsgRate" type="range" min="0" max="1" step="0.01" value="0.30" />
+            </div>
+            <div class="sliderField">
+              <div class="sliderLabel"><span>Emoji-rate</span><span id="simReactionRateValue" class="sliderValue">0.35</span></div>
+              <input id="simReactionRate" type="range" min="0" max="4" step="0.01" value="0.35" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="sliderField">
+              <div class="sliderLabel"><span>Positief</span><span id="simPositiveValue" class="sliderValue">0.45</span></div>
+              <input id="simPositive" type="range" min="0" max="1" step="0.01" value="0.45" />
+            </div>
+            <div class="sliderField">
+              <div class="sliderLabel"><span>Negatief</span><span id="simNegativeValue" class="sliderValue">0.70</span></div>
+              <input id="simNegative" type="range" min="0" max="1" step="0.01" value="0.70" />
+            </div>
+            <div class="sliderField">
+              <div class="sliderLabel"><span>Callback-rate</span><span id="simCallbackRateValue" class="sliderValue">0.34</span></div>
+              <input id="simCallbackRate" type="range" min="0" max="1" step="0.01" value="0.34" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="sliderField">
+              <div class="sliderLabel"><span>Emoji in zin</span><span id="simEmojiInlineRateValue" class="sliderValue">0.18</span></div>
+              <input id="simEmojiInlineRate" type="range" min="0" max="1" step="0.01" value="0.18" />
+            </div>
+            <div class="sliderField">
+              <div class="sliderLabel"><span>Losse emoji/combo</span><span id="simEmojiLooseRateValue" class="sliderValue">0.70</span></div>
+              <input id="simEmojiLooseRate" type="range" min="0" max="1" step="0.01" value="0.70" />
+            </div>
+          </div>
+          <div class="row">
+            <input id="simTopic" type="text" maxlength="120" placeholder="Onderwerp (optioneel), bijv: festival eten" />
+          </div>
+          <div class="row">
+            <button id="simToggleBtn" class="primary" type="button">Bots aanzetten</button>
+            <button id="simSaveDefaultBtn" type="button">Sla als standaard op</button>
+          </div>
+          <div class="muted">Zet bots aan/uit met 1 knop. Tijdens runtime passen sliders direct live aan. Namen zijn random voornamen met "(bot)".</div>
+          <div id="simState" class="mono"></div>
+        </div>
+
+        <div class="card stack">
+          <h2>Techniek</h2>
+          <div class="row">
+            <input id="nextPort" type="number" min="1" max="65535" placeholder="Nieuwe poort (na restart)" />
+            <button id="savePortBtn" type="button">Bewaar poortinstelling</button>
+          </div>
+          <div class="row">
+            <input id="oscPort" type="number" min="1" max="65535" placeholder="OSC transmit poort" />
+            <button id="saveOscPortBtn" type="button">Bewaar OSC poort</button>
+          </div>
+          <div id="runtimeState" class="mono"></div>
+        </div>
+
+        <div class="card stack">
+          <h2>Live chat (recent)</h2>
+          <div id="liveChatLog" class="mono historyLog">(nog leeg)</div>
+        </div>
+
+        <div class="card stack">
+          <h2>Live gebruikers</h2>
+          <div class="muted">Moderatie-acties gelden per IP-adres (dus ook nieuwe tabbladen op hetzelfde netwerk).</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Naam</th>
+                <th>Client key</th>
+                <th>Status</th>
+                <th>Acties</th>
+              </tr>
+            </thead>
+            <tbody id="usersBody"></tbody>
+          </table>
+        </div>
+
+        <div class="card stack">
+          <h2>Actieve IP-maatregelen</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>IP</th>
+                <th>Type</th>
+                <th>Einde</th>
+                <th>Actie</th>
+              </tr>
+            </thead>
+            <tbody id="enforcementBody"></tbody>
+          </table>
+        </div>
+
+        <div class="card stack">
+          <h2>Recente moderatie-acties</h2>
+          <pre id="actionsLog" class="mono" style="white-space: pre-wrap;"></pre>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const loginCardEl = document.getElementById("loginCard");
+      const appEl = document.getElementById("app");
+      const loginBtn = document.getElementById("loginBtn");
+      const passwordEl = document.getElementById("password");
+      const rememberDeviceEl = document.getElementById("rememberDevice");
+      const loginErrorEl = document.getElementById("loginError");
+      const actionMsgEl = document.getElementById("actionMsg");
+      const themeToggleBtn = document.getElementById("themeToggleBtn");
+      const refreshBtn = document.getElementById("refreshBtn");
+      const restartBtn = document.getElementById("restartBtn");
+      const logoutBtn = document.getElementById("logoutBtn");
+      const statsEl = document.getElementById("stats");
+      const sessionNameEl = document.getElementById("sessionName");
+      const newSessionBtn = document.getElementById("newSessionBtn");
+      const pollQuestionEl = document.getElementById("pollQuestion");
+      const pollDurationSecondsEl = document.getElementById("pollDurationSeconds");
+      const pollOptionsListEl = document.getElementById("pollOptionsList");
+      const addPollOptionBtn = document.getElementById("addPollOptionBtn");
+      const startPollBtn = document.getElementById("startPollBtn");
+      const closePollBtn = document.getElementById("closePollBtn");
+      const pollStatusBadgeEl = document.getElementById("pollStatusBadge");
+      const pollStateEl = document.getElementById("pollState");
+      const simClientsEl = document.getElementById("simClients");
+      const simClientsValueEl = document.getElementById("simClientsValue");
+      const simMsgRateEl = document.getElementById("simMsgRate");
+      const simMsgRateValueEl = document.getElementById("simMsgRateValue");
+      const simReactionRateEl = document.getElementById("simReactionRate");
+      const simReactionRateValueEl = document.getElementById("simReactionRateValue");
+      const simPositiveEl = document.getElementById("simPositive");
+      const simPositiveValueEl = document.getElementById("simPositiveValue");
+      const simNegativeEl = document.getElementById("simNegative");
+      const simNegativeValueEl = document.getElementById("simNegativeValue");
+      const simCallbackRateEl = document.getElementById("simCallbackRate");
+      const simCallbackRateValueEl = document.getElementById("simCallbackRateValue");
+      const simEmojiInlineRateEl = document.getElementById("simEmojiInlineRate");
+      const simEmojiInlineRateValueEl = document.getElementById("simEmojiInlineRateValue");
+      const simEmojiLooseRateEl = document.getElementById("simEmojiLooseRate");
+      const simEmojiLooseRateValueEl = document.getElementById("simEmojiLooseRateValue");
+      const simTopicEl = document.getElementById("simTopic");
+      const simToggleBtn = document.getElementById("simToggleBtn");
+      const simSaveDefaultBtn = document.getElementById("simSaveDefaultBtn");
+      const simStateEl = document.getElementById("simState");
+      const nextPortEl = document.getElementById("nextPort");
+      const oscPortEl = document.getElementById("oscPort");
+      const savePortBtn = document.getElementById("savePortBtn");
+      const saveOscPortBtn = document.getElementById("saveOscPortBtn");
+      const runtimeStateEl = document.getElementById("runtimeState");
+      const liveChatLogEl = document.getElementById("liveChatLog");
+      const usersBodyEl = document.getElementById("usersBody");
+      const enforcementBodyEl = document.getElementById("enforcementBody");
+      const actionsLogEl = document.getElementById("actionsLog");
+
+      let token = localStorage.getItem("admin_token") || "";
+      let refreshTimer = null;
+      let lastState = null;
+      let pollBadgeTimer = null;
+      let pollDurationTouched = false;
+      let simLiveUpdateTimer = null;
+      let simLiveUpdatePending = false;
+      let simLiveUpdateInFlight = false;
+      const expandedUserKeys = new Set();
+      const userHistoryCache = new Map();
+      const MIN_POLL_OPTIONS = 2;
+      const MAX_POLL_OPTIONS = 6;
+      const MIN_POLL_DURATION_SECONDS = 5;
+      const MAX_POLL_DURATION_SECONDS = 3600;
+      const SIM_MAX_CLIENTS = 200;
+      const SIM_MSG_RATE_MAX_REAL = 0.1;
+      const SIM_MSG_RATE_DEFAULT_REAL = 0.03;
+      const THEME_PREF_KEY = "admin_theme_pref_v1";
+      const COLLAPSE_PREF_KEY = "admin_collapsed_sections_v1";
+      const REMEMBER_DEVICE_PREF_KEY = "admin_remember_device_pref_v1";
+      const DEVICE_LOGOUT_SKIP_KEY = "admin_skip_device_autologin_v1";
+      const THEME_MODES = ["auto", "light", "dark"];
+      const systemDarkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+      let themePreference = "auto";
+      let sectionOpenState = {};
+
+      function setActionMessage(text) {
+        actionMsgEl.textContent = text || "";
+      }
+
+      async function api(path, options = {}) {
+        const headers = Object.assign({}, options.headers || {});
+        if (token) headers["x-admin-token"] = token;
+        const res = await fetch(path, Object.assign({}, options, { headers }));
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const err = new Error(body && body.error ? body.error : "request_failed");
+          err.status = res.status;
+          throw err;
+        }
+        return body;
+      }
+
+      function showLogin() {
+        loginCardEl.style.display = "grid";
+        appEl.style.display = "none";
+      }
+
+      function showApp() {
+        loginCardEl.style.display = "none";
+        appEl.style.display = "grid";
+      }
+
+      function setToken(nextToken) {
+        token = String(nextToken || "");
+        if (token) localStorage.setItem("admin_token", token);
+        else localStorage.removeItem("admin_token");
+      }
+
+      function stopRefreshTimer() {
+        if (!refreshTimer) return;
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
+
+      function startRefreshTimer() {
+        stopRefreshTimer();
+        refreshTimer = setInterval(refreshState, 2000);
+      }
+
+      function loadRememberDevicePreference() {
+        const saved = String(localStorage.getItem(REMEMBER_DEVICE_PREF_KEY) || "").toLowerCase();
+        if (saved === "0" || saved === "false") return false;
+        if (saved === "1" || saved === "true") return true;
+        return true;
+      }
+
+      function saveRememberDevicePreference() {
+        localStorage.setItem(REMEMBER_DEVICE_PREF_KEY, rememberDeviceEl.checked ? "1" : "0");
+      }
+
+      function setSkipDeviceAutologin(skip) {
+        if (skip) sessionStorage.setItem(DEVICE_LOGOUT_SKIP_KEY, "1");
+        else sessionStorage.removeItem(DEVICE_LOGOUT_SKIP_KEY);
+      }
+
+      function shouldSkipDeviceAutologin() {
+        return sessionStorage.getItem(DEVICE_LOGOUT_SKIP_KEY) === "1";
+      }
+
+      function sleep(ms) {
+        const delay = Number(ms || 0);
+        return new Promise((resolve) => {
+          setTimeout(resolve, delay > 0 ? delay : 0);
+        });
+      }
+
+      async function waitForServerBack(timeoutMs = 30000) {
+        const started = Date.now();
+        while (Date.now() - started < timeoutMs) {
+          try {
+            const res = await fetch("/admin", {
+              method: "GET",
+              cache: "no-store",
+              credentials: "same-origin",
+            });
+            if (res && res.ok) return true;
+          } catch {}
+          await sleep(700);
+        }
+        return false;
+      }
+
+      function loadThemePreference() {
+        const saved = String(localStorage.getItem(THEME_PREF_KEY) || "").toLowerCase();
+        return THEME_MODES.includes(saved) ? saved : "auto";
+      }
+
+      function saveThemePreference() {
+        localStorage.setItem(THEME_PREF_KEY, themePreference);
+      }
+
+      function getEffectiveTheme(pref) {
+        if (pref === "light") return "light";
+        if (pref === "dark") return "dark";
+        return systemDarkQuery && systemDarkQuery.matches ? "dark" : "light";
+      }
+
+      function updateThemeToggleLabel() {
+        const labels = {
+          auto: "Thema: Auto",
+          light: "Thema: Licht",
+          dark: "Thema: Donker",
+        };
+        themeToggleBtn.textContent = labels[themePreference] || labels.auto;
+        themeToggleBtn.setAttribute("aria-label", "Wijzig thema");
+        themeToggleBtn.title = "Klik om te wisselen tussen Auto, Licht en Donker";
+      }
+
+      function applyTheme(pref, persist = false) {
+        themePreference = THEME_MODES.includes(pref) ? pref : "auto";
+        const effective = getEffectiveTheme(themePreference);
+        document.body.classList.toggle("theme-dark", effective === "dark");
+        updateThemeToggleLabel();
+        if (persist) saveThemePreference();
+      }
+
+      function cycleTheme() {
+        const idx = THEME_MODES.indexOf(themePreference);
+        const next = THEME_MODES[(idx + 1) % THEME_MODES.length];
+        applyTheme(next, true);
+      }
+
+      function loadSectionState() {
+        try {
+          const raw = localStorage.getItem(COLLAPSE_PREF_KEY);
+          if (!raw) return {};
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+          const out = {};
+          for (const [key, value] of Object.entries(parsed)) {
+            if (typeof key === "string" && typeof value === "boolean") out[key] = value;
+          }
+          return out;
+        } catch {
+          return {};
+        }
+      }
+
+      function saveSectionState() {
+        localStorage.setItem(COLLAPSE_PREF_KEY, JSON.stringify(sectionOpenState));
+      }
+
+      function slugifySectionId(input) {
+        return String(input || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 48);
+      }
+
+      function setCardOpenState(cardEl, isOpen) {
+        const open = Boolean(isOpen);
+        cardEl.classList.toggle("isOpen", open);
+        const btn = cardEl.querySelector(".sectionToggle");
+        if (!btn) return;
+        btn.textContent = open ? "Invouwen" : "Uitvouwen";
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+
+      function initCollapsibleSections() {
+        const cards = Array.from(appEl.querySelectorAll(".card"));
+        const usedIds = new Set();
+        for (const card of cards) {
+          let headerSource = null;
+          const firstChild = card.firstElementChild;
+          if (firstChild && (firstChild.matches("h2") || firstChild.querySelector("h2"))) {
+            headerSource = firstChild;
+          } else {
+            const directH2 = card.querySelector(":scope > h2");
+            if (directH2) headerSource = directH2;
+          }
+          if (!headerSource) continue;
+
+          const heading = headerSource.matches("h2") ? headerSource : headerSource.querySelector("h2");
+          if (!heading) continue;
+
+          const title = String(heading.textContent || "").trim() || "sectie";
+          const baseId = slugifySectionId(title) || "sectie";
+          let sectionId = baseId;
+          let suffix = 2;
+          while (usedIds.has(sectionId)) {
+            sectionId = `${baseId}-${suffix}`;
+            suffix += 1;
+          }
+          usedIds.add(sectionId);
+          card.dataset.sectionId = sectionId;
+          card.classList.add("collapsibleCard");
+
+          const sectionHeader = document.createElement("div");
+          sectionHeader.className = "sectionHeader";
+          const sectionHeaderMain = document.createElement("div");
+          sectionHeaderMain.className = "sectionHeaderMain";
+          sectionHeaderMain.appendChild(headerSource);
+
+          const sectionToggle = document.createElement("button");
+          sectionToggle.type = "button";
+          sectionToggle.className = "sectionToggle";
+          sectionToggle.setAttribute("aria-controls", `section-body-${sectionId}`);
+
+          sectionHeader.appendChild(sectionHeaderMain);
+          sectionHeader.appendChild(sectionToggle);
+
+          const sectionBody = document.createElement("div");
+          sectionBody.className = "sectionBody";
+          sectionBody.id = `section-body-${sectionId}`;
+
+          const bodyChildren = Array.from(card.children).filter((child) => child !== headerSource);
+          for (const child of bodyChildren) {
+            sectionBody.appendChild(child);
+          }
+
+          card.innerHTML = "";
+          card.appendChild(sectionHeader);
+          card.appendChild(sectionBody);
+
+          const savedState = sectionOpenState[sectionId];
+          setCardOpenState(card, typeof savedState === "boolean" ? savedState : true);
+
+          sectionToggle.addEventListener("click", () => {
+            const nextOpen = !card.classList.contains("isOpen");
+            setCardOpenState(card, nextOpen);
+            sectionOpenState[sectionId] = nextOpen;
+            saveSectionState();
+          });
+        }
+      }
+
+      function formatTs(iso) {
+        if (!iso) return "-";
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return iso;
+        return d.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      }
+
+      function esc(input) {
+        return String(input || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function sanitizeNameColor(input) {
+        const value = String(input || "").trim();
+        return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "";
+      }
+
+      function formatHistoryLine(message) {
+        const time = formatTs(message.time);
+        const name = String(message.name || "Anoniem");
+        const text = String(message.text || "");
+        const status = String(message.status || "");
+        const suffix = status && status !== "accepted" ? " [" + status + "]" : "";
+        return time + "  " + name + ": " + text + suffix;
+      }
+
+      function formatHistoryLineHtml(message) {
+        const time = formatTs(message && message.time);
+        const name = String((message && message.name) || "Anoniem");
+        const text = String((message && message.text) || "");
+        const status = String((message && message.status) || "");
+        const suffix = status && status !== "accepted"
+          ? ` <span class="muted">[${esc(status)}]</span>`
+          : "";
+        const nameColor = sanitizeNameColor(message && message.nameColor);
+        const nameStyle = nameColor ? ` style="color:${nameColor}"` : "";
+        return `<div class="chatLine"><span class="chatTime">${esc(time)}</span>  <span class="chatName"${nameStyle}>${esc(name)}</span>: ${esc(text)}${suffix}</div>`;
+      }
+
+      function normalizePollDurationSeconds(value, fallback = 60) {
+        const n = Number.parseInt(String(value || ""), 10);
+        if (!Number.isFinite(n)) return fallback;
+        if (n < MIN_POLL_DURATION_SECONDS) return MIN_POLL_DURATION_SECONDS;
+        if (n > MAX_POLL_DURATION_SECONDS) return MAX_POLL_DURATION_SECONDS;
+        return n;
+      }
+
+      function normalizePollOptions(values) {
+        const out = [];
+        const seen = new Set();
+        for (const raw of values || []) {
+          const option = String(raw || "").trim().slice(0, 80);
+          if (!option) continue;
+          if (seen.has(option)) continue;
+          seen.add(option);
+          out.push(option);
+        }
+        return out;
+      }
+
+      function normalizeInt(value, min, max, fallback) {
+        const n = Number.parseInt(String(value || ""), 10);
+        if (!Number.isFinite(n)) return fallback;
+        if (n < min) return min;
+        if (n > max) return max;
+        return n;
+      }
+
+      function normalizeFloat(value, min, max, fallback) {
+        const n = Number.parseFloat(String(value || ""));
+        if (!Number.isFinite(n)) return fallback;
+        if (n < min) return min;
+        if (n > max) return max;
+        return n;
+      }
+
+      function msgRateFromUi(value) {
+        const scale = normalizeFloat(
+          value,
+          0,
+          1,
+          SIM_MSG_RATE_DEFAULT_REAL / SIM_MSG_RATE_MAX_REAL
+        );
+        return scale * SIM_MSG_RATE_MAX_REAL;
+      }
+
+      function msgRateToUi(value) {
+        const real = normalizeFloat(value, 0, SIM_MSG_RATE_MAX_REAL, SIM_MSG_RATE_DEFAULT_REAL);
+        return real / SIM_MSG_RATE_MAX_REAL;
+      }
+
+      function updateSimSliderLabels() {
+        simClientsValueEl.textContent = String(normalizeInt(simClientsEl.value, 1, SIM_MAX_CLIENTS, 50));
+        simMsgRateValueEl.textContent = msgRateFromUi(simMsgRateEl.value).toFixed(3);
+        simReactionRateValueEl.textContent = normalizeFloat(simReactionRateEl.value, 0, 4, 0.35).toFixed(2);
+        simPositiveValueEl.textContent = normalizeFloat(simPositiveEl.value, 0, 1, 0.45).toFixed(2);
+        simNegativeValueEl.textContent = normalizeFloat(simNegativeEl.value, 0, 1, 0.70).toFixed(2);
+        simCallbackRateValueEl.textContent = normalizeFloat(simCallbackRateEl.value, 0, 1, 0.34).toFixed(2);
+        simEmojiInlineRateValueEl.textContent = normalizeFloat(simEmojiInlineRateEl.value, 0, 1, 0.18).toFixed(2);
+        simEmojiLooseRateValueEl.textContent = normalizeFloat(simEmojiLooseRateEl.value, 0, 1, 0.70).toFixed(2);
+      }
+
+      function getSimulationPayload() {
+        const clients = normalizeInt(simClientsEl.value, 1, SIM_MAX_CLIENTS, 50);
+        const msgRate = msgRateFromUi(simMsgRateEl.value);
+        const reactionRate = normalizeFloat(simReactionRateEl.value, 0, 4, 0.35);
+        const topic = String(simTopicEl.value || "").trim();
+        const positive = normalizeFloat(simPositiveEl.value, 0, 1, 0.45);
+        const negative = normalizeFloat(simNegativeEl.value, 0, 1, 0.70);
+        const callbackRate = normalizeFloat(simCallbackRateEl.value, 0, 1, 0.34);
+        const emojiInlineRate = normalizeFloat(simEmojiInlineRateEl.value, 0, 1, 0.18);
+        const emojiLooseRate = normalizeFloat(simEmojiLooseRateEl.value, 0, 1, 0.70);
+
+        simClientsEl.value = String(clients);
+        simMsgRateEl.value = String(msgRateToUi(msgRate));
+        simReactionRateEl.value = String(reactionRate);
+        simPositiveEl.value = String(positive);
+        simNegativeEl.value = String(negative);
+        simCallbackRateEl.value = String(callbackRate);
+        simEmojiInlineRateEl.value = String(emojiInlineRate);
+        simEmojiLooseRateEl.value = String(emojiLooseRate);
+        updateSimSliderLabels();
+
+        return {
+          clients,
+          durationSec: 0,
+          msgRate,
+          reactionRate,
+          topic,
+          positive,
+          negative,
+          callbackRate,
+          emojiInlineRate,
+          emojiLooseRate,
+        };
+      }
+
+      async function flushSimLiveUpdate() {
+        if (!simLiveUpdatePending || simLiveUpdateInFlight) return;
+        simLiveUpdatePending = false;
+        simLiveUpdateInFlight = true;
+        try {
+          const payload = getSimulationPayload();
+          const data = await api("/admin/sim/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (lastState && data && data.simulation) {
+            lastState.simulation = data.simulation;
+            renderSimulationState(lastState);
+          }
+        } catch (err) {
+          setActionMessage("Live bot-update mislukt: " + err.message);
+        } finally {
+          simLiveUpdateInFlight = false;
+          if (simLiveUpdatePending) flushSimLiveUpdate();
+        }
+      }
+
+      function scheduleSimLiveUpdate() {
+        updateSimSliderLabels();
+        const sim = lastState && lastState.simulation ? lastState.simulation : null;
+        if (!sim || !sim.running) return;
+        simLiveUpdatePending = true;
+        if (simLiveUpdateTimer) clearTimeout(simLiveUpdateTimer);
+        simLiveUpdateTimer = setTimeout(flushSimLiveUpdate, 180);
+      }
+
+      function renderSimulationState(data) {
+        const sim = data && data.simulation ? data.simulation : null;
+        const reactions = data && data.reactionCounts ? data.reactionCounts : null;
+        if (!sim || !sim.config || !sim.stats) {
+          if (!simClientsEl.value) simClientsEl.value = "50";
+          if (!simMsgRateEl.value) simMsgRateEl.value = String(msgRateToUi(SIM_MSG_RATE_DEFAULT_REAL));
+          if (!simReactionRateEl.value) simReactionRateEl.value = "0.35";
+          if (!simPositiveEl.value) simPositiveEl.value = "0.45";
+          if (!simNegativeEl.value) simNegativeEl.value = "0.70";
+          if (!simCallbackRateEl.value) simCallbackRateEl.value = "0.34";
+          if (!simEmojiInlineRateEl.value) simEmojiInlineRateEl.value = "0.18";
+          if (!simEmojiLooseRateEl.value) simEmojiLooseRateEl.value = "0.70";
+          simToggleBtn.disabled = false;
+          simToggleBtn.className = "primary";
+          simToggleBtn.textContent = "Bots aanzetten";
+          updateSimSliderLabels();
+          simStateEl.textContent = "Niet beschikbaar: server geeft nog geen simulation-data terug.";
+          return;
+        }
+
+        if (document.activeElement !== simClientsEl) {
+          simClientsEl.value = String(sim.config.clients || 50);
+        }
+        if (document.activeElement !== simMsgRateEl) {
+          simMsgRateEl.value = String(msgRateToUi(sim.config.msgRate));
+        }
+        if (document.activeElement !== simReactionRateEl) {
+          simReactionRateEl.value = String(sim.config.reactionRate || 0);
+        }
+        if (document.activeElement !== simTopicEl) {
+          simTopicEl.value = String(sim.config.topic || "");
+        }
+        if (document.activeElement !== simPositiveEl) {
+          simPositiveEl.value = String(normalizeFloat(sim.config.positive, 0, 1, 0.45));
+        }
+        if (document.activeElement !== simNegativeEl) {
+          simNegativeEl.value = String(normalizeFloat(sim.config.negative, 0, 1, 0.70));
+        }
+        if (document.activeElement !== simCallbackRateEl) {
+          simCallbackRateEl.value = String(normalizeFloat(sim.config.callbackRate, 0, 1, 0.34));
+        }
+        if (document.activeElement !== simEmojiInlineRateEl) {
+          simEmojiInlineRateEl.value = String(normalizeFloat(sim.config.emojiInlineRate, 0, 1, 0.18));
+        }
+        if (document.activeElement !== simEmojiLooseRateEl) {
+          simEmojiLooseRateEl.value = String(normalizeFloat(sim.config.emojiLooseRate, 0, 1, 0.70));
+        }
+        updateSimSliderLabels();
+
+        const runtime = sim.running ? "actief" : "gestopt";
+        simToggleBtn.disabled = false;
+        simToggleBtn.className = sim.running ? "danger" : "primary";
+        simToggleBtn.textContent = sim.running ? "Bots uitzetten" : "Bots aanzetten";
+        const reactionLine = reactions
+          ? ("\\nReactions ♥ " + Number(reactions.heart || 0)
+            + "  🔥 " + Number(reactions.fire || 0)
+            + "  😂 " + Number(reactions.laugh || 0)
+            + "  👎 " + Number(reactions.bored || 0))
+          : "";
+        simStateEl.textContent =
+          "Status: " + runtime +
+          "\\nConnected: " + Number(sim.stats.connectedNow || 0) + "/" + Number(sim.config.clients || 0) +
+          "\\nPraat-rate (echt): " + normalizeFloat(sim.config.msgRate, 0, SIM_MSG_RATE_MAX_REAL, SIM_MSG_RATE_DEFAULT_REAL).toFixed(3) +
+          "\\nMax connected: " + Number(sim.stats.maxConnected || 0) +
+          "\\nVerzonden berichten: " + Number(sim.stats.sentComments || 0) +
+          "\\nVerzonden emoji's: " + Number(sim.stats.sentReactions || 0) +
+          "\\nVote acks: " + Number(sim.stats.voteAcks || 0) +
+          "\\nServer errors: " + Number(sim.stats.serverErrors || 0) +
+          "\\nRate-limited: " + Number(sim.stats.rateLimited || 0) +
+          "\\nPositief: " + normalizeFloat(sim.config.positive, 0, 1, 0.45).toFixed(2) +
+          "\\nNegatief: " + normalizeFloat(sim.config.negative, 0, 1, 0.70).toFixed(2) +
+          "\\nCallback-rate: " + normalizeFloat(sim.config.callbackRate, 0, 1, 0.34).toFixed(2) +
+          "\\nEmoji in zin: " + normalizeFloat(sim.config.emojiInlineRate, 0, 1, 0.18).toFixed(2) +
+          "\\nLosse emoji/combo: " + normalizeFloat(sim.config.emojiLooseRate, 0, 1, 0.70).toFixed(2) +
+          reactionLine;
+      }
+
+      function formatRemainingMs(ms) {
+        const value = Number(ms || 0);
+        if (!Number.isFinite(value) || value <= 0) return "0:00";
+        const totalSeconds = Math.ceil(value / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return String(minutes) + ":" + String(seconds).padStart(2, "0");
+      }
+
+      function getPollRemainingMs(poll) {
+        if (!poll) return null;
+        const endsAtTs = Date.parse(String(poll.endsAt || ""));
+        if (Number.isFinite(endsAtTs)) return Math.max(0, endsAtTs - Date.now());
+
+        const startedAtTs = Date.parse(String(poll.startedAt || ""));
+        const durationSeconds = Number(poll.durationSeconds || 0);
+        if (!Number.isFinite(startedAtTs) || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return null;
+        return Math.max(0, startedAtTs + durationSeconds * 1000 - Date.now());
+      }
+
+      function renderPollStatusBadge(data) {
+        if (!data || !data.activePoll) {
+          pollStatusBadgeEl.className = "badge closed";
+          pollStatusBadgeEl.textContent = "Gesloten";
+          return;
+        }
+
+        const remaining = getPollRemainingMs(data.activePoll);
+        const countdown = remaining === null ? "" : " • " + formatRemainingMs(remaining);
+        pollStatusBadgeEl.className = "badge active";
+        pollStatusBadgeEl.textContent = "Actief" + countdown;
+      }
+
+      function updatePollOptionControls() {
+        const rows = Array.from(pollOptionsListEl.querySelectorAll(".optionRow"));
+        const canRemove = rows.length > MIN_POLL_OPTIONS;
+        for (const row of rows) {
+          const removeBtn = row.querySelector("button[data-remove-poll-option]");
+          if (removeBtn) removeBtn.disabled = !canRemove;
+        }
+        addPollOptionBtn.disabled = rows.length >= MAX_POLL_OPTIONS;
+      }
+
+      function addPollOptionRow(initialValue = "", focus = false) {
+        const rows = pollOptionsListEl.querySelectorAll(".optionRow");
+        if (rows.length >= MAX_POLL_OPTIONS) return;
+
+        const row = document.createElement("div");
+        row.className = "optionRow";
+
+        const input = document.createElement("input");
+        input.type = "text";
+        input.maxLength = 80;
+        input.placeholder = "Optie " + (rows.length + 1);
+        input.setAttribute("data-poll-option-input", "1");
+        input.value = String(initialValue || "");
+
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.textContent = "−";
+        removeBtn.title = "Verwijder optie";
+        removeBtn.setAttribute("data-remove-poll-option", "1");
+        removeBtn.addEventListener("click", () => {
+          row.remove();
+          const updated = Array.from(pollOptionsListEl.querySelectorAll("input[data-poll-option-input]"));
+          for (let i = 0; i < updated.length; i += 1) {
+            updated[i].placeholder = "Optie " + (i + 1);
+          }
+          updatePollOptionControls();
+        });
+
+        row.appendChild(input);
+        row.appendChild(removeBtn);
+        pollOptionsListEl.appendChild(row);
+        updatePollOptionControls();
+        if (focus) input.focus();
+      }
+
+      function ensureMinimumPollOptionRows() {
+        const rows = pollOptionsListEl.querySelectorAll(".optionRow");
+        for (let i = rows.length; i < MIN_POLL_OPTIONS; i += 1) {
+          addPollOptionRow("", false);
+        }
+        updatePollOptionControls();
+      }
+
+      function getPollOptionsPayload() {
+        const rawValues = Array.from(pollOptionsListEl.querySelectorAll("input[data-poll-option-input]"))
+          .map((input) => String(input.value || "").trim())
+          .filter(Boolean);
+        return normalizePollOptions(rawValues);
+      }
+
+      function renderPollState(data) {
+        const poll = data.activePoll || data.lastPoll || null;
+        if (!poll) {
+          pollStateEl.innerHTML = '<div class="muted">Geen poll.</div>';
+          return;
+        }
+
+        const pollTitle = data.activePoll ? "Actieve poll" : "Laatste poll";
+        const counts = Array.isArray(poll.counts) ? poll.counts : [];
+        const options = Array.isArray(poll.options) ? poll.options : [];
+        const remaining = data.activePoll ? getPollRemainingMs(data.activePoll) : null;
+        const remainingLine = remaining === null ? "" : `<div class="muted">Resterend: ${formatRemainingMs(remaining)}</div>`;
+        const durationSeconds = normalizePollDurationSeconds(
+          poll.durationSeconds,
+          Number(data.runtime && data.runtime.pollDurationSeconds ? data.runtime.pollDurationSeconds : 60)
+        );
+        const durationLine = `<div class="muted">Duur: ${durationSeconds}s</div>`;
+        const rows = options.map((option, index) => {
+          const votes = Number(counts[index] || 0);
+          const votesLabel = votes === 1 ? "stem" : "stemmen";
+          return `<div class="mono">Optie ${index + 1}: ${esc(option)} — ${votes} ${votesLabel}</div>`;
+        });
+
+        pollStateEl.innerHTML = `
+          <div><strong>${pollTitle}:</strong> ${esc(poll.question || "")}</div>
+          ${durationLine}
+          ${remainingLine}
+          ${rows.join("") || '<div class="muted">Nog geen opties.</div>'}
+        `;
+      }
+
+      function updateLivePollBadgeFromLastState() {
+        if (!lastState) return;
+        renderPollStatusBadge(lastState);
+        if (lastState.activePoll) renderPollState(lastState);
+      }
+
+      function renderLiveChat(messages) {
+        const list = Array.isArray(messages) ? messages : [];
+        if (!list.length) {
+          liveChatLogEl.textContent = "(nog leeg)";
+          return;
+        }
+        liveChatLogEl.innerHTML = list
+          .map((m) => formatHistoryLineHtml(m))
+          .join("");
+      }
+
+      function historyLinesToText(messages) {
+        const list = Array.isArray(messages) ? messages : [];
+        if (!list.length) return "(geen berichten)";
+        return list.map((m) => formatHistoryLine(m)).join("\n");
+      }
+
+      async function loadUserHistory(clientKey, ip) {
+        const query = new URLSearchParams({
+          clientKey: String(clientKey || ""),
+          ip: String(ip || ""),
+          limit: "80",
+        });
+        const data = await api("/admin/user-history?" + query.toString());
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+        userHistoryCache.set(String(clientKey || ""), { ip: data.targetIp || ip, messages });
+        return messages;
+      }
+
+      function renderState(data) {
+        lastState = data;
+        statsEl.innerHTML = [
+          ["Sessie", "#" + data.session.id + " " + data.session.name],
+          ["Online users", String(data.users.length)],
+          ["Berichten", String(data.session.messageCount)],
+          ["Geblokkeerd/geweigerd", String(data.session.rejectedCount)],
+          ["Poll actief", data.activePoll ? "Ja" : "Nee"],
+        ]
+          .map(([k, v]) => `<div class=\"stat\"><div class=\"k\">${k}</div><div class=\"v\">${v}</div></div>`)
+          .join("");
+
+        runtimeStateEl.textContent =
+          "Runtime port: " + data.runtime.port +
+          "\\nNext port: " + data.runtime.nextPort +
+          "\\nRestart required: " + (data.runtime.restartRequired ? "ja" : "nee") +
+          "\\nOSC host: " + String(data.runtime.oscHost || "-") +
+          "\\nOSC port: " + Number(data.runtime.oscPort || 0) +
+          "\\nPoll duur: " + Number(data.runtime.pollDurationSeconds || 60) + "s" +
+          "\\nDB: " + data.runtime.dbPath;
+        nextPortEl.value = data.runtime.nextPort;
+        if (document.activeElement !== oscPortEl) {
+          oscPortEl.value = String(Number(data.runtime.oscPort || 1234));
+        }
+        const pollDurationForInput = data.activePoll
+          ? normalizePollDurationSeconds(data.activePoll.durationSeconds, Number(data.runtime.pollDurationSeconds || 60))
+          : normalizePollDurationSeconds(data.runtime.pollDurationSeconds, 60);
+        if (data.activePoll) {
+          pollDurationSecondsEl.value = String(pollDurationForInput);
+          pollDurationTouched = false;
+        } else if (!pollDurationTouched && document.activeElement !== pollDurationSecondsEl) {
+          pollDurationSecondsEl.value = String(pollDurationForInput);
+        }
+
+        renderPollState(data);
+        renderPollStatusBadge(data);
+        renderSimulationState(data);
+        renderLiveChat(data.recentMessages);
+
+        usersBodyEl.innerHTML = data.users
+          .map((u) => {
+            const status = [
+              u.isMuted ? ("muted" + (u.mutedUntil ? " tot " + formatTs(u.mutedUntil) : "")) : "",
+              u.isBlocked ? ("blocked" + (u.blockedUntil ? " tot " + formatTs(u.blockedUntil) : "")) : "",
+            ]
+              .filter(Boolean)
+              .join(" | ") || "ok";
+            const safeName = esc(u.name || "Anoniem");
+            const nameColor = sanitizeNameColor(u.nameColor);
+            const nameHtml = nameColor
+              ? `<span class="userNameColor" style="color:${nameColor}">${safeName}</span>`
+              : `<span class="userNameColor">${safeName}</span>`;
+            const historyEntry = userHistoryCache.get(String(u.clientKey || ""));
+            const isExpanded = expandedUserKeys.has(String(u.clientKey || ""));
+            const historyText = historyEntry
+              ? historyLinesToText(historyEntry.messages)
+              : "Laden...";
+            const detailsLabel = isExpanded ? "Verberg" : "Details";
+            return `<tr>
+              <td>${nameHtml}<div class="muted">${esc(u.ip)}</div></td>
+              <td class="mono">${esc(u.clientKey)}</td>
+              <td>${esc(status)}</td>
+              <td>
+                <div class="smallbtns">
+                  <button data-act="details" data-key="${esc(u.clientKey)}" data-ip="${esc(u.ip)}">${detailsLabel}</button>
+                  <button data-act="mute1" data-key="${esc(u.clientKey)}">Mute IP 1m</button>
+                  <button data-act="mute2" data-key="${esc(u.clientKey)}">Mute IP 2m</button>
+                  <button data-act="mute5" data-key="${esc(u.clientKey)}">Mute IP 5m</button>
+                  <button data-act="unmute" data-key="${esc(u.clientKey)}">Unmute</button>
+                  <button data-act="block" data-key="${esc(u.clientKey)}" class="danger">Block IP</button>
+                  <button data-act="unblock" data-key="${esc(u.clientKey)}">Unblock</button>
+                </div>
+              </td>
+            </tr>${
+              isExpanded
+                ? `<tr>
+                    <td colspan="4">
+                      <div class="historyCell">
+                        <div class="muted">Recente berichten op IP ${esc(u.ip)}</div>
+                        <pre class="mono historyLog">${esc(historyText)}</pre>
+                      </div>
+                    </td>
+                  </tr>`
+                : ""
+            }`;
+          })
+          .join("");
+
+        const mutedEntries = (data.enforcement && Array.isArray(data.enforcement.muted))
+          ? data.enforcement.muted
+          : [];
+        const blockedEntries = (data.enforcement && Array.isArray(data.enforcement.blocked))
+          ? data.enforcement.blocked
+          : [];
+        const enforcementRows = []
+          .concat(mutedEntries.map((entry) => ({
+            ip: entry.ip,
+            type: "Muted",
+            until: entry.mutedUntil || null,
+            action: "unmute",
+          })))
+          .concat(blockedEntries.map((entry) => ({
+            ip: entry.ip,
+            type: "Blocked",
+            until: entry.blockedUntil || null,
+            action: "unblock",
+          })));
+
+        enforcementBodyEl.innerHTML = enforcementRows.length
+          ? enforcementRows
+              .map((row) => {
+                const endLabel = row.until ? formatTs(row.until) : "geen eindtijd";
+                const buttonLabel = row.action === "unmute" ? "Unmute" : "Unblock";
+                return `<tr>
+                  <td class="mono">${row.ip}</td>
+                  <td>${row.type}</td>
+                  <td>${endLabel}</td>
+                  <td><button data-act="${row.action}" data-key="${row.ip}">${buttonLabel}</button></td>
+                </tr>`;
+              })
+              .join("")
+          : '<tr><td colspan="4" class="muted">Geen actieve maatregelen.</td></tr>';
+
+        actionsLogEl.textContent = Array.isArray(data.recentActions) && data.recentActions.length
+          ? data.recentActions
+              .map((a) => `${formatTs(a.time)}  ${a.actionType}  ${a.clientKey}${a.reason ? "  (" + a.reason + ")" : ""}`)
+              .join("\\n")
+          : "(geen acties)";
+      }
+
+      async function refreshState() {
+        if (!token) return;
+        try {
+          const data = await api("/admin/state");
+          renderState(data);
+          showApp();
+          loginErrorEl.textContent = "";
+        } catch (err) {
+          if (err.status === 401) {
+            setToken("");
+            stopRefreshTimer();
+            const resumed = await tryDeviceLogin();
+            if (!resumed) showLogin();
+          }
+        }
+      }
+
+      async function applyAuthenticatedSession(body) {
+        const nextToken = String((body && body.token) || "");
+        if (!nextToken) throw new Error("missing_admin_token");
+        setToken(nextToken);
+        const data = await api("/admin/state");
+        renderState(data);
+        showApp();
+        loginErrorEl.textContent = "";
+        startRefreshTimer();
+      }
+
+      async function tryDeviceLogin() {
+        if (token) return true;
+        if (shouldSkipDeviceAutologin()) return false;
+        try {
+          const body = await api("/admin/login/device", {
+            method: "POST",
+          });
+          await applyAuthenticatedSession(body);
+          return true;
+        } catch {
+          setToken("");
+          return false;
+        }
+      }
+
+      async function login() {
+        loginErrorEl.textContent = "";
+        saveRememberDevicePreference();
+        try {
+          const body = await api("/admin/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              password: passwordEl.value,
+              rememberDevice: rememberDeviceEl.checked,
+              deviceLabel: navigator.userAgent || "",
+            }),
+          });
+          setSkipDeviceAutologin(false);
+          passwordEl.value = "";
+          await applyAuthenticatedSession(body);
+        } catch {
+          loginErrorEl.textContent = "Login mislukt.";
+        }
+      }
+
+      async function restartServer() {
+        if (!token) {
+          showLogin();
+          setActionMessage("Log eerst in als admin.");
+          return;
+        }
+        const ok = confirm("Server nu volledig herstarten?");
+        if (!ok) return;
+
+        restartBtn.disabled = true;
+        setActionMessage("Herstart gestart...");
+        let reconnectAfterMs = 1800;
+
+        try {
+          const body = await api("/admin/restart", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ confirm: true }),
+          });
+          reconnectAfterMs = Number(body && body.reconnectAfterMs) > 0
+            ? Number(body.reconnectAfterMs)
+            : reconnectAfterMs;
+        } catch (err) {
+          restartBtn.disabled = false;
+          setActionMessage("Herstart mislukt: " + err.message);
+          return;
+        }
+
+        setToken("");
+        stopRefreshTimer();
+        showLogin();
+        setSkipDeviceAutologin(false);
+        loginErrorEl.textContent = "";
+
+        await sleep(reconnectAfterMs);
+        const serverBack = await waitForServerBack(30000);
+        if (!serverBack) {
+          setActionMessage("Herstart loopt nog. Ververs over een paar seconden.");
+          restartBtn.disabled = false;
+          return;
+        }
+        setActionMessage("Server is herstart. Pagina wordt ververst...");
+        const reloadUrl = new URL(window.location.href);
+        reloadUrl.searchParams.set("_r", String(Date.now()));
+        window.location.replace(reloadUrl.toString());
+      }
+
+      async function runAction(path, payload, okText) {
+        try {
+          await api(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload || {}),
+          });
+          setActionMessage(okText || "Actie uitgevoerd.");
+          refreshState();
+        } catch (err) {
+          setActionMessage("Actie mislukt: " + err.message);
+        }
+      }
+
+      themePreference = loadThemePreference();
+      sectionOpenState = loadSectionState();
+      applyTheme(themePreference, false);
+      if (systemDarkQuery && typeof systemDarkQuery.addEventListener === "function") {
+        systemDarkQuery.addEventListener("change", () => {
+          if (themePreference === "auto") applyTheme("auto", false);
+        });
+      } else if (systemDarkQuery && typeof systemDarkQuery.addListener === "function") {
+        systemDarkQuery.addListener(() => {
+          if (themePreference === "auto") applyTheme("auto", false);
+        });
+      }
+      initCollapsibleSections();
+      rememberDeviceEl.checked = loadRememberDevicePreference();
+
+      themeToggleBtn.addEventListener("click", cycleTheme);
+      loginBtn.addEventListener("click", login);
+      rememberDeviceEl.addEventListener("change", saveRememberDevicePreference);
+      passwordEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") login();
+      });
+      refreshBtn.addEventListener("click", refreshState);
+      restartBtn.addEventListener("click", restartServer);
+      logoutBtn.addEventListener("click", async () => {
+        try {
+          await api("/admin/logout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ forgetDevice: false }),
+          });
+        } catch {}
+        setSkipDeviceAutologin(true);
+        setToken("");
+        stopRefreshTimer();
+        showLogin();
+      });
+
+      newSessionBtn.addEventListener("click", () => {
+        const ok = confirm("Nieuwe sessie starten en iedereen disconnecten?");
+        if (!ok) return;
+        runAction(
+          "/admin/session/new",
+          { name: sessionNameEl.value.trim(), confirm: true },
+          "Nieuwe sessie gestart."
+        );
+      });
+
+      startPollBtn.addEventListener("click", () => {
+        const question = pollQuestionEl.value.trim();
+        const options = getPollOptionsPayload();
+        const durationSeconds = normalizePollDurationSeconds(
+          pollDurationSecondsEl.value,
+          Number(lastState && lastState.runtime ? lastState.runtime.pollDurationSeconds : 60)
+        );
+        if (!question) {
+          setActionMessage("Vul eerst een poll-vraag in.");
+          return;
+        }
+        if (options.length < MIN_POLL_OPTIONS || options.length > MAX_POLL_OPTIONS) {
+          setActionMessage("Gebruik minimaal 2 en maximaal 6 verschillende poll-opties.");
+          return;
+        }
+        if (!Number.isFinite(durationSeconds)) {
+          setActionMessage("Vul een geldige poll-duur in.");
+          return;
+        }
+        pollDurationSecondsEl.value = String(durationSeconds);
+        pollDurationTouched = true;
+        runAction(
+          "/admin/polls/start",
+          {
+            question,
+            options,
+            durationSeconds,
+          },
+          "Poll gestart."
+        );
+      });
+      closePollBtn.addEventListener("click", () => {
+        runAction("/admin/polls/close", {}, "Poll gesloten.");
+      });
+      addPollOptionBtn.addEventListener("click", () => {
+        addPollOptionRow("", true);
+      });
+      simToggleBtn.addEventListener("click", () => {
+        const sim = lastState && lastState.simulation ? lastState.simulation : null;
+        if (sim && sim.running) {
+          runAction("/admin/sim/stop", { reason: "admin_toggle_stop" }, "Botsimulatie gestopt.");
+          return;
+        }
+        const payload = getSimulationPayload();
+        runAction("/admin/sim/start", payload, "Botsimulatie gestart.");
+      });
+      simSaveDefaultBtn.addEventListener("click", () => {
+        const payload = getSimulationPayload();
+        runAction("/admin/sim/defaults", payload, "Bot-standaard opgeslagen.");
+      });
+      simClientsEl.addEventListener("input", scheduleSimLiveUpdate);
+      simMsgRateEl.addEventListener("input", scheduleSimLiveUpdate);
+      simReactionRateEl.addEventListener("input", scheduleSimLiveUpdate);
+      simPositiveEl.addEventListener("input", scheduleSimLiveUpdate);
+      simNegativeEl.addEventListener("input", scheduleSimLiveUpdate);
+      simCallbackRateEl.addEventListener("input", scheduleSimLiveUpdate);
+      simEmojiInlineRateEl.addEventListener("input", scheduleSimLiveUpdate);
+      simEmojiLooseRateEl.addEventListener("input", scheduleSimLiveUpdate);
+      simTopicEl.addEventListener("input", scheduleSimLiveUpdate);
+      pollDurationSecondsEl.addEventListener("input", () => {
+        pollDurationTouched = true;
+      });
+      savePortBtn.addEventListener("click", () => {
+        runAction("/admin/settings/port", { port: Number(nextPortEl.value) }, "Poortinstelling bewaard.");
+      });
+      saveOscPortBtn.addEventListener("click", () => {
+        runAction("/admin/settings/osc-port", { port: Number(oscPortEl.value) }, "OSC poortinstelling bewaard.");
+      });
+
+      async function handleModerationButtonClick(e) {
+        const btn = e.target.closest("button[data-act]");
+        if (!btn) return;
+        const act = btn.getAttribute("data-act");
+        const clientKey = btn.getAttribute("data-key");
+        if (!clientKey) return;
+
+        if (act === "details") {
+          const ip = btn.getAttribute("data-ip") || "";
+          if (expandedUserKeys.has(clientKey)) {
+            expandedUserKeys.delete(clientKey);
+            if (lastState) renderState(lastState);
+            return;
+          }
+          expandedUserKeys.add(clientKey);
+          if (lastState) renderState(lastState);
+          try {
+            await loadUserHistory(clientKey, ip);
+          } catch (err) {
+            userHistoryCache.set(clientKey, {
+              ip,
+              messages: [{ time: new Date().toISOString(), name: "", text: "Kon historie niet laden: " + err.message, status: "error" }],
+            });
+          }
+          if (expandedUserKeys.has(clientKey) && lastState) renderState(lastState);
+          return;
+        }
+
+        if (act === "mute1") runAction("/admin/users/mute", { clientKey, minutes: 1 }, "IP gemute (1m).");
+        if (act === "mute2") runAction("/admin/users/mute", { clientKey, minutes: 2 }, "IP gemute (2m).");
+        if (act === "mute5") runAction("/admin/users/mute", { clientKey, minutes: 5 }, "IP gemute (5m).");
+        if (act === "unmute") runAction("/admin/users/unmute", { clientKey }, "IP unmuted.");
+        if (act === "block") runAction("/admin/users/block", { clientKey }, "IP geblokkeerd.");
+        if (act === "unblock") runAction("/admin/users/unblock", { clientKey }, "IP unblocked.");
+      }
+      usersBodyEl.addEventListener("click", handleModerationButtonClick);
+      enforcementBodyEl.addEventListener("click", handleModerationButtonClick);
+      ensureMinimumPollOptionRows();
+      updateSimSliderLabels();
+      if (!pollBadgeTimer) {
+        pollBadgeTimer = setInterval(updateLivePollBadgeFromLastState, 1000);
+      }
+
+      async function bootstrapAuth() {
+        if (token) {
+          try {
+            await applyAuthenticatedSession({ token });
+            return;
+          } catch {
+            setToken("");
+          }
+        }
+        const resumed = await tryDeviceLogin();
+        if (!resumed) showLogin();
+      }
+      bootstrapAuth();
+    </script>
+  </body>
+</html>
