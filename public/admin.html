@@ -182,14 +182,14 @@
         color: var(--badge-closed-ink);
         border-color: var(--badge-closed-line);
       }
-      input, textarea, button {
+      input, textarea, select, button {
         font: inherit;
         border: 1px solid var(--line);
         border-radius: 8px;
         padding: 8px 10px;
         box-sizing: border-box;
       }
-      input, textarea {
+      input, textarea, select {
         background: var(--field);
         color: var(--ink);
       }
@@ -244,6 +244,49 @@
       .usersSearchRow > button {
         flex: 0 0 auto;
         min-width: auto;
+      }
+      .sessionJoinRow > input {
+        flex: 1 1 320px;
+        min-width: 200px;
+      }
+      .sessionJoinRow > button {
+        flex: 0 0 auto;
+        min-width: auto;
+      }
+      .wifiOptionsRow > select {
+        flex: 1 1 190px;
+        min-width: 150px;
+      }
+      .wifiOptionsRow > button {
+        flex: 0 0 auto;
+        min-width: auto;
+      }
+      .wifiQrCard {
+        border: 1px dashed var(--line);
+        border-radius: 10px;
+        padding: 8px;
+        background: var(--subtle);
+      }
+      .wifiQrCard > summary {
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--muted);
+        user-select: none;
+        margin-bottom: 8px;
+      }
+      .qrPreview {
+        min-height: 120px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--field);
+        display: grid;
+        place-items: center;
+        padding: 10px;
+        overflow: auto;
+      }
+      .qrPreview svg {
+        max-width: min(100%, 170px);
+        height: auto;
       }
       .stats { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
       .stat { border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
@@ -398,19 +441,47 @@
 
       <div id="app" class="stack">
         <div class="card stack">
-          <h2>Overzicht</h2>
+          <h2>Sessie & overzicht</h2>
           <div class="stats" id="stats"></div>
-        </div>
-        <div id="actionMsg"></div>
-
-        <div class="card stack">
-          <h2>Sessie</h2>
           <div class="row">
             <input id="sessionName" type="text" placeholder="Nieuwe sessienaam" />
-            <button id="newSessionBtn" class="danger" type="button">Start nieuwe sessie</button>
+            <button id="endSessionBtn" type="button">Sessie beëindigen</button>
+            <button id="newSessionBtn" class="danger" type="button">Nieuwe sessie</button>
           </div>
-          <div class="muted">Start een nieuwe performance-sessie: chatlog rolt door naar nieuwe sessie en alle clients worden losgekoppeld.</div>
+          <div class="row sessionJoinRow">
+            <input id="sessionJoinUrl" type="text" readonly placeholder="Join-link verschijnt na nieuwe sessie..." />
+            <button id="copySessionJoinBtn" type="button">Kopieer link</button>
+            <button id="openSessionJoinBtn" type="button">Open link</button>
+          </div>
+          <div id="sessionQrPreview" class="qrPreview muted">(Nog geen QR-code)</div>
+          <details class="wifiQrCard">
+            <summary>WiFi QR (optioneel)</summary>
+            <div class="stack">
+              <div class="row">
+                <input id="wifiSsidInput" type="text" placeholder="WiFi naam (SSID)" />
+                <input id="wifiPasswordInput" type="text" placeholder="WiFi wachtwoord" />
+              </div>
+              <div class="row wifiOptionsRow">
+                <select id="wifiAuthSelect">
+                  <option value="WPA">WPA/WPA2</option>
+                  <option value="WEP">WEP</option>
+                  <option value="nopass">Open (geen wachtwoord)</option>
+                </select>
+                <label class="rememberRow">
+                  <input id="wifiHiddenInput" type="checkbox" />
+                  Verborgen netwerk
+                </label>
+                <button id="buildWifiQrBtn" type="button">Genereer WiFi QR</button>
+              </div>
+              <div id="wifiQrPreview" class="qrPreview muted">(Nog geen WiFi QR)</div>
+            </div>
+          </details>
+          <div class="muted">
+            Scan de sessie-QR om direct naar deze lokale site te gaan en de join te registreren.
+          </div>
+          <div class="muted">Nieuwe sessie: sluit huidige sessie af, koppelt clients los en maakt een nieuwe QR. Sessie beëindigen: sluit alleen af en verwijdert de QR.</div>
         </div>
+        <div id="actionMsg"></div>
 
         <div class="card stack">
           <div class="row" style="justify-content: space-between;">
@@ -544,6 +615,7 @@
       </div>
     </div>
 
+    <script src="/vendor/qrcode-generator.min.js"></script>
     <script>
       const loginCardEl = document.getElementById("loginCard");
       const appEl = document.getElementById("app");
@@ -558,7 +630,18 @@
       const logoutBtn = document.getElementById("logoutBtn");
       const statsEl = document.getElementById("stats");
       const sessionNameEl = document.getElementById("sessionName");
+      const endSessionBtn = document.getElementById("endSessionBtn");
       const newSessionBtn = document.getElementById("newSessionBtn");
+      const sessionJoinUrlEl = document.getElementById("sessionJoinUrl");
+      const copySessionJoinBtn = document.getElementById("copySessionJoinBtn");
+      const openSessionJoinBtn = document.getElementById("openSessionJoinBtn");
+      const sessionQrPreviewEl = document.getElementById("sessionQrPreview");
+      const wifiSsidInputEl = document.getElementById("wifiSsidInput");
+      const wifiPasswordInputEl = document.getElementById("wifiPasswordInput");
+      const wifiAuthSelectEl = document.getElementById("wifiAuthSelect");
+      const wifiHiddenInputEl = document.getElementById("wifiHiddenInput");
+      const buildWifiQrBtn = document.getElementById("buildWifiQrBtn");
+      const wifiQrPreviewEl = document.getElementById("wifiQrPreview");
       const pollQuestionEl = document.getElementById("pollQuestion");
       const pollDurationSecondsEl = document.getElementById("pollDurationSeconds");
       const pollOptionsListEl = document.getElementById("pollOptionsList");
@@ -644,6 +727,7 @@
       let usersSearchRunId = 0;
       let usersSearchInputDebounceTimer = null;
       let usersSearchDeepMatches = new Set();
+      let lastSessionJoin = null;
 
       function setActionMessage(text) {
         actionMsgEl.textContent = text || "";
@@ -1313,6 +1397,16 @@
         return d.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
       }
 
+      function formatDurationShort(totalSeconds) {
+        const safe = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+        const hours = Math.floor(safe / 3600);
+        const minutes = Math.floor((safe % 3600) / 60);
+        const seconds = safe % 60;
+        if (hours > 0) return `${hours}u ${minutes}m ${seconds}s`;
+        if (minutes > 0) return `${minutes}m ${seconds}s`;
+        return `${seconds}s`;
+      }
+
       function esc(input) {
         return String(input || "")
           .replace(/&/g, "&amp;")
@@ -1325,6 +1419,100 @@
       function sanitizeNameColor(input) {
         const value = String(input || "").trim();
         return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "";
+      }
+
+      function canRenderQr() {
+        return typeof window.qrcode === "function";
+      }
+
+      function renderQrPreview(container, payload, title) {
+        if (!container) return false;
+        const text = String(payload || "").trim();
+        if (!text) {
+          container.classList.add("muted");
+          container.textContent = "(Geen QR-data)";
+          return false;
+        }
+        if (!canRenderQr()) {
+          container.classList.add("muted");
+          container.textContent = "QR library ontbreekt.";
+          return false;
+        }
+        try {
+          const qr = window.qrcode(0, "M");
+          qr.addData(text, "Byte");
+          qr.make();
+          container.classList.remove("muted");
+          container.innerHTML = qr.createSvgTag({
+            cellSize: 3,
+            margin: 1,
+            scalable: true,
+            title: String(title || "QR-code"),
+            alt: String(title || "QR-code"),
+          });
+          return true;
+        } catch (err) {
+          container.classList.add("muted");
+          container.textContent = "QR genereren mislukt: " + (err && err.message ? err.message : "onbekende fout");
+          return false;
+        }
+      }
+
+      function setSessionJoinResult(join) {
+        lastSessionJoin = join && typeof join === "object" ? join : null;
+        const joinUrl = String(lastSessionJoin && lastSessionJoin.joinUrl || "").trim();
+        if (!joinUrl) {
+          sessionJoinUrlEl.value = "";
+          sessionQrPreviewEl.classList.add("muted");
+          sessionQrPreviewEl.textContent = "(Nog geen QR-code)";
+          return;
+        }
+        sessionJoinUrlEl.value = joinUrl;
+        renderQrPreview(sessionQrPreviewEl, joinUrl, "Sessie join QR");
+      }
+
+      async function copyTextToClipboard(text) {
+        const value = String(text || "");
+        if (!value) return false;
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+          await navigator.clipboard.writeText(value);
+          return true;
+        }
+        const temp = document.createElement("textarea");
+        temp.value = value;
+        temp.setAttribute("readonly", "readonly");
+        temp.style.position = "absolute";
+        temp.style.left = "-9999px";
+        document.body.appendChild(temp);
+        temp.select();
+        let copied = false;
+        try {
+          copied = document.execCommand("copy");
+        } catch {}
+        document.body.removeChild(temp);
+        return copied;
+      }
+
+      function escapeWifiQrValue(value) {
+        return String(value || "")
+          .replace(/\\/g, "\\\\")
+          .replace(/;/g, "\\;")
+          .replace(/,/g, "\\,")
+          .replace(/:/g, "\\:");
+      }
+
+      function buildWifiQrPayload() {
+        const ssid = String(wifiSsidInputEl && wifiSsidInputEl.value || "").trim();
+        const auth = String(wifiAuthSelectEl && wifiAuthSelectEl.value || "WPA").trim();
+        const hidden = !!(wifiHiddenInputEl && wifiHiddenInputEl.checked);
+        if (!ssid) return "";
+        const escapedSsid = escapeWifiQrValue(ssid);
+        const escapedPassword = escapeWifiQrValue(String(wifiPasswordInputEl && wifiPasswordInputEl.value || "").trim());
+        let payload = `WIFI:T:${auth};S:${escapedSsid};`;
+        if (auth !== "nopass") payload += `P:${escapedPassword};`;
+        if (hidden) payload += "H:true;";
+        payload += ";";
+        return payload;
       }
 
       function formatHistoryLine(message) {
@@ -1958,11 +2146,33 @@
 
       function renderState(data) {
         lastState = data;
+        const session = data && data.session ? data.session : {};
+        const sessionId = Number(session.id || 0);
+        const sessionName = String(session.name || "");
+        const sessionIsActive = session.isActive !== false;
+        const sessionDurationSeconds = Number(session.durationSeconds || 0);
+        const registeredCount = Math.max(0, Number(session.registeredCount || 0));
+        const onlineCount = Math.max(0, Number(session.onlineCount || (Array.isArray(data.users) ? data.users.length : 0)));
+        const onlineBotCount = Math.max(0, Number(session.onlineBotCount || 0));
+        const offlineRegisteredCount = Math.max(0, Number(session.offlineRegisteredCount || (registeredCount - onlineCount)));
+        const lastJoinSessionId = Number(lastSessionJoin && lastSessionJoin.sessionId || 0);
+        if (!sessionIsActive || (lastJoinSessionId && lastJoinSessionId !== sessionId)) {
+          setSessionJoinResult(null);
+        }
+        if (endSessionBtn) {
+          endSessionBtn.disabled = !sessionIsActive;
+        }
+
         statsEl.innerHTML = [
-          ["Sessie", "#" + data.session.id + " " + data.session.name],
-          ["Online users", String(data.users.length)],
-          ["Berichten", String(data.session.messageCount)],
-          ["Geblokkeerd/geweigerd", String(data.session.rejectedCount)],
+          ["Sessie", "#" + sessionId + " " + sessionName],
+          ["Status", sessionIsActive ? "Actief" : "Beëindigd"],
+          [sessionIsActive ? "Actief sinds" : "Sessie duur", formatDurationShort(sessionDurationSeconds)],
+          ["Geregistreerd", String(registeredCount)],
+          ["Online users", String(onlineCount)],
+          ["Online bots", String(onlineBotCount)],
+          ["Offline geregistreerd", String(offlineRegisteredCount)],
+          ["Berichten", String(session.messageCount || 0)],
+          ["Geblokkeerd/geweigerd", String(session.rejectedCount || 0)],
           ["Poll actief", data.activePoll ? "Ja" : "Nee"],
         ]
           .map(([k, v]) => `<div class=\"stat\"><div class=\"k\">${k}</div><div class=\"v\">${v}</div></div>`)
@@ -1993,6 +2203,10 @@
         renderPollState(data);
         renderPollStatusBadge(data);
         renderSimulationState(data);
+        startPollBtn.disabled = !sessionIsActive;
+        if (!sessionIsActive && (!data.simulation || !data.simulation.running)) {
+          simToggleBtn.disabled = true;
+        }
         renderLiveChat(data.recentMessages);
         renderUsersTable(data);
 
@@ -2188,6 +2402,73 @@
         }
       }
 
+      async function endCurrentSessionOnly() {
+        const sessionIsActive = !lastState || !lastState.session || lastState.session.isActive !== false;
+        if (!sessionIsActive) {
+          setSessionJoinResult(null);
+          setActionMessage("Sessie is al beëindigd.");
+          return;
+        }
+        const ok = confirm("Huidige sessie beëindigen en alle clients loskoppelen?");
+        if (!ok) return;
+        if (endSessionBtn) endSessionBtn.disabled = true;
+        newSessionBtn.disabled = true;
+        try {
+          const body = await api("/admin/session/end", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ confirm: true }),
+          });
+          setSessionJoinResult(null);
+          const closed = Number(body && body.closedClients || 0);
+          setActionMessage("Sessie beëindigd." + (closed > 0 ? ` ${closed} clients verbroken.` : ""));
+          await refreshState();
+        } catch (err) {
+          setActionMessage("Sessie beëindigen mislukt: " + err.message);
+        } finally {
+          newSessionBtn.disabled = false;
+          if (endSessionBtn) {
+            const sessionActiveAfter = !lastState || !lastState.session || lastState.session.isActive !== false;
+            endSessionBtn.disabled = !sessionActiveAfter;
+          }
+        }
+      }
+
+      async function startNewSessionWithQr() {
+        const sessionIsActive = !lastState || !lastState.session || lastState.session.isActive !== false;
+        const ok = confirm(
+          sessionIsActive
+            ? "Nieuwe sessie starten, iedereen disconnecten en een nieuwe QR maken?"
+            : "Nieuwe sessie starten en een nieuwe QR maken?"
+        );
+        if (!ok) return;
+        if (endSessionBtn) endSessionBtn.disabled = true;
+        newSessionBtn.disabled = true;
+        try {
+          const body = await api("/admin/session/new-with-token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: sessionNameEl.value.trim(),
+              confirm: true,
+            }),
+          });
+          const join = body && body.join ? body.join : null;
+          setSessionJoinResult(join);
+          const closed = Number(body && body.closedClients || 0);
+          setActionMessage("Nieuwe sessie gestart. QR klaar." + (closed > 0 ? ` ${closed} clients verbroken.` : ""));
+          await refreshState();
+        } catch (err) {
+          setActionMessage("Nieuwe sessie starten mislukt: " + err.message);
+        } finally {
+          newSessionBtn.disabled = false;
+          if (endSessionBtn) {
+            const sessionActiveAfter = !lastState || !lastState.session || lastState.session.isActive !== false;
+            endSessionBtn.disabled = !sessionActiveAfter;
+          }
+        }
+      }
+
       themePreference = loadThemePreference();
       sectionOpenState = loadSectionState();
       sectionOrderState = loadSectionOrderState();
@@ -2205,6 +2486,7 @@
       }
       initCollapsibleSections();
       rememberDeviceEl.checked = loadRememberDevicePreference();
+      setSessionJoinResult(null);
 
       themeToggleBtn.addEventListener("click", cycleTheme);
       loginBtn.addEventListener("click", login);
@@ -2228,14 +2510,46 @@
         showLogin();
       });
 
-      newSessionBtn.addEventListener("click", () => {
-        const ok = confirm("Nieuwe sessie starten en iedereen disconnecten?");
-        if (!ok) return;
-        runAction(
-          "/admin/session/new",
-          { name: sessionNameEl.value.trim(), confirm: true },
-          "Nieuwe sessie gestart."
-        );
+      if (endSessionBtn) endSessionBtn.addEventListener("click", endCurrentSessionOnly);
+      newSessionBtn.addEventListener("click", startNewSessionWithQr);
+      copySessionJoinBtn.addEventListener("click", async () => {
+        const text = String(sessionJoinUrlEl.value || "").trim();
+        if (!text) {
+          setActionMessage("Nog geen join-link. Start eerst een nieuwe sessie.");
+          return;
+        }
+        try {
+          const copied = await copyTextToClipboard(text);
+          setActionMessage(copied ? "Join-link gekopieerd." : "Kopieren mislukt.");
+        } catch {
+          setActionMessage("Kopieren mislukt.");
+        }
+      });
+      openSessionJoinBtn.addEventListener("click", () => {
+        const text = String(sessionJoinUrlEl.value || "").trim();
+        if (!text) {
+          setActionMessage("Nog geen join-link. Start eerst een nieuwe sessie.");
+          return;
+        }
+        try {
+          const opened = window.open(text, "_blank", "noopener,noreferrer");
+          if (!opened) {
+            setActionMessage("Kon link niet openen. Sta pop-ups toe voor deze pagina.");
+            return;
+          }
+          setActionMessage("Join-link geopend in nieuw tabblad.");
+        } catch {
+          setActionMessage("Kon link niet openen.");
+        }
+      });
+      buildWifiQrBtn.addEventListener("click", () => {
+        const payload = buildWifiQrPayload();
+        if (!payload) {
+          wifiQrPreviewEl.classList.add("muted");
+          wifiQrPreviewEl.textContent = "Vul minimaal een SSID in.";
+          return;
+        }
+        renderQrPreview(wifiQrPreviewEl, payload, "WiFi QR");
       });
 
       startPollBtn.addEventListener("click", () => {

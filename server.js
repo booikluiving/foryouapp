@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
 const WebSocket = require("ws");
@@ -21,6 +22,12 @@ const DATA_DIR = path.join(__dirname, "data");
 const DB_PATH = path.join(DATA_DIR, "live.sqlite");
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 const ADMIN_SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+const SESSION_JOIN_TOKEN_TTL_MINUTES = clampInt(
+  process.env.SESSION_JOIN_TOKEN_TTL_MINUTES || "720",
+  5,
+  7 * 24 * 60,
+  720
+);
 const ADMIN_RESTART_BOOT_DELAY_MS = clampInt(process.env.ADMIN_RESTART_BOOT_DELAY_MS || "0", 0, 10000, 0);
 const ADMIN_RESTART_CHILD_BOOT_DELAY_MS = clampInt(
   process.env.ADMIN_RESTART_CHILD_BOOT_DELAY_MS || "900",
@@ -38,6 +45,14 @@ const ADMIN_TRUSTED_DEVICE_TTL_DAYS = clampInt(
 const ADMIN_TRUSTED_DEVICE_TTL_MS = ADMIN_TRUSTED_DEVICE_TTL_DAYS * 24 * 60 * 60 * 1000;
 const ADMIN_TRUSTED_SELECTOR_BYTES = 12;
 const ADMIN_TRUSTED_SECRET_BYTES = 32;
+const SESSION_ACCESS_COOKIE = "session_access";
+const SESSION_ACCESS_TTL_MINUTES = clampInt(
+  process.env.SESSION_ACCESS_TTL_MINUTES || "720",
+  5,
+  7 * 24 * 60,
+  720
+);
+const SIM_INTERNAL_ACCESS_KEY = crypto.randomBytes(16).toString("hex");
 const DEFAULT_POLL_DURATION_SECONDS = clampInt(process.env.POLL_DURATION_SECONDS || "60", 5, 3600, 60);
 let currentPollDurationSeconds = DEFAULT_POLL_DURATION_SECONDS;
 const SIM_DEFAULTS = {
@@ -1372,6 +1387,48 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS session_join_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    use_count INTEGER NOT NULL DEFAULT 0,
+    last_used_at TEXT,
+    created_by TEXT,
+    FOREIGN KEY(session_id) REFERENCES sessions(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_session_join_tokens_session ON session_join_tokens(session_id, id);
+  CREATE INDEX IF NOT EXISTS idx_session_join_tokens_expiry ON session_join_tokens(expires_at);
+
+  CREATE TABLE IF NOT EXISTS session_join_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    token TEXT NOT NULL,
+    joined_at TEXT NOT NULL,
+    ip TEXT,
+    user_agent TEXT,
+    source TEXT,
+    FOREIGN KEY(session_id) REFERENCES sessions(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_session_join_events_session ON session_join_events(session_id, id);
+
+  CREATE TABLE IF NOT EXISTS session_access_grants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    grant_id TEXT NOT NULL UNIQUE,
+    token TEXT,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    last_seen_at TEXT,
+    last_ip TEXT,
+    user_agent TEXT,
+    source TEXT,
+    FOREIGN KEY(session_id) REFERENCES sessions(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_session_access_grants_session ON session_access_grants(session_id, id);
+  CREATE INDEX IF NOT EXISTS idx_session_access_grants_expiry ON session_access_grants(expires_at);
+
   CREATE TABLE IF NOT EXISTS admin_trusted_devices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     selector TEXT NOT NULL UNIQUE,
@@ -1456,6 +1513,87 @@ const sql = {
      WHERE session_id = ?
      ORDER BY id DESC
      LIMIT ?`
+  ),
+  insertSessionJoinToken: db.prepare(
+    `INSERT INTO session_join_tokens (
+      session_id, token, created_at, expires_at, use_count, last_used_at, created_by
+    ) VALUES (?, ?, ?, ?, 0, NULL, ?)`
+  ),
+  getSessionJoinTokenByToken: db.prepare(
+    `SELECT
+      id,
+      session_id AS sessionId,
+      token,
+      created_at AS createdAt,
+      expires_at AS expiresAt,
+      use_count AS useCount,
+      last_used_at AS lastUsedAt,
+      created_by AS createdBy
+     FROM session_join_tokens
+     WHERE token = ?
+     LIMIT 1`
+  ),
+  touchSessionJoinToken: db.prepare(
+    `UPDATE session_join_tokens
+     SET use_count = ?, last_used_at = ?
+     WHERE id = ?`
+  ),
+  pruneSessionJoinTokens: db.prepare(
+    `DELETE FROM session_join_tokens
+     WHERE expires_at <= ?`
+  ),
+  insertSessionJoinEvent: db.prepare(
+    `INSERT INTO session_join_events (
+      session_id, token, joined_at, ip, user_agent, source
+    ) VALUES (?, ?, ?, ?, ?, ?)`
+  ),
+  countSessionJoinEvents: db.prepare(
+    `SELECT COUNT(1) AS n
+     FROM session_join_events
+     WHERE session_id = ?`
+  ),
+  deleteSessionJoinTokensBySession: db.prepare(
+    `DELETE FROM session_join_tokens
+     WHERE session_id = ?`
+  ),
+  insertSessionAccessGrant: db.prepare(
+    `INSERT INTO session_access_grants (
+      session_id, grant_id, token, created_at, expires_at, last_seen_at, last_ip, user_agent, source
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ),
+  countSessionActiveAccessGrants: db.prepare(
+    `SELECT COUNT(1) AS n
+     FROM session_access_grants
+     WHERE session_id = ? AND expires_at > ?`
+  ),
+  getSessionAccessGrantByGrantId: db.prepare(
+    `SELECT
+      id,
+      session_id AS sessionId,
+      grant_id AS grantId,
+      token,
+      created_at AS createdAt,
+      expires_at AS expiresAt,
+      last_seen_at AS lastSeenAt,
+      last_ip AS lastIp,
+      user_agent AS userAgent,
+      source
+     FROM session_access_grants
+     WHERE grant_id = ?
+     LIMIT 1`
+  ),
+  touchSessionAccessGrant: db.prepare(
+    `UPDATE session_access_grants
+     SET last_seen_at = ?, last_ip = ?
+     WHERE id = ?`
+  ),
+  pruneSessionAccessGrants: db.prepare(
+    `DELETE FROM session_access_grants
+     WHERE expires_at <= ?`
+  ),
+  deleteSessionAccessGrantsBySession: db.prepare(
+    `DELETE FROM session_access_grants
+     WHERE session_id = ?`
   ),
   insertPoll: db.prepare(
     `INSERT INTO polls (session_id, question, options_json, duration_seconds, status, started_at, created_by)
@@ -1772,6 +1910,266 @@ function isHttpsRequest(req) {
   return forwardedProto.includes("https");
 }
 
+function normalizeSessionJoinToken(input) {
+  return String(input || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 120);
+}
+
+function getPreferredLanIpv4() {
+  const interfaces = os.networkInterfaces();
+  const privateCandidates = [];
+  const otherCandidates = [];
+
+  function isPrivate(ip) {
+    if (ip.startsWith("10.")) return true;
+    if (ip.startsWith("192.168.")) return true;
+    const parts = ip.split(".");
+    if (parts.length !== 4) return false;
+    const first = Number(parts[0]);
+    const second = Number(parts[1]);
+    if (!Number.isInteger(first) || !Number.isInteger(second)) return false;
+    return first === 172 && second >= 16 && second <= 31;
+  }
+
+  for (const entries of Object.values(interfaces || {})) {
+    for (const entry of entries || []) {
+      if (!entry || entry.family !== "IPv4" || entry.internal) continue;
+      const ip = String(entry.address || "").trim();
+      if (!ip) continue;
+      if (isPrivate(ip)) privateCandidates.push(ip);
+      else otherCandidates.push(ip);
+    }
+  }
+
+  return privateCandidates[0] || otherCandidates[0] || "";
+}
+
+function isLoopbackHostname(hostname) {
+  const host = String(hostname || "").toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+}
+
+function buildJoinBaseUrl(req) {
+  const protocol = isHttpsRequest(req) ? "https" : "http";
+  const forwardedHost = String(req.headers["x-forwarded-host"] || "")
+    .split(",")[0]
+    .trim();
+  const hostHeader = forwardedHost || String(req.headers.host || "").trim();
+
+  let parsed;
+  try {
+    parsed = new URL(`${protocol}://${hostHeader || `127.0.0.1:${PORT}`}`);
+  } catch {
+    parsed = new URL(`${protocol}://127.0.0.1:${PORT}`);
+  }
+
+  if (isLoopbackHostname(parsed.hostname)) {
+    const lanIp = getPreferredLanIpv4();
+    if (lanIp) parsed.hostname = lanIp;
+  }
+
+  return parsed.origin;
+}
+
+function buildJoinUrl(req, token) {
+  const safeToken = normalizeSessionJoinToken(token);
+  return `${buildJoinBaseUrl(req)}/join?token=${encodeURIComponent(safeToken)}`;
+}
+
+function pruneSessionJoinTokens() {
+  sql.pruneSessionJoinTokens.run(nowIso());
+}
+
+function issueSessionJoinToken(sessionId, { ttlMinutes = SESSION_JOIN_TOKEN_TTL_MINUTES, createdBy = "admin" } = {}) {
+  const safeSessionId = Number(sessionId || 0);
+  if (!Number.isInteger(safeSessionId) || safeSessionId < 1) {
+    throw new Error("invalid_session_id");
+  }
+  const safeTtlMinutes = clampInt(ttlMinutes, 5, 7 * 24 * 60, SESSION_JOIN_TOKEN_TTL_MINUTES);
+  const createdAt = nowIso();
+  const expiresAt = new Date(Date.now() + safeTtlMinutes * 60 * 1000).toISOString();
+  pruneSessionJoinTokens();
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const token = normalizeSessionJoinToken(crypto.randomBytes(18).toString("base64url"));
+    if (!token) continue;
+    try {
+      sql.insertSessionJoinToken.run(
+        safeSessionId,
+        token,
+        createdAt,
+        expiresAt,
+        String(createdBy || "admin").slice(0, 80)
+      );
+      return {
+        sessionId: safeSessionId,
+        token,
+        createdAt,
+        expiresAt,
+        ttlMinutes: safeTtlMinutes,
+      };
+    } catch (err) {
+      const message = String(err && err.message || "");
+      if (!message.toLowerCase().includes("unique")) throw err;
+    }
+  }
+
+  throw new Error("token_generation_failed");
+}
+
+function buildSessionJoinPayload(req, tokenInfo) {
+  const token = normalizeSessionJoinToken(tokenInfo && tokenInfo.token);
+  if (!token) return null;
+  return {
+    sessionId: Number(tokenInfo && tokenInfo.sessionId || 0),
+    token,
+    expiresAt: tokenInfo && tokenInfo.expiresAt ? String(tokenInfo.expiresAt) : null,
+    ttlMinutes: clampInt(tokenInfo && tokenInfo.ttlMinutes, 5, 7 * 24 * 60, SESSION_JOIN_TOKEN_TTL_MINUTES),
+    joinPath: `/join?token=${encodeURIComponent(token)}`,
+    joinUrl: buildJoinUrl(req, token),
+  };
+}
+
+function getValidSessionJoinToken(token) {
+  const safeToken = normalizeSessionJoinToken(token);
+  if (!safeToken) return null;
+  pruneSessionJoinTokens();
+  const row = sql.getSessionJoinTokenByToken.get(safeToken);
+  if (!row) return null;
+  const expiresTs = parseIsoTime(row.expiresAt);
+  if (!expiresTs || expiresTs <= Date.now()) return null;
+  if (Number(row.sessionId || 0) !== Number(currentSession.id || 0)) return null;
+  return row;
+}
+
+function registerSessionJoinFromToken(token, req, source = "join_link") {
+  const row = getValidSessionJoinToken(token);
+  if (!row) return null;
+
+  const joinedAt = nowIso();
+  const nextUseCount = Math.max(0, Number(row.useCount || 0)) + 1;
+  sql.touchSessionJoinToken.run(nextUseCount, joinedAt, Number(row.id || 0));
+  sql.insertSessionJoinEvent.run(
+    Number(row.sessionId || 0),
+    String(row.token || ""),
+    joinedAt,
+    normalizeIp(req.socket.remoteAddress || "unknown"),
+    String(req.headers["user-agent"] || "unknown").slice(0, 300),
+    String(source || "join_link").slice(0, 80)
+  );
+
+  return {
+    ...row,
+    useCount: nextUseCount,
+    lastUsedAt: joinedAt,
+  };
+}
+
+function normalizeSessionAccessGrantId(input) {
+  return String(input || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 120);
+}
+
+function pruneSessionAccessGrants() {
+  sql.pruneSessionAccessGrants.run(nowIso());
+}
+
+function issueSessionAccessGrant({ sessionId, token, ip, userAgent, source = "join_link", maxExpiresAt } = {}) {
+  const safeSessionId = Number(sessionId || 0);
+  if (!Number.isInteger(safeSessionId) || safeSessionId < 1) throw new Error("invalid_session_id");
+
+  const now = Date.now();
+  const defaultExpiresAt = now + SESSION_ACCESS_TTL_MINUTES * 60 * 1000;
+  const capExpiresAt = parseIsoTime(maxExpiresAt);
+  const expiresAtTs = capExpiresAt ? Math.min(defaultExpiresAt, capExpiresAt) : defaultExpiresAt;
+  const createdAt = nowIso();
+  const expiresAt = new Date(expiresAtTs).toISOString();
+  const safeIp = normalizeIp(ip || "unknown");
+  const safeUa = String(userAgent || "unknown").slice(0, 300);
+  const safeSource = String(source || "join_link").slice(0, 80);
+  const safeToken = normalizeSessionJoinToken(token);
+  pruneSessionAccessGrants();
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const grantId = normalizeSessionAccessGrantId(crypto.randomBytes(20).toString("base64url"));
+    if (!grantId) continue;
+    try {
+      sql.insertSessionAccessGrant.run(
+        safeSessionId,
+        grantId,
+        safeToken || null,
+        createdAt,
+        expiresAt,
+        createdAt,
+        safeIp,
+        safeUa,
+        safeSource
+      );
+      return {
+        sessionId: safeSessionId,
+        grantId,
+        createdAt,
+        expiresAt,
+      };
+    } catch (err) {
+      const message = String(err && err.message ? err.message : "");
+      if (!message.toLowerCase().includes("unique")) throw err;
+    }
+  }
+
+  throw new Error("session_access_grant_issue_failed");
+}
+
+function getSessionAccessGrantFromRequest(req) {
+  const cookies = parseCookieHeader(req && req.headers ? req.headers.cookie : "");
+  const grantId = normalizeSessionAccessGrantId(cookies[SESSION_ACCESS_COOKIE] || "");
+  if (!grantId) return null;
+  pruneSessionAccessGrants();
+  const row = sql.getSessionAccessGrantByGrantId.get(grantId);
+  if (!row) return null;
+  const expiresAtTs = parseIsoTime(row.expiresAt);
+  if (!expiresAtTs || expiresAtTs <= Date.now()) return null;
+  if (Number(row.sessionId || 0) !== Number(currentSession.id || 0)) return null;
+  return row;
+}
+
+function isLoopbackIp(ip) {
+  const normalized = normalizeIp(ip || "");
+  return normalized === "127.0.0.1";
+}
+
+function hasInternalSimulatorWsAccess(req, ip) {
+  if (!isLoopbackIp(ip)) return false;
+  try {
+    const parsed = new URL(String(req && req.url || "/"), "ws://localhost");
+    const provided = String(parsed.searchParams.get("simKey") || "");
+    return !!provided && provided === SIM_INTERNAL_ACCESS_KEY;
+  } catch {
+    return false;
+  }
+}
+
+function ensureSessionAccessForRequest(req, ip) {
+  if (!isCurrentSessionActive()) {
+    return { ok: false, reason: "session_inactive" };
+  }
+
+  if (hasInternalSimulatorWsAccess(req, ip)) {
+    return { ok: true, reason: "internal_simulator" };
+  }
+
+  const grant = getSessionAccessGrantFromRequest(req);
+  if (!grant) return { ok: false, reason: "session_join_required" };
+
+  const seenAt = nowIso();
+  sql.touchSessionAccessGrant.run(seenAt, normalizeIp(ip || "unknown"), Number(grant.id || 0));
+  return { ok: true, reason: "grant", grantId: String(grant.grantId || "") };
+}
+
 function parseCookieHeader(header) {
   const out = {};
   const raw = String(header || "");
@@ -1807,6 +2205,40 @@ function serializeCookie(name, value, options = {}) {
   parts.push(`SameSite=${options.sameSite || "Strict"}`);
   if (options.secure) parts.push("Secure");
   return parts.join("; ");
+}
+
+function setSessionAccessCookie(res, req, grantId, expiresAtIso) {
+  const safeGrantId = normalizeSessionAccessGrantId(grantId);
+  if (!safeGrantId) return;
+  const expiresTs = parseIsoTime(expiresAtIso);
+  const fallbackTs = Date.now() + SESSION_ACCESS_TTL_MINUTES * 60 * 1000;
+  const finalTs = expiresTs && expiresTs > Date.now() ? expiresTs : fallbackTs;
+  const maxAgeSeconds = Math.max(0, Math.floor((finalTs - Date.now()) / 1000));
+  res.append(
+    "Set-Cookie",
+    serializeCookie(SESSION_ACCESS_COOKIE, safeGrantId, {
+      path: "/",
+      maxAge: maxAgeSeconds,
+      expires: new Date(finalTs),
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: isHttpsRequest(req),
+    })
+  );
+}
+
+function clearSessionAccessCookie(res, req) {
+  res.append(
+    "Set-Cookie",
+    serializeCookie(SESSION_ACCESS_COOKIE, "", {
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: isHttpsRequest(req),
+    })
+  );
 }
 
 function readTrustedAdminDeviceToken(req) {
@@ -2158,6 +2590,28 @@ function scheduleActivePollAutoClose() {
   }, delayMs);
 }
 
+function isCurrentSessionActive(session = currentSession) {
+  return !!session && !session.endedAt;
+}
+
+function getSessionDurationSeconds(session, now = nowIso()) {
+  if (!session || !session.startedAt) return 0;
+  const startedAtTs = parseIsoTime(session.startedAt);
+  if (!startedAtTs) return 0;
+  const endedAtTs = parseIsoTime(session.endedAt || "");
+  const nowTs = parseIsoTime(now);
+  const endTs = endedAtTs || nowTs || Date.now();
+  const delta = Math.max(0, endTs - startedAtTs);
+  return Math.floor(delta / 1000);
+}
+
+function clearSessionAccessArtifacts(sessionId) {
+  const safeSessionId = Number(sessionId || 0);
+  if (!Number.isInteger(safeSessionId) || safeSessionId < 1) return;
+  sql.deleteSessionJoinTokensBySession.run(safeSessionId);
+  sql.deleteSessionAccessGrantsBySession.run(safeSessionId);
+}
+
 function beginNewSession(name, createdBy = "admin") {
   const now = nowIso();
   const sessionName = String(name || "").trim() || ("Performance " + now.slice(0, 16).replace("T", " "));
@@ -2173,6 +2627,75 @@ function beginNewSession(name, createdBy = "admin") {
   rateMap.clear();
   reactionRateMap.clear();
   return currentSession;
+}
+
+function endCurrentSession(createdBy = "admin") {
+  if (!isCurrentSessionActive()) return currentSession;
+  const now = nowIso();
+  closeActivePoll("session_ended", createdBy);
+  clearSessionAccessArtifacts(currentSession.id);
+  sql.closeOpenSessions.run(now);
+  const endedSession = sql.getSessionById.get(currentSession.id);
+  if (endedSession) {
+    currentSession = endedSession;
+  } else {
+    currentSession = {
+      id: Number(currentSession.id || 0),
+      name: String(currentSession.name || ""),
+      startedAt: String(currentSession.startedAt || ""),
+      endedAt: now,
+    };
+  }
+  activePoll = null;
+  reactionCounts = createReactionCounts();
+  mutedUsers.clear();
+  blockedUsers.clear();
+  rateMap.clear();
+  reactionRateMap.clear();
+  return currentSession;
+}
+
+function disconnectAllClientsForNewSession() {
+  return disconnectAllClients({
+    messageType: "session_reset",
+    message: "Nieuwe sessie gestart. Verbind opnieuw.",
+    closeCode: 4010,
+    closeReason: "new session",
+  });
+}
+
+function disconnectAllClientsForSessionEnd() {
+  return disconnectAllClients({
+    messageType: "session_closed",
+    message: "Sessie is beëindigd door de moderator.",
+    closeCode: 4011,
+    closeReason: "session ended",
+  });
+}
+
+function disconnectAllClients(config = {}) {
+  const messageType = String(config.messageType || "session_reset");
+  const messageText = String(config.message || "");
+  const closeCode = clampInt(config.closeCode, 1000, 4999, 4010);
+  const closeReason = String(config.closeReason || "session reset").slice(0, 120);
+  let closed = 0;
+  for (const client of wss.clients) {
+    try {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(
+          safeJsonStringify({
+            type: messageType,
+            message: messageText,
+          })
+        );
+      }
+    } catch {}
+    try {
+      client.close(closeCode, closeReason);
+      closed += 1;
+    } catch {}
+  }
+  return closed;
 }
 
 function getPollSnapshot() {
@@ -2596,7 +3119,7 @@ class ChatSimulatorManager {
 
   buildWsUrl(botId) {
     const sid = `${Date.now()}-${botId}-${Math.random().toString(36).slice(2, 8)}`;
-    return `ws://127.0.0.1:${PORT}/?sid=${sid}`;
+    return `ws://127.0.0.1:${PORT}/?sid=${sid}&simKey=${encodeURIComponent(SIM_INTERNAL_ACCESS_KEY)}`;
   }
 
   resetMessageMemory() {
@@ -3385,6 +3908,8 @@ const chatSimulator = new ChatSimulatorManager();
 
 function getAdminState() {
   cleanupEnforcementMaps();
+  pruneSessionAccessGrants();
+  const snapshotNow = nowIso();
 
   const accepted = sql.countAcceptedMessages.get(currentSession.id);
   const rejected = sql.countRejectedMessages.get(currentSession.id);
@@ -3419,6 +3944,13 @@ function getAdminState() {
         blockedUntil: block && block.expiresAt ? block.expiresAt : null,
       };
     });
+  const registeredCountRow = sql.countSessionJoinEvents.get(currentSession.id);
+  const activeGrantCountRow = sql.countSessionActiveAccessGrants.get(currentSession.id, snapshotNow);
+  const registeredCount = Number(registeredCountRow && registeredCountRow.n || 0);
+  const activeGrantCount = Number(activeGrantCountRow && activeGrantCountRow.n || 0);
+  const onlineHumanCount = users.reduce((count, user) => count + (user && user.isBot ? 0 : 1), 0);
+  const onlineBotCount = Math.max(0, users.length - onlineHumanCount);
+  const sessionActive = isCurrentSessionActive();
   const recentMessages = sql.getRecentMessages.all(currentSession.id, 40).map((message) => ({
     ...message,
     nameColor: String(message && message.detail || "").startsWith("moderation_notice:")
@@ -3474,7 +4006,7 @@ function getAdminState() {
 
   return {
     ok: true,
-    now: nowIso(),
+    now: snapshotNow,
     runtime: {
       port: Number(PORT),
       nextPort: getSetting("next_port", String(PORT)),
@@ -3488,6 +4020,14 @@ function getAdminState() {
       id: Number(currentSession.id),
       name: currentSession.name,
       startedAt: currentSession.startedAt,
+      endedAt: currentSession.endedAt || null,
+      isActive: sessionActive,
+      durationSeconds: getSessionDurationSeconds(currentSession, snapshotNow),
+      registeredCount,
+      activeGrantCount,
+      onlineCount: onlineHumanCount,
+      onlineBotCount,
+      offlineRegisteredCount: Math.max(0, registeredCount - onlineHumanCount),
       messageCount: Number(accepted.n || 0),
       rejectedCount: Number(rejected.n || 0),
     },
@@ -4081,6 +4621,67 @@ app.post("/client-debug", (req, res) => {
   res.status(204).end();
 });
 
+app.get("/join", (req, res) => {
+  const token = normalizeSessionJoinToken(req.query && req.query.token);
+  if (!token) {
+    clearSessionAccessCookie(res, req);
+    res.status(400).type("html").send(
+      "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Join mislukt</title></head><body style=\"font-family:system-ui,-apple-system,sans-serif;padding:20px;\"><h1>Join-link ongeldig</h1><p>Deze link bevat geen geldige token.</p><p><a href=\"/\">Ga naar de live chat</a></p></body></html>"
+    );
+    return;
+  }
+
+  if (!isCurrentSessionActive()) {
+    clearSessionAccessCookie(res, req);
+    res.status(410).type("html").send(
+      "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Sessie gesloten</title></head><body style=\"font-family:system-ui,-apple-system,sans-serif;padding:20px;\"><h1>Sessie is beëindigd</h1><p>Deze sessie is gesloten. Vraag de moderator om een nieuwe QR-code.</p><p><a href=\"/\">Ga naar de live chat</a></p></body></html>"
+    );
+    return;
+  }
+
+  const joined = registerSessionJoinFromToken(token, req, "join_qr");
+  if (!joined) {
+    clearSessionAccessCookie(res, req);
+    res.status(410).type("html").send(
+      "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Join verlopen</title></head><body style=\"font-family:system-ui,-apple-system,sans-serif;padding:20px;\"><h1>Join-link verlopen</h1><p>Deze sessie-link is niet meer geldig. Vraag een nieuwe QR-code aan de moderator.</p><p><a href=\"/\">Ga naar de live chat</a></p></body></html>"
+    );
+    return;
+  }
+
+  let accessGrant;
+  try {
+    accessGrant = issueSessionAccessGrant({
+      sessionId: Number(joined.sessionId || 0),
+      token,
+      ip: normalizeIp(req.socket.remoteAddress || "unknown"),
+      userAgent: String(req.headers["user-agent"] || "unknown"),
+      source: "join_qr",
+      maxExpiresAt: joined.expiresAt || null,
+    });
+  } catch (err) {
+    writeDebug("session_access_grant_error", {
+      sessionId: Number(joined.sessionId || 0),
+      tokenTail: String(token).slice(-6),
+      message: err && err.message ? err.message : "unknown",
+    });
+    res.status(500).type("html").send(
+      "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Join fout</title></head><body style=\"font-family:system-ui,-apple-system,sans-serif;padding:20px;\"><h1>Join mislukt</h1><p>Kon geen toegang voor deze sessie registreren. Vraag de moderator om een nieuwe QR-code.</p></body></html>"
+    );
+    return;
+  }
+
+  setSessionAccessCookie(res, req, accessGrant.grantId, accessGrant.expiresAt);
+
+  writeDebug("session_join_registered", {
+    sessionId: Number(joined.sessionId || 0),
+    tokenTail: String(token).slice(-6),
+    useCount: Number(joined.useCount || 0),
+    ip: normalizeIp(req.socket.remoteAddress || "unknown"),
+  });
+
+  res.redirect(302, "/");
+});
+
 app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "admin.html"));
 });
@@ -4207,21 +4808,7 @@ app.post("/admin/session/new", requireAdmin, (req, res) => {
     sessionName: newSession.name,
   });
 
-  for (const client of wss.clients) {
-    try {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(
-          safeJsonStringify({
-            type: "session_reset",
-            message: "Nieuwe sessie gestart. Verbind opnieuw.",
-          })
-        );
-      }
-    } catch {}
-    try {
-      client.close(4010, "new session");
-    } catch {}
-  }
+  const closedClients = disconnectAllClientsForNewSession();
 
   res.json({
     ok: true,
@@ -4230,6 +4817,102 @@ app.post("/admin/session/new", requireAdmin, (req, res) => {
       name: newSession.name,
       startedAt: newSession.startedAt,
     },
+    closedClients,
+  });
+});
+
+app.post("/admin/session/end", requireAdmin, (req, res) => {
+  const confirm = !!(req.body && req.body.confirm);
+  if (!confirm) {
+    res.status(400).json({ ok: false, error: "confirm_required" });
+    return;
+  }
+
+  if (!isCurrentSessionActive()) {
+    res.json({
+      ok: true,
+      alreadyEnded: true,
+      session: {
+        id: Number(currentSession.id),
+        name: currentSession.name,
+        startedAt: currentSession.startedAt,
+        endedAt: currentSession.endedAt || null,
+        isActive: false,
+      },
+      closedClients: 0,
+    });
+    return;
+  }
+
+  const endedSession = endCurrentSession("admin");
+  writeDebug("session_ended", {
+    by: "admin",
+    sessionId: endedSession.id,
+    sessionName: endedSession.name,
+  });
+  const closedClients = disconnectAllClientsForSessionEnd();
+
+  res.json({
+    ok: true,
+    session: {
+      id: Number(endedSession.id),
+      name: endedSession.name,
+      startedAt: endedSession.startedAt,
+      endedAt: endedSession.endedAt || null,
+      isActive: false,
+    },
+    closedClients,
+  });
+});
+
+app.post("/admin/session/new-with-token", requireAdmin, (req, res) => {
+  const confirm = !!(req.body && req.body.confirm);
+  if (!confirm) {
+    res.status(400).json({ ok: false, error: "confirm_required" });
+    return;
+  }
+
+  const tokenTtlMinutes = clampInt(
+    req.body && req.body.tokenTtlMinutes,
+    5,
+    7 * 24 * 60,
+    SESSION_JOIN_TOKEN_TTL_MINUTES
+  );
+  const newSession = beginNewSession(req.body && req.body.name, "admin");
+  const closedClients = disconnectAllClientsForNewSession();
+
+  let join = null;
+  try {
+    const tokenInfo = issueSessionJoinToken(newSession.id, {
+      ttlMinutes: tokenTtlMinutes,
+      createdBy: "admin",
+    });
+    join = buildSessionJoinPayload(req, tokenInfo);
+  } catch (err) {
+    writeDebug("session_join_token_error", {
+      sessionId: Number(newSession.id),
+      message: err && err.message ? err.message : "unknown",
+    });
+    res.status(500).json({ ok: false, error: "join_token_failed" });
+    return;
+  }
+
+  writeDebug("session_started", {
+    by: "admin",
+    sessionId: newSession.id,
+    sessionName: newSession.name,
+    joinTokenTail: join && join.token ? String(join.token).slice(-6) : "",
+  });
+
+  res.json({
+    ok: true,
+    session: {
+      id: Number(newSession.id),
+      name: newSession.name,
+      startedAt: newSession.startedAt,
+    },
+    join,
+    closedClients,
   });
 });
 
@@ -4412,6 +5095,11 @@ app.post("/admin/users/kick", requireAdmin, (req, res) => {
 });
 
 app.post("/admin/polls/start", requireAdmin, (req, res) => {
+  if (!isCurrentSessionActive()) {
+    res.status(409).json({ ok: false, error: "session_inactive" });
+    return;
+  }
+
   const rawQuestion = String((req.body && req.body.question) || "").trim();
   const question = rawQuestion.slice(0, 180);
   const requestedDurationSeconds = clampInt(
@@ -4510,6 +5198,11 @@ function parseSimConfigFromBody(body) {
 }
 
 app.post("/admin/sim/start", requireAdmin, (req, res) => {
+  if (!isCurrentSessionActive()) {
+    res.status(409).json({ ok: false, error: "session_inactive" });
+    return;
+  }
+
   const config = parseSimConfigFromBody(req.body);
   chatSimulator.start(config);
   const state = chatSimulator.getState();
@@ -4712,6 +5405,32 @@ wss.on("connection", (ws, req) => {
       ws.close(4004, "blocked");
     } catch {}
     writeDebug("ws_rejected_blocked", { clientId, ip });
+    return;
+  }
+
+  const sessionAccess = ensureSessionAccessForRequest(req, ip);
+  if (!sessionAccess.ok) {
+    connectedClients.delete(clientId);
+    const inactive = String(sessionAccess.reason || "") === "session_inactive";
+    try {
+      ws.send(
+        safeJsonStringify({
+          type: "error",
+          code: inactive ? "session_inactive" : "session_join_required",
+          message: inactive
+            ? "De sessie is beëindigd. Wacht op een nieuwe join-link."
+            : "Deze sessie vereist een nieuwe join-link. Scan de nieuwste QR-code.",
+        })
+      );
+    } catch {}
+    try {
+      ws.close(inactive ? 4009 : 4008, inactive ? "session inactive" : "join required");
+    } catch {}
+    writeDebug("ws_rejected_session_access", {
+      clientId,
+      ip,
+      reason: sessionAccess.reason || "unknown",
+    });
     return;
   }
 

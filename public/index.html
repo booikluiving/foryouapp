@@ -937,6 +937,7 @@
       let healthProbeInFlight = false;
       let healthProbeFailCount = 0;
       let pausedByServer = false;
+      let serverPauseReason = "";
 
       const CONNECT_TIMEOUT_MS = 7000;
       const CONNECTION_CHECK_MS = 2000;
@@ -1208,6 +1209,28 @@
           showUserNotice(buildMuteNoticeText(msg));
           return;
         }
+        if (code === "session_join_required") {
+          pausedByServer = true;
+          serverPauseReason = "join_required";
+          pendingReconnect = false;
+          clearReconnectTimer();
+          stopHeartbeat();
+          connectStartedAt = 0;
+          sendBtn.disabled = true;
+          showUserNotice("Deze sessie vereist een nieuwe join-link. Scan de nieuwste QR-code.", { autoHideMs: 5600 });
+          return;
+        }
+        if (code === "session_inactive") {
+          pausedByServer = true;
+          serverPauseReason = "session_inactive";
+          pendingReconnect = false;
+          clearReconnectTimer();
+          stopHeartbeat();
+          connectStartedAt = 0;
+          sendBtn.disabled = true;
+          showUserNotice("Deze sessie is beëindigd. Wacht op een nieuwe QR-code.", { autoHideMs: 5600 });
+          return;
+        }
         if (code === "user_blocked") {
           resetPollVotePending();
           showUserNotice("Je bent geblokkeerd door de moderator.");
@@ -1321,7 +1344,8 @@
 
         socket.addEventListener("close", (ev) => {
           if (socket !== ws) return;
-          if (ev.code === 4010 || pausedByServer) {
+          const closedBySessionControl = ev.code === 4010 || ev.code === 4011 || ev.code === 4008 || ev.code === 4009;
+          if (closedBySessionControl || pausedByServer) {
             debugLog("ws close code=" + ev.code + " -> paused by server");
             clearConnectTimeout();
             stopHeartbeat();
@@ -1330,7 +1354,15 @@
             pendingReconnect = false;
             clearReconnectTimer();
             setUiConnected(false, { notify: false });
-            showToast("Sessie gesloten. Ververs om opnieuw mee te doen.", { subtle: false });
+            const pauseReason = serverPauseReason
+              || (ev.code === 4008 ? "join_required" : "")
+              || (ev.code === 4009 || ev.code === 4011 ? "session_inactive" : "");
+            const pausedMessage = pauseReason === "join_required"
+              ? "Sessie vergrendeld. Scan de nieuwste QR-link om opnieuw mee te doen."
+              : pauseReason === "session_inactive"
+                ? "Sessie beëindigd. Wacht op een nieuwe QR-link."
+                : "Sessie gesloten. Ververs om opnieuw mee te doen.";
+            showToast(pausedMessage, { subtle: false });
             sendBtn.disabled = true;
             return;
           }
@@ -1428,10 +1460,21 @@
             }
             if (msg.type === "session_reset") {
               pausedByServer = true;
+              serverPauseReason = "session_reset";
               setReactionCounts({ heart: 0, fire: 0, laugh: 0, bored: 0 });
               clearStoredVotedPollId();
               closePoll();
               appendChat("Nieuwe sessie gestart. Herverbinden...");
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "session_closed") {
+              pausedByServer = true;
+              serverPauseReason = "session_inactive";
+              setReactionCounts({ heart: 0, fire: 0, laugh: 0, bored: 0 });
+              clearStoredVotedPollId();
+              closePoll();
+              appendChat("Sessie beëindigd. Wacht op een nieuwe join-link.");
               noteServerSeen();
               return;
             }
@@ -1450,7 +1493,13 @@
 
       function send() {
         if (pausedByServer) {
-          appendChat("Deze sessie is gesloten. Ververs pagina om opnieuw mee te doen.");
+          appendChat(
+            serverPauseReason === "join_required"
+              ? "Deze sessie is vergrendeld. Scan de nieuwste QR-link om opnieuw mee te doen."
+              : serverPauseReason === "session_inactive"
+                ? "Deze sessie is beëindigd. Wacht op een nieuwe join-link."
+                : "Deze sessie is gesloten. Ververs pagina om opnieuw mee te doen."
+          );
           return;
         }
         const text = textEl.value.trim();

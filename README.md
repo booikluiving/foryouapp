@@ -20,6 +20,8 @@ Belangrijke onderdelen:
 - Donkere modus (admin + client).
 - Server-restart direct vanuit admin.
 - "Onthoud dit apparaat" login voor admin (trusted device).
+- Nieuwe sessie + QR-flow: admin maakt een unieke join-token en QR, clients joinen via `/join?token=...`.
+  - Toegang is sessiegebonden: bij een nieuwe sessie is opnieuw scannen/joinen vereist.
 
 ## Tech stack
 - Node.js (vereist: Node 22+ vanwege `node:sqlite`)
@@ -62,6 +64,8 @@ node scripts/simulate-chatters.js --help
 
 ## Routes
 - `GET /` publieke client
+- `GET /join?token=...` registreert scan/join en stuurt door naar client
+  - zet een sessie-access cookie voor alleen de actuele sessie
 - `GET /admin` admin console
 - `GET /health` healthcheck
 - `GET /debug-log` uitlezen debugregels
@@ -70,6 +74,7 @@ Admin API endpoints (subset):
 - `/admin/login`, `/admin/logout`, `/admin/login/device`
 - `/admin/state`
 - `/admin/session/new`
+- `/admin/session/new-with-token`
 - `/admin/polls/start`, `/admin/polls/close`
 - `/admin/sim/start`, `/admin/sim/update`, `/admin/sim/stop`, `/admin/sim/defaults`
 - `/admin/users/mute`, `/admin/users/unmute`, `/admin/users/block`, `/admin/users/unblock`, `/admin/users/kick`
