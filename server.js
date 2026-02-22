@@ -76,6 +76,16 @@ const SIM_INTERNAL_ACCESS_KEY = crypto.randomBytes(16).toString("hex");
 const SERVER_INSTANCE_ID = `${Date.now()}-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
 const DEFAULT_POLL_DURATION_SECONDS = clampInt(process.env.POLL_DURATION_SECONDS || "60", 5, 3600, 60);
 let currentPollDurationSeconds = DEFAULT_POLL_DURATION_SECONDS;
+const MESSAGE_SLOWDOWN_SETTING_KEY = "message_slowdown_ms";
+const MESSAGE_SLOWDOWN_MIN_MS = 500;
+const MESSAGE_SLOWDOWN_MAX_MS = 8000;
+const DEFAULT_MESSAGE_SLOWDOWN_MS = clampInt(
+  process.env.MESSAGE_SLOWDOWN_MS || "2000",
+  MESSAGE_SLOWDOWN_MIN_MS,
+  MESSAGE_SLOWDOWN_MAX_MS,
+  2000
+);
+let currentMessageSlowdownMs = DEFAULT_MESSAGE_SLOWDOWN_MS;
 const SIM_DEFAULTS = {
   clients: 50,
   durationSec: 0,
@@ -2049,6 +2059,13 @@ currentPollDurationSeconds = clampInt(
   DEFAULT_POLL_DURATION_SECONDS
 );
 setSetting("poll_duration_seconds", String(currentPollDurationSeconds));
+currentMessageSlowdownMs = clampInt(
+  getSetting(MESSAGE_SLOWDOWN_SETTING_KEY, String(DEFAULT_MESSAGE_SLOWDOWN_MS)),
+  MESSAGE_SLOWDOWN_MIN_MS,
+  MESSAGE_SLOWDOWN_MAX_MS,
+  DEFAULT_MESSAGE_SLOWDOWN_MS
+);
+setSetting(MESSAGE_SLOWDOWN_SETTING_KEY, String(currentMessageSlowdownMs));
 
 currentOscListenPort = clampInt(
   getSetting("osc_listen_port", getSetting("osc_port", String(DEFAULT_OSC_CONTROL_LISTEN_PORT))),
@@ -5154,6 +5171,9 @@ function getAdminState(req) {
       oscFeedbackPort: oscControlState.feedbackPort,
       dbPath: DB_PATH,
       pollDurationSeconds: currentPollDurationSeconds,
+      messageSlowdownMs: currentMessageSlowdownMs,
+      messageSlowdownMinMs: MESSAGE_SLOWDOWN_MIN_MS,
+      messageSlowdownMaxMs: MESSAGE_SLOWDOWN_MAX_MS,
     },
     security: {
       debugLogEnabled: DEBUG_LOG_ENABLED,
@@ -6582,6 +6602,23 @@ app.post("/admin/settings/port", requireAdmin, (req, res) => {
   });
 });
 
+app.post("/admin/settings/message-slowdown", requireAdmin, (req, res) => {
+  const ms = clampInt(req.body && req.body.ms, MESSAGE_SLOWDOWN_MIN_MS, MESSAGE_SLOWDOWN_MAX_MS, -1);
+  if (ms < MESSAGE_SLOWDOWN_MIN_MS) {
+    res.status(400).json({ ok: false, error: "invalid_slowdown" });
+    return;
+  }
+  currentMessageSlowdownMs = ms;
+  setSetting(MESSAGE_SLOWDOWN_SETTING_KEY, String(currentMessageSlowdownMs));
+  writeDebug("message_slowdown_updated", { by: "admin", ms: currentMessageSlowdownMs });
+  res.json({
+    ok: true,
+    messageSlowdownMs: currentMessageSlowdownMs,
+    messageSlowdownMinMs: MESSAGE_SLOWDOWN_MIN_MS,
+    messageSlowdownMaxMs: MESSAGE_SLOWDOWN_MAX_MS,
+  });
+});
+
 async function handleAdminOscListenPortUpdate(req, res) {
   const port = clampInt(req.body && req.body.port, 1, 65535, -1);
   if (port < 1) {
@@ -6692,11 +6729,11 @@ function isSimulatorBotIdentity(meta, name = "", clientTag = "") {
 }
 
 const rateMap = new Map();
-/* max 1 message per 2 seconds per client */
+/* max 1 message per configurable delay per client (hard minimum enforced server-side) */
 function allowMessage(key) {
   const t = Date.now();
   const last = rateMap.get(key) || 0;
-  if (t - last < 2000) return false;
+  if (t - last < currentMessageSlowdownMs) return false;
   rateMap.set(key, t);
   return true;
 }

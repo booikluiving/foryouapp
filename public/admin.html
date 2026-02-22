@@ -769,6 +769,21 @@
         </div>
 
         <div class="card stack">
+          <h2>Moderatie tools</h2>
+          <div class="sliderField">
+            <div class="sliderLabel">
+              <span>Bericht slowdown</span>
+              <span id="messageSlowdownMsValue" class="sliderValue">2.00s (2000ms)</span>
+            </div>
+            <input id="messageSlowdownMs" type="range" min="500" max="8000" step="50" value="2000" />
+          </div>
+          <div class="row">
+            <button id="saveMessageSlowdownBtn" type="button">Bewaar slowdown</button>
+          </div>
+          <div class="muted">Hard minimum blijft altijd actief om spam te voorkomen, ook als je de slider lager probeert te zetten.</div>
+        </div>
+
+        <div class="card stack">
           <h2>Recente moderatie-acties</h2>
           <pre id="actionsLog" class="mono" style="white-space: pre-wrap;"></pre>
         </div>
@@ -884,6 +899,9 @@
       const oscCommandsHelpEl = document.getElementById("oscCommandsHelp");
       const liveChatLogEl = document.getElementById("liveChatLog");
       const liveChatResizeHandleEl = document.getElementById("liveChatResizeHandle");
+      const messageSlowdownMsEl = document.getElementById("messageSlowdownMs");
+      const messageSlowdownMsValueEl = document.getElementById("messageSlowdownMsValue");
+      const saveMessageSlowdownBtn = document.getElementById("saveMessageSlowdownBtn");
       const usersSearchInputEl = document.getElementById("usersSearchInput");
       const usersSearchClearBtnEl = document.getElementById("usersSearchClearBtn");
       const usersSearchStateEl = document.getElementById("usersSearchState");
@@ -951,6 +969,8 @@
       let sessionDurationStartedAtMs = 0;
       let sessionDurationClockSkewMs = 0;
       let sessionDurationTickerTimer = null;
+      let messageSlowdownMinMs = 500;
+      let messageSlowdownMaxMs = 8000;
 
       try {
         localStorage.removeItem("admin_token");
@@ -1746,6 +1766,22 @@
         if (hours > 0) return `${hours}u ${minutes}m ${seconds}s`;
         if (minutes > 0) return `${minutes}m ${seconds}s`;
         return `${seconds}s`;
+      }
+
+      function clampMessageSlowdownMs(input) {
+        const value = Number(input);
+        if (!Number.isFinite(value)) return messageSlowdownMinMs;
+        return Math.max(messageSlowdownMinMs, Math.min(messageSlowdownMaxMs, Math.round(value)));
+      }
+
+      function formatSlowdownValue(ms) {
+        const safe = clampMessageSlowdownMs(ms);
+        return `${(safe / 1000).toFixed(2)}s (${safe}ms)`;
+      }
+
+      function updateMessageSlowdownValueLabel() {
+        if (!messageSlowdownMsValueEl || !messageSlowdownMsEl) return;
+        messageSlowdownMsValueEl.textContent = formatSlowdownValue(messageSlowdownMsEl.value);
       }
 
       function getLiveSessionDurationSeconds() {
@@ -2784,6 +2820,8 @@
           "\\nOSC commands: " + Number(runtime.oscCommandCount || 0) +
           (runtime.oscLastError ? "\\nOSC fout: " + String(runtime.oscLastError) : "") +
           "\\nPoll duur: " + Number(runtime.pollDurationSeconds || 60) + "s" +
+          "\\nBericht slowdown: " + Number(runtime.messageSlowdownMs || 0) + "ms" +
+          "\\nBericht slowdown min: " + Number(runtime.messageSlowdownMinMs || 0) + "ms" +
           "\\nDB: " + runtime.dbPath;
         nextPortEl.value = runtime.nextPort;
         if (document.activeElement !== oscListenPortEl) {
@@ -2796,6 +2834,19 @@
           oscSendPortEl.value = Number(runtime.oscFeedbackPort || 0) > 0
             ? String(Number(runtime.oscFeedbackPort || 0))
             : "";
+        }
+        messageSlowdownMinMs = Math.max(500, Number(runtime.messageSlowdownMinMs || messageSlowdownMinMs || 500));
+        messageSlowdownMaxMs = Math.max(
+          messageSlowdownMinMs,
+          Number(runtime.messageSlowdownMaxMs || messageSlowdownMaxMs || 8000)
+        );
+        if (messageSlowdownMsEl) {
+          messageSlowdownMsEl.min = String(messageSlowdownMinMs);
+          messageSlowdownMsEl.max = String(messageSlowdownMaxMs);
+          if (document.activeElement !== messageSlowdownMsEl) {
+            messageSlowdownMsEl.value = String(clampMessageSlowdownMs(runtime.messageSlowdownMs || messageSlowdownMinMs));
+          }
+          updateMessageSlowdownValueLabel();
         }
         renderOscCommands(data.oscCommands);
         const pollDurationForInput = data.activePoll
@@ -3443,6 +3494,21 @@
             : "OSC send target gewist (reply naar afzender)."
         );
       });
+      if (messageSlowdownMsEl) {
+        messageSlowdownMsEl.addEventListener("input", updateMessageSlowdownValueLabel);
+        messageSlowdownMsEl.addEventListener("change", () => {
+          messageSlowdownMsEl.value = String(clampMessageSlowdownMs(messageSlowdownMsEl.value));
+          updateMessageSlowdownValueLabel();
+        });
+      }
+      if (saveMessageSlowdownBtn && messageSlowdownMsEl) {
+        saveMessageSlowdownBtn.addEventListener("click", () => {
+          const ms = clampMessageSlowdownMs(messageSlowdownMsEl.value);
+          messageSlowdownMsEl.value = String(ms);
+          updateMessageSlowdownValueLabel();
+          runAction("/admin/settings/message-slowdown", { ms }, `Slowdown bewaard (${ms}ms).`);
+        });
+      }
       if (usersSearchClearBtnEl && usersSearchInputEl) {
         usersSearchClearBtnEl.addEventListener("click", () => {
           if (usersSearchInputDebounceTimer) {
@@ -3525,6 +3591,7 @@
       });
       ensureMinimumPollOptionRows();
       updateSimSliderLabels();
+      updateMessageSlowdownValueLabel();
       if (!pollBadgeTimer) {
         pollBadgeTimer = setInterval(updateLivePollBadgeFromLastState, 1000);
       }
