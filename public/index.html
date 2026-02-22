@@ -521,13 +521,6 @@
         return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "";
       }
 
-      function formatChatTime(value) {
-        const parsed = new Date(value);
-        return Number.isNaN(parsed.getTime())
-          ? String(value || "")
-          : parsed.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
-      }
-
       function renderChatFeed() {
         chatFeedEl.textContent = "";
         const fragment = document.createDocumentFragment();
@@ -536,10 +529,6 @@
           row.className = "chatLine";
 
           if (entry && entry.type === "comment") {
-            const timeNode = document.createElement("span");
-            timeNode.className = "chatTime";
-            timeNode.textContent = String(entry.time || "") + "  ";
-
             const nameNode = document.createElement("span");
             nameNode.className = "chatName";
             nameNode.textContent = String(entry.name || "Anoniem");
@@ -548,7 +537,6 @@
             const textNode = document.createElement("span");
             textNode.textContent = ": " + String(entry.text || "");
 
-            row.appendChild(timeNode);
             row.appendChild(nameNode);
             row.appendChild(textNode);
           } else {
@@ -579,7 +567,6 @@
         if (!text) return;
         pushChatEntry({
           type: "comment",
-          time: formatChatTime(msg && msg.time),
           name: String((msg && msg.name) || "Anoniem").slice(0, 24),
           text,
           nameColor: sanitizeNameColor(msg && msg.nameColor),

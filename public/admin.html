@@ -237,6 +237,14 @@
         flex: 0 0 auto;
         min-width: auto;
       }
+      .usersSearchRow > input {
+        flex: 1 1 260px;
+        min-width: 200px;
+      }
+      .usersSearchRow > button {
+        flex: 0 0 auto;
+        min-width: auto;
+      }
       .stats { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
       .stat { border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
       .stat .k { font-size: 12px; color: var(--muted); }
@@ -495,7 +503,12 @@
 
         <div class="card stack">
           <h2>Live gebruikers</h2>
-          <div class="muted">Moderatie-acties gelden per IP-adres (dus ook nieuwe tabbladen op hetzelfde netwerk).</div>
+          <div class="muted">Moderatie werkt op IP voor normale users, en per bot-client voor simulatiebots.</div>
+          <div class="row usersSearchRow">
+            <input id="usersSearchInput" type="search" placeholder="Zoek op naam, IP of chattekst..." />
+            <button id="usersSearchClearBtn" type="button">Reset</button>
+          </div>
+          <div id="usersSearchState" class="muted"></div>
           <table>
             <thead>
               <tr>
@@ -510,11 +523,11 @@
         </div>
 
         <div class="card stack">
-          <h2>Actieve IP-maatregelen</h2>
+          <h2>Actieve maatregelen</h2>
           <table>
             <thead>
               <tr>
-                <th>IP</th>
+                <th>Doel</th>
                 <th>Type</th>
                 <th>Einde</th>
                 <th>Actie</th>
@@ -581,6 +594,9 @@
       const runtimeStateEl = document.getElementById("runtimeState");
       const liveChatLogEl = document.getElementById("liveChatLog");
       const liveChatResizeHandleEl = document.getElementById("liveChatResizeHandle");
+      const usersSearchInputEl = document.getElementById("usersSearchInput");
+      const usersSearchClearBtnEl = document.getElementById("usersSearchClearBtn");
+      const usersSearchStateEl = document.getElementById("usersSearchState");
       const usersBodyEl = document.getElementById("usersBody");
       const enforcementBodyEl = document.getElementById("enforcementBody");
       const actionsLogEl = document.getElementById("actionsLog");
@@ -622,6 +638,12 @@
       let liveChatResizePointerId = null;
       let liveChatResizeStartY = 0;
       let liveChatResizeStartHeight = LIVE_CHAT_DEFAULT_HEIGHT;
+      let usersSearchText = "";
+      let usersSearchQuery = "";
+      let usersSearchBusy = false;
+      let usersSearchRunId = 0;
+      let usersSearchInputDebounceTimer = null;
+      let usersSearchDeepMatches = new Set();
 
       function setActionMessage(text) {
         actionMsgEl.textContent = text || "";
@@ -1315,7 +1337,6 @@
       }
 
       function formatHistoryLineHtml(message) {
-        const time = formatTs(message && message.time);
         const name = String((message && message.name) || "Anoniem");
         const text = String((message && message.text) || "");
         const status = String((message && message.status) || "");
@@ -1324,7 +1345,19 @@
           : "";
         const nameColor = sanitizeNameColor(message && message.nameColor);
         const nameStyle = nameColor ? ` style="color:${nameColor}"` : "";
-        return `<div class="chatLine"><span class="chatTime">${esc(time)}</span>  <span class="chatName"${nameStyle}>${esc(name)}</span>: ${esc(text)}${suffix}</div>`;
+        return `<div class="chatLine"><span class="chatName"${nameStyle}>${esc(name)}</span>: ${esc(text)}${suffix}</div>`;
+      }
+
+      function formatModerationTargetLabel(input) {
+        const raw = String(input || "").trim();
+        if (!raw) return "iemand";
+        let label = raw;
+        label = label.replace(/\s*\([^)]*\)\s*@\s*\S+\s*$/u, "").trim();
+        label = label.replace(/\s*@\s*\S+\s*$/u, "").trim();
+        label = label.replace(/\s*\([^)]*\)\s*$/u, "").trim();
+        if (!label) label = raw;
+        if (/^[0-9a-f:.|_-]+$/i.test(label)) return "iemand";
+        return label;
       }
 
       function normalizePollDurationSeconds(value, fallback = 60) {
@@ -1681,16 +1714,237 @@
         return list.map((m) => formatHistoryLine(m)).join("\n");
       }
 
-      async function loadUserHistory(clientKey, ip) {
+      async function loadUserHistory(clientKey, ip, targetKind = "") {
+        const normalizedKind = String(targetKind || "").trim().toLowerCase();
         const query = new URLSearchParams({
           clientKey: String(clientKey || ""),
-          ip: String(ip || ""),
           limit: "80",
         });
+        if (ip) query.set("ip", String(ip || ""));
+        if (normalizedKind === "client" || normalizedKind === "ip") {
+          query.set("targetKind", normalizedKind);
+        }
         const data = await api("/admin/user-history?" + query.toString());
         const messages = Array.isArray(data.messages) ? data.messages : [];
-        userHistoryCache.set(String(clientKey || ""), { ip: data.targetIp || ip, messages });
+        userHistoryCache.set(String(clientKey || ""), {
+          ip: data.targetIp || ip,
+          targetKind: String(data.targetKind || normalizedKind || ""),
+          messages,
+        });
         return messages;
+      }
+
+      function normalizeUsersSearchValue(input) {
+        return String(input || "")
+          .toLowerCase()
+          .normalize("NFKC")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function messageMatchesUsersSearch(message, query) {
+        if (!query) return false;
+        const fields = [
+          message && message.name,
+          message && message.text,
+          message && message.status,
+          message && message.detail,
+        ];
+        for (const field of fields) {
+          if (normalizeUsersSearchValue(field).includes(query)) return true;
+        }
+        return false;
+      }
+
+      function buildRecentMessagesByClientKey(messages) {
+        const out = new Map();
+        const list = Array.isArray(messages) ? messages : [];
+        for (const message of list) {
+          const key = String((message && message.clientKey) || "").trim();
+          if (!key) continue;
+          if (!out.has(key)) out.set(key, []);
+          out.get(key).push(message);
+        }
+        return out;
+      }
+
+      function userMatchesUsersSearch(user, query, recentByClientKey) {
+        if (!query) return true;
+        const clientKey = String((user && user.clientKey) || "").trim();
+        const fields = [
+          user && user.name,
+          user && user.ip,
+          clientKey,
+        ];
+        for (const field of fields) {
+          if (normalizeUsersSearchValue(field).includes(query)) return true;
+        }
+
+        const recentMessages = recentByClientKey.get(clientKey) || [];
+        for (const message of recentMessages) {
+          if (messageMatchesUsersSearch(message, query)) return true;
+        }
+
+        const historyEntry = userHistoryCache.get(clientKey);
+        const historyMessages = historyEntry && Array.isArray(historyEntry.messages)
+          ? historyEntry.messages
+          : [];
+        for (const message of historyMessages) {
+          if (messageMatchesUsersSearch(message, query)) return true;
+        }
+
+        return usersSearchDeepMatches.has(clientKey);
+      }
+
+      function filterUsersBySearch(users, recentMessages) {
+        const list = Array.isArray(users) ? users : [];
+        if (!usersSearchQuery) return list.slice();
+        const recentByClientKey = buildRecentMessagesByClientKey(recentMessages);
+        return list.filter((user) => userMatchesUsersSearch(user, usersSearchQuery, recentByClientKey));
+      }
+
+      function updateUsersSearchState(totalUsers, visibleUsers) {
+        if (!usersSearchStateEl) return;
+        const total = Number(totalUsers || 0);
+        const visible = Number(visibleUsers || 0);
+        if (!usersSearchQuery) {
+          usersSearchStateEl.textContent = `Live gebruikers: ${visible}`;
+          return;
+        }
+        const base = `Zoek "${usersSearchText}": ${visible} van ${total}`;
+        usersSearchStateEl.textContent = usersSearchBusy
+          ? `${base} (chatgeschiedenis laden...)`
+          : base;
+      }
+
+      async function hydrateUsersSearchMatches(runId) {
+        if (!usersSearchQuery || !lastState) return;
+        const users = Array.isArray(lastState.users) ? lastState.users : [];
+        const recentByClientKey = buildRecentMessagesByClientKey(lastState.recentMessages);
+        const queue = [];
+
+        for (const user of users) {
+          const clientKey = String((user && user.clientKey) || "").trim();
+          if (!clientKey) continue;
+          if (userMatchesUsersSearch(user, usersSearchQuery, recentByClientKey)) continue;
+          if (userHistoryCache.has(clientKey)) continue;
+          const targetKind = String((user && user.moderationTargetKind) || (user && user.isBot ? "client" : "ip"));
+          queue.push({ clientKey, ip: String((user && user.ip) || ""), targetKind });
+        }
+
+        if (!queue.length) return;
+
+        usersSearchBusy = true;
+        if (lastState) renderState(lastState);
+
+        try {
+          for (const target of queue) {
+            if (runId !== usersSearchRunId || !usersSearchQuery) return;
+            let messages = [];
+            try {
+              messages = await loadUserHistory(target.clientKey, target.ip, target.targetKind);
+            } catch {}
+            if (runId !== usersSearchRunId || !usersSearchQuery) return;
+            if (Array.isArray(messages) && messages.some((message) => messageMatchesUsersSearch(message, usersSearchQuery))) {
+              usersSearchDeepMatches.add(target.clientKey);
+            }
+          }
+        } finally {
+          if (runId === usersSearchRunId) {
+            usersSearchBusy = false;
+            if (lastState) renderState(lastState);
+          }
+        }
+      }
+
+      function applyUsersSearch(text) {
+        const nextText = String(text || "").trim();
+        usersSearchText = nextText;
+        usersSearchQuery = normalizeUsersSearchValue(nextText);
+        usersSearchDeepMatches = new Set();
+        usersSearchBusy = false;
+        usersSearchRunId += 1;
+        const runId = usersSearchRunId;
+        if (lastState) renderState(lastState);
+        if (!usersSearchQuery || !lastState) return;
+        hydrateUsersSearchMatches(runId);
+      }
+
+      function renderUsersTable(data) {
+        const users = Array.isArray(data && data.users) ? data.users : [];
+        const filteredUsers = filterUsersBySearch(users, data && data.recentMessages);
+        updateUsersSearchState(users.length, filteredUsers.length);
+
+        if (!filteredUsers.length) {
+          const noResult = usersSearchQuery
+            ? `Geen live gebruikers gevonden voor "${usersSearchText}".`
+            : "Geen live gebruikers.";
+          usersBodyEl.innerHTML = `<tr><td colspan="4" class="muted">${esc(noResult)}</td></tr>`;
+          return;
+        }
+
+        usersBodyEl.innerHTML = filteredUsers
+          .map((u) => {
+            const targetKind = String(u.moderationTargetKind || (u.isBot ? "client" : "ip")).toLowerCase() === "client"
+              ? "client"
+              : "ip";
+            const targetKey = targetKind === "client"
+              ? String(u.clientKey || "")
+              : String(u.ip || "");
+            const subLabel = targetKind === "client"
+              ? "bot-simulatie"
+              : String(u.ip || "");
+            const status = [
+              u.isBot ? "bot" : "",
+              u.isMuted ? ("muted" + (u.mutedUntil ? " tot " + formatTs(u.mutedUntil) : "")) : "",
+              u.isBlocked ? ("blocked" + (u.blockedUntil ? " tot " + formatTs(u.blockedUntil) : "")) : "",
+            ]
+              .filter(Boolean)
+              .join(" | ") || "ok";
+            const safeName = esc(u.name || "Anoniem");
+            const nameColor = sanitizeNameColor(u.nameColor);
+            const nameHtml = nameColor
+              ? `<span class="userNameColor" style="color:${nameColor}">${safeName}</span>`
+              : `<span class="userNameColor">${safeName}</span>`;
+            const historyEntry = userHistoryCache.get(String(u.clientKey || ""));
+            const isExpanded = expandedUserKeys.has(String(u.clientKey || ""));
+            const historyText = historyEntry
+              ? historyLinesToText(historyEntry.messages)
+              : "Laden...";
+            const historyTargetKind = String((historyEntry && historyEntry.targetKind) || targetKind).toLowerCase();
+            const historyLabel = historyTargetKind === "client"
+              ? `Recente berichten van ${String(u.name || "Anoniem")}`
+              : `Recente berichten op IP ${String(u.ip || "")}`;
+            const detailsLabel = isExpanded ? "Verberg" : "Details";
+            return `<tr>
+              <td>${nameHtml}<div class="muted">${esc(subLabel)}</div></td>
+              <td class="mono">${esc(u.clientKey)}</td>
+              <td>${esc(status)}</td>
+              <td>
+                <div class="smallbtns">
+                  <button data-act="details" data-key="${esc(targetKey)}" data-client-key="${esc(u.clientKey)}" data-ip="${esc(u.ip)}" data-target-kind="${targetKind}">${detailsLabel}</button>
+                  <button data-act="mute1" data-key="${esc(targetKey)}" data-ip="${esc(u.ip)}" data-target-kind="${targetKind}">Mute 1m</button>
+                  <button data-act="mute2" data-key="${esc(targetKey)}" data-ip="${esc(u.ip)}" data-target-kind="${targetKind}">Mute 2m</button>
+                  <button data-act="mute5" data-key="${esc(targetKey)}" data-ip="${esc(u.ip)}" data-target-kind="${targetKind}">Mute 5m</button>
+                  <button data-act="unmute" data-key="${esc(targetKey)}" data-ip="${esc(u.ip)}" data-target-kind="${targetKind}">Unmute</button>
+                  <button data-act="block" data-key="${esc(targetKey)}" data-ip="${esc(u.ip)}" data-target-kind="${targetKind}" class="danger">Block</button>
+                  <button data-act="unblock" data-key="${esc(targetKey)}" data-ip="${esc(u.ip)}" data-target-kind="${targetKind}">Unblock</button>
+                </div>
+              </td>
+            </tr>${
+              isExpanded
+                ? `<tr>
+                    <td colspan="4">
+                      <div class="historyCell">
+                        <div class="muted">${esc(historyLabel)}</div>
+                        <pre class="mono historyLog">${esc(historyText)}</pre>
+                      </div>
+                    </td>
+                  </tr>`
+                : ""
+            }`;
+          })
+          .join("");
       }
 
       function renderState(data) {
@@ -1731,55 +1985,7 @@
         renderPollStatusBadge(data);
         renderSimulationState(data);
         renderLiveChat(data.recentMessages);
-
-        usersBodyEl.innerHTML = data.users
-          .map((u) => {
-            const status = [
-              u.isMuted ? ("muted" + (u.mutedUntil ? " tot " + formatTs(u.mutedUntil) : "")) : "",
-              u.isBlocked ? ("blocked" + (u.blockedUntil ? " tot " + formatTs(u.blockedUntil) : "")) : "",
-            ]
-              .filter(Boolean)
-              .join(" | ") || "ok";
-            const safeName = esc(u.name || "Anoniem");
-            const nameColor = sanitizeNameColor(u.nameColor);
-            const nameHtml = nameColor
-              ? `<span class="userNameColor" style="color:${nameColor}">${safeName}</span>`
-              : `<span class="userNameColor">${safeName}</span>`;
-            const historyEntry = userHistoryCache.get(String(u.clientKey || ""));
-            const isExpanded = expandedUserKeys.has(String(u.clientKey || ""));
-            const historyText = historyEntry
-              ? historyLinesToText(historyEntry.messages)
-              : "Laden...";
-            const detailsLabel = isExpanded ? "Verberg" : "Details";
-            return `<tr>
-              <td>${nameHtml}<div class="muted">${esc(u.ip)}</div></td>
-              <td class="mono">${esc(u.clientKey)}</td>
-              <td>${esc(status)}</td>
-              <td>
-                <div class="smallbtns">
-                  <button data-act="details" data-key="${esc(u.clientKey)}" data-ip="${esc(u.ip)}">${detailsLabel}</button>
-                  <button data-act="mute1" data-key="${esc(u.clientKey)}">Mute IP 1m</button>
-                  <button data-act="mute2" data-key="${esc(u.clientKey)}">Mute IP 2m</button>
-                  <button data-act="mute5" data-key="${esc(u.clientKey)}">Mute IP 5m</button>
-                  <button data-act="unmute" data-key="${esc(u.clientKey)}">Unmute</button>
-                  <button data-act="block" data-key="${esc(u.clientKey)}" class="danger">Block IP</button>
-                  <button data-act="unblock" data-key="${esc(u.clientKey)}">Unblock</button>
-                </div>
-              </td>
-            </tr>${
-              isExpanded
-                ? `<tr>
-                    <td colspan="4">
-                      <div class="historyCell">
-                        <div class="muted">Recente berichten op IP ${esc(u.ip)}</div>
-                        <pre class="mono historyLog">${esc(historyText)}</pre>
-                      </div>
-                    </td>
-                  </tr>`
-                : ""
-            }`;
-          })
-          .join("");
+        renderUsersTable(data);
 
         const mutedEntries = (data.enforcement && Array.isArray(data.enforcement.muted))
           ? data.enforcement.muted
@@ -1789,28 +1995,50 @@
           : [];
         const enforcementRows = []
           .concat(mutedEntries.map((entry) => ({
-            ip: entry.ip,
+            targetKind: String(entry && entry.targetKind || "").toLowerCase() === "client" ? "client" : "ip",
+            targetKey: String(
+              (entry && entry.targetKey) ||
+              (String(entry && entry.targetKind || "").toLowerCase() === "client"
+                ? (entry && entry.targetClientKey)
+                : (entry && (entry.targetIp || entry.ip))) ||
+              ""
+            ),
+            targetIp: String((entry && (entry.targetIp || entry.ip)) || ""),
+            targetClientKey: String((entry && entry.targetClientKey) || ""),
+            targetLabel: String((entry && entry.targetLabel) || (entry && (entry.targetIp || entry.targetClientKey || entry.ip)) || ""),
             type: "Muted",
             until: entry.mutedUntil || null,
             action: "unmute",
           })))
           .concat(blockedEntries.map((entry) => ({
-            ip: entry.ip,
+            targetKind: String(entry && entry.targetKind || "").toLowerCase() === "client" ? "client" : "ip",
+            targetKey: String(
+              (entry && entry.targetKey) ||
+              (String(entry && entry.targetKind || "").toLowerCase() === "client"
+                ? (entry && entry.targetClientKey)
+                : (entry && (entry.targetIp || entry.ip))) ||
+              ""
+            ),
+            targetIp: String((entry && (entry.targetIp || entry.ip)) || ""),
+            targetClientKey: String((entry && entry.targetClientKey) || ""),
+            targetLabel: String((entry && entry.targetLabel) || (entry && (entry.targetIp || entry.targetClientKey || entry.ip)) || ""),
             type: "Blocked",
             until: entry.blockedUntil || null,
             action: "unblock",
-          })));
+          })))
+          .filter((row) => !!row.targetKey);
 
         enforcementBodyEl.innerHTML = enforcementRows.length
           ? enforcementRows
               .map((row) => {
                 const endLabel = row.until ? formatTs(row.until) : "geen eindtijd";
                 const buttonLabel = row.action === "unmute" ? "Unmute" : "Unblock";
+                const safeTargetLabel = formatModerationTargetLabel(row.targetLabel || row.targetKey);
                 return `<tr>
-                  <td class="mono">${row.ip}</td>
+                  <td class="mono">${esc(safeTargetLabel)}<div class="muted">${esc(row.targetKind)}</div></td>
                   <td>${row.type}</td>
                   <td>${endLabel}</td>
-                  <td><button data-act="${row.action}" data-key="${row.ip}">${buttonLabel}</button></td>
+                  <td><button data-act="${row.action}" data-key="${esc(row.targetKey)}" data-target-kind="${esc(row.targetKind)}" data-ip="${esc(row.targetIp || "")}">${buttonLabel}</button></td>
                 </tr>`;
               })
               .join("")
@@ -1818,7 +2046,10 @@
 
         actionsLogEl.textContent = Array.isArray(data.recentActions) && data.recentActions.length
           ? data.recentActions
-              .map((a) => `${formatTs(a.time)}  ${a.actionType}  ${a.clientKey}${a.reason ? "  (" + a.reason + ")" : ""}`)
+              .map((a) => {
+                const targetLabel = formatModerationTargetLabel(a.clientLabel || a.clientKey);
+                return `${formatTs(a.time)}  ${a.actionType}  ${targetLabel}${a.reason ? "  (" + a.reason + ")" : ""}`;
+              })
               .join("\\n")
           : "(geen acties)";
       }
@@ -2066,41 +2297,77 @@
       saveOscPortBtn.addEventListener("click", () => {
         runAction("/admin/settings/osc-port", { port: Number(oscPortEl.value) }, "OSC poortinstelling bewaard.");
       });
+      if (usersSearchClearBtnEl && usersSearchInputEl) {
+        usersSearchClearBtnEl.addEventListener("click", () => {
+          if (usersSearchInputDebounceTimer) {
+            clearTimeout(usersSearchInputDebounceTimer);
+            usersSearchInputDebounceTimer = null;
+          }
+          usersSearchInputEl.value = "";
+          applyUsersSearch("");
+          usersSearchInputEl.focus();
+        });
+      }
+      if (usersSearchInputEl) {
+        usersSearchInputEl.addEventListener("input", () => {
+          if (usersSearchInputDebounceTimer) clearTimeout(usersSearchInputDebounceTimer);
+          usersSearchInputDebounceTimer = setTimeout(() => {
+            usersSearchInputDebounceTimer = null;
+            applyUsersSearch(usersSearchInputEl.value);
+          }, 120);
+        });
+        usersSearchInputEl.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          if (usersSearchInputDebounceTimer) {
+            clearTimeout(usersSearchInputDebounceTimer);
+            usersSearchInputDebounceTimer = null;
+          }
+          applyUsersSearch(usersSearchInputEl.value);
+        });
+      }
 
       async function handleModerationButtonClick(e) {
         const btn = e.target.closest("button[data-act]");
         if (!btn) return;
         const act = btn.getAttribute("data-act");
-        const clientKey = btn.getAttribute("data-key");
-        if (!clientKey) return;
+        const targetKey = String(btn.getAttribute("data-key") || "");
+        const targetKindRaw = String(btn.getAttribute("data-target-kind") || "").toLowerCase();
+        const targetKind = targetKindRaw === "client" ? "client" : "ip";
+        const targetIp = String(btn.getAttribute("data-ip") || "");
+        if (!targetKey) return;
+        const actionPayload = { clientKey: targetKey, targetKind, ip: targetIp };
 
         if (act === "details") {
-          const ip = btn.getAttribute("data-ip") || "";
-          if (expandedUserKeys.has(clientKey)) {
-            expandedUserKeys.delete(clientKey);
+          const historyClientKey = String(btn.getAttribute("data-client-key") || (targetKind === "client" ? targetKey : ""));
+          const expandedKey = historyClientKey || targetKey;
+          if (!expandedKey) return;
+          if (expandedUserKeys.has(expandedKey)) {
+            expandedUserKeys.delete(expandedKey);
             if (lastState) renderState(lastState);
             return;
           }
-          expandedUserKeys.add(clientKey);
+          expandedUserKeys.add(expandedKey);
           if (lastState) renderState(lastState);
           try {
-            await loadUserHistory(clientKey, ip);
+            await loadUserHistory(historyClientKey || targetKey, targetIp, targetKind);
           } catch (err) {
-            userHistoryCache.set(clientKey, {
-              ip,
+            userHistoryCache.set(historyClientKey || targetKey, {
+              ip: targetIp,
+              targetKind,
               messages: [{ time: new Date().toISOString(), name: "", text: "Kon historie niet laden: " + err.message, status: "error" }],
             });
           }
-          if (expandedUserKeys.has(clientKey) && lastState) renderState(lastState);
+          if (expandedUserKeys.has(expandedKey) && lastState) renderState(lastState);
           return;
         }
 
-        if (act === "mute1") runAction("/admin/users/mute", { clientKey, minutes: 1 }, "IP gemute (1m).");
-        if (act === "mute2") runAction("/admin/users/mute", { clientKey, minutes: 2 }, "IP gemute (2m).");
-        if (act === "mute5") runAction("/admin/users/mute", { clientKey, minutes: 5 }, "IP gemute (5m).");
-        if (act === "unmute") runAction("/admin/users/unmute", { clientKey }, "IP unmuted.");
-        if (act === "block") runAction("/admin/users/block", { clientKey }, "IP geblokkeerd.");
-        if (act === "unblock") runAction("/admin/users/unblock", { clientKey }, "IP unblocked.");
+        if (act === "mute1") runAction("/admin/users/mute", Object.assign({}, actionPayload, { minutes: 1 }), "Gebruiker gemute (1m).");
+        if (act === "mute2") runAction("/admin/users/mute", Object.assign({}, actionPayload, { minutes: 2 }), "Gebruiker gemute (2m).");
+        if (act === "mute5") runAction("/admin/users/mute", Object.assign({}, actionPayload, { minutes: 5 }), "Gebruiker gemute (5m).");
+        if (act === "unmute") runAction("/admin/users/unmute", actionPayload, "Gebruiker unmuted.");
+        if (act === "block") runAction("/admin/users/block", actionPayload, "Gebruiker geblokkeerd.");
+        if (act === "unblock") runAction("/admin/users/unblock", actionPayload, "Gebruiker unblocked.");
       }
       usersBodyEl.addEventListener("click", handleModerationButtonClick);
       enforcementBodyEl.addEventListener("click", handleModerationButtonClick);

@@ -934,6 +934,17 @@ function buildClientKey(ip, clientTag) {
   return `${normalizeIp(ip)}|${sanitizeClientTag(clientTag)}`;
 }
 
+function normalizeClientKey(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const separatorIndex = raw.indexOf("|");
+  if (separatorIndex <= 0) return "";
+  const ip = normalizeIp(raw.slice(0, separatorIndex));
+  const tag = sanitizeClientTag(raw.slice(separatorIndex + 1));
+  if (!ip || !tag) return "";
+  return `${ip}|${tag}`;
+}
+
 function extractIpFromClientKey(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -942,14 +953,156 @@ function extractIpFromClientKey(value) {
   return normalizeIp(raw);
 }
 
-function resolveTargetIp(target) {
-  if (!target) return "";
-  if (typeof target === "string") return extractIpFromClientKey(target);
-  if (typeof target === "object") {
-    if (target.ip) return normalizeIp(target.ip);
-    if (target.clientKey) return extractIpFromClientKey(target.clientKey);
-  }
+function normalizeTargetKind(input) {
+  const kind = String(input || "").trim().toLowerCase();
+  if (kind === "client" || kind === "ip") return kind;
   return "";
+}
+
+function getConnectedClientByClientKey(clientKey) {
+  const normalizedKey = normalizeClientKey(clientKey);
+  if (!normalizedKey) return null;
+  for (const client of connectedClients.values()) {
+    if (String(client.clientKey || "") === normalizedKey) return client;
+  }
+  return null;
+}
+
+function isBotClientKey(clientKey) {
+  const normalizedKey = normalizeClientKey(clientKey);
+  if (!normalizedKey) return false;
+
+  const connectedClient = getConnectedClientByClientKey(normalizedKey);
+  if (connectedClient) {
+    return isSimulatorBotIdentity(connectedClient, connectedClient.name, connectedClient.clientTag);
+  }
+
+  const separatorIndex = normalizedKey.indexOf("|");
+  const clientTag = separatorIndex >= 0 ? normalizedKey.slice(separatorIndex + 1) : "";
+  return isSimulatorClientTag(clientTag);
+}
+
+function toModerationScopeKey(scope) {
+  if (!scope || !scope.kind) return "";
+  if (scope.kind === "client") {
+    const clientKey = normalizeClientKey(scope.clientKey);
+    if (!clientKey) return "";
+    return `client:${clientKey}`;
+  }
+  const ip = normalizeIp(scope.ip);
+  if (!ip) return "";
+  return `ip:${ip}`;
+}
+
+function parseModerationScopeKey(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+
+  if (raw.startsWith("client:")) {
+    const clientKey = normalizeClientKey(raw.slice(7));
+    if (!clientKey) return null;
+    const scope = {
+      kind: "client",
+      clientKey,
+      ip: extractIpFromClientKey(clientKey),
+    };
+    scope.scopeKey = toModerationScopeKey(scope);
+    return scope;
+  }
+
+  if (raw.startsWith("ip:")) {
+    const ip = normalizeIp(raw.slice(3));
+    if (!ip) return null;
+    const scope = { kind: "ip", ip, clientKey: "" };
+    scope.scopeKey = toModerationScopeKey(scope);
+    return scope;
+  }
+
+  if (raw.includes("|")) {
+    const clientKey = normalizeClientKey(raw);
+    if (clientKey && isBotClientKey(clientKey)) {
+      const scope = {
+        kind: "client",
+        clientKey,
+        ip: extractIpFromClientKey(clientKey),
+      };
+      scope.scopeKey = toModerationScopeKey(scope);
+      return scope;
+    }
+    const ip = extractIpFromClientKey(raw);
+    if (!ip) return null;
+    const scope = { kind: "ip", ip, clientKey: "" };
+    scope.scopeKey = toModerationScopeKey(scope);
+    return scope;
+  }
+
+  const ip = normalizeIp(raw);
+  if (!ip) return null;
+  const scope = { kind: "ip", ip, clientKey: "" };
+  scope.scopeKey = toModerationScopeKey(scope);
+  return scope;
+}
+
+function resolveModerationScope(target, options = {}) {
+  const preferredKind = normalizeTargetKind(options.kind || (target && (target.targetKind || target.kind)));
+
+  let rawClientKey = "";
+  let clientKey = "";
+  let ip = "";
+
+  if (typeof target === "string") {
+    const parsed = parseModerationScopeKey(target);
+    if (parsed && !preferredKind) return parsed;
+    if (parsed) {
+      clientKey = parsed.clientKey || "";
+      ip = parsed.ip || "";
+    } else if (target.includes("|")) {
+      clientKey = normalizeClientKey(target);
+      ip = extractIpFromClientKey(target);
+    } else {
+      ip = normalizeIp(target);
+    }
+  } else if (target && typeof target === "object") {
+    if (target.clientKey) {
+      rawClientKey = String(target.clientKey || "").trim();
+      clientKey = normalizeClientKey(rawClientKey);
+    }
+    if (target.ip) ip = normalizeIp(target.ip);
+  }
+
+  if (!ip && !clientKey && rawClientKey && preferredKind === "ip") {
+    ip = normalizeIp(rawClientKey);
+  }
+  if (!ip && clientKey) ip = extractIpFromClientKey(clientKey);
+
+  let kind = preferredKind;
+  if (!kind) {
+    if (clientKey && isBotClientKey(clientKey)) kind = "client";
+    else if (ip) kind = "ip";
+    else if (clientKey) kind = "client";
+  }
+
+  if (kind === "client") {
+    if (!clientKey) return null;
+    const scope = { kind, clientKey, ip };
+    scope.scopeKey = toModerationScopeKey(scope);
+    return scope.scopeKey ? scope : null;
+  }
+
+  if (kind === "ip") {
+    if (!ip && rawClientKey) ip = normalizeIp(rawClientKey);
+    if (!ip) return null;
+    const scope = { kind, ip, clientKey };
+    scope.scopeKey = toModerationScopeKey(scope);
+    return scope.scopeKey ? scope : null;
+  }
+
+  return null;
+}
+
+function resolveTargetIp(target) {
+  const scope = resolveModerationScope(target, { kind: "ip" });
+  return scope && scope.ip ? scope.ip : "";
 }
 
 function parseIsoTime(value) {
@@ -1122,6 +1275,13 @@ const sql = {
     `SELECT id, time, name, text, status, detail, client_key AS clientKey, ip
      FROM chat_messages
      WHERE session_id = ? AND ip = ?
+     ORDER BY id DESC
+     LIMIT ?`
+  ),
+  getRecentMessagesByClientKey: db.prepare(
+    `SELECT id, time, name, text, status, detail, client_key AS clientKey, ip
+     FROM chat_messages
+     WHERE session_id = ? AND client_key = ?
      ORDER BY id DESC
      LIMIT ?`
   ),
@@ -1325,67 +1485,83 @@ function rebuildEnforcementState() {
 
   const rows = sql.getSessionModerationActions.all(currentSession.id);
   for (const row of rows) {
-    const targetIp = resolveTargetIp(String(row.clientKey || ""));
-    if (!targetIp) continue;
+    const scope = parseModerationScopeKey(String(row.clientKey || ""));
+    if (!scope || !scope.scopeKey) continue;
     const actionType = String(row.actionType || "");
     const expiresAt = row.expiresAt ? String(row.expiresAt) : null;
+    const state = {
+      expiresAt,
+      targetKind: scope.kind,
+      targetIp: scope.ip || null,
+      targetClientKey: scope.clientKey || null,
+    };
 
     if (actionType === "mute") {
-      mutedUsers.set(targetIp, { expiresAt });
+      mutedUsers.set(scope.scopeKey, state);
       continue;
     }
     if (actionType === "unmute") {
-      mutedUsers.delete(targetIp);
+      mutedUsers.delete(scope.scopeKey);
       continue;
     }
     if (actionType === "block") {
-      blockedUsers.set(targetIp, { expiresAt });
+      blockedUsers.set(scope.scopeKey, state);
       continue;
     }
     if (actionType === "unblock") {
-      blockedUsers.delete(targetIp);
+      blockedUsers.delete(scope.scopeKey);
     }
   }
 }
 
 function cleanupEnforcementMaps() {
   const now = Date.now();
-  for (const [targetIp, state] of mutedUsers.entries()) {
+  for (const [scopeKey, state] of mutedUsers.entries()) {
     const ts = parseIsoTime(state && state.expiresAt);
-    if (ts && ts <= now) mutedUsers.delete(targetIp);
+    if (ts && ts <= now) mutedUsers.delete(scopeKey);
   }
-  for (const [targetIp, state] of blockedUsers.entries()) {
+  for (const [scopeKey, state] of blockedUsers.entries()) {
     const ts = parseIsoTime(state && state.expiresAt);
-    if (ts && ts <= now) blockedUsers.delete(targetIp);
+    if (ts && ts <= now) blockedUsers.delete(scopeKey);
   }
 }
 
 function getMuteState(target) {
-  const targetIp = resolveTargetIp(target);
-  if (!targetIp) return null;
+  const scope = resolveModerationScope(target);
+  if (!scope || !scope.scopeKey) return null;
   cleanupEnforcementMaps();
-  const state = mutedUsers.get(targetIp);
+  const state = mutedUsers.get(scope.scopeKey);
   if (!state) return null;
   const ts = parseIsoTime(state.expiresAt);
   if (ts && ts <= Date.now()) {
-    mutedUsers.delete(targetIp);
+    mutedUsers.delete(scope.scopeKey);
     return null;
   }
-  return state;
+  return {
+    ...state,
+    targetKind: state.targetKind || scope.kind,
+    targetIp: state.targetIp || scope.ip || null,
+    targetClientKey: state.targetClientKey || scope.clientKey || null,
+  };
 }
 
 function getBlockState(target) {
-  const targetIp = resolveTargetIp(target);
-  if (!targetIp) return null;
+  const scope = resolveModerationScope(target);
+  if (!scope || !scope.scopeKey) return null;
   cleanupEnforcementMaps();
-  const state = blockedUsers.get(targetIp);
+  const state = blockedUsers.get(scope.scopeKey);
   if (!state) return null;
   const ts = parseIsoTime(state.expiresAt);
   if (ts && ts <= Date.now()) {
-    blockedUsers.delete(targetIp);
+    blockedUsers.delete(scope.scopeKey);
     return null;
   }
-  return state;
+  return {
+    ...state,
+    targetKind: state.targetKind || scope.kind,
+    targetIp: state.targetIp || scope.ip || null,
+    targetClientKey: state.targetClientKey || scope.clientKey || null,
+  };
 }
 
 function recordModerationAction(actionType, clientKey, clientLabel, reason, expiresAt, createdBy) {
@@ -1708,22 +1884,72 @@ function requireAdmin(req, res, next) {
 }
 
 function getClientLabel(target) {
-  const targetIp = resolveTargetIp(target);
-  if (!targetIp) return String(target || "");
+  const scope = resolveModerationScope(target);
+  if (!scope) return "iemand";
+  return getModerationScopeDisplayLabel(scope);
+}
 
-  const sameIpClients = Array.from(connectedClients.values()).filter((client) => normalizeIp(client.ip) === targetIp);
-  if (sameIpClients.length) {
-    const best = sameIpClients[0];
-    const namePart = best.name ? best.name : "user";
-    return `${namePart} (${best.clientTag}) @ ${targetIp}`;
-  }
+function getModerationScopeDisplayLabel(scope) {
+  if (!scope) return "iemand";
 
-  for (const client of connectedClients.values()) {
-    if (client.clientKey === target) {
-      return client.name ? `${client.name} (${client.clientTag})` : client.clientTag;
+  if (scope.kind === "client") {
+    for (const client of connectedClients.values()) {
+      if (String(client.clientKey || "") !== String(scope.clientKey || "")) continue;
+      const name = sanitizeName(client.name || "");
+      if (name) return name;
     }
+    return "iemand";
   }
-  return targetIp;
+
+  const targetIp = String(scope.ip || "");
+  if (!targetIp) return "iemand";
+  const sameIpClients = Array.from(connectedClients.values()).filter((client) => normalizeIp(client.ip) === targetIp);
+  if (!sameIpClients.length) return "iemand";
+  const preferred = sameIpClients.find((client) => String(client.name || "").trim()) || sameIpClients[0];
+  return sanitizeName(preferred && preferred.name ? preferred.name : "iemand");
+}
+
+function buildModerationFeedText(actionType, scope, meta = {}) {
+  const label = getModerationScopeDisplayLabel(scope);
+  const action = String(actionType || "").trim().toLowerCase();
+  if (action === "mute") {
+    const minutes = clampInt(meta && meta.minutes, 1, 180, 0);
+    const suffix = minutes > 0 ? ` (${minutes}m)` : "";
+    return `${label} is gemute${suffix}.`;
+  }
+  if (action === "unmute") return `${label} is unmuted.`;
+  if (action === "block") return `${label} is geblokkeerd.`;
+  if (action === "unblock") return `${label} is gedeblokkeerd.`;
+  if (action === "kick") return `${label} is verwijderd door moderatie.`;
+  return "";
+}
+
+function publishModerationFeedNotice(actionType, scope, meta = {}) {
+  const text = buildModerationFeedText(actionType, scope, meta);
+  if (!text) return null;
+  const now = nowIso();
+  const speaker = "Moderatie";
+  const payload = {
+    type: "comment",
+    time: now,
+    name: speaker,
+    text,
+    nameColor: getNameColorHex(speaker),
+    system: true,
+  };
+  recordChatMessage({
+    clientId: 0,
+    clientKey: scope && scope.kind === "client"
+      ? String(scope.clientKey || "")
+      : String((scope && scope.ip) || ""),
+    ip: scope && scope.ip ? String(scope.ip) : "",
+    name: speaker,
+    text,
+    status: "accepted",
+    detail: `moderation_notice:${String(actionType || "")}`,
+  });
+  broadcastToClients(payload);
+  return payload;
 }
 
 function closeActivePoll(reason = "closed", createdBy = "admin") {
@@ -1827,15 +2053,23 @@ function broadcastPollUpdate() {
   });
 }
 
-function sendToTargetIp(target, message) {
-  const targetIp = resolveTargetIp(target);
-  if (!targetIp) return 0;
+function doesClientMatchScope(meta, scope) {
+  if (!meta || !scope) return false;
+  if (scope.kind === "client") {
+    return String(meta.clientKey || "") === String(scope.clientKey || "");
+  }
+  return normalizeIp(meta.ip) === String(scope.ip || "");
+}
+
+function sendToTargetIp(target, message, options = {}) {
+  const scope = resolveModerationScope(target, options);
+  if (!scope) return 0;
 
   const payload = safeJsonStringify(message, "{}");
   let sent = 0;
   for (const client of wss.clients) {
     const meta = client && client.__meta;
-    if (!meta || normalizeIp(meta.ip) !== targetIp) continue;
+    if (!doesClientMatchScope(meta, scope)) continue;
     if (client.readyState !== WebSocket.OPEN) continue;
     try {
       client.send(payload);
@@ -2999,8 +3233,11 @@ function getAdminState() {
   const users = Array.from(connectedClients.values())
     .sort((a, b) => a.connectedAt.localeCompare(b.connectedAt))
     .map((client) => {
-      const mute = getMuteState(client);
-      const block = getBlockState(client);
+      const isBot = isSimulatorBotIdentity(client, client.name, client.clientTag);
+      const targetKind = isBot ? "client" : "ip";
+      const target = { clientKey: client.clientKey, ip: client.ip, targetKind };
+      const mute = getMuteState(target);
+      const block = getBlockState(target);
       return {
         clientId: client.clientId,
         clientKey: client.clientKey,
@@ -3008,6 +3245,9 @@ function getAdminState() {
         name: client.name,
         nameColor: getNameColorHex(client.name),
         ip: client.ip,
+        isBot,
+        moderationTargetKind: targetKind,
+        moderationTargetKey: targetKind === "client" ? client.clientKey : client.ip,
         ua: client.ua,
         connectedAt: client.connectedAt,
         isMuted: !!mute,
@@ -3022,20 +3262,50 @@ function getAdminState() {
   }));
 
   const activeMutedIps = Array.from(mutedUsers.entries())
-    .map(([ip, state]) => ({
-      ip: String(ip || ""),
-      mutedUntil: state && state.expiresAt ? String(state.expiresAt) : null,
-    }))
-    .filter((item) => !!item.ip)
-    .sort((a, b) => a.ip.localeCompare(b.ip));
+    .map(([scopeKey, state]) => {
+      const scope = parseModerationScopeKey(scopeKey);
+      if (!scope) return null;
+      const targetKind = String((state && state.targetKind) || scope.kind || "ip");
+      const targetIp = String((state && state.targetIp) || scope.ip || "");
+      const targetClientKey = String((state && state.targetClientKey) || scope.clientKey || "");
+      const targetKey = targetKind === "client" ? targetClientKey : targetIp;
+      if (!targetKey) return null;
+      const targetLabel = getClientLabel(scope) || targetKey;
+      return {
+        ip: targetIp || targetKey,
+        targetKind,
+        targetKey,
+        targetIp: targetIp || null,
+        targetClientKey: targetClientKey || null,
+        targetLabel,
+        mutedUntil: state && state.expiresAt ? String(state.expiresAt) : null,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(a.targetLabel || a.targetKey).localeCompare(String(b.targetLabel || b.targetKey)));
 
   const activeBlockedIps = Array.from(blockedUsers.entries())
-    .map(([ip, state]) => ({
-      ip: String(ip || ""),
-      blockedUntil: state && state.expiresAt ? String(state.expiresAt) : null,
-    }))
-    .filter((item) => !!item.ip)
-    .sort((a, b) => a.ip.localeCompare(b.ip));
+    .map(([scopeKey, state]) => {
+      const scope = parseModerationScopeKey(scopeKey);
+      if (!scope) return null;
+      const targetKind = String((state && state.targetKind) || scope.kind || "ip");
+      const targetIp = String((state && state.targetIp) || scope.ip || "");
+      const targetClientKey = String((state && state.targetClientKey) || scope.clientKey || "");
+      const targetKey = targetKind === "client" ? targetClientKey : targetIp;
+      if (!targetKey) return null;
+      const targetLabel = getClientLabel(scope) || targetKey;
+      return {
+        ip: targetIp || targetKey,
+        targetKind,
+        targetKey,
+        targetIp: targetIp || null,
+        targetClientKey: targetClientKey || null,
+        targetLabel,
+        blockedUntil: state && state.expiresAt ? String(state.expiresAt) : null,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(a.targetLabel || a.targetKey).localeCompare(String(b.targetLabel || b.targetKey)));
 
   return {
     ok: true,
@@ -3082,16 +3352,16 @@ function getAdminState() {
   };
 }
 
-function closeSocketsForTargetIp(target, code = 4003, reason = "kicked", closeDelayMs = 0) {
-  const targetIp = resolveTargetIp(target);
-  if (!targetIp) return 0;
+function closeSocketsForTargetIp(target, code = 4003, reason = "kicked", closeDelayMs = 0, options = {}) {
+  const scope = resolveModerationScope(target, options);
+  if (!scope) return 0;
 
   const encodedReason = String(reason || "kicked").slice(0, 120);
   const delay = clampInt(closeDelayMs, 0, 5000, 0);
   let closed = 0;
   for (const client of wss.clients) {
     const meta = client && client.__meta;
-    if (!meta || normalizeIp(meta.ip) !== targetIp) continue;
+    if (!doesClientMatchScope(meta, scope)) continue;
     closed += 1;
     if (delay > 0) {
       setTimeout(() => {
@@ -3121,34 +3391,47 @@ function persistConnectedMeta(meta) {
 }
 
 function setMute(target, minutes, reason, createdBy) {
-  const targetIp = resolveTargetIp(target);
-  if (!targetIp) return null;
+  const scope = resolveModerationScope(target);
+  if (!scope || !scope.scopeKey) return null;
   const safeMinutes = clampInt(minutes, 1, 180, 5);
   const expiresAt = new Date(Date.now() + safeMinutes * 60 * 1000).toISOString();
-  mutedUsers.set(targetIp, { expiresAt });
-  recordModerationAction("mute", targetIp, getClientLabel(targetIp), reason, expiresAt, createdBy);
-  return expiresAt;
+  mutedUsers.set(scope.scopeKey, {
+    expiresAt,
+    targetKind: scope.kind,
+    targetIp: scope.ip || null,
+    targetClientKey: scope.clientKey || null,
+  });
+  recordModerationAction("mute", scope.scopeKey, getClientLabel(scope), reason, expiresAt, createdBy);
+  return { expiresAt, scope };
 }
 
 function clearMute(target, reason, createdBy) {
-  const targetIp = resolveTargetIp(target);
-  if (!targetIp) return;
-  mutedUsers.delete(targetIp);
-  recordModerationAction("unmute", targetIp, getClientLabel(targetIp), reason, null, createdBy);
+  const scope = resolveModerationScope(target);
+  if (!scope || !scope.scopeKey) return null;
+  mutedUsers.delete(scope.scopeKey);
+  recordModerationAction("unmute", scope.scopeKey, getClientLabel(scope), reason, null, createdBy);
+  return { scope };
 }
 
 function setBlock(target, reason, createdBy) {
-  const targetIp = resolveTargetIp(target);
-  if (!targetIp) return;
-  blockedUsers.set(targetIp, { expiresAt: null });
-  recordModerationAction("block", targetIp, getClientLabel(targetIp), reason, null, createdBy);
+  const scope = resolveModerationScope(target);
+  if (!scope || !scope.scopeKey) return null;
+  blockedUsers.set(scope.scopeKey, {
+    expiresAt: null,
+    targetKind: scope.kind,
+    targetIp: scope.ip || null,
+    targetClientKey: scope.clientKey || null,
+  });
+  recordModerationAction("block", scope.scopeKey, getClientLabel(scope), reason, null, createdBy);
+  return { scope };
 }
 
 function clearBlock(target, reason, createdBy) {
-  const targetIp = resolveTargetIp(target);
-  if (!targetIp) return;
-  blockedUsers.delete(targetIp);
-  recordModerationAction("unblock", targetIp, getClientLabel(targetIp), reason, null, createdBy);
+  const scope = resolveModerationScope(target);
+  if (!scope || !scope.scopeKey) return null;
+  blockedUsers.delete(scope.scopeKey);
+  recordModerationAction("unblock", scope.scopeKey, getClientLabel(scope), reason, null, createdBy);
+  return { scope };
 }
 
 if (ADMIN_PASSWORD === "admin") {
@@ -3603,19 +3886,29 @@ app.get("/admin/state", requireAdmin, (req, res) => {
 });
 
 app.get("/admin/user-history", requireAdmin, (req, res) => {
-  const target = String(req.query.ip || req.query.clientKey || "");
-  const targetIp = resolveTargetIp(target);
-  if (!targetIp) {
+  const scope = resolveModerationScope(
+    {
+      ip: String(req.query.ip || ""),
+      clientKey: String(req.query.clientKey || ""),
+      targetKind: String(req.query.targetKind || ""),
+    },
+    { kind: String(req.query.targetKind || "") }
+  );
+  if (!scope) {
     res.status(400).json({ ok: false, error: "ip_or_clientKey_required" });
     return;
   }
 
   const limit = clampInt(req.query.limit, 10, 200, 80);
-  const rows = sql.getRecentMessagesByIp.all(currentSession.id, targetIp, limit);
+  const rows = scope.kind === "client"
+    ? sql.getRecentMessagesByClientKey.all(currentSession.id, scope.clientKey, limit)
+    : sql.getRecentMessagesByIp.all(currentSession.id, scope.ip, limit);
   res.json({
     ok: true,
     sessionId: Number(currentSession.id),
-    targetIp,
+    targetKind: scope.kind,
+    targetIp: scope.ip || null,
+    targetClientKey: scope.clientKey || null,
     messages: rows,
   });
 });
@@ -3661,94 +3954,171 @@ app.post("/admin/session/new", requireAdmin, (req, res) => {
 });
 
 app.post("/admin/users/mute", requireAdmin, (req, res) => {
-  const clientKey = String((req.body && req.body.clientKey) || "");
-  const targetIp = resolveTargetIp(clientKey);
-  if (!targetIp) {
+  const scope = resolveModerationScope(
+    {
+      clientKey: String((req.body && req.body.clientKey) || ""),
+      ip: String((req.body && req.body.ip) || ""),
+      targetKind: String((req.body && req.body.targetKind) || ""),
+    },
+    { kind: String((req.body && req.body.targetKind) || "") }
+  );
+  if (!scope) {
     res.status(400).json({ ok: false, error: "clientKey_required" });
     return;
   }
   const minutes = clampInt(req.body && req.body.minutes, 1, 180, 5);
   const reason = String((req.body && req.body.reason) || "").slice(0, 200);
-  const expiresAt = setMute(targetIp, minutes, reason, "admin");
+  const muteResult = setMute(scope, minutes, reason, "admin");
+  const expiresAt = muteResult && muteResult.expiresAt ? String(muteResult.expiresAt) : null;
   const remainingMs = Math.max(0, Date.parse(expiresAt || "") - Date.now());
-  const notified = sendToTargetIp(targetIp, {
+  const notified = sendToTargetIp(scope, {
     type: "moderation_notice",
     code: "user_muted",
     message: "Je bent tijdelijk gemute door de moderator.",
     mutedUntil: expiresAt || null,
     remainingMs,
   });
-  writeDebug("user_muted", { targetIp, clientKey, minutes, expiresAt });
-  res.json({ ok: true, clientKey, targetIp, mutedUntil: expiresAt, notified });
+  const targetKey = scope.kind === "client" ? scope.clientKey : scope.ip;
+  writeDebug("user_muted", { targetKind: scope.kind, targetKey, minutes, expiresAt });
+  publishModerationFeedNotice("mute", scope, { minutes, expiresAt });
+  res.json({
+    ok: true,
+    targetKind: scope.kind,
+    targetKey,
+    targetIp: scope.ip || null,
+    targetClientKey: scope.clientKey || null,
+    mutedUntil: expiresAt,
+    notified,
+  });
 });
 
 app.post("/admin/users/unmute", requireAdmin, (req, res) => {
-  const clientKey = String((req.body && req.body.clientKey) || "");
-  const targetIp = resolveTargetIp(clientKey);
-  if (!targetIp) {
+  const scope = resolveModerationScope(
+    {
+      clientKey: String((req.body && req.body.clientKey) || ""),
+      ip: String((req.body && req.body.ip) || ""),
+      targetKind: String((req.body && req.body.targetKind) || ""),
+    },
+    { kind: String((req.body && req.body.targetKind) || "") }
+  );
+  if (!scope) {
     res.status(400).json({ ok: false, error: "clientKey_required" });
     return;
   }
   const reason = String((req.body && req.body.reason) || "").slice(0, 200);
-  clearMute(targetIp, reason, "admin");
-  const notified = sendToTargetIp(targetIp, {
+  clearMute(scope, reason, "admin");
+  const notified = sendToTargetIp(scope, {
     type: "moderation_notice",
     code: "user_unmuted",
     message: "Je mute is opgeheven. Je kunt weer reageren.",
   });
-  writeDebug("user_unmuted", { targetIp, clientKey });
-  res.json({ ok: true, clientKey, targetIp, notified });
+  const targetKey = scope.kind === "client" ? scope.clientKey : scope.ip;
+  writeDebug("user_unmuted", { targetKind: scope.kind, targetKey });
+  publishModerationFeedNotice("unmute", scope, {});
+  res.json({
+    ok: true,
+    targetKind: scope.kind,
+    targetKey,
+    targetIp: scope.ip || null,
+    targetClientKey: scope.clientKey || null,
+    notified,
+  });
 });
 
 app.post("/admin/users/block", requireAdmin, (req, res) => {
-  const clientKey = String((req.body && req.body.clientKey) || "");
-  const targetIp = resolveTargetIp(clientKey);
-  if (!targetIp) {
+  const scope = resolveModerationScope(
+    {
+      clientKey: String((req.body && req.body.clientKey) || ""),
+      ip: String((req.body && req.body.ip) || ""),
+      targetKind: String((req.body && req.body.targetKind) || ""),
+    },
+    { kind: String((req.body && req.body.targetKind) || "") }
+  );
+  if (!scope) {
     res.status(400).json({ ok: false, error: "clientKey_required" });
     return;
   }
   const reason = String((req.body && req.body.reason) || "").slice(0, 200);
-  setBlock(targetIp, reason, "admin");
-  const notified = sendToTargetIp(targetIp, {
+  setBlock(scope, reason, "admin");
+  const notified = sendToTargetIp(scope, {
     type: "moderation_notice",
     code: "user_blocked",
     message: "Je bent geblokkeerd door de moderator en wordt verwijderd.",
   });
-  const closed = closeSocketsForTargetIp(targetIp, 4004, "blocked", 120);
-  writeDebug("user_blocked", { targetIp, clientKey, closed });
-  res.json({ ok: true, clientKey, targetIp, closed, notified });
+  publishModerationFeedNotice("block", scope, {});
+  const closed = closeSocketsForTargetIp(scope, 4004, "blocked", 120);
+  const targetKey = scope.kind === "client" ? scope.clientKey : scope.ip;
+  writeDebug("user_blocked", { targetKind: scope.kind, targetKey, closed });
+  res.json({
+    ok: true,
+    targetKind: scope.kind,
+    targetKey,
+    targetIp: scope.ip || null,
+    targetClientKey: scope.clientKey || null,
+    closed,
+    notified,
+  });
 });
 
 app.post("/admin/users/unblock", requireAdmin, (req, res) => {
-  const clientKey = String((req.body && req.body.clientKey) || "");
-  const targetIp = resolveTargetIp(clientKey);
-  if (!targetIp) {
+  const scope = resolveModerationScope(
+    {
+      clientKey: String((req.body && req.body.clientKey) || ""),
+      ip: String((req.body && req.body.ip) || ""),
+      targetKind: String((req.body && req.body.targetKind) || ""),
+    },
+    { kind: String((req.body && req.body.targetKind) || "") }
+  );
+  if (!scope) {
     res.status(400).json({ ok: false, error: "clientKey_required" });
     return;
   }
   const reason = String((req.body && req.body.reason) || "").slice(0, 200);
-  clearBlock(targetIp, reason, "admin");
-  writeDebug("user_unblocked", { targetIp, clientKey });
-  res.json({ ok: true, clientKey, targetIp });
+  clearBlock(scope, reason, "admin");
+  const targetKey = scope.kind === "client" ? scope.clientKey : scope.ip;
+  writeDebug("user_unblocked", { targetKind: scope.kind, targetKey });
+  publishModerationFeedNotice("unblock", scope, {});
+  res.json({
+    ok: true,
+    targetKind: scope.kind,
+    targetKey,
+    targetIp: scope.ip || null,
+    targetClientKey: scope.clientKey || null,
+  });
 });
 
 app.post("/admin/users/kick", requireAdmin, (req, res) => {
-  const clientKey = String((req.body && req.body.clientKey) || "");
-  const targetIp = resolveTargetIp(clientKey);
-  if (!targetIp) {
+  const scope = resolveModerationScope(
+    {
+      clientKey: String((req.body && req.body.clientKey) || ""),
+      ip: String((req.body && req.body.ip) || ""),
+      targetKind: String((req.body && req.body.targetKind) || ""),
+    },
+    { kind: String((req.body && req.body.targetKind) || "") }
+  );
+  if (!scope) {
     res.status(400).json({ ok: false, error: "clientKey_required" });
     return;
   }
   const reason = String((req.body && req.body.reason) || "moderator").slice(0, 120);
-  const notified = sendToTargetIp(targetIp, {
+  const notified = sendToTargetIp(scope, {
     type: "moderation_notice",
     code: "kicked",
     message: "Je bent verwijderd door de moderator.",
   });
-  const closed = closeSocketsForTargetIp(targetIp, 4003, "kicked", 80);
-  recordModerationAction("kick", targetIp, getClientLabel(targetIp), reason, null, "admin");
-  writeDebug("user_kicked", { targetIp, clientKey, closed });
-  res.json({ ok: true, clientKey, targetIp, closed, notified });
+  const closed = closeSocketsForTargetIp(scope, 4003, "kicked", 80);
+  recordModerationAction("kick", scope.scopeKey, getClientLabel(scope), reason, null, "admin");
+  const targetKey = scope.kind === "client" ? scope.clientKey : scope.ip;
+  writeDebug("user_kicked", { targetKind: scope.kind, targetKey, closed });
+  res.json({
+    ok: true,
+    targetKind: scope.kind,
+    targetKey,
+    targetIp: scope.ip || null,
+    targetClientKey: scope.clientKey || null,
+    closed,
+    notified,
+  });
 });
 
 app.post("/admin/polls/start", requireAdmin, (req, res) => {
