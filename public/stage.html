@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Stage Output</title>
+    <style>
+      :root {
+        --stage-width: 1080px;
+        --stage-height: 1920px;
+        --chat-bg: rgba(0, 0, 0, 0.56);
+        --chat-border: rgba(255, 255, 255, 0.12);
+        --chat-text: #f8fafc;
+        --chat-muted: rgba(241, 245, 249, 0.74);
+        --qr-bg: rgba(0, 0, 0, 0.62);
+        --chat-scale: 1;
+        --chat-bottom: 36px;
+        --chat-height: 940px;
+        --chat-x-shift: 0%;
+        --chat-fade-start: 52%;
+        --qr-scale: 1;
+        --qr-x: 86%;
+        --qr-y: 10%;
+        --emoji-scale: 1;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      body.bg-black {
+        background: #000;
+      }
+
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+      }
+
+      #stageRoot {
+        position: relative;
+        width: var(--stage-width);
+        height: var(--stage-height);
+        overflow: hidden;
+      }
+
+      #emojiLayer {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+        z-index: 20;
+        contain: strict;
+      }
+
+      .emojiBurst {
+        position: absolute;
+        bottom: -84px;
+        transform: translate3d(-50%, 0, 0);
+        font-size: calc(66px * var(--emoji-scale));
+        line-height: 1;
+        opacity: 0;
+        animation: stageEmojiFloat 1.7s ease-out forwards;
+        will-change: transform, opacity;
+      }
+
+      @keyframes stageEmojiFloat {
+        0% {
+          opacity: 0;
+          transform: translate3d(-50%, 0, 0) scale(0.72) rotate(0deg);
+        }
+        10% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+          transform: translate3d(calc(-50% + var(--drift, 0px)), -780px, 0) scale(1.05) rotate(var(--spin, 0deg));
+        }
+      }
+
+      #chatLayer {
+        position: absolute;
+        left: 36px;
+        right: 36px;
+        bottom: var(--chat-bottom);
+        height: var(--chat-height);
+        overflow: hidden;
+        display: flex;
+        justify-content: flex-end;
+        align-items: flex-end;
+        pointer-events: none;
+        z-index: 30;
+        -webkit-mask-image: linear-gradient(
+          to top,
+          rgba(0, 0, 0, 1) 0%,
+          rgba(0, 0, 0, 1) var(--chat-fade-start),
+          rgba(0, 0, 0, 0) 100%
+        );
+        mask-image: linear-gradient(
+          to top,
+          rgba(0, 0, 0, 1) 0%,
+          rgba(0, 0, 0, 1) var(--chat-fade-start),
+          rgba(0, 0, 0, 0) 100%
+        );
+      }
+
+      #chatList {
+        width: min(920px, 100%);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transform: translateX(var(--chat-x-shift));
+      }
+
+      .chatLine {
+        align-self: flex-start;
+        max-width: 100%;
+        border-radius: calc(16px * var(--chat-scale));
+        border: 1px solid var(--chat-border);
+        background: var(--chat-bg);
+        color: var(--chat-text);
+        padding: calc(10px * var(--chat-scale)) calc(14px * var(--chat-scale));
+        font-size: calc(34px * var(--chat-scale));
+        line-height: 1.18;
+        letter-spacing: 0.01em;
+        text-wrap: pretty;
+        box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+      }
+
+      .chatLine.systemLine {
+        color: var(--chat-muted);
+        font-size: calc(30px * var(--chat-scale));
+        border-style: dashed;
+      }
+
+      .chatName {
+        font-weight: 700;
+        margin-right: 8px;
+      }
+
+      #qrLayer {
+        position: absolute;
+        left: var(--qr-x);
+        top: var(--qr-y);
+        transform: translate(-50%, -50%) scale(var(--qr-scale));
+        transform-origin: center center;
+        z-index: 40;
+      }
+
+      #qrCard {
+        min-width: 320px;
+        max-width: 360px;
+        border-radius: 18px;
+        padding: 16px;
+        background: var(--qr-bg);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
+        color: #fff;
+      }
+
+      #qrTitle {
+        font-size: 24px;
+        font-weight: 700;
+        margin: 0 0 8px;
+      }
+
+      #qrHint {
+        margin-top: 8px;
+        font-size: 18px;
+        color: rgba(255, 255, 255, 0.86);
+      }
+
+      #qrCode {
+        background: #fff;
+        border-radius: 12px;
+        padding: 8px;
+        min-height: 280px;
+        display: grid;
+        place-items: center;
+      }
+
+      #qrCode svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      #qrEmpty {
+        color: #cbd5e1;
+        font-size: 18px;
+        text-align: center;
+        line-height: 1.35;
+      }
+
+      #statusPill {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        z-index: 50;
+        background: rgba(165, 28, 28, 0.82);
+        color: #fff;
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 16px;
+        font-weight: 600;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+
+      #statusPill.show {
+        opacity: 1;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stageRoot">
+      <div id="emojiLayer" aria-hidden="true"></div>
+
+      <div id="chatLayer">
+        <div id="chatList"></div>
+      </div>
+
+      <div id="qrLayer">
+        <div id="qrCard">
+          <div id="qrTitle">Scan om mee te doen</div>
+          <div id="qrCode"><div id="qrEmpty">Wacht op een actieve sessie</div></div>
+          <div id="qrHint"></div>
+        </div>
+      </div>
+
+      <div id="statusPill">Stage output: reconnecting…</div>
+    </div>
+
+    <script src="/vendor/qrcode-generator.min.js"></script>
+    <script>
+      const STAGE_CHAT_LIMIT = 26;
+      const RECONNECT_MIN_MS = 500;
+      const RECONNECT_MAX_MS = 6000;
+      const REACTION_EMOJI = {
+        heart: "❤️",
+        fire: "🔥",
+        laugh: "😂",
+        bored: "👎",
+      };
+
+      const emojiLayerEl = document.getElementById("emojiLayer");
+      const chatLayerEl = document.getElementById("chatLayer");
+      const chatListEl = document.getElementById("chatList");
+      const qrLayerEl = document.getElementById("qrLayer");
+      const qrCodeEl = document.getElementById("qrCode");
+      const qrHintEl = document.getElementById("qrHint");
+      const statusPillEl = document.getElementById("statusPill");
+
+      const stageState = {
+        settings: {
+          showQr: true,
+          showChat: true,
+          showEmojis: true,
+          background: "transparent",
+          chatScale: 1,
+          chatBottom: 36,
+          chatHeight: 940,
+          chatX: 0,
+          chatFadeStart: 52,
+          qrScale: 1,
+          qrX: 86,
+          qrY: 10,
+          emojiScale: 1,
+          emojiBurst: 1,
+          emojiSpread: 6,
+          emojiHeartX: 50,
+          emojiFireX: 50,
+          emojiLaughX: 50,
+          emojiBoredX: 50,
+        },
+        sessionJoin: null,
+        chat: [],
+      };
+
+      let ws = null;
+      let reconnectTimer = null;
+      let reconnectDelayMs = RECONNECT_MIN_MS;
+
+      function esc(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function sanitizeNameColor(input) {
+        const value = String(input || "").trim();
+        return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "";
+      }
+
+      function normalizeStageSettings(raw) {
+        const src = raw && typeof raw === "object" ? raw : {};
+        const clampFloat = (value, min, max, fallback) => {
+          const n = Number.parseFloat(String(value));
+          if (!Number.isFinite(n)) return fallback;
+          if (n < min) return min;
+          if (n > max) return max;
+          return n;
+        };
+        const clampInt = (value, min, max, fallback) => {
+          const n = Number.parseInt(String(value), 10);
+          if (!Number.isFinite(n)) return fallback;
+          if (n < min) return min;
+          if (n > max) return max;
+          return n;
+        };
+        return {
+          showQr: src.showQr !== false,
+          showChat: src.showChat !== false,
+          showEmojis: src.showEmojis !== false,
+          background: String(src.background || "transparent").toLowerCase() === "black" ? "black" : "transparent",
+          chatScale: clampFloat(src.chatScale, 0.6, 2.2, 1),
+          chatBottom: clampInt(src.chatBottom, 0, 700, 36),
+          chatHeight: clampInt(src.chatHeight, 180, 1800, 940),
+          chatX: clampFloat(src.chatX, -50, 50, 0),
+          chatFadeStart: clampInt(src.chatFadeStart, 0, 90, 52),
+          qrScale: clampFloat(src.qrScale, 0.5, 2.2, 1),
+          qrX: clampFloat(src.qrX, 0, 100, 86),
+          qrY: clampFloat(src.qrY, 0, 100, 10),
+          emojiScale: clampFloat(src.emojiScale, 0.4, 2.8, 1),
+          emojiBurst: clampInt(src.emojiBurst, 1, 6, 1),
+          emojiSpread: clampFloat(src.emojiSpread, 0, 30, 6),
+          emojiHeartX: clampFloat(src.emojiHeartX, 0, 100, 50),
+          emojiFireX: clampFloat(src.emojiFireX, 0, 100, 50),
+          emojiLaughX: clampFloat(src.emojiLaughX, 0, 100, 50),
+          emojiBoredX: clampFloat(src.emojiBoredX, 0, 100, 50),
+        };
+      }
+
+      function showStatus(text, show) {
+        statusPillEl.textContent = text || "";
+        statusPillEl.classList.toggle("show", !!show);
+      }
+
+      function applyVisualSettings() {
+        const settings = stageState.settings;
+        document.body.classList.toggle("bg-black", settings.background === "black");
+        qrLayerEl.classList.toggle("hidden", !settings.showQr);
+        chatLayerEl.classList.toggle("hidden", !settings.showChat);
+        emojiLayerEl.classList.toggle("hidden", !settings.showEmojis);
+        document.documentElement.style.setProperty("--chat-scale", String(settings.chatScale));
+        document.documentElement.style.setProperty("--chat-bottom", String(settings.chatBottom) + "px");
+        document.documentElement.style.setProperty("--chat-height", String(settings.chatHeight) + "px");
+        document.documentElement.style.setProperty("--chat-x-shift", String(settings.chatX) + "%");
+        document.documentElement.style.setProperty("--chat-fade-start", String(settings.chatFadeStart) + "%");
+        document.documentElement.style.setProperty("--qr-scale", String(settings.qrScale));
+        document.documentElement.style.setProperty("--qr-x", String(settings.qrX) + "%");
+        document.documentElement.style.setProperty("--qr-y", String(settings.qrY) + "%");
+        document.documentElement.style.setProperty("--emoji-scale", String(settings.emojiScale));
+      }
+
+      function getReactionAnchorX(settings, reactionKey) {
+        if (reactionKey === "heart") return Number(settings.emojiHeartX);
+        if (reactionKey === "fire") return Number(settings.emojiFireX);
+        if (reactionKey === "laugh") return Number(settings.emojiLaughX);
+        if (reactionKey === "bored") return Number(settings.emojiBoredX);
+        return 50;
+      }
+
+      function buildJoinUrl(join) {
+        const data = join && typeof join === "object" ? join : null;
+        if (!data) return "";
+        const explicit = String(data.joinUrl || "").trim();
+        if (explicit) return explicit;
+        const path = String(data.joinPath || "").trim();
+        if (!path) return "";
+        try {
+          return new URL(path, window.location.origin).toString();
+        } catch {
+          return "";
+        }
+      }
+
+      function renderQr() {
+        const joinUrl = buildJoinUrl(stageState.sessionJoin);
+        if (!joinUrl || typeof window.qrcode !== "function") {
+          qrCodeEl.innerHTML = '<div id="qrEmpty">Wacht op een actieve sessie</div>';
+          qrHintEl.textContent = "";
+          return;
+        }
+        try {
+          const qr = window.qrcode(0, "M");
+          qr.addData(joinUrl, "Byte");
+          qr.make();
+          qrCodeEl.innerHTML = qr.createSvgTag({
+            cellSize: 5,
+            margin: 1,
+            scalable: true,
+            title: "Sessie QR",
+            alt: "Sessie QR",
+          });
+          qrHintEl.textContent = joinUrl;
+        } catch {
+          qrCodeEl.innerHTML = '<div id="qrEmpty">QR kon niet worden opgebouwd</div>';
+          qrHintEl.textContent = "";
+        }
+      }
+
+      function renderChat() {
+        chatListEl.innerHTML = "";
+        const fragment = document.createDocumentFragment();
+        for (const item of stageState.chat) {
+          const line = document.createElement("div");
+          line.className = "chatLine" + (item.system ? " systemLine" : "");
+          if (item.system) {
+            line.textContent = String(item.text || "");
+          } else {
+            const nameNode = document.createElement("span");
+            nameNode.className = "chatName";
+            const nameColor = sanitizeNameColor(item.nameColor);
+            if (nameColor) nameNode.style.color = nameColor;
+            nameNode.textContent = String(item.name || "Anoniem") + ":";
+            line.appendChild(nameNode);
+            line.appendChild(document.createTextNode(" " + String(item.text || "")));
+          }
+          fragment.appendChild(line);
+        }
+        chatListEl.appendChild(fragment);
+      }
+
+      function pushChat(item) {
+        const entry = {
+          name: String((item && item.name) || "Anoniem"),
+          text: String((item && item.text) || ""),
+          nameColor: sanitizeNameColor(item && item.nameColor),
+          system: !!(item && item.system),
+        };
+        if (!entry.text) return;
+        stageState.chat.push(entry);
+        if (stageState.chat.length > STAGE_CHAT_LIMIT) {
+          stageState.chat = stageState.chat.slice(stageState.chat.length - STAGE_CHAT_LIMIT);
+        }
+        renderChat();
+      }
+
+      function setChatFromSnapshot(messages) {
+        const list = Array.isArray(messages) ? messages : [];
+        stageState.chat = list
+          .map((item) => ({
+            name: String((item && item.name) || "Anoniem"),
+            text: String((item && item.text) || ""),
+            nameColor: sanitizeNameColor(item && item.nameColor),
+            system: !!(item && item.system),
+          }))
+          .filter((item) => !!item.text)
+          .slice(-STAGE_CHAT_LIMIT);
+        renderChat();
+      }
+
+      function spawnReaction(reactionKey, amount = 1) {
+        if (!stageState.settings.showEmojis) return;
+        const raw = String(reactionKey || "").trim();
+        const key = raw.toLowerCase();
+        const emoji = REACTION_EMOJI[key] || raw;
+        if (!emoji) return;
+        const count = Math.max(1, Math.min(12, Number.parseInt(String(amount), 10) || 1));
+        const settings = stageState.settings || {};
+        const anchorX = Math.max(0, Math.min(100, getReactionAnchorX(settings, key)));
+        const spread = Math.max(0, Math.min(30, Number(settings.emojiSpread || 0)));
+        const xRange = spread / 2;
+        const driftRange = 36 + spread * 7;
+        for (let i = 0; i < count; i += 1) {
+          const node = document.createElement("div");
+          node.className = "emojiBurst";
+          node.textContent = emoji;
+          const x = Math.max(2, Math.min(98, anchorX + (Math.random() * spread - xRange)));
+          const drift = (Math.random() * driftRange - driftRange / 2).toFixed(0) + "px";
+          const spin = (Math.random() * 40 - 20).toFixed(0) + "deg";
+          const delay = Math.floor(Math.random() * 180);
+          node.style.left = x + "%";
+          node.style.animationDelay = delay + "ms";
+          node.style.setProperty("--drift", drift);
+          node.style.setProperty("--spin", spin);
+          emojiLayerEl.appendChild(node);
+          setTimeout(() => {
+            if (node.parentNode) node.parentNode.removeChild(node);
+          }, 2200 + delay);
+        }
+      }
+
+      function applyStageSnapshot(snapshot) {
+        const stage = snapshot && typeof snapshot === "object" ? snapshot : {};
+        stageState.settings = normalizeStageSettings(stage.settings);
+        stageState.sessionJoin = stage.sessionJoin && typeof stage.sessionJoin === "object" ? stage.sessionJoin : null;
+        applyVisualSettings();
+        renderQr();
+        if (Array.isArray(stage.recentMessages)) {
+          setChatFromSnapshot(stage.recentMessages);
+        }
+      }
+
+      function onSocketMessage(raw) {
+        let msg;
+        try {
+          msg = JSON.parse(String(raw || "{}"));
+        } catch {
+          return;
+        }
+
+        if (msg.type === "stage_hello" || msg.type === "stage_state") {
+          applyStageSnapshot(msg.stage || {});
+          return;
+        }
+
+        if (msg.type === "comment") {
+          pushChat(msg);
+          return;
+        }
+
+        if (msg.type === "stage_reaction") {
+          const burst = Math.max(
+            1,
+            Math.min(
+              12,
+              Number.parseInt(String(msg.burst || stageState.settings.emojiBurst || 1), 10) || 1
+            )
+          );
+          spawnReaction(msg.reaction, burst);
+          return;
+        }
+
+        if (msg.type === "session_reset" || msg.type === "session_closed") {
+          stageState.chat = [];
+          renderChat();
+        }
+      }
+
+      function scheduleReconnect() {
+        if (reconnectTimer) return;
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          connect();
+        }, reconnectDelayMs);
+        reconnectDelayMs = Math.min(RECONNECT_MAX_MS, Math.floor(reconnectDelayMs * 1.6));
+      }
+
+      function connect() {
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const wsUrl = protocol + "://" + window.location.host + "/?stage=1";
+
+        try {
+          ws = new WebSocket(wsUrl);
+        } catch {
+          showStatus("Stage output: offline", true);
+          scheduleReconnect();
+          return;
+        }
+
+        ws.addEventListener("open", () => {
+          reconnectDelayMs = RECONNECT_MIN_MS;
+          showStatus("", false);
+          try {
+            ws.send(JSON.stringify({ type: "stage_refresh" }));
+          } catch {}
+        });
+
+        ws.addEventListener("message", (event) => {
+          onSocketMessage(event && event.data);
+        });
+
+        ws.addEventListener("close", () => {
+          ws = null;
+          showStatus("Stage output: reconnecting…", true);
+          scheduleReconnect();
+        });
+
+        ws.addEventListener("error", () => {
+          showStatus("Stage output: reconnecting…", true);
+        });
+      }
+
+      applyVisualSettings();
+      renderQr();
+      renderChat();
+      connect();
+    </script>
+  </body>
+</html>

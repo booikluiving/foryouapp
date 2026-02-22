@@ -95,6 +95,30 @@ const SIM_DEFAULTS = {
   callbackRate: 0.34,
 };
 const SIM_DEFAULTS_SETTING_KEY = "sim_defaults_json";
+const STAGE_OUTPUT_SETTINGS_KEY = "stage_output_settings_json";
+const STAGE_OUTPUT_DEFAULTS = Object.freeze({
+  showQr: true,
+  showChat: true,
+  showEmojis: true,
+  background: "transparent",
+  chatScale: 1,
+  chatBottom: 36,
+  chatHeight: 940,
+  chatX: 0,
+  chatFadeStart: 52,
+  qrScale: 1,
+  qrX: 86,
+  qrY: 10,
+  emojiScale: 1,
+  emojiBurst: 1,
+  emojiSpread: 6,
+  emojiHeartX: 50,
+  emojiFireX: 50,
+  emojiLaughX: 50,
+  emojiBoredX: 50,
+});
+const STAGE_OUTPUT_WIDTH = 1080;
+const STAGE_OUTPUT_HEIGHT = 1920;
 const SIM_PERSONAS = [
   {
     id: "deadpan_critic",
@@ -1607,6 +1631,21 @@ const sql = {
      WHERE token = ?
      LIMIT 1`
   ),
+  getLatestSessionJoinTokenBySession: db.prepare(
+    `SELECT
+      id,
+      session_id AS sessionId,
+      token,
+      created_at AS createdAt,
+      expires_at AS expiresAt,
+      use_count AS useCount,
+      last_used_at AS lastUsedAt,
+      created_by AS createdBy
+     FROM session_join_tokens
+     WHERE session_id = ? AND expires_at > ?
+     ORDER BY id DESC
+     LIMIT 1`
+  ),
   touchSessionJoinToken: db.prepare(
     `UPDATE session_join_tokens
      SET use_count = ?, last_used_at = ?
@@ -1833,6 +1872,156 @@ function updateAdminPasswordHashFromPlain(plainTextPassword) {
   return encoded;
 }
 
+function normalizeStageOutputSettings(rawSettings = {}, baseSettings = STAGE_OUTPUT_DEFAULTS) {
+  const base = baseSettings || STAGE_OUTPUT_DEFAULTS;
+  const chatScale = clampFloat(
+    rawSettings && rawSettings.chatScale !== undefined ? rawSettings.chatScale : base.chatScale,
+    0.6,
+    2.2,
+    base.chatScale
+  );
+  const chatBottom = clampInt(
+    rawSettings && rawSettings.chatBottom !== undefined ? rawSettings.chatBottom : base.chatBottom,
+    0,
+    700,
+    base.chatBottom
+  );
+  const chatHeight = clampInt(
+    rawSettings && rawSettings.chatHeight !== undefined ? rawSettings.chatHeight : base.chatHeight,
+    180,
+    1800,
+    base.chatHeight
+  );
+  const chatX = clampFloat(
+    rawSettings && rawSettings.chatX !== undefined ? rawSettings.chatX : base.chatX,
+    -50,
+    50,
+    base.chatX
+  );
+  const chatFadeStart = clampInt(
+    rawSettings && rawSettings.chatFadeStart !== undefined ? rawSettings.chatFadeStart : base.chatFadeStart,
+    0,
+    90,
+    base.chatFadeStart
+  );
+  const qrScale = clampFloat(
+    rawSettings && rawSettings.qrScale !== undefined ? rawSettings.qrScale : base.qrScale,
+    0.5,
+    2.2,
+    base.qrScale
+  );
+  const qrX = clampFloat(
+    rawSettings && rawSettings.qrX !== undefined ? rawSettings.qrX : base.qrX,
+    0,
+    100,
+    base.qrX
+  );
+  const qrY = clampFloat(
+    rawSettings && rawSettings.qrY !== undefined ? rawSettings.qrY : base.qrY,
+    0,
+    100,
+    base.qrY
+  );
+  const emojiScale = clampFloat(
+    rawSettings && rawSettings.emojiScale !== undefined ? rawSettings.emojiScale : base.emojiScale,
+    0.4,
+    2.8,
+    base.emojiScale
+  );
+  const emojiBurst = clampInt(
+    rawSettings && rawSettings.emojiBurst !== undefined ? rawSettings.emojiBurst : base.emojiBurst,
+    1,
+    6,
+    base.emojiBurst
+  );
+  const emojiSpread = clampFloat(
+    rawSettings && rawSettings.emojiSpread !== undefined ? rawSettings.emojiSpread : base.emojiSpread,
+    0,
+    30,
+    base.emojiSpread
+  );
+  const emojiHeartX = clampFloat(
+    rawSettings && rawSettings.emojiHeartX !== undefined ? rawSettings.emojiHeartX : base.emojiHeartX,
+    0,
+    100,
+    base.emojiHeartX
+  );
+  const emojiFireX = clampFloat(
+    rawSettings && rawSettings.emojiFireX !== undefined ? rawSettings.emojiFireX : base.emojiFireX,
+    0,
+    100,
+    base.emojiFireX
+  );
+  const emojiLaughX = clampFloat(
+    rawSettings && rawSettings.emojiLaughX !== undefined ? rawSettings.emojiLaughX : base.emojiLaughX,
+    0,
+    100,
+    base.emojiLaughX
+  );
+  const emojiBoredX = clampFloat(
+    rawSettings && rawSettings.emojiBoredX !== undefined ? rawSettings.emojiBoredX : base.emojiBoredX,
+    0,
+    100,
+    base.emojiBoredX
+  );
+  const backgroundRaw = String(
+    rawSettings && rawSettings.background !== undefined
+      ? rawSettings.background
+      : base.background
+  )
+    .trim()
+    .toLowerCase();
+  const background = backgroundRaw === "black" ? "black" : "transparent";
+  return {
+    showQr: parseBooleanLike(
+      rawSettings && rawSettings.showQr !== undefined ? rawSettings.showQr : base.showQr,
+      base.showQr
+    ),
+    showChat: parseBooleanLike(
+      rawSettings && rawSettings.showChat !== undefined ? rawSettings.showChat : base.showChat,
+      base.showChat
+    ),
+    showEmojis: parseBooleanLike(
+      rawSettings && rawSettings.showEmojis !== undefined ? rawSettings.showEmojis : base.showEmojis,
+      base.showEmojis
+    ),
+    background,
+    chatScale,
+    chatBottom,
+    chatHeight,
+    chatX,
+    chatFadeStart,
+    qrScale,
+    qrX,
+    qrY,
+    emojiScale,
+    emojiBurst,
+    emojiSpread,
+    emojiHeartX,
+    emojiFireX,
+    emojiLaughX,
+    emojiBoredX,
+  };
+}
+
+function loadStageOutputSettingsFromSettings() {
+  const raw = getSetting(STAGE_OUTPUT_SETTINGS_KEY, "");
+  if (!raw) return normalizeStageOutputSettings(STAGE_OUTPUT_DEFAULTS, STAGE_OUTPUT_DEFAULTS);
+  const parsed = safeJsonParse(raw, null);
+  if (!parsed || typeof parsed !== "object") {
+    return normalizeStageOutputSettings(STAGE_OUTPUT_DEFAULTS, STAGE_OUTPUT_DEFAULTS);
+  }
+  return normalizeStageOutputSettings(parsed, STAGE_OUTPUT_DEFAULTS);
+}
+
+function saveStageOutputSettings(settings) {
+  const normalized = normalizeStageOutputSettings(settings, STAGE_OUTPUT_DEFAULTS);
+  setSetting(STAGE_OUTPUT_SETTINGS_KEY, safeJsonStringify(normalized, "{}"));
+  return normalized;
+}
+
+let stageOutputSettings = normalizeStageOutputSettings(STAGE_OUTPUT_DEFAULTS, STAGE_OUTPUT_DEFAULTS);
+
 function loadSimulatorDefaultsFromSettings() {
   const raw = getSetting(SIM_DEFAULTS_SETTING_KEY, "");
   if (!raw) return normalizeSimulatorConfig(SIM_DEFAULTS, SIM_DEFAULTS);
@@ -1871,6 +2060,7 @@ if (adminPasswordSeededFromDefault) {
   console.log("Warning: using default admin password. Wijzig dit direct via env of admin console.");
 }
 const SIM_RUNTIME_DEFAULTS = saveSimulatorDefaults(loadSimulatorDefaultsFromSettings());
+stageOutputSettings = saveStageOutputSettings(loadStageOutputSettingsFromSettings());
 console.log(`OSC destination active: ${OSC_HOST}:${currentOscPort}`);
 
 function ensureOpenSession() {
@@ -1920,6 +2110,7 @@ function getPollResults(poll) {
 const adminTokens = new Map();
 const adminLoginAttempts = new Map();
 const connectedClients = new Map();
+const stageSubscribers = new Set();
 const mutedUsers = new Map();
 const blockedUsers = new Map();
 let currentSession = ensureOpenSession();
@@ -2173,11 +2364,12 @@ function isLoopbackHostname(hostname) {
 }
 
 function buildJoinBaseUrl(req) {
-  const protocol = isHttpsRequest(req) ? "https" : "http";
-  const forwardedHost = String(req.headers["x-forwarded-host"] || "")
+  const safeReq = req && typeof req === "object" ? req : { headers: {} };
+  const protocol = isHttpsRequest(safeReq) ? "https" : "http";
+  const forwardedHost = String(safeReq.headers["x-forwarded-host"] || "")
     .split(",")[0]
     .trim();
-  const hostHeader = forwardedHost || String(req.headers.host || "").trim();
+  const hostHeader = forwardedHost || String(safeReq.headers.host || "").trim();
 
   let parsed;
   try {
@@ -2197,6 +2389,10 @@ function buildJoinBaseUrl(req) {
 function buildJoinUrl(req, token) {
   const safeToken = normalizeSessionJoinToken(token);
   return `${buildJoinBaseUrl(req)}/join?token=${encodeURIComponent(safeToken)}`;
+}
+
+function buildStageUrl(req) {
+  return `${buildJoinBaseUrl(req)}/stage`;
 }
 
 function pruneSessionJoinTokens() {
@@ -2250,6 +2446,62 @@ function buildSessionJoinPayload(req, tokenInfo) {
     ttlMinutes: clampInt(tokenInfo && tokenInfo.ttlMinutes, 5, 7 * 24 * 60, SESSION_JOIN_TOKEN_TTL_MINUTES),
     joinPath: `/join?token=${encodeURIComponent(token)}`,
     joinUrl: buildJoinUrl(req, token),
+  };
+}
+
+function getCurrentSessionJoinPayload(req) {
+  if (!isCurrentSessionActive()) return null;
+  pruneSessionJoinTokens();
+  const row = sql.getLatestSessionJoinTokenBySession.get(Number(currentSession.id || 0), nowIso());
+  if (!row) return null;
+  return buildSessionJoinPayload(req, row);
+}
+
+function getStageControlState(req) {
+  return {
+    path: "/stage",
+    url: buildStageUrl(req),
+    width: STAGE_OUTPUT_WIDTH,
+    height: STAGE_OUTPUT_HEIGHT,
+    settings: normalizeStageOutputSettings(stageOutputSettings, STAGE_OUTPUT_DEFAULTS),
+  };
+}
+
+function getStageRecentMessages(limit = 26) {
+  if (!isCurrentSessionActive()) return [];
+  const safeLimit = clampInt(limit, 5, 120, 26);
+  return sql.getRecentMessages.all(currentSession.id, safeLimit)
+    .filter((message) => String(message && message.status || "") === "accepted")
+    .reverse()
+    .map((message) => {
+      const detail = String(message && message.detail || "");
+      const isNotice = detail.startsWith("moderation_notice:");
+      const name = String(message && message.name ? message.name : "Anoniem");
+      return {
+        time: String(message && message.time || ""),
+        name,
+        text: String(message && message.text || ""),
+        nameColor: isNotice ? "" : getNameColorHex(name),
+        system: isNotice,
+      };
+    });
+}
+
+function getStageSnapshot(req) {
+  const control = getStageControlState(req);
+  const sessionJoin = getCurrentSessionJoinPayload(req);
+  return {
+    ...control,
+    session: {
+      id: Number(currentSession.id || 0),
+      name: String(currentSession.name || ""),
+      startedAt: String(currentSession.startedAt || ""),
+      endedAt: currentSession.endedAt ? String(currentSession.endedAt) : null,
+      isActive: isCurrentSessionActive(),
+    },
+    sessionJoin: sessionJoin || null,
+    reactionCounts: reactionCountsSnapshot(reactionCounts),
+    recentMessages: getStageRecentMessages(32),
   };
 }
 
@@ -2754,6 +3006,7 @@ function publishModerationFeedNotice(actionType, scope, meta = {}) {
     detail: `moderation_notice:${String(actionType || "")}`,
   });
   broadcastToClients(payload);
+  sendToStageSubscribers(payload);
   return payload;
 }
 
@@ -2890,6 +3143,7 @@ function disconnectAllClients(config = {}) {
   const closeReason = String(config.closeReason || "session reset").slice(0, 120);
   let closed = 0;
   for (const client of wss.clients) {
+    const isStageSubscriber = !!(client && client.__isStageSubscriber);
     try {
       if (client.readyState === WebSocket.OPEN) {
         client.send(
@@ -2900,12 +3154,48 @@ function disconnectAllClients(config = {}) {
         );
       }
     } catch {}
+    if (isStageSubscriber) continue;
     try {
       client.close(closeCode, closeReason);
       closed += 1;
     } catch {}
   }
   return closed;
+}
+
+function parseWsRequestUrl(req) {
+  try {
+    return new URL(req && req.url ? req.url : "/", "http://localhost");
+  } catch {
+    return new URL("http://localhost/");
+  }
+}
+
+function isStageSubscriptionRequest(req) {
+  const parsed = parseWsRequestUrl(req);
+  return parsed.searchParams.get("stage") === "1";
+}
+
+function sendToStageSubscribers(message) {
+  if (!stageSubscribers.size) return 0;
+  const payload = safeJsonStringify(message, "{}");
+  let sent = 0;
+  for (const socket of stageSubscribers) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) continue;
+    try {
+      socket.send(payload);
+      sent += 1;
+    } catch {}
+  }
+  return sent;
+}
+
+function broadcastStageState(req, reason = "state") {
+  sendToStageSubscribers({
+    type: "stage_state",
+    reason: String(reason || "state"),
+    stage: getStageSnapshot(req),
+  });
 }
 
 function getPollSnapshot() {
@@ -2930,6 +3220,7 @@ function getPollSnapshot() {
 function broadcastToClients(message) {
   const payload = safeJsonStringify(message, "{}");
   for (const client of wss.clients) {
+    if (client && client.__isStageSubscriber) continue;
     if (client.readyState === WebSocket.OPEN) {
       try {
         client.send(payload);
@@ -4116,10 +4407,12 @@ class ChatSimulatorManager {
 
 const chatSimulator = new ChatSimulatorManager();
 
-function getAdminState() {
+function getAdminState(req) {
   cleanupEnforcementMaps();
   pruneSessionAccessGrants();
   const snapshotNow = nowIso();
+  const sessionJoin = getCurrentSessionJoinPayload(req);
+  const stageControl = getStageControlState(req);
 
   const accepted = sql.countAcceptedMessages.get(currentSession.id);
   const rejected = sql.countRejectedMessages.get(currentSession.id);
@@ -4268,6 +4561,8 @@ function getAdminState() {
       : null,
     recentActions: sql.getRecentModerationActions.all(currentSession.id, 30),
     recentMessages,
+    sessionJoin,
+    stage: stageControl,
   };
 }
 
@@ -4911,6 +5206,10 @@ app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "admin.html"));
 });
 
+app.get("/stage", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "stage.html"));
+});
+
 app.post("/admin/login", (req, res) => {
   const ip = normalizeIp(req.socket.remoteAddress || "unknown");
   const blockedRemainingMs = getAdminLoginBlockRemainingMs(ip);
@@ -5048,7 +5347,69 @@ app.post("/admin/restart", requireAdmin, (req, res) => {
 });
 
 app.get("/admin/state", requireAdmin, (req, res) => {
-  res.json(getAdminState());
+  res.json(getAdminState(req));
+});
+
+app.post("/admin/stage/settings", requireAdmin, (req, res) => {
+  const incoming = req.body && typeof req.body === "object"
+    ? (req.body.settings && typeof req.body.settings === "object" ? req.body.settings : req.body)
+    : {};
+  stageOutputSettings = saveStageOutputSettings(normalizeStageOutputSettings(incoming, stageOutputSettings));
+  writeDebug("stage_settings_updated", {
+    by: "admin",
+    showQr: stageOutputSettings.showQr,
+    showChat: stageOutputSettings.showChat,
+    showEmojis: stageOutputSettings.showEmojis,
+    background: stageOutputSettings.background,
+    chatScale: stageOutputSettings.chatScale,
+    chatBottom: stageOutputSettings.chatBottom,
+    chatHeight: stageOutputSettings.chatHeight,
+    chatX: stageOutputSettings.chatX,
+    chatFadeStart: stageOutputSettings.chatFadeStart,
+    qrScale: stageOutputSettings.qrScale,
+    qrX: stageOutputSettings.qrX,
+    qrY: stageOutputSettings.qrY,
+    emojiScale: stageOutputSettings.emojiScale,
+    emojiBurst: stageOutputSettings.emojiBurst,
+    emojiSpread: stageOutputSettings.emojiSpread,
+    emojiHeartX: stageOutputSettings.emojiHeartX,
+    emojiFireX: stageOutputSettings.emojiFireX,
+    emojiLaughX: stageOutputSettings.emojiLaughX,
+    emojiBoredX: stageOutputSettings.emojiBoredX,
+  });
+  broadcastStageState(req, "settings_updated");
+  res.json({
+    ok: true,
+    stage: getStageControlState(req),
+  });
+});
+
+app.post("/admin/stage/test-emoji", requireAdmin, (req, res) => {
+  const requested = String(req.body && req.body.reaction || "").trim().toLowerCase();
+  const reaction = normalizeReactionType(requested) || "fire";
+  const burst = clampInt(
+    req.body && req.body.burst,
+    1,
+    8,
+    clampInt(stageOutputSettings && stageOutputSettings.emojiBurst, 1, 6, 1)
+  );
+  const now = nowIso();
+  for (let i = 0; i < burst; i += 1) {
+    sendToStageSubscribers({
+      type: "stage_reaction",
+      time: now,
+      reaction,
+      counts: reactionCountsSnapshot(reactionCounts),
+      burst: 1,
+      source: "admin_test",
+    });
+  }
+  res.json({
+    ok: true,
+    reaction,
+    burst,
+    viewers: stageSubscribers.size,
+  });
 });
 
 app.get("/admin/user-history", requireAdmin, (req, res) => {
@@ -5094,6 +5455,7 @@ app.post("/admin/session/new", requireAdmin, (req, res) => {
   });
 
   const closedClients = disconnectAllClientsForNewSession();
+  broadcastStageState(req, "session_new");
 
   res.json({
     ok: true,
@@ -5136,6 +5498,7 @@ app.post("/admin/session/end", requireAdmin, (req, res) => {
     sessionName: endedSession.name,
   });
   const closedClients = disconnectAllClientsForSessionEnd();
+  broadcastStageState(req, "session_ended");
 
   res.json({
     ok: true,
@@ -5188,6 +5551,7 @@ app.post("/admin/session/new-with-token", requireAdmin, (req, res) => {
     sessionName: newSession.name,
     joinTokenTail: join && join.token ? String(join.token).slice(-6) : "",
   });
+  broadcastStageState(req, "session_new_with_join");
 
   res.json({
     ok: true,
@@ -5655,7 +6019,64 @@ function allowReaction(key) {
   return true;
 }
 
+function handleStageSubscriberConnection(ws, req) {
+  const ip = normalizeIp(req.socket.remoteAddress || "unknown");
+  const ua = req.headers["user-agent"] || "unknown";
+  ws.__isStageSubscriber = true;
+  stageSubscribers.add(ws);
+  writeDebug("stage_ws_connected", { ip, ua, viewers: stageSubscribers.size });
+
+  try {
+    ws.send(
+      safeJsonStringify({
+        type: "stage_hello",
+        stage: getStageSnapshot(req),
+      })
+    );
+  } catch {}
+
+  ws.on("message", (data) => {
+    let msg;
+    try {
+      msg = JSON.parse(String(data || "{}"));
+    } catch {
+      return;
+    }
+    if (msg.type === "ping") {
+      try {
+        ws.send(safeJsonStringify({ type: "pong", t: Date.now() }));
+      } catch {}
+      return;
+    }
+    if (msg.type === "stage_refresh") {
+      try {
+        ws.send(
+          safeJsonStringify({
+            type: "stage_state",
+            reason: "requested",
+            stage: getStageSnapshot(req),
+          })
+        );
+      } catch {}
+    }
+  });
+
+  ws.on("close", (code) => {
+    stageSubscribers.delete(ws);
+    writeDebug("stage_ws_closed", { ip, code: Number(code || 0), viewers: stageSubscribers.size });
+  });
+
+  ws.on("error", (err) => {
+    writeDebug("stage_ws_error", { ip, message: err && err.message ? err.message : "unknown" });
+  });
+}
+
 wss.on("connection", (ws, req) => {
+  if (isStageSubscriptionRequest(req)) {
+    handleStageSubscriberConnection(ws, req);
+    return;
+  }
+
   const clientId = nextClientId++;
   const ip = normalizeIp(req.socket.remoteAddress || "unknown");
   const ua = req.headers["user-agent"] || "unknown";
@@ -5871,6 +6292,13 @@ wss.on("connection", (ws, req) => {
         clientId,
         ip,
         channel: "reaction_bored",
+      });
+      sendToStageSubscribers({
+        type: "stage_reaction",
+        time: nowIso(),
+        reaction,
+        counts,
+        burst: 1,
       });
       return;
     }
@@ -6107,6 +6535,7 @@ wss.on("connection", (ws, req) => {
     });
 
     broadcastToClients(payload);
+    sendToStageSubscribers(payload);
     chatSimulator.observeAcceptedComment(payload);
 
     sendOsc("/comment/text", [{ type: "s", value: text }], { clientId, ip, channel: "comment_text" });

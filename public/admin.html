@@ -274,6 +274,34 @@
         user-select: none;
         margin-bottom: 8px;
       }
+      .stageGroup {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--subtle);
+        padding: 8px 10px;
+      }
+      .stageGroup > summary {
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ink);
+        user-select: none;
+        list-style: none;
+      }
+      .stageGroup > summary::-webkit-details-marker {
+        display: none;
+      }
+      .stageGroup > summary::after {
+        content: "▾";
+        float: right;
+        color: var(--muted);
+      }
+      .stageGroup:not([open]) > summary::after {
+        content: "▸";
+      }
+      .stageGroup > .stack {
+        margin-top: 8px;
+      }
       .qrPreview {
         min-height: 120px;
         border: 1px solid var(--line);
@@ -481,6 +509,117 @@
           </div>
           <div class="muted">Nieuwe sessie: sluit huidige sessie af, koppelt clients los en maakt een nieuwe QR. Sessie beëindigen: sluit alleen af en verwijdert de QR.</div>
         </div>
+
+        <div class="card stack">
+          <h2>Stage output</h2>
+          <div class="row">
+            <input id="stageUrl" type="text" readonly placeholder="Stage-link verschijnt na laden..." />
+            <button id="copyStageBtn" type="button">Kopieer stage-link</button>
+            <button id="openStageBtn" type="button">Open stage</button>
+          </div>
+          <details class="stageGroup" open>
+            <summary>Zichtbaarheid</summary>
+            <div class="stack">
+              <div class="row">
+                <label class="rememberRow"><input id="stageShowQr" type="checkbox" />QR</label>
+                <label class="rememberRow"><input id="stageShowChat" type="checkbox" />Chat</label>
+                <label class="rememberRow"><input id="stageShowEmojis" type="checkbox" />Emoji</label>
+                <select id="stageBackground">
+                  <option value="transparent">Achtergrond: transparant</option>
+                  <option value="black">Achtergrond: zwart</option>
+                </select>
+              </div>
+            </div>
+          </details>
+          <details class="stageGroup" open>
+            <summary>Chat styling</summary>
+            <div class="stack">
+              <div class="row">
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>Chat schaal</span><span id="stageChatScaleValue" class="sliderValue">1.00x</span></div>
+                  <input id="stageChatScale" type="range" min="0.6" max="2.2" step="0.01" value="1" />
+                </div>
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>Chat ondermarge</span><span id="stageChatBottomValue" class="sliderValue">36px</span></div>
+                  <input id="stageChatBottom" type="range" min="0" max="700" step="2" value="36" />
+                </div>
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>Chat hoogte</span><span id="stageChatHeightValue" class="sliderValue">940px</span></div>
+                  <input id="stageChatHeight" type="range" min="180" max="1800" step="10" value="940" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>Chat X</span><span id="stageChatXValue" class="sliderValue">0%</span></div>
+                  <input id="stageChatX" type="range" min="-50" max="50" step="1" value="0" />
+                </div>
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>Chat fade start</span><span id="stageChatFadeValue" class="sliderValue">52%</span></div>
+                  <input id="stageChatFade" type="range" min="0" max="90" step="1" value="52" />
+                </div>
+              </div>
+            </div>
+          </details>
+          <details class="stageGroup" open>
+            <summary>QR styling</summary>
+            <div class="stack">
+              <div class="row">
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>QR schaal</span><span id="stageQrScaleValue" class="sliderValue">1.00x</span></div>
+                  <input id="stageQrScale" type="range" min="0.5" max="2.2" step="0.01" value="1" />
+                </div>
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>QR X</span><span id="stageQrXValue" class="sliderValue">86%</span></div>
+                  <input id="stageQrX" type="range" min="0" max="100" step="1" value="86" />
+                </div>
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>QR Y</span><span id="stageQrYValue" class="sliderValue">10%</span></div>
+                  <input id="stageQrY" type="range" min="0" max="100" step="1" value="10" />
+                </div>
+              </div>
+            </div>
+          </details>
+          <details class="stageGroup" open>
+            <summary>Emoji styling</summary>
+            <div class="stack">
+              <div class="row">
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>Emoji schaal</span><span id="stageEmojiScaleValue" class="sliderValue">1.00x</span></div>
+                  <input id="stageEmojiScale" type="range" min="0.4" max="2.8" step="0.01" value="1" />
+                </div>
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>Emoji burst</span><span id="stageEmojiBurstValue" class="sliderValue">1</span></div>
+                  <input id="stageEmojiBurst" type="range" min="1" max="6" step="1" value="1" />
+                </div>
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>Emoji spreiding</span><span id="stageEmojiSpreadValue" class="sliderValue">6%</span></div>
+                  <input id="stageEmojiSpread" type="range" min="0" max="30" step="1" value="6" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>Emoji X ❤️</span><span id="stageEmojiHeartXValue" class="sliderValue">50%</span></div>
+                  <input id="stageEmojiHeartX" type="range" min="0" max="100" step="1" value="50" />
+                </div>
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>Emoji X 🔥</span><span id="stageEmojiFireXValue" class="sliderValue">50%</span></div>
+                  <input id="stageEmojiFireX" type="range" min="0" max="100" step="1" value="50" />
+                </div>
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>Emoji X 😂</span><span id="stageEmojiLaughXValue" class="sliderValue">50%</span></div>
+                  <input id="stageEmojiLaughX" type="range" min="0" max="100" step="1" value="50" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="sliderField">
+                  <div class="sliderLabel"><span>Emoji X 👎</span><span id="stageEmojiBoredXValue" class="sliderValue">50%</span></div>
+                  <input id="stageEmojiBoredX" type="range" min="0" max="100" step="1" value="50" />
+                </div>
+              </div>
+            </div>
+          </details>
+          <div class="muted">Vast portrait canvas: 1080×1920. Gebruik transparant voor alpha-overlays (OBS/Electron), of zwart voor harde achtergrond.</div>
+        </div>
         <div id="actionMsg"></div>
 
         <div class="card stack">
@@ -654,6 +793,43 @@
       const copySessionJoinBtn = document.getElementById("copySessionJoinBtn");
       const openSessionJoinBtn = document.getElementById("openSessionJoinBtn");
       const sessionQrPreviewEl = document.getElementById("sessionQrPreview");
+      const stageUrlEl = document.getElementById("stageUrl");
+      const copyStageBtn = document.getElementById("copyStageBtn");
+      const openStageBtn = document.getElementById("openStageBtn");
+      const stageShowQrEl = document.getElementById("stageShowQr");
+      const stageShowChatEl = document.getElementById("stageShowChat");
+      const stageShowEmojisEl = document.getElementById("stageShowEmojis");
+      const stageBackgroundEl = document.getElementById("stageBackground");
+      const stageChatScaleEl = document.getElementById("stageChatScale");
+      const stageChatScaleValueEl = document.getElementById("stageChatScaleValue");
+      const stageQrScaleEl = document.getElementById("stageQrScale");
+      const stageQrScaleValueEl = document.getElementById("stageQrScaleValue");
+      const stageEmojiScaleEl = document.getElementById("stageEmojiScale");
+      const stageEmojiScaleValueEl = document.getElementById("stageEmojiScaleValue");
+      const stageQrXEl = document.getElementById("stageQrX");
+      const stageQrXValueEl = document.getElementById("stageQrXValue");
+      const stageQrYEl = document.getElementById("stageQrY");
+      const stageQrYValueEl = document.getElementById("stageQrYValue");
+      const stageChatBottomEl = document.getElementById("stageChatBottom");
+      const stageChatBottomValueEl = document.getElementById("stageChatBottomValue");
+      const stageChatHeightEl = document.getElementById("stageChatHeight");
+      const stageChatHeightValueEl = document.getElementById("stageChatHeightValue");
+      const stageChatXEl = document.getElementById("stageChatX");
+      const stageChatXValueEl = document.getElementById("stageChatXValue");
+      const stageChatFadeEl = document.getElementById("stageChatFade");
+      const stageChatFadeValueEl = document.getElementById("stageChatFadeValue");
+      const stageEmojiBurstEl = document.getElementById("stageEmojiBurst");
+      const stageEmojiBurstValueEl = document.getElementById("stageEmojiBurstValue");
+      const stageEmojiSpreadEl = document.getElementById("stageEmojiSpread");
+      const stageEmojiSpreadValueEl = document.getElementById("stageEmojiSpreadValue");
+      const stageEmojiHeartXEl = document.getElementById("stageEmojiHeartX");
+      const stageEmojiHeartXValueEl = document.getElementById("stageEmojiHeartXValue");
+      const stageEmojiFireXEl = document.getElementById("stageEmojiFireX");
+      const stageEmojiFireXValueEl = document.getElementById("stageEmojiFireXValue");
+      const stageEmojiLaughXEl = document.getElementById("stageEmojiLaughX");
+      const stageEmojiLaughXValueEl = document.getElementById("stageEmojiLaughXValue");
+      const stageEmojiBoredXEl = document.getElementById("stageEmojiBoredX");
+      const stageEmojiBoredXValueEl = document.getElementById("stageEmojiBoredXValue");
       const wifiSsidInputEl = document.getElementById("wifiSsidInput");
       const wifiPasswordInputEl = document.getElementById("wifiPasswordInput");
       const wifiAuthSelectEl = document.getElementById("wifiAuthSelect");
@@ -746,6 +922,9 @@
       let usersSearchInputDebounceTimer = null;
       let usersSearchDeepMatches = new Set();
       let lastSessionJoin = null;
+      let stageState = null;
+      let stageHydratingControls = false;
+      let stageSettingsSaveTimer = null;
       let adminPasswordMinLength = 12;
 
       try {
@@ -1522,6 +1701,154 @@
         renderQrPreview(sessionQrPreviewEl, joinUrl, "Sessie join QR");
       }
 
+      function normalizeStageSettingsState(rawSettings) {
+        const src = rawSettings && typeof rawSettings === "object" ? rawSettings : stageState && stageState.settings ? stageState.settings : {};
+        const clampFloat = (value, min, max, fallback) => {
+          const n = Number.parseFloat(String(value));
+          if (!Number.isFinite(n)) return fallback;
+          if (n < min) return min;
+          if (n > max) return max;
+          return n;
+        };
+        const clampInt = (value, min, max, fallback) => {
+          const n = Number.parseInt(String(value), 10);
+          if (!Number.isFinite(n)) return fallback;
+          if (n < min) return min;
+          if (n > max) return max;
+          return n;
+        };
+        return {
+          showQr: src.showQr !== false,
+          showChat: src.showChat !== false,
+          showEmojis: src.showEmojis !== false,
+          background: String(src.background || "transparent").toLowerCase() === "black" ? "black" : "transparent",
+          chatScale: clampFloat(src.chatScale, 0.6, 2.2, 1),
+          chatBottom: clampInt(src.chatBottom, 0, 700, 36),
+          chatHeight: clampInt(src.chatHeight, 180, 1800, 940),
+          chatX: clampFloat(src.chatX, -50, 50, 0),
+          chatFadeStart: clampInt(src.chatFadeStart, 0, 90, 52),
+          qrScale: clampFloat(src.qrScale, 0.5, 2.2, 1),
+          qrX: clampFloat(src.qrX, 0, 100, 86),
+          qrY: clampFloat(src.qrY, 0, 100, 10),
+          emojiScale: clampFloat(src.emojiScale, 0.4, 2.8, 1),
+          emojiBurst: clampInt(src.emojiBurst, 1, 6, 1),
+          emojiSpread: clampFloat(src.emojiSpread, 0, 30, 6),
+          emojiHeartX: clampFloat(src.emojiHeartX, 0, 100, 50),
+          emojiFireX: clampFloat(src.emojiFireX, 0, 100, 50),
+          emojiLaughX: clampFloat(src.emojiLaughX, 0, 100, 50),
+          emojiBoredX: clampFloat(src.emojiBoredX, 0, 100, 50),
+        };
+      }
+
+      function updateStageSliderLabelsFromControls() {
+        const settings = getStageSettingsFromControls();
+        if (stageChatScaleValueEl) stageChatScaleValueEl.textContent = settings.chatScale.toFixed(2) + "x";
+        if (stageQrScaleValueEl) stageQrScaleValueEl.textContent = settings.qrScale.toFixed(2) + "x";
+        if (stageEmojiScaleValueEl) stageEmojiScaleValueEl.textContent = settings.emojiScale.toFixed(2) + "x";
+        if (stageQrXValueEl) stageQrXValueEl.textContent = Math.round(settings.qrX) + "%";
+        if (stageQrYValueEl) stageQrYValueEl.textContent = Math.round(settings.qrY) + "%";
+        if (stageChatBottomValueEl) stageChatBottomValueEl.textContent = settings.chatBottom + "px";
+        if (stageChatHeightValueEl) stageChatHeightValueEl.textContent = settings.chatHeight + "px";
+        if (stageChatXValueEl) stageChatXValueEl.textContent = Math.round(settings.chatX) + "%";
+        if (stageChatFadeValueEl) stageChatFadeValueEl.textContent = settings.chatFadeStart + "%";
+        if (stageEmojiBurstValueEl) stageEmojiBurstValueEl.textContent = String(settings.emojiBurst);
+        if (stageEmojiSpreadValueEl) stageEmojiSpreadValueEl.textContent = Math.round(settings.emojiSpread) + "%";
+        if (stageEmojiHeartXValueEl) stageEmojiHeartXValueEl.textContent = Math.round(settings.emojiHeartX) + "%";
+        if (stageEmojiFireXValueEl) stageEmojiFireXValueEl.textContent = Math.round(settings.emojiFireX) + "%";
+        if (stageEmojiLaughXValueEl) stageEmojiLaughXValueEl.textContent = Math.round(settings.emojiLaughX) + "%";
+        if (stageEmojiBoredXValueEl) stageEmojiBoredXValueEl.textContent = Math.round(settings.emojiBoredX) + "%";
+      }
+
+      function applyStageControlsFromState(stage) {
+        stageState = stage && typeof stage === "object" ? stage : null;
+        const settings = normalizeStageSettingsState(stageState && stageState.settings);
+        const stageUrl = String(stageState && stageState.url || "").trim();
+
+        stageHydratingControls = true;
+        try {
+          if (stageUrlEl) stageUrlEl.value = stageUrl;
+          if (stageShowQrEl) stageShowQrEl.checked = !!settings.showQr;
+          if (stageShowChatEl) stageShowChatEl.checked = !!settings.showChat;
+          if (stageShowEmojisEl) stageShowEmojisEl.checked = !!settings.showEmojis;
+          if (stageBackgroundEl) stageBackgroundEl.value = settings.background;
+          if (stageChatScaleEl) stageChatScaleEl.value = String(settings.chatScale);
+          if (stageQrScaleEl) stageQrScaleEl.value = String(settings.qrScale);
+          if (stageEmojiScaleEl) stageEmojiScaleEl.value = String(settings.emojiScale);
+          if (stageQrXEl) stageQrXEl.value = String(settings.qrX);
+          if (stageQrYEl) stageQrYEl.value = String(settings.qrY);
+          if (stageChatBottomEl) stageChatBottomEl.value = String(settings.chatBottom);
+          if (stageChatHeightEl) stageChatHeightEl.value = String(settings.chatHeight);
+          if (stageChatXEl) stageChatXEl.value = String(settings.chatX);
+          if (stageChatFadeEl) stageChatFadeEl.value = String(settings.chatFadeStart);
+          if (stageEmojiBurstEl) stageEmojiBurstEl.value = String(settings.emojiBurst);
+          if (stageEmojiSpreadEl) stageEmojiSpreadEl.value = String(settings.emojiSpread);
+          if (stageEmojiHeartXEl) stageEmojiHeartXEl.value = String(settings.emojiHeartX);
+          if (stageEmojiFireXEl) stageEmojiFireXEl.value = String(settings.emojiFireX);
+          if (stageEmojiLaughXEl) stageEmojiLaughXEl.value = String(settings.emojiLaughX);
+          if (stageEmojiBoredXEl) stageEmojiBoredXEl.value = String(settings.emojiBoredX);
+          updateStageSliderLabelsFromControls();
+        } finally {
+          stageHydratingControls = false;
+        }
+      }
+
+      function getStageSettingsFromControls() {
+        return normalizeStageSettingsState({
+          showQr: !!(stageShowQrEl && stageShowQrEl.checked),
+          showChat: !!(stageShowChatEl && stageShowChatEl.checked),
+          showEmojis: !!(stageShowEmojisEl && stageShowEmojisEl.checked),
+          background: String(stageBackgroundEl && stageBackgroundEl.value || "transparent"),
+          chatScale: stageChatScaleEl && stageChatScaleEl.value,
+          chatBottom: stageChatBottomEl && stageChatBottomEl.value,
+          chatHeight: stageChatHeightEl && stageChatHeightEl.value,
+          chatX: stageChatXEl && stageChatXEl.value,
+          chatFadeStart: stageChatFadeEl && stageChatFadeEl.value,
+          qrScale: stageQrScaleEl && stageQrScaleEl.value,
+          qrX: stageQrXEl && stageQrXEl.value,
+          qrY: stageQrYEl && stageQrYEl.value,
+          emojiScale: stageEmojiScaleEl && stageEmojiScaleEl.value,
+          emojiBurst: stageEmojiBurstEl && stageEmojiBurstEl.value,
+          emojiSpread: stageEmojiSpreadEl && stageEmojiSpreadEl.value,
+          emojiHeartX: stageEmojiHeartXEl && stageEmojiHeartXEl.value,
+          emojiFireX: stageEmojiFireXEl && stageEmojiFireXEl.value,
+          emojiLaughX: stageEmojiLaughXEl && stageEmojiLaughXEl.value,
+          emojiBoredX: stageEmojiBoredXEl && stageEmojiBoredXEl.value,
+        });
+      }
+
+      async function saveStageSettings(nextSettings, successMessage) {
+        const payload = normalizeStageSettingsState(nextSettings);
+        try {
+          const body = await api("/admin/stage/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          applyStageControlsFromState(body && body.stage ? body.stage : { settings: payload, url: "" });
+          setActionMessage(successMessage || "Stage-instellingen bijgewerkt.");
+        } catch (err) {
+          setActionMessage("Stage-instellingen opslaan mislukt: " + err.message);
+        }
+      }
+
+      function scheduleStageSettingsSave(delayMs = 120) {
+        if (stageHydratingControls) return;
+        if (stageSettingsSaveTimer) {
+          clearTimeout(stageSettingsSaveTimer);
+          stageSettingsSaveTimer = null;
+        }
+        const delay = Math.max(0, Number(delayMs) || 0);
+        stageSettingsSaveTimer = setTimeout(() => {
+          stageSettingsSaveTimer = null;
+          saveStageSettings(getStageSettingsFromControls(), "Stage-instellingen bijgewerkt.");
+        }, delay);
+      }
+
+      function saveStageSettingsFromControls() {
+        updateStageSliderLabelsFromControls();
+        scheduleStageSettingsSave(40);
+      }
+
       async function copyTextToClipboard(text) {
         const value = String(text || "");
         if (!value) return false;
@@ -2210,10 +2537,14 @@
         const onlineCount = Math.max(0, Number(session.onlineCount || (Array.isArray(data.users) ? data.users.length : 0)));
         const onlineBotCount = Math.max(0, Number(session.onlineBotCount || 0));
         const offlineRegisteredCount = Math.max(0, Number(session.offlineRegisteredCount || (registeredCount - onlineCount)));
-        const lastJoinSessionId = Number(lastSessionJoin && lastSessionJoin.sessionId || 0);
-        if (!sessionIsActive || (lastJoinSessionId && lastJoinSessionId !== sessionId)) {
+        const joinFromState = data && data.sessionJoin ? data.sessionJoin : null;
+        const joinSessionId = Number(joinFromState && joinFromState.sessionId || 0);
+        if (sessionIsActive && joinFromState && joinSessionId === sessionId) {
+          setSessionJoinResult(joinFromState);
+        } else {
           setSessionJoinResult(null);
         }
+        applyStageControlsFromState(data && data.stage ? data.stage : null);
         if (endSessionBtn) {
           endSessionBtn.disabled = !sessionIsActive;
         }
@@ -2606,6 +2937,7 @@
       initCollapsibleSections();
       rememberDeviceEl.checked = loadRememberDevicePreference();
       setSessionJoinResult(null);
+      applyStageControlsFromState(null);
       renderPasswordHint(`Gebruik minimaal ${adminPasswordMinLength} tekens met hoofdletter, kleine letter, cijfer en speciaal teken.`);
 
       themeToggleBtn.addEventListener("click", cycleTheme);
@@ -2692,6 +3024,61 @@
           setActionMessage("Kon link niet openen.");
         }
       });
+      copyStageBtn.addEventListener("click", async () => {
+        const text = String(stageUrlEl && stageUrlEl.value || "").trim();
+        if (!text) {
+          setActionMessage("Stage-link nog niet beschikbaar.");
+          return;
+        }
+        try {
+          const copied = await copyTextToClipboard(text);
+          setActionMessage(copied ? "Stage-link gekopieerd." : "Kopieren mislukt.");
+        } catch {
+          setActionMessage("Kopieren mislukt.");
+        }
+      });
+      openStageBtn.addEventListener("click", () => {
+        const text = String(stageUrlEl && stageUrlEl.value || "").trim();
+        if (!text) {
+          setActionMessage("Stage-link nog niet beschikbaar.");
+          return;
+        }
+        try {
+          const opened = window.open(text, "_blank", "noopener,noreferrer");
+          if (!opened) {
+            setActionMessage("Kon stage-link niet openen. Sta pop-ups toe voor deze pagina.");
+            return;
+          }
+          setActionMessage("Stage geopend in nieuw tabblad.");
+        } catch {
+          setActionMessage("Kon stage-link niet openen.");
+        }
+      });
+      for (const control of [stageShowQrEl, stageShowChatEl, stageShowEmojisEl, stageBackgroundEl]) {
+        if (!control) continue;
+        control.addEventListener("change", saveStageSettingsFromControls);
+      }
+      for (const slider of [
+        stageChatScaleEl,
+        stageQrScaleEl,
+        stageEmojiScaleEl,
+        stageQrXEl,
+        stageQrYEl,
+        stageChatBottomEl,
+        stageChatHeightEl,
+        stageChatXEl,
+        stageChatFadeEl,
+        stageEmojiBurstEl,
+        stageEmojiSpreadEl,
+        stageEmojiHeartXEl,
+        stageEmojiFireXEl,
+        stageEmojiLaughXEl,
+        stageEmojiBoredXEl,
+      ]) {
+        if (!slider) continue;
+        slider.addEventListener("input", saveStageSettingsFromControls);
+        slider.addEventListener("change", () => scheduleStageSettingsSave(0));
+      }
       buildWifiQrBtn.addEventListener("click", () => {
         const payload = buildWifiQrPayload();
         if (!payload) {

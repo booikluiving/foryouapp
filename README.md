@@ -23,6 +23,7 @@ Belangrijke onderdelen:
 - Admin wachtwoord wijzigen vanuit de admin console (met sterkte-eisen).
 - Nieuwe sessie + QR-flow: admin maakt een unieke join-token en QR, clients joinen via `/join?token=...`.
   - Toegang is sessiegebonden: bij een nieuwe sessie is opnieuw scannen/joinen vereist.
+- Stage output pagina (`/stage`) voor OBS/Electron/TouchDesigner browser output met toggles en live styling (QR/chat/emoji, schaal, positie, achtergrond transparant/zwart).
 
 ## Tech stack
 - Node.js (vereist: Node 22+ vanwege `node:sqlite`)
@@ -68,6 +69,7 @@ node scripts/simulate-chatters.js --help
 - `GET /join?token=...` registreert scan/join en stuurt door naar client
   - zet een sessie-access cookie voor alleen de actuele sessie
 - `GET /admin` admin console
+- `GET /stage` stage output (portrait 1080x1920)
 - `GET /health` healthcheck
 - `GET /debug-log` uitlezen debugregels (alleen admin-token, en alleen als `DEBUG_LOG_ENABLED=1`)
 
@@ -76,6 +78,7 @@ Admin API endpoints (subset):
 - `/admin/state`
 - `/admin/session/new`
 - `/admin/session/new-with-token`
+- `/admin/stage/settings` (stage toggles/styling)
 - `/admin/polls/start`, `/admin/polls/close`
 - `/admin/sim/start`, `/admin/sim/update`, `/admin/sim/stop`, `/admin/sim/defaults`
 - `/admin/users/mute`, `/admin/users/unmute`, `/admin/users/block`, `/admin/users/unblock`, `/admin/users/kick`

@@ -2,7 +2,7 @@
 <html lang="nl">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Live reacties</title>
     <style>
       :root {
@@ -175,9 +175,14 @@
         min-width: 0;
         flex: 1;
         margin: 0;
-        padding: 10px 8px;
-        font-size: 20px;
+        min-height: 64px;
+        padding: 12px 10px;
+        font-size: 24px;
         line-height: 1.1;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+        -webkit-user-select: none;
       }
       .reactionCount {
         display: block;
@@ -410,6 +415,11 @@
         bored: "👎",
       };
       let lastReactionSendAt = 0;
+      let lastReactionKey = "";
+      const REACTION_MIN_GAP_MS = 90;
+      const REACTION_REPEAT_GUARD_MS = 280;
+      const REACTION_POINTER_GHOST_MS = 700;
+      let lastReactionPointerAt = 0;
       let activePoll = null;
       let selectedPollOptionIndex = null;
       let pollVotePending = false;
@@ -622,8 +632,10 @@
           return;
         }
         const now = Date.now();
-        if (now - lastReactionSendAt < 90) return;
+        if (now - lastReactionSendAt < REACTION_MIN_GAP_MS) return;
+        if (reactionKey === lastReactionKey && now - lastReactionSendAt < REACTION_REPEAT_GUARD_MS) return;
         lastReactionSendAt = now;
+        lastReactionKey = reactionKey;
         try {
           ws.send(JSON.stringify({ type: "reaction", reaction: reactionKey, clientTag }));
           reactionCounts[reactionKey] = Number(reactionCounts[reactionKey] || 0) + 1;
@@ -805,6 +817,14 @@
             toastTimer = null;
           }, autoHideMs);
         }
+      }
+
+      function readReactionKeyFromEventTarget(target) {
+        const btn = target && typeof target.closest === "function"
+          ? target.closest("button[data-reaction]")
+          : null;
+        if (!btn) return "";
+        return String(btn.getAttribute("data-reaction") || "");
       }
 
       function hideToast() {
@@ -1588,11 +1608,26 @@
         renderPollMeta();
       });
       pollSubmitBtn.addEventListener("click", submitPollVote);
-      reactionBarEl.addEventListener("click", (e) => {
-        const btn = e.target.closest("button[data-reaction]");
-        if (!btn) return;
-        const reactionKey = String(btn.getAttribute("data-reaction") || "");
+      reactionBarEl.addEventListener("pointerup", (e) => {
+        const reactionKey = readReactionKeyFromEventTarget(e.target);
+        if (!reactionKey) return;
+        lastReactionPointerAt = Date.now();
+        e.preventDefault();
         sendReaction(reactionKey);
+      });
+      reactionBarEl.addEventListener("click", (e) => {
+        const reactionKey = readReactionKeyFromEventTarget(e.target);
+        if (!reactionKey) return;
+        if (Date.now() - lastReactionPointerAt < REACTION_POINTER_GHOST_MS) {
+          e.preventDefault();
+          return;
+        }
+        sendReaction(reactionKey);
+      });
+      reactionBarEl.addEventListener("dblclick", (e) => {
+        if (e.target.closest("button[data-reaction]")) {
+          e.preventDefault();
+        }
       });
 
       window.addEventListener("online", () => {
