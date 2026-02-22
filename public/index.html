@@ -417,6 +417,7 @@
       const VOTED_POLL_STORAGE_KEY = "live_voted_poll_id";
       const THEME_PREF_KEY = "live_theme_pref_v1";
       const THEME_MODES = ["auto", "light", "dark"];
+      const ENABLE_CLIENT_DEBUG = false;
       const systemDarkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
       let themePreference = "auto";
 
@@ -633,20 +634,32 @@
 
       function renderPollOptions() {
         if (!activePoll || !Array.isArray(activePoll.options) || !activePoll.options.length) {
-          pollOptionsEl.innerHTML = "";
+          pollOptionsEl.textContent = "";
           return;
         }
         const remainingMs = getPollRemainingMs();
         const pollExpired = remainingMs !== null && remainingMs <= 0;
-        pollOptionsEl.innerHTML = activePoll.options
-          .map((option, index) => {
-            const votes = Array.isArray(activePoll.counts) ? Number(activePoll.counts[index] || 0) : 0;
-            const isSelected = selectedPollOptionIndex === index;
-            return `<button type="button" class="pollOption${isSelected ? " selected" : ""}" data-poll-option="${index}" ${pollVotePending || pollExpired ? "disabled" : ""}>
-              ${option} <span class="muted">(${votes})</span>
-            </button>`;
-          })
-          .join("");
+        pollOptionsEl.textContent = "";
+        const fragment = document.createDocumentFragment();
+        for (let index = 0; index < activePoll.options.length; index += 1) {
+          const option = String(activePoll.options[index] || "");
+          const votes = Array.isArray(activePoll.counts) ? Number(activePoll.counts[index] || 0) : 0;
+          const isSelected = selectedPollOptionIndex === index;
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "pollOption" + (isSelected ? " selected" : "");
+          button.setAttribute("data-poll-option", String(index));
+          button.disabled = !!(pollVotePending || pollExpired);
+          button.appendChild(document.createTextNode(option + " "));
+
+          const votesNode = document.createElement("span");
+          votesNode.className = "muted";
+          votesNode.textContent = `(${votes})`;
+          button.appendChild(votesNode);
+
+          fragment.appendChild(button);
+        }
+        pollOptionsEl.appendChild(fragment);
       }
 
       function renderPollMeta() {
@@ -731,6 +744,7 @@
       }
 
       function sendDebugOverHttp(note) {
+        if (!ENABLE_CLIENT_DEBUG) return;
         const now = Date.now();
         if (note === lastHttpDebugNote && now - lastHttpDebugAt < 1200) return;
         lastHttpDebugNote = note;
@@ -760,6 +774,7 @@
       }
 
       function debugLog(note) {
+        if (!ENABLE_CLIENT_DEBUG) return;
         const line = "[debug] " + note;
         log(line);
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -908,16 +923,21 @@
         myName = sanitizeNameClient(localStorage.getItem("live_name"));
         settingsMenuEl.removeAttribute("open");
       });
-      toggleDevPanelBtn.addEventListener("click", () => {
-        const open = devPanelEl.hidden;
-        setDevPanelOpen(open);
-        if (open && !hasLoadedServerLog) refreshServerLog();
-      });
-      refreshServerLogBtn.addEventListener("click", refreshServerLog);
-      clearClientLogBtn.addEventListener("click", () => {
-        clientLogLines.length = 0;
-        logEl.textContent = "(nog leeg)";
-      });
+      if (ENABLE_CLIENT_DEBUG) {
+        toggleDevPanelBtn.addEventListener("click", () => {
+          const open = devPanelEl.hidden;
+          setDevPanelOpen(open);
+          if (open && !hasLoadedServerLog) refreshServerLog();
+        });
+        refreshServerLogBtn.addEventListener("click", refreshServerLog);
+        clearClientLogBtn.addEventListener("click", () => {
+          clientLogLines.length = 0;
+          logEl.textContent = "(nog leeg)";
+        });
+      } else {
+        if (toggleDevPanelBtn) toggleDevPanelBtn.style.display = "none";
+        if (devPanelEl) devPanelEl.hidden = true;
+      }
       setDevPanelOpen(false);
       updateReactionCounterUi();
 

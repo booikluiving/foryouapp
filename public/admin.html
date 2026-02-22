@@ -484,6 +484,19 @@
         <div id="actionMsg"></div>
 
         <div class="card stack">
+          <h2>Beveiliging</h2>
+          <div class="row">
+            <input id="adminCurrentPassword" type="password" autocomplete="current-password" placeholder="Huidig admin wachtwoord" />
+            <input id="adminNewPassword" type="password" autocomplete="new-password" placeholder="Nieuw sterk wachtwoord" />
+          </div>
+          <div class="row">
+            <input id="adminConfirmPassword" type="password" autocomplete="new-password" placeholder="Bevestig nieuw wachtwoord" />
+            <button id="adminUpdatePasswordBtn" type="button">Wijzig wachtwoord</button>
+          </div>
+          <div id="adminPasswordHint" class="muted">Gebruik minimaal 12 tekens met hoofdletter, kleine letter, cijfer en speciaal teken.</div>
+        </div>
+
+        <div class="card stack">
           <div class="row" style="justify-content: space-between;">
             <h2 style="flex: 0 0 auto;">Poll (multiple choice)</h2>
             <span id="pollStatusBadge" class="badge closed" style="flex: 0 0 auto;">Gesloten</span>
@@ -624,6 +637,11 @@
       const rememberDeviceEl = document.getElementById("rememberDevice");
       const loginErrorEl = document.getElementById("loginError");
       const actionMsgEl = document.getElementById("actionMsg");
+      const adminCurrentPasswordEl = document.getElementById("adminCurrentPassword");
+      const adminNewPasswordEl = document.getElementById("adminNewPassword");
+      const adminConfirmPasswordEl = document.getElementById("adminConfirmPassword");
+      const adminUpdatePasswordBtn = document.getElementById("adminUpdatePasswordBtn");
+      const adminPasswordHintEl = document.getElementById("adminPasswordHint");
       const themeToggleBtn = document.getElementById("themeToggleBtn");
       const refreshBtn = document.getElementById("refreshBtn");
       const restartBtn = document.getElementById("restartBtn");
@@ -684,7 +702,7 @@
       const enforcementBodyEl = document.getElementById("enforcementBody");
       const actionsLogEl = document.getElementById("actionsLog");
 
-      let token = localStorage.getItem("admin_token") || "";
+      let token = "";
       let refreshTimer = null;
       let lastState = null;
       let pollBadgeTimer = null;
@@ -728,6 +746,11 @@
       let usersSearchInputDebounceTimer = null;
       let usersSearchDeepMatches = new Set();
       let lastSessionJoin = null;
+      let adminPasswordMinLength = 12;
+
+      try {
+        localStorage.removeItem("admin_token");
+      } catch {}
 
       function setActionMessage(text) {
         actionMsgEl.textContent = text || "";
@@ -851,6 +874,7 @@
         if (!res.ok) {
           const err = new Error(body && body.error ? body.error : "request_failed");
           err.status = res.status;
+          err.body = body;
           throw err;
         }
         return body;
@@ -868,8 +892,6 @@
 
       function setToken(nextToken) {
         token = String(nextToken || "");
-        if (token) localStorage.setItem("admin_token", token);
-        else localStorage.removeItem("admin_token");
       }
 
       function stopRefreshTimer() {
@@ -1405,6 +1427,35 @@
         if (hours > 0) return `${hours}u ${minutes}m ${seconds}s`;
         if (minutes > 0) return `${minutes}m ${seconds}s`;
         return `${seconds}s`;
+      }
+
+      function renderPasswordHint(text, isError = false) {
+        if (!adminPasswordHintEl) return;
+        adminPasswordHintEl.textContent = text || "";
+        adminPasswordHintEl.style.color = isError ? "var(--danger)" : "var(--muted)";
+      }
+
+      function validatePasswordClientSide(password, confirmPassword) {
+        const value = String(password || "").trim();
+        if (value.length < adminPasswordMinLength) {
+          return { ok: false, message: `Wachtwoord moet minimaal ${adminPasswordMinLength} tekens lang zijn.` };
+        }
+        if (!/[a-z]/.test(value)) {
+          return { ok: false, message: "Gebruik minimaal 1 kleine letter." };
+        }
+        if (!/[A-Z]/.test(value)) {
+          return { ok: false, message: "Gebruik minimaal 1 hoofdletter." };
+        }
+        if (!/[0-9]/.test(value)) {
+          return { ok: false, message: "Gebruik minimaal 1 cijfer." };
+        }
+        if (!/[^A-Za-z0-9]/.test(value)) {
+          return { ok: false, message: "Gebruik minimaal 1 speciaal teken." };
+        }
+        if (value !== String(confirmPassword || "").trim()) {
+          return { ok: false, message: "Nieuw wachtwoord en bevestiging komen niet overeen." };
+        }
+        return { ok: true };
       }
 
       function esc(input) {
@@ -2146,6 +2197,10 @@
 
       function renderState(data) {
         lastState = data;
+        adminPasswordMinLength = Math.max(
+          10,
+          Number((data && data.security && data.security.adminPasswordMinLength) || adminPasswordMinLength || 12)
+        );
         const session = data && data.session ? data.session : {};
         const sessionId = Number(session.id || 0);
         const sessionName = String(session.name || "");
@@ -2336,8 +2391,72 @@
           setSkipDeviceAutologin(false);
           passwordEl.value = "";
           await applyAuthenticatedSession(body);
-        } catch {
+        } catch (err) {
+          if (err && err.message === "too_many_attempts") {
+            const retryAfterMs = Number(err && err.body && err.body.retryAfterMs || 0);
+            const retrySeconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
+            loginErrorEl.textContent = `Te veel pogingen. Probeer over ${retrySeconds}s opnieuw.`;
+            return;
+          }
           loginErrorEl.textContent = "Login mislukt.";
+        }
+      }
+
+      async function updateAdminPassword() {
+        if (!token) {
+          showLogin();
+          loginErrorEl.textContent = "Log eerst in als admin.";
+          return;
+        }
+
+        const currentPassword = String(adminCurrentPasswordEl && adminCurrentPasswordEl.value || "").trim();
+        const newPassword = String(adminNewPasswordEl && adminNewPasswordEl.value || "").trim();
+        const confirmPassword = String(adminConfirmPasswordEl && adminConfirmPasswordEl.value || "").trim();
+        if (!currentPassword) {
+          renderPasswordHint("Vul eerst je huidige wachtwoord in.", true);
+          return;
+        }
+
+        const clientValidation = validatePasswordClientSide(newPassword, confirmPassword);
+        if (!clientValidation.ok) {
+          renderPasswordHint(clientValidation.message, true);
+          return;
+        }
+
+        adminUpdatePasswordBtn.disabled = true;
+        try {
+          await api("/admin/password/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              currentPassword,
+              newPassword,
+              confirmPassword,
+            }),
+          });
+          if (adminCurrentPasswordEl) adminCurrentPasswordEl.value = "";
+          if (adminNewPasswordEl) adminNewPasswordEl.value = "";
+          if (adminConfirmPasswordEl) adminConfirmPasswordEl.value = "";
+          renderPasswordHint(`Wachtwoord bijgewerkt. Minimaal ${adminPasswordMinLength} tekens met gemixte tekens.`);
+          setActionMessage("Admin wachtwoord succesvol aangepast.");
+        } catch (err) {
+          const code = String(err && err.message || "");
+          const serverMsg = String(err && err.body && err.body.message || "");
+          if (code === "current_password_invalid") {
+            renderPasswordHint("Huidig wachtwoord klopt niet.", true);
+          } else if (code === "password_weak") {
+            renderPasswordHint(serverMsg || "Nieuw wachtwoord voldoet niet aan de eisen.", true);
+          } else if (code === "password_confirm_mismatch") {
+            renderPasswordHint("Nieuw wachtwoord en bevestiging komen niet overeen.", true);
+          } else if (code === "password_unchanged") {
+            renderPasswordHint("Nieuw wachtwoord moet anders zijn dan je huidige wachtwoord.", true);
+          } else if (code === "new_password_required") {
+            renderPasswordHint("Vul een nieuw wachtwoord in.", true);
+          } else {
+            renderPasswordHint("Wijzigen mislukt. Probeer het opnieuw.", true);
+          }
+        } finally {
+          adminUpdatePasswordBtn.disabled = false;
         }
       }
 
@@ -2487,6 +2606,7 @@
       initCollapsibleSections();
       rememberDeviceEl.checked = loadRememberDevicePreference();
       setSessionJoinResult(null);
+      renderPasswordHint(`Gebruik minimaal ${adminPasswordMinLength} tekens met hoofdletter, kleine letter, cijfer en speciaal teken.`);
 
       themeToggleBtn.addEventListener("click", cycleTheme);
       loginBtn.addEventListener("click", login);
@@ -2494,6 +2614,36 @@
       passwordEl.addEventListener("keydown", (e) => {
         if (e.key === "Enter") login();
       });
+      if (adminUpdatePasswordBtn) {
+        adminUpdatePasswordBtn.addEventListener("click", updateAdminPassword);
+      }
+      for (const passwordField of [adminCurrentPasswordEl, adminNewPasswordEl, adminConfirmPasswordEl]) {
+        if (!passwordField) continue;
+        passwordField.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          updateAdminPassword();
+        });
+      }
+      if (adminNewPasswordEl && adminConfirmPasswordEl) {
+        const syncPasswordHint = () => {
+          const nextPassword = String(adminNewPasswordEl.value || "").trim();
+          const confirmPassword = String(adminConfirmPasswordEl.value || "").trim();
+          if (!nextPassword && !confirmPassword) {
+            renderPasswordHint(`Gebruik minimaal ${adminPasswordMinLength} tekens met hoofdletter, kleine letter, cijfer en speciaal teken.`);
+            return;
+          }
+          const check = validatePasswordClientSide(nextPassword, confirmPassword || nextPassword);
+          renderPasswordHint(
+            check.ok
+              ? "Sterk genoeg. Controleer je huidige wachtwoord en klik op 'Wijzig wachtwoord'."
+              : check.message,
+            !check.ok
+          );
+        };
+        adminNewPasswordEl.addEventListener("input", syncPasswordHint);
+        adminConfirmPasswordEl.addEventListener("input", syncPasswordHint);
+      }
       refreshBtn.addEventListener("click", refreshState);
       restartBtn.addEventListener("click", restartServer);
       logoutBtn.addEventListener("click", async () => {
@@ -2701,14 +2851,6 @@
       }
 
       async function bootstrapAuth() {
-        if (token) {
-          try {
-            await applyAuthenticatedSession({ token });
-            return;
-          } catch {
-            setToken("");
-          }
-        }
         const resumed = await tryDeviceLogin();
         if (!resumed) showLogin();
       }

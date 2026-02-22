@@ -22,6 +22,18 @@ const DATA_DIR = path.join(__dirname, "data");
 const DB_PATH = path.join(DATA_DIR, "live.sqlite");
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 const ADMIN_SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+const ADMIN_PASSWORD_HASH_SETTING_KEY = "admin_password_hash_scrypt_v1";
+const ADMIN_PASSWORD_MIN_LENGTH = clampInt(process.env.ADMIN_PASSWORD_MIN_LENGTH || "12", 10, 128, 12);
+const ADMIN_PASSWORD_SCRYPT_KEYLEN = 32;
+const ADMIN_PASSWORD_SCRYPT_OPTS = Object.freeze({
+  N: 16384,
+  r: 8,
+  p: 1,
+  maxmem: 32 * 1024 * 1024,
+});
+const ADMIN_LOGIN_WINDOW_MS = clampInt(process.env.ADMIN_LOGIN_WINDOW_MS || String(10 * 60 * 1000), 30_000, 3_600_000, 10 * 60 * 1000);
+const ADMIN_LOGIN_MAX_ATTEMPTS = clampInt(process.env.ADMIN_LOGIN_MAX_ATTEMPTS || "8", 3, 30, 8);
+const ADMIN_LOGIN_LOCK_MS = clampInt(process.env.ADMIN_LOGIN_LOCK_MS || String(15 * 60 * 1000), 30_000, 24 * 60 * 60 * 1000, 15 * 60 * 1000);
 const SESSION_JOIN_TOKEN_TTL_MINUTES = clampInt(
   process.env.SESSION_JOIN_TOKEN_TTL_MINUTES || "720",
   5,
@@ -51,6 +63,14 @@ const SESSION_ACCESS_TTL_MINUTES = clampInt(
   5,
   7 * 24 * 60,
   720
+);
+const DEBUG_LOG_ENABLED = isTruthy(process.env.DEBUG_LOG_ENABLED || "0");
+const DEBUG_LOG_MAX_BYTES = clampInt(process.env.DEBUG_LOG_MAX_BYTES || String(2 * 1024 * 1024), 64 * 1024, 100 * 1024 * 1024, 2 * 1024 * 1024);
+const DEBUG_LOG_TRIM_TO_BYTES = clampInt(
+  process.env.DEBUG_LOG_TRIM_TO_BYTES || String(512 * 1024),
+  32 * 1024,
+  DEBUG_LOG_MAX_BYTES,
+  512 * 1024
 );
 const SIM_INTERNAL_ACCESS_KEY = crypto.randomBytes(16).toString("hex");
 const DEFAULT_POLL_DURATION_SECONDS = clampInt(process.env.POLL_DURATION_SECONDS || "60", 5, 3600, 60);
@@ -954,17 +974,71 @@ app.use((req, res, next) => {
   res.setHeader("Expires", "0");
   next();
 });
-app.use(express.json());
+app.use(express.json({ limit: "64kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 const DEBUG_LOG_PATH = path.join(__dirname, "debug.log");
+let debugTrimInFlight = false;
+let debugWritesSinceTrim = 0;
+
+function trimDebugLogIfNeeded(force = false) {
+  if (!DEBUG_LOG_ENABLED) return;
+  debugWritesSinceTrim += 1;
+  if (!force && debugWritesSinceTrim < 80) return;
+  debugWritesSinceTrim = 0;
+  if (debugTrimInFlight) return;
+  debugTrimInFlight = true;
+
+  const finish = () => {
+    debugTrimInFlight = false;
+  };
+
+  fs.stat(DEBUG_LOG_PATH, (statErr, stats) => {
+    if (statErr || !stats || !Number.isFinite(stats.size) || stats.size <= DEBUG_LOG_MAX_BYTES) {
+      finish();
+      return;
+    }
+
+    const startPos = Math.max(0, stats.size - DEBUG_LOG_TRIM_TO_BYTES);
+    fs.open(DEBUG_LOG_PATH, "r", (openErr, fd) => {
+      if (openErr || typeof fd !== "number") {
+        finish();
+        return;
+      }
+
+      const bytesToRead = stats.size - startPos;
+      const buffer = Buffer.alloc(Math.max(0, bytesToRead));
+      fs.read(fd, buffer, 0, bytesToRead, startPos, (readErr, bytesRead) => {
+        fs.close(fd, () => {});
+        if (readErr || !Number.isFinite(bytesRead) || bytesRead <= 0) {
+          finish();
+          return;
+        }
+
+        let trimmed = buffer.subarray(0, bytesRead).toString("utf8");
+        const firstBreak = trimmed.indexOf("\n");
+        if (firstBreak >= 0 && firstBreak + 1 < trimmed.length) {
+          trimmed = trimmed.slice(firstBreak + 1);
+        }
+
+        fs.writeFile(DEBUG_LOG_PATH, trimmed, () => {
+          finish();
+        });
+      });
+    });
+  });
+}
+
 function writeDebug(event, meta = {}) {
+  if (!DEBUG_LOG_ENABLED) return;
   const line = JSON.stringify({
     time: new Date().toISOString(),
     event,
     ...meta,
   });
-  fs.appendFile(DEBUG_LOG_PATH, line + "\n", () => {});
+  fs.appendFile(DEBUG_LOG_PATH, line + "\n", () => {
+    trimDebugLogIfNeeded(false);
+  });
 }
 
 function nowIso() {
@@ -1668,6 +1742,97 @@ function setSetting(key, value) {
   sql.upsertSetting.run(String(key), String(value), nowIso());
 }
 
+function normalizeAdminPasswordInput(input) {
+  return String(input || "").trim();
+}
+
+function parseStoredAdminPasswordHash(stored) {
+  const value = String(stored || "").trim();
+  const parts = value.split("$");
+  if (parts.length !== 3) return null;
+  if (parts[0] !== "scrypt") return null;
+  const saltHex = parts[1];
+  const hashHex = parts[2];
+  if (!/^[a-f0-9]{32}$/i.test(saltHex)) return null;
+  if (!new RegExp(`^[a-f0-9]{${ADMIN_PASSWORD_SCRYPT_KEYLEN * 2}}$`, "i").test(hashHex)) return null;
+  return { saltHex: saltHex.toLowerCase(), hashHex: hashHex.toLowerCase(), encoded: `scrypt$${saltHex.toLowerCase()}$${hashHex.toLowerCase()}` };
+}
+
+function hashAdminPassword(plainTextPassword) {
+  const password = normalizeAdminPasswordInput(plainTextPassword);
+  const saltHex = crypto.randomBytes(16).toString("hex");
+  const derived = crypto.scryptSync(password, saltHex, ADMIN_PASSWORD_SCRYPT_KEYLEN, ADMIN_PASSWORD_SCRYPT_OPTS);
+  return `scrypt$${saltHex}$${derived.toString("hex")}`;
+}
+
+function timingSafeHexEqual(left, right) {
+  const a = String(left || "").toLowerCase();
+  const b = String(right || "").toLowerCase();
+  if (a.length !== b.length || a.length % 2 !== 0) return false;
+  if (!/^[a-f0-9]+$/.test(a) || !/^[a-f0-9]+$/.test(b)) return false;
+  const leftBuf = Buffer.from(a, "hex");
+  const rightBuf = Buffer.from(b, "hex");
+  if (leftBuf.length !== rightBuf.length) return false;
+  return crypto.timingSafeEqual(leftBuf, rightBuf);
+}
+
+function verifyAdminPassword(plainTextPassword, storedHash) {
+  const parsed = parseStoredAdminPasswordHash(storedHash);
+  if (!parsed) return false;
+  const password = normalizeAdminPasswordInput(plainTextPassword);
+  const derived = crypto.scryptSync(password, parsed.saltHex, ADMIN_PASSWORD_SCRYPT_KEYLEN, ADMIN_PASSWORD_SCRYPT_OPTS);
+  return timingSafeHexEqual(derived.toString("hex"), parsed.hashHex);
+}
+
+function validateAdminPasswordStrength(plainTextPassword) {
+  const password = normalizeAdminPasswordInput(plainTextPassword);
+  if (password.length < ADMIN_PASSWORD_MIN_LENGTH) {
+    return {
+      ok: false,
+      error: "too_short",
+      message: `Wachtwoord moet minimaal ${ADMIN_PASSWORD_MIN_LENGTH} tekens lang zijn.`,
+    };
+  }
+  if (!/[a-z]/.test(password)) {
+    return { ok: false, error: "missing_lowercase", message: "Gebruik minimaal 1 kleine letter." };
+  }
+  if (!/[A-Z]/.test(password)) {
+    return { ok: false, error: "missing_uppercase", message: "Gebruik minimaal 1 hoofdletter." };
+  }
+  if (!/[0-9]/.test(password)) {
+    return { ok: false, error: "missing_number", message: "Gebruik minimaal 1 cijfer." };
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return { ok: false, error: "missing_symbol", message: "Gebruik minimaal 1 speciaal teken." };
+  }
+  return { ok: true };
+}
+
+let currentAdminPasswordHash = "";
+let adminPasswordSeededFromDefault = false;
+
+function initializeAdminPasswordHash() {
+  const stored = parseStoredAdminPasswordHash(getSetting(ADMIN_PASSWORD_HASH_SETTING_KEY, ""));
+  if (stored) {
+    currentAdminPasswordHash = stored.encoded;
+    adminPasswordSeededFromDefault = false;
+    return;
+  }
+
+  const seededHash = hashAdminPassword(ADMIN_PASSWORD);
+  currentAdminPasswordHash = seededHash;
+  setSetting(ADMIN_PASSWORD_HASH_SETTING_KEY, seededHash);
+  adminPasswordSeededFromDefault = ADMIN_PASSWORD === "admin";
+}
+
+function updateAdminPasswordHashFromPlain(plainTextPassword) {
+  const encoded = hashAdminPassword(plainTextPassword);
+  currentAdminPasswordHash = encoded;
+  setSetting(ADMIN_PASSWORD_HASH_SETTING_KEY, encoded);
+  adminPasswordSeededFromDefault = false;
+  return encoded;
+}
+
 function loadSimulatorDefaultsFromSettings() {
   const raw = getSetting(SIM_DEFAULTS_SETTING_KEY, "");
   if (!raw) return normalizeSimulatorConfig(SIM_DEFAULTS, SIM_DEFAULTS);
@@ -1701,6 +1866,10 @@ currentOscPort = clampInt(
   DEFAULT_OSC_PORT
 );
 setSetting("osc_port", String(currentOscPort));
+initializeAdminPasswordHash();
+if (adminPasswordSeededFromDefault) {
+  console.log("Warning: using default admin password. Wijzig dit direct via env of admin console.");
+}
 const SIM_RUNTIME_DEFAULTS = saveSimulatorDefaults(loadSimulatorDefaultsFromSettings());
 console.log(`OSC destination active: ${OSC_HOST}:${currentOscPort}`);
 
@@ -1749,6 +1918,7 @@ function getPollResults(poll) {
 }
 
 const adminTokens = new Map();
+const adminLoginAttempts = new Map();
 const connectedClients = new Map();
 const mutedUsers = new Map();
 const blockedUsers = new Map();
@@ -1892,6 +2062,57 @@ function pruneAdminTokens() {
   for (const [token, expiresAt] of adminTokens.entries()) {
     if (expiresAt <= now) adminTokens.delete(token);
   }
+}
+
+function cleanupAdminLoginAttempts(now = Date.now()) {
+  for (const [ip, state] of adminLoginAttempts.entries()) {
+    if (!state || typeof state !== "object") {
+      adminLoginAttempts.delete(ip);
+      continue;
+    }
+    const blockedUntil = Number(state.blockedUntil || 0);
+    const firstFailureAt = Number(state.firstFailureAt || 0);
+    if (blockedUntil > now) continue;
+    if (firstFailureAt > 0 && now - firstFailureAt <= ADMIN_LOGIN_WINDOW_MS) continue;
+    adminLoginAttempts.delete(ip);
+  }
+}
+
+function getAdminLoginBlockRemainingMs(ip, now = Date.now()) {
+  cleanupAdminLoginAttempts(now);
+  const key = normalizeIp(ip || "unknown");
+  const state = adminLoginAttempts.get(key);
+  if (!state) return 0;
+  const blockedUntil = Number(state.blockedUntil || 0);
+  if (!blockedUntil || blockedUntil <= now) return 0;
+  return blockedUntil - now;
+}
+
+function noteAdminLoginFailure(ip, now = Date.now()) {
+  cleanupAdminLoginAttempts(now);
+  const key = normalizeIp(ip || "unknown");
+  const prev = adminLoginAttempts.get(key) || {
+    failures: 0,
+    firstFailureAt: now,
+    blockedUntil: 0,
+  };
+
+  const inWindow = Number(prev.firstFailureAt || 0) > 0 && now - Number(prev.firstFailureAt || 0) <= ADMIN_LOGIN_WINDOW_MS;
+  const failures = inWindow ? Number(prev.failures || 0) + 1 : 1;
+  const next = {
+    failures,
+    firstFailureAt: inWindow ? Number(prev.firstFailureAt || now) : now,
+    blockedUntil: 0,
+  };
+  if (failures >= ADMIN_LOGIN_MAX_ATTEMPTS) {
+    next.blockedUntil = now + ADMIN_LOGIN_LOCK_MS;
+  }
+  adminLoginAttempts.set(key, next);
+  return next;
+}
+
+function clearAdminLoginFailures(ip) {
+  adminLoginAttempts.delete(normalizeIp(ip || "unknown"));
 }
 
 function isTruthy(value) {
@@ -2262,17 +2483,6 @@ function parseTrustedAdminDeviceToken(rawToken) {
 
 function hashTrustedAdminDeviceToken(selector, secret) {
   return crypto.createHash("sha256").update(`${selector}.${secret}`).digest("hex");
-}
-
-function timingSafeHexEqual(left, right) {
-  const a = String(left || "").toLowerCase();
-  const b = String(right || "").toLowerCase();
-  if (a.length !== b.length || a.length % 2 !== 0) return false;
-  if (!/^[a-f0-9]+$/.test(a) || !/^[a-f0-9]+$/.test(b)) return false;
-  const leftBuf = Buffer.from(a, "hex");
-  const rightBuf = Buffer.from(b, "hex");
-  if (leftBuf.length !== rightBuf.length) return false;
-  return crypto.timingSafeEqual(leftBuf, rightBuf);
 }
 
 function sanitizeDeviceLabel(input) {
@@ -4016,6 +4226,10 @@ function getAdminState() {
       dbPath: DB_PATH,
       pollDurationSeconds: currentPollDurationSeconds,
     },
+    security: {
+      debugLogEnabled: DEBUG_LOG_ENABLED,
+      adminPasswordMinLength: ADMIN_PASSWORD_MIN_LENGTH,
+    },
     session: {
       id: Number(currentSession.id),
       name: currentSession.name,
@@ -4145,10 +4359,6 @@ function clearBlock(target, reason, createdBy) {
   blockedUsers.delete(scope.scopeKey);
   recordModerationAction("unblock", scope.scopeKey, targetLabel, reason, null, createdBy);
   return { scope, targetLabel };
-}
-
-if (ADMIN_PASSWORD === "admin") {
-  console.log("Warning: using default ADMIN_PASSWORD. Set ADMIN_PASSWORD in env for production.");
 }
 
 rebuildEnforcementState();
@@ -4573,7 +4783,12 @@ app.get("/health", (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/debug-log", (req, res) => {
+app.get("/debug-log", requireAdmin, (req, res) => {
+  if (!DEBUG_LOG_ENABLED) {
+    res.status(404).json({ ok: false, error: "debug_disabled" });
+    return;
+  }
+
   const requested = Number.parseInt(String(req.query.lines || "120"), 10);
   const lineCount = Number.isFinite(requested)
     ? Math.max(20, Math.min(400, requested))
@@ -4598,7 +4813,17 @@ app.get("/debug-log", (req, res) => {
 });
 
 app.post("/client-debug", (req, res) => {
-  const ip = req.socket.remoteAddress || "unknown";
+  if (!DEBUG_LOG_ENABLED) {
+    res.status(204).end();
+    return;
+  }
+
+  const ip = normalizeIp(req.socket.remoteAddress || "unknown");
+  if (!isLoopbackIp(ip)) {
+    res.status(204).end();
+    return;
+  }
+
   const ua = req.headers["user-agent"] || "unknown";
   let body = req.body;
 
@@ -4688,12 +4913,24 @@ app.get("/admin", (req, res) => {
 
 app.post("/admin/login", (req, res) => {
   const ip = normalizeIp(req.socket.remoteAddress || "unknown");
-  const provided = String((req.body && req.body.password) || "");
-  if (!provided || provided !== ADMIN_PASSWORD) {
-    writeDebug("admin_login_failed", { ip });
+  const blockedRemainingMs = getAdminLoginBlockRemainingMs(ip);
+  if (blockedRemainingMs > 0) {
+    res.status(429).json({
+      ok: false,
+      error: "too_many_attempts",
+      retryAfterMs: blockedRemainingMs,
+    });
+    return;
+  }
+
+  const provided = normalizeAdminPasswordInput(req.body && req.body.password);
+  if (!provided || !verifyAdminPassword(provided, currentAdminPasswordHash)) {
+    const state = noteAdminLoginFailure(ip);
+    writeDebug("admin_login_failed", { ip, failures: Number(state && state.failures || 0) });
     res.status(401).json({ ok: false, error: "invalid_credentials" });
     return;
   }
+  clearAdminLoginFailures(ip);
 
   const rememberDevice = isTruthy(req.body && req.body.rememberDevice);
   const deviceLabel =
@@ -4737,6 +4974,54 @@ app.post("/admin/logout", requireAdmin, (req, res) => {
     clearTrustedAdminDeviceCookie(res, req);
   }
   res.json({ ok: true, forgotDevice: forgetDevice });
+});
+
+app.post("/admin/password/update", requireAdmin, (req, res) => {
+  const ip = normalizeIp(req.socket.remoteAddress || "unknown");
+  const currentPassword = normalizeAdminPasswordInput(req.body && req.body.currentPassword);
+  const nextPassword = normalizeAdminPasswordInput(req.body && req.body.newPassword);
+  const confirmPassword = normalizeAdminPasswordInput(req.body && req.body.confirmPassword);
+
+  if (!currentPassword || !verifyAdminPassword(currentPassword, currentAdminPasswordHash)) {
+    res.status(401).json({ ok: false, error: "current_password_invalid" });
+    return;
+  }
+  if (!nextPassword) {
+    res.status(400).json({ ok: false, error: "new_password_required" });
+    return;
+  }
+  if (nextPassword !== confirmPassword) {
+    res.status(400).json({ ok: false, error: "password_confirm_mismatch" });
+    return;
+  }
+  if (verifyAdminPassword(nextPassword, currentAdminPasswordHash)) {
+    res.status(400).json({ ok: false, error: "password_unchanged" });
+    return;
+  }
+
+  const strength = validateAdminPasswordStrength(nextPassword);
+  if (!strength.ok) {
+    res.status(400).json({
+      ok: false,
+      error: "password_weak",
+      rule: strength.error || "invalid",
+      message: strength.message || "Wachtwoord voldoet niet aan de eisen.",
+    });
+    return;
+  }
+
+  updateAdminPasswordHashFromPlain(nextPassword);
+  pruneAdminTokens();
+  for (const token of Array.from(adminTokens.keys())) {
+    if (token === req.adminToken) continue;
+    adminTokens.delete(token);
+  }
+
+  writeDebug("admin_password_updated", { ip });
+  res.json({
+    ok: true,
+    minLength: ADMIN_PASSWORD_MIN_LENGTH,
+  });
 });
 
 app.post("/admin/restart", requireAdmin, (req, res) => {
@@ -5304,6 +5589,7 @@ const wss = new WebSocket.Server({
   server,
   // Safari/iOS can be picky with compressed WS frames during reconnect churn.
   perMessageDeflate: false,
+  maxPayload: 16 * 1024,
 });
 let nextClientId = 1;
 scheduleActivePollAutoClose();

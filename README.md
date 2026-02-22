@@ -20,6 +20,7 @@ Belangrijke onderdelen:
 - Donkere modus (admin + client).
 - Server-restart direct vanuit admin.
 - "Onthoud dit apparaat" login voor admin (trusted device).
+- Admin wachtwoord wijzigen vanuit de admin console (met sterkte-eisen).
 - Nieuwe sessie + QR-flow: admin maakt een unieke join-token en QR, clients joinen via `/join?token=...`.
   - Toegang is sessiegebonden: bij een nieuwe sessie is opnieuw scannen/joinen vereist.
 
@@ -68,7 +69,7 @@ node scripts/simulate-chatters.js --help
   - zet een sessie-access cookie voor alleen de actuele sessie
 - `GET /admin` admin console
 - `GET /health` healthcheck
-- `GET /debug-log` uitlezen debugregels
+- `GET /debug-log` uitlezen debugregels (alleen admin-token, en alleen als `DEBUG_LOG_ENABLED=1`)
 
 Admin API endpoints (subset):
 - `/admin/login`, `/admin/logout`, `/admin/login/device`
@@ -103,6 +104,7 @@ Admin API endpoints (subset):
 - Zet altijd `ADMIN_PASSWORD` via environment variable in productie.
 - Gebruik niet de default `admin`.
 - Controleer wie toegang heeft tot `/admin`.
+- Debug logging staat standaard uit. Zet alleen tijdelijk aan met `DEBUG_LOG_ENABLED=1` bij troubleshooting.
 
 ## Licentie
 ISC
