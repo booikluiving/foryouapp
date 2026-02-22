@@ -972,24 +972,41 @@ const DOMAIN_RE = new RegExp(
 const LINK_SHORTENER_RE = /\b(?:bit\.ly|tinyurl\.com|t\.co|discord\.gg|t\.me|wa\.me)\b/i;
 const PHONE_CANDIDATE_RE = /(?:\+?\d[\d\s().-]{7,}\d)/g;
 
-/* OSC setup */
-const OSC_HOST = process.env.OSC_HOST || "127.0.0.1";
-const DEFAULT_OSC_PORT = clampInt(process.env.OSC_PORT || "1234", 1, 65535, 1234);
-let currentOscPort = DEFAULT_OSC_PORT;
-
-const udpPort = new osc.UDPPort({
-  localAddress: "0.0.0.0",
-  localPort: 0,
-  remoteAddress: OSC_HOST,
-  remotePort: DEFAULT_OSC_PORT,
-  metadata: true,
-});
-
-udpPort.open();
-
-udpPort.on("ready", () => {
-  console.log(`OSC ready (default destination ${OSC_HOST}:${DEFAULT_OSC_PORT})`);
-});
+/* OSC control setup (TouchDesigner -> server) */
+const OSC_CONTROL_LISTEN_ADDRESS = String(
+  process.env.OSC_CONTROL_LISTEN_ADDRESS || process.env.OSC_LISTEN_ADDRESS || "127.0.0.1"
+).trim() || "127.0.0.1";
+const DEFAULT_OSC_CONTROL_LISTEN_PORT = clampInt(
+  process.env.OSC_CONTROL_LISTEN_PORT || process.env.OSC_LISTEN_PORT || process.env.OSC_PORT || "1234",
+  1,
+  65535,
+  1234
+);
+const OSC_CONTROL_ALLOW_REMOTE = parseBooleanLike(process.env.OSC_CONTROL_ALLOW_REMOTE || "0", false);
+const OSC_CONTROL_FEEDBACK_ADDRESS = String(
+  process.env.OSC_CONTROL_FEEDBACK_ADDRESS || "/foryou/control/feedback"
+).trim() || "/foryou/control/feedback";
+const DEFAULT_OSC_CONTROL_FEEDBACK_HOST = String(
+  process.env.OSC_CONTROL_FEEDBACK_HOST || ""
+).trim();
+const DEFAULT_OSC_CONTROL_FEEDBACK_PORT = clampInt(
+  process.env.OSC_CONTROL_FEEDBACK_PORT || "0",
+  0,
+  65535,
+  0
+);
+const OSC_CONTROL_FEEDBACK_DATA_MAX_CHARS = clampInt(
+  process.env.OSC_CONTROL_FEEDBACK_DATA_MAX_CHARS || "900",
+  120,
+  4000,
+  900
+);
+let currentOscListenPort = DEFAULT_OSC_CONTROL_LISTEN_PORT;
+let oscControlUdpPort = null;
+let oscControlReady = false;
+let oscControlLastError = "";
+let oscControlFeedbackHost = DEFAULT_OSC_CONTROL_FEEDBACK_HOST;
+let oscControlFeedbackPort = DEFAULT_OSC_CONTROL_FEEDBACK_PORT;
 
 const app = express();
 app.use((req, res, next) => {
@@ -1391,22 +1408,6 @@ function getNameColorHex(name) {
     g.toString(16).padStart(2, "0") +
     b.toString(16).padStart(2, "0")
   ).toUpperCase();
-}
-
-function sendOsc(address, args, meta = {}) {
-  try {
-    udpPort.send({ address, args }, OSC_HOST, currentOscPort);
-    return true;
-  } catch (e) {
-    writeDebug("osc_send_error", {
-      address,
-      oscHost: OSC_HOST,
-      oscPort: currentOscPort,
-      message: e && e.message ? e.message : "unknown",
-      ...meta,
-    });
-    return false;
-  }
 }
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -2048,20 +2049,30 @@ currentPollDurationSeconds = clampInt(
 );
 setSetting("poll_duration_seconds", String(currentPollDurationSeconds));
 
-currentOscPort = clampInt(
-  getSetting("osc_port", String(DEFAULT_OSC_PORT)),
+currentOscListenPort = clampInt(
+  getSetting("osc_listen_port", getSetting("osc_port", String(DEFAULT_OSC_CONTROL_LISTEN_PORT))),
   1,
   65535,
-  DEFAULT_OSC_PORT
+  DEFAULT_OSC_CONTROL_LISTEN_PORT
 );
-setSetting("osc_port", String(currentOscPort));
+setSetting("osc_listen_port", String(currentOscListenPort));
+oscControlFeedbackHost = normalizeOscControlFeedbackHost(
+  getSetting("osc_feedback_host", DEFAULT_OSC_CONTROL_FEEDBACK_HOST)
+);
+oscControlFeedbackPort = clampInt(
+  getSetting("osc_feedback_port", String(DEFAULT_OSC_CONTROL_FEEDBACK_PORT)),
+  0,
+  65535,
+  DEFAULT_OSC_CONTROL_FEEDBACK_PORT
+);
+setSetting("osc_feedback_host", oscControlFeedbackHost);
+setSetting("osc_feedback_port", String(oscControlFeedbackPort));
 initializeAdminPasswordHash();
 if (adminPasswordSeededFromDefault) {
   console.log("Warning: using default admin password. Wijzig dit direct via env of admin console.");
 }
 const SIM_RUNTIME_DEFAULTS = saveSimulatorDefaults(loadSimulatorDefaultsFromSettings());
 stageOutputSettings = saveStageOutputSettings(loadStageOutputSettingsFromSettings());
-console.log(`OSC destination active: ${OSC_HOST}:${currentOscPort}`);
 
 function ensureOpenSession() {
   const existing = sql.getOpenSession.get();
@@ -4407,6 +4418,541 @@ class ChatSimulatorManager {
 
 const chatSimulator = new ChatSimulatorManager();
 
+function normalizeOscControlFeedbackHost(value) {
+  const host = String(value || "").trim();
+  if (!host) return "";
+  if (/\s/.test(host)) return "";
+  if (host.length > 120) return "";
+  return host;
+}
+
+function getOscControlState() {
+  const feedbackHost = normalizeOscControlFeedbackHost(oscControlFeedbackHost);
+  const feedbackPort = clampInt(oscControlFeedbackPort, 0, 65535, 0);
+  const feedbackMode = feedbackHost && feedbackPort > 0 ? "fixed_target" : "reply_to_sender";
+  return {
+    listenAddress: OSC_CONTROL_LISTEN_ADDRESS,
+    listenPort: Number(currentOscListenPort || DEFAULT_OSC_CONTROL_LISTEN_PORT),
+    ready: !!oscControlReady,
+    lastError: String(oscControlLastError || ""),
+    allowRemote: !!OSC_CONTROL_ALLOW_REMOTE,
+    feedbackAddress: OSC_CONTROL_FEEDBACK_ADDRESS,
+    feedbackMode,
+    feedbackHost: feedbackHost || "",
+    feedbackPort: feedbackPort > 0 ? feedbackPort : 0,
+  };
+}
+
+function updateStageSettingsFromSource(incoming, source = "admin", req = null) {
+  stageOutputSettings = saveStageOutputSettings(normalizeStageOutputSettings(incoming, stageOutputSettings));
+  writeDebug("stage_settings_updated", {
+    by: String(source || "admin"),
+    showQr: stageOutputSettings.showQr,
+    showChat: stageOutputSettings.showChat,
+    showEmojis: stageOutputSettings.showEmojis,
+    background: stageOutputSettings.background,
+    chatScale: stageOutputSettings.chatScale,
+    chatBottom: stageOutputSettings.chatBottom,
+    chatHeight: stageOutputSettings.chatHeight,
+    chatX: stageOutputSettings.chatX,
+    chatFadeStart: stageOutputSettings.chatFadeStart,
+    qrScale: stageOutputSettings.qrScale,
+    qrX: stageOutputSettings.qrX,
+    qrY: stageOutputSettings.qrY,
+    emojiScale: stageOutputSettings.emojiScale,
+    emojiBurst: stageOutputSettings.emojiBurst,
+    emojiSpread: stageOutputSettings.emojiSpread,
+    emojiHeartX: stageOutputSettings.emojiHeartX,
+    emojiFireX: stageOutputSettings.emojiFireX,
+    emojiLaughX: stageOutputSettings.emojiLaughX,
+    emojiBoredX: stageOutputSettings.emojiBoredX,
+  });
+  broadcastStageState(req, source === "osc" ? "osc_stage_settings" : "settings_updated");
+  return getStageControlState(req);
+}
+
+function getOscArgValues(rawArgs) {
+  if (!Array.isArray(rawArgs)) return [];
+  return rawArgs.map((arg) => {
+    if (arg && typeof arg === "object" && Object.prototype.hasOwnProperty.call(arg, "value")) {
+      return arg.value;
+    }
+    return arg;
+  });
+}
+
+function getOscArgString(values, index = 0, fallback = "") {
+  if (!Array.isArray(values) || index < 0 || index >= values.length) return String(fallback || "");
+  return String(values[index] === undefined || values[index] === null ? fallback : values[index]).trim();
+}
+
+function getOscArgJsonObject(values, index = 0) {
+  const raw = getOscArgString(values, index, "");
+  if (!raw) return null;
+  const parsed = safeJsonParse(raw, null);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  return parsed;
+}
+
+// Add new admin-controllable actions here; admin UI lists this registry automatically.
+function buildOscControlCommands() {
+  return Object.freeze([
+    {
+      address: "/foryou/session/new",
+      args: "[naam]",
+      description: "Start een nieuwe sessie (zonder join-token).",
+      feedback: true,
+      feedbackMessage(result) {
+        return `Nieuwe sessie gestart (${Number(result && result.sessionId || 0)})`;
+      },
+      execute(ctx) {
+        const name = getOscArgString(ctx.args, 0, "");
+        const session = beginNewSession(name, "osc");
+        const closedClients = disconnectAllClientsForNewSession();
+        broadcastStageState(null, "osc_session_new");
+        writeDebug("osc_cmd_session_new", { sessionId: Number(session.id || 0), closedClients });
+        return { sessionId: Number(session.id || 0), closedClients };
+      },
+    },
+    {
+      address: "/foryou/session/new_with_token",
+      args: "[naam] [ttl_minutes]",
+      description: "Start nieuwe sessie + genereer join-token/QR-link.",
+      feedback: true,
+      feedbackMessage(result) {
+        return `Nieuwe sessie met token gestart (${Number(result && result.sessionId || 0)})`;
+      },
+      execute(ctx) {
+        const name = getOscArgString(ctx.args, 0, "");
+        const ttlMinutes = clampInt(
+          ctx.args && ctx.args.length > 1 ? ctx.args[1] : SESSION_JOIN_TOKEN_TTL_MINUTES,
+          5,
+          7 * 24 * 60,
+          SESSION_JOIN_TOKEN_TTL_MINUTES
+        );
+        const session = beginNewSession(name, "osc");
+        const closedClients = disconnectAllClientsForNewSession();
+        const tokenInfo = issueSessionJoinToken(session.id, { ttlMinutes, createdBy: "osc" });
+        const join = buildSessionJoinPayload(null, tokenInfo);
+        broadcastStageState(null, "osc_session_new_with_join");
+        writeDebug("osc_cmd_session_new_with_token", {
+          sessionId: Number(session.id || 0),
+          closedClients,
+          ttlMinutes,
+          tokenTail: join && join.token ? String(join.token).slice(-6) : "",
+        });
+        return { sessionId: Number(session.id || 0), closedClients, joinPath: join && join.joinPath ? join.joinPath : "" };
+      },
+    },
+    {
+      address: "/foryou/session/end",
+      args: "(geen)",
+      description: "Beëindig de huidige sessie en verbreek clients.",
+      feedback: true,
+      feedbackMessage(result) {
+        if (result && result.alreadyEnded) return "Sessie was al beëindigd";
+        return "Sessie beëindigd";
+      },
+      execute() {
+        if (!isCurrentSessionActive()) return { alreadyEnded: true, closedClients: 0 };
+        const endedSession = endCurrentSession("osc");
+        const closedClients = disconnectAllClientsForSessionEnd();
+        broadcastStageState(null, "osc_session_end");
+        writeDebug("osc_cmd_session_end", { sessionId: Number(endedSession.id || 0), closedClients });
+        return { alreadyEnded: false, closedClients };
+      },
+    },
+    {
+      address: "/foryou/stage/show_qr",
+      args: "0|1",
+      description: "Zet QR op stage uit/aan.",
+      execute(ctx) {
+        const enabled = parseBooleanLike(ctx.args[0], stageOutputSettings.showQr);
+        updateStageSettingsFromSource({ showQr: enabled }, "osc", null);
+        return { showQr: enabled };
+      },
+    },
+    {
+      address: "/foryou/stage/show_chat",
+      args: "0|1",
+      description: "Zet stage-chat uit/aan.",
+      execute(ctx) {
+        const enabled = parseBooleanLike(ctx.args[0], stageOutputSettings.showChat);
+        updateStageSettingsFromSource({ showChat: enabled }, "osc", null);
+        return { showChat: enabled };
+      },
+    },
+    {
+      address: "/foryou/stage/show_emojis",
+      args: "0|1",
+      description: "Zet stage-emoji laag uit/aan.",
+      execute(ctx) {
+        const enabled = parseBooleanLike(ctx.args[0], stageOutputSettings.showEmojis);
+        updateStageSettingsFromSource({ showEmojis: enabled }, "osc", null);
+        return { showEmojis: enabled };
+      },
+    },
+    {
+      address: "/foryou/stage/background",
+      args: "transparent|black",
+      description: "Stel stage-achtergrond in.",
+      execute(ctx) {
+        const raw = getOscArgString(ctx.args, 0, "transparent").toLowerCase();
+        const background = raw === "black" ? "black" : "transparent";
+        updateStageSettingsFromSource({ background }, "osc", null);
+        return { background };
+      },
+    },
+    {
+      address: "/foryou/stage/patch_json",
+      args: "{\"showQr\":true,...}",
+      description: "Patch stage-instellingen via JSON object.",
+      execute(ctx) {
+        const patch = getOscArgJsonObject(ctx.args, 0);
+        if (!patch) throw new Error("invalid_stage_patch_json");
+        updateStageSettingsFromSource(patch, "osc", null);
+        return { patched: true };
+      },
+    },
+    {
+      address: "/foryou/sim/start",
+      args: "[json_config]",
+      description: "Start botsimulatie (optioneel met JSON config).",
+      feedback: true,
+      feedbackMessage() {
+        return "Botsimulatie gestart";
+      },
+      execute(ctx) {
+        if (!isCurrentSessionActive()) throw new Error("session_inactive");
+        const patch = getOscArgJsonObject(ctx.args, 0) || {};
+        chatSimulator.start(parseSimConfigFromBody(patch));
+        const state = chatSimulator.getState();
+        writeDebug("osc_cmd_sim_start", { running: state.running, clients: Number(state.config && state.config.clients || 0) });
+        return { running: state.running };
+      },
+    },
+    {
+      address: "/foryou/sim/stop",
+      args: "[reason]",
+      description: "Stop botsimulatie.",
+      feedback: true,
+      feedbackMessage() {
+        return "Botsimulatie gestopt";
+      },
+      execute(ctx) {
+        const reason = getOscArgString(ctx.args, 0, "osc_stop").slice(0, 120) || "osc_stop";
+        chatSimulator.stop(reason);
+        const state = chatSimulator.getState();
+        writeDebug("osc_cmd_sim_stop", { reason, running: state.running });
+        return { running: state.running, reason };
+      },
+    },
+    {
+      address: "/foryou/sim/toggle",
+      args: "[json_config]",
+      description: "Toggle botsimulatie (start/stop).",
+      feedback: true,
+      feedbackMessage(result) {
+        return result && result.running ? "Botsimulatie gestart" : "Botsimulatie gestopt";
+      },
+      execute(ctx) {
+        const state = chatSimulator.getState();
+        if (state.running) {
+          chatSimulator.stop("osc_toggle_stop");
+          return { running: false };
+        }
+        if (!isCurrentSessionActive()) throw new Error("session_inactive");
+        const patch = getOscArgJsonObject(ctx.args, 0) || {};
+        chatSimulator.start(parseSimConfigFromBody(patch));
+        return { running: true };
+      },
+    },
+    {
+      address: "/foryou/sim/update_json",
+      args: "{\"clients\":80,...}",
+      description: "Update botsimulatie config live via JSON.",
+      execute(ctx) {
+        const patch = getOscArgJsonObject(ctx.args, 0);
+        if (!patch) throw new Error("invalid_sim_update_json");
+        const state = chatSimulator.update(parseSimConfigFromBody(patch));
+        writeDebug("osc_cmd_sim_update", { running: state.running, clients: Number(state.config && state.config.clients || 0) });
+        return { running: state.running };
+      },
+    },
+    {
+      address: "/foryou/sim/save_defaults_json",
+      args: "{\"clients\":80,...}",
+      description: "Sla bot-standaard op via JSON config.",
+      execute(ctx) {
+        const patch = getOscArgJsonObject(ctx.args, 0);
+        if (!patch) throw new Error("invalid_sim_defaults_json");
+        const defaults = saveSimulatorDefaults(parseSimConfigFromBody(patch));
+        const state = chatSimulator.update(defaults);
+        writeDebug("osc_cmd_sim_defaults", {
+          running: state.running,
+          clients: Number(defaults && defaults.clients || 0),
+        });
+        return { running: state.running };
+      },
+    },
+    {
+      address: "/foryou/admin/restart",
+      args: "(geen)",
+      description: "Start server-restart flow (zelfde als admin knop).",
+      feedback: true,
+      feedbackMessage(result) {
+        if (result && result.alreadyPending) return "Server-restart liep al";
+        return "Server-restart aangevraagd";
+      },
+      execute() {
+        const restart = requestServerRestart("osc");
+        writeDebug("osc_cmd_restart", { alreadyPending: !!restart.alreadyPending });
+        return {
+          restartPending: true,
+          alreadyPending: !!restart.alreadyPending,
+          reconnectAfterMs: Number(restart.childBootDelayMs || ADMIN_RESTART_CHILD_BOOT_DELAY_MS) + 800,
+        };
+      },
+    },
+  ]);
+}
+
+const OSC_CONTROL_COMMANDS = buildOscControlCommands();
+const OSC_CONTROL_COMMAND_MAP = new Map(
+  OSC_CONTROL_COMMANDS.map((cmd) => [String(cmd.address || "").toLowerCase(), cmd])
+);
+
+function getOscControlCommandDocs() {
+  return OSC_CONTROL_COMMANDS.map((cmd) => ({
+    address: String(cmd.address || ""),
+    args: String(cmd.args || ""),
+    description: String(cmd.description || ""),
+    feedback: !!cmd.feedback,
+  }));
+}
+
+function isOscControlSenderAllowed(info) {
+  const senderIp = normalizeIp(info && info.address ? info.address : "");
+  if (!senderIp) return false;
+  if (senderIp === "127.0.0.1") return true;
+  return OSC_CONTROL_ALLOW_REMOTE;
+}
+
+function getOscControlFeedbackTarget(info) {
+  const configuredHost = normalizeOscControlFeedbackHost(oscControlFeedbackHost);
+  const configuredPort = clampInt(oscControlFeedbackPort, 1, 65535, -1);
+  if (configuredHost && configuredPort > 0) {
+    return { address: configuredHost, port: configuredPort, mode: "fixed_target" };
+  }
+  const targetAddress = normalizeIp(info && info.address ? info.address : "");
+  const targetPort = clampInt(info && info.port, 1, 65535, -1);
+  if (!targetAddress || targetAddress === "unknown") return null;
+  if (targetPort < 1) return null;
+  return { address: targetAddress, port: targetPort, mode: "reply_to_sender" };
+}
+
+function createOscControlFeedbackPacket(payload) {
+  const status = String(payload && payload.status || "ok").toLowerCase() === "error" ? "error" : "ok";
+  const commandAddress = String(payload && payload.commandAddress || "").trim();
+  const message = String(payload && payload.message || (status === "ok" ? "ok" : "error"))
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 260);
+  const dataJson = safeJsonStringify(payload && payload.data !== undefined ? payload.data : {}, "{}")
+    .slice(0, OSC_CONTROL_FEEDBACK_DATA_MAX_CHARS);
+  return {
+    address: OSC_CONTROL_FEEDBACK_ADDRESS,
+    args: [
+      { type: "s", value: status },
+      { type: "s", value: commandAddress },
+      { type: "s", value: message || (status === "ok" ? "ok" : "error") },
+      { type: "s", value: dataJson },
+      { type: "s", value: nowIso() },
+    ],
+  };
+}
+
+function sendOscControlFeedback(info, payload) {
+  if (!oscControlUdpPort || !oscControlReady) return false;
+  const target = getOscControlFeedbackTarget(info);
+  if (!target) return false;
+  try {
+    const packet = createOscControlFeedbackPacket(payload);
+    oscControlUdpPort.send(packet, target.address, target.port);
+    writeDebug("osc_feedback_sent", {
+      status: String(payload && payload.status || "ok"),
+      commandAddress: String(payload && payload.commandAddress || ""),
+      targetAddress: target.address,
+      targetPort: target.port,
+      mode: String(target.mode || "reply_to_sender"),
+      message: String(payload && payload.message || "").slice(0, 160),
+    });
+    return true;
+  } catch (err) {
+    writeDebug("osc_feedback_send_error", {
+      commandAddress: String(payload && payload.commandAddress || ""),
+      targetAddress: target.address,
+      targetPort: target.port,
+      mode: String(target.mode || "reply_to_sender"),
+      message: err && err.message ? err.message : "unknown",
+    });
+    return false;
+  }
+}
+
+function executeOscControlCommand(packet, info = null) {
+  const senderIp = normalizeIp(info && info.address ? info.address : "unknown");
+  const address = String(packet && packet.address || "").trim();
+  if (!address) return;
+  if (!isOscControlSenderAllowed(info)) {
+    writeDebug("osc_cmd_rejected_sender", { address, senderIp, allowRemote: OSC_CONTROL_ALLOW_REMOTE });
+    return;
+  }
+  const command = OSC_CONTROL_COMMAND_MAP.get(address.toLowerCase());
+  if (!command) {
+    writeDebug("osc_cmd_unknown", { address, senderIp });
+    sendOscControlFeedback(info, {
+      status: "error",
+      commandAddress: address,
+      message: "unknown_command",
+      data: { error: "unknown_command" },
+    });
+    return;
+  }
+  const args = getOscArgValues(packet && packet.args);
+  Promise.resolve()
+    .then(() => command.execute({ args, senderIp, info }))
+    .then((result) => {
+      writeDebug("osc_cmd_ok", {
+        address,
+        senderIp,
+        argCount: Array.isArray(args) ? args.length : 0,
+        result: safeJsonStringify(result, "{}").slice(0, 500),
+      });
+      if (command.feedback) {
+        const rawMessage = typeof command.feedbackMessage === "function"
+          ? command.feedbackMessage(result, args)
+          : command.feedbackMessage;
+        const message = String(rawMessage || "ok").trim().slice(0, 260);
+        sendOscControlFeedback(info, {
+          status: "ok",
+          commandAddress: address,
+          message: message || "ok",
+          data: result && typeof result === "object" ? result : { value: result },
+        });
+      }
+    })
+    .catch((err) => {
+      const errMessage = err && err.message ? err.message : "unknown";
+      writeDebug("osc_cmd_error", {
+        address,
+        senderIp,
+        message: errMessage,
+      });
+      if (command.feedback) {
+        sendOscControlFeedback(info, {
+          status: "error",
+          commandAddress: address,
+          message: errMessage,
+          data: { error: errMessage },
+        });
+      }
+    });
+}
+
+function handleOscControlPacket(packet, info = null) {
+  if (!packet || typeof packet !== "object") return;
+  if (packet.address) {
+    executeOscControlCommand(packet, info);
+    return;
+  }
+  if (Array.isArray(packet.packets)) {
+    for (const nested of packet.packets) {
+      handleOscControlPacket(nested, info);
+    }
+  }
+}
+
+function closeOscControlPort(portInstance) {
+  if (!portInstance) return;
+  try {
+    portInstance.close();
+  } catch {}
+}
+
+function bindOscControlPort(nextPort, requestedBy = "system") {
+  const targetPort = clampInt(nextPort, 1, 65535, currentOscListenPort || DEFAULT_OSC_CONTROL_LISTEN_PORT);
+  const previousPort = oscControlUdpPort;
+  const previousReady = oscControlReady;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const candidate = new osc.UDPPort({
+      localAddress: OSC_CONTROL_LISTEN_ADDRESS,
+      localPort: targetPort,
+      metadata: true,
+    });
+
+    const finishError = (err) => {
+      if (settled) return;
+      settled = true;
+      oscControlReady = previousPort ? previousReady : false;
+      oscControlLastError = String(err && err.message ? err.message : "unknown");
+      writeDebug("osc_control_bind_error", {
+        by: String(requestedBy || "system"),
+        listenAddress: OSC_CONTROL_LISTEN_ADDRESS,
+        listenPort: targetPort,
+        message: oscControlLastError,
+      });
+      closeOscControlPort(candidate);
+      reject(err || new Error("osc_bind_failed"));
+    };
+
+    candidate.on("message", (packet, _timeTag, info) => {
+      handleOscControlPacket(packet, info);
+    });
+    candidate.on("bundle", (bundle, _timeTag, info) => {
+      handleOscControlPacket(bundle, info);
+    });
+    candidate.on("error", (err) => {
+      if (!settled) {
+        finishError(err);
+        return;
+      }
+      oscControlReady = false;
+      oscControlLastError = String(err && err.message ? err.message : "unknown");
+      writeDebug("osc_control_runtime_error", {
+        listenAddress: OSC_CONTROL_LISTEN_ADDRESS,
+        listenPort: targetPort,
+        message: oscControlLastError,
+      });
+    });
+
+    candidate.once("ready", () => {
+      if (settled) return;
+      settled = true;
+      oscControlUdpPort = candidate;
+      oscControlReady = true;
+      oscControlLastError = "";
+      currentOscListenPort = targetPort;
+      setSetting("osc_listen_port", String(currentOscListenPort));
+      writeDebug("osc_control_bound", {
+        by: String(requestedBy || "system"),
+        listenAddress: OSC_CONTROL_LISTEN_ADDRESS,
+        listenPort: currentOscListenPort,
+      });
+      console.log(`OSC control listening on ${OSC_CONTROL_LISTEN_ADDRESS}:${currentOscListenPort}`);
+      if (previousPort && previousPort !== candidate) closeOscControlPort(previousPort);
+      resolve(getOscControlState());
+    });
+
+    try {
+      candidate.open();
+    } catch (err) {
+      finishError(err);
+    }
+  });
+}
+
 function getAdminState(req) {
   cleanupEnforcementMaps();
   pruneSessionAccessGrants();
@@ -4506,6 +5052,7 @@ function getAdminState(req) {
     })
     .filter(Boolean)
     .sort((a, b) => String(a.targetLabel || a.targetKey).localeCompare(String(b.targetLabel || b.targetKey)));
+  const oscControlState = getOscControlState();
 
   return {
     ok: true,
@@ -4514,8 +5061,15 @@ function getAdminState(req) {
       port: Number(PORT),
       nextPort: getSetting("next_port", String(PORT)),
       restartRequired: getSetting("next_port", String(PORT)) !== String(PORT),
-      oscHost: OSC_HOST,
-      oscPort: currentOscPort,
+      oscListenAddress: OSC_CONTROL_LISTEN_ADDRESS,
+      oscListenPort: Number(currentOscListenPort || DEFAULT_OSC_CONTROL_LISTEN_PORT),
+      oscReady: !!oscControlReady,
+      oscLastError: String(oscControlLastError || ""),
+      oscCommandCount: Number(OSC_CONTROL_COMMANDS.length || 0),
+      oscFeedbackAddress: OSC_CONTROL_FEEDBACK_ADDRESS,
+      oscFeedbackMode: oscControlState.feedbackMode,
+      oscFeedbackHost: oscControlState.feedbackHost,
+      oscFeedbackPort: oscControlState.feedbackPort,
       dbPath: DB_PATH,
       pollDurationSeconds: currentPollDurationSeconds,
     },
@@ -4563,6 +5117,7 @@ function getAdminState(req) {
     recentMessages,
     sessionJoin,
     stage: stageControl,
+    oscCommands: getOscControlCommandDocs(),
   };
 }
 
@@ -5354,33 +5909,10 @@ app.post("/admin/stage/settings", requireAdmin, (req, res) => {
   const incoming = req.body && typeof req.body === "object"
     ? (req.body.settings && typeof req.body.settings === "object" ? req.body.settings : req.body)
     : {};
-  stageOutputSettings = saveStageOutputSettings(normalizeStageOutputSettings(incoming, stageOutputSettings));
-  writeDebug("stage_settings_updated", {
-    by: "admin",
-    showQr: stageOutputSettings.showQr,
-    showChat: stageOutputSettings.showChat,
-    showEmojis: stageOutputSettings.showEmojis,
-    background: stageOutputSettings.background,
-    chatScale: stageOutputSettings.chatScale,
-    chatBottom: stageOutputSettings.chatBottom,
-    chatHeight: stageOutputSettings.chatHeight,
-    chatX: stageOutputSettings.chatX,
-    chatFadeStart: stageOutputSettings.chatFadeStart,
-    qrScale: stageOutputSettings.qrScale,
-    qrX: stageOutputSettings.qrX,
-    qrY: stageOutputSettings.qrY,
-    emojiScale: stageOutputSettings.emojiScale,
-    emojiBurst: stageOutputSettings.emojiBurst,
-    emojiSpread: stageOutputSettings.emojiSpread,
-    emojiHeartX: stageOutputSettings.emojiHeartX,
-    emojiFireX: stageOutputSettings.emojiFireX,
-    emojiLaughX: stageOutputSettings.emojiLaughX,
-    emojiBoredX: stageOutputSettings.emojiBoredX,
-  });
-  broadcastStageState(req, "settings_updated");
+  const stage = updateStageSettingsFromSource(incoming, "admin", req);
   res.json({
     ok: true,
-    stage: getStageControlState(req),
+    stage,
   });
 });
 
@@ -5932,19 +6464,61 @@ app.post("/admin/settings/port", requireAdmin, (req, res) => {
   });
 });
 
-app.post("/admin/settings/osc-port", requireAdmin, (req, res) => {
+async function handleAdminOscListenPortUpdate(req, res) {
   const port = clampInt(req.body && req.body.port, 1, 65535, -1);
   if (port < 1) {
     res.status(400).json({ ok: false, error: "invalid_port" });
     return;
   }
-  currentOscPort = port;
-  setSetting("osc_port", String(currentOscPort));
-  writeDebug("osc_port_changed", { oscHost: OSC_HOST, oscPort: currentOscPort, by: "admin" });
+  try {
+    const oscState = await bindOscControlPort(port, "admin");
+    res.json({
+      ok: true,
+      oscListenAddress: oscState.listenAddress,
+      oscListenPort: oscState.listenPort,
+      oscReady: oscState.ready,
+      oscLastError: oscState.lastError,
+    });
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: "osc_bind_failed",
+      message: err && err.message ? err.message : "unknown",
+    });
+  }
+}
+
+app.post("/admin/settings/osc-listen-port", requireAdmin, handleAdminOscListenPortUpdate);
+app.post("/admin/settings/osc-port", requireAdmin, handleAdminOscListenPortUpdate);
+
+app.post("/admin/settings/osc-feedback-target", requireAdmin, (req, res) => {
+  const host = normalizeOscControlFeedbackHost(req.body && req.body.host);
+  const port = clampInt(req.body && req.body.port, 0, 65535, 0);
+  if ((host && port < 1) || (!host && port > 0)) {
+    res.status(400).json({
+      ok: false,
+      error: "invalid_feedback_target",
+      message: "Gebruik host + poort samen, of laat allebei leeg voor reply_to_sender.",
+    });
+    return;
+  }
+  oscControlFeedbackHost = host;
+  oscControlFeedbackPort = port;
+  setSetting("osc_feedback_host", oscControlFeedbackHost);
+  setSetting("osc_feedback_port", String(oscControlFeedbackPort));
+  const oscState = getOscControlState();
+  writeDebug("osc_feedback_target_updated", {
+    by: "admin",
+    mode: oscState.feedbackMode,
+    host: oscState.feedbackHost,
+    port: oscState.feedbackPort,
+  });
   res.json({
     ok: true,
-    oscHost: OSC_HOST,
-    oscPort: currentOscPort,
+    oscFeedbackAddress: oscState.feedbackAddress,
+    oscFeedbackMode: oscState.feedbackMode,
+    oscFeedbackHost: oscState.feedbackHost,
+    oscFeedbackPort: oscState.feedbackPort,
   });
 });
 
@@ -6272,27 +6846,6 @@ wss.on("connection", (ws, req) => {
       const counts = reactionCountsSnapshot(reactionCounts);
       const total = Number(counts[reaction] || 0);
       writeDebug("reaction_received", { clientId, ip, clientKey: meta.clientKey, reaction, total });
-      sendOsc("/reaction/type", [{ type: "s", value: reaction }], { clientId, ip, channel: "reaction_type" });
-      sendOsc("/reaction/heart", [{ type: "i", value: Number(counts.heart || 0) }], {
-        clientId,
-        ip,
-        channel: "reaction_heart",
-      });
-      sendOsc("/reaction/fire", [{ type: "i", value: Number(counts.fire || 0) }], {
-        clientId,
-        ip,
-        channel: "reaction_fire",
-      });
-      sendOsc("/reaction/laugh", [{ type: "i", value: Number(counts.laugh || 0) }], {
-        clientId,
-        ip,
-        channel: "reaction_laugh",
-      });
-      sendOsc("/reaction/bored", [{ type: "i", value: Number(counts.bored || 0) }], {
-        clientId,
-        ip,
-        channel: "reaction_bored",
-      });
       sendToStageSubscribers({
         type: "stage_reaction",
         time: nowIso(),
@@ -6537,10 +7090,6 @@ wss.on("connection", (ws, req) => {
     broadcastToClients(payload);
     sendToStageSubscribers(payload);
     chatSimulator.observeAcceptedComment(payload);
-
-    sendOsc("/comment/text", [{ type: "s", value: text }], { clientId, ip, channel: "comment_text" });
-    sendOsc("/comment/name", [{ type: "s", value: name }], { clientId, ip, channel: "comment_name" });
-    sendOsc("/comment/color", [{ type: "s", value: colorHex }], { clientId, ip, channel: "comment_color" });
   });
 
   ws.on("close", (code, reasonBuffer) => {
@@ -6557,6 +7106,14 @@ wss.on("connection", (ws, req) => {
 
 wss.on("error", (err) => {
   writeDebug("wss_error", { message: err && err.message ? err.message : "unknown" });
+});
+
+bindOscControlPort(currentOscListenPort, "startup").catch((err) => {
+  writeDebug("osc_control_startup_failed", {
+    listenAddress: OSC_CONTROL_LISTEN_ADDRESS,
+    listenPort: currentOscListenPort,
+    message: err && err.message ? err.message : "unknown",
+  });
 });
 
 function startServerListening() {

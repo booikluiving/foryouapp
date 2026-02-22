@@ -712,10 +712,17 @@
             <button id="savePortBtn" type="button">Bewaar poortinstelling</button>
           </div>
           <div class="row">
-            <input id="oscPort" type="number" min="1" max="65535" placeholder="OSC transmit poort" />
-            <button id="saveOscPortBtn" type="button">Bewaar OSC poort</button>
+            <input id="oscListenPort" type="number" min="1" max="65535" placeholder="OSC listen poort (TouchDesigner -> server)" />
+            <button id="saveOscListenPortBtn" type="button">Bewaar OSC listen poort</button>
           </div>
+          <div class="row">
+            <input id="oscSendHost" type="text" maxlength="120" placeholder="OSC send host (feedback -> TouchDesigner)" />
+            <input id="oscSendPort" type="number" min="0" max="65535" placeholder="OSC send poort (0 = afzender)" />
+            <button id="saveOscSendTargetBtn" type="button">Bewaar OSC send target</button>
+          </div>
+          <div class="muted">OSC commands worden inbound verwerkt. Standaard alleen lokale afzenders (127.0.0.1). Laat send host+poort leeg voor reply naar afzender; stel beide in voor vast send target.</div>
           <div id="runtimeState" class="mono"></div>
+          <div id="oscCommandsHelp" class="mono historyLog">(OSC commands laden...)</div>
         </div>
 
         <div class="card stack">
@@ -865,10 +872,14 @@
       const simSaveDefaultBtn = document.getElementById("simSaveDefaultBtn");
       const simStateEl = document.getElementById("simState");
       const nextPortEl = document.getElementById("nextPort");
-      const oscPortEl = document.getElementById("oscPort");
+      const oscListenPortEl = document.getElementById("oscListenPort");
+      const oscSendHostEl = document.getElementById("oscSendHost");
+      const oscSendPortEl = document.getElementById("oscSendPort");
       const savePortBtn = document.getElementById("savePortBtn");
-      const saveOscPortBtn = document.getElementById("saveOscPortBtn");
+      const saveOscListenPortBtn = document.getElementById("saveOscListenPortBtn");
+      const saveOscSendTargetBtn = document.getElementById("saveOscSendTargetBtn");
       const runtimeStateEl = document.getElementById("runtimeState");
+      const oscCommandsHelpEl = document.getElementById("oscCommandsHelp");
       const liveChatLogEl = document.getElementById("liveChatLog");
       const liveChatResizeHandleEl = document.getElementById("liveChatResizeHandle");
       const usersSearchInputEl = document.getElementById("usersSearchInput");
@@ -2142,6 +2153,25 @@
           reactionLine;
       }
 
+      function renderOscCommands(commands) {
+        if (!oscCommandsHelpEl) return;
+        const list = Array.isArray(commands) ? commands : [];
+        if (!list.length) {
+          oscCommandsHelpEl.textContent = "(Geen OSC commands gevonden)";
+          return;
+        }
+        oscCommandsHelpEl.textContent = list
+          .map((command) => {
+            const address = String(command && command.address || "").trim();
+            const args = String(command && command.args || "").trim();
+            const description = String(command && command.description || "").trim();
+            const hasFeedback = !!(command && command.feedback);
+            const usageLine = args ? `${address} ${args}` : address;
+            return `${usageLine}${hasFeedback ? " [feedback]" : ""}\n  ${description}`;
+          })
+          .join("\n\n");
+      }
+
       function formatRemainingMs(ms) {
         const value = Number(ms || 0);
         if (!Number.isFinite(value) || value <= 0) return "0:00";
@@ -2568,14 +2598,33 @@
           "Runtime port: " + data.runtime.port +
           "\\nNext port: " + data.runtime.nextPort +
           "\\nRestart required: " + (data.runtime.restartRequired ? "ja" : "nee") +
-          "\\nOSC host: " + String(data.runtime.oscHost || "-") +
-          "\\nOSC port: " + Number(data.runtime.oscPort || 0) +
+          "\\nOSC listen address: " + String(data.runtime.oscListenAddress || "-") +
+          "\\nOSC listen port: " + Number(data.runtime.oscListenPort || 0) +
+          "\\nOSC ready: " + (data.runtime.oscReady ? "ja" : "nee") +
+          "\\nOSC feedback address: " + String(data.runtime.oscFeedbackAddress || "/foryou/control/feedback") +
+          "\\nOSC feedback mode: " + String(data.runtime.oscFeedbackMode || "reply_to_sender") +
+          "\\nOSC feedback target: " + (
+            data.runtime.oscFeedbackHost && Number(data.runtime.oscFeedbackPort || 0) > 0
+              ? `${data.runtime.oscFeedbackHost}:${Number(data.runtime.oscFeedbackPort || 0)}`
+              : "(afzender)"
+          ) +
+          "\\nOSC commands: " + Number(data.runtime.oscCommandCount || 0) +
+          (data.runtime.oscLastError ? "\\nOSC fout: " + String(data.runtime.oscLastError) : "") +
           "\\nPoll duur: " + Number(data.runtime.pollDurationSeconds || 60) + "s" +
           "\\nDB: " + data.runtime.dbPath;
         nextPortEl.value = data.runtime.nextPort;
-        if (document.activeElement !== oscPortEl) {
-          oscPortEl.value = String(Number(data.runtime.oscPort || 1234));
+        if (document.activeElement !== oscListenPortEl) {
+          oscListenPortEl.value = String(Number(data.runtime.oscListenPort || 1234));
         }
+        if (document.activeElement !== oscSendHostEl) {
+          oscSendHostEl.value = String(data.runtime.oscFeedbackHost || "");
+        }
+        if (document.activeElement !== oscSendPortEl) {
+          oscSendPortEl.value = Number(data.runtime.oscFeedbackPort || 0) > 0
+            ? String(Number(data.runtime.oscFeedbackPort || 0))
+            : "";
+        }
+        renderOscCommands(data.oscCommands);
         const pollDurationForInput = data.activePoll
           ? normalizePollDurationSeconds(data.activePoll.durationSeconds, Number(data.runtime.pollDurationSeconds || 60))
           : normalizePollDurationSeconds(data.runtime.pollDurationSeconds, 60);
@@ -3154,8 +3203,23 @@
       savePortBtn.addEventListener("click", () => {
         runAction("/admin/settings/port", { port: Number(nextPortEl.value) }, "Poortinstelling bewaard.");
       });
-      saveOscPortBtn.addEventListener("click", () => {
-        runAction("/admin/settings/osc-port", { port: Number(oscPortEl.value) }, "OSC poortinstelling bewaard.");
+      saveOscListenPortBtn.addEventListener("click", () => {
+        runAction(
+          "/admin/settings/osc-listen-port",
+          { port: Number(oscListenPortEl.value) },
+          "OSC listen poortinstelling bewaard."
+        );
+      });
+      saveOscSendTargetBtn.addEventListener("click", () => {
+        const host = String(oscSendHostEl.value || "").trim();
+        const port = Number(oscSendPortEl.value || 0);
+        runAction(
+          "/admin/settings/osc-feedback-target",
+          { host, port },
+          host && port > 0
+            ? `OSC send target bewaard (${host}:${port}).`
+            : "OSC send target gewist (reply naar afzender)."
+        );
       });
       if (usersSearchClearBtnEl && usersSearchInputEl) {
         usersSearchClearBtnEl.addEventListener("click", () => {

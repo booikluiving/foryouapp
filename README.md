@@ -29,7 +29,7 @@ Belangrijke onderdelen:
 - Node.js (vereist: Node 22+ vanwege `node:sqlite`)
 - Express
 - ws (WebSocket server)
-- osc (OSC output)
+- osc (OSC input/control)
 - SQLite (`data/live.sqlite`)
 - HTML/CSS/vanilla JS frontend
 
@@ -49,6 +49,12 @@ Belangrijkste env vars:
 - `ADMIN_RESTART_BOOT_DELAY_MS` (default: `0`)
 - `ADMIN_RESTART_CHILD_BOOT_DELAY_MS` (default: `900`)
 - `ADMIN_TRUSTED_DEVICE_TTL_DAYS` (default: `60`)
+- `OSC_CONTROL_LISTEN_PORT` (default: `1234`)
+- `OSC_CONTROL_LISTEN_ADDRESS` (default: `127.0.0.1`)
+- `OSC_CONTROL_ALLOW_REMOTE` (default: `0`, alleen localhost toegestaan)
+- `OSC_CONTROL_FEEDBACK_ADDRESS` (default: `/foryou/control/feedback`)
+- `OSC_CONTROL_FEEDBACK_HOST` (optioneel vast send-target host voor feedback)
+- `OSC_CONTROL_FEEDBACK_PORT` (optioneel vast send-target poort voor feedback)
 
 Voorbeeld:
 ```bash
@@ -83,6 +89,28 @@ Admin API endpoints (subset):
 - `/admin/sim/start`, `/admin/sim/update`, `/admin/sim/stop`, `/admin/sim/defaults`
 - `/admin/users/mute`, `/admin/users/unmute`, `/admin/users/block`, `/admin/users/unblock`, `/admin/users/kick`
 - `/admin/restart`
+- `/admin/settings/osc-listen-port` (OSC inbound listen poort)
+- `/admin/settings/osc-feedback-target` (OSC feedback send target: host+poort, of leeg voor reply-to-sender)
+
+## OSC control (TouchDesigner -> server)
+- OSC outbound voor losse chat/reaction-events is uitgezet om load te beperken.
+- Server luistert inbound op OSC voor control-commando's.
+- Belangrijke commando's sturen feedback terug op OSC (`ok`/`error`) via `/foryou/control/feedback`.
+- Feedback gaat standaard terug naar de afzender van het OSC commando, of naar een vast send target als je dat instelt in admin.
+- Commando-overzicht staat live in de admin console onder `Techniek`.
+- Basiscommando's:
+  - `/foryou/session/new`
+  - `/foryou/session/new_with_token`
+  - `/foryou/session/end`
+  - `/foryou/stage/show_qr`
+  - `/foryou/stage/show_chat`
+  - `/foryou/stage/show_emojis`
+  - `/foryou/stage/patch_json`
+  - `/foryou/sim/start`
+  - `/foryou/sim/stop`
+  - `/foryou/sim/toggle`
+  - `/foryou/sim/update_json`
+  - `/foryou/sim/save_defaults_json`
 
 ## Bestandsstructuur
 - `server.js` backend + WebSocket + admin API + simulator
