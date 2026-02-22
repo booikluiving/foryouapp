@@ -450,6 +450,7 @@
           <button id="themeToggleBtn" type="button">Thema: Auto</button>
           <button id="refreshBtn" type="button">Ververs</button>
           <button id="restartBtn" class="danger" type="button">Restart server</button>
+          <button id="stopServerBtn" class="danger" type="button">Stop server</button>
           <button id="logoutBtn" type="button">Logout</button>
         </div>
       </div>
@@ -482,7 +483,7 @@
             <button id="openSessionJoinBtn" type="button">Open link</button>
           </div>
           <div id="sessionQrPreview" class="qrPreview muted">(Nog geen QR-code)</div>
-          <details class="wifiQrCard">
+          <details class="wifiQrCard" data-detail-key="wifi-qr">
             <summary>WiFi QR (optioneel)</summary>
             <div class="stack">
               <div class="row">
@@ -517,7 +518,7 @@
             <button id="copyStageBtn" type="button">Kopieer stage-link</button>
             <button id="openStageBtn" type="button">Open stage</button>
           </div>
-          <details class="stageGroup" open>
+          <details class="stageGroup" open data-detail-key="stage-visibility">
             <summary>Zichtbaarheid</summary>
             <div class="stack">
               <div class="row">
@@ -531,7 +532,7 @@
               </div>
             </div>
           </details>
-          <details class="stageGroup" open>
+          <details class="stageGroup" open data-detail-key="stage-chat-styling">
             <summary>Chat styling</summary>
             <div class="stack">
               <div class="row">
@@ -560,7 +561,7 @@
               </div>
             </div>
           </details>
-          <details class="stageGroup" open>
+          <details class="stageGroup" open data-detail-key="stage-qr-styling">
             <summary>QR styling</summary>
             <div class="stack">
               <div class="row">
@@ -579,7 +580,7 @@
               </div>
             </div>
           </details>
-          <details class="stageGroup" open>
+          <details class="stageGroup" open data-detail-key="stage-emoji-styling">
             <summary>Emoji styling</summary>
             <div class="stack">
               <div class="row">
@@ -791,6 +792,7 @@
       const themeToggleBtn = document.getElementById("themeToggleBtn");
       const refreshBtn = document.getElementById("refreshBtn");
       const restartBtn = document.getElementById("restartBtn");
+      const stopServerBtn = document.getElementById("stopServerBtn");
       const logoutBtn = document.getElementById("logoutBtn");
       const statsEl = document.getElementById("stats");
       const sessionNameEl = document.getElementById("sessionName");
@@ -910,6 +912,7 @@
       const COLLAPSE_PREF_KEY = "admin_collapsed_sections_v1";
       const SECTION_ORDER_PREF_KEY = "admin_section_order_v1";
       const SECTION_SPAN_PREF_KEY = "admin_section_span_pref_v1";
+      const DETAILS_OPEN_PREF_KEY = "admin_details_open_v1";
       const LIVE_CHAT_HEIGHT_PREF_KEY = "admin_live_chat_height_v1";
       const REMEMBER_DEVICE_PREF_KEY = "admin_remember_device_pref_v1";
       const DEVICE_LOGOUT_SKIP_KEY = "admin_skip_device_autologin_v1";
@@ -937,6 +940,17 @@
       let stageHydratingControls = false;
       let stageSettingsSaveTimer = null;
       let adminPasswordMinLength = 12;
+      let detailsOpenState = {};
+      let serverInstanceId = "";
+      let hardReloadInProgress = false;
+      let serverInstanceWatchTimer = null;
+      let serverInstanceWatchInFlight = false;
+      let sessionDurationBaseSeconds = 0;
+      let sessionDurationSnapshotMs = 0;
+      let sessionDurationIsActive = false;
+      let sessionDurationStartedAtMs = 0;
+      let sessionDurationClockSkewMs = 0;
+      let sessionDurationTickerTimer = null;
 
       try {
         localStorage.removeItem("admin_token");
@@ -1082,6 +1096,78 @@
 
       function setToken(nextToken) {
         token = String(nextToken || "");
+      }
+
+      function buildHardReloadUrl() {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set("_r", String(Date.now()));
+        return nextUrl.toString();
+      }
+
+      function hardReloadForServerInstanceChange(reason) {
+        if (hardReloadInProgress) return;
+        hardReloadInProgress = true;
+        setActionMessage("Nieuwe serverversie actief. Pagina wordt ververst...");
+        setTimeout(() => {
+          window.location.replace(buildHardReloadUrl());
+        }, 70);
+      }
+
+      function observeServerInstanceId(nextId, source = "state") {
+        const value = String(nextId || "").trim();
+        if (!value) return;
+        if (!serverInstanceId) {
+          serverInstanceId = value;
+          return;
+        }
+        if (serverInstanceId !== value) {
+          hardReloadForServerInstanceChange(source);
+        }
+      }
+
+      function closeWindowBestEffortAfterStop() {
+        setTimeout(() => {
+          try {
+            window.open("", "_self");
+          } catch {}
+          try {
+            window.close();
+          } catch {}
+          setTimeout(() => {
+            if (!window.closed) {
+              try {
+                window.location.replace("about:blank");
+              } catch {}
+            }
+          }, 140);
+        }, 120);
+      }
+
+      async function probeServerInstanceViaHealth() {
+        if (serverInstanceWatchInFlight || hardReloadInProgress) return;
+        serverInstanceWatchInFlight = true;
+        try {
+          const res = await fetch("/health?ts=" + Date.now(), {
+            cache: "no-store",
+            credentials: "same-origin",
+          });
+          if (!res || !res.ok) return;
+          const body = await res.json().catch(() => ({}));
+          observeServerInstanceId(body && body.instanceId, "admin_health");
+        } catch {
+          // no-op: tijdens restart mag health kort falen
+        } finally {
+          serverInstanceWatchInFlight = false;
+        }
+      }
+
+      function startServerInstanceWatch() {
+        if (serverInstanceWatchTimer) return;
+        probeServerInstanceViaHealth();
+        serverInstanceWatchTimer = setInterval(() => {
+          if (document.visibilityState !== "visible") return;
+          probeServerInstanceViaHealth();
+        }, 2500);
       }
 
       function stopRefreshTimer() {
@@ -1254,6 +1340,49 @@
 
       function saveSectionSpanState() {
         localStorage.setItem(SECTION_SPAN_PREF_KEY, JSON.stringify(sectionSpanState));
+      }
+
+      function loadDetailsOpenState() {
+        try {
+          const raw = localStorage.getItem(DETAILS_OPEN_PREF_KEY);
+          if (!raw) return {};
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+          const out = {};
+          for (const [key, value] of Object.entries(parsed)) {
+            const detailKey = String(key || "").trim().toLowerCase();
+            if (!/^[a-z0-9-]{1,80}$/.test(detailKey)) continue;
+            if (typeof value === "boolean") out[detailKey] = value;
+          }
+          return out;
+        } catch {
+          return {};
+        }
+      }
+
+      function saveDetailsOpenState() {
+        localStorage.setItem(DETAILS_OPEN_PREF_KEY, JSON.stringify(detailsOpenState));
+      }
+
+      function initPersistedDetails() {
+        const detailsElements = Array.from(document.querySelectorAll("details[data-detail-key]"));
+        let seededDefaults = false;
+        for (const detailEl of detailsElements) {
+          const detailKey = String(detailEl.dataset.detailKey || "").trim().toLowerCase();
+          if (!detailKey) continue;
+          const saved = detailsOpenState[detailKey];
+          if (typeof saved === "boolean") {
+            detailEl.open = saved;
+          } else {
+            detailsOpenState[detailKey] = !!detailEl.open;
+            seededDefaults = true;
+          }
+          detailEl.addEventListener("toggle", () => {
+            detailsOpenState[detailKey] = !!detailEl.open;
+            saveDetailsOpenState();
+          });
+        }
+        if (seededDefaults) saveDetailsOpenState();
       }
 
       function getCardSpan(card) {
@@ -1617,6 +1746,38 @@
         if (hours > 0) return `${hours}u ${minutes}m ${seconds}s`;
         if (minutes > 0) return `${minutes}m ${seconds}s`;
         return `${seconds}s`;
+      }
+
+      function getLiveSessionDurationSeconds() {
+        const base = Math.max(0, Math.floor(Number(sessionDurationBaseSeconds) || 0));
+        if (!sessionDurationIsActive) return base;
+
+        const startedAtMs = Number(sessionDurationStartedAtMs || 0);
+        if (!Number.isFinite(startedAtMs) || startedAtMs <= 0) {
+          const snapshotMs = Number(sessionDurationSnapshotMs || 0);
+          if (!Number.isFinite(snapshotMs) || snapshotMs <= 0) return base;
+          const elapsedFallback = Math.max(0, Math.floor((Date.now() - snapshotMs) / 1000));
+          return base + elapsedFallback;
+        }
+
+        const adjustedNow = Date.now() + Number(sessionDurationClockSkewMs || 0);
+        const fromStart = Math.max(0, Math.floor((adjustedNow - startedAtMs) / 1000));
+        return Math.max(base, fromStart);
+      }
+
+      function updateSessionDurationDisplayFromLastState() {
+        if (!lastState) return;
+        const durationEl = document.getElementById("sessionDurationValue");
+        if (!durationEl) return;
+        durationEl.textContent = formatDurationShort(getLiveSessionDurationSeconds());
+      }
+
+      function startSessionDurationTicker() {
+        if (sessionDurationTickerTimer) return;
+        sessionDurationTickerTimer = setInterval(() => {
+          if (document.visibilityState === "hidden") return;
+          updateSessionDurationDisplayFromLastState();
+        }, 250);
       }
 
       function renderPasswordHint(text, isError = false) {
@@ -2298,6 +2459,7 @@
 
       function updateLivePollBadgeFromLastState() {
         if (!lastState) return;
+        updateSessionDurationDisplayFromLastState();
         renderPollStatusBadge(lastState);
         if (lastState.activePoll) renderPollState(lastState);
       }
@@ -2558,11 +2720,20 @@
           10,
           Number((data && data.security && data.security.adminPasswordMinLength) || adminPasswordMinLength || 12)
         );
+        const runtime = data && data.runtime ? data.runtime : {};
+        observeServerInstanceId(runtime.serverInstanceId, "admin_state");
         const session = data && data.session ? data.session : {};
         const sessionId = Number(session.id || 0);
         const sessionName = String(session.name || "");
         const sessionIsActive = session.isActive !== false;
         const sessionDurationSeconds = Number(session.durationSeconds || 0);
+        const snapshotNowTs = Date.parse(String((data && data.now) || ""));
+        const startedAtTs = Date.parse(String((session && session.startedAt) || ""));
+        sessionDurationBaseSeconds = Math.max(0, Math.floor(sessionDurationSeconds));
+        sessionDurationSnapshotMs = Number.isFinite(snapshotNowTs) ? snapshotNowTs : Date.now();
+        sessionDurationIsActive = sessionIsActive;
+        sessionDurationStartedAtMs = Number.isFinite(startedAtTs) ? startedAtTs : 0;
+        sessionDurationClockSkewMs = Number.isFinite(snapshotNowTs) ? (snapshotNowTs - Date.now()) : 0;
         const registeredCount = Math.max(0, Number(session.registeredCount || 0));
         const onlineCount = Math.max(0, Number(session.onlineCount || (Array.isArray(data.users) ? data.users.length : 0)));
         const onlineBotCount = Math.max(0, Number(session.onlineBotCount || 0));
@@ -2579,55 +2750,57 @@
           endSessionBtn.disabled = !sessionIsActive;
         }
 
+        const durationLabel = sessionIsActive ? "Actief sinds" : "Sessie duur";
+        const durationText = formatDurationShort(getLiveSessionDurationSeconds());
         statsEl.innerHTML = [
-          ["Sessie", "#" + sessionId + " " + sessionName],
-          ["Status", sessionIsActive ? "Actief" : "Beëindigd"],
-          [sessionIsActive ? "Actief sinds" : "Sessie duur", formatDurationShort(sessionDurationSeconds)],
-          ["Geregistreerd", String(registeredCount)],
-          ["Online users", String(onlineCount)],
-          ["Online bots", String(onlineBotCount)],
-          ["Offline geregistreerd", String(offlineRegisteredCount)],
-          ["Berichten", String(session.messageCount || 0)],
-          ["Geblokkeerd/geweigerd", String(session.rejectedCount || 0)],
-          ["Poll actief", data.activePoll ? "Ja" : "Nee"],
-        ]
-          .map(([k, v]) => `<div class=\"stat\"><div class=\"k\">${k}</div><div class=\"v\">${v}</div></div>`)
-          .join("");
+          `<div class="stat"><div class="k">Sessie</div><div class="v">${esc("#" + sessionId + " " + sessionName)}</div></div>`,
+          `<div class="stat"><div class="k">Status</div><div class="v">${sessionIsActive ? "Actief" : "Beëindigd"}</div></div>`,
+          `<div class="stat"><div class="k">${durationLabel}</div><div id="sessionDurationValue" class="v">${durationText}</div></div>`,
+          `<div class="stat"><div class="k">Geregistreerd</div><div class="v">${registeredCount}</div></div>`,
+          `<div class="stat"><div class="k">Online users</div><div class="v">${onlineCount}</div></div>`,
+          `<div class="stat"><div class="k">Online bots</div><div class="v">${onlineBotCount}</div></div>`,
+          `<div class="stat"><div class="k">Offline geregistreerd</div><div class="v">${offlineRegisteredCount}</div></div>`,
+          `<div class="stat"><div class="k">Berichten</div><div class="v">${Number(session.messageCount || 0)}</div></div>`,
+          `<div class="stat"><div class="k">Geblokkeerd/geweigerd</div><div class="v">${Number(session.rejectedCount || 0)}</div></div>`,
+          `<div class="stat"><div class="k">Poll actief</div><div class="v">${data.activePoll ? "Ja" : "Nee"}</div></div>`,
+        ].join("");
 
         runtimeStateEl.textContent =
-          "Runtime port: " + data.runtime.port +
-          "\\nNext port: " + data.runtime.nextPort +
-          "\\nRestart required: " + (data.runtime.restartRequired ? "ja" : "nee") +
-          "\\nOSC listen address: " + String(data.runtime.oscListenAddress || "-") +
-          "\\nOSC listen port: " + Number(data.runtime.oscListenPort || 0) +
-          "\\nOSC ready: " + (data.runtime.oscReady ? "ja" : "nee") +
-          "\\nOSC feedback address: " + String(data.runtime.oscFeedbackAddress || "/foryou/control/feedback") +
-          "\\nOSC feedback mode: " + String(data.runtime.oscFeedbackMode || "reply_to_sender") +
+          "Runtime port: " + runtime.port +
+          "\\nNext port: " + runtime.nextPort +
+          "\\nRestart required: " + (runtime.restartRequired ? "ja" : "nee") +
+          "\\nServer instance: " + String(runtime.serverInstanceId || "-") +
+          "\\nServer exit mode: " + (runtime.serverExitMode ? String(runtime.serverExitMode) : "none") +
+          "\\nOSC listen address: " + String(runtime.oscListenAddress || "-") +
+          "\\nOSC listen port: " + Number(runtime.oscListenPort || 0) +
+          "\\nOSC ready: " + (runtime.oscReady ? "ja" : "nee") +
+          "\\nOSC feedback address: " + String(runtime.oscFeedbackAddress || "/foryou/control/feedback") +
+          "\\nOSC feedback mode: " + String(runtime.oscFeedbackMode || "reply_to_sender") +
           "\\nOSC feedback target: " + (
-            data.runtime.oscFeedbackHost && Number(data.runtime.oscFeedbackPort || 0) > 0
-              ? `${data.runtime.oscFeedbackHost}:${Number(data.runtime.oscFeedbackPort || 0)}`
+            runtime.oscFeedbackHost && Number(runtime.oscFeedbackPort || 0) > 0
+              ? `${runtime.oscFeedbackHost}:${Number(runtime.oscFeedbackPort || 0)}`
               : "(afzender)"
           ) +
-          "\\nOSC commands: " + Number(data.runtime.oscCommandCount || 0) +
-          (data.runtime.oscLastError ? "\\nOSC fout: " + String(data.runtime.oscLastError) : "") +
-          "\\nPoll duur: " + Number(data.runtime.pollDurationSeconds || 60) + "s" +
-          "\\nDB: " + data.runtime.dbPath;
-        nextPortEl.value = data.runtime.nextPort;
+          "\\nOSC commands: " + Number(runtime.oscCommandCount || 0) +
+          (runtime.oscLastError ? "\\nOSC fout: " + String(runtime.oscLastError) : "") +
+          "\\nPoll duur: " + Number(runtime.pollDurationSeconds || 60) + "s" +
+          "\\nDB: " + runtime.dbPath;
+        nextPortEl.value = runtime.nextPort;
         if (document.activeElement !== oscListenPortEl) {
-          oscListenPortEl.value = String(Number(data.runtime.oscListenPort || 1234));
+          oscListenPortEl.value = String(Number(runtime.oscListenPort || 1234));
         }
         if (document.activeElement !== oscSendHostEl) {
-          oscSendHostEl.value = String(data.runtime.oscFeedbackHost || "");
+          oscSendHostEl.value = String(runtime.oscFeedbackHost || "");
         }
         if (document.activeElement !== oscSendPortEl) {
-          oscSendPortEl.value = Number(data.runtime.oscFeedbackPort || 0) > 0
-            ? String(Number(data.runtime.oscFeedbackPort || 0))
+          oscSendPortEl.value = Number(runtime.oscFeedbackPort || 0) > 0
+            ? String(Number(runtime.oscFeedbackPort || 0))
             : "";
         }
         renderOscCommands(data.oscCommands);
         const pollDurationForInput = data.activePoll
-          ? normalizePollDurationSeconds(data.activePoll.durationSeconds, Number(data.runtime.pollDurationSeconds || 60))
-          : normalizePollDurationSeconds(data.runtime.pollDurationSeconds, 60);
+          ? normalizePollDurationSeconds(data.activePoll.durationSeconds, Number(runtime.pollDurationSeconds || 60))
+          : normalizePollDurationSeconds(runtime.pollDurationSeconds, 60);
         if (data.activePoll) {
           pollDurationSecondsEl.value = String(pollDurationForInput);
           pollDurationTouched = false;
@@ -2850,6 +3023,7 @@
         if (!ok) return;
 
         restartBtn.disabled = true;
+        stopServerBtn.disabled = true;
         setActionMessage("Herstart gestart...");
         let reconnectAfterMs = 1800;
 
@@ -2864,7 +3038,13 @@
             : reconnectAfterMs;
         } catch (err) {
           restartBtn.disabled = false;
-          setActionMessage("Herstart mislukt: " + err.message);
+          stopServerBtn.disabled = false;
+          const code = String(err && err.message || "");
+          if (code === "server_stopping") {
+            setActionMessage("Herstart niet mogelijk: server wordt al gestopt.");
+          } else {
+            setActionMessage("Herstart mislukt: " + code);
+          }
           return;
         }
 
@@ -2879,12 +3059,51 @@
         if (!serverBack) {
           setActionMessage("Herstart loopt nog. Ververs over een paar seconden.");
           restartBtn.disabled = false;
+          stopServerBtn.disabled = false;
           return;
         }
         setActionMessage("Server is herstart. Pagina wordt ververst...");
-        const reloadUrl = new URL(window.location.href);
-        reloadUrl.searchParams.set("_r", String(Date.now()));
-        window.location.replace(reloadUrl.toString());
+        window.location.replace(buildHardReloadUrl());
+      }
+
+      async function stopServer() {
+        if (!token) {
+          showLogin();
+          setActionMessage("Log eerst in als admin.");
+          return;
+        }
+        const ok = confirm("Server nu volledig stoppen?");
+        if (!ok) return;
+
+        restartBtn.disabled = true;
+        stopServerBtn.disabled = true;
+        setActionMessage("Server-stop gestart...");
+
+        try {
+          await api("/admin/stop", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ confirm: true }),
+          });
+        } catch (err) {
+          restartBtn.disabled = false;
+          stopServerBtn.disabled = false;
+          const code = String(err && err.message || "");
+          if (code === "server_restarting") {
+            setActionMessage("Stoppen niet mogelijk: server herstart al.");
+          } else {
+            setActionMessage("Stoppen mislukt: " + code);
+          }
+          return;
+        }
+
+        setToken("");
+        stopRefreshTimer();
+        showLogin();
+        setSkipDeviceAutologin(false);
+        loginErrorEl.textContent = "Server is gestopt.";
+        setActionMessage("Server is gestopt. Tabblad wordt gesloten...");
+        closeWindowBestEffortAfterStop();
       }
 
       async function runAction(path, payload, okText) {
@@ -2972,6 +3191,7 @@
       sectionOpenState = loadSectionState();
       sectionOrderState = loadSectionOrderState();
       sectionSpanState = loadSectionSpanState();
+      detailsOpenState = loadDetailsOpenState();
       applyTheme(themePreference, false);
       initLiveChatResize();
       if (systemDarkQuery && typeof systemDarkQuery.addEventListener === "function") {
@@ -2984,6 +3204,7 @@
         });
       }
       initCollapsibleSections();
+      initPersistedDetails();
       rememberDeviceEl.checked = loadRememberDevicePreference();
       setSessionJoinResult(null);
       applyStageControlsFromState(null);
@@ -3027,6 +3248,7 @@
       }
       refreshBtn.addEventListener("click", refreshState);
       restartBtn.addEventListener("click", restartServer);
+      stopServerBtn.addEventListener("click", stopServer);
       logoutBtn.addEventListener("click", async () => {
         try {
           await api("/admin/logout", {
@@ -3295,11 +3517,19 @@
       }
       usersBodyEl.addEventListener("click", handleModerationButtonClick);
       enforcementBodyEl.addEventListener("click", handleModerationButtonClick);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          updateSessionDurationDisplayFromLastState();
+          probeServerInstanceViaHealth();
+        }
+      });
       ensureMinimumPollOptionRows();
       updateSimSliderLabels();
       if (!pollBadgeTimer) {
         pollBadgeTimer = setInterval(updateLivePollBadgeFromLastState, 1000);
       }
+      startSessionDurationTicker();
+      startServerInstanceWatch();
 
       async function bootstrapAuth() {
         const resumed = await tryDeviceLogin();

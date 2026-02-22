@@ -73,6 +73,7 @@ const DEBUG_LOG_TRIM_TO_BYTES = clampInt(
   512 * 1024
 );
 const SIM_INTERNAL_ACCESS_KEY = crypto.randomBytes(16).toString("hex");
+const SERVER_INSTANCE_ID = `${Date.now()}-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
 const DEFAULT_POLL_DURATION_SECONDS = clampInt(process.env.POLL_DURATION_SECONDS || "60", 5, 3600, 60);
 let currentPollDurationSeconds = DEFAULT_POLL_DURATION_SECONDS;
 const SIM_DEFAULTS = {
@@ -2503,6 +2504,7 @@ function getStageSnapshot(req) {
   const sessionJoin = getCurrentSessionJoinPayload(req);
   return {
     ...control,
+    serverInstanceId: SERVER_INSTANCE_ID,
     session: {
       id: Number(currentSession.id || 0),
       name: String(currentSession.name || ""),
@@ -2872,9 +2874,17 @@ function revokeTrustedAdminDeviceByRequest(req) {
 }
 
 let restartPending = false;
+let stopPending = false;
+
+function getServerExitMode() {
+  if (restartPending) return "restart";
+  if (stopPending) return "stop";
+  return "";
+}
 
 function requestServerRestart(requestedBy = "admin") {
-  if (restartPending) return { alreadyPending: true };
+  const pendingMode = getServerExitMode();
+  if (pendingMode) return { alreadyPending: true, pendingMode };
   restartPending = true;
 
   let childPid = null;
@@ -2909,8 +2919,49 @@ function requestServerRestart(requestedBy = "admin") {
 
   return {
     alreadyPending: false,
+    pendingMode: "restart",
     childPid,
     childBootDelayMs: ADMIN_RESTART_CHILD_BOOT_DELAY_MS,
+  };
+}
+
+function requestServerStop(requestedBy = "admin", reason = "admin_stop") {
+  const pendingMode = getServerExitMode();
+  if (pendingMode) return { alreadyPending: true, pendingMode };
+  stopPending = true;
+  const safeReason = String(reason || "admin_stop").trim().slice(0, 80) || "admin_stop";
+  const stopDelayMs = 260;
+
+  writeDebug("server_stop_requested", {
+    by: requestedBy,
+    pid: process.pid,
+    reason: safeReason,
+  });
+
+  broadcastToClients({
+    type: "server_notice",
+    code: "server_stopping",
+    message: "Server wordt gestopt door de moderator.",
+    reason: safeReason,
+    serverInstanceId: SERVER_INSTANCE_ID,
+  });
+  sendToStageSubscribers({
+    type: "server_notice",
+    code: "server_stopping",
+    message: "Server wordt gestopt door de moderator.",
+    reason: safeReason,
+    serverInstanceId: SERVER_INSTANCE_ID,
+  });
+
+  setTimeout(() => {
+    writeDebug("server_stop_exit", { pid: process.pid, reason: safeReason });
+    process.exit(0);
+  }, stopDelayMs).unref();
+
+  return {
+    alreadyPending: false,
+    pendingMode: "stop",
+    stopDelayMs,
   };
 }
 
@@ -4701,16 +4752,45 @@ function buildOscControlCommands() {
       description: "Start server-restart flow (zelfde als admin knop).",
       feedback: true,
       feedbackMessage(result) {
+        if (result && result.pendingMode === "stop") return "Server wordt al gestopt";
         if (result && result.alreadyPending) return "Server-restart liep al";
         return "Server-restart aangevraagd";
       },
       execute() {
         const restart = requestServerRestart("osc");
+        if (restart.alreadyPending && restart.pendingMode === "stop") {
+          throw new Error("server_stopping");
+        }
         writeDebug("osc_cmd_restart", { alreadyPending: !!restart.alreadyPending });
         return {
           restartPending: true,
           alreadyPending: !!restart.alreadyPending,
+          pendingMode: String(restart.pendingMode || "restart"),
           reconnectAfterMs: Number(restart.childBootDelayMs || ADMIN_RESTART_CHILD_BOOT_DELAY_MS) + 800,
+        };
+      },
+    },
+    {
+      address: "/foryou/admin/stop",
+      args: "(geen)",
+      description: "Stop server-proces (zelfde als admin knop).",
+      feedback: true,
+      feedbackMessage(result) {
+        if (result && result.pendingMode === "restart") return "Server herstart al";
+        if (result && result.alreadyPending) return "Server-stop liep al";
+        return "Server-stop aangevraagd";
+      },
+      execute() {
+        const stop = requestServerStop("osc", "osc_stop");
+        if (stop.alreadyPending && stop.pendingMode === "restart") {
+          throw new Error("server_restarting");
+        }
+        writeDebug("osc_cmd_stop", { alreadyPending: !!stop.alreadyPending });
+        return {
+          stopPending: true,
+          alreadyPending: !!stop.alreadyPending,
+          pendingMode: String(stop.pendingMode || "stop"),
+          stopAfterMs: Number(stop.stopDelayMs || 260),
         };
       },
     },
@@ -5058,9 +5138,11 @@ function getAdminState(req) {
     ok: true,
     now: snapshotNow,
     runtime: {
+      serverInstanceId: SERVER_INSTANCE_ID,
       port: Number(PORT),
       nextPort: getSetting("next_port", String(PORT)),
       restartRequired: getSetting("next_port", String(PORT)) !== String(PORT),
+      serverExitMode: getServerExitMode() || "",
       oscListenAddress: OSC_CONTROL_LISTEN_ADDRESS,
       oscListenPort: Number(currentOscListenPort || DEFAULT_OSC_CONTROL_LISTEN_PORT),
       oscReady: !!oscControlReady,
@@ -5630,7 +5712,10 @@ loadBrainrotWords("startup");
 watchBrainrotFile(BRAINROT_PATH, "watch_brainrot");
 
 app.get("/health", (req, res) => {
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    instanceId: SERVER_INSTANCE_ID,
+  });
 });
 
 app.get("/debug-log", requireAdmin, (req, res) => {
@@ -5886,10 +5971,15 @@ app.post("/admin/restart", requireAdmin, (req, res) => {
   }
   try {
     const restart = requestServerRestart("admin");
+    if (restart.alreadyPending && restart.pendingMode === "stop") {
+      res.status(409).json({ ok: false, error: "server_stopping" });
+      return;
+    }
     res.json({
       ok: true,
       restartPending: true,
       alreadyPending: !!restart.alreadyPending,
+      pendingMode: String(restart.pendingMode || "restart"),
       reconnectAfterMs: Number(restart.childBootDelayMs || ADMIN_RESTART_CHILD_BOOT_DELAY_MS) + 800,
     });
   } catch (err) {
@@ -5898,6 +5988,34 @@ app.post("/admin/restart", requireAdmin, (req, res) => {
       message: err && err.message ? err.message : "unknown",
     });
     res.status(500).json({ ok: false, error: "restart_failed" });
+  }
+});
+
+app.post("/admin/stop", requireAdmin, (req, res) => {
+  const confirm = isTruthy(req.body && req.body.confirm);
+  if (!confirm) {
+    res.status(400).json({ ok: false, error: "confirm_required" });
+    return;
+  }
+  try {
+    const stop = requestServerStop("admin", "admin_stop");
+    if (stop.alreadyPending && stop.pendingMode === "restart") {
+      res.status(409).json({ ok: false, error: "server_restarting" });
+      return;
+    }
+    res.json({
+      ok: true,
+      stopPending: true,
+      alreadyPending: !!stop.alreadyPending,
+      pendingMode: String(stop.pendingMode || "stop"),
+      stopAfterMs: Number(stop.stopDelayMs || 260),
+    });
+  } catch (err) {
+    writeDebug("server_stop_failed", {
+      by: "admin",
+      message: err && err.message ? err.message : "unknown",
+    });
+    res.status(500).json({ ok: false, error: "stop_failed" });
   }
 });
 
@@ -6720,6 +6838,7 @@ wss.on("connection", (ws, req) => {
       type: "hello",
       time: nowIso(),
       sessionId: Number(currentSession.id),
+      serverInstanceId: SERVER_INSTANCE_ID,
     })
   );
 
@@ -7122,6 +7241,7 @@ function startServerListening() {
     writeDebug("server_started", {
       port: PORT,
       pid: process.pid,
+      instanceId: SERVER_INSTANCE_ID,
       restartBootDelayMs: ADMIN_RESTART_BOOT_DELAY_MS,
     });
   });

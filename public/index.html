@@ -978,6 +978,8 @@
       let healthProbeFailCount = 0;
       let pausedByServer = false;
       let serverPauseReason = "";
+      let serverInstanceId = "";
+      let hardReloadInProgress = false;
 
       const CONNECT_TIMEOUT_MS = 7000;
       const CONNECTION_CHECK_MS = 2000;
@@ -1040,6 +1042,34 @@
         healthProbeFailCount = 0;
       }
 
+      function buildHardReloadUrl() {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set("_r", String(Date.now()));
+        return nextUrl.toString();
+      }
+
+      function hardReloadForServerInstanceChange(reason) {
+        if (hardReloadInProgress) return;
+        hardReloadInProgress = true;
+        showUserNotice("Nieuwe serverversie actief. Pagina ververst...", { autoHideMs: 1800 });
+        debugLog("hard reload for server instance change (" + String(reason || "unknown") + ")");
+        setTimeout(() => {
+          window.location.replace(buildHardReloadUrl());
+        }, 80);
+      }
+
+      function observeServerInstanceId(nextId, source = "socket") {
+        const value = String(nextId || "").trim();
+        if (!value) return;
+        if (!serverInstanceId) {
+          serverInstanceId = value;
+          return;
+        }
+        if (serverInstanceId !== value) {
+          hardReloadForServerInstanceChange(source);
+        }
+      }
+
       function probeHealth(reason) {
         if (pausedByServer) return;
         if (healthProbeInFlight) return;
@@ -1058,8 +1088,11 @@
             clearTimeout(timeoutId);
             healthProbeInFlight = false;
             if (!res.ok) throw new Error("bad status");
-
+            return res.json().catch(() => ({}));
+          })
+          .then((body) => {
             healthProbeFailCount = 0;
+            observeServerInstanceId(body && body.instanceId, "health");
             const openButStale = ws
               && ws.readyState === WebSocket.OPEN
               && lastServerSeenAt
@@ -1440,6 +1473,7 @@
           try {
             const msg = JSON.parse(ev.data);
             if (msg.type === "hello") {
+              observeServerInstanceId(msg.serverInstanceId, "ws_hello");
               noteServerSeen();
               if (msg.poll) showPoll(msg.poll);
               return;
@@ -1523,6 +1557,23 @@
               noteServerSeen();
               return;
             }
+            if (msg.type === "server_notice") {
+              const code = String(msg.code || "").trim().toLowerCase();
+              if (code === "server_stopping") {
+                pausedByServer = true;
+                serverPauseReason = "server_stopping";
+                pendingReconnect = false;
+                clearReconnectTimer();
+                stopHeartbeat();
+                connectStartedAt = 0;
+                sendBtn.disabled = true;
+                showUserNotice("Server wordt nu gestopt.", { autoHideMs: 5000 });
+              } else if (msg.message) {
+                showUserNotice(String(msg.message));
+              }
+              noteServerSeen();
+              return;
+            }
             if (msg.type === "error") {
               handleServerError(msg);
               noteServerSeen();
@@ -1538,6 +1589,8 @@
               ? "Deze sessie is vergrendeld. Scan de nieuwste QR-link om opnieuw mee te doen."
               : serverPauseReason === "session_inactive"
                 ? "Deze sessie is beëindigd. Wacht op een nieuwe join-link."
+                : serverPauseReason === "server_stopping"
+                  ? "Server wordt gestopt. Wacht tot die weer gestart is."
                 : "Deze sessie is gesloten. Ververs pagina om opnieuw mee te doen."
           );
           return;

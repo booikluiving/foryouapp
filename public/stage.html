@@ -291,6 +291,8 @@
       let ws = null;
       let reconnectTimer = null;
       let reconnectDelayMs = RECONNECT_MIN_MS;
+      let serverInstanceId = "";
+      let hardReloadInProgress = false;
 
       function esc(value) {
         return String(value || "")
@@ -304,6 +306,33 @@
       function sanitizeNameColor(input) {
         const value = String(input || "").trim();
         return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "";
+      }
+
+      function buildHardReloadUrl() {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set("_r", String(Date.now()));
+        return nextUrl.toString();
+      }
+
+      function hardReloadForServerInstanceChange(reason) {
+        if (hardReloadInProgress) return;
+        hardReloadInProgress = true;
+        showStatus("Stage output: nieuwe serverversie, verversen…", true);
+        setTimeout(() => {
+          window.location.replace(buildHardReloadUrl());
+        }, 80);
+      }
+
+      function observeServerInstanceId(nextId, source = "stage") {
+        const value = String(nextId || "").trim();
+        if (!value) return;
+        if (!serverInstanceId) {
+          serverInstanceId = value;
+          return;
+        }
+        if (serverInstanceId !== value) {
+          hardReloadForServerInstanceChange(source);
+        }
       }
 
       function normalizeStageSettings(raw) {
@@ -498,6 +527,7 @@
 
       function applyStageSnapshot(snapshot) {
         const stage = snapshot && typeof snapshot === "object" ? snapshot : {};
+        observeServerInstanceId(stage.serverInstanceId, "stage_snapshot");
         stageState.settings = normalizeStageSettings(stage.settings);
         stageState.sessionJoin = stage.sessionJoin && typeof stage.sessionJoin === "object" ? stage.sessionJoin : null;
         applyVisualSettings();
@@ -540,6 +570,16 @@
         if (msg.type === "session_reset" || msg.type === "session_closed") {
           stageState.chat = [];
           renderChat();
+          return;
+        }
+
+        if (msg.type === "server_notice") {
+          const code = String(msg.code || "").trim().toLowerCase();
+          if (code === "server_stopping") {
+            showStatus("Stage output: server wordt gestopt…", true);
+          } else if (msg.message) {
+            showStatus(String(msg.message), true);
+          }
         }
       }
 

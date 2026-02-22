@@ -18,12 +18,13 @@ Belangrijke onderdelen:
 - Bot-simulatie met sliders (aantal bots, message-rate, positief/negatief, emoji, topic).
 - Segmenten in admin herschikbaar (drag & drop), inklapbaar en onthouden per apparaat.
 - Donkere modus (admin + client).
-- Server-restart direct vanuit admin.
+- Server-restart en server-stop direct vanuit admin.
 - "Onthoud dit apparaat" login voor admin (trusted device).
 - Admin wachtwoord wijzigen vanuit de admin console (met sterkte-eisen).
 - Nieuwe sessie + QR-flow: admin maakt een unieke join-token en QR, clients joinen via `/join?token=...`.
   - Toegang is sessiegebonden: bij een nieuwe sessie is opnieuw scannen/joinen vereist.
 - Stage output pagina (`/stage`) voor OBS/Electron/TouchDesigner browser output met toggles en live styling (QR/chat/emoji, schaal, positie, achtergrond transparant/zwart).
+- Open tabs (`/`, `/admin`, `/stage`) verversen automatisch na een server-restart op basis van server-instance detectie.
 
 ## Tech stack
 - Node.js (vereist: Node 22+ vanwege `node:sqlite`)
@@ -65,6 +66,10 @@ ADMIN_PASSWORD="kies-een-sterk-wachtwoord" PORT=3000 npm start
 - `npm start` start de server (`server.js`)
 - `npm run simulate` start de losse simulator CLI (`scripts/simulate-chatters.js`)
 
+Mac launcher:
+- `scripts/open-admin.command` start lokaal de server (indien nodig) en opent direct `/admin`.
+- Dubbelklik op dit `.command` bestand of zet er een snelkoppeling/icoon van op je bureaublad.
+
 CLI hulp:
 ```bash
 node scripts/simulate-chatters.js --help
@@ -89,6 +94,7 @@ Admin API endpoints (subset):
 - `/admin/sim/start`, `/admin/sim/update`, `/admin/sim/stop`, `/admin/sim/defaults`
 - `/admin/users/mute`, `/admin/users/unmute`, `/admin/users/block`, `/admin/users/unblock`, `/admin/users/kick`
 - `/admin/restart`
+- `/admin/stop`
 - `/admin/settings/osc-listen-port` (OSC inbound listen poort)
 - `/admin/settings/osc-feedback-target` (OSC feedback send target: host+poort, of leeg voor reply-to-sender)
 
@@ -111,6 +117,7 @@ Admin API endpoints (subset):
   - `/foryou/sim/toggle`
   - `/foryou/sim/update_json`
   - `/foryou/sim/save_defaults_json`
+  - `/foryou/admin/stop`
 
 ## Bestandsstructuur
 - `server.js` backend + WebSocket + admin API + simulator
