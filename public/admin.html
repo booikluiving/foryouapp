@@ -62,6 +62,7 @@
         display: block;
         padding: 0;
         overflow: hidden;
+        transition: box-shadow 120ms ease, opacity 120ms ease;
       }
       .sectionHeader {
         display: flex;
@@ -70,6 +71,11 @@
         gap: 8px;
         padding: 12px;
         border-bottom: 1px solid var(--line);
+        cursor: grab;
+        user-select: none;
+      }
+      .sectionHeader:active {
+        cursor: grabbing;
       }
       .collapsibleCard:not(.isOpen) .sectionHeader {
         border-bottom: 0;
@@ -81,6 +87,11 @@
         min-width: 0;
         flex: 1;
       }
+      .sectionHeaderActions {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
       .sectionHeaderMain h2 {
         margin: 0;
       }
@@ -90,9 +101,31 @@
       .sectionToggle {
         flex: 0 0 auto;
         min-width: auto;
-        font-size: 12px;
-        padding: 4px 10px;
+        width: 28px;
+        height: 28px;
+        min-height: 28px;
+        padding: 0;
         border-radius: 999px;
+        font-size: 15px;
+        line-height: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .sectionWidthBtn {
+        flex: 0 0 auto;
+        min-width: auto;
+        width: 32px;
+        height: 28px;
+        min-height: 28px;
+        padding: 0;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }
       .sectionBody {
         padding: 0 12px 12px;
@@ -101,6 +134,30 @@
       }
       .collapsibleCard:not(.isOpen) .sectionBody {
         display: none;
+      }
+      .collapsibleCard.isDragging {
+        opacity: 0.58;
+      }
+      .collapsibleCard.dropBefore {
+        box-shadow: inset 0 3px 0 var(--accent);
+      }
+      .collapsibleCard.dropAfter {
+        box-shadow: inset 0 -3px 0 var(--accent);
+      }
+      .collapsibleCard.dropLeft {
+        box-shadow: inset 3px 0 0 var(--accent);
+      }
+      .collapsibleCard.dropRight {
+        box-shadow: inset -3px 0 0 var(--accent);
+      }
+      .sectionDropIndicator {
+        height: 0;
+        border-top: 2px solid var(--accent);
+        border-radius: 999px;
+        margin: 0 6px;
+        grid-column: 1 / -1;
+        opacity: 0.85;
+        pointer-events: none;
       }
       h1, h2, h3, p { margin: 0; }
       h1 { font-size: 20px; }
@@ -212,6 +269,37 @@
         white-space: pre-wrap;
         word-break: break-word;
       }
+      #liveChatLog {
+        min-height: 140px;
+        height: 220px;
+        max-height: min(70vh, 720px);
+        resize: none;
+        overflow: auto;
+      }
+      #liveChatResizeHandle {
+        height: 16px;
+        cursor: ns-resize;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        touch-action: none;
+      }
+      #liveChatResizeHandle::before {
+        content: "";
+        width: 56px;
+        height: 4px;
+        border-radius: 999px;
+        background: var(--line);
+        transition: background 120ms ease;
+      }
+      #liveChatResizeHandle:hover::before,
+      body.liveChatResizing #liveChatResizeHandle::before {
+        background: var(--accent);
+      }
+      body.liveChatResizing {
+        cursor: ns-resize;
+        user-select: none;
+      }
       #liveChatLog .chatLine + .chatLine {
         margin-top: 2px;
       }
@@ -222,10 +310,42 @@
       .userNameColor {
         font-weight: 700;
       }
-      #app { display: none; }
+      #app {
+        display: none;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        align-items: start;
+        gap: 12px;
+      }
+      #app > .card {
+        min-width: 0;
+        grid-column: span 12;
+      }
+      #app > .card.layoutSpan2 {
+        grid-column: span 6;
+      }
+      #app > .card.layoutSpan3 {
+        grid-column: span 4;
+      }
+      #app > #actionMsg {
+        min-width: 0;
+        grid-column: 1 / -1;
+      }
       #loginError, #actionMsg { min-height: 18px; font-size: 13px; }
       #loginError { color: var(--danger); }
       #actionMsg { color: var(--accent); }
+      @media (max-width: 980px) {
+        #app {
+          grid-template-columns: 1fr;
+        }
+        #app > .card,
+        #app > .card.layoutSpan2,
+        #app > .card.layoutSpan3 {
+          grid-column: 1;
+        }
+        #actionMsg {
+          grid-column: 1;
+        }
+      }
       .rememberRow {
         display: inline-flex;
         align-items: center;
@@ -370,6 +490,7 @@
         <div class="card stack">
           <h2>Live chat (recent)</h2>
           <div id="liveChatLog" class="mono historyLog">(nog leeg)</div>
+          <div id="liveChatResizeHandle" aria-label="Sleep om live chat hoger of lager te maken" title="Sleep omhoog/omlaag"></div>
         </div>
 
         <div class="card stack">
@@ -459,6 +580,7 @@
       const saveOscPortBtn = document.getElementById("saveOscPortBtn");
       const runtimeStateEl = document.getElementById("runtimeState");
       const liveChatLogEl = document.getElementById("liveChatLog");
+      const liveChatResizeHandleEl = document.getElementById("liveChatResizeHandle");
       const usersBodyEl = document.getElementById("usersBody");
       const enforcementBodyEl = document.getElementById("enforcementBody");
       const actionsLogEl = document.getElementById("actionsLog");
@@ -482,15 +604,137 @@
       const SIM_MSG_RATE_DEFAULT_REAL = 0.03;
       const THEME_PREF_KEY = "admin_theme_pref_v1";
       const COLLAPSE_PREF_KEY = "admin_collapsed_sections_v1";
+      const SECTION_ORDER_PREF_KEY = "admin_section_order_v1";
+      const SECTION_SPAN_PREF_KEY = "admin_section_span_pref_v1";
+      const LIVE_CHAT_HEIGHT_PREF_KEY = "admin_live_chat_height_v1";
       const REMEMBER_DEVICE_PREF_KEY = "admin_remember_device_pref_v1";
       const DEVICE_LOGOUT_SKIP_KEY = "admin_skip_device_autologin_v1";
       const THEME_MODES = ["auto", "light", "dark"];
+      const LIVE_CHAT_MIN_HEIGHT = 140;
+      const LIVE_CHAT_DEFAULT_HEIGHT = 220;
       const systemDarkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
       let themePreference = "auto";
       let sectionOpenState = {};
+      let sectionOrderState = [];
+      let sectionSpanState = {};
+      let draggedSectionId = "";
+      let sectionDropIndicatorEl = null;
+      let liveChatResizePointerId = null;
+      let liveChatResizeStartY = 0;
+      let liveChatResizeStartHeight = LIVE_CHAT_DEFAULT_HEIGHT;
 
       function setActionMessage(text) {
         actionMsgEl.textContent = text || "";
+      }
+
+      function getLiveChatMaxHeight() {
+        const viewportMax = Math.floor(window.innerHeight * 0.72);
+        return Math.max(LIVE_CHAT_MIN_HEIGHT, Math.min(860, viewportMax));
+      }
+
+      function clampLiveChatHeight(input) {
+        const value = Number(input);
+        if (!Number.isFinite(value)) return LIVE_CHAT_DEFAULT_HEIGHT;
+        const max = getLiveChatMaxHeight();
+        return Math.max(LIVE_CHAT_MIN_HEIGHT, Math.min(max, Math.round(value)));
+      }
+
+      function loadLiveChatHeight() {
+        const raw = localStorage.getItem(LIVE_CHAT_HEIGHT_PREF_KEY);
+        if (!raw) return LIVE_CHAT_DEFAULT_HEIGHT;
+        return clampLiveChatHeight(raw);
+      }
+
+      function saveLiveChatHeight(height) {
+        localStorage.setItem(LIVE_CHAT_HEIGHT_PREF_KEY, String(clampLiveChatHeight(height)));
+      }
+
+      function applyLiveChatHeight(height, persist = false) {
+        const px = clampLiveChatHeight(height);
+        liveChatLogEl.style.height = px + "px";
+        if (persist) saveLiveChatHeight(px);
+        return px;
+      }
+
+      function beginLiveChatResize(clientY, pointerId = null) {
+        liveChatResizePointerId = pointerId;
+        liveChatResizeStartY = Number(clientY) || 0;
+        liveChatResizeStartHeight = clampLiveChatHeight(
+          liveChatLogEl.getBoundingClientRect().height || LIVE_CHAT_DEFAULT_HEIGHT
+        );
+        document.body.classList.add("liveChatResizing");
+      }
+
+      function updateLiveChatResize(clientY) {
+        const delta = (Number(clientY) || 0) - liveChatResizeStartY;
+        applyLiveChatHeight(liveChatResizeStartHeight + delta, false);
+      }
+
+      function endLiveChatResize(persist = true) {
+        liveChatResizePointerId = null;
+        document.body.classList.remove("liveChatResizing");
+        if (persist) {
+          const currentHeight = liveChatLogEl.getBoundingClientRect().height || LIVE_CHAT_DEFAULT_HEIGHT;
+          saveLiveChatHeight(currentHeight);
+        }
+      }
+
+      function initLiveChatResize() {
+        applyLiveChatHeight(loadLiveChatHeight(), false);
+        if (!liveChatResizeHandleEl) return;
+
+        if (window.PointerEvent) {
+          liveChatResizeHandleEl.addEventListener("pointerdown", (event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            beginLiveChatResize(event.clientY, event.pointerId);
+            if (typeof liveChatResizeHandleEl.setPointerCapture === "function") {
+              try { liveChatResizeHandleEl.setPointerCapture(event.pointerId); } catch {}
+            }
+          });
+
+          liveChatResizeHandleEl.addEventListener("pointermove", (event) => {
+            if (liveChatResizePointerId === null || event.pointerId !== liveChatResizePointerId) return;
+            updateLiveChatResize(event.clientY);
+          });
+
+          const stopPointerResize = (event) => {
+            if (liveChatResizePointerId === null || event.pointerId !== liveChatResizePointerId) return;
+            if (typeof liveChatResizeHandleEl.releasePointerCapture === "function") {
+              try { liveChatResizeHandleEl.releasePointerCapture(event.pointerId); } catch {}
+            }
+            endLiveChatResize(true);
+          };
+          liveChatResizeHandleEl.addEventListener("pointerup", stopPointerResize);
+          liveChatResizeHandleEl.addEventListener("pointercancel", stopPointerResize);
+        } else {
+          let mouseResizeActive = false;
+          const onMouseMove = (event) => {
+            if (!mouseResizeActive) return;
+            updateLiveChatResize(event.clientY);
+          };
+          const onMouseUp = () => {
+            if (!mouseResizeActive) return;
+            mouseResizeActive = false;
+            window.removeEventListener("mousemove", onMouseMove);
+            window.removeEventListener("mouseup", onMouseUp);
+            endLiveChatResize(true);
+          };
+
+          liveChatResizeHandleEl.addEventListener("mousedown", (event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            mouseResizeActive = true;
+            beginLiveChatResize(event.clientY);
+            window.addEventListener("mousemove", onMouseMove);
+            window.addEventListener("mouseup", onMouseUp);
+          });
+        }
+
+        window.addEventListener("resize", () => {
+          const current = liveChatLogEl.getBoundingClientRect().height || LIVE_CHAT_DEFAULT_HEIGHT;
+          applyLiveChatHeight(current, false);
+        });
       }
 
       async function api(path, options = {}) {
@@ -616,6 +860,17 @@
         applyTheme(next, true);
       }
 
+      function normalizeSectionSpan(input) {
+        const value = Number(input);
+        if (value === 2) return 2;
+        if (value === 3) return 3;
+        return 1;
+      }
+
+      function supportsSideDrop() {
+        return window.innerWidth > 980;
+      }
+
       function loadSectionState() {
         try {
           const raw = localStorage.getItem(COLLAPSE_PREF_KEY);
@@ -636,6 +891,246 @@
         localStorage.setItem(COLLAPSE_PREF_KEY, JSON.stringify(sectionOpenState));
       }
 
+      function loadSectionOrderState() {
+        try {
+          const raw = localStorage.getItem(SECTION_ORDER_PREF_KEY);
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) return [];
+          const out = [];
+          const seen = new Set();
+          for (const value of parsed) {
+            const sectionId = String(value || "").trim().toLowerCase();
+            if (!/^[a-z0-9-]{1,80}$/.test(sectionId)) continue;
+            if (seen.has(sectionId)) continue;
+            seen.add(sectionId);
+            out.push(sectionId);
+          }
+          return out;
+        } catch {
+          return [];
+        }
+      }
+
+      function saveSectionOrderState() {
+        localStorage.setItem(SECTION_ORDER_PREF_KEY, JSON.stringify(sectionOrderState));
+      }
+
+      function loadSectionSpanState() {
+        try {
+          const raw = localStorage.getItem(SECTION_SPAN_PREF_KEY);
+          if (!raw) return {};
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+          const out = {};
+          for (const [key, value] of Object.entries(parsed)) {
+            const sectionId = String(key || "").trim().toLowerCase();
+            if (!/^[a-z0-9-]{1,80}$/.test(sectionId)) continue;
+            out[sectionId] = normalizeSectionSpan(value);
+          }
+          return out;
+        } catch {
+          return {};
+        }
+      }
+
+      function saveSectionSpanState() {
+        localStorage.setItem(SECTION_SPAN_PREF_KEY, JSON.stringify(sectionSpanState));
+      }
+
+      function getCardSpan(card) {
+        if (!card) return 1;
+        return normalizeSectionSpan(card.dataset.layoutSpan);
+      }
+
+      function applyCardSpan(card, span, persist = true) {
+        if (!card) return;
+        const normalized = normalizeSectionSpan(span);
+        card.dataset.layoutSpan = String(normalized);
+        card.classList.remove("layoutSpan2", "layoutSpan3");
+        if (normalized === 2) card.classList.add("layoutSpan2");
+        if (normalized === 3) card.classList.add("layoutSpan3");
+
+        const widthBtn = card.querySelector(".sectionWidthBtn");
+        if (widthBtn) {
+          widthBtn.textContent = String(normalized);
+          widthBtn.setAttribute("aria-label", `Breedte: ${normalized} per rij`);
+          widthBtn.title = `Breedte: ${normalized} per rij (klik om te wisselen)`;
+        }
+
+        const sectionId = String(card.dataset.sectionId || "").trim().toLowerCase();
+        if (persist && sectionId) {
+          sectionSpanState[sectionId] = normalized;
+          saveSectionSpanState();
+        }
+      }
+
+      function ensureSectionDropIndicator() {
+        if (sectionDropIndicatorEl && sectionDropIndicatorEl.isConnected) return sectionDropIndicatorEl;
+        sectionDropIndicatorEl = document.createElement("div");
+        sectionDropIndicatorEl.className = "sectionDropIndicator";
+        sectionDropIndicatorEl.setAttribute("aria-hidden", "true");
+        return sectionDropIndicatorEl;
+      }
+
+      function moveSectionDropIndicator(targetCard, after = false) {
+        if (!targetCard || !targetCard.parentNode) return;
+        const indicator = ensureSectionDropIndicator();
+        const parent = targetCard.parentNode;
+        parent.insertBefore(indicator, after ? targetCard.nextSibling : targetCard);
+      }
+
+      function getCardDropPlacement(card, event) {
+        const rect = card.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return "after";
+        const relativeX = event.clientX - rect.left;
+        const relativeY = event.clientY - rect.top;
+        if (supportsSideDrop()) {
+          const xRatio = Math.max(0, Math.min(1, relativeX / rect.width));
+          if (xRatio <= 0.24) return "left";
+          if (xRatio >= 0.76) return "right";
+        }
+        return relativeY >= rect.height / 2 ? "after" : "before";
+      }
+
+      function applyCardDropHint(card, placement) {
+        if (!card) return;
+        card.classList.remove("dropBefore", "dropAfter", "dropLeft", "dropRight");
+        if (placement === "left") {
+          card.classList.add("dropLeft");
+          return;
+        }
+        if (placement === "right") {
+          card.classList.add("dropRight");
+          return;
+        }
+        const after = placement === "after";
+        card.classList.add(after ? "dropAfter" : "dropBefore");
+        moveSectionDropIndicator(card, after);
+      }
+
+      function clearSectionDropHints({ keepDragging = false } = {}) {
+        const cards = appEl.querySelectorAll(".collapsibleCard");
+        for (const card of cards) {
+          card.classList.remove("dropBefore");
+          card.classList.remove("dropAfter");
+          card.classList.remove("dropLeft");
+          card.classList.remove("dropRight");
+          if (!keepDragging) card.classList.remove("isDragging");
+        }
+        if (sectionDropIndicatorEl && sectionDropIndicatorEl.parentNode) {
+          sectionDropIndicatorEl.parentNode.removeChild(sectionDropIndicatorEl);
+        }
+      }
+
+      function persistSectionOrderFromDom() {
+        sectionOrderState = Array.from(appEl.querySelectorAll(".card[data-section-id]"))
+          .map((card) => String(card.dataset.sectionId || "").trim().toLowerCase())
+          .filter(Boolean);
+        saveSectionOrderState();
+      }
+
+      function applySectionOrder(cards) {
+        if (!Array.isArray(cards) || !cards.length) return;
+        if (!sectionOrderState.length) {
+          persistSectionOrderFromDom();
+          return;
+        }
+        const rank = new Map();
+        for (let i = 0; i < sectionOrderState.length; i += 1) {
+          const id = sectionOrderState[i];
+          if (!rank.has(id)) rank.set(id, i);
+        }
+        const sorted = cards.slice().sort((a, b) => {
+          const aId = String(a.dataset.sectionId || "").toLowerCase();
+          const bId = String(b.dataset.sectionId || "").toLowerCase();
+          const aRank = rank.has(aId) ? rank.get(aId) : Number.MAX_SAFE_INTEGER;
+          const bRank = rank.has(bId) ? rank.get(bId) : Number.MAX_SAFE_INTEGER;
+          return aRank - bRank;
+        });
+        for (const card of sorted) {
+          appEl.appendChild(card);
+        }
+        persistSectionOrderFromDom();
+      }
+
+      function setupSectionDrag(card, dragHandleEl) {
+        dragHandleEl.setAttribute("draggable", "true");
+        dragHandleEl.title = "Sleep om te herschikken";
+
+        dragHandleEl.addEventListener("dragstart", (event) => {
+          const sectionId = String(card.dataset.sectionId || "");
+          if (!sectionId) return;
+          draggedSectionId = sectionId;
+          card.classList.add("isDragging");
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = "move";
+            try { event.dataTransfer.setData("text/plain", sectionId); } catch {}
+          }
+          clearSectionDropHints({ keepDragging: true });
+        });
+
+        dragHandleEl.addEventListener("dragend", () => {
+          draggedSectionId = "";
+          clearSectionDropHints();
+        });
+
+        card.addEventListener("dragover", (event) => {
+          if (!draggedSectionId) return;
+          const currentId = String(card.dataset.sectionId || "");
+          if (!currentId || currentId === draggedSectionId) return;
+          event.preventDefault();
+          clearSectionDropHints({ keepDragging: true });
+          const placement = getCardDropPlacement(card, event);
+          applyCardDropHint(card, placement);
+        });
+
+        card.addEventListener("dragleave", (event) => {
+          const related = event.relatedTarget;
+          if (!related || !card.contains(related)) {
+            card.classList.remove("dropBefore");
+            card.classList.remove("dropAfter");
+            card.classList.remove("dropLeft");
+            card.classList.remove("dropRight");
+          }
+        });
+
+        card.addEventListener("drop", (event) => {
+          if (!draggedSectionId) return;
+          const currentId = String(card.dataset.sectionId || "");
+          if (!currentId || currentId === draggedSectionId) return;
+          event.preventDefault();
+
+          const draggedCard = Array.from(appEl.querySelectorAll(".card[data-section-id]"))
+            .find((candidate) => String(candidate.dataset.sectionId || "") === draggedSectionId);
+          if (!draggedCard || draggedCard === card) {
+            clearSectionDropHints();
+            return;
+          }
+
+          const placement = getCardDropPlacement(card, event);
+          if (placement === "left") {
+            const targetSpan = getCardSpan(card);
+            const sideSpan = targetSpan === 1 ? 2 : targetSpan;
+            if (targetSpan === 1) applyCardSpan(card, sideSpan, true);
+            applyCardSpan(draggedCard, sideSpan, true);
+            appEl.insertBefore(draggedCard, card);
+          } else if (placement === "right") {
+            const targetSpan = getCardSpan(card);
+            const sideSpan = targetSpan === 1 ? 2 : targetSpan;
+            if (targetSpan === 1) applyCardSpan(card, sideSpan, true);
+            applyCardSpan(draggedCard, sideSpan, true);
+            appEl.insertBefore(draggedCard, card.nextSibling);
+          } else if (sectionDropIndicatorEl && sectionDropIndicatorEl.parentNode === appEl) {
+            appEl.insertBefore(draggedCard, sectionDropIndicatorEl);
+          } else {
+            appEl.insertBefore(draggedCard, placement === "after" ? card.nextSibling : card);
+          }
+          clearSectionDropHints();
+          persistSectionOrderFromDom();
+        });
+      }
+
       function slugifySectionId(input) {
         return String(input || "")
           .trim()
@@ -650,13 +1145,16 @@
         cardEl.classList.toggle("isOpen", open);
         const btn = cardEl.querySelector(".sectionToggle");
         if (!btn) return;
-        btn.textContent = open ? "Invouwen" : "Uitvouwen";
+        btn.textContent = open ? "▾" : "▸";
         btn.setAttribute("aria-expanded", open ? "true" : "false");
+        btn.setAttribute("aria-label", open ? "Invouwen" : "Uitvouwen");
+        btn.title = open ? "Invouwen" : "Uitvouwen";
       }
 
       function initCollapsibleSections() {
         const cards = Array.from(appEl.querySelectorAll(".card"));
         const usedIds = new Set();
+        const managedCards = [];
         for (const card of cards) {
           let headerSource = null;
           const firstChild = card.firstElementChild;
@@ -693,9 +1191,20 @@
           sectionToggle.type = "button";
           sectionToggle.className = "sectionToggle";
           sectionToggle.setAttribute("aria-controls", `section-body-${sectionId}`);
+          sectionToggle.setAttribute("draggable", "false");
+
+          const sectionWidthBtn = document.createElement("button");
+          sectionWidthBtn.type = "button";
+          sectionWidthBtn.className = "sectionWidthBtn";
+          sectionWidthBtn.setAttribute("draggable", "false");
+
+          const sectionHeaderActions = document.createElement("div");
+          sectionHeaderActions.className = "sectionHeaderActions";
+          sectionHeaderActions.appendChild(sectionWidthBtn);
+          sectionHeaderActions.appendChild(sectionToggle);
 
           sectionHeader.appendChild(sectionHeaderMain);
-          sectionHeader.appendChild(sectionToggle);
+          sectionHeader.appendChild(sectionHeaderActions);
 
           const sectionBody = document.createElement("div");
           sectionBody.className = "sectionBody";
@@ -712,12 +1221,65 @@
 
           const savedState = sectionOpenState[sectionId];
           setCardOpenState(card, typeof savedState === "boolean" ? savedState : true);
+          applyCardSpan(card, sectionSpanState[sectionId], false);
 
-          sectionToggle.addEventListener("click", () => {
+          sectionToggle.addEventListener("click", (event) => {
+            event.stopPropagation();
             const nextOpen = !card.classList.contains("isOpen");
             setCardOpenState(card, nextOpen);
             sectionOpenState[sectionId] = nextOpen;
             saveSectionState();
+          });
+
+          sectionWidthBtn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            const current = getCardSpan(card);
+            const next = current === 1 ? 2 : current === 2 ? 3 : 1;
+            applyCardSpan(card, next, true);
+          });
+
+          setupSectionDrag(card, sectionHeader);
+          managedCards.push(card);
+        }
+
+        applySectionOrder(managedCards);
+
+        if (appEl.dataset.dndReady !== "1") {
+          appEl.dataset.dndReady = "1";
+
+          appEl.addEventListener("dragover", (event) => {
+            if (!draggedSectionId) return;
+            event.preventDefault();
+            const targetCard = event.target && event.target.closest
+              ? event.target.closest(".card[data-section-id]")
+              : null;
+            if (targetCard) return;
+            clearSectionDropHints({ keepDragging: true });
+            const cardsNow = Array.from(appEl.querySelectorAll(".card[data-section-id]"));
+            const lastCard = cardsNow.length ? cardsNow[cardsNow.length - 1] : null;
+            if (lastCard) moveSectionDropIndicator(lastCard, true);
+          });
+
+          appEl.addEventListener("drop", (event) => {
+            if (!draggedSectionId) return;
+            const targetCard = event.target && event.target.closest
+              ? event.target.closest(".card[data-section-id]")
+              : null;
+            if (targetCard) return;
+            event.preventDefault();
+            const draggedCard = Array.from(appEl.querySelectorAll(".card[data-section-id]"))
+              .find((candidate) => String(candidate.dataset.sectionId || "") === draggedSectionId);
+            if (!draggedCard) {
+              clearSectionDropHints();
+              return;
+            }
+            if (sectionDropIndicatorEl && sectionDropIndicatorEl.parentNode === appEl) {
+              appEl.insertBefore(draggedCard, sectionDropIndicatorEl);
+            } else {
+              appEl.appendChild(draggedCard);
+            }
+            clearSectionDropHints();
+            persistSectionOrderFromDom();
           });
         }
       }
@@ -1388,7 +1950,10 @@
 
       themePreference = loadThemePreference();
       sectionOpenState = loadSectionState();
+      sectionOrderState = loadSectionOrderState();
+      sectionSpanState = loadSectionSpanState();
       applyTheme(themePreference, false);
+      initLiveChatResize();
       if (systemDarkQuery && typeof systemDarkQuery.addEventListener === "function") {
         systemDarkQuery.addEventListener("change", () => {
           if (themePreference === "auto") applyTheme("auto", false);
