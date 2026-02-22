@@ -1,0 +1,23 @@
+# Chat-prefixes
+# 1 regel = 1 item. Lege regels en regels met # of // worden genegeerd.
+
+eerlijk
+not gonna lie
+ik zweer
+nee maar
+ok maar
+bro
+chef
+vrienden
+help
+luister
+serieus
+kleine update
+mini recap
+fact check
+status
+for real
+zonder grap
+met droge ogen
+respectvol
+tussen ons

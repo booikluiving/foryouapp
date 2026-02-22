@@ -529,6 +529,11 @@
           row.className = "chatLine";
 
           if (entry && entry.type === "comment") {
+            if (entry.systemNotice) {
+              row.textContent = String(entry.text || "");
+              fragment.appendChild(row);
+              continue;
+            }
             const nameNode = document.createElement("span");
             nameNode.className = "chatName";
             nameNode.textContent = String(entry.name || "Anoniem");
@@ -570,6 +575,7 @@
           name: String((msg && msg.name) || "Anoniem").slice(0, 24),
           text,
           nameColor: sanitizeNameColor(msg && msg.nameColor),
+          systemNotice: !!(msg && msg.system),
         });
       }
 

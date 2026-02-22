@@ -83,11 +83,15 @@ Admin API endpoints (subset):
 - `moderation/bad-words.txt` tekstwoorden voor filtering
 - `moderation/blocked-words.json` extra/gestructureerde blocked words
 - `brainrot.txt` woordenlijst voor bot-stijl
+- `data/sim/*.txt` bot-datapools (zinnen, templates, namen, emoji’s), 1 regel per item
 - `data/` lokale SQLite data
 
 ## Moderatie en botstijl aanpassen
 - Voeg woorden toe in `moderation/bad-words.txt` voor blokkeren.
 - Gebruik `brainrot.txt` om bot-vocabulaire/stijl bij te sturen.
+- Pas botzinnen/emojis/namen aan via `data/sim/*.txt` (line-by-line, zonder quotes).
+- Regels met `#` of `//` en lege regels worden genegeerd.
+- Wijzigingen in `data/sim/*.txt` en `brainrot.txt` worden automatisch ingeladen tijdens runtime.
 - In admin kun je simulatie live tunen met sliders en defaults opslaan.
 
 ## Veiligheid

@@ -1331,18 +1331,27 @@
         const time = formatTs(message.time);
         const name = String(message.name || "Anoniem");
         const text = String(message.text || "");
+        const detail = String(message.detail || "");
         const status = String(message.status || "");
         const suffix = status && status !== "accepted" ? " [" + status + "]" : "";
+        if (detail.startsWith("moderation_notice:")) {
+          return time + "  " + text + suffix;
+        }
         return time + "  " + name + ": " + text + suffix;
       }
 
       function formatHistoryLineHtml(message) {
         const name = String((message && message.name) || "Anoniem");
         const text = String((message && message.text) || "");
+        const detail = String((message && message.detail) || "");
         const status = String((message && message.status) || "");
         const suffix = status && status !== "accepted"
           ? ` <span class="muted">[${esc(status)}]</span>`
           : "";
+        const isModerationNotice = detail.startsWith("moderation_notice:");
+        if (isModerationNotice) {
+          return `<div class="chatLine">${esc(text)}${suffix}</div>`;
+        }
         const nameColor = sanitizeNameColor(message && message.nameColor);
         const nameStyle = nameColor ? ` style="color:${nameColor}"` : "";
         return `<div class="chatLine"><span class="chatName"${nameStyle}>${esc(name)}</span>: ${esc(text)}${suffix}</div>`;

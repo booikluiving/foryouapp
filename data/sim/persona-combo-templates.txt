@@ -1,0 +1,10 @@
+# Persona combo templates
+# 1 regel = 1 item. Lege regels en regels met # of // worden genegeerd.
+
+{open}: {setup}, {twist}. {close}
+{setup}, {twist}. {close}
+{open}: {setup}. {close}
+{setup}. {close}
+{open}: {setup}, en eerlijk, {twist}.
+{setup} - {twist}.
+{open}: {setup}. {twist}. {close}

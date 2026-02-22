@@ -1,0 +1,17 @@
+# Topic-templates met {topic} placeholder
+# 1 regel = 1 item. Lege regels en regels met # of // worden genegeerd.
+
+{topic} had niemand op bingokaart.
+{topic} ging ineens heel hard.
+{topic} was onnodig goed.
+{topic} geeft main character stress.
+{topic} is stiekem mijn favoriet.
+{topic} voelde als een plot twist.
+{topic} was een nette klap in mijn planning.
+voor {topic} blijf ik wakker.
+{topic} had betere timing dan ik vandaag.
+{topic} was chaos met discipline.
+{topic} is precies waarom ik bleef kijken.
+{topic} was kort maar dodelijk raak.
+{topic} voelt als premium internet.
+{topic} was geen segment, dat was een gebeurtenis.

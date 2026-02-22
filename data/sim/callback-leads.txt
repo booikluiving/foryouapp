@@ -1,0 +1,17 @@
+# Lead-ins voor callbacks op eerdere chatregels
+# 1 regel = 1 item. Lege regels en regels met # of // worden genegeerd.
+
+net zei iemand
+quote van daarnet
+ik hoorde net
+dit werd net geroepen
+die ene was
+de chat dropte net
+ik kan nog steeds niet over
+de beste one-liner tot nu toe was
+ik blijf hangen op
+hier moest ik om lachen:
+samenvatting van vandaag:
+de quote van de avond:
+ik citeer even:
+deze viel net:

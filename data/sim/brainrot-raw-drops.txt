@@ -1,0 +1,8 @@
+# Ruwe brainrot drops met {term}
+# 1 regel = 1 item. Lege regels en regels met # of // worden genegeerd.
+
+{term}
+{term}.
+{term}!
+{term}?
+{term} {term}

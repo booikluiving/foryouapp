@@ -1,0 +1,8 @@
+# Authentieke templates
+# 1 regel = 1 item. Lege regels en regels met # of // worden genegeerd.
+
+{prefix}, {hit}
+{hit}. {after}
+{prefix}, {hit}. {after}
+{hit}
+{prefix}, {hit} {topicTail}

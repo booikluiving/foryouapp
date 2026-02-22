@@ -1,0 +1,17 @@
+# Topic-followups met {topic} placeholder
+# 1 regel = 1 item. Lege regels en regels met # of // worden genegeerd.
+
+meer {topic} graag.
+{topic} was raak.
+{topic} stuur ik door.
+dat stukje over {topic} pakte me.
+{topic} was stiekem het hoogtepunt.
+bij {topic} ben ik afgehaakt van de realiteit.
+{topic} had de zaal meteen vast.
+{topic} klinkt als sequel-materiaal.
+{topic} mag terugkomen.
+{topic} was een directe replay.
+{topic} was kort en precies goed.
+{topic} voelde als inside joke level 9000.
+voor {topic} had ik nog een uur gezeten.
+{topic} gaf me tweedehands adrenaline.

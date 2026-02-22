@@ -1,0 +1,35 @@
+# Losse emojis voor bots
+# 1 regel = 1 item. Lege regels en regels met # of // worden genegeerd.
+
+🥰
+🥵
+🤮
+🫦
+🍆
+💀
+😭
+🙏
+🔥
+✨
+🤡
+🫶
+🤭
+😩
+😮‍💨
+😳
+🤔
+🙄
+😬
+🫠
+😤
+😏
+👀
+🤨
+💅
+🧍
+🫥
+🚩
+🤌
+🗣️
+🫡
+☕️

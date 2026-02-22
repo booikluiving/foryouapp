@@ -1,0 +1,18 @@
+# Veilige fallback-zinnen
+# 1 regel = 1 item. Lege regels en regels met # of // worden genegeerd.
+
+wow
+haha
+ik ga stuk
+dit ga ik sturen
+te grappig
+hoe dan
+wat een timing
+ik ben om
+dit is goud
+te goed
+dit was wild
+ik had dit nodig
+ik sla hier op aan
+dit is exact mijn humor
+nee ik ga stuk

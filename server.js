@@ -15,6 +15,8 @@ const MODERATION_JSON_PATH = path.join(__dirname, "moderation", "blocked-words.j
 const MODERATION_TEXT_DEFAULT = "# Een woord per regel. Lege regels en regels met # worden genegeerd.\n";
 const BRAINROT_PATH = path.join(__dirname, "brainrot.txt");
 const BRAINROT_TEXT_DEFAULT = "# Een woord/term per regel voor bot-reacties.\n";
+const SIM_TEXT_DIR = path.join(__dirname, "data", "sim");
+const SIM_TEXT_LINE_DEFAULT_HEADER = "# 1 regel = 1 item. Lege regels en regels met # of // worden genegeerd.";
 const DATA_DIR = path.join(__dirname, "data");
 const DB_PATH = path.join(DATA_DIR, "live.sqlite");
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
@@ -729,6 +731,158 @@ const DEFAULT_REACTION_COUNTS = Object.freeze({
   laugh: 0,
   bored: 0,
 });
+const SIM_TEXT_POOLS = [
+  {
+    key: "absurd_fragments",
+    fileName: "absurd-fragments.txt",
+    title: "Absurde losse zinnen voor bots",
+    target: SIM_ABSURD_FRAGMENTS,
+    maxLen: 180,
+    collapseWhitespace: true,
+  },
+  {
+    key: "topic_templates",
+    fileName: "topic-templates.txt",
+    title: "Topic-templates met {topic} placeholder",
+    target: SIM_TOPIC_TEMPLATES,
+    maxLen: 180,
+    collapseWhitespace: true,
+  },
+  {
+    key: "topic_followups",
+    fileName: "topic-followups.txt",
+    title: "Topic-followups met {topic} placeholder",
+    target: SIM_TOPIC_FOLLOWUPS,
+    maxLen: 180,
+    collapseWhitespace: true,
+  },
+  {
+    key: "callback_leads",
+    fileName: "callback-leads.txt",
+    title: "Lead-ins voor callbacks op eerdere chatregels",
+    target: SIM_CALLBACK_LEADS,
+    maxLen: 140,
+    collapseWhitespace: true,
+  },
+  {
+    key: "callback_punches",
+    fileName: "callback-punches.txt",
+    title: "Korte callback-punches",
+    target: SIM_CALLBACK_PUNCHES,
+    maxLen: 180,
+    collapseWhitespace: true,
+  },
+  {
+    key: "safe_fallbacks",
+    fileName: "safe-fallbacks.txt",
+    title: "Veilige fallback-zinnen",
+    target: SIM_SAFE_FALLBACKS,
+    maxLen: 140,
+    collapseWhitespace: true,
+  },
+  {
+    key: "short_reactions",
+    fileName: "short-reactions.txt",
+    title: "Korte botreacties",
+    target: SIM_SHORT_REACTIONS,
+    maxLen: 160,
+    collapseWhitespace: true,
+  },
+  {
+    key: "negative_reactions",
+    fileName: "negative-reactions.txt",
+    title: "Negatieve/haat-reacties",
+    target: SIM_NEGATIVE_REACTIONS,
+    maxLen: 180,
+    collapseWhitespace: true,
+  },
+  {
+    key: "chat_prefixes",
+    fileName: "chat-prefixes.txt",
+    title: "Chat-prefixes",
+    target: SIM_CHAT_PREFIXES,
+    maxLen: 80,
+    collapseWhitespace: true,
+  },
+  {
+    key: "chat_afterthoughts",
+    fileName: "chat-afterthoughts.txt",
+    title: "Nawerking-zinnen",
+    target: SIM_CHAT_AFTERTHOUGHTS,
+    maxLen: 180,
+    collapseWhitespace: true,
+  },
+  {
+    key: "persona_combo_templates",
+    fileName: "persona-combo-templates.txt",
+    title: "Persona combo templates",
+    target: SIM_PERSONA_COMBO_TEMPLATES,
+    maxLen: 180,
+    collapseWhitespace: true,
+  },
+  {
+    key: "authentic_templates",
+    fileName: "authentic-templates.txt",
+    title: "Authentieke templates",
+    target: SIM_AUTHENTIC_TEMPLATES,
+    maxLen: 180,
+    collapseWhitespace: true,
+  },
+  {
+    key: "first_names",
+    fileName: "first-names.txt",
+    title: "Voornamen voor bots",
+    target: SIM_FIRST_NAMES,
+    maxLen: 48,
+    collapseWhitespace: true,
+  },
+  {
+    key: "extra_emojis",
+    fileName: "extra-emojis.txt",
+    title: "Losse emojis voor bots",
+    target: SIM_EXTRA_EMOJIS,
+    maxLen: 32,
+    collapseWhitespace: false,
+  },
+  {
+    key: "emoji_combos",
+    fileName: "emoji-combos.txt",
+    title: "Emoji-combinaties",
+    target: SIM_EMOJI_COMBOS,
+    maxLen: 40,
+    collapseWhitespace: false,
+  },
+  {
+    key: "brainrot_reactions",
+    fileName: "brainrot-reactions.txt",
+    title: "Brainrot-zinsconstructies met {term}",
+    target: SIM_BRAINROT_REACTIONS,
+    maxLen: 180,
+    collapseWhitespace: true,
+  },
+  {
+    key: "brainrot_raw_drops",
+    fileName: "brainrot-raw-drops.txt",
+    title: "Ruwe brainrot drops met {term}",
+    target: SIM_BRAINROT_RAW_DROPS,
+    maxLen: 96,
+    collapseWhitespace: true,
+  },
+];
+const SIM_PERSONA_SNIP_POOLS = Object.keys(SIM_PERSONA_SNIPS).map((personaId) => ({
+  key: `persona_snips_${personaId}`,
+  fileName: `persona-snips-${personaId}.txt`,
+  title: `Persona snips voor ${personaId}`,
+  target: SIM_PERSONA_SNIPS[personaId],
+  maxLen: 180,
+  collapseWhitespace: true,
+}));
+const SIM_TEXT_ALL_POOLS = Object.freeze(
+  SIM_TEXT_POOLS.concat(SIM_PERSONA_SNIP_POOLS).map((def) => Object.freeze({
+    ...def,
+    filePath: path.join(SIM_TEXT_DIR, def.fileName),
+  }))
+);
 const COMMON_TLDS = [
   "com",
   "net",
@@ -1291,7 +1445,7 @@ const sql = {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ),
   getSessionModerationActions: db.prepare(
-    `SELECT id, action_type AS actionType, client_key AS clientKey, expires_at AS expiresAt
+    `SELECT id, action_type AS actionType, client_key AS clientKey, client_label AS clientLabel, expires_at AS expiresAt
      FROM moderation_actions
      WHERE session_id = ?
      ORDER BY id ASC`
@@ -1489,11 +1643,13 @@ function rebuildEnforcementState() {
     if (!scope || !scope.scopeKey) continue;
     const actionType = String(row.actionType || "");
     const expiresAt = row.expiresAt ? String(row.expiresAt) : null;
+    const targetLabel = String(row.clientLabel || "").trim() || "iemand";
     const state = {
       expiresAt,
       targetKind: scope.kind,
       targetIp: scope.ip || null,
       targetClientKey: scope.clientKey || null,
+      targetLabel,
     };
 
     if (actionType === "mute") {
@@ -1542,6 +1698,7 @@ function getMuteState(target) {
     targetKind: state.targetKind || scope.kind,
     targetIp: state.targetIp || scope.ip || null,
     targetClientKey: state.targetClientKey || scope.clientKey || null,
+    targetLabel: String(state.targetLabel || "").trim() || getClientLabel(scope),
   };
 }
 
@@ -1561,6 +1718,7 @@ function getBlockState(target) {
     targetKind: state.targetKind || scope.kind,
     targetIp: state.targetIp || scope.ip || null,
     targetClientKey: state.targetClientKey || scope.clientKey || null,
+    targetLabel: String(state.targetLabel || "").trim() || getClientLabel(scope),
   };
 }
 
@@ -1909,18 +2067,24 @@ function getModerationScopeDisplayLabel(scope) {
   return sanitizeName(preferred && preferred.name ? preferred.name : "iemand");
 }
 
+function getModerationNoticeTargetLabel(scope, meta = {}) {
+  const fromMeta = String(meta && meta.targetLabel || "").trim();
+  if (fromMeta) return sanitizeName(fromMeta);
+  return getModerationScopeDisplayLabel(scope);
+}
+
 function buildModerationFeedText(actionType, scope, meta = {}) {
-  const label = getModerationScopeDisplayLabel(scope);
+  const label = getModerationNoticeTargetLabel(scope, meta);
   const action = String(actionType || "").trim().toLowerCase();
   if (action === "mute") {
     const minutes = clampInt(meta && meta.minutes, 1, 180, 0);
     const suffix = minutes > 0 ? ` (${minutes}m)` : "";
-    return `${label} is gemute${suffix}.`;
+    return `Moderator heeft ${label} gemute${suffix}.`;
   }
-  if (action === "unmute") return `${label} is unmuted.`;
-  if (action === "block") return `${label} is geblokkeerd.`;
-  if (action === "unblock") return `${label} is gedeblokkeerd.`;
-  if (action === "kick") return `${label} is verwijderd door moderatie.`;
+  if (action === "unmute") return `Moderator heeft de mute van ${label} opgeheven.`;
+  if (action === "block") return `Moderator heeft ${label} geblokkeerd.`;
+  if (action === "unblock") return `Moderator heeft de blokkade van ${label} opgeheven.`;
+  if (action === "kick") return `Moderator heeft ${label} verwijderd.`;
   return "";
 }
 
@@ -1928,13 +2092,12 @@ function publishModerationFeedNotice(actionType, scope, meta = {}) {
   const text = buildModerationFeedText(actionType, scope, meta);
   if (!text) return null;
   const now = nowIso();
-  const speaker = "Moderatie";
+  const speaker = "Melding";
   const payload = {
     type: "comment",
     time: now,
     name: speaker,
     text,
-    nameColor: getNameColorHex(speaker),
     system: true,
   };
   recordChatMessage({
@@ -3258,7 +3421,9 @@ function getAdminState() {
     });
   const recentMessages = sql.getRecentMessages.all(currentSession.id, 40).map((message) => ({
     ...message,
-    nameColor: getNameColorHex(message && message.name ? message.name : "Anoniem"),
+    nameColor: String(message && message.detail || "").startsWith("moderation_notice:")
+      ? ""
+      : getNameColorHex(message && message.name ? message.name : "Anoniem"),
   }));
 
   const activeMutedIps = Array.from(mutedUsers.entries())
@@ -3270,7 +3435,7 @@ function getAdminState() {
       const targetClientKey = String((state && state.targetClientKey) || scope.clientKey || "");
       const targetKey = targetKind === "client" ? targetClientKey : targetIp;
       if (!targetKey) return null;
-      const targetLabel = getClientLabel(scope) || targetKey;
+      const targetLabel = String((state && state.targetLabel) || "").trim() || getClientLabel(scope) || targetKey;
       return {
         ip: targetIp || targetKey,
         targetKind,
@@ -3293,7 +3458,7 @@ function getAdminState() {
       const targetClientKey = String((state && state.targetClientKey) || scope.clientKey || "");
       const targetKey = targetKind === "client" ? targetClientKey : targetIp;
       if (!targetKey) return null;
-      const targetLabel = getClientLabel(scope) || targetKey;
+      const targetLabel = String((state && state.targetLabel) || "").trim() || getClientLabel(scope) || targetKey;
       return {
         ip: targetIp || targetKey,
         targetKind,
@@ -3395,43 +3560,51 @@ function setMute(target, minutes, reason, createdBy) {
   if (!scope || !scope.scopeKey) return null;
   const safeMinutes = clampInt(minutes, 1, 180, 5);
   const expiresAt = new Date(Date.now() + safeMinutes * 60 * 1000).toISOString();
+  const targetLabel = getClientLabel(scope);
   mutedUsers.set(scope.scopeKey, {
     expiresAt,
     targetKind: scope.kind,
     targetIp: scope.ip || null,
     targetClientKey: scope.clientKey || null,
+    targetLabel,
   });
-  recordModerationAction("mute", scope.scopeKey, getClientLabel(scope), reason, expiresAt, createdBy);
-  return { expiresAt, scope };
+  recordModerationAction("mute", scope.scopeKey, targetLabel, reason, expiresAt, createdBy);
+  return { expiresAt, scope, targetLabel };
 }
 
 function clearMute(target, reason, createdBy) {
   const scope = resolveModerationScope(target);
   if (!scope || !scope.scopeKey) return null;
+  const prevState = mutedUsers.get(scope.scopeKey);
+  const targetLabel = String(prevState && prevState.targetLabel || "").trim() || getClientLabel(scope);
   mutedUsers.delete(scope.scopeKey);
-  recordModerationAction("unmute", scope.scopeKey, getClientLabel(scope), reason, null, createdBy);
-  return { scope };
+  recordModerationAction("unmute", scope.scopeKey, targetLabel, reason, null, createdBy);
+  return { scope, targetLabel };
 }
 
 function setBlock(target, reason, createdBy) {
   const scope = resolveModerationScope(target);
   if (!scope || !scope.scopeKey) return null;
+  const targetLabel = getClientLabel(scope);
   blockedUsers.set(scope.scopeKey, {
     expiresAt: null,
     targetKind: scope.kind,
     targetIp: scope.ip || null,
     targetClientKey: scope.clientKey || null,
+    targetLabel,
   });
-  recordModerationAction("block", scope.scopeKey, getClientLabel(scope), reason, null, createdBy);
-  return { scope };
+  recordModerationAction("block", scope.scopeKey, targetLabel, reason, null, createdBy);
+  return { scope, targetLabel };
 }
 
 function clearBlock(target, reason, createdBy) {
   const scope = resolveModerationScope(target);
   if (!scope || !scope.scopeKey) return null;
+  const prevState = blockedUsers.get(scope.scopeKey);
+  const targetLabel = String(prevState && prevState.targetLabel || "").trim() || getClientLabel(scope);
   blockedUsers.delete(scope.scopeKey);
-  recordModerationAction("unblock", scope.scopeKey, getClientLabel(scope), reason, null, createdBy);
-  return { scope };
+  recordModerationAction("unblock", scope.scopeKey, targetLabel, reason, null, createdBy);
+  return { scope, targetLabel };
 }
 
 if (ADMIN_PASSWORD === "admin") {
@@ -3547,6 +3720,110 @@ function parseBrainrotLines(raw) {
   }
 
   return uniqueNonEmpty(terms);
+}
+
+function parseSimPoolLines(raw, { maxLen = 180, collapseWhitespace = true } = {}) {
+  const out = [];
+  const lines = String(raw || "").split(/\r?\n/);
+  for (const rawLine of lines) {
+    const trimmed = String(rawLine || "").trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith("#") || trimmed.startsWith("//")) continue;
+    const normalized = collapseWhitespace
+      ? trimmed.replace(/\s+/g, " ")
+      : trimmed;
+    const clipped = maxLen > 0 ? normalized.slice(0, maxLen) : normalized;
+    if (!clipped) continue;
+    out.push(clipped);
+  }
+  return out;
+}
+
+function toSimPoolFileContent(title, items) {
+  const lines = Array.isArray(items) ? items : [];
+  return [
+    `# ${String(title || "Sim pool")}`,
+    SIM_TEXT_LINE_DEFAULT_HEADER,
+    "",
+    ...lines.map((line) => String(line)),
+    "",
+  ].join("\n");
+}
+
+function replaceArrayContents(target, nextValues) {
+  if (!Array.isArray(target) || !Array.isArray(nextValues) || !nextValues.length) return false;
+  target.splice(0, target.length, ...nextValues);
+  return true;
+}
+
+function ensureSimTextFiles() {
+  try {
+    fs.mkdirSync(SIM_TEXT_DIR, { recursive: true });
+    for (const def of SIM_TEXT_ALL_POOLS) {
+      if (fs.existsSync(def.filePath)) continue;
+      fs.writeFileSync(def.filePath, toSimPoolFileContent(def.title, def.target), "utf8");
+    }
+  } catch (err) {
+    writeDebug("sim_text_init_error", { message: err && err.message ? err.message : "unknown" });
+  }
+}
+
+function loadSimTextPool(def, source) {
+  try {
+    const raw = fs.readFileSync(def.filePath, "utf8");
+    const parsed = parseSimPoolLines(raw, {
+      maxLen: Number(def.maxLen || 180),
+      collapseWhitespace: def.collapseWhitespace !== false,
+    });
+    if (!parsed.length) {
+      writeDebug("sim_text_pool_empty", {
+        source,
+        pool: def.key,
+        filePath: def.filePath,
+      });
+      return false;
+    }
+    replaceArrayContents(def.target, parsed);
+    writeDebug("sim_text_pool_loaded", {
+      source,
+      pool: def.key,
+      filePath: def.filePath,
+      count: parsed.length,
+    });
+    return true;
+  } catch (err) {
+    writeDebug("sim_text_pool_load_error", {
+      source,
+      pool: def.key,
+      filePath: def.filePath,
+      message: err && err.message ? err.message : "unknown",
+    });
+    return false;
+  }
+}
+
+function loadSimTextPools(source) {
+  for (const def of SIM_TEXT_ALL_POOLS) {
+    loadSimTextPool(def, source);
+  }
+}
+
+function watchSimTextPools(sourcePrefix = "watch_sim_text") {
+  for (const def of SIM_TEXT_ALL_POOLS) {
+    try {
+      fs.watchFile(def.filePath, { interval: 1200 }, (curr, prev) => {
+        if (curr.mtimeMs === prev.mtimeMs) return;
+        loadSimTextPool(def, `${sourcePrefix}:${def.key}`);
+      });
+    } catch (err) {
+      writeDebug("sim_text_pool_watch_error", {
+        source: sourcePrefix,
+        pool: def.key,
+        filePath: def.filePath,
+        message: err && err.message ? err.message : "unknown",
+      });
+    }
+  }
 }
 
 function ensureBrainrotFile() {
@@ -3745,6 +4022,9 @@ ensureModerationFiles();
 loadModerationData("startup");
 watchModerationFile(MODERATION_WORDS_PATH, "watch_txt");
 watchModerationFile(MODERATION_JSON_PATH, "watch_json");
+ensureSimTextFiles();
+loadSimTextPools("startup");
+watchSimTextPools("watch_sim_text");
 ensureBrainrotFile();
 loadBrainrotWords("startup");
 watchBrainrotFile(BRAINROT_PATH, "watch_brainrot");
@@ -3980,7 +4260,11 @@ app.post("/admin/users/mute", requireAdmin, (req, res) => {
   });
   const targetKey = scope.kind === "client" ? scope.clientKey : scope.ip;
   writeDebug("user_muted", { targetKind: scope.kind, targetKey, minutes, expiresAt });
-  publishModerationFeedNotice("mute", scope, { minutes, expiresAt });
+  publishModerationFeedNotice("mute", scope, {
+    minutes,
+    expiresAt,
+    targetLabel: muteResult && muteResult.targetLabel ? String(muteResult.targetLabel) : "",
+  });
   res.json({
     ok: true,
     targetKind: scope.kind,
@@ -4006,7 +4290,7 @@ app.post("/admin/users/unmute", requireAdmin, (req, res) => {
     return;
   }
   const reason = String((req.body && req.body.reason) || "").slice(0, 200);
-  clearMute(scope, reason, "admin");
+  const unmuteResult = clearMute(scope, reason, "admin");
   const notified = sendToTargetIp(scope, {
     type: "moderation_notice",
     code: "user_unmuted",
@@ -4014,7 +4298,9 @@ app.post("/admin/users/unmute", requireAdmin, (req, res) => {
   });
   const targetKey = scope.kind === "client" ? scope.clientKey : scope.ip;
   writeDebug("user_unmuted", { targetKind: scope.kind, targetKey });
-  publishModerationFeedNotice("unmute", scope, {});
+  publishModerationFeedNotice("unmute", scope, {
+    targetLabel: unmuteResult && unmuteResult.targetLabel ? String(unmuteResult.targetLabel) : "",
+  });
   res.json({
     ok: true,
     targetKind: scope.kind,
@@ -4039,13 +4325,15 @@ app.post("/admin/users/block", requireAdmin, (req, res) => {
     return;
   }
   const reason = String((req.body && req.body.reason) || "").slice(0, 200);
-  setBlock(scope, reason, "admin");
+  const blockResult = setBlock(scope, reason, "admin");
   const notified = sendToTargetIp(scope, {
     type: "moderation_notice",
     code: "user_blocked",
     message: "Je bent geblokkeerd door de moderator en wordt verwijderd.",
   });
-  publishModerationFeedNotice("block", scope, {});
+  publishModerationFeedNotice("block", scope, {
+    targetLabel: blockResult && blockResult.targetLabel ? String(blockResult.targetLabel) : "",
+  });
   const closed = closeSocketsForTargetIp(scope, 4004, "blocked", 120);
   const targetKey = scope.kind === "client" ? scope.clientKey : scope.ip;
   writeDebug("user_blocked", { targetKind: scope.kind, targetKey, closed });
@@ -4074,10 +4362,12 @@ app.post("/admin/users/unblock", requireAdmin, (req, res) => {
     return;
   }
   const reason = String((req.body && req.body.reason) || "").slice(0, 200);
-  clearBlock(scope, reason, "admin");
+  const unblockResult = clearBlock(scope, reason, "admin");
   const targetKey = scope.kind === "client" ? scope.clientKey : scope.ip;
   writeDebug("user_unblocked", { targetKind: scope.kind, targetKey });
-  publishModerationFeedNotice("unblock", scope, {});
+  publishModerationFeedNotice("unblock", scope, {
+    targetLabel: unblockResult && unblockResult.targetLabel ? String(unblockResult.targetLabel) : "",
+  });
   res.json({
     ok: true,
     targetKind: scope.kind,
