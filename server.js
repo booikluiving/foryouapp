@@ -86,6 +86,19 @@ const DEFAULT_MESSAGE_SLOWDOWN_MS = clampInt(
   2000
 );
 let currentMessageSlowdownMs = DEFAULT_MESSAGE_SLOWDOWN_MS;
+const ENGAGEMENT_COMMENT_POINTS_SETTING_KEY = "engagement_comment_points";
+const ENGAGEMENT_COMMENT_POINTS_MIN = 2;
+const ENGAGEMENT_COMMENT_POINTS_MAX = 150;
+const DEFAULT_ENGAGEMENT_COMMENT_POINTS = clampInt(
+  process.env.ENGAGEMENT_COMMENT_POINTS || "75",
+  ENGAGEMENT_COMMENT_POINTS_MIN,
+  ENGAGEMENT_COMMENT_POINTS_MAX,
+  75
+);
+const ENGAGEMENT_EMOJI_POINTS = 1;
+const ENGAGEMENT_COMMENT_MIN_CHARS = 4;
+const ENGAGEMENT_DUPLICATE_WINDOW_MS = 15000;
+let currentEngagementCommentPoints = DEFAULT_ENGAGEMENT_COMMENT_POINTS;
 const SIM_DEFAULTS = {
   clients: 50,
   durationSec: 0,
@@ -807,8 +820,8 @@ const DEFAULT_REACTION_COUNTS = Object.freeze({
   laugh: 0,
   bored: 0,
 });
-const EMOJI_LEADERBOARD_MAX_ITEMS = 200;
-const STAGE_EMOJI_LEADERBOARD_LIMIT = 5;
+const ENGAGEMENT_LEADERBOARD_MAX_ITEMS = 200;
+const STAGE_ENGAGEMENT_LEADERBOARD_LIMIT = 5;
 const SIM_TEXT_POOLS = [
   {
     key: "absurd_fragments",
@@ -1217,12 +1230,72 @@ function reactionCountsSnapshot(counts) {
   };
 }
 
-function syncEmojiLeaderboardIdentity(meta) {
+function normalizeEngagementCommentText(input) {
+  return String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function normalizeEngagementNameKey(input) {
+  return String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+}
+
+function getEngagementRankBadge(rank) {
+  if (rank === 1) return "👑";
+  if (rank === 2) return "🥈";
+  if (rank === 3) return "🥉";
+  return "";
+}
+
+function buildEngagementRankLookup(leaderboardSnapshot, maxRank = 3) {
+  const safeMaxRank = clampInt(maxRank, 1, 20, 3);
+  const byClientKey = new Map();
+  const byName = new Map();
+  const topEntries = Array.isArray(leaderboardSnapshot && leaderboardSnapshot.top)
+    ? leaderboardSnapshot.top
+    : [];
+
+  for (let index = 0; index < topEntries.length && index < safeMaxRank; index += 1) {
+    const rank = index + 1;
+    const rankBadge = getEngagementRankBadge(rank);
+    if (!rankBadge) continue;
+    const entry = topEntries[index] || {};
+    const info = { rank, rankBadge };
+    const clientKey = normalizeClientKey(entry.clientKey);
+    const nameKey = normalizeEngagementNameKey(entry.name);
+    if (clientKey && !byClientKey.has(clientKey)) byClientKey.set(clientKey, info);
+    if (nameKey && !byName.has(nameKey)) byName.set(nameKey, info);
+  }
+
+  return { byClientKey, byName };
+}
+
+function getEngagementRankInfo(rankLookup, identity = {}) {
+  if (!rankLookup || typeof rankLookup !== "object") return null;
+  const byClientKey = rankLookup.byClientKey instanceof Map ? rankLookup.byClientKey : null;
+  const byName = rankLookup.byName instanceof Map ? rankLookup.byName : null;
+  const clientKey = normalizeClientKey(identity.clientKey);
+  if (clientKey && byClientKey && byClientKey.has(clientKey)) {
+    return byClientKey.get(clientKey);
+  }
+  const nameKey = normalizeEngagementNameKey(identity.name);
+  if (nameKey && byName && byName.has(nameKey)) {
+    return byName.get(nameKey);
+  }
+  return null;
+}
+
+function syncEngagementLeaderboardIdentity(meta) {
   if (!meta) return;
   const clientKey = normalizeClientKey(meta.clientKey || buildClientKey(meta.ip, meta.clientTag));
   if (!clientKey) return;
 
-  const existing = emojiReactionLeaderboard.get(clientKey);
+  const existing = engagementLeaderboard.get(clientKey);
   if (!existing) return;
 
   const safeName = sanitizeName(meta.name || existing.name || "Anoniem");
@@ -1230,7 +1303,7 @@ function syncEmojiLeaderboardIdentity(meta) {
   const safeIp = normalizeIp(meta.ip || existing.ip || extractIpFromClientKey(clientKey) || "unknown");
   const isBot = isSimulatorBotIdentity(meta, safeName, safeTag);
 
-  emojiReactionLeaderboard.set(clientKey, {
+  engagementLeaderboard.set(clientKey, {
     ...existing,
     clientKey,
     clientTag: safeTag,
@@ -1240,7 +1313,7 @@ function syncEmojiLeaderboardIdentity(meta) {
   });
 }
 
-function recordEmojiReaction(meta) {
+function recordEmojiEngagement(meta) {
   const clientKey = normalizeClientKey(meta && meta.clientKey);
   if (!clientKey) return null;
 
@@ -1248,8 +1321,12 @@ function recordEmojiReaction(meta) {
   const safeName = sanitizeName(meta && meta.name);
   const safeIp = normalizeIp(meta && meta.ip ? meta.ip : extractIpFromClientKey(clientKey));
   const isBot = isSimulatorBotIdentity(meta || {}, safeName, safeTag);
-  const prev = emojiReactionLeaderboard.get(clientKey);
-  const nextTotal = Math.max(0, Number(prev && prev.total || 0)) + 1;
+  const prev = engagementLeaderboard.get(clientKey);
+  const now = nowIso();
+  const emojiCount = Math.max(0, Number(prev && prev.emojiCount || 0)) + 1;
+  const emojiPoints = Math.max(0, Number(prev && prev.emojiPoints || 0)) + ENGAGEMENT_EMOJI_POINTS;
+  const commentCount = Math.max(0, Number(prev && prev.commentCount || 0));
+  const commentPoints = Math.max(0, Number(prev && prev.commentPoints || 0));
 
   const entry = {
     clientKey,
@@ -1257,15 +1334,91 @@ function recordEmojiReaction(meta) {
     name: safeName || "Anoniem",
     ip: safeIp,
     isBot,
-    total: nextTotal,
-    lastReactionAt: nowIso(),
+    emojiCount,
+    commentCount,
+    emojiPoints,
+    commentPoints,
+    lastEmojiAt: now,
+    lastCommentAt: String(prev && prev.lastCommentAt || ""),
+    lastActivityAt: now,
   };
-  emojiReactionLeaderboard.set(clientKey, entry);
+  engagementLeaderboard.set(clientKey, entry);
   return entry;
 }
 
-function getEmojiLeaderboardSnapshot(users = [], limit = EMOJI_LEADERBOARD_MAX_ITEMS) {
-  const safeLimit = clampInt(limit, 1, 200, EMOJI_LEADERBOARD_MAX_ITEMS);
+function evaluateCommentEngagement(meta, text) {
+  const clientKey = normalizeClientKey(meta && meta.clientKey);
+  if (!clientKey) return { points: 0, reason: "missing_client_key" };
+
+  const normalizedText = normalizeEngagementCommentText(text);
+  if (!normalizedText) return { points: 0, reason: "empty" };
+
+  const compactLength = normalizedText.replace(/\s+/g, "").length;
+  if (compactLength < ENGAGEMENT_COMMENT_MIN_CHARS) {
+    return { points: 0, reason: "too_short", compactLength };
+  }
+
+  const nowMs = Date.now();
+  const prev = engagementCommentScoreState.get(clientKey);
+  if (
+    prev &&
+    prev.lastText === normalizedText &&
+    Number(prev.lastScoredAt || 0) > 0 &&
+    nowMs - Number(prev.lastScoredAt) < ENGAGEMENT_DUPLICATE_WINDOW_MS
+  ) {
+    return { points: 0, reason: "duplicate_recent", compactLength };
+  }
+
+  engagementCommentScoreState.set(clientKey, {
+    lastText: normalizedText,
+    lastScoredAt: nowMs,
+  });
+
+  return {
+    points: currentEngagementCommentPoints,
+    reason: "ok",
+    compactLength,
+  };
+}
+
+function recordCommentEngagement(meta, points = 0) {
+  const safePoints = Math.max(0, Math.floor(Number(points || 0)));
+  if (!safePoints) return null;
+
+  const clientKey = normalizeClientKey(meta && meta.clientKey);
+  if (!clientKey) return null;
+
+  const safeTag = sanitizeClientTag(meta && meta.clientTag);
+  const safeName = sanitizeName(meta && meta.name);
+  const safeIp = normalizeIp(meta && meta.ip ? meta.ip : extractIpFromClientKey(clientKey));
+  const isBot = isSimulatorBotIdentity(meta || {}, safeName, safeTag);
+  const prev = engagementLeaderboard.get(clientKey);
+  const now = nowIso();
+  const emojiCount = Math.max(0, Number(prev && prev.emojiCount || 0));
+  const commentCount = Math.max(0, Number(prev && prev.commentCount || 0)) + 1;
+  const emojiPoints = Math.max(0, Number(prev && prev.emojiPoints || 0));
+  const commentPoints = Math.max(0, Number(prev && prev.commentPoints || 0)) + safePoints;
+
+  const entry = {
+    clientKey,
+    clientTag: safeTag,
+    name: safeName || "Anoniem",
+    ip: safeIp,
+    isBot,
+    emojiCount,
+    commentCount,
+    emojiPoints,
+    commentPoints,
+    lastEmojiAt: String(prev && prev.lastEmojiAt || ""),
+    lastCommentAt: now,
+    lastActivityAt: now,
+  };
+  engagementLeaderboard.set(clientKey, entry);
+  return entry;
+}
+
+function getEngagementLeaderboardSnapshot(users = [], limit = ENGAGEMENT_LEADERBOARD_MAX_ITEMS) {
+  const safeLimit = clampInt(limit, 1, 200, ENGAGEMENT_LEADERBOARD_MAX_ITEMS);
   const onlineByClientKey = new Map();
 
   for (const user of Array.isArray(users) ? users : []) {
@@ -1283,7 +1436,7 @@ function getEmojiLeaderboardSnapshot(users = [], limit = EMOJI_LEADERBOARD_MAX_I
     });
   }
 
-  const ranked = Array.from(emojiReactionLeaderboard.values())
+  const ranked = Array.from(engagementLeaderboard.values())
     .map((entry) => {
       const clientKey = normalizeClientKey(entry && entry.clientKey);
       if (!clientKey) return null;
@@ -1298,8 +1451,18 @@ function getEmojiLeaderboardSnapshot(users = [], limit = EMOJI_LEADERBOARD_MAX_I
       const isBot = onlineInfo
         ? !!onlineInfo.isBot
         : isSimulatorBotIdentity({ clientKey, clientTag, name, ip }, name, clientTag);
-      const total = Math.max(0, Math.floor(Number(entry && entry.total || 0)));
-      if (!total) return null;
+      const emojiCount = Math.max(0, Math.floor(Number(entry && entry.emojiCount || 0)));
+      const commentCount = Math.max(0, Math.floor(Number(entry && entry.commentCount || 0)));
+      const emojiPoints = Math.max(0, Math.floor(Number(entry && entry.emojiPoints || 0)));
+      const commentPoints = Math.max(0, Math.floor(Number(entry && entry.commentPoints || 0)));
+      const score = Math.max(0, emojiPoints + commentPoints);
+      if (!score) return null;
+      const lastActivityAt = String(
+        (entry && entry.lastActivityAt) ||
+        (entry && entry.lastCommentAt) ||
+        (entry && entry.lastEmojiAt) ||
+        ""
+      );
       return {
         clientKey,
         clientTag,
@@ -1307,24 +1470,34 @@ function getEmojiLeaderboardSnapshot(users = [], limit = EMOJI_LEADERBOARD_MAX_I
         nameColor: getNameColorHex(name),
         ip,
         isBot,
-        total,
-        lastReactionAt: String(entry && entry.lastReactionAt || ""),
+        emojiCount,
+        commentCount,
+        emojiPoints,
+        commentPoints,
+        score,
+        total: score,
+        lastActivityAt,
+        lastReactionAt: String(entry && entry.lastEmojiAt || ""),
         online: !!onlineInfo,
       };
     })
     .filter(Boolean)
     .sort((a, b) => {
-      const byTotal = Number(b.total || 0) - Number(a.total || 0);
-      if (byTotal !== 0) return byTotal;
-      const aTs = parseIsoTime(a.lastReactionAt) || 0;
-      const bTs = parseIsoTime(b.lastReactionAt) || 0;
+      const byScore = Number(b.score || 0) - Number(a.score || 0);
+      if (byScore !== 0) return byScore;
+      const aTs = parseIsoTime(a.lastActivityAt) || 0;
+      const bTs = parseIsoTime(b.lastActivityAt) || 0;
       if (aTs !== bTs) return bTs - aTs;
       return String(a.name || "").localeCompare(String(b.name || ""), "nl-NL");
     });
 
-  const totalReactions = ranked.reduce((sum, row) => sum + Number(row && row.total || 0), 0);
+  const totalPoints = ranked.reduce((sum, row) => sum + Number(row && row.score || 0), 0);
+  const totalEmojiCount = ranked.reduce((sum, row) => sum + Number(row && row.emojiCount || 0), 0);
+  const totalCommentCount = ranked.reduce((sum, row) => sum + Number(row && row.commentCount || 0), 0);
   return {
-    totalReactions,
+    totalPoints,
+    totalReactions: totalEmojiCount,
+    totalComments: totalCommentCount,
     uniqueSenders: ranked.length,
     top: ranked.slice(0, safeLimit),
   };
@@ -2230,6 +2403,13 @@ currentMessageSlowdownMs = clampInt(
   DEFAULT_MESSAGE_SLOWDOWN_MS
 );
 setSetting(MESSAGE_SLOWDOWN_SETTING_KEY, String(currentMessageSlowdownMs));
+currentEngagementCommentPoints = clampInt(
+  getSetting(ENGAGEMENT_COMMENT_POINTS_SETTING_KEY, String(DEFAULT_ENGAGEMENT_COMMENT_POINTS)),
+  ENGAGEMENT_COMMENT_POINTS_MIN,
+  ENGAGEMENT_COMMENT_POINTS_MAX,
+  DEFAULT_ENGAGEMENT_COMMENT_POINTS
+);
+setSetting(ENGAGEMENT_COMMENT_POINTS_SETTING_KEY, String(currentEngagementCommentPoints));
 
 currentOscListenPort = clampInt(
   getSetting("osc_listen_port", getSetting("osc_port", String(DEFAULT_OSC_CONTROL_LISTEN_PORT))),
@@ -2309,7 +2489,8 @@ const blockedUsers = new Map();
 let currentSession = ensureOpenSession();
 let activePoll = parsePollRow(sql.getActivePoll.get(currentSession.id));
 let reactionCounts = createReactionCounts();
-const emojiReactionLeaderboard = new Map();
+const engagementLeaderboard = new Map();
+const engagementCommentScoreState = new Map();
 let pollAutoCloseTimer = null;
 
 function getPollEndsAtIso(poll) {
@@ -2661,9 +2842,12 @@ function getStageControlState(req) {
   };
 }
 
-function getStageRecentMessages(limit = 26) {
+function getStageRecentMessages(limit = 26, rankLookup = null) {
   if (!isCurrentSessionActive()) return [];
   const safeLimit = clampInt(limit, 5, 120, 26);
+  const safeRankLookup = rankLookup && typeof rankLookup === "object"
+    ? rankLookup
+    : buildEngagementRankLookup(getStageEngagementLeaderboardSnapshot(), 3);
   return sql.getRecentMessages.all(currentSession.id, safeLimit)
     .filter((message) => String(message && message.status || "") === "accepted")
     .reverse()
@@ -2671,17 +2855,28 @@ function getStageRecentMessages(limit = 26) {
       const detail = String(message && message.detail || "");
       const isNotice = detail.startsWith("moderation_notice:");
       const name = String(message && message.name ? message.name : "Anoniem");
-      return {
+      const payload = {
         time: String(message && message.time || ""),
         name,
         text: String(message && message.text || ""),
         nameColor: isNotice ? "" : getNameColorHex(name),
         system: isNotice,
       };
+      if (!isNotice) {
+        const rankInfo = getEngagementRankInfo(safeRankLookup, {
+          clientKey: message && message.clientKey,
+          name,
+        });
+        if (rankInfo) {
+          payload.rank = rankInfo.rank;
+          payload.rankBadge = rankInfo.rankBadge;
+        }
+      }
+      return payload;
     });
 }
 
-function getConnectedUsersForEmojiLeaderboard() {
+function getConnectedUsersForEngagementLeaderboard() {
   return Array.from(connectedClients.values()).map((client) => {
     const name = sanitizeName(client && client.name);
     const clientTag = sanitizeClientTag(client && client.clientTag);
@@ -2696,13 +2891,18 @@ function getConnectedUsersForEmojiLeaderboard() {
   });
 }
 
-function getStageEmojiLeaderboardSnapshot() {
-  return getEmojiLeaderboardSnapshot(getConnectedUsersForEmojiLeaderboard(), STAGE_EMOJI_LEADERBOARD_LIMIT);
+function getStageEngagementLeaderboardSnapshot() {
+  return getEngagementLeaderboardSnapshot(
+    getConnectedUsersForEngagementLeaderboard(),
+    STAGE_ENGAGEMENT_LEADERBOARD_LIMIT
+  );
 }
 
 function getStageSnapshot(req) {
   const control = getStageControlState(req);
   const sessionJoin = getCurrentSessionJoinPayload(req);
+  const engagementLeaderboard = getStageEngagementLeaderboardSnapshot();
+  const engagementRankLookup = buildEngagementRankLookup(engagementLeaderboard, 3);
   return {
     ...control,
     serverInstanceId: SERVER_INSTANCE_ID,
@@ -2715,8 +2915,9 @@ function getStageSnapshot(req) {
     },
     sessionJoin: sessionJoin || null,
     reactionCounts: reactionCountsSnapshot(reactionCounts),
-    emojiLeaderboard: getStageEmojiLeaderboardSnapshot(),
-    recentMessages: getStageRecentMessages(32),
+    engagementLeaderboard,
+    emojiLeaderboard: engagementLeaderboard,
+    recentMessages: getStageRecentMessages(32, engagementRankLookup),
   };
 }
 
@@ -3349,7 +3550,8 @@ function beginNewSession(name, createdBy = "admin") {
   currentSession = sql.getSessionById.get(insert.lastInsertRowid);
   activePoll = null;
   reactionCounts = createReactionCounts();
-  emojiReactionLeaderboard.clear();
+  engagementLeaderboard.clear();
+  engagementCommentScoreState.clear();
   mutedUsers.clear();
   blockedUsers.clear();
   rateMap.clear();
@@ -3376,7 +3578,8 @@ function endCurrentSession(createdBy = "admin") {
   }
   activePoll = null;
   reactionCounts = createReactionCounts();
-  emojiReactionLeaderboard.clear();
+  engagementLeaderboard.clear();
+  engagementCommentScoreState.clear();
   mutedUsers.clear();
   blockedUsers.clear();
   rateMap.clear();
@@ -5283,7 +5486,8 @@ function getAdminState(req) {
         blockedUntil: block && block.expiresAt ? block.expiresAt : null,
       };
     });
-  const emojiLeaderboard = getEmojiLeaderboardSnapshot(users);
+  const engagementLeaderboard = getEngagementLeaderboardSnapshot(users);
+  const engagementRankLookup = buildEngagementRankLookup(engagementLeaderboard, 3);
   const registeredCountRow = sql.countSessionJoinEvents.get(currentSession.id);
   const activeGrantCountRow = sql.countSessionActiveAccessGrants.get(currentSession.id, snapshotNow);
   const registeredCount = Number(registeredCountRow && registeredCountRow.n || 0);
@@ -5291,12 +5495,26 @@ function getAdminState(req) {
   const onlineHumanCount = users.reduce((count, user) => count + (user && user.isBot ? 0 : 1), 0);
   const onlineBotCount = Math.max(0, users.length - onlineHumanCount);
   const sessionActive = isCurrentSessionActive();
-  const recentMessages = sql.getRecentMessages.all(currentSession.id, 40).map((message) => ({
-    ...message,
-    nameColor: String(message && message.detail || "").startsWith("moderation_notice:")
-      ? ""
-      : getNameColorHex(message && message.name ? message.name : "Anoniem"),
-  }));
+  const recentMessages = sql.getRecentMessages.all(currentSession.id, 40).map((message) => {
+    const detail = String(message && message.detail || "");
+    const isNotice = detail.startsWith("moderation_notice:");
+    const name = String(message && message.name ? message.name : "Anoniem");
+    const next = {
+      ...message,
+      nameColor: isNotice ? "" : getNameColorHex(name),
+    };
+    if (!isNotice && String(message && message.status || "") === "accepted") {
+      const rankInfo = getEngagementRankInfo(engagementRankLookup, {
+        clientKey: message && message.clientKey,
+        name,
+      });
+      if (rankInfo) {
+        next.rank = rankInfo.rank;
+        next.rankBadge = rankInfo.rankBadge;
+      }
+    }
+    return next;
+  });
 
   const activeMutedIps = Array.from(mutedUsers.entries())
     .map(([scopeKey, state]) => {
@@ -5368,6 +5586,12 @@ function getAdminState(req) {
       messageSlowdownMs: currentMessageSlowdownMs,
       messageSlowdownMinMs: MESSAGE_SLOWDOWN_MIN_MS,
       messageSlowdownMaxMs: MESSAGE_SLOWDOWN_MAX_MS,
+      engagementCommentPoints: currentEngagementCommentPoints,
+      engagementCommentPointsMin: ENGAGEMENT_COMMENT_POINTS_MIN,
+      engagementCommentPointsMax: ENGAGEMENT_COMMENT_POINTS_MAX,
+      engagementEmojiPoints: ENGAGEMENT_EMOJI_POINTS,
+      engagementCommentMinChars: ENGAGEMENT_COMMENT_MIN_CHARS,
+      engagementDuplicateWindowMs: ENGAGEMENT_DUPLICATE_WINDOW_MS,
     },
     security: {
       debugLogEnabled: DEBUG_LOG_ENABLED,
@@ -5395,7 +5619,8 @@ function getAdminState(req) {
     users,
     simulation: chatSimulator.getState(),
     reactionCounts: reactionCountsSnapshot(reactionCounts),
-    emojiLeaderboard,
+    engagementLeaderboard,
+    emojiLeaderboard: engagementLeaderboard,
     activePoll: activePollSnapshot,
     lastPoll: pollForState
       ? {
@@ -5454,7 +5679,7 @@ function persistConnectedMeta(meta) {
     ua: meta.ua,
     connectedAt: meta.connectedAt,
   });
-  syncEmojiLeaderboardIdentity(meta);
+  syncEngagementLeaderboardIdentity(meta);
 }
 
 function setMute(target, minutes, reason, createdBy) {
@@ -6260,6 +6485,7 @@ app.post("/admin/stage/test-emoji", requireAdmin, (req, res) => {
     clampInt(stageOutputSettings && stageOutputSettings.emojiBurst, 1, 6, 1)
   );
   const now = nowIso();
+  const engagementLeaderboard = getStageEngagementLeaderboardSnapshot();
   for (let i = 0; i < burst; i += 1) {
     sendToStageSubscribers({
       type: "stage_reaction",
@@ -6268,6 +6494,8 @@ app.post("/admin/stage/test-emoji", requireAdmin, (req, res) => {
       counts: reactionCountsSnapshot(reactionCounts),
       burst: 1,
       source: "admin_test",
+      engagementLeaderboard,
+      emojiLeaderboard: engagementLeaderboard,
     });
   }
   res.json({
@@ -6815,6 +7043,37 @@ app.post("/admin/settings/message-slowdown", requireAdmin, (req, res) => {
   });
 });
 
+app.post("/admin/settings/engagement", requireAdmin, (req, res) => {
+  const commentPoints = clampInt(
+    req.body && req.body.commentPoints,
+    ENGAGEMENT_COMMENT_POINTS_MIN,
+    ENGAGEMENT_COMMENT_POINTS_MAX,
+    -1
+  );
+  if (commentPoints < ENGAGEMENT_COMMENT_POINTS_MIN) {
+    res.status(400).json({ ok: false, error: "invalid_engagement_comment_points" });
+    return;
+  }
+  currentEngagementCommentPoints = commentPoints;
+  setSetting(ENGAGEMENT_COMMENT_POINTS_SETTING_KEY, String(currentEngagementCommentPoints));
+  writeDebug("engagement_settings_updated", {
+    by: "admin",
+    commentPoints: currentEngagementCommentPoints,
+    emojiPoints: ENGAGEMENT_EMOJI_POINTS,
+    commentMinChars: ENGAGEMENT_COMMENT_MIN_CHARS,
+    duplicateWindowMs: ENGAGEMENT_DUPLICATE_WINDOW_MS,
+  });
+  res.json({
+    ok: true,
+    commentPoints: currentEngagementCommentPoints,
+    commentPointsMin: ENGAGEMENT_COMMENT_POINTS_MIN,
+    commentPointsMax: ENGAGEMENT_COMMENT_POINTS_MAX,
+    emojiPoints: ENGAGEMENT_EMOJI_POINTS,
+    commentMinChars: ENGAGEMENT_COMMENT_MIN_CHARS,
+    duplicateWindowMs: ENGAGEMENT_DUPLICATE_WINDOW_MS,
+  });
+});
+
 async function handleAdminOscListenPortUpdate(req, res) {
   const port = clampInt(req.body && req.body.port, 1, 65535, -1);
   if (port < 1) {
@@ -7194,18 +7453,18 @@ wss.on("connection", (ws, req) => {
       }
 
       if (!allowReaction(meta.clientKey)) return;
-      const leaderEntry = recordEmojiReaction(meta);
+      const leaderEntry = recordEmojiEngagement(meta);
       reactionCounts[reaction] = Number(reactionCounts[reaction] || 0) + 1;
       const counts = reactionCountsSnapshot(reactionCounts);
       const total = Number(counts[reaction] || 0);
-      const leaderboard = getStageEmojiLeaderboardSnapshot();
+      const leaderboard = getStageEngagementLeaderboardSnapshot();
       writeDebug("reaction_received", {
         clientId,
         ip,
         clientKey: meta.clientKey,
         reaction,
         total,
-        senderEmojiTotal: Number(leaderEntry && leaderEntry.total || 0),
+        senderEmojiTotal: Number(leaderEntry && leaderEntry.emojiCount || 0),
       });
       sendToStageSubscribers({
         type: "stage_reaction",
@@ -7213,6 +7472,7 @@ wss.on("connection", (ws, req) => {
         reaction,
         counts,
         burst: 1,
+        engagementLeaderboard: leaderboard,
         emojiLeaderboard: leaderboard,
       });
       return;
@@ -7437,8 +7697,40 @@ wss.on("connection", (ws, req) => {
 
     const colorHex = getNameColorHex(name);
     const payload = { type: "comment", time: nowIso(), name, text, nameColor: colorHex };
+    const commentEngagement = evaluateCommentEngagement(meta, text);
+    const commentScorePoints = Math.max(0, Number(commentEngagement && commentEngagement.points || 0));
+    const engagementEntry = recordCommentEngagement(meta, commentScorePoints);
+    const stageEngagementLeaderboard = commentScorePoints > 0 ? getStageEngagementLeaderboardSnapshot() : null;
+    const leaderboardForRank = stageEngagementLeaderboard || getEngagementLeaderboardSnapshot(
+      getConnectedUsersForEngagementLeaderboard(),
+      STAGE_ENGAGEMENT_LEADERBOARD_LIMIT
+    );
+    const rankInfo = getEngagementRankInfo(buildEngagementRankLookup(leaderboardForRank, 3), {
+      clientKey: meta.clientKey,
+      name,
+    });
+    if (rankInfo) {
+      payload.rank = rankInfo.rank;
+      payload.rankBadge = rankInfo.rankBadge;
+    }
     console.log("COMMENT:", payload);
     writeDebug("comment_received", { clientId, ip, clientKey: meta.clientKey, name, text });
+    if (commentScorePoints > 0) {
+      writeDebug("comment_engagement_scored", {
+        clientId,
+        ip,
+        clientKey: meta.clientKey,
+        points: commentScorePoints,
+        totalScore: Number(engagementEntry && (engagementEntry.commentPoints + engagementEntry.emojiPoints) || 0),
+      });
+    } else {
+      writeDebug("comment_engagement_ignored", {
+        clientId,
+        ip,
+        clientKey: meta.clientKey,
+        reason: String(commentEngagement && commentEngagement.reason || "unknown"),
+      });
+    }
     recordChatMessage({
       clientId,
       clientKey: meta.clientKey,
@@ -7450,13 +7742,22 @@ wss.on("connection", (ws, req) => {
     });
 
     broadcastToClients(payload);
-    sendToStageSubscribers(payload);
+    if (stageEngagementLeaderboard) {
+      sendToStageSubscribers({
+        ...payload,
+        engagementLeaderboard: stageEngagementLeaderboard,
+        emojiLeaderboard: stageEngagementLeaderboard,
+      });
+    } else {
+      sendToStageSubscribers(payload);
+    }
     chatSimulator.observeAcceptedComment(payload);
   });
 
   ws.on("close", (code, reasonBuffer) => {
     const reason = Buffer.isBuffer(reasonBuffer) ? reasonBuffer.toString("utf8") : String(reasonBuffer || "");
     console.log("WS closed:", ip);
+    engagementCommentScoreState.delete(normalizeClientKey(meta.clientKey));
     connectedClients.delete(clientId);
     writeDebug("ws_closed", { clientId, ip, code: Number(code || 0), reason: reason.slice(0, 120) });
   });

@@ -522,21 +522,29 @@
           <div class="stats" id="stats"></div>
           <div class="emojiLeaderboardCard">
             <div class="emojiLeaderboardHead">
-              <strong>Emoji leaderboard</strong>
-              <div id="emojiLeaderboardMeta" class="muted">Nog geen emoji-reacties.</div>
+              <strong>Top Chatters:</strong>
+              <div id="emojiLeaderboardMeta" class="muted">Nog geen puntenactiviteit.</div>
             </div>
+            <div class="row">
+              <div class="sliderField">
+                <div class="sliderLabel"><span>Comment-punten</span><span id="engagementCommentPointsValue" class="sliderValue">75</span></div>
+                <input id="engagementCommentPoints" type="range" min="2" max="150" step="1" value="75" />
+              </div>
+              <button id="saveEngagementPointsBtn" type="button">Bewaar weging</button>
+            </div>
+            <div id="engagementRulesMeta" class="muted">Emoji = 1 punt, comments = 75 punten, duplicate/te korte comments tellen niet mee.</div>
             <table>
               <thead>
                 <tr>
                   <th>#</th>
                   <th>Gebruiker</th>
-                  <th>Status</th>
-                  <th>Totaal</th>
+                  <th>Bijdrage</th>
+                  <th>Score</th>
                   <th>Laatst</th>
                 </tr>
               </thead>
               <tbody id="emojiLeaderboardBody">
-                <tr><td colspan="5" class="muted">Nog geen emoji-reacties in deze sessie.</td></tr>
+                <tr><td colspan="5" class="muted">Nog geen puntenactiviteit in deze sessie.</td></tr>
               </tbody>
             </table>
             <details id="emojiLeaderboardMore" class="emojiLeaderboardMore" data-detail-key="emoji-leaderboard-more" hidden>
@@ -932,6 +940,10 @@
       const emojiLeaderboardMoreSummaryEl = document.getElementById("emojiLeaderboardMoreSummary");
       const emojiLeaderboardTop10BodyEl = document.getElementById("emojiLeaderboardTop10Body");
       const emojiLeaderboardRestBodyEl = document.getElementById("emojiLeaderboardRestBody");
+      const engagementCommentPointsEl = document.getElementById("engagementCommentPoints");
+      const engagementCommentPointsValueEl = document.getElementById("engagementCommentPointsValue");
+      const engagementRulesMetaEl = document.getElementById("engagementRulesMeta");
+      const saveEngagementPointsBtn = document.getElementById("saveEngagementPointsBtn");
       const sessionNameEl = document.getElementById("sessionName");
       const endSessionBtn = document.getElementById("endSessionBtn");
       const newSessionBtn = document.getElementById("newSessionBtn");
@@ -1104,6 +1116,8 @@
       let sessionDurationTickerTimer = null;
       let messageSlowdownMinMs = 500;
       let messageSlowdownMaxMs = 8000;
+      let engagementCommentPointsMin = 2;
+      let engagementCommentPointsMax = 150;
 
       try {
         localStorage.removeItem("admin_token");
@@ -1917,6 +1931,17 @@
         messageSlowdownMsValueEl.textContent = formatSlowdownValue(messageSlowdownMsEl.value);
       }
 
+      function clampEngagementCommentPoints(input) {
+        const value = Number(input);
+        if (!Number.isFinite(value)) return engagementCommentPointsMin;
+        return Math.max(engagementCommentPointsMin, Math.min(engagementCommentPointsMax, Math.round(value)));
+      }
+
+      function updateEngagementCommentPointsLabel() {
+        if (!engagementCommentPointsValueEl || !engagementCommentPointsEl) return;
+        engagementCommentPointsValueEl.textContent = String(clampEngagementCommentPoints(engagementCommentPointsEl.value));
+      }
+
       function getLiveSessionDurationSeconds() {
         const base = Math.max(0, Math.floor(Number(sessionDurationBaseSeconds) || 0));
         if (!sessionDurationIsActive) return base;
@@ -1990,6 +2015,12 @@
       function sanitizeNameColor(input) {
         const value = String(input || "").trim();
         return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "";
+      }
+
+      function normalizeRankBadge(input) {
+        const raw = String(input || "").trim();
+        if (raw === "👑" || raw === "🥈" || raw === "🥉") return raw;
+        return "";
       }
 
       function canRenderQr() {
@@ -2263,11 +2294,13 @@
         const text = String(message.text || "");
         const detail = String(message.detail || "");
         const status = String(message.status || "");
+        const rankBadge = normalizeRankBadge(message && message.rankBadge);
+        const label = rankBadge ? `${rankBadge} ${name}` : name;
         const suffix = status && status !== "accepted" ? " [" + status + "]" : "";
         if (detail.startsWith("moderation_notice:")) {
           return time + "  " + text + suffix;
         }
-        return time + "  " + name + ": " + text + suffix;
+        return time + "  " + label + ": " + text + suffix;
       }
 
       function formatHistoryLineHtml(message) {
@@ -2284,7 +2317,9 @@
         }
         const nameColor = sanitizeNameColor(message && message.nameColor);
         const nameStyle = nameColor ? ` style="color:${nameColor}"` : "";
-        return `<div class="chatLine"><span class="chatName"${nameStyle}>${esc(name)}</span>: ${esc(text)}${suffix}</div>`;
+        const rankBadge = normalizeRankBadge(message && message.rankBadge);
+        const label = rankBadge ? `${rankBadge} ${name}` : name;
+        return `<div class="chatLine"><span class="chatName"${nameStyle}>${esc(label)}</span>: ${esc(text)}${suffix}</div>`;
       }
 
       function formatModerationTargetLabel(input) {
@@ -2915,17 +2950,21 @@
           !emojiLeaderboardTop10BodyEl ||
           !emojiLeaderboardRestBodyEl
         ) return;
-        const leaderboard = data && data.emojiLeaderboard ? data.emojiLeaderboard : null;
+        const leaderboard = data && (data.engagementLeaderboard || data.emojiLeaderboard)
+          ? (data.engagementLeaderboard || data.emojiLeaderboard)
+          : null;
         const topEntries = Array.isArray(leaderboard && leaderboard.top) ? leaderboard.top : [];
-        const totalReactions = Math.max(0, Number(leaderboard && leaderboard.totalReactions || 0));
+        const totalPoints = Math.max(0, Number(leaderboard && leaderboard.totalPoints || 0));
+        const totalComments = Math.max(0, Number(leaderboard && leaderboard.totalComments || 0));
+        const totalEmojis = Math.max(0, Number(leaderboard && leaderboard.totalReactions || 0));
         const uniqueSenders = Math.max(0, Number(leaderboard && leaderboard.uniqueSenders || 0));
         const topFive = topEntries.slice(0, 5);
         const nextFive = topEntries.slice(5, 10);
         const rest = topEntries.slice(10);
 
         emojiLeaderboardMetaEl.textContent = uniqueSenders > 0
-          ? `Totaal emoji's: ${totalReactions} | unieke verstuurders: ${uniqueSenders} | zichtbaar: top 5`
-          : "Nog geen emoji-reacties.";
+          ? `Totaal punten: ${totalPoints} | comments: ${totalComments} | emoji's: ${totalEmojis} | unieke deelnemers: ${uniqueSenders} | zichtbaar: top 5`
+          : "Nog geen puntenactiviteit.";
 
         const buildRowHtml = (entry, rank) => {
           const safeName = esc(entry && entry.name ? entry.name : "Anoniem");
@@ -2936,22 +2975,27 @@
           const isBot = !!(entry && entry.isBot);
           const isOnline = !!(entry && entry.online);
           const statusText = `${isOnline ? "online" : "offline"}${isBot ? " | bot" : ""}`;
-          const total = Math.max(0, Number(entry && entry.total || 0));
+          const score = Math.max(0, Number(entry && (entry.score || entry.total) || 0));
+          const commentCount = Math.max(0, Number(entry && entry.commentCount || 0));
+          const emojiCount = Math.max(0, Number(entry && entry.emojiCount || 0));
+          const contributionText = `💬 ${commentCount} | 😀 ${emojiCount}`;
           const subLabel = isBot ? "bot-simulatie" : String(entry && entry.ip || "-");
-          const lastAt = entry && entry.lastReactionAt ? formatTs(entry.lastReactionAt) : "-";
+          const lastAt = entry && (entry.lastActivityAt || entry.lastReactionAt)
+            ? formatTs(entry.lastActivityAt || entry.lastReactionAt)
+            : "-";
           const rankBadge = rank === 1 ? "👑" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : "";
           return `<tr${rank === 1 ? ' class="emojiLeaderboardRowTop"' : ""}>
             <td class="emojiLeaderboardRank">${rankBadge ? `${rank} ${rankBadge}` : rank}</td>
             <td>${nameHtml}<div class="muted">${esc(subLabel)}</div></td>
-            <td>${esc(statusText)}</td>
-            <td class="mono">${total}</td>
+            <td>${esc(contributionText)}<div class="muted">${esc(statusText)}</div></td>
+            <td class="mono">${score}</td>
             <td class="mono">${esc(lastAt)}</td>
           </tr>`;
         };
 
         if (!topFive.length) {
           emojiLeaderboardBodyEl.innerHTML =
-            '<tr><td colspan="5" class="muted">Nog geen emoji-reacties in deze sessie.</td></tr>';
+            '<tr><td colspan="5" class="muted">Nog geen puntenactiviteit in deze sessie.</td></tr>';
           emojiLeaderboardTop10BodyEl.innerHTML =
             '<tr><td colspan="5" class="muted">Nog geen extra posities.</td></tr>';
           emojiLeaderboardRestBodyEl.innerHTML =
@@ -3056,6 +3100,10 @@
           "\\nPoll duur: " + Number(runtime.pollDurationSeconds || 60) + "s" +
           "\\nBericht slowdown: " + Number(runtime.messageSlowdownMs || 0) + "ms" +
           "\\nBericht slowdown min: " + Number(runtime.messageSlowdownMinMs || 0) + "ms" +
+          "\\nComment-punten: " + Number(runtime.engagementCommentPoints || 75) +
+          "\\nEmoji-punten: " + Number(runtime.engagementEmojiPoints || 1) +
+          "\\nComment min chars: " + Number(runtime.engagementCommentMinChars || 4) +
+          "\\nDuplicate window: " + Number(runtime.engagementDuplicateWindowMs || 0) + "ms" +
           "\\nDB: " + runtime.dbPath;
         nextPortEl.value = runtime.nextPort;
         if (document.activeElement !== oscListenPortEl) {
@@ -3081,6 +3129,28 @@
             messageSlowdownMsEl.value = String(clampMessageSlowdownMs(runtime.messageSlowdownMs || messageSlowdownMinMs));
           }
           updateMessageSlowdownValueLabel();
+        }
+        engagementCommentPointsMin = Math.max(1, Number(runtime.engagementCommentPointsMin || engagementCommentPointsMin || 2));
+        engagementCommentPointsMax = Math.max(
+          engagementCommentPointsMin,
+          Number(runtime.engagementCommentPointsMax || engagementCommentPointsMax || 150)
+        );
+        if (engagementCommentPointsEl) {
+          engagementCommentPointsEl.min = String(engagementCommentPointsMin);
+          engagementCommentPointsEl.max = String(engagementCommentPointsMax);
+          if (document.activeElement !== engagementCommentPointsEl) {
+            engagementCommentPointsEl.value = String(
+              clampEngagementCommentPoints(runtime.engagementCommentPoints || engagementCommentPointsMin)
+            );
+          }
+          updateEngagementCommentPointsLabel();
+        }
+        if (engagementRulesMetaEl) {
+          const emojiPoints = Math.max(1, Number(runtime.engagementEmojiPoints || 1));
+          const commentMinChars = Math.max(1, Number(runtime.engagementCommentMinChars || 4));
+          const duplicateWindowSec = Math.max(0, Number(runtime.engagementDuplicateWindowMs || 0)) / 1000;
+          engagementRulesMetaEl.textContent =
+            `Emoji = ${emojiPoints} punt, comments = ${Number(runtime.engagementCommentPoints || engagementCommentPointsMin)} punten, duplicate binnen ${duplicateWindowSec.toFixed(0)}s en comments korter dan ${commentMinChars} tekens tellen niet mee.`;
         }
         renderOscCommands(data.oscCommands);
         const pollDurationForInput = data.activePoll
@@ -3749,6 +3819,25 @@
           runAction("/admin/settings/message-slowdown", { ms }, `Slowdown bewaard (${ms}ms).`);
         });
       }
+      if (engagementCommentPointsEl) {
+        engagementCommentPointsEl.addEventListener("input", updateEngagementCommentPointsLabel);
+        engagementCommentPointsEl.addEventListener("change", () => {
+          engagementCommentPointsEl.value = String(clampEngagementCommentPoints(engagementCommentPointsEl.value));
+          updateEngagementCommentPointsLabel();
+        });
+      }
+      if (saveEngagementPointsBtn && engagementCommentPointsEl) {
+        saveEngagementPointsBtn.addEventListener("click", () => {
+          const commentPoints = clampEngagementCommentPoints(engagementCommentPointsEl.value);
+          engagementCommentPointsEl.value = String(commentPoints);
+          updateEngagementCommentPointsLabel();
+          runAction(
+            "/admin/settings/engagement",
+            { commentPoints },
+            `Engagement-weging bewaard (comment = ${commentPoints}, emoji = 1).`
+          );
+        });
+      }
       if (usersSearchClearBtnEl && usersSearchInputEl) {
         usersSearchClearBtnEl.addEventListener("click", () => {
           if (usersSearchInputDebounceTimer) {
@@ -3832,6 +3921,7 @@
       ensureMinimumPollOptionRows();
       updateSimSliderLabels();
       updateMessageSlowdownValueLabel();
+      updateEngagementCommentPointsLabel();
       if (!pollBadgeTimer) {
         pollBadgeTimer = setInterval(updateLivePollBadgeFromLastState, 1000);
       }

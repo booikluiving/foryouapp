@@ -191,6 +191,13 @@
         );
       }
 
+      #leaderboardTitle {
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        margin: 0 2px 10px;
+      }
+
       #leaderboardRows {
         display: grid;
         gap: 8px;
@@ -325,8 +332,9 @@
 
       <div id="leaderboardLayer">
         <div id="leaderboardCard">
+          <div id="leaderboardTitle">Top Chatters:</div>
           <div id="leaderboardRows">
-            <div class="leaderboardEmpty">Nog geen emoji-reacties.</div>
+            <div class="leaderboardEmpty">Nog geen score.</div>
           </div>
         </div>
       </div>
@@ -394,8 +402,8 @@
         },
         sessionJoin: null,
         chat: [],
-        emojiLeaderboard: {
-          totalReactions: 0,
+        engagementLeaderboard: {
+          totalPoints: 0,
           uniqueSenders: 0,
           top: [],
         },
@@ -419,6 +427,12 @@
       function sanitizeNameColor(input) {
         const value = String(input || "").trim();
         return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "";
+      }
+
+      function normalizeRankBadge(input) {
+        const raw = String(input || "").trim();
+        if (raw === "👑" || raw === "🥈" || raw === "🥉") return raw;
+        return "";
       }
 
       function buildHardReloadUrl() {
@@ -498,19 +512,19 @@
         statusPillEl.classList.toggle("show", !!show);
       }
 
-      function normalizeEmojiLeaderboard(raw) {
+      function normalizeEngagementLeaderboard(raw) {
         const src = raw && typeof raw === "object" ? raw : {};
         const top = Array.isArray(src.top) ? src.top : [];
         return {
-          totalReactions: Math.max(0, Math.floor(Number(src.totalReactions || 0))),
+          totalPoints: Math.max(0, Math.floor(Number(src.totalPoints || src.totalReactions || 0))),
           uniqueSenders: Math.max(0, Math.floor(Number(src.uniqueSenders || 0))),
           top: top
             .map((entry) => {
-              const total = Math.max(0, Math.floor(Number(entry && entry.total || 0)));
-              if (!total) return null;
+              const score = Math.max(0, Math.floor(Number(entry && (entry.score || entry.total) || 0)));
+              if (!score) return null;
               return {
                 name: String(entry && entry.name || "Anoniem"),
-                total,
+                score,
                 nameColor: sanitizeNameColor(entry && entry.nameColor),
               };
             })
@@ -605,7 +619,11 @@
             nameNode.className = "chatName";
             const nameColor = sanitizeNameColor(item.nameColor);
             if (nameColor) nameNode.style.color = nameColor;
-            nameNode.textContent = String(item.name || "Anoniem") + ":";
+            const rankBadge = normalizeRankBadge(item.rankBadge);
+            const nameLabel = rankBadge
+              ? `${rankBadge} ${String(item.name || "Anoniem")}`
+              : String(item.name || "Anoniem");
+            nameNode.textContent = nameLabel + ":";
             line.appendChild(nameNode);
             line.appendChild(document.createTextNode(" " + String(item.text || "")));
           }
@@ -621,14 +639,14 @@
         return String(rank);
       }
 
-      function renderEmojiLeaderboard() {
+      function renderEngagementLeaderboard() {
         if (!leaderboardRowsEl) return;
-        const rows = stageState.emojiLeaderboard && Array.isArray(stageState.emojiLeaderboard.top)
-          ? stageState.emojiLeaderboard.top.slice(0, 5)
+        const rows = stageState.engagementLeaderboard && Array.isArray(stageState.engagementLeaderboard.top)
+          ? stageState.engagementLeaderboard.top.slice(0, 5)
           : [];
 
         if (!rows.length) {
-          leaderboardRowsEl.innerHTML = '<div class="leaderboardEmpty">Nog geen emoji-reacties.</div>';
+          leaderboardRowsEl.innerHTML = '<div class="leaderboardEmpty">Nog geen score.</div>';
           return;
         }
 
@@ -636,13 +654,13 @@
           .map((entry, index) => {
             const rank = index + 1;
             const name = esc(entry && entry.name ? entry.name : "Anoniem");
-            const total = Math.max(0, Math.floor(Number(entry && entry.total || 0)));
+            const score = Math.max(0, Math.floor(Number(entry && entry.score || 0)));
             const nameColor = sanitizeNameColor(entry && entry.nameColor);
             const nameStyle = nameColor ? ` style="color:${nameColor}"` : "";
             return `<div class="leaderboardRow rank${rank}">
               <div class="leaderboardRank">${getLeaderboardRankLabel(rank)}</div>
               <div class="leaderboardName"${nameStyle}>${name}</div>
-              <div class="leaderboardCount">${total}</div>
+              <div class="leaderboardCount">${score}</div>
             </div>`;
           })
           .join("");
@@ -653,6 +671,7 @@
           name: String((item && item.name) || "Anoniem"),
           text: String((item && item.text) || ""),
           nameColor: sanitizeNameColor(item && item.nameColor),
+          rankBadge: normalizeRankBadge(item && item.rankBadge),
           system: !!(item && item.system),
         };
         if (!entry.text) return;
@@ -670,6 +689,7 @@
             name: String((item && item.name) || "Anoniem"),
             text: String((item && item.text) || ""),
             nameColor: sanitizeNameColor(item && item.nameColor),
+            rankBadge: normalizeRankBadge(item && item.rankBadge),
             system: !!(item && item.system),
           }))
           .filter((item) => !!item.text)
@@ -713,10 +733,12 @@
         observeServerInstanceId(stage.serverInstanceId, "stage_snapshot");
         stageState.settings = normalizeStageSettings(stage.settings);
         stageState.sessionJoin = stage.sessionJoin && typeof stage.sessionJoin === "object" ? stage.sessionJoin : null;
-        stageState.emojiLeaderboard = normalizeEmojiLeaderboard(stage.emojiLeaderboard);
+        stageState.engagementLeaderboard = normalizeEngagementLeaderboard(
+          stage.engagementLeaderboard || stage.emojiLeaderboard
+        );
         applyVisualSettings();
         renderQr();
-        renderEmojiLeaderboard();
+        renderEngagementLeaderboard();
         if (Array.isArray(stage.recentMessages)) {
           setChatFromSnapshot(stage.recentMessages);
         }
@@ -736,14 +758,22 @@
         }
 
         if (msg.type === "comment") {
+          if (msg.engagementLeaderboard || msg.emojiLeaderboard) {
+            stageState.engagementLeaderboard = normalizeEngagementLeaderboard(
+              msg.engagementLeaderboard || msg.emojiLeaderboard
+            );
+            renderEngagementLeaderboard();
+          }
           pushChat(msg);
           return;
         }
 
         if (msg.type === "stage_reaction") {
-          if (msg.emojiLeaderboard) {
-            stageState.emojiLeaderboard = normalizeEmojiLeaderboard(msg.emojiLeaderboard);
-            renderEmojiLeaderboard();
+          if (msg.engagementLeaderboard || msg.emojiLeaderboard) {
+            stageState.engagementLeaderboard = normalizeEngagementLeaderboard(
+              msg.engagementLeaderboard || msg.emojiLeaderboard
+            );
+            renderEngagementLeaderboard();
           }
           const burst = Math.max(
             1,
@@ -758,9 +788,9 @@
 
         if (msg.type === "session_reset" || msg.type === "session_closed") {
           stageState.chat = [];
-          stageState.emojiLeaderboard = normalizeEmojiLeaderboard(null);
+          stageState.engagementLeaderboard = normalizeEngagementLeaderboard(null);
           renderChat();
-          renderEmojiLeaderboard();
+          renderEngagementLeaderboard();
           return;
         }
 
@@ -822,7 +852,7 @@
       applyVisualSettings();
       renderQr();
       renderChat();
-      renderEmojiLeaderboard();
+      renderEngagementLeaderboard();
       connect();
     </script>
   </body>

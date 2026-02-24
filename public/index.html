@@ -148,6 +148,9 @@
         min-height: 140px;
         max-height: 46vh;
         overflow: auto;
+        display: flex;
+        flex-direction: column-reverse;
+        gap: 2px;
         margin-top: 14px;
         padding: 10px;
         border: 1px solid var(--line);
@@ -165,7 +168,7 @@
         word-break: break-word;
       }
       #chatFeed .chatLine + .chatLine {
-        margin-top: 2px;
+        margin-top: 0;
       }
       #chatFeed .chatTime {
         opacity: 0.72;
@@ -702,6 +705,12 @@
         return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "";
       }
 
+      function normalizeRankBadge(input) {
+        const raw = String(input || "").trim();
+        if (raw === "👑" || raw === "🥈" || raw === "🥉") return raw;
+        return "";
+      }
+
       function renderChatFeed() {
         chatFeedEl.textContent = "";
         const fragment = document.createDocumentFragment();
@@ -717,7 +726,11 @@
             }
             const nameNode = document.createElement("span");
             nameNode.className = "chatName";
-            nameNode.textContent = String(entry.name || "Anoniem");
+            const rankBadge = normalizeRankBadge(entry.rankBadge);
+            const nameLabel = rankBadge
+              ? `${rankBadge} ${String(entry.name || "Anoniem")}`
+              : String(entry.name || "Anoniem");
+            nameNode.textContent = nameLabel;
             if (entry.nameColor) nameNode.style.color = entry.nameColor;
 
             const textNode = document.createElement("span");
@@ -756,6 +769,7 @@
           name: String((msg && msg.name) || "Anoniem").slice(0, 24),
           text,
           nameColor: sanitizeNameColor(msg && msg.nameColor),
+          rankBadge: normalizeRankBadge(msg && msg.rankBadge),
           systemNotice: !!(msg && msg.system),
         });
       }
