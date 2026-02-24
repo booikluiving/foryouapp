@@ -22,6 +22,11 @@
         --qr-x: 86%;
         --qr-y: 10%;
         --emoji-scale: 1;
+        --leaderboard-scale: 1;
+        --leaderboard-width: 360px;
+        --leaderboard-x: 98%;
+        --leaderboard-y: 18%;
+        --leaderboard-fade-start: 74%;
       }
 
       html,
@@ -154,6 +159,93 @@
         z-index: 40;
       }
 
+      #leaderboardLayer {
+        position: absolute;
+        left: var(--leaderboard-x);
+        top: var(--leaderboard-y);
+        transform: translate(-100%, 0) scale(var(--leaderboard-scale));
+        transform-origin: top right;
+        width: var(--leaderboard-width);
+        pointer-events: none;
+        z-index: 35;
+      }
+
+      #leaderboardCard {
+        border-radius: 18px;
+        border: 1px solid var(--chat-border);
+        background: rgba(0, 0, 0, 0.56);
+        color: var(--chat-text);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
+        padding: 14px 14px 12px;
+        -webkit-mask-image: linear-gradient(
+          to bottom,
+          rgba(0, 0, 0, 1) 0%,
+          rgba(0, 0, 0, 1) var(--leaderboard-fade-start),
+          rgba(0, 0, 0, 0) 100%
+        );
+        mask-image: linear-gradient(
+          to bottom,
+          rgba(0, 0, 0, 1) 0%,
+          rgba(0, 0, 0, 1) var(--leaderboard-fade-start),
+          rgba(0, 0, 0, 0) 100%
+        );
+      }
+
+      #leaderboardRows {
+        display: grid;
+        gap: 8px;
+      }
+
+      .leaderboardRow {
+        display: grid;
+        grid-template-columns: 88px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(0, 0, 0, 0.34);
+        padding: 8px 10px;
+      }
+
+      .leaderboardRow.rank1 {
+        border-color: rgba(255, 215, 120, 0.46);
+      }
+
+      .leaderboardRow.rank2 {
+        border-color: rgba(226, 232, 240, 0.38);
+      }
+
+      .leaderboardRow.rank3 {
+        border-color: rgba(251, 191, 114, 0.4);
+      }
+
+      .leaderboardRank {
+        font-size: 22px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .leaderboardName {
+        font-size: 24px;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .leaderboardCount {
+        font-size: 22px;
+        font-weight: 700;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: rgba(248, 250, 252, 0.94);
+      }
+
+      .leaderboardEmpty {
+        color: var(--chat-muted);
+        font-size: 21px;
+        padding: 8px 4px 12px;
+      }
+
       #qrCard {
         min-width: 320px;
         max-width: 360px;
@@ -231,6 +323,14 @@
         <div id="chatList"></div>
       </div>
 
+      <div id="leaderboardLayer">
+        <div id="leaderboardCard">
+          <div id="leaderboardRows">
+            <div class="leaderboardEmpty">Nog geen emoji-reacties.</div>
+          </div>
+        </div>
+      </div>
+
       <div id="qrLayer">
         <div id="qrCard">
           <div id="qrTitle">Scan om mee te doen</div>
@@ -257,6 +357,8 @@
       const emojiLayerEl = document.getElementById("emojiLayer");
       const chatLayerEl = document.getElementById("chatLayer");
       const chatListEl = document.getElementById("chatList");
+      const leaderboardLayerEl = document.getElementById("leaderboardLayer");
+      const leaderboardRowsEl = document.getElementById("leaderboardRows");
       const qrLayerEl = document.getElementById("qrLayer");
       const qrCodeEl = document.getElementById("qrCode");
       const qrHintEl = document.getElementById("qrHint");
@@ -267,6 +369,7 @@
           showQr: true,
           showChat: true,
           showEmojis: true,
+          showLeaderboard: true,
           background: "transparent",
           chatScale: 1,
           chatBottom: 36,
@@ -283,9 +386,19 @@
           emojiFireX: 50,
           emojiLaughX: 50,
           emojiBoredX: 50,
+          leaderboardScale: 1,
+          leaderboardWidth: 360,
+          leaderboardX: 98,
+          leaderboardY: 18,
+          leaderboardFadeStart: 74,
         },
         sessionJoin: null,
         chat: [],
+        emojiLeaderboard: {
+          totalReactions: 0,
+          uniqueSenders: 0,
+          top: [],
+        },
       };
 
       let ws = null;
@@ -355,6 +468,7 @@
           showQr: src.showQr !== false,
           showChat: src.showChat !== false,
           showEmojis: src.showEmojis !== false,
+          showLeaderboard: src.showLeaderboard !== false,
           background: String(src.background || "transparent").toLowerCase() === "black" ? "black" : "transparent",
           chatScale: clampFloat(src.chatScale, 0.6, 2.2, 1),
           chatBottom: clampInt(src.chatBottom, 0, 700, 36),
@@ -371,6 +485,11 @@
           emojiFireX: clampFloat(src.emojiFireX, 0, 100, 50),
           emojiLaughX: clampFloat(src.emojiLaughX, 0, 100, 50),
           emojiBoredX: clampFloat(src.emojiBoredX, 0, 100, 50),
+          leaderboardScale: clampFloat(src.leaderboardScale, 0.45, 2.4, 1),
+          leaderboardWidth: clampInt(src.leaderboardWidth, 220, 760, 360),
+          leaderboardX: clampFloat(src.leaderboardX, 0, 100, 98),
+          leaderboardY: clampFloat(src.leaderboardY, 0, 100, 18),
+          leaderboardFadeStart: clampInt(src.leaderboardFadeStart, 30, 100, 74),
         };
       }
 
@@ -379,12 +498,34 @@
         statusPillEl.classList.toggle("show", !!show);
       }
 
+      function normalizeEmojiLeaderboard(raw) {
+        const src = raw && typeof raw === "object" ? raw : {};
+        const top = Array.isArray(src.top) ? src.top : [];
+        return {
+          totalReactions: Math.max(0, Math.floor(Number(src.totalReactions || 0))),
+          uniqueSenders: Math.max(0, Math.floor(Number(src.uniqueSenders || 0))),
+          top: top
+            .map((entry) => {
+              const total = Math.max(0, Math.floor(Number(entry && entry.total || 0)));
+              if (!total) return null;
+              return {
+                name: String(entry && entry.name || "Anoniem"),
+                total,
+                nameColor: sanitizeNameColor(entry && entry.nameColor),
+              };
+            })
+            .filter(Boolean)
+            .slice(0, 5),
+        };
+      }
+
       function applyVisualSettings() {
         const settings = stageState.settings;
         document.body.classList.toggle("bg-black", settings.background === "black");
         qrLayerEl.classList.toggle("hidden", !settings.showQr);
         chatLayerEl.classList.toggle("hidden", !settings.showChat);
         emojiLayerEl.classList.toggle("hidden", !settings.showEmojis);
+        leaderboardLayerEl.classList.toggle("hidden", !settings.showLeaderboard);
         document.documentElement.style.setProperty("--chat-scale", String(settings.chatScale));
         document.documentElement.style.setProperty("--chat-bottom", String(settings.chatBottom) + "px");
         document.documentElement.style.setProperty("--chat-height", String(settings.chatHeight) + "px");
@@ -394,6 +535,14 @@
         document.documentElement.style.setProperty("--qr-x", String(settings.qrX) + "%");
         document.documentElement.style.setProperty("--qr-y", String(settings.qrY) + "%");
         document.documentElement.style.setProperty("--emoji-scale", String(settings.emojiScale));
+        document.documentElement.style.setProperty("--leaderboard-scale", String(settings.leaderboardScale));
+        document.documentElement.style.setProperty("--leaderboard-width", String(settings.leaderboardWidth) + "px");
+        document.documentElement.style.setProperty("--leaderboard-x", String(settings.leaderboardX) + "%");
+        document.documentElement.style.setProperty("--leaderboard-y", String(settings.leaderboardY) + "%");
+        document.documentElement.style.setProperty(
+          "--leaderboard-fade-start",
+          String(settings.leaderboardFadeStart) + "%"
+        );
       }
 
       function getReactionAnchorX(settings, reactionKey) {
@@ -465,6 +614,40 @@
         chatListEl.appendChild(fragment);
       }
 
+      function getLeaderboardRankLabel(rank) {
+        if (rank === 1) return "1 👑";
+        if (rank === 2) return "2 🥈";
+        if (rank === 3) return "3 🥉";
+        return String(rank);
+      }
+
+      function renderEmojiLeaderboard() {
+        if (!leaderboardRowsEl) return;
+        const rows = stageState.emojiLeaderboard && Array.isArray(stageState.emojiLeaderboard.top)
+          ? stageState.emojiLeaderboard.top.slice(0, 5)
+          : [];
+
+        if (!rows.length) {
+          leaderboardRowsEl.innerHTML = '<div class="leaderboardEmpty">Nog geen emoji-reacties.</div>';
+          return;
+        }
+
+        leaderboardRowsEl.innerHTML = rows
+          .map((entry, index) => {
+            const rank = index + 1;
+            const name = esc(entry && entry.name ? entry.name : "Anoniem");
+            const total = Math.max(0, Math.floor(Number(entry && entry.total || 0)));
+            const nameColor = sanitizeNameColor(entry && entry.nameColor);
+            const nameStyle = nameColor ? ` style="color:${nameColor}"` : "";
+            return `<div class="leaderboardRow rank${rank}">
+              <div class="leaderboardRank">${getLeaderboardRankLabel(rank)}</div>
+              <div class="leaderboardName"${nameStyle}>${name}</div>
+              <div class="leaderboardCount">${total}</div>
+            </div>`;
+          })
+          .join("");
+      }
+
       function pushChat(item) {
         const entry = {
           name: String((item && item.name) || "Anoniem"),
@@ -530,8 +713,10 @@
         observeServerInstanceId(stage.serverInstanceId, "stage_snapshot");
         stageState.settings = normalizeStageSettings(stage.settings);
         stageState.sessionJoin = stage.sessionJoin && typeof stage.sessionJoin === "object" ? stage.sessionJoin : null;
+        stageState.emojiLeaderboard = normalizeEmojiLeaderboard(stage.emojiLeaderboard);
         applyVisualSettings();
         renderQr();
+        renderEmojiLeaderboard();
         if (Array.isArray(stage.recentMessages)) {
           setChatFromSnapshot(stage.recentMessages);
         }
@@ -556,6 +741,10 @@
         }
 
         if (msg.type === "stage_reaction") {
+          if (msg.emojiLeaderboard) {
+            stageState.emojiLeaderboard = normalizeEmojiLeaderboard(msg.emojiLeaderboard);
+            renderEmojiLeaderboard();
+          }
           const burst = Math.max(
             1,
             Math.min(
@@ -569,7 +758,9 @@
 
         if (msg.type === "session_reset" || msg.type === "session_closed") {
           stageState.chat = [];
+          stageState.emojiLeaderboard = normalizeEmojiLeaderboard(null);
           renderChat();
+          renderEmojiLeaderboard();
           return;
         }
 
@@ -631,6 +822,7 @@
       applyVisualSettings();
       renderQr();
       renderChat();
+      renderEmojiLeaderboard();
       connect();
     </script>
   </body>

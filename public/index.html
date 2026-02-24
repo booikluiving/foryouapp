@@ -17,6 +17,8 @@
         --button-bg: #ffffff;
         --accent: #2563eb;
         --accent-soft: #dbeafe;
+        --reaction-impact: rgba(37, 99, 235, 0.42);
+        --reaction-impact-clear: rgba(37, 99, 235, 0);
         --poll-line: #cbd5e1;
         --shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
         --toast-bg: rgba(28, 28, 28, 0.86);
@@ -35,13 +37,20 @@
         --button-bg: #1a2b3f;
         --accent: #6cb8ff;
         --accent-soft: #223c5a;
+        --reaction-impact: rgba(108, 184, 255, 0.46);
+        --reaction-impact-clear: rgba(108, 184, 255, 0);
         --poll-line: #3b5470;
         --shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
         --toast-bg: rgba(11, 17, 26, 0.9);
         --toast-subtle-bg: rgba(11, 17, 26, 0.82);
         --toast-ink: #e6edf5;
       }
+      html {
+        height: 100%;
+      }
       body {
+        margin: 0;
+        min-height: 100%;
         font-family: system-ui, -apple-system, Arial, sans-serif;
         padding: 16px;
         background: var(--bg);
@@ -169,6 +178,7 @@
         gap: 8px;
         margin-top: 8px;
         margin-bottom: 8px;
+        padding-bottom: 2px;
       }
       #reactionBar button {
         width: auto;
@@ -176,19 +186,96 @@
         flex: 1;
         margin: 0;
         min-height: 64px;
-        padding: 12px 10px;
+        padding: 11px 10px 12px;
         font-size: 24px;
-        line-height: 1.1;
+        line-height: 1.2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
         touch-action: manipulation;
         -webkit-tap-highlight-color: transparent;
         user-select: none;
         -webkit-user-select: none;
+        position: relative;
+        overflow: visible;
+        transform: none;
+        transform-origin: center;
+        transition: transform 120ms ease, filter 120ms ease, box-shadow 180ms ease;
+        backface-visibility: hidden;
+      }
+      #reactionBar button:active,
+      #reactionBar button.reaction-pressed {
+        transform: scale(0.93);
+        filter: brightness(0.96);
+      }
+      #reactionBar button.reaction-tap-pop {
+        animation: reactionTapPop 220ms cubic-bezier(0.17, 0.89, 0.32, 1.22);
+      }
+      @keyframes reactionTapPop {
+        0% {
+          transform: scale(0.93);
+        }
+        58% {
+          transform: scale(1.08);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+      #reactionBar button::after {
+        content: "";
+        position: absolute;
+        inset: -6px;
+        border-radius: 13px;
+        border: 2px solid var(--reaction-impact);
+        opacity: 0;
+        transform: scale(0.9);
+        pointer-events: none;
+      }
+      #reactionBar button.reaction-impact {
+        animation: reactionImpactFlash 320ms ease-out;
+      }
+      #reactionBar button.reaction-impact::after {
+        animation: reactionImpactRing 320ms cubic-bezier(0.1, 0.78, 0.18, 1);
+      }
+      @keyframes reactionImpactFlash {
+        0% {
+          box-shadow: 0 0 0 0 var(--reaction-impact);
+          filter: brightness(0.98);
+        }
+        40% {
+          box-shadow: 0 0 0 10px var(--reaction-impact-clear);
+          filter: brightness(1.08);
+        }
+        100% {
+          box-shadow: 0 0 0 14px var(--reaction-impact-clear);
+          filter: brightness(1);
+        }
+      }
+      @keyframes reactionImpactRing {
+        0% {
+          opacity: 0.62;
+          transform: scale(0.9);
+        }
+        100% {
+          opacity: 0;
+          transform: scale(1.22);
+        }
+      }
+      .reactionEmoji {
+        display: block;
+        line-height: 1.25;
+        font-size: 1em;
+        font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
       }
       .reactionCount {
         display: block;
         font-size: 12px;
         opacity: 0.7;
-        margin-top: 4px;
+        margin-top: 0;
+        line-height: 1;
       }
       #reactionBurstLayer {
         position: fixed;
@@ -303,6 +390,85 @@
         from { transform: rotate(0deg); }
         to { transform: rotate(360deg); }
       }
+      @media (prefers-reduced-motion: reduce) {
+        #reactionBar button {
+          transition: none;
+        }
+        #reactionBar button.reaction-tap-pop {
+          animation: none;
+        }
+        #reactionBar button.reaction-impact {
+          animation: none;
+        }
+        #reactionBar button.reaction-impact::after {
+          animation: none;
+        }
+      }
+      @media (max-width: 780px) {
+        body {
+          height: 100dvh;
+          min-height: 100dvh;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: calc(10px + env(safe-area-inset-top)) 12px calc(18px + env(safe-area-inset-bottom));
+          overscroll-behavior: none;
+        }
+        .topBar {
+          flex: 0 0 auto;
+        }
+        .topBar h2 {
+          margin: 0;
+          font-size: 1.3rem;
+        }
+        #status,
+        #nameRow,
+        #pollBox,
+        #text,
+        #send,
+        #reactionBar {
+          flex: 0 0 auto;
+        }
+        #nameRow {
+          margin: 0;
+        }
+        #pollBox {
+          margin-top: 0;
+          max-height: 28dvh;
+          overflow: auto;
+        }
+        #chatFeed {
+          order: 5;
+          flex: 1 1 auto;
+          min-height: 0;
+          max-height: none;
+          margin-top: 0;
+        }
+        #text {
+          order: 6;
+          resize: none;
+          max-height: 20dvh;
+        }
+        #send {
+          order: 7;
+          margin-top: 0;
+        }
+        #reactionBar {
+          order: 8;
+          margin-top: 0;
+          margin-bottom: 2px;
+          padding-bottom: 4px;
+        }
+        #reactionBar button {
+          min-height: 60px;
+          font-size: 22px;
+          padding-bottom: 13px;
+        }
+        #reactionBurstLayer {
+          bottom: 136px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -332,10 +498,10 @@
     </div>
 
     <div id="reactionBar">
-      <button type="button" data-reaction="heart" aria-label="Hartje">❤️<span class="reactionCount" data-reaction-count="heart">0</span></button>
-      <button type="button" data-reaction="fire" aria-label="Vuur">🔥<span class="reactionCount" data-reaction-count="fire">0</span></button>
-      <button type="button" data-reaction="laugh" aria-label="Lachen">😂<span class="reactionCount" data-reaction-count="laugh">0</span></button>
-      <button type="button" data-reaction="bored" aria-label="Saai">👎<span class="reactionCount" data-reaction-count="bored">0</span></button>
+      <button type="button" data-reaction="heart" aria-label="Hartje"><span class="reactionEmoji" aria-hidden="true">❤️</span><span class="reactionCount" data-reaction-count="heart">0</span></button>
+      <button type="button" data-reaction="fire" aria-label="Vuur"><span class="reactionEmoji" aria-hidden="true">🔥</span><span class="reactionCount" data-reaction-count="fire">0</span></button>
+      <button type="button" data-reaction="laugh" aria-label="Lachen"><span class="reactionEmoji" aria-hidden="true">😂</span><span class="reactionCount" data-reaction-count="laugh">0</span></button>
+      <button type="button" data-reaction="bored" aria-label="Saai"><span class="reactionEmoji" aria-hidden="true">👎</span><span class="reactionCount" data-reaction-count="bored">0</span></button>
     </div>
 
     <textarea
@@ -414,12 +580,16 @@
         laugh: "😂",
         bored: "👎",
       };
-      let lastReactionSendAt = 0;
-      let lastReactionKey = "";
-      const REACTION_MIN_GAP_MS = 90;
-      const REACTION_REPEAT_GUARD_MS = 280;
       const REACTION_POINTER_GHOST_MS = 700;
+      const HEART_HAPTIC_MIN_GAP_MS = 90;
+      const REACTION_SEND_STEP_MS = 130;
+      const REACTION_QUEUE_MAX = 240;
       let lastReactionPointerAt = 0;
+      let lastHeartHapticAt = 0;
+      let lastQueuedReactionSendAt = 0;
+      const pendingReactionQueue = [];
+      let reactionQueueFlushTimer = null;
+      const supportsNativeVibration = typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
       let activePoll = null;
       let selectedPollOptionIndex = null;
       let pollVotePending = false;
@@ -631,16 +801,18 @@
           ensureFreshConnection();
           return;
         }
-        const now = Date.now();
-        if (now - lastReactionSendAt < REACTION_MIN_GAP_MS) return;
-        if (reactionKey === lastReactionKey && now - lastReactionSendAt < REACTION_REPEAT_GUARD_MS) return;
-        lastReactionSendAt = now;
-        lastReactionKey = reactionKey;
+        enqueueReactionForSend(reactionKey);
         try {
-          ws.send(JSON.stringify({ type: "reaction", reaction: reactionKey, clientTag }));
           reactionCounts[reactionKey] = Number(reactionCounts[reactionKey] || 0) + 1;
           updateReactionCounterUi();
           spawnReactionBurst(reactionKey, 1);
+          if (reactionKey === "heart" && supportsNativeVibration) {
+            const pulseNow = Date.now();
+            if (pulseNow - lastHeartHapticAt >= HEART_HAPTIC_MIN_GAP_MS) {
+              lastHeartHapticAt = pulseNow;
+              try { navigator.vibrate(12); } catch {}
+            }
+          }
         } catch {}
       }
 
@@ -819,12 +991,74 @@
         }
       }
 
-      function readReactionKeyFromEventTarget(target) {
+      function readReactionButtonFromEventTarget(target) {
         const btn = target && typeof target.closest === "function"
           ? target.closest("button[data-reaction]")
           : null;
-        if (!btn) return "";
-        return String(btn.getAttribute("data-reaction") || "");
+        return btn && reactionBarEl.contains(btn) ? btn : null;
+      }
+
+      function clearReactionButtonPressedState() {
+        const pressed = reactionBarEl.querySelector("button[data-reaction].reaction-pressed");
+        if (pressed) pressed.classList.remove("reaction-pressed");
+      }
+
+      function triggerReactionTapFeedback(button) {
+        if (!button) return;
+        button.classList.remove("reaction-tap-pop", "reaction-impact");
+        void button.offsetWidth;
+        button.classList.add("reaction-tap-pop", "reaction-impact");
+        window.setTimeout(() => {
+          button.classList.remove("reaction-tap-pop");
+          button.classList.remove("reaction-impact");
+        }, 340);
+      }
+
+      function clearPendingReactionQueue() {
+        pendingReactionQueue.length = 0;
+        lastQueuedReactionSendAt = 0;
+        if (reactionQueueFlushTimer) {
+          clearInterval(reactionQueueFlushTimer);
+          reactionQueueFlushTimer = null;
+        }
+      }
+
+      function flushReactionQueue(force = false) {
+        if (!pendingReactionQueue.length) {
+          if (reactionQueueFlushTimer) {
+            clearInterval(reactionQueueFlushTimer);
+            reactionQueueFlushTimer = null;
+          }
+          return;
+        }
+        if (!ws || ws.readyState !== WebSocket.OPEN || pausedByServer) return;
+        const now = Date.now();
+        if (!force && now - lastQueuedReactionSendAt < REACTION_SEND_STEP_MS) return;
+        const reactionKey = pendingReactionQueue.shift();
+        if (!reactionEmoji[reactionKey]) return;
+        try {
+          ws.send(JSON.stringify({ type: "reaction", reaction: reactionKey, clientTag }));
+          lastQueuedReactionSendAt = now;
+        } catch {
+          pendingReactionQueue.unshift(reactionKey);
+        }
+      }
+
+      function startReactionQueueLoop() {
+        if (reactionQueueFlushTimer) return;
+        reactionQueueFlushTimer = setInterval(() => {
+          flushReactionQueue(false);
+        }, 40);
+      }
+
+      function enqueueReactionForSend(reactionKey) {
+        if (!reactionEmoji[reactionKey]) return;
+        if (pendingReactionQueue.length >= REACTION_QUEUE_MAX) {
+          pendingReactionQueue.shift();
+        }
+        pendingReactionQueue.push(reactionKey);
+        startReactionQueueLoop();
+        flushReactionQueue(false);
       }
 
       function hideToast() {
@@ -1278,11 +1512,13 @@
           return;
         }
         if (code === "user_muted") {
+          clearPendingReactionQueue();
           resetPollVotePending();
           showUserNotice(buildMuteNoticeText(msg));
           return;
         }
         if (code === "session_join_required") {
+          clearPendingReactionQueue();
           pausedByServer = true;
           serverPauseReason = "join_required";
           pendingReconnect = false;
@@ -1294,6 +1530,7 @@
           return;
         }
         if (code === "session_inactive") {
+          clearPendingReactionQueue();
           pausedByServer = true;
           serverPauseReason = "session_inactive";
           pendingReconnect = false;
@@ -1305,6 +1542,7 @@
           return;
         }
         if (code === "user_blocked") {
+          clearPendingReactionQueue();
           resetPollVotePending();
           showUserNotice("Je bent geblokkeerd door de moderator.");
           return;
@@ -1413,12 +1651,14 @@
             const currentName = sanitizeNameClient(localStorage.getItem("live_name")) || myName;
             socket.send(JSON.stringify({ type: "register", clientTag, name: currentName }));
           } catch {}
+          flushReactionQueue(true);
         });
 
         socket.addEventListener("close", (ev) => {
           if (socket !== ws) return;
           const closedBySessionControl = ev.code === 4010 || ev.code === 4011 || ev.code === 4008 || ev.code === 4009;
           if (closedBySessionControl || pausedByServer) {
+            clearPendingReactionQueue();
             debugLog("ws close code=" + ev.code + " -> paused by server");
             clearConnectTimeout();
             stopHeartbeat();
@@ -1533,6 +1773,7 @@
               return;
             }
             if (msg.type === "session_reset") {
+              clearPendingReactionQueue();
               pausedByServer = true;
               serverPauseReason = "session_reset";
               setReactionCounts({ heart: 0, fire: 0, laugh: 0, bored: 0 });
@@ -1543,6 +1784,7 @@
               return;
             }
             if (msg.type === "session_closed") {
+              clearPendingReactionQueue();
               pausedByServer = true;
               serverPauseReason = "session_inactive";
               setReactionCounts({ heart: 0, fire: 0, laugh: 0, bored: 0 });
@@ -1661,20 +1903,37 @@
         renderPollMeta();
       });
       pollSubmitBtn.addEventListener("click", submitPollVote);
+      reactionBarEl.addEventListener("pointerdown", (e) => {
+        const btn = readReactionButtonFromEventTarget(e.target);
+        if (!btn) return;
+        clearReactionButtonPressedState();
+        btn.classList.add("reaction-pressed");
+      });
       reactionBarEl.addEventListener("pointerup", (e) => {
-        const reactionKey = readReactionKeyFromEventTarget(e.target);
+        const btn = readReactionButtonFromEventTarget(e.target);
+        const reactionKey = btn ? String(btn.getAttribute("data-reaction") || "") : "";
+        clearReactionButtonPressedState();
         if (!reactionKey) return;
+        triggerReactionTapFeedback(btn);
         lastReactionPointerAt = Date.now();
         e.preventDefault();
         sendReaction(reactionKey);
       });
+      reactionBarEl.addEventListener("pointercancel", () => {
+        clearReactionButtonPressedState();
+      });
+      reactionBarEl.addEventListener("pointerleave", () => {
+        clearReactionButtonPressedState();
+      });
       reactionBarEl.addEventListener("click", (e) => {
-        const reactionKey = readReactionKeyFromEventTarget(e.target);
+        const btn = readReactionButtonFromEventTarget(e.target);
+        const reactionKey = btn ? String(btn.getAttribute("data-reaction") || "") : "";
         if (!reactionKey) return;
         if (Date.now() - lastReactionPointerAt < REACTION_POINTER_GHOST_MS) {
           e.preventDefault();
           return;
         }
+        triggerReactionTapFeedback(btn);
         sendReaction(reactionKey);
       });
       reactionBarEl.addEventListener("dblclick", (e) => {

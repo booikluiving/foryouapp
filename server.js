@@ -111,6 +111,7 @@ const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   showQr: true,
   showChat: true,
   showEmojis: true,
+  showLeaderboard: true,
   background: "transparent",
   chatScale: 1,
   chatBottom: 36,
@@ -127,6 +128,11 @@ const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   emojiFireX: 50,
   emojiLaughX: 50,
   emojiBoredX: 50,
+  leaderboardScale: 1,
+  leaderboardWidth: 360,
+  leaderboardX: 98,
+  leaderboardY: 18,
+  leaderboardFadeStart: 74,
 });
 const STAGE_OUTPUT_WIDTH = 1080;
 const STAGE_OUTPUT_HEIGHT = 1920;
@@ -801,6 +807,8 @@ const DEFAULT_REACTION_COUNTS = Object.freeze({
   laugh: 0,
   bored: 0,
 });
+const EMOJI_LEADERBOARD_MAX_ITEMS = 200;
+const STAGE_EMOJI_LEADERBOARD_LIMIT = 5;
 const SIM_TEXT_POOLS = [
   {
     key: "absurd_fragments",
@@ -1206,6 +1214,119 @@ function reactionCountsSnapshot(counts) {
     fire: Number(src.fire || 0),
     laugh: Number(src.laugh || 0),
     bored: Number(src.bored || 0),
+  };
+}
+
+function syncEmojiLeaderboardIdentity(meta) {
+  if (!meta) return;
+  const clientKey = normalizeClientKey(meta.clientKey || buildClientKey(meta.ip, meta.clientTag));
+  if (!clientKey) return;
+
+  const existing = emojiReactionLeaderboard.get(clientKey);
+  if (!existing) return;
+
+  const safeName = sanitizeName(meta.name || existing.name || "Anoniem");
+  const safeTag = sanitizeClientTag(meta.clientTag || existing.clientTag || "anon");
+  const safeIp = normalizeIp(meta.ip || existing.ip || extractIpFromClientKey(clientKey) || "unknown");
+  const isBot = isSimulatorBotIdentity(meta, safeName, safeTag);
+
+  emojiReactionLeaderboard.set(clientKey, {
+    ...existing,
+    clientKey,
+    clientTag: safeTag,
+    name: safeName,
+    ip: safeIp,
+    isBot,
+  });
+}
+
+function recordEmojiReaction(meta) {
+  const clientKey = normalizeClientKey(meta && meta.clientKey);
+  if (!clientKey) return null;
+
+  const safeTag = sanitizeClientTag(meta && meta.clientTag);
+  const safeName = sanitizeName(meta && meta.name);
+  const safeIp = normalizeIp(meta && meta.ip ? meta.ip : extractIpFromClientKey(clientKey));
+  const isBot = isSimulatorBotIdentity(meta || {}, safeName, safeTag);
+  const prev = emojiReactionLeaderboard.get(clientKey);
+  const nextTotal = Math.max(0, Number(prev && prev.total || 0)) + 1;
+
+  const entry = {
+    clientKey,
+    clientTag: safeTag,
+    name: safeName || "Anoniem",
+    ip: safeIp,
+    isBot,
+    total: nextTotal,
+    lastReactionAt: nowIso(),
+  };
+  emojiReactionLeaderboard.set(clientKey, entry);
+  return entry;
+}
+
+function getEmojiLeaderboardSnapshot(users = [], limit = EMOJI_LEADERBOARD_MAX_ITEMS) {
+  const safeLimit = clampInt(limit, 1, 200, EMOJI_LEADERBOARD_MAX_ITEMS);
+  const onlineByClientKey = new Map();
+
+  for (const user of Array.isArray(users) ? users : []) {
+    const clientKey = normalizeClientKey(user && user.clientKey);
+    if (!clientKey) continue;
+    const connectedAt = String(user && user.connectedAt || "");
+    const existing = onlineByClientKey.get(clientKey);
+    if (existing && connectedAt <= String(existing.connectedAt || "")) continue;
+    onlineByClientKey.set(clientKey, {
+      connectedAt,
+      name: sanitizeName(user && user.name),
+      clientTag: sanitizeClientTag(user && user.clientTag),
+      ip: normalizeIp(user && user.ip),
+      isBot: !!(user && user.isBot),
+    });
+  }
+
+  const ranked = Array.from(emojiReactionLeaderboard.values())
+    .map((entry) => {
+      const clientKey = normalizeClientKey(entry && entry.clientKey);
+      if (!clientKey) return null;
+      const onlineInfo = onlineByClientKey.get(clientKey) || null;
+      const name = sanitizeName((onlineInfo && onlineInfo.name) || (entry && entry.name) || "Anoniem");
+      const clientTag = sanitizeClientTag(
+        (onlineInfo && onlineInfo.clientTag) || (entry && entry.clientTag) || "anon"
+      );
+      const ip = normalizeIp(
+        (onlineInfo && onlineInfo.ip) || (entry && entry.ip) || extractIpFromClientKey(clientKey) || "unknown"
+      );
+      const isBot = onlineInfo
+        ? !!onlineInfo.isBot
+        : isSimulatorBotIdentity({ clientKey, clientTag, name, ip }, name, clientTag);
+      const total = Math.max(0, Math.floor(Number(entry && entry.total || 0)));
+      if (!total) return null;
+      return {
+        clientKey,
+        clientTag,
+        name,
+        nameColor: getNameColorHex(name),
+        ip,
+        isBot,
+        total,
+        lastReactionAt: String(entry && entry.lastReactionAt || ""),
+        online: !!onlineInfo,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      const byTotal = Number(b.total || 0) - Number(a.total || 0);
+      if (byTotal !== 0) return byTotal;
+      const aTs = parseIsoTime(a.lastReactionAt) || 0;
+      const bTs = parseIsoTime(b.lastReactionAt) || 0;
+      if (aTs !== bTs) return bTs - aTs;
+      return String(a.name || "").localeCompare(String(b.name || ""), "nl-NL");
+    });
+
+  const totalReactions = ranked.reduce((sum, row) => sum + Number(row && row.total || 0), 0);
+  return {
+    totalReactions,
+    uniqueSenders: ranked.length,
+    top: ranked.slice(0, safeLimit),
   };
 }
 
@@ -1976,6 +2097,38 @@ function normalizeStageOutputSettings(rawSettings = {}, baseSettings = STAGE_OUT
     100,
     base.emojiBoredX
   );
+  const leaderboardScale = clampFloat(
+    rawSettings && rawSettings.leaderboardScale !== undefined ? rawSettings.leaderboardScale : base.leaderboardScale,
+    0.45,
+    2.4,
+    base.leaderboardScale
+  );
+  const leaderboardWidth = clampInt(
+    rawSettings && rawSettings.leaderboardWidth !== undefined ? rawSettings.leaderboardWidth : base.leaderboardWidth,
+    220,
+    760,
+    base.leaderboardWidth
+  );
+  const leaderboardX = clampFloat(
+    rawSettings && rawSettings.leaderboardX !== undefined ? rawSettings.leaderboardX : base.leaderboardX,
+    0,
+    100,
+    base.leaderboardX
+  );
+  const leaderboardY = clampFloat(
+    rawSettings && rawSettings.leaderboardY !== undefined ? rawSettings.leaderboardY : base.leaderboardY,
+    0,
+    100,
+    base.leaderboardY
+  );
+  const leaderboardFadeStart = clampInt(
+    rawSettings && rawSettings.leaderboardFadeStart !== undefined
+      ? rawSettings.leaderboardFadeStart
+      : base.leaderboardFadeStart,
+    30,
+    100,
+    base.leaderboardFadeStart
+  );
   const backgroundRaw = String(
     rawSettings && rawSettings.background !== undefined
       ? rawSettings.background
@@ -1997,6 +2150,12 @@ function normalizeStageOutputSettings(rawSettings = {}, baseSettings = STAGE_OUT
       rawSettings && rawSettings.showEmojis !== undefined ? rawSettings.showEmojis : base.showEmojis,
       base.showEmojis
     ),
+    showLeaderboard: parseBooleanLike(
+      rawSettings && rawSettings.showLeaderboard !== undefined
+        ? rawSettings.showLeaderboard
+        : base.showLeaderboard,
+      base.showLeaderboard
+    ),
     background,
     chatScale,
     chatBottom,
@@ -2013,6 +2172,11 @@ function normalizeStageOutputSettings(rawSettings = {}, baseSettings = STAGE_OUT
     emojiFireX,
     emojiLaughX,
     emojiBoredX,
+    leaderboardScale,
+    leaderboardWidth,
+    leaderboardX,
+    leaderboardY,
+    leaderboardFadeStart,
   };
 }
 
@@ -2145,6 +2309,7 @@ const blockedUsers = new Map();
 let currentSession = ensureOpenSession();
 let activePoll = parsePollRow(sql.getActivePoll.get(currentSession.id));
 let reactionCounts = createReactionCounts();
+const emojiReactionLeaderboard = new Map();
 let pollAutoCloseTimer = null;
 
 function getPollEndsAtIso(poll) {
@@ -2516,6 +2681,25 @@ function getStageRecentMessages(limit = 26) {
     });
 }
 
+function getConnectedUsersForEmojiLeaderboard() {
+  return Array.from(connectedClients.values()).map((client) => {
+    const name = sanitizeName(client && client.name);
+    const clientTag = sanitizeClientTag(client && client.clientTag);
+    return {
+      clientKey: normalizeClientKey(client && client.clientKey),
+      clientTag,
+      name,
+      ip: normalizeIp(client && client.ip),
+      connectedAt: String(client && client.connectedAt || ""),
+      isBot: isSimulatorBotIdentity(client, name, clientTag),
+    };
+  });
+}
+
+function getStageEmojiLeaderboardSnapshot() {
+  return getEmojiLeaderboardSnapshot(getConnectedUsersForEmojiLeaderboard(), STAGE_EMOJI_LEADERBOARD_LIMIT);
+}
+
 function getStageSnapshot(req) {
   const control = getStageControlState(req);
   const sessionJoin = getCurrentSessionJoinPayload(req);
@@ -2531,6 +2715,7 @@ function getStageSnapshot(req) {
     },
     sessionJoin: sessionJoin || null,
     reactionCounts: reactionCountsSnapshot(reactionCounts),
+    emojiLeaderboard: getStageEmojiLeaderboardSnapshot(),
     recentMessages: getStageRecentMessages(32),
   };
 }
@@ -3164,6 +3349,7 @@ function beginNewSession(name, createdBy = "admin") {
   currentSession = sql.getSessionById.get(insert.lastInsertRowid);
   activePoll = null;
   reactionCounts = createReactionCounts();
+  emojiReactionLeaderboard.clear();
   mutedUsers.clear();
   blockedUsers.clear();
   rateMap.clear();
@@ -3190,6 +3376,7 @@ function endCurrentSession(createdBy = "admin") {
   }
   activePoll = null;
   reactionCounts = createReactionCounts();
+  emojiReactionLeaderboard.clear();
   mutedUsers.clear();
   blockedUsers.clear();
   rateMap.clear();
@@ -4518,6 +4705,7 @@ function updateStageSettingsFromSource(incoming, source = "admin", req = null) {
     showQr: stageOutputSettings.showQr,
     showChat: stageOutputSettings.showChat,
     showEmojis: stageOutputSettings.showEmojis,
+    showLeaderboard: stageOutputSettings.showLeaderboard,
     background: stageOutputSettings.background,
     chatScale: stageOutputSettings.chatScale,
     chatBottom: stageOutputSettings.chatBottom,
@@ -4534,6 +4722,11 @@ function updateStageSettingsFromSource(incoming, source = "admin", req = null) {
     emojiFireX: stageOutputSettings.emojiFireX,
     emojiLaughX: stageOutputSettings.emojiLaughX,
     emojiBoredX: stageOutputSettings.emojiBoredX,
+    leaderboardScale: stageOutputSettings.leaderboardScale,
+    leaderboardWidth: stageOutputSettings.leaderboardWidth,
+    leaderboardX: stageOutputSettings.leaderboardX,
+    leaderboardY: stageOutputSettings.leaderboardY,
+    leaderboardFadeStart: stageOutputSettings.leaderboardFadeStart,
   });
   broadcastStageState(req, source === "osc" ? "osc_stage_settings" : "settings_updated");
   return getStageControlState(req);
@@ -5090,6 +5283,7 @@ function getAdminState(req) {
         blockedUntil: block && block.expiresAt ? block.expiresAt : null,
       };
     });
+  const emojiLeaderboard = getEmojiLeaderboardSnapshot(users);
   const registeredCountRow = sql.countSessionJoinEvents.get(currentSession.id);
   const activeGrantCountRow = sql.countSessionActiveAccessGrants.get(currentSession.id, snapshotNow);
   const registeredCount = Number(registeredCountRow && registeredCountRow.n || 0);
@@ -5201,6 +5395,7 @@ function getAdminState(req) {
     users,
     simulation: chatSimulator.getState(),
     reactionCounts: reactionCountsSnapshot(reactionCounts),
+    emojiLeaderboard,
     activePoll: activePollSnapshot,
     lastPoll: pollForState
       ? {
@@ -5259,6 +5454,7 @@ function persistConnectedMeta(meta) {
     ua: meta.ua,
     connectedAt: meta.connectedAt,
   });
+  syncEmojiLeaderboardIdentity(meta);
 }
 
 function setMute(target, minutes, reason, createdBy) {
@@ -6998,16 +7194,26 @@ wss.on("connection", (ws, req) => {
       }
 
       if (!allowReaction(meta.clientKey)) return;
+      const leaderEntry = recordEmojiReaction(meta);
       reactionCounts[reaction] = Number(reactionCounts[reaction] || 0) + 1;
       const counts = reactionCountsSnapshot(reactionCounts);
       const total = Number(counts[reaction] || 0);
-      writeDebug("reaction_received", { clientId, ip, clientKey: meta.clientKey, reaction, total });
+      const leaderboard = getStageEmojiLeaderboardSnapshot();
+      writeDebug("reaction_received", {
+        clientId,
+        ip,
+        clientKey: meta.clientKey,
+        reaction,
+        total,
+        senderEmojiTotal: Number(leaderEntry && leaderEntry.total || 0),
+      });
       sendToStageSubscribers({
         type: "stage_reaction",
         time: nowIso(),
         reaction,
         counts,
         burst: 1,
+        emojiLeaderboard: leaderboard,
       });
       return;
     }
