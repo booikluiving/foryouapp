@@ -313,6 +313,88 @@ const SIM_PERSONAS = [
     ],
   },
 ];
+const SIM_ACTIVITY_ARCHETYPES = [
+  {
+    id: "steady",
+    weight: 34,
+    commentDriveMin: 0.85,
+    commentDriveMax: 1.18,
+    reactionDriveMin: 0.82,
+    reactionDriveMax: 1.22,
+    emojiDriveMin: 0.82,
+    emojiDriveMax: 1.18,
+    gapBiasMin: 0.92,
+    gapBiasMax: 1.08,
+    callbackDriveMin: 0.88,
+    callbackDriveMax: 1.12,
+    reactionCooldownBiasMin: 0.9,
+    reactionCooldownBiasMax: 1.12,
+  },
+  {
+    id: "chatty",
+    weight: 20,
+    commentDriveMin: 1.24,
+    commentDriveMax: 1.95,
+    reactionDriveMin: 0.56,
+    reactionDriveMax: 1.08,
+    emojiDriveMin: 0.82,
+    emojiDriveMax: 1.26,
+    gapBiasMin: 0.62,
+    gapBiasMax: 0.9,
+    callbackDriveMin: 1.02,
+    callbackDriveMax: 1.38,
+    reactionCooldownBiasMin: 0.94,
+    reactionCooldownBiasMax: 1.24,
+  },
+  {
+    id: "reactor",
+    weight: 18,
+    commentDriveMin: 0.46,
+    commentDriveMax: 0.96,
+    reactionDriveMin: 1.36,
+    reactionDriveMax: 2.62,
+    emojiDriveMin: 1.12,
+    emojiDriveMax: 1.92,
+    gapBiasMin: 1.04,
+    gapBiasMax: 1.46,
+    callbackDriveMin: 0.68,
+    callbackDriveMax: 1.04,
+    reactionCooldownBiasMin: 0.54,
+    reactionCooldownBiasMax: 0.94,
+  },
+  {
+    id: "emoji_chaos",
+    weight: 14,
+    commentDriveMin: 0.76,
+    commentDriveMax: 1.36,
+    reactionDriveMin: 1.08,
+    reactionDriveMax: 2.08,
+    emojiDriveMin: 1.52,
+    emojiDriveMax: 2.42,
+    gapBiasMin: 0.84,
+    gapBiasMax: 1.24,
+    callbackDriveMin: 0.78,
+    callbackDriveMax: 1.18,
+    reactionCooldownBiasMin: 0.48,
+    reactionCooldownBiasMax: 0.86,
+  },
+  {
+    id: "lurker",
+    weight: 14,
+    commentDriveMin: 0.3,
+    commentDriveMax: 0.72,
+    reactionDriveMin: 0.52,
+    reactionDriveMax: 1.22,
+    emojiDriveMin: 0.64,
+    emojiDriveMax: 1.16,
+    gapBiasMin: 1.34,
+    gapBiasMax: 2.14,
+    callbackDriveMin: 0.5,
+    callbackDriveMax: 0.9,
+    reactionCooldownBiasMin: 1.1,
+    reactionCooldownBiasMax: 1.82,
+  },
+];
 const SIM_ABSURD_FRAGMENTS = [
   "mijn brein reboot net",
   "wat gebeurt hier precies",
@@ -1259,6 +1341,112 @@ function normalizeEngagementNameKey(input) {
     .slice(0, 120);
 }
 
+function resolveEngagementIdentity(meta = {}, options = {}) {
+  const fallbackClientKey = normalizeClientKey(options && options.fallbackClientKey);
+  const rawClientKey = normalizeClientKey(meta && meta.clientKey);
+  const clientKeyForTag = rawClientKey || fallbackClientKey;
+  const safeIp = normalizeIp(
+    (meta && meta.ip)
+    || extractIpFromClientKey(rawClientKey || fallbackClientKey)
+    || "unknown"
+  );
+  const safeTag = sanitizeClientTag(
+    (meta && meta.clientTag)
+    || (clientKeyForTag && clientKeyForTag.includes("|")
+      ? clientKeyForTag.slice(clientKeyForTag.indexOf("|") + 1)
+      : "")
+    || "anon"
+  );
+  const safeName = sanitizeName((meta && meta.name) || "Anoniem");
+  const safeClientKey = rawClientKey || fallbackClientKey || buildClientKey(safeIp, safeTag);
+  const isBot = isSimulatorBotIdentity(
+    {
+      clientKey: safeClientKey,
+      clientTag: safeTag,
+      name: safeName,
+      ip: safeIp,
+    },
+    safeName,
+    safeTag
+  );
+  return {
+    engagementKey: isBot ? safeClientKey : `ip:${safeIp}`,
+    clientKey: safeClientKey,
+    clientTag: safeTag,
+    name: safeName,
+    ip: safeIp,
+    isBot,
+  };
+}
+
+function getEngagementEntryByIdentity(identity) {
+  if (!identity || !identity.engagementKey) return { entryKey: "", entry: null };
+
+  let entryKey = String(identity.engagementKey || "");
+  let entry = engagementLeaderboard.get(entryKey) || null;
+  if (entry) return { entryKey, entry };
+
+  if (!identity.isBot) {
+    const legacyClientKey = normalizeClientKey(identity.clientKey);
+    if (legacyClientKey) {
+      entry = engagementLeaderboard.get(legacyClientKey) || null;
+      if (entry) return { entryKey: legacyClientKey, entry };
+    }
+  }
+
+  return { entryKey, entry: null };
+}
+
+function mergeEngagementIdentity(incomingIdentity, existingEntry = null) {
+  const incomingClientKey = normalizeClientKey(incomingIdentity && incomingIdentity.clientKey);
+  const incomingTag = sanitizeClientTag(incomingIdentity && incomingIdentity.clientTag);
+  const incomingName = sanitizeName(incomingIdentity && incomingIdentity.name);
+  const incomingIp = normalizeIp(incomingIdentity && incomingIdentity.ip);
+
+  const existingClientKey = normalizeClientKey(existingEntry && existingEntry.clientKey);
+  const existingTag = sanitizeClientTag(existingEntry && existingEntry.clientTag);
+  const existingName = sanitizeName(existingEntry && existingEntry.name);
+  const existingIp = normalizeIp(existingEntry && existingEntry.ip);
+
+  const mergedName = incomingName !== "Anoniem"
+    ? incomingName
+    : (existingName || incomingName || "Anoniem");
+  const mergedTag = incomingTag !== "anon"
+    ? incomingTag
+    : (existingTag || incomingTag || "anon");
+  const mergedIp = incomingIp !== "unknown"
+    ? incomingIp
+    : (existingIp || incomingIp || "unknown");
+  const mergedClientKey = incomingClientKey || existingClientKey || buildClientKey(mergedIp, mergedTag);
+
+  const keepExistingBotIdentity = !!(
+    existingEntry &&
+    existingEntry.isBot &&
+    existingClientKey &&
+    (!incomingClientKey || incomingClientKey === existingClientKey)
+  );
+  if (keepExistingBotIdentity) {
+    return {
+      engagementKey: mergedClientKey,
+      clientKey: mergedClientKey,
+      clientTag: mergedTag,
+      name: mergedName,
+      ip: mergedIp,
+      isBot: true,
+    };
+  }
+
+  return resolveEngagementIdentity(
+    {
+      clientKey: mergedClientKey,
+      clientTag: mergedTag,
+      name: mergedName,
+      ip: mergedIp,
+    },
+    { fallbackClientKey: existingClientKey || incomingClientKey }
+  );
+}
+
 function getEngagementRankBadge(rank) {
   if (rank === 1) return "👑";
   if (rank === 2) return "🥈";
@@ -1297,6 +1485,7 @@ function getEngagementRankInfo(rankLookup, identity = {}) {
   if (clientKey && byClientKey && byClientKey.has(clientKey)) {
     return byClientKey.get(clientKey);
   }
+  if (clientKey) return null;
   const nameKey = normalizeEngagementNameKey(identity.name);
   if (nameKey && byName && byName.has(nameKey)) {
     return byName.get(nameKey);
@@ -1304,38 +1493,291 @@ function getEngagementRankInfo(rankLookup, identity = {}) {
   return null;
 }
 
-function syncEngagementLeaderboardIdentity(meta) {
-  if (!meta) return;
-  const clientKey = normalizeClientKey(meta.clientKey || buildClientKey(meta.ip, meta.clientTag));
-  if (!clientKey) return;
+function hasEngagementActivity(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  const emojiCount = Math.max(0, Number(entry.emojiCount || 0));
+  const commentCount = Math.max(0, Number(entry.commentCount || 0));
+  const emojiPoints = Math.max(0, Number(entry.emojiPoints || 0));
+  const commentPoints = Math.max(0, Number(entry.commentPoints || 0));
+  return emojiCount > 0 || commentCount > 0 || emojiPoints > 0 || commentPoints > 0;
+}
 
-  const existing = engagementLeaderboard.get(clientKey);
-  if (!existing) return;
+function pickLatestEngagementIso(...values) {
+  let best = "";
+  let bestTs = -1;
+  for (const value of values) {
+    const raw = String(value || "").trim();
+    if (!raw) continue;
+    const ts = parseIsoTime(raw);
+    if (ts === null) {
+      if (!best) best = raw;
+      continue;
+    }
+    if (ts >= bestTs) {
+      bestTs = ts;
+      best = raw;
+    }
+  }
+  return best;
+}
 
-  const safeName = sanitizeName(meta.name || existing.name || "Anoniem");
-  const safeTag = sanitizeClientTag(meta.clientTag || existing.clientTag || "anon");
-  const safeIp = normalizeIp(meta.ip || existing.ip || extractIpFromClientKey(clientKey) || "unknown");
-  const isBot = isSimulatorBotIdentity(meta, safeName, safeTag);
+function normalizeEngagementEntryRecord(input = {}, options = {}) {
+  const raw = input && typeof input === "object" ? input : {};
+  const rawClientKey = normalizeClientKey(raw.clientKey);
+  const rawIp = normalizeIp(raw.ip || extractIpFromClientKey(rawClientKey) || "unknown");
+  const fallbackTag = rawClientKey && rawClientKey.includes("|")
+    ? rawClientKey.slice(rawClientKey.indexOf("|") + 1)
+    : "anon";
+  const clientTag = sanitizeClientTag(raw.clientTag || fallbackTag);
+  const clientKey = rawClientKey || buildClientKey(rawIp, clientTag);
+  const name = sanitizeName(raw.name || "Anoniem");
 
-  engagementLeaderboard.set(clientKey, {
-    ...existing,
+  const forceIsBot = typeof options.forceIsBot === "boolean" ? options.forceIsBot : null;
+  const inferredBot = isSimulatorBotIdentity({ clientKey, clientTag, name, ip: rawIp }, name, clientTag);
+  const rawIsBot = raw.isBot === true || raw.isBot === 1 || String(raw.isBot || "").trim() === "1";
+  const isBot = forceIsBot === true ? true : (rawIsBot || inferredBot);
+  const engagementKey = isBot ? clientKey : `ip:${rawIp}`;
+
+  const emojiCount = Math.max(0, Math.floor(Number(raw.emojiCount || 0)));
+  const commentCount = Math.max(0, Math.floor(Number(raw.commentCount || 0)));
+  const emojiPoints = Math.max(0, Math.floor(Number(raw.emojiPoints || 0)));
+  const commentPoints = Math.max(0, Math.floor(Number(raw.commentPoints || 0)));
+  const lastEmojiAt = String(raw.lastEmojiAt || "").trim();
+  const lastCommentAt = String(raw.lastCommentAt || "").trim();
+  const lastActivityAt = pickLatestEngagementIso(raw.lastActivityAt, lastCommentAt, lastEmojiAt);
+
+  return {
+    engagementKey,
     clientKey,
-    clientTag: safeTag,
-    name: safeName,
-    ip: safeIp,
+    clientTag,
+    name,
+    ip: rawIp,
     isBot,
+    emojiCount,
+    commentCount,
+    emojiPoints,
+    commentPoints,
+    lastEmojiAt,
+    lastCommentAt,
+    lastActivityAt,
+  };
+}
+
+function mergeEngagementEntriesForStorage(baseEntry, nextEntry) {
+  const base = normalizeEngagementEntryRecord(baseEntry);
+  const incoming = normalizeEngagementEntryRecord(nextEntry);
+  if (!base) return incoming;
+  if (!incoming) return base;
+
+  const baseTs = parseIsoTime(base.lastActivityAt) || 0;
+  const incomingTs = parseIsoTime(incoming.lastActivityAt) || 0;
+  const preferred = incomingTs >= baseTs ? incoming : base;
+  const isBot = base.isBot || incoming.isBot;
+
+  return normalizeEngagementEntryRecord(
+    {
+      clientKey: preferred.clientKey,
+      clientTag: preferred.clientTag,
+      name: preferred.name,
+      ip: preferred.ip,
+      isBot,
+      emojiCount: Number(base.emojiCount || 0) + Number(incoming.emojiCount || 0),
+      commentCount: Number(base.commentCount || 0) + Number(incoming.commentCount || 0),
+      emojiPoints: Number(base.emojiPoints || 0) + Number(incoming.emojiPoints || 0),
+      commentPoints: Number(base.commentPoints || 0) + Number(incoming.commentPoints || 0),
+      lastEmojiAt: pickLatestEngagementIso(base.lastEmojiAt, incoming.lastEmojiAt),
+      lastCommentAt: pickLatestEngagementIso(base.lastCommentAt, incoming.lastCommentAt),
+      lastActivityAt: pickLatestEngagementIso(
+        base.lastActivityAt,
+        incoming.lastActivityAt,
+        base.lastCommentAt,
+        incoming.lastCommentAt,
+        base.lastEmojiAt,
+        incoming.lastEmojiAt
+      ),
+    },
+    isBot ? { forceIsBot: true } : {}
+  );
+}
+
+function getCurrentEngagementSessionId() {
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  if (!Number.isInteger(sessionId) || sessionId < 1) return 0;
+  return sessionId;
+}
+
+function writeSessionEngagementRow(sessionId, normalized) {
+  sql.upsertSessionEngagementRow.run(
+    sessionId,
+    normalized.engagementKey,
+    normalized.clientKey,
+    normalized.clientTag,
+    normalized.name,
+    normalized.ip,
+    normalized.isBot ? 1 : 0,
+    normalized.emojiCount,
+    normalized.commentCount,
+    normalized.emojiPoints,
+    normalized.commentPoints,
+    normalized.lastEmojiAt || null,
+    normalized.lastCommentAt || null,
+    normalized.lastActivityAt || null
+  );
+}
+
+function persistEngagementRowForSession(sessionId, entry, previousKey = "") {
+  const safeSessionId = Number(sessionId || 0);
+  if (!Number.isInteger(safeSessionId) || safeSessionId < 1) return;
+  const normalized = normalizeEngagementEntryRecord(entry);
+  if (!normalized || !normalized.engagementKey) return;
+  const safePreviousKey = String(previousKey || "").trim();
+  try {
+    if (safePreviousKey && safePreviousKey !== normalized.engagementKey) {
+      sql.deleteSessionEngagementRow.run(safeSessionId, safePreviousKey);
+    }
+    if (!hasEngagementActivity(normalized)) {
+      sql.deleteSessionEngagementRow.run(safeSessionId, normalized.engagementKey);
+      return;
+    }
+    writeSessionEngagementRow(safeSessionId, normalized);
+  } catch (err) {
+    writeDebug("engagement_store_write_failed", {
+      sessionId: safeSessionId,
+      engagementKey: normalized.engagementKey,
+      message: err && err.message ? err.message : "unknown",
+    });
+  }
+}
+
+function persistEngagementRowForCurrentSession(entry, previousKey = "") {
+  const sessionId = getCurrentEngagementSessionId();
+  if (!sessionId) return;
+  persistEngagementRowForSession(sessionId, entry, previousKey);
+}
+
+function rewritePersistedEngagementRowsForSession(sessionId) {
+  const safeSessionId = Number(sessionId || 0);
+  if (!Number.isInteger(safeSessionId) || safeSessionId < 1) return;
+  try {
+    sql.deleteSessionEngagementRowsBySession.run(safeSessionId);
+    for (const entry of engagementLeaderboard.values()) {
+      const normalized = normalizeEngagementEntryRecord(entry);
+      if (!normalized || !hasEngagementActivity(normalized)) continue;
+      writeSessionEngagementRow(safeSessionId, normalized);
+    }
+  } catch (err) {
+    writeDebug("engagement_store_rewrite_failed", {
+      sessionId: safeSessionId,
+      message: err && err.message ? err.message : "unknown",
+    });
+  }
+}
+
+function restorePersistedEngagementRowsForSession(sessionId) {
+  const safeSessionId = Number(sessionId || 0);
+  if (!Number.isInteger(safeSessionId) || safeSessionId < 1) {
+    engagementLeaderboard.clear();
+    return;
+  }
+
+  let rows = [];
+  try {
+    rows = sql.getSessionEngagementRowsBySession.all(safeSessionId);
+  } catch (err) {
+    writeDebug("engagement_store_read_failed", {
+      sessionId: safeSessionId,
+      message: err && err.message ? err.message : "unknown",
+    });
+    return;
+  }
+
+  engagementLeaderboard.clear();
+  if (!Array.isArray(rows) || !rows.length) return;
+
+  for (const row of rows) {
+    const normalized = normalizeEngagementEntryRecord(
+      {
+        engagementKey: row.engagementKey,
+        clientKey: row.clientKey,
+        clientTag: row.clientTag,
+        name: row.name,
+        ip: row.ip,
+        isBot: Number(row.isBot || 0) > 0,
+        emojiCount: row.emojiCount,
+        commentCount: row.commentCount,
+        emojiPoints: row.emojiPoints,
+        commentPoints: row.commentPoints,
+        lastEmojiAt: row.lastEmojiAt,
+        lastCommentAt: row.lastCommentAt,
+        lastActivityAt: row.lastActivityAt,
+      },
+      Number(row && row.isBot || 0) > 0 ? { forceIsBot: true } : {}
+    );
+    if (!normalized || !hasEngagementActivity(normalized)) continue;
+    const existing = engagementLeaderboard.get(normalized.engagementKey);
+    if (existing) {
+      engagementLeaderboard.set(
+        normalized.engagementKey,
+        mergeEngagementEntriesForStorage(existing, normalized)
+      );
+    } else {
+      engagementLeaderboard.set(normalized.engagementKey, normalized);
+    }
+  }
+
+  rewritePersistedEngagementRowsForSession(safeSessionId);
+  writeDebug("engagement_store_restored", {
+    sessionId: safeSessionId,
+    rows: rows.length,
+    participants: engagementLeaderboard.size,
   });
 }
 
-function recordEmojiEngagement(meta) {
-  const clientKey = normalizeClientKey(meta && meta.clientKey);
-  if (!clientKey) return null;
+function syncEngagementLeaderboardIdentity(meta) {
+  if (!meta) return;
+  const identityHint = resolveEngagementIdentity(meta);
+  const { entryKey: previousKey, entry: existing } = getEngagementEntryByIdentity(identityHint);
+  if (!existing) return;
 
-  const safeTag = sanitizeClientTag(meta && meta.clientTag);
-  const safeName = sanitizeName(meta && meta.name);
-  const safeIp = normalizeIp(meta && meta.ip ? meta.ip : extractIpFromClientKey(clientKey));
-  const isBot = isSimulatorBotIdentity(meta || {}, safeName, safeTag);
-  const prev = engagementLeaderboard.get(clientKey);
+  const resolved = mergeEngagementIdentity(identityHint, existing);
+  if (!resolved.engagementKey) return;
+  if (previousKey && previousKey !== resolved.engagementKey) {
+    engagementLeaderboard.delete(previousKey);
+  }
+
+  const nextEntry = {
+    ...existing,
+    engagementKey: resolved.engagementKey,
+    clientKey: resolved.clientKey,
+    clientTag: resolved.clientTag,
+    name: resolved.name,
+    ip: resolved.ip,
+    isBot: resolved.isBot,
+  };
+  engagementLeaderboard.set(resolved.engagementKey, nextEntry);
+
+  const identityChanged = !!(
+    previousKey !== resolved.engagementKey
+    || String(existing.clientKey || "") !== String(nextEntry.clientKey || "")
+    || String(existing.clientTag || "") !== String(nextEntry.clientTag || "")
+    || String(existing.name || "") !== String(nextEntry.name || "")
+    || String(existing.ip || "") !== String(nextEntry.ip || "")
+    || !!existing.isBot !== !!nextEntry.isBot
+  );
+  if (identityChanged) {
+    persistEngagementRowForCurrentSession(nextEntry, previousKey);
+  }
+}
+
+function recordEmojiEngagement(meta) {
+  const identityHint = resolveEngagementIdentity(meta || {});
+  if (!identityHint.engagementKey) return null;
+
+  const { entryKey: previousKey, entry: prev } = getEngagementEntryByIdentity(identityHint);
+  const identity = mergeEngagementIdentity(identityHint, prev || null);
+  if (prev && previousKey && previousKey !== identity.engagementKey) {
+    engagementLeaderboard.delete(previousKey);
+  }
   const now = nowIso();
   const emojiCount = Math.max(0, Number(prev && prev.emojiCount || 0)) + 1;
   const emojiPoints = Math.max(0, Number(prev && prev.emojiPoints || 0)) + ENGAGEMENT_EMOJI_POINTS;
@@ -1343,11 +1785,12 @@ function recordEmojiEngagement(meta) {
   const commentPoints = Math.max(0, Number(prev && prev.commentPoints || 0));
 
   const entry = {
-    clientKey,
-    clientTag: safeTag,
-    name: safeName || "Anoniem",
-    ip: safeIp,
-    isBot,
+    engagementKey: identity.engagementKey,
+    clientKey: identity.clientKey,
+    clientTag: identity.clientTag,
+    name: identity.name || "Anoniem",
+    ip: identity.ip,
+    isBot: identity.isBot,
     emojiCount,
     commentCount,
     emojiPoints,
@@ -1356,7 +1799,8 @@ function recordEmojiEngagement(meta) {
     lastCommentAt: String(prev && prev.lastCommentAt || ""),
     lastActivityAt: now,
   };
-  engagementLeaderboard.set(clientKey, entry);
+  engagementLeaderboard.set(identity.engagementKey, entry);
+  persistEngagementRowForCurrentSession(entry, previousKey);
   return entry;
 }
 
@@ -1399,14 +1843,14 @@ function recordCommentEngagement(meta, points = 0) {
   const safePoints = Math.max(0, Math.floor(Number(points || 0)));
   if (!safePoints) return null;
 
-  const clientKey = normalizeClientKey(meta && meta.clientKey);
-  if (!clientKey) return null;
+  const identityHint = resolveEngagementIdentity(meta || {});
+  if (!identityHint.engagementKey) return null;
 
-  const safeTag = sanitizeClientTag(meta && meta.clientTag);
-  const safeName = sanitizeName(meta && meta.name);
-  const safeIp = normalizeIp(meta && meta.ip ? meta.ip : extractIpFromClientKey(clientKey));
-  const isBot = isSimulatorBotIdentity(meta || {}, safeName, safeTag);
-  const prev = engagementLeaderboard.get(clientKey);
+  const { entryKey: previousKey, entry: prev } = getEngagementEntryByIdentity(identityHint);
+  const identity = mergeEngagementIdentity(identityHint, prev || null);
+  if (prev && previousKey && previousKey !== identity.engagementKey) {
+    engagementLeaderboard.delete(previousKey);
+  }
   const now = nowIso();
   const emojiCount = Math.max(0, Number(prev && prev.emojiCount || 0));
   const commentCount = Math.max(0, Number(prev && prev.commentCount || 0)) + 1;
@@ -1414,11 +1858,12 @@ function recordCommentEngagement(meta, points = 0) {
   const commentPoints = Math.max(0, Number(prev && prev.commentPoints || 0)) + safePoints;
 
   const entry = {
-    clientKey,
-    clientTag: safeTag,
-    name: safeName || "Anoniem",
-    ip: safeIp,
-    isBot,
+    engagementKey: identity.engagementKey,
+    clientKey: identity.clientKey,
+    clientTag: identity.clientTag,
+    name: identity.name || "Anoniem",
+    ip: identity.ip,
+    isBot: identity.isBot,
     emojiCount,
     commentCount,
     emojiPoints,
@@ -1427,40 +1872,56 @@ function recordCommentEngagement(meta, points = 0) {
     lastCommentAt: now,
     lastActivityAt: now,
   };
-  engagementLeaderboard.set(clientKey, entry);
+  engagementLeaderboard.set(identity.engagementKey, entry);
+  persistEngagementRowForCurrentSession(entry, previousKey);
   return entry;
 }
 
 function getEngagementLeaderboardSnapshot(users = [], limit = ENGAGEMENT_LEADERBOARD_MAX_ITEMS) {
   const safeLimit = clampInt(limit, 1, 200, ENGAGEMENT_LEADERBOARD_MAX_ITEMS);
   const onlineByClientKey = new Map();
+  const onlineByIp = new Map();
 
   for (const user of Array.isArray(users) ? users : []) {
     const clientKey = normalizeClientKey(user && user.clientKey);
-    if (!clientKey) continue;
     const connectedAt = String(user && user.connectedAt || "");
-    const existing = onlineByClientKey.get(clientKey);
-    if (existing && connectedAt <= String(existing.connectedAt || "")) continue;
-    onlineByClientKey.set(clientKey, {
+    const info = {
       connectedAt,
       name: sanitizeName(user && user.name),
       clientTag: sanitizeClientTag(user && user.clientTag),
       ip: normalizeIp(user && user.ip),
       isBot: !!(user && user.isBot),
-    });
+    };
+    if (clientKey) {
+      const existing = onlineByClientKey.get(clientKey);
+      if (!existing || connectedAt > String(existing.connectedAt || "")) {
+        onlineByClientKey.set(clientKey, info);
+      }
+    }
+    if (info.ip && !info.isBot) {
+      const existingIp = onlineByIp.get(info.ip);
+      if (!existingIp || connectedAt > String(existingIp.connectedAt || "")) {
+        onlineByIp.set(info.ip, info);
+      }
+    }
   }
 
   const ranked = Array.from(engagementLeaderboard.values())
     .map((entry) => {
-      const clientKey = normalizeClientKey(entry && entry.clientKey);
-      if (!clientKey) return null;
-      const onlineInfo = onlineByClientKey.get(clientKey) || null;
+      const fallbackIp = normalizeIp((entry && entry.ip) || extractIpFromClientKey(entry && entry.clientKey) || "unknown");
+      const fallbackTag = sanitizeClientTag(entry && entry.clientTag);
+      const clientKey = normalizeClientKey(entry && entry.clientKey) || buildClientKey(fallbackIp, fallbackTag);
+      const entryIsBot = !!(entry && entry.isBot);
+      let onlineInfo = onlineByClientKey.get(clientKey) || null;
+      if (!onlineInfo && !entryIsBot && fallbackIp) {
+        onlineInfo = onlineByIp.get(fallbackIp) || null;
+      }
       const name = sanitizeName((onlineInfo && onlineInfo.name) || (entry && entry.name) || "Anoniem");
       const clientTag = sanitizeClientTag(
         (onlineInfo && onlineInfo.clientTag) || (entry && entry.clientTag) || "anon"
       );
       const ip = normalizeIp(
-        (onlineInfo && onlineInfo.ip) || (entry && entry.ip) || extractIpFromClientKey(clientKey) || "unknown"
+        (onlineInfo && onlineInfo.ip) || fallbackIp || "unknown"
       );
       const isBot = onlineInfo
         ? !!onlineInfo.isBot
@@ -1478,6 +1939,7 @@ function getEngagementLeaderboardSnapshot(users = [], limit = ENGAGEMENT_LEADERB
         ""
       );
       return {
+        engagementKey: String(entry && entry.engagementKey || (isBot ? clientKey : `ip:${ip}`)),
         clientKey,
         clientTag,
         name,
@@ -1831,6 +2293,27 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS session_engagement_scores (
+    session_id INTEGER NOT NULL,
+    engagement_key TEXT NOT NULL,
+    client_key TEXT NOT NULL,
+    client_tag TEXT,
+    name TEXT,
+    ip TEXT,
+    is_bot INTEGER NOT NULL DEFAULT 0,
+    emoji_count INTEGER NOT NULL DEFAULT 0,
+    comment_count INTEGER NOT NULL DEFAULT 0,
+    emoji_points INTEGER NOT NULL DEFAULT 0,
+    comment_points INTEGER NOT NULL DEFAULT 0,
+    last_emoji_at TEXT,
+    last_comment_at TEXT,
+    last_activity_at TEXT,
+    PRIMARY KEY (session_id, engagement_key),
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_session_engagement_scores_session
+    ON session_engagement_scores(session_id, last_activity_at);
+
   CREATE TABLE IF NOT EXISTS session_join_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL,
@@ -1939,6 +2422,65 @@ const sql = {
      WHERE session_id = ? AND client_key = ?
      ORDER BY id DESC
      LIMIT ?`
+  ),
+  getSessionEngagementRowsBySession: db.prepare(
+    `SELECT
+      engagement_key AS engagementKey,
+      client_key AS clientKey,
+      client_tag AS clientTag,
+      name,
+      ip,
+      is_bot AS isBot,
+      emoji_count AS emojiCount,
+      comment_count AS commentCount,
+      emoji_points AS emojiPoints,
+      comment_points AS commentPoints,
+      last_emoji_at AS lastEmojiAt,
+      last_comment_at AS lastCommentAt,
+      last_activity_at AS lastActivityAt
+     FROM session_engagement_scores
+     WHERE session_id = ?
+     ORDER BY engagement_key ASC`
+  ),
+  upsertSessionEngagementRow: db.prepare(
+    `INSERT INTO session_engagement_scores (
+      session_id,
+      engagement_key,
+      client_key,
+      client_tag,
+      name,
+      ip,
+      is_bot,
+      emoji_count,
+      comment_count,
+      emoji_points,
+      comment_points,
+      last_emoji_at,
+      last_comment_at,
+      last_activity_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(session_id, engagement_key)
+    DO UPDATE SET
+      client_key = excluded.client_key,
+      client_tag = excluded.client_tag,
+      name = excluded.name,
+      ip = excluded.ip,
+      is_bot = excluded.is_bot,
+      emoji_count = excluded.emoji_count,
+      comment_count = excluded.comment_count,
+      emoji_points = excluded.emoji_points,
+      comment_points = excluded.comment_points,
+      last_emoji_at = excluded.last_emoji_at,
+      last_comment_at = excluded.last_comment_at,
+      last_activity_at = excluded.last_activity_at`
+  ),
+  deleteSessionEngagementRow: db.prepare(
+    `DELETE FROM session_engagement_scores
+     WHERE session_id = ? AND engagement_key = ?`
+  ),
+  deleteSessionEngagementRowsBySession: db.prepare(
+    `DELETE FROM session_engagement_scores
+     WHERE session_id = ?`
   ),
   insertModerationAction: db.prepare(
     `INSERT INTO moderation_actions (
@@ -2532,6 +3074,7 @@ let activePoll = parsePollRow(sql.getActivePoll.get(currentSession.id));
 let reactionCounts = createReactionCounts();
 const engagementLeaderboard = new Map();
 const engagementCommentScoreState = new Map();
+restorePersistedEngagementRowsForSession(currentSession.id);
 let pollAutoCloseTimer = null;
 
 function getPollEndsAtIso(poll) {
@@ -2906,6 +3449,7 @@ function getStageRecentMessages(limit = 26, rankLookup = null) {
       if (!isNotice) {
         const rankInfo = getEngagementRankInfo(safeRankLookup, {
           clientKey: message && message.clientKey,
+          ip: message && message.ip,
           name,
         });
         if (rankInfo) {
@@ -3938,15 +4482,36 @@ class SimulatedBotClient {
     this.voteTimer = null;
   }
 
-  computeNextMessageGapMs() {
-    const base = clampInt(this.manager.config.minGapMs, 200, 20000, 2300);
-    const scaled = Math.round(base * (0.58 + Math.random() * 0.95));
-    const jitter = this.manager.randomInt(-180, 420);
-    return clampInt(scaled + jitter, 320, 24000, base);
+  getProfile() {
+    return this.manager.getBotProfile(this.id);
   }
 
-  messageChanceForTick(tickMs = 1000) {
-    const ratePerSecond = clampFloat(this.manager.config.msgRate, 0, 0.1, 0.03);
+  computeNextMessageGapMs(profile = null) {
+    const resolvedProfile = profile || this.getProfile();
+    const gapBias = clampFloat(
+      resolvedProfile && resolvedProfile.gapBias,
+      0.35,
+      2.8,
+      1
+    );
+    const base = clampInt(this.manager.config.minGapMs, 200, 20000, 2300);
+    const scaled = Math.round(base * gapBias * (0.58 + Math.random() * 0.95));
+    const jitterSpread = Math.max(120, Math.round(240 * gapBias));
+    const jitterUpper = Math.max(260, Math.round(420 * gapBias));
+    const jitter = this.manager.randomInt(-jitterSpread, jitterUpper);
+    return clampInt(scaled + jitter, 260, 30000, Math.round(base * gapBias));
+  }
+
+  messageChanceForTick(tickMs = 1000, profile = null) {
+    const resolvedProfile = profile || this.getProfile();
+    const commentDrive = clampFloat(
+      resolvedProfile && resolvedProfile.commentDrive,
+      0.2,
+      3,
+      1
+    );
+    const baseRatePerSecond = clampFloat(this.manager.config.msgRate, 0, 0.1, 0.03);
+    const ratePerSecond = clampFloat(baseRatePerSecond * commentDrive, 0, 0.24, baseRatePerSecond);
     const seconds = clampFloat(tickMs / 1000, 0.05, 3, 1);
     const chance = 1 - Math.pow(1 - ratePerSecond, seconds);
     return clampFloat(chance, 0, 0.95, ratePerSecond);
@@ -3970,18 +4535,19 @@ class SimulatedBotClient {
       return;
     }
 
-    this.maybeSendReaction(tickMs);
+    const profile = this.getProfile();
+    this.maybeSendReaction(tickMs, profile);
     const now = Date.now();
-    const gap = Math.max(180, this.nextMessageGapMs || this.computeNextMessageGapMs());
+    const gap = Math.max(180, this.nextMessageGapMs || this.computeNextMessageGapMs(profile));
     const sinceLast = now - this.lastSentAt;
     const canSend = sinceLast >= gap;
 
-    if (canSend && Math.random() <= this.messageChanceForTick(tickMs)) {
+    if (canSend && Math.random() <= this.messageChanceForTick(tickMs, profile)) {
       this.messageSeq += 1;
-      const text = this.manager.makeMessage(this.id, this.messageSeq);
+      const text = this.manager.makeMessage(this.id, this.messageSeq, profile);
       if (this.sendJson({ type: "comment", name: this.name, text, clientTag: this.clientTag })) {
         this.lastSentAt = Date.now();
-        this.nextMessageGapMs = this.computeNextMessageGapMs();
+        this.nextMessageGapMs = this.computeNextMessageGapMs(profile);
         this.manager.stats.sentComments += 1;
       }
     }
@@ -3996,21 +4562,45 @@ class SimulatedBotClient {
 
   startSendLoop() {
     if (this.sendTimer) return;
-    this.nextMessageGapMs = this.computeNextMessageGapMs();
+    const profile = this.getProfile();
+    this.nextMessageGapMs = this.computeNextMessageGapMs(profile);
     if (!this.lastSentAt) {
       this.lastSentAt = Date.now() - this.manager.randomInt(0, this.nextMessageGapMs);
     }
     this.scheduleNextSendTick(120, 980);
   }
 
-  maybeSendReaction(tickMs = 1000) {
-    const ratePerSecond = clampFloat(this.manager.config.reactionRate, 0, 4, 0.35);
+  maybeSendReaction(tickMs = 1000, profile = null) {
+    const resolvedProfile = profile || this.getProfile();
+    const reactionDrive = clampFloat(
+      resolvedProfile && resolvedProfile.reactionDrive,
+      0.2,
+      4,
+      1
+    );
+    const baseRatePerSecond = clampFloat(this.manager.config.reactionRate, 0, 4, 0.35);
+    const ratePerSecond = clampFloat(baseRatePerSecond * reactionDrive, 0, 6, baseRatePerSecond);
     const seconds = clampFloat(tickMs / 1000, 0.05, 3, 1);
     const chance = clampFloat(ratePerSecond * seconds, 0, 1, ratePerSecond);
     if (Math.random() > chance) return;
     const now = Date.now();
-    if (now - this.lastReactionAt < 180) return;
-    const reaction = ALLOWED_REACTIONS[this.manager.randomInt(0, ALLOWED_REACTIONS.length - 1)];
+    const cooldownBias = clampFloat(
+      resolvedProfile && resolvedProfile.reactionCooldownBias,
+      0.45,
+      2.5,
+      1
+    );
+    const cooldownMs = clampInt(Math.round(180 * cooldownBias), 90, 1200, 180);
+    if (now - this.lastReactionAt < cooldownMs) return;
+
+    const favoriteReaction = normalizeReactionType(resolvedProfile && resolvedProfile.favoriteReaction);
+    const secondaryReaction = normalizeReactionType(resolvedProfile && resolvedProfile.secondaryReaction);
+    let reaction = ALLOWED_REACTIONS[this.manager.randomInt(0, ALLOWED_REACTIONS.length - 1)];
+    if (favoriteReaction && Math.random() < 0.66) {
+      reaction = favoriteReaction;
+    } else if (secondaryReaction && Math.random() < 0.28) {
+      reaction = secondaryReaction;
+    }
     const sent = this.sendJson({ type: "reaction", reaction, clientTag: this.clientTag });
     if (!sent) return;
     this.lastReactionAt = now;
@@ -4123,6 +4713,14 @@ class ChatSimulatorManager {
     return min + Math.floor(Math.random() * (max - min + 1));
   }
 
+  rollRange(min, max, fallback = 1) {
+    const low = Number(min);
+    const high = Number(max);
+    if (!Number.isFinite(low) || !Number.isFinite(high)) return fallback;
+    if (high <= low) return low;
+    return low + Math.random() * (high - low);
+  }
+
   sample(list, fallback = "") {
     if (!Array.isArray(list) || list.length < 1) return fallback;
     return list[this.randomInt(0, list.length - 1)] || fallback;
@@ -4157,12 +4755,32 @@ class ChatSimulatorManager {
     const known = this.botProfiles.get(key);
     if (known) return known;
     const persona = pickWeighted(SIM_PERSONAS) || SIM_PERSONAS[0];
+    const activity = pickWeighted(SIM_ACTIVITY_ARCHETYPES) || SIM_ACTIVITY_ARCHETYPES[0];
+    const favoriteReaction = this.sample(ALLOWED_REACTIONS, "heart");
+    const secondaryReaction = this.sample(
+      ALLOWED_REACTIONS.filter((reaction) => reaction !== favoriteReaction),
+      favoriteReaction === "heart" ? "fire" : "heart"
+    );
     const profile = {
       botId: Number(botId || 0),
       persona,
+      activityArchetype: String(activity && activity.id || "steady"),
       voicePrefix: this.sample(SIM_CHAT_PREFIXES, ""),
       voiceAfterthought: this.sample(SIM_CHAT_AFTERTHOUGHTS, ""),
       favoriteShort: this.sample(SIM_SHORT_REACTIONS, "wow"),
+      favoriteReaction,
+      secondaryReaction,
+      commentDrive: clampFloat(this.rollRange(activity.commentDriveMin, activity.commentDriveMax, 1), 0.2, 2.8, 1),
+      reactionDrive: clampFloat(this.rollRange(activity.reactionDriveMin, activity.reactionDriveMax, 1), 0.2, 4, 1),
+      emojiDrive: clampFloat(this.rollRange(activity.emojiDriveMin, activity.emojiDriveMax, 1), 0.45, 2.5, 1),
+      gapBias: clampFloat(this.rollRange(activity.gapBiasMin, activity.gapBiasMax, 1), 0.35, 2.8, 1),
+      callbackDrive: clampFloat(this.rollRange(activity.callbackDriveMin, activity.callbackDriveMax, 1), 0.45, 1.8, 1),
+      reactionCooldownBias: clampFloat(
+        this.rollRange(activity.reactionCooldownBiasMin, activity.reactionCooldownBiasMax, 1),
+        0.45,
+        2.5,
+        1
+      ),
       lastNormalized: "",
       lastText: "",
     };
@@ -4269,9 +4887,16 @@ class ChatSimulatorManager {
     }
   }
 
-  pickCallbackEntry() {
+  pickCallbackEntry(profile = null) {
     if (!this.recentObservedComments.length) return null;
-    if (Math.random() > this.config.callbackRate) return null;
+    const callbackDrive = clampFloat(profile && profile.callbackDrive, 0.45, 1.8, 1);
+    const callbackChance = clampFloat(
+      this.config.callbackRate * callbackDrive,
+      0,
+      1,
+      this.config.callbackRate
+    );
+    if (Math.random() > callbackChance) return null;
     const windowSize = Math.min(24, this.recentObservedComments.length);
     const start = this.recentObservedComments.length - windowSize;
     for (let i = 0; i < 5; i += 1) {
@@ -4360,19 +4985,22 @@ class ChatSimulatorManager {
     return tokens.join(" ").trim();
   }
 
-  addEmojiFlavor(text) {
+  addEmojiFlavor(text, profile = null) {
     const base = String(text || "").trim();
     if (!base) return "";
-    const chance = clampFloat(this.config.emojiInlineRate, 0, 1, 0.18);
+    const emojiDrive = clampFloat(profile && profile.emojiDrive, 0.45, 2.5, 1);
+    const chance = clampFloat(this.config.emojiInlineRate * emojiDrive, 0, 1, this.config.emojiInlineRate);
     if (Math.random() > chance) return base;
 
     const style = Math.random();
     const emoji = this.sample(SIM_EXTRA_EMOJIS, "💀");
+    const prefixThreshold = emojiDrive >= 1.5 ? 0.24 : 0.16;
+    const suffixThreshold = emojiDrive >= 1.5 ? 0.86 : 0.9;
 
-    if (style < 0.16) {
+    if (style < prefixThreshold) {
       return `${emoji} ${base}`.trim();
     }
-    if (style < 0.9) {
+    if (style < suffixThreshold) {
       return `${base} ${emoji}`.trim();
     }
     if (style < 0.98) {
@@ -4537,17 +5165,19 @@ class ChatSimulatorManager {
     return this.maybeAddVoice(profile, line);
   }
 
-  buildEmojiOnlyCandidate() {
+  buildEmojiOnlyCandidate(profile = null) {
+    const emojiDrive = clampFloat(profile && profile.emojiDrive, 0.45, 2.5, 1);
+    const bonus = emojiDrive >= 2 ? 2 : emojiDrive >= 1.35 ? 1 : 0;
     const mode = Math.random();
     if (mode < 0.24) {
       return this.sample(SIM_EMOJI_COMBOS, "🗿🍷");
     }
     if (mode < 0.94) {
       const emoji = this.sample(SIM_EXTRA_EMOJIS, "💀");
-      const count = this.randomInt(2, 5);
+      const count = this.randomInt(2 + bonus, 5 + bonus);
       return Array.from({ length: count }, () => emoji).join("").trim();
     }
-    return this.randomEmojiBurst(2, 4);
+    return this.randomEmojiBurst(2 + bonus, 4 + bonus);
   }
 
   buildQuickCandidate(profile, topic) {
@@ -4576,6 +5206,8 @@ class ChatSimulatorManager {
   buildCandidate(profile, { topic, callback }) {
     const tonePositive = this.tonePositive();
     const toneNegative = this.toneNegative();
+    const emojiDrive = clampFloat(profile && profile.emojiDrive, 0.45, 2.5, 1);
+    const profileEmojiLooseRate = clampFloat(this.config.emojiLooseRate * emojiDrive, 0, 1, this.config.emojiLooseRate);
     const choices = [
       { weight: 6 + tonePositive * 7 + toneNegative * 9, build: () => this.buildBaseCandidate(profile, topic) },
       { weight: 7 + this.config.callbackRate * 8 + tonePositive * 5 + toneNegative * 6, build: () => this.buildQuickCandidate(profile, topic) },
@@ -4584,8 +5216,8 @@ class ChatSimulatorManager {
       { weight: 1 + toneNegative * 20, build: () => this.buildAbsurdCandidate(profile, topic) },
       { weight: 3 + toneNegative * 20, build: () => this.buildNegativeCandidate(profile, topic, callback) },
       {
-        weight: 1 + this.config.emojiLooseRate * 20 + toneNegative * 6,
-        build: () => this.buildEmojiOnlyCandidate(),
+        weight: 1 + profileEmojiLooseRate * 20 + toneNegative * 6,
+        build: () => this.buildEmojiOnlyCandidate(profile),
       },
     ];
     if (brainrotWords.length) {
@@ -4681,7 +5313,9 @@ class ChatSimulatorManager {
       score += 0.2;
     }
     if (this.isEmojiOnlyText(text)) {
-      score += 0.9 + toneNegative * 0.7 + this.config.emojiLooseRate * 4.2;
+      const emojiDrive = clampFloat(profile && profile.emojiDrive, 0.45, 2.5, 1);
+      const emojiBias = clampFloat(this.config.emojiLooseRate * emojiDrive, 0, 1.4, this.config.emojiLooseRate);
+      score += 0.9 + toneNegative * 0.7 + emojiBias * 4.2;
     }
     if (tonePositive >= 0.5 && tonePositive >= toneNegative && /\b(top|goud|fan|love|sterk|lekker)\b/.test(normalized)) {
       score += 0.14;
@@ -4739,10 +5373,10 @@ class ChatSimulatorManager {
     profile.lastText = text;
   }
 
-  makeMessage(botId, seq) {
-    const profile = this.getBotProfile(botId);
+  makeMessage(botId, seq, providedProfile = null) {
+    const profile = providedProfile || this.getBotProfile(botId);
     const topic = this.config.topic;
-    const callback = this.pickCallbackEntry();
+    const callback = this.pickCallbackEntry(profile);
     const tonePositive = this.tonePositive();
     const toneNegative = this.toneNegative();
     const forcedNegativeChance = clampFloat(Math.max(0, toneNegative - tonePositive) * 0.58, 0, 0.75, 0);
@@ -4754,9 +5388,11 @@ class ChatSimulatorManager {
       }
     }
     const emojiLooseRate = clampFloat(this.config.emojiLooseRate, 0, 1, 0.7);
-    const forcedEmojiChance = clampFloat(0.01 + Math.pow(emojiLooseRate, 1.8) * 0.45, 0, 0.9, 0.12);
+    const emojiDrive = clampFloat(profile && profile.emojiDrive, 0.45, 2.5, 1);
+    const profileEmojiLooseRate = clampFloat(emojiLooseRate * emojiDrive, 0, 1, emojiLooseRate);
+    const forcedEmojiChance = clampFloat(0.01 + Math.pow(profileEmojiLooseRate, 1.8) * 0.45, 0, 0.9, 0.12);
     if (Math.random() < forcedEmojiChance) {
-      const forcedEmoji = this.sanitizeGeneratedText(this.buildEmojiOnlyCandidate());
+      const forcedEmoji = this.sanitizeGeneratedText(this.buildEmojiOnlyCandidate(profile));
       if (forcedEmoji) {
         this.rememberGenerated(botId, forcedEmoji);
         return forcedEmoji;
@@ -4773,9 +5409,9 @@ class ChatSimulatorManager {
     if (callback) candidates.add(this.buildCallbackCandidate(profile, callback, topic));
     candidates.add(this.buildPersonaComboCandidate(profile, topic));
     candidates.add(this.buildAuthenticCandidate(profile, topic, callback));
-    if (Math.random() < 0.2 + emojiLooseRate * 0.85) candidates.add(this.buildEmojiOnlyCandidate());
-    if (Math.random() < emojiLooseRate * 0.7) candidates.add(this.buildEmojiOnlyCandidate());
-    if (Math.random() < emojiLooseRate * 0.52) candidates.add(this.sample(SIM_EMOJI_COMBOS, "🗿🍷"));
+    if (Math.random() < 0.2 + profileEmojiLooseRate * 0.85) candidates.add(this.buildEmojiOnlyCandidate(profile));
+    if (Math.random() < profileEmojiLooseRate * 0.7) candidates.add(this.buildEmojiOnlyCandidate(profile));
+    if (Math.random() < profileEmojiLooseRate * 0.52) candidates.add(this.sample(SIM_EMOJI_COMBOS, "🗿🍷"));
     candidates.add(this.buildQuickCandidate(profile, topic));
 
     let best = "";
@@ -4807,7 +5443,7 @@ class ChatSimulatorManager {
     }
 
     if (!this.isEmojiOnlyText(best)) {
-      const emojiStyled = this.sanitizeGeneratedText(this.addEmojiFlavor(best));
+      const emojiStyled = this.sanitizeGeneratedText(this.addEmojiFlavor(best, profile));
       if (emojiStyled) best = emojiStyled;
     }
 
@@ -5558,6 +6194,7 @@ function getAdminState(req) {
     if (!isNotice && String(message && message.status || "") === "accepted") {
       const rankInfo = getEngagementRankInfo(engagementRankLookup, {
         clientKey: message && message.clientKey,
+        ip: message && message.ip,
         name,
       });
       if (rankInfo) {
@@ -7891,6 +8528,7 @@ wss.on("connection", (ws, req) => {
     );
     const rankInfo = getEngagementRankInfo(buildEngagementRankLookup(leaderboardForRank, 3), {
       clientKey: meta.clientKey,
+      ip: meta.ip,
       name,
     });
     if (rankInfo) {

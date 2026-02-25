@@ -357,28 +357,19 @@
         width: 62px;
         font-weight: 700;
       }
-      .emojiLeaderboardMore {
-        border-top: 1px solid var(--line);
-        padding-top: 6px;
-      }
-      .emojiLeaderboardMore > summary {
-        cursor: pointer;
-        color: var(--accent);
-        font-size: 13px;
-        user-select: none;
-      }
-      .emojiLeaderboardMoreBody {
-        display: grid;
-        gap: 6px;
-        margin-top: 6px;
-      }
-      .emojiLeaderboardScroll {
-        max-height: 220px;
+      .emojiLeaderboardList {
+        max-height: 292px;
         overflow: auto;
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--field);
         padding: 4px 6px;
+      }
+      .emojiLeaderboardList thead th {
+        position: sticky;
+        top: 0;
+        background: var(--field);
+        z-index: 1;
       }
       table { width: 100%; border-collapse: collapse; }
       th, td {
@@ -532,52 +523,6 @@
         <div class="card stack">
           <h2>Sessie & overzicht</h2>
           <div class="stats" id="stats"></div>
-          <div class="emojiLeaderboardCard">
-            <div class="emojiLeaderboardHead">
-              <strong>Top Chatters:</strong>
-              <div id="emojiLeaderboardMeta" class="muted">Nog geen puntenactiviteit.</div>
-            </div>
-            <div class="row">
-              <div class="sliderField">
-                <div class="sliderLabel"><span>Comment-punten</span><span id="engagementCommentPointsValue" class="sliderValue">75</span></div>
-                <input id="engagementCommentPoints" type="range" min="2" max="150" step="1" value="75" />
-              </div>
-              <button id="saveEngagementPointsBtn" type="button">Bewaar weging</button>
-            </div>
-            <div id="engagementRulesMeta" class="muted">Emoji = 1 punt, comments = 75 punten, duplicate/te korte comments tellen niet mee.</div>
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Gebruiker</th>
-                  <th>Bijdrage</th>
-                  <th>Score</th>
-                  <th>Laatst</th>
-                </tr>
-              </thead>
-              <tbody id="emojiLeaderboardBody">
-                <tr><td colspan="5" class="muted">Nog geen puntenactiviteit in deze sessie.</td></tr>
-              </tbody>
-            </table>
-            <details id="emojiLeaderboardMore" class="emojiLeaderboardMore" data-detail-key="emoji-leaderboard-more" hidden>
-              <summary id="emojiLeaderboardMoreSummary">Toon #6 t/m #10 en meer</summary>
-              <div class="emojiLeaderboardMoreBody">
-                <table>
-                  <tbody id="emojiLeaderboardTop10Body">
-                    <tr><td colspan="5" class="muted">Nog geen extra posities.</td></tr>
-                  </tbody>
-                </table>
-                <div class="muted">Overige posities</div>
-                <div class="emojiLeaderboardScroll">
-                  <table>
-                    <tbody id="emojiLeaderboardRestBody">
-                      <tr><td colspan="5" class="muted">Nog geen overige posities.</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </details>
-          </div>
           <div class="row">
             <input id="sessionName" type="text" placeholder="Nieuwe sessienaam" />
             <button id="endSessionBtn" type="button">Sessie beëindigen</button>
@@ -615,6 +560,39 @@
             Scan de sessie-QR om direct naar deze lokale site te gaan en de join te registreren.
           </div>
           <div class="muted">Nieuwe sessie: sluit huidige sessie af, koppelt clients los en maakt een nieuwe QR. Sessie beëindigen: sluit alleen af en verwijdert de QR.</div>
+        </div>
+
+        <div class="card stack">
+          <h2>Top Chatters</h2>
+          <div class="emojiLeaderboardCard">
+            <div class="emojiLeaderboardHead">
+              <strong>Live leaderboard:</strong>
+              <div id="emojiLeaderboardMeta" class="muted">Nog geen puntenactiviteit.</div>
+            </div>
+            <div class="row">
+              <div class="sliderField">
+                <div class="sliderLabel"><span>Comment-punten</span><span id="engagementCommentPointsValue" class="sliderValue">75</span></div>
+                <input id="engagementCommentPoints" type="range" min="2" max="150" step="1" value="75" />
+              </div>
+            </div>
+            <div id="engagementRulesMeta" class="muted">Emoji = 1 punt, comments = 75 punten, duplicate/te korte comments tellen niet mee.</div>
+            <div class="emojiLeaderboardList">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Gebruiker</th>
+                    <th>Bijdrage</th>
+                    <th>Score</th>
+                    <th>Laatst</th>
+                  </tr>
+                </thead>
+                <tbody id="emojiLeaderboardBody">
+                  <tr><td colspan="5" class="muted">Nog geen puntenactiviteit in deze sessie.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <div class="card stack">
@@ -948,14 +926,9 @@
       const statsEl = document.getElementById("stats");
       const emojiLeaderboardMetaEl = document.getElementById("emojiLeaderboardMeta");
       const emojiLeaderboardBodyEl = document.getElementById("emojiLeaderboardBody");
-      const emojiLeaderboardMoreEl = document.getElementById("emojiLeaderboardMore");
-      const emojiLeaderboardMoreSummaryEl = document.getElementById("emojiLeaderboardMoreSummary");
-      const emojiLeaderboardTop10BodyEl = document.getElementById("emojiLeaderboardTop10Body");
-      const emojiLeaderboardRestBodyEl = document.getElementById("emojiLeaderboardRestBody");
       const engagementCommentPointsEl = document.getElementById("engagementCommentPoints");
       const engagementCommentPointsValueEl = document.getElementById("engagementCommentPointsValue");
       const engagementRulesMetaEl = document.getElementById("engagementRulesMeta");
-      const saveEngagementPointsBtn = document.getElementById("saveEngagementPointsBtn");
       const sessionNameEl = document.getElementById("sessionName");
       const endSessionBtn = document.getElementById("endSessionBtn");
       const newSessionBtn = document.getElementById("newSessionBtn");
@@ -1132,6 +1105,10 @@
       let messageSlowdownMaxMs = 8000;
       let engagementCommentPointsMin = 2;
       let engagementCommentPointsMax = 150;
+      let engagementCommentPointsLiveTimer = null;
+      let engagementCommentPointsLivePending = false;
+      let engagementCommentPointsLiveInFlight = false;
+      let engagementCommentPointsDraft = null;
 
       try {
         localStorage.removeItem("admin_token");
@@ -1972,6 +1949,80 @@
       function updateEngagementCommentPointsLabel() {
         if (!engagementCommentPointsValueEl || !engagementCommentPointsEl) return;
         engagementCommentPointsValueEl.textContent = String(clampEngagementCommentPoints(engagementCommentPointsEl.value));
+      }
+
+      function scheduleEngagementCommentPointsLiveUpdate() {
+        if (!engagementCommentPointsEl) return;
+        const commentPoints = clampEngagementCommentPoints(engagementCommentPointsEl.value);
+        engagementCommentPointsEl.value = String(commentPoints);
+        engagementCommentPointsDraft = commentPoints;
+        engagementCommentPointsLivePending = true;
+        updateEngagementCommentPointsLabel();
+        if (engagementCommentPointsLiveTimer) clearTimeout(engagementCommentPointsLiveTimer);
+        engagementCommentPointsLiveTimer = setTimeout(() => {
+          engagementCommentPointsLiveTimer = null;
+          flushEngagementCommentPointsLiveUpdate();
+        }, 180);
+      }
+
+      async function flushEngagementCommentPointsLiveUpdate(force = false) {
+        if (!engagementCommentPointsEl) return;
+        if (!engagementCommentPointsLivePending && !force) return;
+        if (engagementCommentPointsLiveInFlight) return;
+
+        const commentPoints = clampEngagementCommentPoints(
+          engagementCommentPointsDraft !== null
+            ? engagementCommentPointsDraft
+            : engagementCommentPointsEl.value
+        );
+        engagementCommentPointsLivePending = false;
+        engagementCommentPointsLiveInFlight = true;
+        try {
+          const body = await api("/admin/settings/engagement", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ commentPoints }),
+          });
+          const saved = clampEngagementCommentPoints(
+            body && body.commentPoints !== undefined ? body.commentPoints : commentPoints
+          );
+          const hasQueuedDraft = engagementCommentPointsLivePending;
+          if (!hasQueuedDraft) {
+            engagementCommentPointsEl.value = String(saved);
+          }
+          updateEngagementCommentPointsLabel();
+
+          if (lastState && lastState.runtime) {
+            lastState.runtime.engagementCommentPoints = saved;
+            if (body && body.commentPointsMin !== undefined) {
+              lastState.runtime.engagementCommentPointsMin = Number(body.commentPointsMin);
+            }
+            if (body && body.commentPointsMax !== undefined) {
+              lastState.runtime.engagementCommentPointsMax = Number(body.commentPointsMax);
+            }
+            if (body && body.emojiPoints !== undefined) {
+              lastState.runtime.engagementEmojiPoints = Number(body.emojiPoints);
+            }
+            if (body && body.commentMinChars !== undefined) {
+              lastState.runtime.engagementCommentMinChars = Number(body.commentMinChars);
+            }
+            if (body && body.duplicateWindowMs !== undefined) {
+              lastState.runtime.engagementDuplicateWindowMs = Number(body.duplicateWindowMs);
+            }
+            renderState(lastState);
+          } else {
+            refreshState();
+          }
+        } catch (err) {
+          setActionMessage("Live weging-updaten mislukt: " + err.message);
+        } finally {
+          engagementCommentPointsLiveInFlight = false;
+          if (engagementCommentPointsLivePending) {
+            flushEngagementCommentPointsLiveUpdate();
+          } else {
+            engagementCommentPointsDraft = null;
+          }
+        }
       }
 
       function getLiveSessionDurationSeconds() {
@@ -2974,14 +3025,7 @@
       }
 
       function renderEmojiLeaderboard(data) {
-        if (
-          !emojiLeaderboardBodyEl ||
-          !emojiLeaderboardMetaEl ||
-          !emojiLeaderboardMoreEl ||
-          !emojiLeaderboardMoreSummaryEl ||
-          !emojiLeaderboardTop10BodyEl ||
-          !emojiLeaderboardRestBodyEl
-        ) return;
+        if (!emojiLeaderboardBodyEl || !emojiLeaderboardMetaEl) return;
         const leaderboard = data && (data.engagementLeaderboard || data.emojiLeaderboard)
           ? (data.engagementLeaderboard || data.emojiLeaderboard)
           : null;
@@ -2990,12 +3034,9 @@
         const totalComments = Math.max(0, Number(leaderboard && leaderboard.totalComments || 0));
         const totalEmojis = Math.max(0, Number(leaderboard && leaderboard.totalReactions || 0));
         const uniqueSenders = Math.max(0, Number(leaderboard && leaderboard.uniqueSenders || 0));
-        const topFive = topEntries.slice(0, 5);
-        const nextFive = topEntries.slice(5, 10);
-        const rest = topEntries.slice(10);
 
         emojiLeaderboardMetaEl.textContent = uniqueSenders > 0
-          ? `Totaal punten: ${totalPoints} | comments: ${totalComments} | emoji's: ${totalEmojis} | unieke deelnemers: ${uniqueSenders} | zichtbaar: top 5`
+          ? `Totaal punten: ${totalPoints} | comments: ${totalComments} | emoji's: ${totalEmojis} | unieke deelnemers: ${uniqueSenders} | scroll voor alle posities`
           : "Nog geen puntenactiviteit.";
 
         const buildRowHtml = (entry, rank) => {
@@ -3025,39 +3066,15 @@
           </tr>`;
         };
 
-        if (!topFive.length) {
+        if (!topEntries.length) {
           emojiLeaderboardBodyEl.innerHTML =
             '<tr><td colspan="5" class="muted">Nog geen puntenactiviteit in deze sessie.</td></tr>';
-          emojiLeaderboardTop10BodyEl.innerHTML =
-            '<tr><td colspan="5" class="muted">Nog geen extra posities.</td></tr>';
-          emojiLeaderboardRestBodyEl.innerHTML =
-            '<tr><td colspan="5" class="muted">Nog geen overige posities.</td></tr>';
-          emojiLeaderboardMoreEl.hidden = true;
           return;
         }
 
-        emojiLeaderboardBodyEl.innerHTML = topFive
+        emojiLeaderboardBodyEl.innerHTML = topEntries
           .map((entry, index) => buildRowHtml(entry, index + 1))
           .join("");
-
-        const hasMoreThanTopFive = topEntries.length > 5;
-        emojiLeaderboardMoreEl.hidden = !hasMoreThanTopFive;
-        if (!hasMoreThanTopFive) return;
-
-        if (topEntries.length <= 10) {
-          emojiLeaderboardMoreSummaryEl.textContent = `Toon #6 t/m #${topEntries.length}`;
-        } else {
-          emojiLeaderboardMoreSummaryEl.textContent =
-            `Toon #6 t/m #10 en scroll voor meer (+${topEntries.length - 10})`;
-        }
-
-        emojiLeaderboardTop10BodyEl.innerHTML = nextFive.length
-          ? nextFive.map((entry, index) => buildRowHtml(entry, index + 6)).join("")
-          : '<tr><td colspan="5" class="muted">Geen posities #6 t/m #10.</td></tr>';
-
-        emojiLeaderboardRestBodyEl.innerHTML = rest.length
-          ? rest.map((entry, index) => buildRowHtml(entry, index + 11)).join("")
-          : '<tr><td colspan="5" class="muted">Geen overige posities.</td></tr>';
       }
 
       function renderState(data) {
@@ -3172,7 +3189,10 @@
         if (engagementCommentPointsEl) {
           engagementCommentPointsEl.min = String(engagementCommentPointsMin);
           engagementCommentPointsEl.max = String(engagementCommentPointsMax);
-          if (document.activeElement !== engagementCommentPointsEl) {
+          const hasEngagementDraft =
+            engagementCommentPointsLivePending ||
+            engagementCommentPointsLiveInFlight;
+          if (!hasEngagementDraft && document.activeElement !== engagementCommentPointsEl) {
             engagementCommentPointsEl.value = String(
               clampEngagementCommentPoints(runtime.engagementCommentPoints || engagementCommentPointsMin)
             );
@@ -3183,8 +3203,13 @@
           const emojiPoints = Math.max(1, Number(runtime.engagementEmojiPoints || 1));
           const commentMinChars = Math.max(1, Number(runtime.engagementCommentMinChars || 4));
           const duplicateWindowSec = Math.max(0, Number(runtime.engagementDuplicateWindowMs || 0)) / 1000;
+          const commentPointsForMeta = clampEngagementCommentPoints(
+            (engagementCommentPointsLivePending || engagementCommentPointsLiveInFlight || document.activeElement === engagementCommentPointsEl)
+              ? (engagementCommentPointsEl ? engagementCommentPointsEl.value : runtime.engagementCommentPoints)
+              : (runtime.engagementCommentPoints || engagementCommentPointsMin)
+          );
           engagementRulesMetaEl.textContent =
-            `Emoji = ${emojiPoints} punt, comments = ${Number(runtime.engagementCommentPoints || engagementCommentPointsMin)} punten, duplicate binnen ${duplicateWindowSec.toFixed(0)}s en comments korter dan ${commentMinChars} tekens tellen niet mee.`;
+            `Emoji = ${emojiPoints} punt, comments = ${commentPointsForMeta} punten, duplicate binnen ${duplicateWindowSec.toFixed(0)}s en comments korter dan ${commentMinChars} tekens tellen niet mee.`;
         }
         renderOscCommands(data.oscCommands);
         const pollDurationForInput = data.activePoll
@@ -3854,22 +3879,17 @@
         });
       }
       if (engagementCommentPointsEl) {
-        engagementCommentPointsEl.addEventListener("input", updateEngagementCommentPointsLabel);
+        engagementCommentPointsEl.addEventListener("input", scheduleEngagementCommentPointsLiveUpdate);
         engagementCommentPointsEl.addEventListener("change", () => {
           engagementCommentPointsEl.value = String(clampEngagementCommentPoints(engagementCommentPointsEl.value));
           updateEngagementCommentPointsLabel();
-        });
-      }
-      if (saveEngagementPointsBtn && engagementCommentPointsEl) {
-        saveEngagementPointsBtn.addEventListener("click", () => {
-          const commentPoints = clampEngagementCommentPoints(engagementCommentPointsEl.value);
-          engagementCommentPointsEl.value = String(commentPoints);
-          updateEngagementCommentPointsLabel();
-          runAction(
-            "/admin/settings/engagement",
-            { commentPoints },
-            `Engagement-weging bewaard (comment = ${commentPoints}, emoji = 1).`
-          );
+          engagementCommentPointsDraft = clampEngagementCommentPoints(engagementCommentPointsEl.value);
+          engagementCommentPointsLivePending = true;
+          if (engagementCommentPointsLiveTimer) {
+            clearTimeout(engagementCommentPointsLiveTimer);
+            engagementCommentPointsLiveTimer = null;
+          }
+          flushEngagementCommentPointsLiveUpdate(true);
         });
       }
       if (usersSearchClearBtnEl && usersSearchInputEl) {
