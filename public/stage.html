@@ -317,6 +317,22 @@
         opacity: 1;
       }
 
+      #buildBadge {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        z-index: 50;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        background: rgba(0, 0, 0, 0.62);
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 14px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+      }
+
       .hidden {
         display: none !important;
       }
@@ -348,6 +364,7 @@
       </div>
 
       <div id="statusPill">Stage output: reconnecting…</div>
+      <div id="buildBadge">v0.0.----</div>
     </div>
 
     <script src="/vendor/qrcode-generator.min.js"></script>
@@ -371,6 +388,7 @@
       const qrCodeEl = document.getElementById("qrCode");
       const qrHintEl = document.getElementById("qrHint");
       const statusPillEl = document.getElementById("statusPill");
+      const buildBadgeEl = document.getElementById("buildBadge");
 
       const stageState = {
         settings: {
@@ -413,6 +431,7 @@
       let reconnectTimer = null;
       let reconnectDelayMs = RECONNECT_MIN_MS;
       let serverInstanceId = "";
+      let currentBuildLabel = "";
       let hardReloadInProgress = false;
 
       function esc(value) {
@@ -448,6 +467,23 @@
         setTimeout(() => {
           window.location.replace(buildHardReloadUrl());
         }, 80);
+      }
+
+      function normalizeBuildLabel(version, label) {
+        const direct = String(label || "").trim();
+        if (direct) return direct.slice(0, 40);
+        const fallback = String(version || "").trim();
+        if (fallback) return fallback.slice(0, 40);
+        return "";
+      }
+
+      function applyBuildLabel(version, label, source = "unknown") {
+        if (!buildBadgeEl) return;
+        const next = normalizeBuildLabel(version, label);
+        if (!next) return;
+        currentBuildLabel = next;
+        buildBadgeEl.textContent = next;
+        buildBadgeEl.title = "Build: " + next + " (" + String(source || "unknown") + ")";
       }
 
       function observeServerInstanceId(nextId, source = "stage") {
@@ -731,6 +767,7 @@
       function applyStageSnapshot(snapshot) {
         const stage = snapshot && typeof snapshot === "object" ? snapshot : {};
         observeServerInstanceId(stage.serverInstanceId, "stage_snapshot");
+        applyBuildLabel(stage.buildVersion, stage.buildLabel, "stage_snapshot");
         stageState.settings = normalizeStageSettings(stage.settings);
         stageState.sessionJoin = stage.sessionJoin && typeof stage.sessionJoin === "object" ? stage.sessionJoin : null;
         stageState.engagementLeaderboard = normalizeEngagementLeaderboard(
@@ -849,10 +886,26 @@
         });
       }
 
+      function fetchBuildLabelOnce() {
+        fetch("/health?build=1&ts=" + Date.now(), {
+          cache: "no-store",
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error("bad status");
+            return res.json().catch(() => ({}));
+          })
+          .then((body) => {
+            observeServerInstanceId(body && body.instanceId, "stage_health");
+            applyBuildLabel(body && body.buildVersion, body && body.buildLabel, "stage_health");
+          })
+          .catch(() => {});
+      }
+
       applyVisualSettings();
       renderQr();
       renderChat();
       renderEngagementLeaderboard();
+      fetchBuildLabelOnce();
       connect();
     </script>
   </body>

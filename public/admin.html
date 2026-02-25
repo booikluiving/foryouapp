@@ -182,6 +182,18 @@
         color: var(--badge-closed-ink);
         border-color: var(--badge-closed-line);
       }
+      .buildVersionBadge {
+        display: inline-block;
+        padding: 2px 8px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--subtle);
+        color: var(--muted);
+        font-size: 11px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        vertical-align: middle;
+        white-space: nowrap;
+      }
       input, textarea, select, button {
         font: inherit;
         border: 1px solid var(--line);
@@ -492,7 +504,7 @@
       <div class="card row" style="justify-content: space-between;">
         <div>
           <h1>Admin Console</h1>
-          <p class="muted">Show controller + technische tools</p>
+          <p class="muted">Show controller + technische tools <span id="buildBadge" class="buildVersionBadge">v0.0.----</span></p>
         </div>
         <div class="row" style="justify-content: flex-end;">
           <button id="themeToggleBtn" type="button">Thema: Auto</button>
@@ -1041,6 +1053,7 @@
       const saveOscListenPortBtn = document.getElementById("saveOscListenPortBtn");
       const saveOscSendTargetBtn = document.getElementById("saveOscSendTargetBtn");
       const runtimeStateEl = document.getElementById("runtimeState");
+      const buildBadgeEl = document.getElementById("buildBadge");
       const oscCommandsHelpEl = document.getElementById("oscCommandsHelp");
       const liveChatLogEl = document.getElementById("liveChatLog");
       const liveChatResizeHandleEl = document.getElementById("liveChatResizeHandle");
@@ -1105,6 +1118,7 @@
       let adminPasswordMinLength = 12;
       let detailsOpenState = {};
       let serverInstanceId = "";
+      let currentBuildLabel = "";
       let hardReloadInProgress = false;
       let serverInstanceWatchTimer = null;
       let serverInstanceWatchInFlight = false;
@@ -1280,6 +1294,23 @@
         }, 70);
       }
 
+      function normalizeBuildLabel(version, label) {
+        const direct = String(label || "").trim();
+        if (direct) return direct.slice(0, 40);
+        const fallback = String(version || "").trim();
+        if (fallback) return fallback.slice(0, 40);
+        return "";
+      }
+
+      function applyBuildLabel(version, label, source = "unknown") {
+        if (!buildBadgeEl) return;
+        const next = normalizeBuildLabel(version, label);
+        if (!next) return;
+        currentBuildLabel = next;
+        buildBadgeEl.textContent = next;
+        buildBadgeEl.title = "Build: " + next + " (" + String(source || "unknown") + ")";
+      }
+
       function observeServerInstanceId(nextId, source = "state") {
         const value = String(nextId || "").trim();
         if (!value) return;
@@ -1321,6 +1352,7 @@
           if (!res || !res.ok) return;
           const body = await res.json().catch(() => ({}));
           observeServerInstanceId(body && body.instanceId, "admin_health");
+          applyBuildLabel(body && body.buildVersion, body && body.buildLabel, "admin_health");
         } catch {
           // no-op: tijdens restart mag health kort falen
         } finally {
@@ -3036,6 +3068,7 @@
         );
         const runtime = data && data.runtime ? data.runtime : {};
         observeServerInstanceId(runtime.serverInstanceId, "admin_state");
+        applyBuildLabel(runtime.buildVersion, runtime.buildLabel, "admin_state");
         const session = data && data.session ? data.session : {};
         const sessionId = Number(session.id || 0);
         const sessionName = String(session.name || "");
@@ -3084,6 +3117,7 @@
           "\\nNext port: " + runtime.nextPort +
           "\\nRestart required: " + (runtime.restartRequired ? "ja" : "nee") +
           "\\nServer instance: " + String(runtime.serverInstanceId || "-") +
+          "\\nBuild version: " + String(runtime.buildVersion || runtime.buildLabel || currentBuildLabel || "-") +
           "\\nServer exit mode: " + (runtime.serverExitMode ? String(runtime.serverExitMode) : "none") +
           "\\nOSC listen address: " + String(runtime.oscListenAddress || "-") +
           "\\nOSC listen port: " + Number(runtime.oscListenPort || 0) +

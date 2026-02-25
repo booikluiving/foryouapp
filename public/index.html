@@ -89,6 +89,23 @@
       #nameRow { margin: 10px 0; opacity: 0.9; display: flex; gap: 10px; align-items: center; }
       #nameRow span { flex: 1; }
       .topBar { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+      .titleWrap {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 8px;
+        min-width: 0;
+      }
+      .buildBadge {
+        display: inline-block;
+        padding: 2px 7px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        font-size: 11px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--muted);
+        background: var(--surface-soft);
+        white-space: nowrap;
+      }
       #settingsMenu { position: relative; }
       #settingsMenu summary {
         list-style: none;
@@ -476,7 +493,10 @@
   </head>
   <body>
     <div class="topBar">
-      <h2>Live reacties</h2>
+      <div class="titleWrap">
+        <h2>Live reacties</h2>
+        <span id="buildBadge" class="buildBadge" title="Build versie">v0.0.----</span>
+      </div>
       <details id="settingsMenu">
         <summary aria-label="Instellingen">⚙</summary>
         <div class="settingsContent">
@@ -537,6 +557,7 @@
       <span id="toastText"></span>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script>
       const statusEl = document.getElementById("status");
       const nameLabelEl = document.getElementById("nameLabel");
@@ -562,6 +583,7 @@
       const toastEl = document.getElementById("connectionToast");
       const toastIconEl = document.getElementById("toastIcon");
       const toastTextEl = document.getElementById("toastText");
+      const buildBadgeEl = document.getElementById("buildBadge");
       const clientTag = Math.random().toString(36).slice(2, 10);
       let lastHttpDebugAt = 0;
       let lastHttpDebugNote = "";
@@ -600,7 +622,27 @@
       const VOTED_POLL_STORAGE_KEY = "live_voted_poll_id";
       const THEME_PREF_KEY = "live_theme_pref_v1";
       const THEME_MODES = ["auto", "light", "dark"];
-      const ENABLE_CLIENT_DEBUG = false;
+      const DEBUG_CLIENT_PREF_KEY = "live_client_debug_v1";
+      const ENABLE_CLIENT_DEBUG = (() => {
+        try {
+          const params = new URLSearchParams(window.location.search || "");
+          const dbgRaw = String(params.get("dbg") || "").trim().toLowerCase();
+          if (dbgRaw === "1" || dbgRaw === "true" || dbgRaw === "on") {
+            sessionStorage.setItem(DEBUG_CLIENT_PREF_KEY, "1");
+            return true;
+          }
+          if (dbgRaw === "0" || dbgRaw === "false" || dbgRaw === "off") {
+            sessionStorage.setItem(DEBUG_CLIENT_PREF_KEY, "0");
+            return false;
+          }
+          const saved = String(sessionStorage.getItem(DEBUG_CLIENT_PREF_KEY) || "").trim();
+          if (saved === "0") return false;
+          if (saved === "1") return true;
+          return true;
+        } catch {
+          return true;
+        }
+      })();
       const systemDarkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
       let themePreference = "auto";
 
@@ -1227,7 +1269,9 @@
       let pausedByServer = false;
       let serverPauseReason = "";
       let serverInstanceId = "";
+      let currentBuildLabel = "";
       let hardReloadInProgress = false;
+      let pageDeactivating = false;
 
       const CONNECT_TIMEOUT_MS = 7000;
       const CONNECTION_CHECK_MS = 2000;
@@ -1236,6 +1280,140 @@
       const HEALTH_PROBE_MS = 3000;
       const HEALTH_TIMEOUT_MS = 2500;
       const PROBE_STALE_OPEN_MS = 7000;
+      const SOCKET_CONNECTING = typeof WebSocket !== "undefined" ? WebSocket.CONNECTING : 0;
+      const SOCKET_OPEN = typeof WebSocket !== "undefined" ? WebSocket.OPEN : 1;
+      const SOCKET_CLOSING = typeof WebSocket !== "undefined" ? WebSocket.CLOSING : 2;
+      const SOCKET_CLOSED = typeof WebSocket !== "undefined" ? WebSocket.CLOSED : 3;
+
+      function createSocketIoCompatSocket(wsUrl) {
+        if (typeof window.io !== "function") {
+          throw new Error("socket.io_client_missing");
+        }
+        const listeners = {
+          open: new Set(),
+          close: new Set(),
+          error: new Set(),
+          message: new Set(),
+        };
+        const ioSocket = window.io({
+          path: "/socket.io",
+          transports: ["polling"],
+          upgrade: false,
+          reconnection: false,
+          forceNew: true,
+          withCredentials: true,
+        });
+
+        let readyState = SOCKET_CONNECTING;
+        let closeCode = 1001;
+        let closeReason = "";
+
+        function emit(type, payload) {
+          const handlers = listeners[type];
+          if (!handlers || !handlers.size) return;
+          for (const handler of Array.from(handlers)) {
+            try {
+              handler(payload || {});
+            } catch {}
+          }
+        }
+
+        function setCloseInfo(code, reason) {
+          const parsedCode = Number.parseInt(String(code), 10);
+          closeCode = Number.isInteger(parsedCode) && parsedCode >= 1000 && parsedCode <= 4999 ? parsedCode : 1001;
+          closeReason = String(reason || "").slice(0, 120);
+        }
+
+        const compatSocket = {
+          get readyState() {
+            return readyState;
+          },
+          addEventListener(type, handler) {
+            if (!listeners[type] || typeof handler !== "function") return;
+            listeners[type].add(handler);
+          },
+          removeEventListener(type, handler) {
+            if (!listeners[type] || typeof handler !== "function") return;
+            listeners[type].delete(handler);
+          },
+          send(payload) {
+            if (readyState !== SOCKET_OPEN) throw new Error("socket_not_open");
+            const data = typeof payload === "string" ? payload : JSON.stringify(payload);
+            ioSocket.emit("ws_message", data);
+          },
+          close(code = 1000, reason = "") {
+            if (readyState === SOCKET_CLOSING || readyState === SOCKET_CLOSED) return;
+            setCloseInfo(code, reason);
+            readyState = SOCKET_CLOSING;
+            try {
+              ioSocket.emit("ws_close", { code: closeCode, reason: closeReason });
+            } catch {}
+            try {
+              ioSocket.disconnect();
+            } catch {}
+          },
+        };
+
+        ioSocket.on("connect", () => {
+          if (readyState === SOCKET_CLOSED) return;
+          readyState = SOCKET_OPEN;
+          emit("open", {});
+        });
+
+        ioSocket.on("ws_message", (payload) => {
+          if (readyState !== SOCKET_OPEN) return;
+          const data = typeof payload === "string" ? payload : JSON.stringify(payload || {});
+          emit("message", { data });
+        });
+
+        ioSocket.on("ws_close", (payload) => {
+          const info = payload && typeof payload === "object" ? payload : {};
+          setCloseInfo(info.code, info.reason);
+          if (readyState !== SOCKET_CLOSED) {
+            readyState = SOCKET_CLOSING;
+          }
+          try {
+            ioSocket.disconnect();
+          } catch {}
+        });
+
+        const forwardError = (err) => {
+          const message = err && err.message ? String(err.message) : "";
+          emit("error", { error: err, message });
+        };
+        ioSocket.on("connect_error", forwardError);
+        ioSocket.on("error", forwardError);
+
+        ioSocket.on("disconnect", (reason) => {
+          if (readyState === SOCKET_CLOSED) return;
+          if (readyState !== SOCKET_CLOSING) {
+            const transportReason = String(reason || "").toLowerCase();
+            if (transportReason.includes("ping timeout") || transportReason.includes("transport")) {
+              setCloseInfo(1006, reason);
+            } else {
+              setCloseInfo(1001, reason);
+            }
+          }
+          readyState = SOCKET_CLOSED;
+          const reasonText = closeReason || String(reason || "").slice(0, 120);
+          emit("close", {
+            code: closeCode,
+            reason: reasonText,
+            wasClean: closeCode !== 1006,
+          });
+        });
+
+        return compatSocket;
+      }
+
+      function createTransportSocket(wsUrl) {
+        if (typeof window.io === "function") {
+          debugLog("transport: socket.io polling");
+          return createSocketIoCompatSocket(wsUrl);
+        }
+        debugLog("transport: websocket fallback (io missing)");
+        return new WebSocket(wsUrl);
+      }
 
       function clearConnectTimeout() {
         if (!connectTimeoutTimer) return;
@@ -1257,6 +1435,11 @@
 
       function connectNow(reason) {
         if (pausedByServer) return;
+        if (pageDeactivating) return;
+        if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.CLOSING)) {
+          debugLog(reason + " -> skip connect (socket busy)");
+          return;
+        }
         pendingReconnect = false;
         clearReconnectTimer();
         debugLog(reason + " -> connect now");
@@ -1265,6 +1448,7 @@
 
       function scheduleReconnect(reason) {
         if (pausedByServer) return;
+        if (pageDeactivating) return;
         pendingReconnect = true;
         if (document.visibilityState !== "visible") {
           debugLog(reason + " -> defer reconnect (hidden)");
@@ -1296,6 +1480,23 @@
         return nextUrl.toString();
       }
 
+      function normalizeBuildLabel(version, label) {
+        const direct = String(label || "").trim();
+        if (direct) return direct.slice(0, 40);
+        const fallback = String(version || "").trim();
+        if (fallback) return fallback.slice(0, 40);
+        return "";
+      }
+
+      function applyBuildLabel(version, label, source = "unknown") {
+        if (!buildBadgeEl) return;
+        const next = normalizeBuildLabel(version, label);
+        if (!next) return;
+        currentBuildLabel = next;
+        buildBadgeEl.textContent = next;
+        buildBadgeEl.title = "Build: " + next + " (" + String(source || "unknown") + ")";
+      }
+
       function hardReloadForServerInstanceChange(reason) {
         if (hardReloadInProgress) return;
         hardReloadInProgress = true;
@@ -1320,6 +1521,8 @@
 
       function probeHealth(reason) {
         if (pausedByServer) return;
+        if (pageDeactivating) return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
         if (healthProbeInFlight) return;
         healthProbeInFlight = true;
 
@@ -1341,18 +1544,15 @@
           .then((body) => {
             healthProbeFailCount = 0;
             observeServerInstanceId(body && body.instanceId, "health");
+            applyBuildLabel(body && body.buildVersion, body && body.buildLabel, "health");
             const openButStale = ws
               && ws.readyState === WebSocket.OPEN
               && lastServerSeenAt
               && Date.now() - lastServerSeenAt > PROBE_STALE_OPEN_MS;
-            if (!ws || ws.readyState !== WebSocket.OPEN || openButStale) {
-              if (openButStale) {
-                debugLog(reason + " health ok + stale open -> reset socket");
-                try { ws.close(); } catch {}
-                ws = null;
-              } else {
-                debugLog(reason + " health ok -> reconnect");
-              }
+            if (openButStale) {
+              debugLog(reason + " health ok + stale open -> reset socket");
+              try { ws.close(); } catch {}
+              ws = null;
               connectNow(reason + " health");
             }
           })
@@ -1371,13 +1571,12 @@
         healthProbeTimer = setInterval(() => {
           if (pausedByServer) return;
           if (document.visibilityState !== "visible") return;
-
-          const disconnected = !ws || ws.readyState !== WebSocket.OPEN;
+          if (!ws || ws.readyState !== WebSocket.OPEN) return;
           const staleOpen = ws
             && ws.readyState === WebSocket.OPEN
             && lastServerSeenAt
             && Date.now() - lastServerSeenAt > PROBE_STALE_OPEN_MS;
-          if (!disconnected && !staleOpen) return;
+          if (!staleOpen) return;
 
           probeHealth("probe_loop");
         }, HEALTH_PROBE_MS);
@@ -1443,10 +1642,11 @@
 
       function ensureFreshConnection() {
         if (pausedByServer) return;
+        if (pageDeactivating) return;
+        if (pendingReconnect || reconnectTimer) return;
         if (!ws) {
           debugLog("ensureFreshConnection: no socket -> connect");
           connectNow("ensureFreshConnection: no socket");
-          probeHealth("ensureFreshConnection: no socket");
           return;
         }
         if (ws.readyState === WebSocket.CONNECTING) {
@@ -1460,16 +1660,17 @@
         if (ws.readyState === WebSocket.OPEN) {
           if (lastServerSeenAt && Date.now() - lastServerSeenAt > STALE_CONNECTION_MS) {
             forceCloseAndReconnect("ensureFreshConnection: stale open");
-            probeHealth("ensureFreshConnection: stale open");
           }
           return;
         }
-        if (ws.readyState !== WebSocket.OPEN) {
+        if (ws.readyState === WebSocket.CLOSING) {
+          return;
+        }
+        if (ws.readyState === WebSocket.CLOSED) {
           debugLog("ensureFreshConnection: socket not open -> recreate");
           try { ws.close(); } catch {}
           ws = null;
           connectNow("ensureFreshConnection: recreate");
-          probeHealth("ensureFreshConnection: recreate");
           return;
         }
       }
@@ -1493,9 +1694,25 @@
       function startConnectionManager() {
         if (connectionManagerTimer) return;
         connectionManagerTimer = setInterval(() => {
+          if (pageDeactivating) return;
           if (document.visibilityState !== "visible") return;
           ensureFreshConnection();
         }, CONNECTION_CHECK_MS);
+      }
+
+      function fetchBuildLabelOnce() {
+        fetch("/health?build=1&ts=" + Date.now(), {
+          cache: "no-store",
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error("bad status");
+            return res.json().catch(() => ({}));
+          })
+          .then((body) => {
+            observeServerInstanceId(body && body.instanceId, "build_probe");
+            applyBuildLabel(body && body.buildVersion, body && body.buildLabel, "build_probe");
+          })
+          .catch(() => {});
       }
 
       function handleServerError(msg) {
@@ -1611,26 +1828,26 @@
 
       function connect() {
         if (pausedByServer) return;
-        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+        if (pageDeactivating) return;
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.CLOSING)) return;
         debugLog("connect() called");
 
         const wsBaseUrl = (location.protocol === "https:" ? "wss://" : "ws://") + location.host;
         const wsUrl = wsBaseUrl + "/?sid=" + Date.now();
-        debugLog("connecting to " + wsUrl);
+        debugLog("connecting to " + wsUrl + " via socket.io");
 
         let socket;
         let opened = false;
         let openedAt = 0;
         try {
-          socket = new WebSocket(wsUrl);
+          socket = createTransportSocket(wsUrl);
           ws = socket;
           connectStartedAt = Date.now();
         } catch {
-          debugLog("new WebSocket failed");
+          debugLog("transport create failed");
           setUiConnected(false);
-          registerConnectFailure("new WebSocket failed");
-          scheduleReconnect("new WebSocket failed");
-          probeHealth("new WebSocket failed");
+          registerConnectFailure("transport create failed");
+          scheduleReconnect("transport create failed");
           return;
         }
 
@@ -1643,7 +1860,6 @@
             forceCloseAndReconnect("connect timeout");
             setUiConnected(false);
             scheduleReconnect("connect timeout");
-            probeHealth("connect timeout");
           }
         }, CONNECT_TIMEOUT_MS);
 
@@ -1704,14 +1920,17 @@
           ws = null;
           setUiConnected(false);
           scheduleReconnect("ws close code=" + ev.code);
-          probeHealth("ws close");
         });
 
-        socket.addEventListener("error", () => {
+        socket.addEventListener("error", (ev) => {
           if (socket !== ws) return;
           if (!opened) registerConnectFailure("ws error before open");
           forceCloseAt = 0;
-          debugLog("ws error");
+          const errMsg = ev && typeof ev === "object"
+            && ev.message ? String(ev.message)
+            : ev && ev.error && ev.error.message ? String(ev.error.message)
+            : "";
+          debugLog(errMsg ? "ws error (" + errMsg + ")" : "ws error");
           clearConnectTimeout();
           stopHeartbeat();
           connectStartedAt = 0;
@@ -1719,7 +1938,6 @@
           setUiConnected(false);
           try { socket.close(); } catch {}
           scheduleReconnect("ws error");
-          probeHealth("ws error");
         });
 
         socket.addEventListener("message", (ev) => {
@@ -1728,6 +1946,7 @@
             const msg = JSON.parse(ev.data);
             if (msg.type === "hello") {
               observeServerInstanceId(msg.serverInstanceId, "ws_hello");
+              applyBuildLabel(msg.buildVersion, msg.buildLabel, "ws_hello");
               noteServerSeen();
               if (msg.poll) showPoll(msg.poll);
               return;
@@ -1857,7 +2076,6 @@
         if (!ws || ws.readyState !== WebSocket.OPEN) {
           appendChat("Offline");
           ensureFreshConnection();
-          probeHealth("send offline");
           return;
         }
 
@@ -1959,20 +2177,32 @@
       window.addEventListener("online", () => {
         debugLog("browser online");
         connectNow("online");
-        probeHealth("online");
       });
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
+          if (pageDeactivating) {
+            pageDeactivating = false;
+            startConnectionManager();
+            startHealthProbeLoop();
+          }
           if (pendingReconnect) scheduleReconnect("visibilitychange");
           ensureFreshConnection();
-          probeHealth("visibilitychange");
         }
       });
       window.addEventListener("focus", () => {
+        if (pageDeactivating) {
+          pageDeactivating = false;
+          startConnectionManager();
+          startHealthProbeLoop();
+        }
         ensureFreshConnection();
-        probeHealth("focus");
       });
       window.addEventListener("pageshow", (ev) => {
+        if (pageDeactivating) {
+          pageDeactivating = false;
+          startConnectionManager();
+          startHealthProbeLoop();
+        }
         if (ev.persisted) {
           debugLog("pageshow persisted -> reset socket");
           try { ws && ws.close(); } catch {}
@@ -1980,23 +2210,33 @@
         }
         if (pendingReconnect) scheduleReconnect("pageshow");
         ensureFreshConnection();
-        probeHealth(ev.persisted ? "pageshow persisted" : "pageshow");
       });
       window.addEventListener("pagehide", (ev) => {
+        pageDeactivating = true;
+        pendingReconnect = false;
+        clearConnectTimeout();
+        clearReconnectTimer();
+        stopHeartbeat();
+        if (connectionManagerTimer) {
+          clearInterval(connectionManagerTimer);
+          connectionManagerTimer = null;
+        }
+        if (healthProbeTimer) {
+          clearInterval(healthProbeTimer);
+          healthProbeTimer = null;
+        }
+        healthProbeInFlight = false;
         if (ev.persisted) {
           debugLog("pagehide persisted -> close socket");
-          stopHeartbeat();
-          clearConnectTimeout();
-          clearReconnectTimer();
-          try { ws && ws.close(); } catch {}
+          try { ws && ws.close(1001, "pagehide"); } catch {}
           ws = null;
         }
       });
 
       startConnectionManager();
       startHealthProbeLoop();
+      fetchBuildLabelOnce();
       connect();
-      probeHealth("boot");
     </script>
   </body>
 </html>

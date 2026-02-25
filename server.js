@@ -6,6 +6,8 @@ const os = require("os");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
 const WebSocket = require("ws");
+const { Server: SocketIOServer } = require("socket.io");
+const { EventEmitter } = require("events");
 const osc = require("osc");
 const { DatabaseSync } = require("node:sqlite");
 
@@ -74,6 +76,18 @@ const DEBUG_LOG_TRIM_TO_BYTES = clampInt(
 );
 const SIM_INTERNAL_ACCESS_KEY = crypto.randomBytes(16).toString("hex");
 const SERVER_INSTANCE_ID = `${Date.now()}-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
+const BUILD_VERSION_PREFIX = "v0.0";
+const BUILD_VERSION_INPUT_FILES = [
+  path.join(__dirname, "server.js"),
+  path.join(__dirname, "public", "index.html"),
+  path.join(__dirname, "public", "admin.html"),
+  path.join(__dirname, "public", "stage.html"),
+  path.join(__dirname, "package.json"),
+];
+const BUILD_FINGERPRINT = computeBuildFingerprint(BUILD_VERSION_INPUT_FILES);
+const BUILD_VERSION = formatBuildVersion(BUILD_FINGERPRINT, BUILD_VERSION_PREFIX);
+const BUILD_HASH_SHORT = BUILD_FINGERPRINT.slice(0, 6);
+const BUILD_LABEL = `${BUILD_VERSION}+${BUILD_HASH_SHORT}`;
 const DEFAULT_POLL_DURATION_SECONDS = clampInt(process.env.POLL_DURATION_SECONDS || "60", 5, 3600, 60);
 let currentPollDurationSeconds = DEFAULT_POLL_DURATION_SECONDS;
 const MESSAGE_SLOWDOWN_SETTING_KEY = "message_slowdown_ms";
@@ -1701,6 +1715,32 @@ function parseIsoTime(value) {
   return ts;
 }
 
+function computeBuildFingerprint(filePaths = []) {
+  const hash = crypto.createHash("sha1");
+  hash.update("for-you-live-build-v1");
+  const sortedPaths = Array.isArray(filePaths) ? filePaths.slice().sort() : [];
+  for (const filePath of sortedPaths) {
+    const safePath = String(filePath || "");
+    hash.update("\n");
+    hash.update(safePath);
+    hash.update("\n");
+    try {
+      const fileData = fs.readFileSync(safePath);
+      hash.update(fileData);
+    } catch (err) {
+      hash.update(`missing:${err && err.code ? String(err.code) : "read_error"}`);
+    }
+  }
+  return hash.digest("hex");
+}
+
+function formatBuildVersion(fingerprint, prefix = "v0.0") {
+  const raw = String(fingerprint || "").slice(0, 8);
+  const parsed = Number.parseInt(raw || "0", 16);
+  const buildNumber = Number.isFinite(parsed) ? parsed % 10000 : 0;
+  return `${String(prefix || "v0.0")}.${String(buildNumber).padStart(4, "0")}`;
+}
+
 function getNameColorHex(name) {
   const hash = crypto.createHash("md5").update(String(name || "Anoniem")).digest();
   const toChannel = (n) => 0x55 + (n % 128);
@@ -2484,6 +2524,7 @@ const adminTokens = new Map();
 const adminLoginAttempts = new Map();
 const connectedClients = new Map();
 const stageSubscribers = new Set();
+const socketIoCompatClients = new Set();
 const mutedUsers = new Map();
 const blockedUsers = new Map();
 let currentSession = ensureOpenSession();
@@ -2906,6 +2947,8 @@ function getStageSnapshot(req) {
   return {
     ...control,
     serverInstanceId: SERVER_INSTANCE_ID,
+    buildVersion: BUILD_VERSION,
+    buildLabel: BUILD_LABEL,
     session: {
       id: Number(currentSession.id || 0),
       name: String(currentSession.name || ""),
@@ -3611,8 +3654,7 @@ function disconnectAllClients(config = {}) {
   const closeCode = clampInt(config.closeCode, 1000, 4999, 4010);
   const closeReason = String(config.closeReason || "session reset").slice(0, 120);
   let closed = 0;
-  for (const client of wss.clients) {
-    const isStageSubscriber = !!(client && client.__isStageSubscriber);
+  forEachChatClient((client) => {
     try {
       if (client.readyState === WebSocket.OPEN) {
         client.send(
@@ -3623,12 +3665,11 @@ function disconnectAllClients(config = {}) {
         );
       }
     } catch {}
-    if (isStageSubscriber) continue;
     try {
       client.close(closeCode, closeReason);
       closed += 1;
     } catch {}
-  }
+  });
   return closed;
 }
 
@@ -3667,6 +3708,18 @@ function broadcastStageState(req, reason = "state") {
   });
 }
 
+function forEachChatClient(handler) {
+  if (typeof handler !== "function") return;
+  for (const client of wss.clients) {
+    if (!client || client.__isStageSubscriber) continue;
+    handler(client);
+  }
+  for (const client of socketIoCompatClients) {
+    if (!client) continue;
+    handler(client);
+  }
+}
+
 function getPollSnapshot() {
   if (!activePoll) return null;
   const results = getPollResults(activePoll);
@@ -3688,14 +3741,13 @@ function getPollSnapshot() {
 
 function broadcastToClients(message) {
   const payload = safeJsonStringify(message, "{}");
-  for (const client of wss.clients) {
-    if (client && client.__isStageSubscriber) continue;
+  forEachChatClient((client) => {
     if (client.readyState === WebSocket.OPEN) {
       try {
         client.send(payload);
       } catch {}
     }
-  }
+  });
 }
 
 function broadcastPollUpdate() {
@@ -3723,15 +3775,15 @@ function sendToTargetIp(target, message, options = {}) {
 
   const payload = safeJsonStringify(message, "{}");
   let sent = 0;
-  for (const client of wss.clients) {
+  forEachChatClient((client) => {
     const meta = client && client.__meta;
-    if (!doesClientMatchScope(meta, scope)) continue;
-    if (client.readyState !== WebSocket.OPEN) continue;
+    if (!doesClientMatchScope(meta, scope)) return;
+    if (client.readyState !== WebSocket.OPEN) return;
     try {
       client.send(payload);
       sent += 1;
     } catch {}
-  }
+  });
   return sent;
 }
 
@@ -5568,6 +5620,8 @@ function getAdminState(req) {
     now: snapshotNow,
     runtime: {
       serverInstanceId: SERVER_INSTANCE_ID,
+      buildVersion: BUILD_VERSION,
+      buildLabel: BUILD_LABEL,
       port: Number(PORT),
       nextPort: getSetting("next_port", String(PORT)),
       restartRequired: getSetting("next_port", String(PORT)) !== String(PORT),
@@ -5650,9 +5704,9 @@ function closeSocketsForTargetIp(target, code = 4003, reason = "kicked", closeDe
   const encodedReason = String(reason || "kicked").slice(0, 120);
   const delay = clampInt(closeDelayMs, 0, 5000, 0);
   let closed = 0;
-  for (const client of wss.clients) {
+  forEachChatClient((client) => {
     const meta = client && client.__meta;
-    if (!doesClientMatchScope(meta, scope)) continue;
+    if (!doesClientMatchScope(meta, scope)) return;
     closed += 1;
     if (delay > 0) {
       setTimeout(() => {
@@ -5665,7 +5719,7 @@ function closeSocketsForTargetIp(target, code = 4003, reason = "kicked", closeDe
         client.close(code, encodedReason);
       } catch {}
     }
-  }
+  });
   return closed;
 }
 
@@ -6156,6 +6210,8 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     instanceId: SERVER_INSTANCE_ID,
+    buildVersion: BUILD_VERSION,
+    buildLabel: BUILD_LABEL,
   });
 });
 
@@ -7139,6 +7195,16 @@ const wss = new WebSocket.Server({
   perMessageDeflate: false,
   maxPayload: 16 * 1024,
 });
+const io = new SocketIOServer(server, {
+  path: "/socket.io",
+  transports: ["polling"],
+  allowUpgrades: false,
+  serveClient: true,
+  cors: {
+    origin: true,
+    credentials: true,
+  },
+});
 let nextClientId = 1;
 scheduleActivePollAutoClose();
 
@@ -7154,6 +7220,109 @@ server.on("upgrade", (req, socket) => {
     connection: req.headers.connection || "",
   });
 });
+
+function buildSocketIoCompatRequest(socket) {
+  const request = socket && socket.request ? socket.request : {};
+  const handshake = socket && socket.handshake ? socket.handshake : {};
+  const reqHeaders = request && request.headers && typeof request.headers === "object" ? request.headers : {};
+  const handshakeHeaders = handshake && handshake.headers && typeof handshake.headers === "object" ? handshake.headers : {};
+  const headers = { ...reqHeaders, ...handshakeHeaders };
+  const query = handshake && handshake.query && typeof handshake.query === "object" ? handshake.query : {};
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        search.append(String(key), String(entry || ""));
+      }
+      continue;
+    }
+    search.append(String(key), String(value || ""));
+  }
+  const rawUrl = String(request && request.url || "/socket.io");
+  const queryString = search.toString();
+  const url = queryString
+    ? `${rawUrl.split("?")[0] || "/socket.io"}?${queryString}`
+    : rawUrl;
+  const remoteAddress = normalizeIp(
+    (handshake && handshake.address)
+    || (request && request.socket && request.socket.remoteAddress)
+    || (socket && socket.conn && socket.conn.remoteAddress)
+    || "unknown"
+  );
+  return {
+    url,
+    headers,
+    socket: { remoteAddress },
+    secure: !!(request && request.connection && request.connection.encrypted),
+  };
+}
+
+function createSocketIoCompatClient(socket) {
+  const client = new EventEmitter();
+  client.__transport = "socketio";
+  client.__socketIo = socket;
+  client.readyState = WebSocket.OPEN;
+  client.__pendingCloseCode = 1001;
+  client.__pendingCloseReason = "socket.io disconnect";
+
+  client.send = (payload) => {
+    if (client.readyState !== WebSocket.OPEN) {
+      throw new Error("socket_not_open");
+    }
+    const data = typeof payload === "string" ? payload : safeJsonStringify(payload, "{}");
+    socket.emit("ws_message", data);
+  };
+
+  client.close = (code = 1000, reason = "") => {
+    if (client.readyState === WebSocket.CLOSING || client.readyState === WebSocket.CLOSED) return;
+    const closeCode = clampInt(code, 1000, 4999, 1000);
+    const closeReason = String(reason || "").slice(0, 120);
+    client.__pendingCloseCode = closeCode;
+    client.__pendingCloseReason = closeReason;
+    client.readyState = WebSocket.CLOSING;
+    try {
+      socket.emit("ws_close", { code: closeCode, reason: closeReason });
+    } catch {}
+    try {
+      socket.disconnect(true);
+    } catch {}
+  };
+
+  socket.on("ws_message", (payload) => {
+    if (client.readyState !== WebSocket.OPEN) return;
+    const data = typeof payload === "string" ? payload : safeJsonStringify(payload, "{}");
+    client.emit("message", Buffer.from(data, "utf8"));
+  });
+
+  socket.on("ws_close", (payload) => {
+    if (client.readyState !== WebSocket.OPEN) return;
+    const info = payload && typeof payload === "object" ? payload : {};
+    const closeCode = clampInt(info.code, 1000, 4999, 1001);
+    const closeReason = String(info.reason || "socket.io client close").slice(0, 120);
+    client.__pendingCloseCode = closeCode;
+    client.__pendingCloseReason = closeReason;
+    client.readyState = WebSocket.CLOSING;
+    try {
+      socket.disconnect(true);
+    } catch {}
+  });
+
+  const forwardError = (err) => {
+    client.emit("error", err);
+  };
+  socket.on("error", forwardError);
+  socket.on("connect_error", forwardError);
+
+  socket.on("disconnect", (reason) => {
+    if (client.readyState === WebSocket.CLOSED) return;
+    const closeCode = clampInt(client.__pendingCloseCode, 1000, 4999, 1001);
+    const closeReason = String(client.__pendingCloseReason || reason || "socket.io disconnect").slice(0, 120);
+    client.readyState = WebSocket.CLOSED;
+    client.emit("close", closeCode, Buffer.from(closeReason, "utf8"));
+  });
+
+  return client;
+}
 
 function sanitizeText(input) {
   const text = String(input || "").trim();
@@ -7255,6 +7424,19 @@ function handleStageSubscriberConnection(ws, req) {
   });
 }
 
+io.on("connection", (socket) => {
+  const req = buildSocketIoCompatRequest(socket);
+  const compatClient = createSocketIoCompatClient(socket);
+  socketIoCompatClients.add(compatClient);
+
+  const cleanup = () => {
+    socketIoCompatClients.delete(compatClient);
+  };
+  compatClient.once("close", cleanup);
+
+  wss.emit("connection", compatClient, req);
+});
+
 wss.on("connection", (ws, req) => {
   if (isStageSubscriptionRequest(req)) {
     handleStageSubscriberConnection(ws, req);
@@ -7331,6 +7513,8 @@ wss.on("connection", (ws, req) => {
       time: nowIso(),
       sessionId: Number(currentSession.id),
       serverInstanceId: SERVER_INSTANCE_ID,
+      buildVersion: BUILD_VERSION,
+      buildLabel: BUILD_LABEL,
     })
   );
 
@@ -7786,6 +7970,8 @@ function startServerListening() {
       port: PORT,
       pid: process.pid,
       instanceId: SERVER_INSTANCE_ID,
+      buildVersion: BUILD_VERSION,
+      buildLabel: BUILD_LABEL,
       restartBootDelayMs: ADMIN_RESTART_BOOT_DELAY_MS,
     });
   });
