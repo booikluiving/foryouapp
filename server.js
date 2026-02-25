@@ -1457,6 +1457,7 @@ function getEngagementRankBadge(rank) {
 function buildEngagementRankLookup(leaderboardSnapshot, maxRank = 3) {
   const safeMaxRank = clampInt(maxRank, 1, 20, 3);
   const byClientKey = new Map();
+  const byIp = new Map();
   const byName = new Map();
   const topEntries = Array.isArray(leaderboardSnapshot && leaderboardSnapshot.top)
     ? leaderboardSnapshot.top
@@ -1469,23 +1470,29 @@ function buildEngagementRankLookup(leaderboardSnapshot, maxRank = 3) {
     const entry = topEntries[index] || {};
     const info = { rank, rankBadge };
     const clientKey = normalizeClientKey(entry.clientKey);
+    const ip = normalizeIp(entry.ip);
     const nameKey = normalizeEngagementNameKey(entry.name);
     if (clientKey && !byClientKey.has(clientKey)) byClientKey.set(clientKey, info);
+    if (ip && ip !== "unknown" && !byIp.has(ip)) byIp.set(ip, info);
     if (nameKey && !byName.has(nameKey)) byName.set(nameKey, info);
   }
 
-  return { byClientKey, byName };
+  return { byClientKey, byIp, byName };
 }
 
 function getEngagementRankInfo(rankLookup, identity = {}) {
   if (!rankLookup || typeof rankLookup !== "object") return null;
   const byClientKey = rankLookup.byClientKey instanceof Map ? rankLookup.byClientKey : null;
+  const byIp = rankLookup.byIp instanceof Map ? rankLookup.byIp : null;
   const byName = rankLookup.byName instanceof Map ? rankLookup.byName : null;
   const clientKey = normalizeClientKey(identity.clientKey);
   if (clientKey && byClientKey && byClientKey.has(clientKey)) {
     return byClientKey.get(clientKey);
   }
-  if (clientKey) return null;
+  const ip = normalizeIp(identity.ip);
+  if (ip && ip !== "unknown" && byIp && byIp.has(ip)) {
+    return byIp.get(ip);
+  }
   const nameKey = normalizeEngagementNameKey(identity.name);
   if (nameKey && byName && byName.has(nameKey)) {
     return byName.get(nameKey);
@@ -6850,6 +6857,30 @@ app.get("/health", (req, res) => {
     instanceId: SERVER_INSTANCE_ID,
     buildVersion: BUILD_VERSION,
     buildLabel: BUILD_LABEL,
+  });
+});
+
+app.get("/chat/history", (req, res) => {
+  const ip = normalizeIp(req.socket.remoteAddress || "unknown");
+  const sessionAccess = ensureSessionAccessForRequest(req, ip);
+  if (!sessionAccess.ok) {
+    const inactive = String(sessionAccess.reason || "") === "session_inactive";
+    res.status(inactive ? 410 : 403).json({
+      ok: false,
+      error: inactive ? "session_inactive" : "session_join_required",
+      messages: [],
+    });
+    return;
+  }
+
+  const limit = clampInt(req.query.limit, 10, 240, 80);
+  const engagementLeaderboard = getStageEngagementLeaderboardSnapshot();
+  const rankLookup = buildEngagementRankLookup(engagementLeaderboard, 3);
+  const messages = getStageRecentMessages(limit, rankLookup);
+  res.json({
+    ok: true,
+    sessionId: Number(currentSession.id || 0),
+    messages,
   });
 });
 

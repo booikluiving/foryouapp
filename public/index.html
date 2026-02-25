@@ -592,7 +592,10 @@
       const CLIENT_LOG_LIMIT = 280;
       const clientLogLines = [];
       const CHAT_LOG_LIMIT = 240;
+      const CHAT_HISTORY_LIMIT = 80;
+      const CHAT_HISTORY_LOAD_TIMEOUT_MS = 2600;
       const chatLogEntries = [];
+      const chatEntryKeys = new Set();
       const reactionCounts = {
         heart: 0,
         fire: 0,
@@ -789,31 +792,65 @@
         chatFeedEl.appendChild(fragment);
       }
 
-      function pushChatEntry(entry) {
+      function buildChatEntryKey(entry) {
+        const time = String((entry && entry.time) || "").trim();
+        const text = String((entry && entry.text) || "").trim();
+        if (!time || !text) return "";
+        const name = String((entry && entry.name) || "Anoniem").slice(0, 24);
+        const nameColor = sanitizeNameColor(entry && entry.nameColor);
+        const rankBadge = normalizeRankBadge(entry && entry.rankBadge);
+        const systemNotice = entry && entry.systemNotice ? "1" : "0";
+        return [time, name, text, nameColor, rankBadge, systemNotice].join("|");
+      }
+
+      function pushChatEntry(entry, { render = true } = {}) {
         chatLogEntries.unshift(entry);
+        const entryKey = String((entry && entry._chatKey) || "");
+        if (entryKey) chatEntryKeys.add(entryKey);
         if (chatLogEntries.length > CHAT_LOG_LIMIT) {
-          chatLogEntries.length = CHAT_LOG_LIMIT;
+          const removedEntries = chatLogEntries.splice(CHAT_LOG_LIMIT);
+          for (const removedEntry of removedEntries) {
+            const removedKey = String((removedEntry && removedEntry._chatKey) || "");
+            if (removedKey) chatEntryKeys.delete(removedKey);
+          }
         }
-        renderChatFeed();
+        if (render) renderChatFeed();
+        return true;
       }
 
-      function appendChat(line) {
+      function appendChat(line, options = {}) {
         const text = String(line || "").trim();
-        if (!text) return;
-        pushChatEntry({ type: "text", text });
+        if (!text) return false;
+        return pushChatEntry({ type: "text", text }, options);
       }
 
-      function appendChatComment(msg) {
+      function appendChatComment(msg, options = {}) {
         const text = String((msg && msg.text) || "").trim();
-        if (!text) return;
-        pushChatEntry({
-          type: "comment",
-          name: String((msg && msg.name) || "Anoniem").slice(0, 24),
+        if (!text) return false;
+        const name = String((msg && msg.name) || "Anoniem").slice(0, 24);
+        const nameColor = sanitizeNameColor(msg && msg.nameColor);
+        const rankBadge = normalizeRankBadge(msg && msg.rankBadge);
+        const systemNotice = !!(msg && msg.system);
+        const time = String((msg && msg.time) || "").trim();
+        const key = buildChatEntryKey({
+          time,
+          name,
           text,
-          nameColor: sanitizeNameColor(msg && msg.nameColor),
-          rankBadge: normalizeRankBadge(msg && msg.rankBadge),
-          systemNotice: !!(msg && msg.system),
+          nameColor,
+          rankBadge,
+          systemNotice,
         });
+        if (key && chatEntryKeys.has(key)) return false;
+        return pushChatEntry({
+          type: "comment",
+          time,
+          name,
+          text,
+          nameColor,
+          rankBadge,
+          systemNotice,
+          _chatKey: key,
+        }, options);
       }
 
       function updateReactionCounterUi() {
@@ -1715,6 +1752,41 @@
           .catch(() => {});
       }
 
+      async function loadChatHistory() {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          try { controller.abort(); } catch {}
+        }, CHAT_HISTORY_LOAD_TIMEOUT_MS);
+        try {
+          const response = await fetch(
+            "/chat/history?limit=" + CHAT_HISTORY_LIMIT + "&ts=" + Date.now(),
+            {
+              cache: "no-store",
+              signal: controller.signal,
+            }
+          );
+          if (!response.ok) {
+            if (response.status !== 403 && response.status !== 410) {
+              debugLog("chat history http status " + response.status);
+            }
+            return;
+          }
+          const payload = await response.json().catch(() => null);
+          const messages = payload && Array.isArray(payload.messages) ? payload.messages : [];
+          if (!messages.length) return;
+          let appended = 0;
+          for (const message of messages) {
+            if (appendChatComment(message, { render: false })) appended += 1;
+          }
+          if (appended > 0) renderChatFeed();
+        } catch (err) {
+          if (err && err.name === "AbortError") return;
+          debugLog("chat history load failed");
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      }
+
       function handleServerError(msg) {
         const code = String(msg.code || "");
         if (code === "moderation_blocked") {
@@ -2233,10 +2305,13 @@
         }
       });
 
-      startConnectionManager();
-      startHealthProbeLoop();
-      fetchBuildLabelOnce();
-      connect();
+      (async () => {
+        await loadChatHistory();
+        startConnectionManager();
+        startHealthProbeLoop();
+        fetchBuildLabelOnce();
+        connect();
+      })();
     </script>
   </body>
 </html>
