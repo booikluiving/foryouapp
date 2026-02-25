@@ -40,7 +40,8 @@ npm install
 npm start
 ```
 
-Standaard draait de server op `http://localhost:3000`.
+Standaard luistert de server op `0.0.0.0:3000`.
+Publieke stage/join links gebruiken automatisch het actuele LAN-IP + poort (fallback: localhost).
 
 ## Omgevingsvariabelen
 Belangrijkste env vars:
@@ -67,7 +68,7 @@ ADMIN_PASSWORD="kies-een-sterk-wachtwoord" PORT=3000 npm start
 - `npm run simulate` start de losse simulator CLI (`scripts/simulate-chatters.js`)
 
 Mac launcher:
-- `scripts/open-admin.command` start lokaal de server (indien nodig) en opent direct `/admin`.
+- `scripts/open-admin.command` start lokaal de server (indien nodig), opent admin via huidig LAN-IP (fallback localhost) en sluit daarna het Terminal-venster.
 - Dubbelklik op dit `.command` bestand of zet er een snelkoppeling/icoon van op je bureaublad.
 
 CLI hulp:

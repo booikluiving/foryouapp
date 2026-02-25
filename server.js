@@ -3325,6 +3325,9 @@ function isLoopbackHostname(hostname) {
 function buildJoinBaseUrl(req) {
   const safeReq = req && typeof req === "object" ? req : { headers: {} };
   const protocol = isHttpsRequest(safeReq) ? "https" : "http";
+  const lanIp = getPreferredLanIpv4();
+  if (lanIp) return `${protocol}://${lanIp}:${PORT}`;
+
   const forwardedHost = String(safeReq.headers["x-forwarded-host"] || "")
     .split(",")[0]
     .trim();
@@ -3337,10 +3340,8 @@ function buildJoinBaseUrl(req) {
     parsed = new URL(`${protocol}://127.0.0.1:${PORT}`);
   }
 
-  if (isLoopbackHostname(parsed.hostname)) {
-    const lanIp = getPreferredLanIpv4();
-    if (lanIp) parsed.hostname = lanIp;
-  }
+  if (isLoopbackHostname(parsed.hostname)) parsed.hostname = "127.0.0.1";
+  if (!parsed.port) parsed.port = String(PORT);
 
   return parsed.origin;
 }
@@ -8603,9 +8604,13 @@ bindOscControlPort(currentOscListenPort, "startup").catch((err) => {
 
 function startServerListening() {
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    const lanIp = getPreferredLanIpv4();
+    const publicBaseUrl = lanIp ? `http://${lanIp}:${PORT}` : `http://127.0.0.1:${PORT}`;
+    console.log(`Server running on ${publicBaseUrl}`);
     writeDebug("server_started", {
       port: PORT,
+      publicBaseUrl,
+      lanIp: lanIp || "",
       pid: process.pid,
       instanceId: SERVER_INSTANCE_ID,
       buildVersion: BUILD_VERSION,
