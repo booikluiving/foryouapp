@@ -138,26 +138,10 @@
       .collapsibleCard.isDragging {
         opacity: 0.58;
       }
-      .collapsibleCard.dropBefore {
-        box-shadow: inset 0 3px 0 var(--accent);
-      }
-      .collapsibleCard.dropAfter {
-        box-shadow: inset 0 -3px 0 var(--accent);
-      }
-      .collapsibleCard.dropLeft {
-        box-shadow: inset 3px 0 0 var(--accent);
-      }
-      .collapsibleCard.dropRight {
-        box-shadow: inset -3px 0 0 var(--accent);
-      }
-      .sectionDropIndicator {
-        height: 0;
-        border-top: 2px solid var(--accent);
-        border-radius: 999px;
-        margin: 0 6px;
-        grid-column: 1 / -1;
-        opacity: 0.85;
-        pointer-events: none;
+      .collapsibleCard.sortable-placeholder {
+        opacity: 0.75;
+        background: var(--subtle);
+        box-shadow: inset 0 0 0 2px var(--accent);
       }
       h1, h2, h3, p { margin: 0; }
       h1 { font-size: 20px; }
@@ -443,6 +427,8 @@
       #app {
         display: none;
         grid-template-columns: repeat(12, minmax(0, 1fr));
+        grid-auto-flow: row dense;
+        grid-auto-rows: 2px;
         align-items: start;
         gap: 12px;
       }
@@ -452,9 +438,6 @@
       }
       #app > .card.layoutSpan2 {
         grid-column: span 6;
-      }
-      #app > .card.layoutSpan3 {
-        grid-column: span 4;
       }
       #app > #actionMsg {
         min-width: 0;
@@ -466,10 +449,10 @@
       @media (max-width: 980px) {
         #app {
           grid-template-columns: 1fr;
+          grid-auto-rows: auto;
         }
         #app > .card,
-        #app > .card.layoutSpan2,
-        #app > .card.layoutSpan3 {
+        #app > .card.layoutSpan2 {
           grid-column: 1;
         }
         #actionMsg {
@@ -905,6 +888,7 @@
     </div>
 
     <script src="/vendor/qrcode-generator.min.js"></script>
+    <script src="/vendor/Sortable.min.js"></script>
     <script>
       const loginCardEl = document.getElementById("loginCard");
       const appEl = document.getElementById("app");
@@ -1073,8 +1057,12 @@
       let sectionOpenState = {};
       let sectionOrderState = [];
       let sectionSpanState = {};
-      let draggedSectionId = "";
-      let sectionDropIndicatorEl = null;
+      let sectionSortableInstance = null;
+      let sectionDragInProgress = false;
+      let sectionLastDragEndedAt = 0;
+      let sectionOrderNormalizeTimer = null;
+      let sectionMasonryLayoutTimer = null;
+      let sectionCardResizeObserver = null;
       let liveChatResizePointerId = null;
       let liveChatResizeStartY = 0;
       let liveChatResizeStartHeight = LIVE_CHAT_DEFAULT_HEIGHT;
@@ -1225,6 +1213,7 @@
         window.addEventListener("resize", () => {
           const current = liveChatLogEl.getBoundingClientRect().height || LIVE_CHAT_DEFAULT_HEIGHT;
           applyLiveChatHeight(current, false);
+          queueSectionMasonryLayout(0);
         });
       }
 
@@ -1248,8 +1237,10 @@
       }
 
       function showApp() {
+        const wasHidden = appEl.style.display !== "grid";
         loginCardEl.style.display = "none";
         appEl.style.display = "grid";
+        if (wasHidden) queueSectionMasonryLayout(0);
       }
 
       function setToken(nextToken) {
@@ -1442,13 +1433,8 @@
 
       function normalizeSectionSpan(input) {
         const value = Number(input);
-        if (value === 2) return 2;
-        if (value === 3) return 3;
+        if (value >= 2) return 2;
         return 1;
-      }
-
-      function supportsSideDrop() {
-        return window.innerWidth > 980;
       }
 
       function loadSectionState() {
@@ -1570,9 +1556,8 @@
         if (!card) return;
         const normalized = normalizeSectionSpan(span);
         card.dataset.layoutSpan = String(normalized);
-        card.classList.remove("layoutSpan2", "layoutSpan3");
+        card.classList.remove("layoutSpan2");
         if (normalized === 2) card.classList.add("layoutSpan2");
-        if (normalized === 3) card.classList.add("layoutSpan3");
 
         const widthBtn = card.querySelector(".sectionWidthBtn");
         if (widthBtn) {
@@ -1585,64 +1570,6 @@
         if (persist && sectionId) {
           sectionSpanState[sectionId] = normalized;
           saveSectionSpanState();
-        }
-      }
-
-      function ensureSectionDropIndicator() {
-        if (sectionDropIndicatorEl && sectionDropIndicatorEl.isConnected) return sectionDropIndicatorEl;
-        sectionDropIndicatorEl = document.createElement("div");
-        sectionDropIndicatorEl.className = "sectionDropIndicator";
-        sectionDropIndicatorEl.setAttribute("aria-hidden", "true");
-        return sectionDropIndicatorEl;
-      }
-
-      function moveSectionDropIndicator(targetCard, after = false) {
-        if (!targetCard || !targetCard.parentNode) return;
-        const indicator = ensureSectionDropIndicator();
-        const parent = targetCard.parentNode;
-        parent.insertBefore(indicator, after ? targetCard.nextSibling : targetCard);
-      }
-
-      function getCardDropPlacement(card, event) {
-        const rect = card.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) return "after";
-        const relativeX = event.clientX - rect.left;
-        const relativeY = event.clientY - rect.top;
-        if (supportsSideDrop()) {
-          const xRatio = Math.max(0, Math.min(1, relativeX / rect.width));
-          if (xRatio <= 0.24) return "left";
-          if (xRatio >= 0.76) return "right";
-        }
-        return relativeY >= rect.height / 2 ? "after" : "before";
-      }
-
-      function applyCardDropHint(card, placement) {
-        if (!card) return;
-        card.classList.remove("dropBefore", "dropAfter", "dropLeft", "dropRight");
-        if (placement === "left") {
-          card.classList.add("dropLeft");
-          return;
-        }
-        if (placement === "right") {
-          card.classList.add("dropRight");
-          return;
-        }
-        const after = placement === "after";
-        card.classList.add(after ? "dropAfter" : "dropBefore");
-        moveSectionDropIndicator(card, after);
-      }
-
-      function clearSectionDropHints({ keepDragging = false } = {}) {
-        const cards = appEl.querySelectorAll(".collapsibleCard");
-        for (const card of cards) {
-          card.classList.remove("dropBefore");
-          card.classList.remove("dropAfter");
-          card.classList.remove("dropLeft");
-          card.classList.remove("dropRight");
-          if (!keepDragging) card.classList.remove("isDragging");
-        }
-        if (sectionDropIndicatorEl && sectionDropIndicatorEl.parentNode) {
-          sectionDropIndicatorEl.parentNode.removeChild(sectionDropIndicatorEl);
         }
       }
 
@@ -1677,80 +1604,126 @@
         persistSectionOrderFromDom();
       }
 
-      function setupSectionDrag(card, dragHandleEl) {
-        dragHandleEl.setAttribute("draggable", "true");
-        dragHandleEl.title = "Sleep om te herschikken";
+      function layoutSectionCardsMasonry() {
+        const cards = Array.from(appEl.querySelectorAll(".card[data-section-id]"));
+        if (!cards.length) return;
+        if (appEl.offsetWidth <= 0 || appEl.offsetHeight <= 0) return;
 
-        dragHandleEl.addEventListener("dragstart", (event) => {
-          const sectionId = String(card.dataset.sectionId || "");
-          if (!sectionId) return;
-          draggedSectionId = sectionId;
-          card.classList.add("isDragging");
-          if (event.dataTransfer) {
-            event.dataTransfer.effectAllowed = "move";
-            try { event.dataTransfer.setData("text/plain", sectionId); } catch {}
-          }
-          clearSectionDropHints({ keepDragging: true });
-        });
+        const isSingleColumn = window.innerWidth <= 980;
+        if (isSingleColumn) {
+          for (const card of cards) card.style.gridRowEnd = "";
+          return;
+        }
 
-        dragHandleEl.addEventListener("dragend", () => {
-          draggedSectionId = "";
-          clearSectionDropHints();
-        });
+        const appStyle = window.getComputedStyle(appEl);
+        const rowHeight = Number.parseFloat(appStyle.gridAutoRows);
+        const rowGap = Number.parseFloat(appStyle.rowGap) || Number.parseFloat(appStyle.gap) || 0;
+        if (!Number.isFinite(rowHeight) || rowHeight <= 0) return;
 
-        card.addEventListener("dragover", (event) => {
-          if (!draggedSectionId) return;
-          const currentId = String(card.dataset.sectionId || "");
-          if (!currentId || currentId === draggedSectionId) return;
-          event.preventDefault();
-          clearSectionDropHints({ keepDragging: true });
-          const placement = getCardDropPlacement(card, event);
-          applyCardDropHint(card, placement);
-        });
+        for (const card of cards) {
+          const rect = card.getBoundingClientRect();
+          if (!rect || rect.height <= 0) continue;
+          const span = Math.max(1, Math.ceil((rect.height + rowGap) / (rowHeight + rowGap)));
+          const nextValue = `span ${span}`;
+          if (card.style.gridRowEnd !== nextValue) card.style.gridRowEnd = nextValue;
+        }
+      }
 
-        card.addEventListener("dragleave", (event) => {
-          const related = event.relatedTarget;
-          if (!related || !card.contains(related)) {
-            card.classList.remove("dropBefore");
-            card.classList.remove("dropAfter");
-            card.classList.remove("dropLeft");
-            card.classList.remove("dropRight");
-          }
-        });
+      function queueSectionMasonryLayout(delayMs = 0) {
+        if (sectionMasonryLayoutTimer) clearTimeout(sectionMasonryLayoutTimer);
+        sectionMasonryLayoutTimer = setTimeout(() => {
+          sectionMasonryLayoutTimer = null;
+          requestAnimationFrame(() => {
+            layoutSectionCardsMasonry();
+          });
+        }, Math.max(0, Number(delayMs) || 0));
+      }
 
-        card.addEventListener("drop", (event) => {
-          if (!draggedSectionId) return;
-          const currentId = String(card.dataset.sectionId || "");
-          if (!currentId || currentId === draggedSectionId) return;
-          event.preventDefault();
+      function ensureSectionCardResizeObserver(cards = []) {
+        if (typeof window.ResizeObserver !== "function") return;
+        if (!sectionCardResizeObserver) {
+          sectionCardResizeObserver = new window.ResizeObserver(() => {
+            if (sectionDragInProgress) return;
+            queueSectionMasonryLayout(0);
+          });
+        }
+        for (const card of cards) {
+          if (!card || card.dataset.masonryObserved === "1") continue;
+          sectionCardResizeObserver.observe(card);
+          card.dataset.masonryObserved = "1";
+        }
+      }
 
-          const draggedCard = Array.from(appEl.querySelectorAll(".card[data-section-id]"))
-            .find((candidate) => String(candidate.dataset.sectionId || "") === draggedSectionId);
-          if (!draggedCard || draggedCard === card) {
-            clearSectionDropHints();
-            return;
-          }
-
-          const placement = getCardDropPlacement(card, event);
-          if (placement === "left") {
-            const targetSpan = getCardSpan(card);
-            const sideSpan = targetSpan === 1 ? 2 : targetSpan;
-            if (targetSpan === 1) applyCardSpan(card, sideSpan, true);
-            applyCardSpan(draggedCard, sideSpan, true);
-            appEl.insertBefore(draggedCard, card);
-          } else if (placement === "right") {
-            const targetSpan = getCardSpan(card);
-            const sideSpan = targetSpan === 1 ? 2 : targetSpan;
-            if (targetSpan === 1) applyCardSpan(card, sideSpan, true);
-            applyCardSpan(draggedCard, sideSpan, true);
-            appEl.insertBefore(draggedCard, card.nextSibling);
-          } else if (sectionDropIndicatorEl && sectionDropIndicatorEl.parentNode === appEl) {
-            appEl.insertBefore(draggedCard, sectionDropIndicatorEl);
-          } else {
-            appEl.insertBefore(draggedCard, placement === "after" ? card.nextSibling : card);
-          }
-          clearSectionDropHints();
+      function normalizeSectionOrderToVisualFlow() {
+        const cards = Array.from(appEl.querySelectorAll(".card[data-section-id]"));
+        if (cards.length < 2) {
           persistSectionOrderFromDom();
+          return;
+        }
+        if (appEl.offsetWidth <= 0 || appEl.offsetHeight <= 0) {
+          persistSectionOrderFromDom();
+          return;
+        }
+        const visual = cards.map((card) => {
+          const rect = card.getBoundingClientRect();
+          return {
+            card,
+            top: rect.top,
+            left: rect.left,
+          };
+        });
+        visual.sort((a, b) => {
+          const deltaTop = a.top - b.top;
+          if (Math.abs(deltaTop) <= 4) return a.left - b.left;
+          return deltaTop;
+        });
+        const currentOrder = cards.map((card) => String(card.dataset.sectionId || "")).join("|");
+        const visualOrder = visual.map((entry) => String(entry.card.dataset.sectionId || "")).join("|");
+        if (visualOrder !== currentOrder) {
+          for (const entry of visual) {
+            appEl.appendChild(entry.card);
+          }
+        }
+        persistSectionOrderFromDom();
+      }
+
+      function queueSectionOrderNormalization(delayMs = 180) {
+        if (sectionOrderNormalizeTimer) clearTimeout(sectionOrderNormalizeTimer);
+        sectionOrderNormalizeTimer = setTimeout(() => {
+          sectionOrderNormalizeTimer = null;
+          normalizeSectionOrderToVisualFlow();
+          queueSectionMasonryLayout(0);
+        }, Math.max(0, Number(delayMs) || 0));
+      }
+
+      function initSectionSortable() {
+        if (sectionSortableInstance) return;
+        if (!window.Sortable || typeof window.Sortable.create !== "function") {
+          console.warn("[admin] Sortable.js ontbreekt op /vendor/Sortable.min.js; herschikken uitgeschakeld.");
+          if (appEl.dataset.sortableMissingNotice !== "1") {
+            setActionMessage("Secties herschikken uitgeschakeld: voeg /public/vendor/Sortable.min.js toe.");
+            appEl.dataset.sortableMissingNotice = "1";
+          }
+          return;
+        }
+        sectionSortableInstance = window.Sortable.create(appEl, {
+          draggable: ".card[data-section-id]",
+          handle: ".sectionHeader",
+          animation: 150,
+          ghostClass: "isDragging",
+          chosenClass: "isDragging",
+          dragClass: "isDragging",
+          fallbackClass: "sortable-placeholder",
+          filter: ".sectionToggle, .sectionWidthBtn, input, select, textarea, button, a, label",
+          preventOnFilter: false,
+          onStart: () => {
+            sectionDragInProgress = true;
+          },
+          onEnd: () => {
+            sectionDragInProgress = false;
+            sectionLastDragEndedAt = Date.now();
+            queueSectionOrderNormalization();
+          },
         });
       }
 
@@ -1806,6 +1779,7 @@
 
           const sectionHeader = document.createElement("div");
           sectionHeader.className = "sectionHeader";
+          sectionHeader.title = "Klik om in/uit te vouwen, sleep om te herschikken";
           const sectionHeaderMain = document.createElement("div");
           sectionHeaderMain.className = "sectionHeaderMain";
           sectionHeaderMain.appendChild(headerSource);
@@ -1845,6 +1819,7 @@
           const savedState = sectionOpenState[sectionId];
           setCardOpenState(card, typeof savedState === "boolean" ? savedState : true);
           applyCardSpan(card, sectionSpanState[sectionId], false);
+          let headerClickTimer = null;
 
           sectionToggle.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -1852,59 +1827,55 @@
             setCardOpenState(card, nextOpen);
             sectionOpenState[sectionId] = nextOpen;
             saveSectionState();
+            queueSectionMasonryLayout(0);
+          });
+
+          sectionHeader.addEventListener("click", (event) => {
+            if (sectionDragInProgress) return;
+            if (Date.now() - sectionLastDragEndedAt < 220) return;
+            const target = event.target;
+            if (target && target.closest && target.closest("button, input, select, textarea, a, label")) return;
+            if (headerClickTimer) clearTimeout(headerClickTimer);
+            headerClickTimer = setTimeout(() => {
+              headerClickTimer = null;
+              const nextOpen = !card.classList.contains("isOpen");
+              setCardOpenState(card, nextOpen);
+              sectionOpenState[sectionId] = nextOpen;
+              saveSectionState();
+              queueSectionMasonryLayout(0);
+            }, 220);
+          });
+
+          sectionHeader.addEventListener("dblclick", (event) => {
+            if (sectionDragInProgress) return;
+            const target = event.target;
+            if (target && target.closest && target.closest("button, input, select, textarea, a, label")) return;
+            if (headerClickTimer) {
+              clearTimeout(headerClickTimer);
+              headerClickTimer = null;
+            }
+            const current = getCardSpan(card);
+            const next = current === 1 ? 2 : 1;
+            applyCardSpan(card, next, true);
+            queueSectionMasonryLayout(0);
+            queueSectionOrderNormalization();
           });
 
           sectionWidthBtn.addEventListener("click", (event) => {
             event.stopPropagation();
             const current = getCardSpan(card);
-            const next = current === 1 ? 2 : current === 2 ? 3 : 1;
+            const next = current === 1 ? 2 : 1;
             applyCardSpan(card, next, true);
+            queueSectionMasonryLayout(0);
+            queueSectionOrderNormalization();
           });
-
-          setupSectionDrag(card, sectionHeader);
           managedCards.push(card);
         }
 
         applySectionOrder(managedCards);
-
-        if (appEl.dataset.dndReady !== "1") {
-          appEl.dataset.dndReady = "1";
-
-          appEl.addEventListener("dragover", (event) => {
-            if (!draggedSectionId) return;
-            event.preventDefault();
-            const targetCard = event.target && event.target.closest
-              ? event.target.closest(".card[data-section-id]")
-              : null;
-            if (targetCard) return;
-            clearSectionDropHints({ keepDragging: true });
-            const cardsNow = Array.from(appEl.querySelectorAll(".card[data-section-id]"));
-            const lastCard = cardsNow.length ? cardsNow[cardsNow.length - 1] : null;
-            if (lastCard) moveSectionDropIndicator(lastCard, true);
-          });
-
-          appEl.addEventListener("drop", (event) => {
-            if (!draggedSectionId) return;
-            const targetCard = event.target && event.target.closest
-              ? event.target.closest(".card[data-section-id]")
-              : null;
-            if (targetCard) return;
-            event.preventDefault();
-            const draggedCard = Array.from(appEl.querySelectorAll(".card[data-section-id]"))
-              .find((candidate) => String(candidate.dataset.sectionId || "") === draggedSectionId);
-            if (!draggedCard) {
-              clearSectionDropHints();
-              return;
-            }
-            if (sectionDropIndicatorEl && sectionDropIndicatorEl.parentNode === appEl) {
-              appEl.insertBefore(draggedCard, sectionDropIndicatorEl);
-            } else {
-              appEl.appendChild(draggedCard);
-            }
-            clearSectionDropHints();
-            persistSectionOrderFromDom();
-          });
-        }
+        initSectionSortable();
+        ensureSectionCardResizeObserver(managedCards);
+        queueSectionMasonryLayout(0);
       }
 
       function formatTs(iso) {
@@ -3306,6 +3277,7 @@
           const data = await api("/admin/state");
           renderState(data);
           showApp();
+          if (typeof window.ResizeObserver !== "function") queueSectionMasonryLayout(0);
           loginErrorEl.textContent = "";
         } catch (err) {
           if (err.status === 401) {
@@ -3324,6 +3296,7 @@
         const data = await api("/admin/state");
         renderState(data);
         showApp();
+        if (typeof window.ResizeObserver !== "function") queueSectionMasonryLayout(0);
         loginErrorEl.textContent = "";
         startRefreshTimer();
       }
