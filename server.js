@@ -1457,8 +1457,6 @@ function getEngagementRankBadge(rank) {
 function buildEngagementRankLookup(leaderboardSnapshot, maxRank = 3) {
   const safeMaxRank = clampInt(maxRank, 1, 20, 3);
   const byClientKey = new Map();
-  const byIp = new Map();
-  const byName = new Map();
   const topEntries = Array.isArray(leaderboardSnapshot && leaderboardSnapshot.top)
     ? leaderboardSnapshot.top
     : [];
@@ -1470,32 +1468,19 @@ function buildEngagementRankLookup(leaderboardSnapshot, maxRank = 3) {
     const entry = topEntries[index] || {};
     const info = { rank, rankBadge };
     const clientKey = normalizeClientKey(entry.clientKey);
-    const ip = normalizeIp(entry.ip);
-    const nameKey = normalizeEngagementNameKey(entry.name);
     if (clientKey && !byClientKey.has(clientKey)) byClientKey.set(clientKey, info);
-    if (ip && ip !== "unknown" && !byIp.has(ip)) byIp.set(ip, info);
-    if (nameKey && !byName.has(nameKey)) byName.set(nameKey, info);
   }
 
-  return { byClientKey, byIp, byName };
+  return { byClientKey };
 }
 
 function getEngagementRankInfo(rankLookup, identity = {}) {
   if (!rankLookup || typeof rankLookup !== "object") return null;
   const byClientKey = rankLookup.byClientKey instanceof Map ? rankLookup.byClientKey : null;
-  const byIp = rankLookup.byIp instanceof Map ? rankLookup.byIp : null;
-  const byName = rankLookup.byName instanceof Map ? rankLookup.byName : null;
+  // Intentionally clientKey-only: ip/name fallback causes false badges on shared IPs.
   const clientKey = normalizeClientKey(identity.clientKey);
   if (clientKey && byClientKey && byClientKey.has(clientKey)) {
     return byClientKey.get(clientKey);
-  }
-  const ip = normalizeIp(identity.ip);
-  if (ip && ip !== "unknown" && byIp && byIp.has(ip)) {
-    return byIp.get(ip);
-  }
-  const nameKey = normalizeEngagementNameKey(identity.name);
-  if (nameKey && byName && byName.has(nameKey)) {
-    return byName.get(nameKey);
   }
   return null;
 }
@@ -3457,8 +3442,6 @@ function getStageRecentMessages(limit = 26, rankLookup = null) {
       if (!isNotice) {
         const rankInfo = getEngagementRankInfo(safeRankLookup, {
           clientKey: message && message.clientKey,
-          ip: message && message.ip,
-          name,
         });
         if (rankInfo) {
           payload.rank = rankInfo.rank;
@@ -6202,8 +6185,6 @@ function getAdminState(req) {
     if (!isNotice && String(message && message.status || "") === "accepted") {
       const rankInfo = getEngagementRankInfo(engagementRankLookup, {
         clientKey: message && message.clientKey,
-        ip: message && message.ip,
-        name,
       });
       if (rankInfo) {
         next.rank = rankInfo.rank;
@@ -8560,8 +8541,6 @@ wss.on("connection", (ws, req) => {
     );
     const rankInfo = getEngagementRankInfo(buildEngagementRankLookup(leaderboardForRank, 3), {
       clientKey: meta.clientKey,
-      ip: meta.ip,
-      name,
     });
     if (rankInfo) {
       payload.rank = rankInfo.rank;
