@@ -10,6 +10,14 @@ const { Server: SocketIOServer } = require("socket.io");
 const { EventEmitter } = require("events");
 const osc = require("osc");
 const { DatabaseSync } = require("node:sqlite");
+const {
+  CROWD_CUES,
+  CROWD_MODE_PRESETS,
+  CrowdEngine,
+  normalizeBotLabelMode,
+  normalizeCrowdCue,
+  normalizeCrowdMode,
+} = require("./lib/crowd-engine");
 
 let PORT = Number.parseInt(process.env.PORT || "3000", 10);
 if (!Number.isFinite(PORT) || PORT < 1 || PORT > 65535) PORT = 3000;
@@ -131,6 +139,13 @@ const SIM_DEFAULTS = {
   positive: 0.45,
   negative: 0.7,
   callbackRate: 0.34,
+  crowdMode: "normal",
+  intensity: 0.56,
+  realism: 0.82,
+  chaos: 0.34,
+  warmth: 0.48,
+  skepticism: 0.54,
+  botLabelMode: "hidden",
 };
 const SIM_DEFAULTS_SETTING_KEY = "sim_defaults_json";
 const STAGE_OUTPUT_SETTINGS_KEY = "stage_output_settings_json";
@@ -4335,6 +4350,15 @@ function normalizeSimulatorConfig(rawConfig = {}, baseConfig = SIM_DEFAULTS) {
   const negative = clampFloat(rawConfig.negative, 0, 1, legacyNegative);
   const positiveFallback = clampFloat(1 - legacyNegative * 0.62, 0, 1, base.positive);
   const positive = clampFloat(rawConfig.positive, 0, 1, positiveFallback);
+  const warmthFallback = rawConfig.positive === undefined
+    ? base.warmth
+    : clampFloat(rawConfig.positive, 0, 1, base.warmth);
+  const skepticismFallback = rawConfig.negative === undefined
+    ? base.skepticism
+    : clampFloat(rawConfig.negative, 0, 1, base.skepticism);
+  const chaosFallback = rawConfig.absurdity === undefined
+    ? base.chaos
+    : clampFloat(rawConfig.absurdity, 0, 1, base.chaos);
   return {
     clients: clampInt(rawConfig.clients, 1, 200, base.clients),
     durationSec: clampInt(rawConfig.durationSec, 0, 24 * 60 * 60, base.durationSec),
@@ -4359,6 +4383,13 @@ function normalizeSimulatorConfig(rawConfig = {}, baseConfig = SIM_DEFAULTS) {
     positive,
     negative,
     callbackRate: clampFloat(rawConfig.callbackRate, 0, 1, base.callbackRate),
+    crowdMode: normalizeCrowdMode(rawConfig.crowdMode, base.crowdMode || "normal"),
+    intensity: clampFloat(rawConfig.intensity, 0, 1, base.intensity),
+    realism: clampFloat(rawConfig.realism, 0, 1, base.realism),
+    chaos: clampFloat(rawConfig.chaos, 0, 1, chaosFallback),
+    warmth: clampFloat(rawConfig.warmth, 0, 1, warmthFallback),
+    skepticism: clampFloat(rawConfig.skepticism, 0, 1, skepticismFallback),
+    botLabelMode: normalizeBotLabelMode(rawConfig.botLabelMode, base.botLabelMode || "hidden"),
   };
 }
 
@@ -4378,6 +4409,7 @@ function createEmptySimulatorStats() {
     recvComments: 0,
     sentVotes: 0,
     voteAcks: 0,
+    abandonedMessages: 0,
     serverErrors: 0,
     rateLimited: 0,
     blockedErrors: 0,
@@ -4393,6 +4425,7 @@ class SimulatedBotClient {
     this.connected = false;
     this.stopped = false;
     this.sendTimer = null;
+    this.typingTimer = null;
     this.voteTimer = null;
     this.reconnectTimer = null;
     this.lastSentAt = 0;
@@ -4471,8 +4504,10 @@ class SimulatedBotClient {
 
   stopLoops() {
     if (this.sendTimer) clearTimeout(this.sendTimer);
+    if (this.typingTimer) clearTimeout(this.typingTimer);
     if (this.voteTimer) clearTimeout(this.voteTimer);
     this.sendTimer = null;
+    this.typingTimer = null;
     this.voteTimer = null;
   }
 
@@ -4531,19 +4566,23 @@ class SimulatedBotClient {
 
     const profile = this.getProfile();
     this.maybeSendReaction(tickMs, profile);
+    if (this.typingTimer) {
+      this.scheduleNextSendTick(180, 520);
+      return;
+    }
+
     const now = Date.now();
     const gap = Math.max(180, this.nextMessageGapMs || this.computeNextMessageGapMs(profile));
     const sinceLast = now - this.lastSentAt;
     const canSend = sinceLast >= gap;
 
-    if (canSend && Math.random() <= this.messageChanceForTick(tickMs, profile)) {
-      this.messageSeq += 1;
-      const text = this.manager.makeMessage(this.id, this.messageSeq, profile);
-      if (this.sendJson({ type: "comment", name: this.name, text, clientTag: this.clientTag })) {
-        this.lastSentAt = Date.now();
-        this.nextMessageGapMs = this.computeNextMessageGapMs(profile);
-        this.manager.stats.sentComments += 1;
-      }
+    if (canSend) {
+      const action = this.manager.planBotComment(this.id, profile, {
+        tickMs,
+        baseChance: this.messageChanceForTick(tickMs, profile),
+        estimatedChars: profile && profile.lastText ? profile.lastText.length : 32,
+      });
+      if (action) this.queuePlannedComment(action, profile);
     }
 
     const remaining = Math.max(0, (this.nextMessageGapMs || gap) - (Date.now() - this.lastSentAt));
@@ -4552,6 +4591,40 @@ class SimulatedBotClient {
       return;
     }
     this.scheduleNextSendTick(220, 1250);
+  }
+
+  queuePlannedComment(action, profile = null) {
+    const resolvedProfile = profile || this.getProfile();
+    this.lastSentAt = Date.now();
+    this.nextMessageGapMs = this.computeNextMessageGapMs(resolvedProfile);
+    if (action && action.abandon) {
+      this.manager.stats.abandonedMessages += 1;
+      return;
+    }
+
+    const delay = clampInt(action && action.typingDelayMs, 0, 6000, 0);
+    if (delay <= 160) {
+      this.sendPlannedComment(action, resolvedProfile);
+      return;
+    }
+
+    this.typingTimer = setTimeout(() => {
+      this.typingTimer = null;
+      this.sendPlannedComment(action, resolvedProfile);
+    }, delay);
+  }
+
+  sendPlannedComment(action, profile = null) {
+    if (this.stopped || !this.manager.running) return;
+    if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const resolvedProfile = profile || this.getProfile();
+    this.messageSeq += 1;
+    const text = this.manager.makeMessage(this.id, this.messageSeq, resolvedProfile, action);
+    if (this.sendJson({ type: "comment", name: this.name, text, clientTag: this.clientTag })) {
+      this.lastSentAt = Date.now();
+      this.nextMessageGapMs = this.computeNextMessageGapMs(resolvedProfile);
+      this.manager.stats.sentComments += 1;
+    }
   }
 
   startSendLoop() {
@@ -4575,8 +4648,6 @@ class SimulatedBotClient {
     const baseRatePerSecond = clampFloat(this.manager.config.reactionRate, 0, 4, 0.35);
     const ratePerSecond = clampFloat(baseRatePerSecond * reactionDrive, 0, 6, baseRatePerSecond);
     const seconds = clampFloat(tickMs / 1000, 0.05, 3, 1);
-    const chance = clampFloat(ratePerSecond * seconds, 0, 1, ratePerSecond);
-    if (Math.random() > chance) return;
     const now = Date.now();
     const cooldownBias = clampFloat(
       resolvedProfile && resolvedProfile.reactionCooldownBias,
@@ -4587,9 +4658,12 @@ class SimulatedBotClient {
     const cooldownMs = clampInt(Math.round(180 * cooldownBias), 90, 1200, 180);
     if (now - this.lastReactionAt < cooldownMs) return;
 
+    const reactionPlan = this.manager.planBotReaction(resolvedProfile, tickMs, ratePerSecond);
+    if (!reactionPlan) return;
     const favoriteReaction = normalizeReactionType(resolvedProfile && resolvedProfile.favoriteReaction);
     const secondaryReaction = normalizeReactionType(resolvedProfile && resolvedProfile.secondaryReaction);
-    let reaction = ALLOWED_REACTIONS[this.manager.randomInt(0, ALLOWED_REACTIONS.length - 1)];
+    let reaction = normalizeReactionType(reactionPlan.reaction)
+      || ALLOWED_REACTIONS[this.manager.randomInt(0, ALLOWED_REACTIONS.length - 1)];
     if (favoriteReaction && Math.random() < 0.66) {
       reaction = favoriteReaction;
     } else if (secondaryReaction && Math.random() < 0.28) {
@@ -4599,6 +4673,7 @@ class SimulatedBotClient {
     if (!sent) return;
     this.lastReactionAt = now;
     this.manager.stats.sentReactions += 1;
+    this.manager.observeReaction(reaction, true);
   }
 
   maybeScheduleVote() {
@@ -4700,6 +4775,7 @@ class ChatSimulatorManager {
     this.generatedPhraseCounts = new Map();
     this.generatedPrefixCounts = new Map();
     this.botProfiles = new Map();
+    this.crowdEngine = new CrowdEngine({ config: this.config });
   }
 
   randomInt(min, max) {
@@ -4728,6 +4804,9 @@ class ChatSimulatorManager {
     const clean = String(firstName || "Alex")
       .replace(/[^a-zA-Z'-]/g, "")
       .slice(0, 18) || "Alex";
+    if (normalizeBotLabelMode(this.config.botLabelMode, "hidden") === "hidden") {
+      return clean.slice(0, 24);
+    }
     return `${clean} (bot)`.slice(0, 24);
   }
 
@@ -4742,6 +4821,8 @@ class ChatSimulatorManager {
     this.generatedPhraseCounts.clear();
     this.generatedPrefixCounts.clear();
     this.botProfiles.clear();
+    this.crowdEngine.reset();
+    this.crowdEngine.updateConfig(this.config);
   }
 
   getBotProfile(botId) {
@@ -4750,6 +4831,7 @@ class ChatSimulatorManager {
     if (known) return known;
     const persona = pickWeighted(SIM_PERSONAS) || SIM_PERSONAS[0];
     const activity = pickWeighted(SIM_ACTIVITY_ARCHETYPES) || SIM_ACTIVITY_ARCHETYPES[0];
+    const crowdTraits = this.crowdEngine.createBotTraits();
     const favoriteReaction = this.sample(ALLOWED_REACTIONS, "heart");
     const secondaryReaction = this.sample(
       ALLOWED_REACTIONS.filter((reaction) => reaction !== favoriteReaction),
@@ -4759,16 +4841,51 @@ class ChatSimulatorManager {
       botId: Number(botId || 0),
       persona,
       activityArchetype: String(activity && activity.id || "steady"),
+      roleId: crowdTraits.roleId,
+      roleLabel: crowdTraits.roleLabel,
+      role: crowdTraits.role,
       voicePrefix: this.sample(SIM_CHAT_PREFIXES, ""),
       voiceAfterthought: this.sample(SIM_CHAT_AFTERTHOUGHTS, ""),
       favoriteShort: this.sample(SIM_SHORT_REACTIONS, "wow"),
       favoriteReaction,
       secondaryReaction,
-      commentDrive: clampFloat(this.rollRange(activity.commentDriveMin, activity.commentDriveMax, 1), 0.2, 2.8, 1),
-      reactionDrive: clampFloat(this.rollRange(activity.reactionDriveMin, activity.reactionDriveMax, 1), 0.2, 4, 1),
-      emojiDrive: clampFloat(this.rollRange(activity.emojiDriveMin, activity.emojiDriveMax, 1), 0.45, 2.5, 1),
-      gapBias: clampFloat(this.rollRange(activity.gapBiasMin, activity.gapBiasMax, 1), 0.35, 2.8, 1),
-      callbackDrive: clampFloat(this.rollRange(activity.callbackDriveMin, activity.callbackDriveMax, 1), 0.45, 1.8, 1),
+      commentMultiplier: crowdTraits.commentMultiplier,
+      reactionMultiplier: crowdTraits.reactionMultiplier,
+      emojiMultiplier: crowdTraits.emojiMultiplier,
+      typingCps: crowdTraits.typingCps,
+      abandonChance: crowdTraits.abandonChance,
+      intentBias: crowdTraits.intentBias,
+      socialPhase: crowdTraits.socialPhase,
+      commentDrive: clampFloat(
+        this.rollRange(activity.commentDriveMin, activity.commentDriveMax, 1) * crowdTraits.commentMultiplier,
+        0.12,
+        3.6,
+        1
+      ),
+      reactionDrive: clampFloat(
+        this.rollRange(activity.reactionDriveMin, activity.reactionDriveMax, 1) * crowdTraits.reactionMultiplier,
+        0.12,
+        5.2,
+        1
+      ),
+      emojiDrive: clampFloat(
+        this.rollRange(activity.emojiDriveMin, activity.emojiDriveMax, 1) * crowdTraits.emojiMultiplier,
+        0.32,
+        3.2,
+        1
+      ),
+      gapBias: clampFloat(
+        this.rollRange(activity.gapBiasMin, activity.gapBiasMax, 1) * crowdTraits.roleGapBias,
+        0.28,
+        3.2,
+        1
+      ),
+      callbackDrive: clampFloat(
+        this.rollRange(activity.callbackDriveMin, activity.callbackDriveMax, 1) * crowdTraits.callbackMultiplier,
+        0.34,
+        2.4,
+        1
+      ),
       reactionCooldownBias: clampFloat(
         this.rollRange(activity.reactionCooldownBiasMin, activity.reactionCooldownBiasMax, 1),
         0.45,
@@ -4870,15 +4987,18 @@ class ChatSimulatorManager {
     const text = sanitizeText(comment.text || "");
     if (!text) return;
     const name = sanitizeName(comment.name || "Anoniem");
+    const isBot = comment.isBot === true;
     this.recentObservedComments.push({
       name,
       text,
       normalized: normalizeSimText(text),
       ts: Date.now(),
+      isBot,
     });
     if (this.recentObservedComments.length > 80) {
       this.recentObservedComments.splice(0, this.recentObservedComments.length - 80);
     }
+    this.crowdEngine.observeStimulus(isBot ? "bot_comment" : "human_comment", { name, text, isBot });
   }
 
   pickCallbackEntry(profile = null) {
@@ -4891,13 +5011,49 @@ class ChatSimulatorManager {
       this.config.callbackRate
     );
     if (Math.random() > callbackChance) return null;
-    const windowSize = Math.min(24, this.recentObservedComments.length);
-    const start = this.recentObservedComments.length - windowSize;
+    const humanEntries = this.recentObservedComments.filter((entry) => entry && !entry.isBot);
+    const source = humanEntries.length ? humanEntries : this.recentObservedComments;
+    const windowSize = Math.min(24, source.length);
+    const start = source.length - windowSize;
     for (let i = 0; i < 5; i += 1) {
-      const entry = this.recentObservedComments[this.randomInt(start, this.recentObservedComments.length - 1)];
+      const entry = source[this.randomInt(start, source.length - 1)];
       if (entry && String(entry.text || "").length >= 4) return entry;
     }
-    return this.recentObservedComments[this.recentObservedComments.length - 1] || null;
+    return source[source.length - 1] || null;
+  }
+
+  planBotComment(botId, profile = null, options = {}) {
+    const resolvedProfile = profile || this.getBotProfile(botId);
+    const engineProfile = { ...resolvedProfile, commentMultiplier: 1 };
+    return this.crowdEngine.planComment(botId, engineProfile, {
+      now: Date.now(),
+      baseChance: options.baseChance,
+      estimatedChars: options.estimatedChars,
+    });
+  }
+
+  planBotReaction(profile = null, tickMs = 1000, baseRate = this.config.reactionRate) {
+    const reactionProfile = profile ? { ...profile, reactionMultiplier: 1 } : {};
+    return this.crowdEngine.planReaction(reactionProfile, tickMs, {
+      now: Date.now(),
+      baseRate,
+    });
+  }
+
+  observeReaction(reaction, isBot = false) {
+    if (!this.running) return;
+    this.crowdEngine.observeStimulus("reaction", { reaction, isBot });
+  }
+
+  observePollStarted(poll) {
+    if (!this.running) return;
+    this.crowdEngine.observeStimulus("poll_started", { poll });
+  }
+
+  issueCue(cue) {
+    const normalized = normalizeCrowdCue(cue);
+    if (!normalized) return false;
+    return this.crowdEngine.applyCue(normalized);
   }
 
   tonePositive() {
@@ -5197,6 +5353,132 @@ class ChatSimulatorManager {
     return this.maybeAddVoice(profile, line);
   }
 
+  buildIntentCandidate(profile, action, topic, callback) {
+    if (!action || typeof action !== "object") return "";
+    const intent = String(action.intent || "");
+    const motif = String(action.motif || "").trim();
+    const snippet = callback ? this.shortSnippet(callback.text, 22) : "";
+    const topicTail = topic && Math.random() < 0.24 ? this.renderTopicLine(topic, SIM_TOPIC_FOLLOWUPS) : "";
+
+    if (intent === "emoji_wave") {
+      return this.buildEmojiOnlyCandidate(profile);
+    }
+
+    if (intent === "callback") {
+      return this.buildCallbackCandidate(profile, callback, topic)
+        || this.maybeAddVoice(profile, this.joinCompact([
+          this.sample(["ja dit dus", "hier ging de chat net al op aan", "dit blijft hangen"], "ja dit dus"),
+          snippet ? `"${snippet}"` : "",
+          topicTail,
+        ]));
+    }
+
+    if (intent === "agree") {
+      const core = snippet && Math.random() < 0.48
+        ? this.sample([
+            `ja precies "${snippet}"`,
+            `dit is wel exact wat ${callback && callback.name ? callback.name : "iemand"} bedoelde`,
+            `"${snippet}" is nu canon`,
+          ], "ja precies")
+        : this.sample([
+            "ja dit voel ik ook",
+            "precies dit",
+            "same eigenlijk",
+            "dit landt wel",
+            "ik ga hierin mee",
+          ], "precies dit");
+      return this.maybeAddVoice(profile, this.joinCompact([core, topicTail]));
+    }
+
+    if (intent === "doubt") {
+      const core = this.sample([
+        "ik vertrouw deze wending nog niet helemaal",
+        "wacht dit voelt verdacht",
+        "ik weet niet of ik mee ben",
+        "waarom voelt dit alsof er iets achter zit",
+        "dit is of geniaal of heel gevaarlijk",
+      ], "ik vertrouw dit nog niet helemaal");
+      return this.maybeAddVoice(profile, this.joinCompact([core, motif ? `dat ${motif} blijft hangen` : "", topicTail]));
+    }
+
+    if (intent === "ask") {
+      const core = motif
+        ? this.sample([
+            `wacht waarom ${motif}`,
+            `kan iemand ${motif} uitleggen`,
+            `ben ik de enige die op ${motif} bleef hangen`,
+          ], `wacht waarom ${motif}`)
+        : this.sample([
+            "wacht wat gebeurt hier",
+            "kan iemand dit uitleggen",
+            "mis ik context",
+            "zijn we hier allemaal tegelijk getuige van",
+          ], "wacht wat gebeurt hier");
+      return this.maybeAddVoice(profile, this.joinCompact([core, topicTail]));
+    }
+
+    if (intent === "misread") {
+      const core = snippet
+        ? this.sample([
+            `ik las "${snippet}" veel te dramatisch`,
+            `"${snippet}" klinkt ineens als een waarschuwing`,
+            `mijn hoofd maakte van "${snippet}" iets heel anders`,
+          ], `ik las "${snippet}" verkeerd`)
+        : this.sample([
+            "ik dacht even dat dit expres misging",
+            "mijn brein maakte hier een ander verhaal van",
+            "ik hoorde hier iets in wat er niet was",
+          ], "ik las dit verkeerd");
+      return this.maybeAddVoice(profile, this.joinCompact([core, topicTail]));
+    }
+
+    if (intent === "hype") {
+      const core = this.sample([
+        "nee dit werkt echt",
+        "dit gaat ineens hard",
+        "ok nu ben ik wakker",
+        "dit moment pakt de hele chat",
+        "ik wil niet overdrijven maar dit leeft",
+      ], "dit werkt echt");
+      return this.maybeAddVoice(profile, this.joinCompact([core, Math.random() < 0.36 ? this.sample(SIM_SHORT_REACTIONS, "") : "", topicTail]));
+    }
+
+    if (intent === "awkward") {
+      const core = this.sample([
+        "dit werd ineens ongemakkelijk stil in mijn hoofd",
+        "ik voel collectief ongemak",
+        "de chat knippert even met beide ogen",
+        "niemand weet nu precies hoe normaal we moeten doen",
+        "dit is een rare seconde en ik respecteer hem",
+      ], "dit werd ineens ongemakkelijk");
+      return this.maybeAddVoice(profile, this.joinCompact([core, topicTail]));
+    }
+
+    if (intent === "poll_pressure") {
+      const core = this.sample([
+        "stemmen voelt nu als karaktertest",
+        "ik neem deze poll veel te serieus",
+        "deze keuze zegt meer over ons dan gepland",
+        "ik wil de uitslag zien maar ik vertrouw niemand",
+        "dit wordt zo'n poll waar de chat zichzelf verraadt",
+      ], "ik neem deze poll veel te serieus");
+      return this.maybeAddVoice(profile, this.joinCompact([core, topicTail]));
+    }
+
+    if (intent === "room_observation") {
+      const core = this.sample([
+        "de chat ademt nu even tegelijk",
+        "iedereen is ineens voorzichtig aan het kijken",
+        "dit voelt als zo'n moment waarop niemand wil beginnen",
+        "we zijn collectief aan het wachten op iets",
+        "de energie kantelt heel subtiel",
+      ], "de chat ademt nu even tegelijk");
+      return this.maybeAddVoice(profile, this.joinCompact([core, topicTail]));
+    }
+
+    return "";
+  }
+
   buildCandidate(profile, { topic, callback }) {
     const tonePositive = this.tonePositive();
     const toneNegative = this.toneNegative();
@@ -5367,14 +5649,24 @@ class ChatSimulatorManager {
     profile.lastText = text;
   }
 
-  makeMessage(botId, seq, providedProfile = null) {
+  makeMessage(botId, seq, providedProfile = null, action = null) {
     const profile = providedProfile || this.getBotProfile(botId);
     const topic = this.config.topic;
-    const callback = this.pickCallbackEntry(profile);
+    const actionCallback = action && action.reference && action.reference.text
+      ? {
+          name: sanitizeName(action.reference.name || "iemand"),
+          text: sanitizeText(action.reference.text || ""),
+          normalized: normalizeSimText(action.reference.text || ""),
+          ts: Number(action.reference.ts || Date.now()),
+          isBot: !!action.reference.isBot,
+        }
+      : null;
+    const callback = actionCallback || this.pickCallbackEntry(profile);
     const tonePositive = this.tonePositive();
     const toneNegative = this.toneNegative();
+    const directedIntent = String(action && action.intent || "");
     const forcedNegativeChance = clampFloat(Math.max(0, toneNegative - tonePositive) * 0.58, 0, 0.75, 0);
-    if (Math.random() < forcedNegativeChance) {
+    if ((!directedIntent || directedIntent === "doubt" || directedIntent === "awkward") && Math.random() < forcedNegativeChance) {
       const forcedNegative = this.sanitizeGeneratedText(this.buildNegativeCandidate(profile, topic, callback));
       if (forcedNegative) {
         this.rememberGenerated(botId, forcedNegative);
@@ -5385,7 +5677,7 @@ class ChatSimulatorManager {
     const emojiDrive = clampFloat(profile && profile.emojiDrive, 0.45, 2.5, 1);
     const profileEmojiLooseRate = clampFloat(emojiLooseRate * emojiDrive, 0, 1, emojiLooseRate);
     const forcedEmojiChance = clampFloat(0.01 + Math.pow(profileEmojiLooseRate, 1.8) * 0.45, 0, 0.9, 0.12);
-    if (Math.random() < forcedEmojiChance) {
+    if ((!directedIntent || directedIntent === "emoji_wave") && Math.random() < forcedEmojiChance) {
       const forcedEmoji = this.sanitizeGeneratedText(this.buildEmojiOnlyCandidate(profile));
       if (forcedEmoji) {
         this.rememberGenerated(botId, forcedEmoji);
@@ -5395,6 +5687,28 @@ class ChatSimulatorManager {
     const candidates = new Set();
     const count = 7 + this.randomInt(0, 4);
 
+    const directedCandidates = new Set();
+    if (directedIntent) {
+      const primaryIntentCandidate = this.buildIntentCandidate(profile, action, topic, callback);
+      if (primaryIntentCandidate) {
+        candidates.add(primaryIntentCandidate);
+        directedCandidates.add(primaryIntentCandidate);
+      }
+      if (directedIntent === "callback" && callback) {
+        const callbackCandidate = this.buildCallbackCandidate(profile, callback, topic);
+        if (callbackCandidate) {
+          candidates.add(callbackCandidate);
+          directedCandidates.add(callbackCandidate);
+        }
+      }
+      if (directedIntent === "emoji_wave") {
+        const emojiCandidate = this.buildEmojiOnlyCandidate(profile);
+        if (emojiCandidate) {
+          candidates.add(emojiCandidate);
+          directedCandidates.add(emojiCandidate);
+        }
+      }
+    }
     for (let i = 0; i < count; i += 1) {
       const candidate = this.buildCandidate(profile, { topic, callback, seq });
       if (candidate) candidates.add(candidate);
@@ -5413,7 +5727,8 @@ class ChatSimulatorManager {
     for (const raw of candidates) {
       const safe = this.sanitizeGeneratedText(raw);
       if (!safe) continue;
-      const score = this.scoreCandidate(safe, profile, topic, callback);
+      let score = this.scoreCandidate(safe, profile, topic, callback);
+      if (directedCandidates.has(raw)) score += 2.8;
       if (score > bestScore) {
         bestScore = score;
         best = safe;
@@ -5495,6 +5810,7 @@ class ChatSimulatorManager {
   update(rawConfig = {}) {
     const nextConfig = normalizeSimulatorConfig(rawConfig, this.config);
     this.config = nextConfig;
+    this.crowdEngine.updateConfig(this.config);
     for (const bot of this.bots) {
       bot.updateNamePrefix(this.config.namePrefix);
     }
@@ -5511,6 +5827,7 @@ class ChatSimulatorManager {
 
     this.running = true;
     this.config = nextConfig;
+    this.crowdEngine.updateConfig(this.config);
     this.stats = createEmptySimulatorStats();
     this.stats.startedAt = nowIso();
     this.stats.stopReason = "";
@@ -5547,6 +5864,7 @@ class ChatSimulatorManager {
     return {
       running: this.running,
       config: { ...this.config },
+      crowd: this.crowdEngine.getSnapshot(),
       stats: {
         ...this.stats,
         elapsedSec,
@@ -6301,6 +6619,16 @@ function getAdminState(req) {
     },
     users,
     simulation: chatSimulator.getState(),
+    simulationCatalog: {
+      crowdModes: Object.entries(CROWD_MODE_PRESETS).map(([id, preset]) => ({
+        id,
+        label: String(preset && preset.label || id),
+      })),
+      crowdCues: Object.entries(CROWD_CUES).map(([id, cue]) => ({
+        id,
+        label: String(cue && cue.label || id),
+      })),
+    },
     reactionCounts: reactionCountsSnapshot(reactionCounts),
     engagementLeaderboard,
     emojiLeaderboard: engagementLeaderboard,
@@ -6361,6 +6689,7 @@ function persistConnectedMeta(meta) {
     ip: meta.ip,
     ua: meta.ua,
     connectedAt: meta.connectedAt,
+    isInternalSimulator: meta.isInternalSimulator === true,
   });
   syncEngagementLeaderboardIdentity(meta);
 }
@@ -7610,6 +7939,7 @@ app.post("/admin/polls/start", requireAdmin, (req, res) => {
     durationSeconds: requestedDurationSeconds,
   });
   broadcastToClients({ type: "poll_started", poll: pollSnapshot });
+  chatSimulator.observePollStarted(pollSnapshot);
   res.json({ ok: true, poll: pollSnapshot });
 });
 
@@ -7646,6 +7976,13 @@ function parseSimConfigFromBody(body) {
     sarcasm: src.sarcasm,
     absurdity: src.absurdity,
     callbackRate: src.callbackRate,
+    crowdMode: src.crowdMode,
+    intensity: src.intensity,
+    realism: src.realism,
+    chaos: src.chaos,
+    warmth: src.warmth,
+    skepticism: src.skepticism,
+    botLabelMode: src.botLabelMode,
   };
 }
 
@@ -7669,6 +8006,13 @@ app.post("/admin/sim/start", requireAdmin, (req, res) => {
     positive: state.config.positive,
     negative: state.config.negative,
     callbackRate: state.config.callbackRate,
+    crowdMode: state.config.crowdMode,
+    intensity: state.config.intensity,
+    realism: state.config.realism,
+    chaos: state.config.chaos,
+    warmth: state.config.warmth,
+    skepticism: state.config.skepticism,
+    botLabelMode: state.config.botLabelMode,
   });
   res.json({ ok: true, simulation: state });
 });
@@ -7688,6 +8032,13 @@ app.post("/admin/sim/update", requireAdmin, (req, res) => {
     positive: state.config.positive,
     negative: state.config.negative,
     callbackRate: state.config.callbackRate,
+    crowdMode: state.config.crowdMode,
+    intensity: state.config.intensity,
+    realism: state.config.realism,
+    chaos: state.config.chaos,
+    warmth: state.config.warmth,
+    skepticism: state.config.skepticism,
+    botLabelMode: state.config.botLabelMode,
   });
   res.json({ ok: true, simulation: state });
 });
@@ -7708,8 +8059,32 @@ app.post("/admin/sim/defaults", requireAdmin, (req, res) => {
     positive: defaults.positive,
     negative: defaults.negative,
     callbackRate: defaults.callbackRate,
+    crowdMode: defaults.crowdMode,
+    intensity: defaults.intensity,
+    realism: defaults.realism,
+    chaos: defaults.chaos,
+    warmth: defaults.warmth,
+    skepticism: defaults.skepticism,
+    botLabelMode: defaults.botLabelMode,
   });
   res.json({ ok: true, defaults, simulation: state });
+});
+
+app.post("/admin/sim/cue", requireAdmin, (req, res) => {
+  const cue = normalizeCrowdCue(req.body && req.body.cue);
+  if (!cue) {
+    res.status(400).json({ ok: false, error: "invalid_crowd_cue" });
+    return;
+  }
+  const accepted = chatSimulator.issueCue(cue);
+  const state = chatSimulator.getState();
+  writeDebug("sim_cue", {
+    cue,
+    accepted,
+    running: state.running,
+    activeCue: state.crowd && state.crowd.activeCue,
+  });
+  res.json({ ok: true, cue, accepted, simulation: state });
 });
 
 app.post("/admin/sim/stop", requireAdmin, (req, res) => {
@@ -8002,6 +8377,7 @@ function isSimulatorClientTag(tag) {
 function isSimulatorBotIdentity(meta, name = "", clientTag = "") {
   const resolvedName = sanitizeName(name || (meta && meta.name) || "");
   const resolvedTag = sanitizeClientTag(clientTag || (meta && meta.clientTag) || "");
+  if (meta && meta.isInternalSimulator === true && isSimulatorClientTag(resolvedTag)) return true;
   return isSimulatorClientTag(resolvedTag) && isBotDisplayName(resolvedName);
 }
 
@@ -8108,6 +8484,7 @@ wss.on("connection", (ws, req) => {
     clientTag: "anon",
     name: "Anoniem",
     clientKey: buildClientKey(ip, "anon"),
+    isInternalSimulator: false,
   };
   ws.__meta = meta;
   persistConnectedMeta(meta);
@@ -8159,6 +8536,8 @@ wss.on("connection", (ws, req) => {
     });
     return;
   }
+  meta.isInternalSimulator = String(sessionAccess.reason || "") === "internal_simulator";
+  persistConnectedMeta(meta);
 
   ws.send(
     safeJsonStringify({
@@ -8260,6 +8639,7 @@ wss.on("connection", (ws, req) => {
       meta.clientTag = sanitizeClientTag(msg.clientTag || meta.clientTag);
       meta.clientKey = buildClientKey(meta.ip, meta.clientTag);
       persistConnectedMeta(meta);
+      const isSimulatorBot = isSimulatorBotIdentity(meta, meta.name, meta.clientTag);
 
       const blockState = getBlockState(meta);
       if (blockState) {
@@ -8312,6 +8692,7 @@ wss.on("connection", (ws, req) => {
         engagementLeaderboard: leaderboard,
         emojiLeaderboard: leaderboard,
       });
+      chatSimulator.observeReaction(reaction, isSimulatorBot);
       return;
     }
 
@@ -8587,7 +8968,7 @@ wss.on("connection", (ws, req) => {
     } else {
       sendToStageSubscribers(payload);
     }
-    chatSimulator.observeAcceptedComment(payload);
+    chatSimulator.observeAcceptedComment({ ...payload, isBot: isSimulatorBot, clientTag: meta.clientTag });
   });
 
   ws.on("close", (code, reasonBuffer) => {

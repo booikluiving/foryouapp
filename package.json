@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node server.js",
     "smoke": "node scripts/smoke-test.js",
-    "simulate": "node scripts/simulate-chatters.js"
+    "simulate": "node scripts/simulate-chatters.js",
+    "test:sim": "node scripts/test-crowd-engine.js"
   },
   "keywords": [],
   "author": "",
