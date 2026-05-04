@@ -5,6 +5,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
 const WebSocket = require("ws");
+const {
+  CrowdEngine,
+  normalizeBotLabelMode,
+  normalizeCrowdMode,
+} = require("../lib/crowd-engine");
 
 const DEFAULTS = {
   url: "ws://127.0.0.1:3000",
@@ -13,7 +18,18 @@ const DEFAULTS = {
   spawnMs: 80,
   statsMs: 5000,
   msgRate: 0.03,
+  reactionRate: 0.35,
   minGapMs: 2300,
+  crowdMode: "normal",
+  intensity: 0.56,
+  realism: 0.82,
+  chaos: 0.34,
+  warmth: 0.48,
+  skepticism: 0.54,
+  callbackRate: 0.34,
+  emojiInlineRate: 0.18,
+  emojiLooseRate: 0.7,
+  botLabelMode: "hidden",
   pollVoteChance: 0.9,
   voteDelayMinMs: 400,
   voteDelayMaxMs: 3200,
@@ -362,6 +378,40 @@ function parseArgs(argv) {
       case "msg-rate":
         options.msgRate = clampFloat(value, 0, 0.1, options.msgRate);
         break;
+      case "reaction-rate":
+        options.reactionRate = clampFloat(value, 0, 4, options.reactionRate);
+        break;
+      case "crowd-mode":
+        options.crowdMode = normalizeCrowdMode(value, options.crowdMode);
+        break;
+      case "intensity":
+        options.intensity = clampFloat(value, 0, 1, options.intensity);
+        options.msgRate = clampFloat(0.006 + options.intensity * 0.055, 0, 0.1, options.msgRate);
+        break;
+      case "realism":
+        options.realism = clampFloat(value, 0, 1, options.realism);
+        break;
+      case "chaos":
+        options.chaos = clampFloat(value, 0, 1, options.chaos);
+        break;
+      case "warmth":
+        options.warmth = clampFloat(value, 0, 1, options.warmth);
+        break;
+      case "skepticism":
+        options.skepticism = clampFloat(value, 0, 1, options.skepticism);
+        break;
+      case "callback-rate":
+        options.callbackRate = clampFloat(value, 0, 1, options.callbackRate);
+        break;
+      case "emoji-inline-rate":
+        options.emojiInlineRate = clampFloat(value, 0, 1, options.emojiInlineRate);
+        break;
+      case "emoji-loose-rate":
+        options.emojiLooseRate = clampFloat(value, 0, 1, options.emojiLooseRate);
+        break;
+      case "bot-label-mode":
+        options.botLabelMode = normalizeBotLabelMode(value, options.botLabelMode);
+        break;
       case "min-gap-ms":
         options.minGapMs = clampInt(value, 200, 20000, options.minGapMs);
         break;
@@ -399,13 +449,24 @@ Options:
   --spawn-ms <ms>             Delay between client starts (default: 80)
   --stats-ms <ms>             Stats print interval (default: 5000)
   --msg-rate <float>          Messages/sec per connected client, 0..0.1 (default: 0.03)
+  --reaction-rate <float>     Reactions/sec driver, 0..4 (default: 0.35)
+  --crowd-mode <mode>         normal, soft, nervous, chaotic, critical, hyped, quiet
+  --intensity <0-1>           Director intensity; also derives msg-rate
+  --realism <0-1>             More typing delay, silence and abandoned messages
+  --chaos <0-1>               More misreads, emoji waves and abrupt turns
+  --warmth <0-1>              More agreement and supportive comments
+  --skepticism <0-1>          More doubt, questions and awkwardness
+  --callback-rate <0-1>       How often the crowd reuses recent comments
+  --emoji-inline-rate <0-1>   Emoji inside comments
+  --emoji-loose-rate <0-1>    Emoji-only waves
+  --bot-label-mode <mode>     hidden or shown (default: hidden)
   --min-gap-ms <ms>           Min gap between messages per client (default: 2300)
   --poll-vote-chance <0-1>    Chance a client votes per poll (default: 0.9)
   --auto-vote <true|false>    Auto vote on polls (default: true)
   --no-auto-vote              Shortcut for --auto-vote false
   --vote-delay-min-ms <ms>    Min vote delay after poll start (default: 400)
   --vote-delay-max-ms <ms>    Max vote delay after poll start (default: 3200)
-  --name-prefix <text>        Legacy option (names are random first names + "(bot)")
+  --name-prefix <text>        Legacy option (names are random first names)
   --help                      Show this help
 `);
 }
@@ -472,17 +533,18 @@ function randomFirstName() {
   return FIRST_NAMES[randomInt(0, FIRST_NAMES.length - 1)] || "Alex";
 }
 
-function formatBotName(firstName) {
+function formatBotName(firstName, botLabelMode = "hidden") {
   const clean = String(firstName || "Alex")
     .replace(/[^a-zA-Z'-]/g, "")
     .slice(0, 18) || "Alex";
+  if (normalizeBotLabelMode(botLabelMode, "hidden") === "hidden") return clean.slice(0, 24);
   return `${clean} (bot)`.slice(0, 24);
 }
 
-function addEmojiFlavor(text) {
+function addEmojiFlavor(text, inlineRate = INLINE_EMOJI_RATE) {
   const base = String(text || "").trim();
   if (!base) return "";
-  const chance = INLINE_EMOJI_RATE;
+  const chance = clampFloat(inlineRate, 0, 1, INLINE_EMOJI_RATE);
   if (Math.random() > chance) return base;
 
   const style = Math.random();
@@ -654,9 +716,36 @@ function rememberGeneratedMessage(client, text) {
   if (client) client.lastMessageKey = normalized;
 }
 
-function randomMessage(client) {
-  const forcedEmojiChance = clampFloat(0.01 + Math.pow(LOOSE_EMOJI_RATE, 1.8) * 0.45, 0, 0.9, 0.12);
-  if (Math.random() < forcedEmojiChance) {
+function buildIntentMessage(client, action) {
+  const intent = String(action && action.intent || "");
+  const reference = action && action.reference ? action.reference : null;
+  const snippet = reference && reference.text
+    ? String(reference.text).replace(/["'`]/g, "").replace(/\s+/g, " ").trim().slice(0, 24)
+    : "";
+  const motif = String(action && action.motif || "").trim();
+  if (intent === "emoji_wave") return buildEmojiOnlyCandidate();
+  if (intent === "callback" && snippet) return sample([
+    `ja "${snippet}" dus`,
+    `"${snippet}" blijft hangen`,
+    `de chat zei net "${snippet}" en nu snap ik niks meer`,
+  ], `ja "${snippet}" dus`);
+  if (intent === "agree") return sample(["ja dit voel ik ook", "precies dit", "same eigenlijk", "ik ga hierin mee"], "precies dit");
+  if (intent === "doubt") return sample(["ik vertrouw deze wending niet", "wacht dit voelt verdacht", "ik weet niet of ik mee ben"], "ik vertrouw dit niet");
+  if (intent === "ask") return motif ? `wacht waarom ${motif}` : sample(["wacht wat gebeurt hier", "mis ik context", "kan iemand dit uitleggen"], "wacht wat");
+  if (intent === "misread") return snippet ? `ik las "${snippet}" veel te dramatisch` : "ik dacht even dat dit expres misging";
+  if (intent === "hype") return sample(["nee dit werkt echt", "ok nu ben ik wakker", "dit gaat ineens hard"], "dit werkt echt");
+  if (intent === "awkward") return sample(["dit werd ineens ongemakkelijk", "ik voel collectief ongemak", "de chat knippert even"], "dit werd ongemakkelijk");
+  if (intent === "poll_pressure") return sample(["ik neem deze poll veel te serieus", "stemmen voelt nu als karaktertest"], "ik neem deze poll te serieus");
+  if (intent === "room_observation") return sample(["de chat ademt nu even tegelijk", "iedereen is ineens voorzichtig", "we wachten collectief op iets"], "de chat ademt even");
+  return "";
+}
+
+function randomMessage(client, action = null) {
+  const looseEmojiRate = clampFloat(client && client.options && client.options.emojiLooseRate, 0, 1, LOOSE_EMOJI_RATE);
+  const inlineEmojiRate = clampFloat(client && client.options && client.options.emojiInlineRate, 0, 1, INLINE_EMOJI_RATE);
+  const forcedEmojiChance = clampFloat(0.01 + Math.pow(looseEmojiRate, 1.8) * 0.45, 0, 0.9, 0.12);
+  const directedIntent = String(action && action.intent || "");
+  if ((!directedIntent || directedIntent === "emoji_wave") && Math.random() < forcedEmojiChance) {
     const forcedEmoji = String(buildEmojiOnlyCandidate() || "").replace(/\s+/g, " ").trim().slice(0, 140);
     if (forcedEmoji) {
       rememberGeneratedMessage(client, forcedEmoji);
@@ -665,6 +754,14 @@ function randomMessage(client) {
   }
   const candidates = new Set();
   const loops = 7 + randomInt(0, 3);
+  const directedCandidates = new Set();
+  if (directedIntent) {
+    const intentLine = buildIntentMessage(client, action);
+    if (intentLine) {
+      candidates.add(intentLine);
+      directedCandidates.add(intentLine);
+    }
+  }
   for (let i = 0; i < loops; i += 1) {
     const candidate = buildTemplateMessage();
     if (candidate) candidates.add(candidate);
@@ -675,9 +772,9 @@ function randomMessage(client) {
     const rawTerm = sample(brainrotTerms, "");
     if (rawTerm) candidates.add(rawTerm);
   }
-  if (Math.random() < 0.2 + LOOSE_EMOJI_RATE * 0.85) candidates.add(buildEmojiOnlyCandidate());
-  if (Math.random() < LOOSE_EMOJI_RATE * 0.7) candidates.add(buildEmojiOnlyCandidate());
-  if (Math.random() < LOOSE_EMOJI_RATE * 0.52) candidates.add(sample(SAMPLE_EMOJI_COMBOS, "🗿🍷"));
+  if (Math.random() < 0.2 + looseEmojiRate * 0.85) candidates.add(buildEmojiOnlyCandidate());
+  if (Math.random() < looseEmojiRate * 0.7) candidates.add(buildEmojiOnlyCandidate());
+  if (Math.random() < looseEmojiRate * 0.52) candidates.add(sample(SAMPLE_EMOJI_COMBOS, "🗿🍷"));
   candidates.add(sample(SAMPLE_SHORT_REACTIONS, "wow"));
 
   let best = "";
@@ -685,7 +782,8 @@ function randomMessage(client) {
   for (const raw of candidates) {
     const safe = String(raw || "").replace(/\s+/g, " ").trim().slice(0, 140);
     if (!safe) continue;
-    const score = scoreMessageCandidate(safe, client);
+    let score = scoreMessageCandidate(safe, client);
+    if (directedCandidates.has(raw)) score += 2.4;
     if (score > bestScore) {
       bestScore = score;
       best = safe;
@@ -695,7 +793,7 @@ function randomMessage(client) {
 
   let finalText = best;
   if (!isEmojiOnlyText(best)) {
-    const emojiStyled = addEmojiFlavor(best).slice(0, 140);
+    const emojiStyled = addEmojiFlavor(best, inlineEmojiRate).slice(0, 140);
     finalText = emojiStyled || best;
   }
   rememberGeneratedMessage(client, finalText);
@@ -707,16 +805,20 @@ class SimClient {
     this.id = id;
     this.options = options;
     this.stats = stats;
+    this.crowdEngine = options.crowdEngine;
+    this.profile = this.crowdEngine ? this.crowdEngine.createBotTraits() : {};
     this.firstName = randomFirstName();
-    this.name = formatBotName(this.firstName);
+    this.name = formatBotName(this.firstName, options.botLabelMode);
     this.clientTag = `sim${String(id).padStart(3, "0")}${Math.random().toString(36).slice(2, 6)}`;
     this.ws = null;
     this.connected = false;
     this.stopped = false;
     this.reconnectTimer = null;
     this.sendTimer = null;
+    this.typingTimer = null;
     this.voteTimer = null;
     this.lastSentAt = 0;
+    this.lastReactionAt = 0;
     this.nextMessageGapMs = 0;
     this.messageSeq = 0;
     this.lastMessageKey = "";
@@ -781,14 +883,17 @@ class SimClient {
 
   stopLoops() {
     if (this.sendTimer) clearTimeout(this.sendTimer);
+    if (this.typingTimer) clearTimeout(this.typingTimer);
     if (this.voteTimer) clearTimeout(this.voteTimer);
     this.sendTimer = null;
+    this.typingTimer = null;
     this.voteTimer = null;
   }
 
   computeNextMessageGapMs() {
     const base = clampInt(this.options.minGapMs, 200, 20000, 2300);
-    const scaled = Math.round(base * (0.58 + Math.random() * 0.95));
+    const gapBias = clampFloat(this.profile && this.profile.roleGapBias, 0.35, 2.8, 1);
+    const scaled = Math.round(base * gapBias * (0.58 + Math.random() * 0.95));
     const jitter = randomInt(-180, 420);
     return clampInt(scaled + jitter, 320, 24000, base);
   }
@@ -818,19 +923,25 @@ class SimClient {
       return;
     }
 
+    this.maybeSendReaction(tickMs);
+    if (this.typingTimer) {
+      this.scheduleNextSendTick(180, 520);
+      return;
+    }
+
     const now = Date.now();
     const gap = Math.max(180, this.nextMessageGapMs || this.computeNextMessageGapMs());
     const sinceLast = now - this.lastSentAt;
     const canSend = sinceLast >= gap;
 
-    if (canSend && Math.random() <= this.messageChanceForTick(tickMs)) {
-      this.messageSeq += 1;
-      const text = randomMessage(this);
-      if (this.sendJson({ type: "comment", name: this.name, text, clientTag: this.clientTag })) {
-        this.lastSentAt = Date.now();
-        this.nextMessageGapMs = this.computeNextMessageGapMs();
-        this.stats.sentComments += 1;
-      }
+    if (canSend) {
+      const action = this.crowdEngine
+        ? this.crowdEngine.planComment(this.id, this.profile, {
+            baseChance: this.messageChanceForTick(tickMs),
+            estimatedChars: this.lastMessageKey ? this.lastMessageKey.length : 28,
+          })
+        : null;
+      if (action) this.queuePlannedComment(action);
     }
 
     const remaining = Math.max(0, (this.nextMessageGapMs || gap) - (Date.now() - this.lastSentAt));
@@ -839,6 +950,51 @@ class SimClient {
       return;
     }
     this.scheduleNextSendTick(220, 1250);
+  }
+
+  queuePlannedComment(action) {
+    this.lastSentAt = Date.now();
+    this.nextMessageGapMs = this.computeNextMessageGapMs();
+    if (action && action.abandon) {
+      this.stats.abandonedMessages += 1;
+      return;
+    }
+    const delay = clampInt(action && action.typingDelayMs, 0, 6000, 0);
+    if (delay <= 160) {
+      this.sendPlannedComment(action);
+      return;
+    }
+    this.typingTimer = setTimeout(() => {
+      this.typingTimer = null;
+      this.sendPlannedComment(action);
+    }, delay);
+  }
+
+  sendPlannedComment(action) {
+    if (this.stopped) return;
+    if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.messageSeq += 1;
+    const text = randomMessage(this, action);
+    if (this.sendJson({ type: "comment", name: this.name, text, clientTag: this.clientTag })) {
+      this.lastSentAt = Date.now();
+      this.nextMessageGapMs = this.computeNextMessageGapMs();
+      this.stats.sentComments += 1;
+      if (this.crowdEngine) this.crowdEngine.observeStimulus("bot_comment", { name: this.name, text, isBot: true });
+    }
+  }
+
+  maybeSendReaction(tickMs = 1000) {
+    if (!this.crowdEngine) return;
+    const now = Date.now();
+    if (now - this.lastReactionAt < 140) return;
+    const reactionDrive = clampFloat(this.profile && this.profile.reactionMultiplier, 0.2, 4, 1);
+    const baseRate = clampFloat(this.options.reactionRate * reactionDrive, 0, 6, this.options.reactionRate);
+    const plan = this.crowdEngine.planReaction({ ...this.profile, reactionMultiplier: 1 }, tickMs, { baseRate });
+    if (!plan || !plan.reaction) return;
+    if (!this.sendJson({ type: "reaction", reaction: plan.reaction, clientTag: this.clientTag })) return;
+    this.lastReactionAt = now;
+    this.stats.sentReactions += 1;
+    this.crowdEngine.observeStimulus("reaction", { reaction: plan.reaction, isBot: true });
   }
 
   startSendLoop() {
@@ -861,11 +1017,18 @@ class SimClient {
 
     if (msg.type === "comment") {
       this.stats.recvComments += 1;
+      if (this.crowdEngine) {
+        this.crowdEngine.observeStimulus("human_comment", {
+          name: msg.name || "iemand",
+          text: msg.text || "",
+        });
+      }
       return;
     }
 
     if (msg.type === "poll_started") {
       this.activePoll = msg.poll || null;
+      if (this.crowdEngine) this.crowdEngine.observeStimulus("poll_started", { poll: this.activePoll });
       this.maybeScheduleVote();
       return;
     }
@@ -951,9 +1114,10 @@ function main() {
     process.exit(0);
   }
   loadBrainrotWords();
+  options.crowdEngine = new CrowdEngine({ config: options });
 
   console.log(
-    `Starting simulation: clients=${options.clients}, duration=${options.durationSec}s, url=${options.url}`
+    `Starting simulation: clients=${options.clients}, duration=${options.durationSec}s, mode=${options.crowdMode}, labels=${options.botLabelMode}, url=${options.url}`
   );
   if (brainrotTerms.length) {
     console.log(`Brainrot terms loaded: ${brainrotTerms.length}`);
@@ -968,9 +1132,11 @@ function main() {
     connectedNow: 0,
     maxConnected: 0,
     sentComments: 0,
+    sentReactions: 0,
     recvComments: 0,
     sentVotes: 0,
     voteAcks: 0,
+    abandonedMessages: 0,
     serverErrors: 0,
     rateLimited: 0,
     blockedErrors: 0,
@@ -991,6 +1157,7 @@ function main() {
       `[${formatElapsed(elapsedMs)}] connected=${stats.connectedNow}/${options.clients}` +
       ` max=${stats.maxConnected} opened=${stats.opened} closed=${stats.closed}` +
       ` sentMsg=${stats.sentComments} (${msgPerSec}/s)` +
+      ` react=${stats.sentReactions} abandoned=${stats.abandonedMessages}` +
       ` sentVotes=${stats.sentVotes} ackVotes=${stats.voteAcks}` +
       ` wsErr=${stats.errors} srvErr=${stats.serverErrors} rateLimited=${stats.rateLimited}`;
     console.log(line);

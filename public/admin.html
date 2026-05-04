@@ -759,36 +759,65 @@
               <div class="sliderLabel"><span>Aantal bots</span><span id="simClientsValue" class="sliderValue">50</span></div>
               <input id="simClients" type="range" min="1" max="200" step="1" value="50" />
             </div>
+            <label class="sliderField">
+              <span class="sliderLabel"><span>Crowd mode</span><span class="sliderValue">live</span></span>
+              <select id="simCrowdMode">
+                <option value="normal">Normaal</option>
+                <option value="soft">Zacht</option>
+                <option value="nervous">Nerveus</option>
+                <option value="chaotic">Chaotisch</option>
+                <option value="critical">Kritisch</option>
+                <option value="hyped">Hyped</option>
+                <option value="quiet">Stil</option>
+              </select>
+            </label>
+            <label class="sliderField">
+              <span class="sliderLabel"><span>Botlabels publiek</span><span class="sliderValue">toggle</span></span>
+              <select id="simBotLabelMode">
+                <option value="hidden">Verborgen</option>
+                <option value="shown">Zichtbaar</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
             <div class="sliderField">
-              <div class="sliderLabel"><span>Praat-rate (0..1 => 0..0.1)</span><span id="simMsgRateValue" class="sliderValue">0.030</span></div>
-              <input id="simMsgRate" type="range" min="0" max="1" step="0.01" value="0.30" />
+              <div class="sliderLabel"><span>Intensiteit</span><span id="simIntensityValue" class="sliderValue">0.56</span></div>
+              <input id="simIntensity" type="range" min="0" max="1" step="0.01" value="0.56" />
             </div>
             <div class="sliderField">
-              <div class="sliderLabel"><span>Emoji-rate</span><span id="simReactionRateValue" class="sliderValue">0.35</span></div>
+              <div class="sliderLabel"><span>Realisme</span><span id="simRealismValue" class="sliderValue">0.82</span></div>
+              <input id="simRealism" type="range" min="0" max="1" step="0.01" value="0.82" />
+            </div>
+            <div class="sliderField">
+              <div class="sliderLabel"><span>Chaos</span><span id="simChaosValue" class="sliderValue">0.34</span></div>
+              <input id="simChaos" type="range" min="0" max="1" step="0.01" value="0.34" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="sliderField">
+              <div class="sliderLabel"><span>Warmte</span><span id="simPositiveValue" class="sliderValue">0.48</span></div>
+              <input id="simPositive" type="range" min="0" max="1" step="0.01" value="0.48" />
+            </div>
+            <div class="sliderField">
+              <div class="sliderLabel"><span>Scepsis</span><span id="simNegativeValue" class="sliderValue">0.54</span></div>
+              <input id="simNegative" type="range" min="0" max="1" step="0.01" value="0.54" />
+            </div>
+            <div class="sliderField">
+              <div class="sliderLabel"><span>Emoji-reacties</span><span id="simReactionRateValue" class="sliderValue">0.35</span></div>
               <input id="simReactionRate" type="range" min="0" max="4" step="0.01" value="0.35" />
             </div>
           </div>
           <div class="row">
             <div class="sliderField">
-              <div class="sliderLabel"><span>Positief</span><span id="simPositiveValue" class="sliderValue">0.45</span></div>
-              <input id="simPositive" type="range" min="0" max="1" step="0.01" value="0.45" />
-            </div>
-            <div class="sliderField">
-              <div class="sliderLabel"><span>Negatief</span><span id="simNegativeValue" class="sliderValue">0.70</span></div>
-              <input id="simNegative" type="range" min="0" max="1" step="0.01" value="0.70" />
-            </div>
-            <div class="sliderField">
-              <div class="sliderLabel"><span>Callback-rate</span><span id="simCallbackRateValue" class="sliderValue">0.34</span></div>
+              <div class="sliderLabel"><span>Callback-geheugen</span><span id="simCallbackRateValue" class="sliderValue">0.34</span></div>
               <input id="simCallbackRate" type="range" min="0" max="1" step="0.01" value="0.34" />
             </div>
-          </div>
-          <div class="row">
             <div class="sliderField">
               <div class="sliderLabel"><span>Emoji in zin</span><span id="simEmojiInlineRateValue" class="sliderValue">0.18</span></div>
               <input id="simEmojiInlineRate" type="range" min="0" max="1" step="0.01" value="0.18" />
             </div>
             <div class="sliderField">
-              <div class="sliderLabel"><span>Losse emoji/combo</span><span id="simEmojiLooseRateValue" class="sliderValue">0.70</span></div>
+              <div class="sliderLabel"><span>Emoji-golven</span><span id="simEmojiLooseRateValue" class="sliderValue">0.70</span></div>
               <input id="simEmojiLooseRate" type="range" min="0" max="1" step="0.01" value="0.70" />
             </div>
           </div>
@@ -796,10 +825,17 @@
             <input id="simTopic" type="text" maxlength="120" placeholder="Onderwerp (optioneel), bijv: festival eten" />
           </div>
           <div class="row">
+            <button class="simCueBtn" type="button" data-cue="quiet_down">Word stiller</button>
+            <button class="simCueBtn" type="button" data-cue="build_tension">Bouw spanning</button>
+            <button class="simCueBtn" type="button" data-cue="callback_last">Haak aan</button>
+            <button class="simCueBtn" type="button" data-cue="make_awkward">Maak ongemakkelijk</button>
+            <button class="simCueBtn" type="button" data-cue="follow_audience">Ga mee</button>
+          </div>
+          <div class="row">
             <button id="simToggleBtn" class="primary" type="button">Bots aanzetten</button>
             <button id="simSaveDefaultBtn" type="button">Sla als standaard op</button>
           </div>
-          <div class="muted">Zet bots aan/uit met 1 knop. Tijdens runtime passen sliders direct live aan. Namen zijn random voornamen met "(bot)".</div>
+          <div class="muted">De simulator stuurt nu groepsgedrag: rollen, stilte, bursts, callbacks en publiekssfeer. Admin ziet bots intern; publieklabels zijn instelbaar.</div>
           <div id="simState" class="mono"></div>
         </div>
 
@@ -984,8 +1020,14 @@
       const pollStateEl = document.getElementById("pollState");
       const simClientsEl = document.getElementById("simClients");
       const simClientsValueEl = document.getElementById("simClientsValue");
-      const simMsgRateEl = document.getElementById("simMsgRate");
-      const simMsgRateValueEl = document.getElementById("simMsgRateValue");
+      const simCrowdModeEl = document.getElementById("simCrowdMode");
+      const simBotLabelModeEl = document.getElementById("simBotLabelMode");
+      const simIntensityEl = document.getElementById("simIntensity");
+      const simIntensityValueEl = document.getElementById("simIntensityValue");
+      const simRealismEl = document.getElementById("simRealism");
+      const simRealismValueEl = document.getElementById("simRealismValue");
+      const simChaosEl = document.getElementById("simChaos");
+      const simChaosValueEl = document.getElementById("simChaosValue");
       const simReactionRateEl = document.getElementById("simReactionRate");
       const simReactionRateValueEl = document.getElementById("simReactionRateValue");
       const simPositiveEl = document.getElementById("simPositive");
@@ -1001,6 +1043,7 @@
       const simTopicEl = document.getElementById("simTopic");
       const simToggleBtn = document.getElementById("simToggleBtn");
       const simSaveDefaultBtn = document.getElementById("simSaveDefaultBtn");
+      const simCueBtns = Array.from(document.querySelectorAll(".simCueBtn"));
       const simStateEl = document.getElementById("simState");
       const nextPortEl = document.getElementById("nextPort");
       const oscListenPortEl = document.getElementById("oscListenPort");
@@ -2425,27 +2468,19 @@
         return n;
       }
 
-      function msgRateFromUi(value) {
-        const scale = normalizeFloat(
-          value,
-          0,
-          1,
-          SIM_MSG_RATE_DEFAULT_REAL / SIM_MSG_RATE_MAX_REAL
-        );
-        return scale * SIM_MSG_RATE_MAX_REAL;
-      }
-
-      function msgRateToUi(value) {
-        const real = normalizeFloat(value, 0, SIM_MSG_RATE_MAX_REAL, SIM_MSG_RATE_DEFAULT_REAL);
-        return real / SIM_MSG_RATE_MAX_REAL;
+      function msgRateFromIntensity(value) {
+        const intensity = normalizeFloat(value, 0, 1, 0.56);
+        return normalizeFloat(0.006 + intensity * 0.055, 0, SIM_MSG_RATE_MAX_REAL, SIM_MSG_RATE_DEFAULT_REAL);
       }
 
       function updateSimSliderLabels() {
         simClientsValueEl.textContent = String(normalizeInt(simClientsEl.value, 1, SIM_MAX_CLIENTS, 50));
-        simMsgRateValueEl.textContent = msgRateFromUi(simMsgRateEl.value).toFixed(3);
+        simIntensityValueEl.textContent = normalizeFloat(simIntensityEl.value, 0, 1, 0.56).toFixed(2);
+        simRealismValueEl.textContent = normalizeFloat(simRealismEl.value, 0, 1, 0.82).toFixed(2);
+        simChaosValueEl.textContent = normalizeFloat(simChaosEl.value, 0, 1, 0.34).toFixed(2);
         simReactionRateValueEl.textContent = normalizeFloat(simReactionRateEl.value, 0, 4, 0.35).toFixed(2);
-        simPositiveValueEl.textContent = normalizeFloat(simPositiveEl.value, 0, 1, 0.45).toFixed(2);
-        simNegativeValueEl.textContent = normalizeFloat(simNegativeEl.value, 0, 1, 0.70).toFixed(2);
+        simPositiveValueEl.textContent = normalizeFloat(simPositiveEl.value, 0, 1, 0.48).toFixed(2);
+        simNegativeValueEl.textContent = normalizeFloat(simNegativeEl.value, 0, 1, 0.54).toFixed(2);
         simCallbackRateValueEl.textContent = normalizeFloat(simCallbackRateEl.value, 0, 1, 0.34).toFixed(2);
         simEmojiInlineRateValueEl.textContent = normalizeFloat(simEmojiInlineRateEl.value, 0, 1, 0.18).toFixed(2);
         simEmojiLooseRateValueEl.textContent = normalizeFloat(simEmojiLooseRateEl.value, 0, 1, 0.70).toFixed(2);
@@ -2453,20 +2488,27 @@
 
       function getSimulationPayload() {
         const clients = normalizeInt(simClientsEl.value, 1, SIM_MAX_CLIENTS, 50);
-        const msgRate = msgRateFromUi(simMsgRateEl.value);
+        const crowdMode = String(simCrowdModeEl.value || "normal");
+        const botLabelMode = String(simBotLabelModeEl.value || "hidden");
+        const intensity = normalizeFloat(simIntensityEl.value, 0, 1, 0.56);
+        const realism = normalizeFloat(simRealismEl.value, 0, 1, 0.82);
+        const chaos = normalizeFloat(simChaosEl.value, 0, 1, 0.34);
+        const msgRate = msgRateFromIntensity(intensity);
         const reactionRate = normalizeFloat(simReactionRateEl.value, 0, 4, 0.35);
         const topic = String(simTopicEl.value || "").trim();
-        const positive = normalizeFloat(simPositiveEl.value, 0, 1, 0.45);
-        const negative = normalizeFloat(simNegativeEl.value, 0, 1, 0.70);
+        const warmth = normalizeFloat(simPositiveEl.value, 0, 1, 0.48);
+        const skepticism = normalizeFloat(simNegativeEl.value, 0, 1, 0.54);
         const callbackRate = normalizeFloat(simCallbackRateEl.value, 0, 1, 0.34);
         const emojiInlineRate = normalizeFloat(simEmojiInlineRateEl.value, 0, 1, 0.18);
         const emojiLooseRate = normalizeFloat(simEmojiLooseRateEl.value, 0, 1, 0.70);
 
         simClientsEl.value = String(clients);
-        simMsgRateEl.value = String(msgRateToUi(msgRate));
+        simIntensityEl.value = String(intensity);
+        simRealismEl.value = String(realism);
+        simChaosEl.value = String(chaos);
         simReactionRateEl.value = String(reactionRate);
-        simPositiveEl.value = String(positive);
-        simNegativeEl.value = String(negative);
+        simPositiveEl.value = String(warmth);
+        simNegativeEl.value = String(skepticism);
         simCallbackRateEl.value = String(callbackRate);
         simEmojiInlineRateEl.value = String(emojiInlineRate);
         simEmojiLooseRateEl.value = String(emojiLooseRate);
@@ -2478,11 +2520,18 @@
           msgRate,
           reactionRate,
           topic,
-          positive,
-          negative,
+          positive: warmth,
+          negative: skepticism,
           callbackRate,
           emojiInlineRate,
           emojiLooseRate,
+          crowdMode,
+          intensity,
+          realism,
+          chaos,
+          warmth,
+          skepticism,
+          botLabelMode,
         };
       }
 
@@ -2523,10 +2572,14 @@
         const reactions = data && data.reactionCounts ? data.reactionCounts : null;
         if (!sim || !sim.config || !sim.stats) {
           if (!simClientsEl.value) simClientsEl.value = "50";
-          if (!simMsgRateEl.value) simMsgRateEl.value = String(msgRateToUi(SIM_MSG_RATE_DEFAULT_REAL));
+          if (!simCrowdModeEl.value) simCrowdModeEl.value = "normal";
+          if (!simBotLabelModeEl.value) simBotLabelModeEl.value = "hidden";
+          if (!simIntensityEl.value) simIntensityEl.value = "0.56";
+          if (!simRealismEl.value) simRealismEl.value = "0.82";
+          if (!simChaosEl.value) simChaosEl.value = "0.34";
           if (!simReactionRateEl.value) simReactionRateEl.value = "0.35";
-          if (!simPositiveEl.value) simPositiveEl.value = "0.45";
-          if (!simNegativeEl.value) simNegativeEl.value = "0.70";
+          if (!simPositiveEl.value) simPositiveEl.value = "0.48";
+          if (!simNegativeEl.value) simNegativeEl.value = "0.54";
           if (!simCallbackRateEl.value) simCallbackRateEl.value = "0.34";
           if (!simEmojiInlineRateEl.value) simEmojiInlineRateEl.value = "0.18";
           if (!simEmojiLooseRateEl.value) simEmojiLooseRateEl.value = "0.70";
@@ -2541,8 +2594,20 @@
         if (document.activeElement !== simClientsEl) {
           simClientsEl.value = String(sim.config.clients || 50);
         }
-        if (document.activeElement !== simMsgRateEl) {
-          simMsgRateEl.value = String(msgRateToUi(sim.config.msgRate));
+        if (document.activeElement !== simCrowdModeEl) {
+          simCrowdModeEl.value = String(sim.config.crowdMode || "normal");
+        }
+        if (document.activeElement !== simBotLabelModeEl) {
+          simBotLabelModeEl.value = String(sim.config.botLabelMode || "hidden");
+        }
+        if (document.activeElement !== simIntensityEl) {
+          simIntensityEl.value = String(normalizeFloat(sim.config.intensity, 0, 1, 0.56));
+        }
+        if (document.activeElement !== simRealismEl) {
+          simRealismEl.value = String(normalizeFloat(sim.config.realism, 0, 1, 0.82));
+        }
+        if (document.activeElement !== simChaosEl) {
+          simChaosEl.value = String(normalizeFloat(sim.config.chaos, 0, 1, 0.34));
         }
         if (document.activeElement !== simReactionRateEl) {
           simReactionRateEl.value = String(sim.config.reactionRate || 0);
@@ -2551,10 +2616,20 @@
           simTopicEl.value = String(sim.config.topic || "");
         }
         if (document.activeElement !== simPositiveEl) {
-          simPositiveEl.value = String(normalizeFloat(sim.config.positive, 0, 1, 0.45));
+          simPositiveEl.value = String(normalizeFloat(
+            sim.config.warmth !== undefined ? sim.config.warmth : sim.config.positive,
+            0,
+            1,
+            0.48
+          ));
         }
         if (document.activeElement !== simNegativeEl) {
-          simNegativeEl.value = String(normalizeFloat(sim.config.negative, 0, 1, 0.70));
+          simNegativeEl.value = String(normalizeFloat(
+            sim.config.skepticism !== undefined ? sim.config.skepticism : sim.config.negative,
+            0,
+            1,
+            0.54
+          ));
         }
         if (document.activeElement !== simCallbackRateEl) {
           simCallbackRateEl.value = String(normalizeFloat(sim.config.callbackRate, 0, 1, 0.34));
@@ -2577,21 +2652,40 @@
             + "  😂 " + Number(reactions.laugh || 0)
             + "  👎 " + Number(reactions.bored || 0))
           : "";
+        const crowd = sim.crowd && typeof sim.crowd === "object" ? sim.crowd : {};
+        const mood = crowd.mood && typeof crowd.mood === "object" ? crowd.mood : {};
+        const motifs = Array.isArray(crowd.topMotifs) && crowd.topMotifs.length
+          ? crowd.topMotifs.join(", ")
+          : "-";
+        const moodLine =
+          "\\nMood aandacht " + normalizeFloat(mood.attention, 0, 1, 0).toFixed(2) +
+          " | hype " + normalizeFloat(mood.hype, 0, 1, 0).toFixed(2) +
+          " | twijfel " + normalizeFloat(mood.skepticism, 0, 1, 0).toFixed(2) +
+          " | grap " + normalizeFloat(mood.insideJoke, 0, 1, 0).toFixed(2);
         simStateEl.textContent =
           "Status: " + runtime +
+          "\\nCrowd mode: " + String(crowd.modeLabel || sim.config.crowdMode || "Normaal") +
+          "\\nBotlabels publiek: " + (String(sim.config.botLabelMode || "hidden") === "shown" ? "zichtbaar" : "verborgen") +
           "\\nConnected: " + Number(sim.stats.connectedNow || 0) + "/" + Number(sim.config.clients || 0) +
           "\\nPraat-rate (echt): " + normalizeFloat(sim.config.msgRate, 0, SIM_MSG_RATE_MAX_REAL, SIM_MSG_RATE_DEFAULT_REAL).toFixed(3) +
           "\\nMax connected: " + Number(sim.stats.maxConnected || 0) +
           "\\nVerzonden berichten: " + Number(sim.stats.sentComments || 0) +
+          "\\nAfgebroken typepogingen: " + Number(sim.stats.abandonedMessages || 0) +
           "\\nVerzonden emoji's: " + Number(sim.stats.sentReactions || 0) +
           "\\nVote acks: " + Number(sim.stats.voteAcks || 0) +
           "\\nServer errors: " + Number(sim.stats.serverErrors || 0) +
           "\\nRate-limited: " + Number(sim.stats.rateLimited || 0) +
-          "\\nPositief: " + normalizeFloat(sim.config.positive, 0, 1, 0.45).toFixed(2) +
-          "\\nNegatief: " + normalizeFloat(sim.config.negative, 0, 1, 0.70).toFixed(2) +
-          "\\nCallback-rate: " + normalizeFloat(sim.config.callbackRate, 0, 1, 0.34).toFixed(2) +
+          "\\nIntensiteit: " + normalizeFloat(sim.config.intensity, 0, 1, 0.56).toFixed(2) +
+          "\\nRealisme: " + normalizeFloat(sim.config.realism, 0, 1, 0.82).toFixed(2) +
+          "\\nChaos: " + normalizeFloat(sim.config.chaos, 0, 1, 0.34).toFixed(2) +
+          "\\nWarmte: " + normalizeFloat(sim.config.warmth, 0, 1, 0.48).toFixed(2) +
+          "\\nScepsis: " + normalizeFloat(sim.config.skepticism, 0, 1, 0.54).toFixed(2) +
+          "\\nCallback-geheugen: " + normalizeFloat(sim.config.callbackRate, 0, 1, 0.34).toFixed(2) +
           "\\nEmoji in zin: " + normalizeFloat(sim.config.emojiInlineRate, 0, 1, 0.18).toFixed(2) +
-          "\\nLosse emoji/combo: " + normalizeFloat(sim.config.emojiLooseRate, 0, 1, 0.70).toFixed(2) +
+          "\\nEmoji-golven: " + normalizeFloat(sim.config.emojiLooseRate, 0, 1, 0.70).toFixed(2) +
+          "\\nActieve cue: " + String(crowd.activeCue || "-") +
+          "\\nMotieven: " + motifs +
+          moodLine +
           reactionLine;
       }
 
@@ -3803,8 +3897,19 @@
         const payload = getSimulationPayload();
         runAction("/admin/sim/defaults", payload, "Bot-standaard opgeslagen.");
       });
+      for (const btn of simCueBtns) {
+        btn.addEventListener("click", () => {
+          const cue = String(btn.dataset.cue || "");
+          if (!cue) return;
+          runAction("/admin/sim/cue", { cue }, "Crowd cue verstuurd.");
+        });
+      }
       simClientsEl.addEventListener("input", scheduleSimLiveUpdate);
-      simMsgRateEl.addEventListener("input", scheduleSimLiveUpdate);
+      simCrowdModeEl.addEventListener("change", scheduleSimLiveUpdate);
+      simBotLabelModeEl.addEventListener("change", scheduleSimLiveUpdate);
+      simIntensityEl.addEventListener("input", scheduleSimLiveUpdate);
+      simRealismEl.addEventListener("input", scheduleSimLiveUpdate);
+      simChaosEl.addEventListener("input", scheduleSimLiveUpdate);
       simReactionRateEl.addEventListener("input", scheduleSimLiveUpdate);
       simPositiveEl.addEventListener("input", scheduleSimLiveUpdate);
       simNegativeEl.addEventListener("input", scheduleSimLiveUpdate);
