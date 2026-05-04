@@ -1145,6 +1145,9 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: "64kb" }));
 app.use(express.static(path.join(__dirname, "public")));
+app.get("/favicon.ico", (req, res) => {
+  res.status(204).end();
+});
 
 const DEBUG_LOG_PATH = path.join(__dirname, "debug.log");
 let debugTrimInFlight = false;

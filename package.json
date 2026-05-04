@@ -4,6 +4,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "smoke": "node scripts/smoke-test.js",
     "simulate": "node scripts/simulate-chatters.js"
   },
   "keywords": [],
