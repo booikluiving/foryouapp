@@ -65,15 +65,27 @@ ADMIN_PASSWORD="kies-een-sterk-wachtwoord" PORT=3000 npm start
 
 ## NPM scripts
 - `npm start` start de server (`server.js`)
+- `npm run smoke -- --url http://127.0.0.1:3000` controleert health, pagina's en WebSockets
 - `npm run simulate` start de losse simulator CLI (`scripts/simulate-chatters.js`)
+- `scripts/mac-studio-setup.command` installeert/start de Mac Studio show-machine via launchd
+- `scripts/mac-studio-update.command` pullt de laatste code, installeert dependencies, herstart en smoke-test
+- `scripts/mac-studio-status.command` toont launchd, health, URLs, git status en logs
 
 Mac launcher:
-- `scripts/open-admin.command` start lokaal de server (indien nodig), opent admin via huidig LAN-IP (fallback localhost) en sluit daarna het Terminal-venster.
+- `scripts/open-admin.command` start lokaal de server (indien nodig), opent admin via huidig LAN-IP (fallback localhost) en sluit daarna het Terminal-venster. Als poort `3000` bezet is door een andere app, kiest de launcher automatisch een vrije fallbackpoort.
 - Dubbelklik op dit `.command` bestand of zet er een snelkoppeling/icoon van op je bureaublad.
+- Zie `MAC_STUDIO_SETUP.md` voor de show-machine setup.
 
 CLI hulp:
 ```bash
 node scripts/simulate-chatters.js --help
+node scripts/smoke-test.js --help
+```
+
+Smoke-test met optionele admin/join-checks:
+```bash
+SMOKE_ADMIN_PASSWORD="jouw-admin-wachtwoord" npm run smoke -- --url http://127.0.0.1:3000
+SMOKE_JOIN_TOKEN="token-uit-admin-qr" npm run smoke -- --url http://127.0.0.1:3000 --send-comment
 ```
 
 ## Routes
