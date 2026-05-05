@@ -521,10 +521,8 @@
     </div>
 
     <div id="reactionBar">
-      <button type="button" data-reaction="heart" aria-label="Hartje"><span class="reactionEmoji" aria-hidden="true">❤️</span><span class="reactionCount" data-reaction-count="heart">0</span></button>
-      <button type="button" data-reaction="fire" aria-label="Vuur"><span class="reactionEmoji" aria-hidden="true">🔥</span><span class="reactionCount" data-reaction-count="fire">0</span></button>
-      <button type="button" data-reaction="laugh" aria-label="Lachen"><span class="reactionEmoji" aria-hidden="true">😂</span><span class="reactionCount" data-reaction-count="laugh">0</span></button>
-      <button type="button" data-reaction="bored" aria-label="Saai"><span class="reactionEmoji" aria-hidden="true">👎</span><span class="reactionCount" data-reaction-count="bored">0</span></button>
+      <button type="button" data-reaction="heart" aria-label="Positief"><span class="reactionEmoji" aria-hidden="true">❤️</span><span class="reactionCount" data-reaction-count="heart">0</span></button>
+      <button type="button" data-reaction="bored" aria-label="Negatief"><span class="reactionEmoji" aria-hidden="true">👎</span><span class="reactionCount" data-reaction-count="bored">0</span></button>
     </div>
 
     <textarea
@@ -598,14 +596,10 @@
       const chatEntryKeys = new Set();
       const reactionCounts = {
         heart: 0,
-        fire: 0,
-        laugh: 0,
         bored: 0,
       };
       const reactionEmoji = {
         heart: "❤️",
-        fire: "🔥",
-        laugh: "😂",
         bored: "👎",
       };
       const REACTION_POINTER_GHOST_MS = 700;
@@ -2081,7 +2075,7 @@
               clearPendingReactionQueue();
               pausedByServer = true;
               serverPauseReason = "session_reset";
-              setReactionCounts({ heart: 0, fire: 0, laugh: 0, bored: 0 });
+              setReactionCounts({ heart: 0, bored: 0 });
               clearStoredVotedPollId();
               closePoll();
               appendChat("Nieuwe sessie gestart. Herverbinden...");
@@ -2092,7 +2086,7 @@
               clearPendingReactionQueue();
               pausedByServer = true;
               serverPauseReason = "session_inactive";
-              setReactionCounts({ heart: 0, fire: 0, laugh: 0, bored: 0 });
+              setReactionCounts({ heart: 0, bored: 0 });
               clearStoredVotedPollId();
               closePoll();
               appendChat("Sessie beëindigd. Wacht op een nieuwe join-link.");
