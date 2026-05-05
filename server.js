@@ -924,11 +924,9 @@ const SIM_BRAINROT_RAW_DROPS = [
   "{term}?",
   "{term} {term}",
 ];
-const ALLOWED_REACTIONS = ["heart", "fire", "laugh", "bored"];
+const ALLOWED_REACTIONS = ["heart", "bored"];
 const DEFAULT_REACTION_COUNTS = Object.freeze({
   heart: 0,
-  fire: 0,
-  laugh: 0,
   bored: 0,
 });
 const ENGAGEMENT_LEADERBOARD_MAX_ITEMS = 200;
@@ -1328,8 +1326,6 @@ function normalizeReactionType(input) {
 function createReactionCounts() {
   return {
     heart: 0,
-    fire: 0,
-    laugh: 0,
     bored: 0,
   };
 }
@@ -1338,8 +1334,6 @@ function reactionCountsSnapshot(counts) {
   const src = counts || DEFAULT_REACTION_COUNTS;
   return {
     heart: Number(src.heart || 0),
-    fire: Number(src.fire || 0),
-    laugh: Number(src.laugh || 0),
     bored: Number(src.bored || 0),
   };
 }
@@ -4835,7 +4829,7 @@ class ChatSimulatorManager {
     const favoriteReaction = this.sample(ALLOWED_REACTIONS, "heart");
     const secondaryReaction = this.sample(
       ALLOWED_REACTIONS.filter((reaction) => reaction !== favoriteReaction),
-      favoriteReaction === "heart" ? "fire" : "heart"
+      favoriteReaction === "heart" ? "bored" : "heart"
     );
     const profile = {
       botId: Number(botId || 0),
@@ -7515,7 +7509,7 @@ app.post("/admin/stage/settings", requireAdmin, (req, res) => {
 
 app.post("/admin/stage/test-emoji", requireAdmin, (req, res) => {
   const requested = String(req.body && req.body.reaction || "").trim().toLowerCase();
-  const reaction = normalizeReactionType(requested) || "fire";
+  const reaction = normalizeReactionType(requested) || "heart";
   const burst = clampInt(
     req.body && req.body.burst,
     1,

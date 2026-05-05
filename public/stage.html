@@ -374,8 +374,6 @@
       const RECONNECT_MAX_MS = 6000;
       const REACTION_EMOJI = {
         heart: "❤️",
-        fire: "🔥",
-        laugh: "😂",
         bored: "👎",
       };
 
@@ -597,8 +595,6 @@
 
       function getReactionAnchorX(settings, reactionKey) {
         if (reactionKey === "heart") return Number(settings.emojiHeartX);
-        if (reactionKey === "fire") return Number(settings.emojiFireX);
-        if (reactionKey === "laugh") return Number(settings.emojiLaughX);
         if (reactionKey === "bored") return Number(settings.emojiBoredX);
         return 50;
       }

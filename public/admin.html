@@ -671,16 +671,6 @@
                   <input id="stageEmojiHeartX" type="range" min="0" max="100" step="1" value="50" />
                 </div>
                 <div class="sliderField">
-                  <div class="sliderLabel"><span>Emoji X 🔥</span><span id="stageEmojiFireXValue" class="sliderValue">50%</span></div>
-                  <input id="stageEmojiFireX" type="range" min="0" max="100" step="1" value="50" />
-                </div>
-                <div class="sliderField">
-                  <div class="sliderLabel"><span>Emoji X 😂</span><span id="stageEmojiLaughXValue" class="sliderValue">50%</span></div>
-                  <input id="stageEmojiLaughX" type="range" min="0" max="100" step="1" value="50" />
-                </div>
-              </div>
-              <div class="row">
-                <div class="sliderField">
                   <div class="sliderLabel"><span>Emoji X 👎</span><span id="stageEmojiBoredXValue" class="sliderValue">50%</span></div>
                   <input id="stageEmojiBoredX" type="range" min="0" max="100" step="1" value="50" />
                 </div>
@@ -2648,8 +2638,6 @@
         simToggleBtn.textContent = sim.running ? "Bots uitzetten" : "Bots aanzetten";
         const reactionLine = reactions
           ? ("\\nReactions ♥ " + Number(reactions.heart || 0)
-            + "  🔥 " + Number(reactions.fire || 0)
-            + "  😂 " + Number(reactions.laugh || 0)
             + "  👎 " + Number(reactions.bored || 0))
           : "";
         const crowd = sim.crowd && typeof sim.crowd === "object" ? sim.crowd : {};
