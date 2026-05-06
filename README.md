@@ -3,6 +3,7 @@
 Realtime chat-app met:
 - een publieke live chat (`/`)
 - een uitgebreide admin console (`/admin`)
+- een losse algoritme-regietafel (`/algoritme`) voor personages, omgevingen, speelbare situaties en TouchDesigner-prompts
 - ingebouwde bot-simulatie met instelbare stijl, sentiment en emoji-gedrag
 - moderatie (woordenlijst, mute/block, user history)
 
@@ -24,6 +25,7 @@ Belangrijke onderdelen:
 - Nieuwe sessie + QR-flow: admin maakt een unieke join-token en QR, clients joinen via `/join?token=...`.
   - Toegang is sessiegebonden: bij een nieuwe sessie is opnieuw scannen/joinen vereist.
 - Stage output pagina (`/stage`) voor OBS/Electron/TouchDesigner browser output met toggles en live styling (QR/chat/emoji, schaal, positie, achtergrond transparant/zwart).
+- Algoritme-pagina (`/algoritme`) voor vaste speelbare situaties, personage- en omgevingsbeschrijvingen, calibratie, live score en OSC-output naar TouchDesigner.
 - Open tabs (`/`, `/admin`, `/stage`) verversen automatisch na een server-restart op basis van server-instance detectie.
 
 ## Tech stack
@@ -57,16 +59,24 @@ Belangrijkste env vars:
 - `OSC_CONTROL_FEEDBACK_ADDRESS` (default: `/foryou/control/feedback`)
 - `OSC_CONTROL_FEEDBACK_HOST` (optioneel vast send-target host voor feedback)
 - `OSC_CONTROL_FEEDBACK_PORT` (optioneel vast send-target poort voor feedback)
+- `UNIFI_AGENT_ENABLED` (optioneel, zet op `1` voor de read-only UniFi network agent)
+- `UNIFI_API_BASE_URL` (default: `https://192.168.1.1/proxy/network/integration/v1`)
+- `UNIFI_API_KEY` (lokale UniFi API-key, nooit committen)
+- `UNIFI_API_INSECURE_TLS` (default: `1`, handig voor self-signed lokale UniFi HTTPS)
 
 Voorbeeld:
 ```bash
 ADMIN_PASSWORD="kies-een-sterk-wachtwoord" PORT=3000 npm start
 ```
 
+Voor UniFi-configuratie: kopieer `.env.example` naar `.env` op de Mac Studio en vul daar de echte key in.
+
 ## NPM scripts
 - `npm start` start de server (`server.js`)
 - `npm run smoke -- --url http://127.0.0.1:3000` controleert health, pagina's en WebSockets
+- `npm run test:algorithm` test de losse algoritme-engine
 - `npm run simulate` start de losse simulator CLI (`scripts/simulate-chatters.js`)
+- `npm run unifi:status` test de read-only UniFi network agent
 - `scripts/mac-studio-setup.command` installeert/start de Mac Studio show-machine via launchd
 - `scripts/mac-studio-update.command` pullt de laatste code, installeert dependencies, herstart en smoke-test
 - `scripts/mac-studio-status.command` toont launchd, health, URLs, git status en logs
@@ -93,6 +103,7 @@ SMOKE_JOIN_TOKEN="token-uit-admin-qr" npm run smoke -- --url http://127.0.0.1:30
 - `GET /join?token=...` registreert scan/join en stuurt door naar client
   - zet een sessie-access cookie voor alleen de actuele sessie
 - `GET /admin` admin console
+- `GET /algoritme` algoritme-regietafel
 - `GET /stage` stage output (portrait 1080x1920)
 - `GET /health` healthcheck
 - `GET /debug-log` uitlezen debugregels (alleen admin-token, en alleen als `DEBUG_LOG_ENABLED=1`)
@@ -103,6 +114,7 @@ Admin API endpoints (subset):
 - `/admin/session/new`
 - `/admin/session/new-with-token`
 - `/admin/stage/settings` (stage toggles/styling)
+- `/admin/algorithm/state` en `/admin/algorithm/*` (catalogus, scene-runs, aanbeveling, TouchDesigner-send)
 - `/admin/polls/start`, `/admin/polls/close`
 - `/admin/sim/start`, `/admin/sim/update`, `/admin/sim/stop`, `/admin/sim/defaults`
 - `/admin/users/mute`, `/admin/users/unmute`, `/admin/users/block`, `/admin/users/unblock`, `/admin/users/kick`
@@ -125,6 +137,11 @@ Admin API endpoints (subset):
   - `/foryou/stage/show_chat`
   - `/foryou/stage/show_emojis`
   - `/foryou/stage/patch_json`
+  - `/foryou/algorithm/state`
+  - `/foryou/algorithm/next`
+  - `/foryou/algorithm/start_scene`
+  - `/foryou/algorithm/end_scene`
+  - `/foryou/algorithm/select_scene`
   - `/foryou/sim/start`
   - `/foryou/sim/stop`
   - `/foryou/sim/toggle`
@@ -134,8 +151,10 @@ Admin API endpoints (subset):
 
 ## Bestandsstructuur
 - `server.js` backend + WebSocket + admin API + simulator
+- `lib/show-algorithm.js` algoritme-engine voor scene-score, aanbevelingen en promptcompositie
 - `public/index.html` client UI
 - `public/admin.html` admin console UI
+- `public/algoritme.html` algoritme-regietafel
 - `scripts/simulate-chatters.js` standalone botsimulator
 - `moderation/bad-words.txt` tekstwoorden voor filtering
 - `moderation/blocked-words.json` extra/gestructureerde blocked words

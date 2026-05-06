@@ -316,6 +316,32 @@
       .stat { border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
       .stat .k { font-size: 12px; color: var(--muted); }
       .stat .v { font-size: 20px; margin-top: 4px; }
+      .networkStatusBox {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--subtle);
+        padding: 8px;
+        display: grid;
+        gap: 6px;
+      }
+      .networkStatusBox.error {
+        border-color: var(--danger);
+      }
+      .networkStatusGrid {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      }
+      .networkSiteList {
+        display: grid;
+        gap: 6px;
+      }
+      .networkSiteItem {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--field);
+        padding: 8px;
+      }
       .emojiLeaderboardCard {
         border: 1px solid var(--line);
         border-radius: 10px;
@@ -575,6 +601,18 @@
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        <div class="card stack">
+          <h2>Netwerk agent</h2>
+          <div id="networkAgentMeta" class="muted">UniFi-koppeling nog niet geladen.</div>
+          <div class="row">
+            <button id="networkStatusBtn" type="button">Check UniFi status</button>
+            <button id="openUnifiBtn" type="button">Open UniFi</button>
+          </div>
+          <div id="networkStatusBox" class="networkStatusBox muted">
+            Read-only agent. Voeg later een lokale UniFi API-key toe om status op te halen.
           </div>
         </div>
 
@@ -939,6 +977,10 @@
       const engagementCommentPointsEl = document.getElementById("engagementCommentPoints");
       const engagementCommentPointsValueEl = document.getElementById("engagementCommentPointsValue");
       const engagementRulesMetaEl = document.getElementById("engagementRulesMeta");
+      const networkAgentMetaEl = document.getElementById("networkAgentMeta");
+      const networkStatusBtn = document.getElementById("networkStatusBtn");
+      const openUnifiBtn = document.getElementById("openUnifiBtn");
+      const networkStatusBoxEl = document.getElementById("networkStatusBox");
       const sessionNameEl = document.getElementById("sessionName");
       const endSessionBtn = document.getElementById("endSessionBtn");
       const newSessionBtn = document.getElementById("newSessionBtn");
@@ -1124,6 +1166,8 @@
       let sessionDurationTickerTimer = null;
       let messageSlowdownMinMs = 500;
       let messageSlowdownMaxMs = 8000;
+      let networkAgentSummary = null;
+      let networkSnapshotRendered = false;
       let engagementCommentPointsMin = 2;
       let engagementCommentPointsMax = 150;
       let engagementCommentPointsLiveTimer = null;
@@ -3130,6 +3174,118 @@
           .join("");
       }
 
+      function renderNetworkAgentSummary(data) {
+        const summary = data && (data.networkAgent || data.agent)
+          ? (data.networkAgent || data.agent)
+          : null;
+        if (!summary) return;
+        networkAgentSummary = summary;
+        if (networkAgentMetaEl) {
+          const configuredText = summary.configured
+            ? "API-key aanwezig"
+            : (summary.hasApiKey ? "agent uitgeschakeld" : "nog geen API-key");
+          networkAgentMetaEl.textContent =
+            `${configuredText} | ${summary.mode || "read-only"} | ${summary.apiBaseUrl || "-"}`;
+        }
+        if (openUnifiBtn) {
+          openUnifiBtn.disabled = !summary.consoleUrl;
+        }
+        if (networkStatusBoxEl && !networkSnapshotRendered) {
+          networkStatusBoxEl.classList.remove("error");
+          networkStatusBoxEl.innerHTML = summary.configured
+            ? "Klaar voor read-only statuscheck."
+            : "Nog niet geconfigureerd. Zet UNIFI_API_KEY in .env op de Mac Studio en herstart de For_You server.";
+        }
+      }
+
+      function renderNetworkEndpointSummary(label, result) {
+        if (result && result.ok) {
+          return `<div class="stat"><div class="k">${esc(label)}</div><div class="v">${Number(result.count || 0)}</div></div>`;
+        }
+        const upstream = Number(result && result.error && result.error.upstreamStatus || 0);
+        const detail = upstream ? `HTTP ${upstream}` : "n.v.t.";
+        return `<div class="stat"><div class="k">${esc(label)}</div><div class="v">-</div><div class="muted">${esc(detail)}</div></div>`;
+      }
+
+      function renderNetworkSnapshot(snapshot) {
+        if (!networkStatusBoxEl) return;
+        networkSnapshotRendered = true;
+        networkStatusBoxEl.classList.remove("error");
+        renderNetworkAgentSummary(snapshot);
+        const totals = snapshot && snapshot.totals ? snapshot.totals : {};
+        const sites = Array.isArray(snapshot && snapshot.sites) ? snapshot.sites : [];
+        const siteHtml = sites.length
+          ? sites.map((item) => {
+              const site = item.site || {};
+              return `<div class="networkSiteItem">
+                <strong>${esc(site.name || site.id || "site")}</strong>
+                <div class="networkStatusGrid">
+                  ${renderNetworkEndpointSummary("Devices", item.devices)}
+                  ${renderNetworkEndpointSummary("Clients", item.clients)}
+                  ${renderNetworkEndpointSummary("Networks", item.networks)}
+                </div>
+              </div>`;
+            }).join("")
+          : '<div class="muted">Geen sites gevonden via deze API.</div>';
+        networkStatusBoxEl.innerHTML = `
+          <div class="networkStatusGrid">
+            <div class="stat"><div class="k">Sites</div><div class="v">${Number(totals.sites || 0)}</div></div>
+            <div class="stat"><div class="k">Devices</div><div class="v">${Number(totals.devices || 0)}</div></div>
+            <div class="stat"><div class="k">Clients</div><div class="v">${Number(totals.clients || 0)}</div></div>
+            <div class="stat"><div class="k">Networks</div><div class="v">${Number(totals.networks || 0)}</div></div>
+          </div>
+          <div class="muted">Laatste check: ${esc(formatTs(snapshot && snapshot.checkedAt))} | ${Number(snapshot && snapshot.durationMs || 0)}ms</div>
+          <div class="networkSiteList">${siteHtml}</div>
+        `;
+        queueSectionMasonryLayout(0);
+      }
+
+      function renderNetworkError(err) {
+        if (!networkStatusBoxEl) return;
+        networkSnapshotRendered = true;
+        const body = err && err.body ? err.body : {};
+        renderNetworkAgentSummary(body);
+        const code = String((body && body.error) || (err && err.message) || "unifi_error");
+        const upstream = Number(body && body.upstreamStatus || 0);
+        const help = code === "unifi_api_key_missing"
+          ? "Zet UNIFI_API_KEY in .env en herstart de For_You server."
+          : code === "unifi_agent_disabled"
+            ? "Zet UNIFI_AGENT_ENABLED=1 in .env om de agent aan te zetten."
+            : code === "unifi_auth_failed"
+              ? "De API-key wordt geweigerd door UniFi. Controleer de key of rechten."
+              : "Controleer of de UniFi API base URL klopt en bereikbaar is vanaf deze Mac.";
+        networkStatusBoxEl.classList.add("error");
+        networkStatusBoxEl.innerHTML = `
+          <strong>UniFi statuscheck mislukt</strong>
+          <div class="muted">Fout: ${esc(code)}${upstream ? ` | UniFi HTTP ${upstream}` : ""}</div>
+          <div>${esc(help)}</div>
+        `;
+        queueSectionMasonryLayout(0);
+      }
+
+      async function checkNetworkStatus() {
+        if (!token) {
+          showLogin();
+          setActionMessage("Log eerst in als admin.");
+          return;
+        }
+        if (networkStatusBtn) networkStatusBtn.disabled = true;
+        if (networkStatusBoxEl) {
+          networkStatusBoxEl.classList.remove("error");
+          networkStatusBoxEl.textContent = "UniFi status ophalen...";
+        }
+        try {
+          const snapshot = await api("/admin/network/status");
+          renderNetworkSnapshot(snapshot);
+          setActionMessage("UniFi status opgehaald.");
+        } catch (err) {
+          renderNetworkError(err);
+          setActionMessage("UniFi status ophalen mislukt: " + (err && err.message ? err.message : "unifi_error"));
+        } finally {
+          if (networkStatusBtn) networkStatusBtn.disabled = false;
+        }
+      }
+
       function renderState(data) {
         lastState = data;
         adminPasswordMinLength = Math.max(
@@ -3139,6 +3295,7 @@
         const runtime = data && data.runtime ? data.runtime : {};
         observeServerInstanceId(runtime.serverInstanceId, "admin_state");
         applyBuildLabel(runtime.buildVersion, runtime.buildLabel, "admin_state");
+        renderNetworkAgentSummary(data);
         const session = data && data.session ? data.session : {};
         const sessionId = Number(session.id || 0);
         const sessionName = String(session.name || "");
@@ -3719,6 +3876,20 @@
       refreshBtn.addEventListener("click", refreshState);
       restartBtn.addEventListener("click", restartServer);
       stopServerBtn.addEventListener("click", stopServer);
+      if (networkStatusBtn) {
+        networkStatusBtn.addEventListener("click", checkNetworkStatus);
+      }
+      if (openUnifiBtn) {
+        openUnifiBtn.addEventListener("click", () => {
+          const url = String(networkAgentSummary && networkAgentSummary.consoleUrl || "https://192.168.1.1").trim();
+          try {
+            const opened = window.open(url, "_blank", "noopener,noreferrer");
+            setActionMessage(opened ? "UniFi geopend in nieuw tabblad." : "Kon UniFi niet openen. Sta pop-ups toe voor deze pagina.");
+          } catch {
+            setActionMessage("Kon UniFi niet openen.");
+          }
+        });
+      }
       logoutBtn.addEventListener("click", async () => {
         try {
           await api("/admin/logout", {
