@@ -1,5 +1,6 @@
 node_modules/
 .env
+.env.local
 debug.log
 data/*.sqlite
 data/*.sqlite-shm

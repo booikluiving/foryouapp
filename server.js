@@ -18,6 +18,26 @@ const {
   normalizeCrowdCue,
   normalizeCrowdMode,
 } = require("./lib/crowd-engine");
+const {
+  DEFAULT_ALGORITHM_SETTINGS,
+  buildAudienceContext,
+  buildAlgorithmOrder,
+  calculateRunScore,
+  composeScenePrompt,
+  computeEntityScores,
+  normalizeAlgorithmSettings,
+  normalizeCharacter,
+  normalizeEnvironment,
+  normalizeIdList,
+  normalizeRun,
+  normalizeScene,
+  normalizeSituation,
+  pickRecommendation,
+  validateSceneLinks,
+} = require("./lib/show-algorithm");
+const { createUnifiNetworkAgent } = require("./lib/unifi-network-agent");
+
+loadLocalDotEnv(__dirname);
 
 let PORT = Number.parseInt(process.env.PORT || "3000", 10);
 if (!Number.isFinite(PORT) || PORT < 1 || PORT > 65535) PORT = 3000;
@@ -87,8 +107,11 @@ const SERVER_INSTANCE_ID = `${Date.now()}-${process.pid}-${crypto.randomBytes(4)
 const BUILD_VERSION_PREFIX = "v0.0";
 const BUILD_VERSION_INPUT_FILES = [
   path.join(__dirname, "server.js"),
+  path.join(__dirname, "lib", "show-algorithm.js"),
+  path.join(__dirname, "lib", "unifi-network-agent.js"),
   path.join(__dirname, "public", "index.html"),
   path.join(__dirname, "public", "admin.html"),
+  path.join(__dirname, "public", "algoritme.html"),
   path.join(__dirname, "public", "stage.html"),
   path.join(__dirname, "package.json"),
 ];
@@ -121,6 +144,10 @@ const ENGAGEMENT_EMOJI_POINTS = 1;
 const ENGAGEMENT_COMMENT_MIN_CHARS = 4;
 const ENGAGEMENT_DUPLICATE_WINDOW_MS = 15000;
 let currentEngagementCommentPoints = DEFAULT_ENGAGEMENT_COMMENT_POINTS;
+const ALGORITHM_CALIBRATION_COUNT_SETTING_KEY = "algorithm_calibration_count";
+const ALGORITHM_GLOBAL_PROMPT_SETTING_KEY = "algorithm_global_prompt";
+const ALGORITHM_PROMPT_TEMPLATE_SETTING_KEY = "algorithm_prompt_template";
+const ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS = 3500;
 const SIM_DEFAULTS = {
   clients: 50,
   durationSec: 0,
@@ -1137,10 +1164,10 @@ const DEFAULT_OSC_CONTROL_FEEDBACK_PORT = clampInt(
   0
 );
 const OSC_CONTROL_FEEDBACK_DATA_MAX_CHARS = clampInt(
-  process.env.OSC_CONTROL_FEEDBACK_DATA_MAX_CHARS || "900",
+  process.env.OSC_CONTROL_FEEDBACK_DATA_MAX_CHARS || "4000",
   120,
   4000,
-  900
+  4000
 );
 let currentOscListenPort = DEFAULT_OSC_CONTROL_LISTEN_PORT;
 let oscControlUdpPort = null;
@@ -1150,6 +1177,7 @@ let oscControlFeedbackHost = DEFAULT_OSC_CONTROL_FEEDBACK_HOST;
 let oscControlFeedbackPort = DEFAULT_OSC_CONTROL_FEEDBACK_PORT;
 
 const app = express();
+const unifiNetworkAgent = createUnifiNetworkAgent({ rootDir: __dirname });
 app.use((req, res, next) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   res.setHeader("Pragma", "no-cache");
@@ -1228,6 +1256,65 @@ function writeDebug(event, meta = {}) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function stripEnvInlineComment(value) {
+  let quote = "";
+  const text = String(value || "");
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if ((ch === "\"" || ch === "'") && text[i - 1] !== "\\") {
+      quote = quote === ch ? "" : quote || ch;
+      continue;
+    }
+    if (ch === "#" && !quote && /\s/.test(text[i - 1] || "")) {
+      return text.slice(0, i).trimEnd();
+    }
+  }
+  return text.trim();
+}
+
+function parseDotEnvValue(value) {
+  const trimmed = stripEnvInlineComment(value).trim();
+  if (trimmed.length >= 2) {
+    const first = trimmed[0];
+    const last = trimmed[trimmed.length - 1];
+    if ((first === "\"" && last === "\"") || (first === "'" && last === "'")) {
+      const inner = trimmed.slice(1, -1);
+      if (first === "\"") {
+        return inner
+          .replace(/\\n/g, "\n")
+          .replace(/\\r/g, "\r")
+          .replace(/\\t/g, "\t")
+          .replace(/\\"/g, "\"")
+          .replace(/\\\\/g, "\\");
+      }
+      return inner.replace(/\\'/g, "'");
+    }
+  }
+  return trimmed;
+}
+
+function loadLocalDotEnv(rootDir) {
+  for (const filePath of [path.join(rootDir, ".env"), path.join(rootDir, ".env.local")]) {
+    let text = "";
+    try {
+      text = fs.readFileSync(filePath, "utf8");
+    } catch {
+      continue;
+    }
+    for (const rawLine of text.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#")) continue;
+      const normalized = line.startsWith("export ") ? line.slice(7).trim() : line;
+      const eq = normalized.indexOf("=");
+      if (eq <= 0) continue;
+      const key = normalized.slice(0, eq).trim();
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+      if (process.env[key] !== undefined) continue;
+      process.env[key] = parseDotEnvValue(normalized.slice(eq + 1));
+    }
+  }
 }
 
 function safeJsonStringify(value, fallback = "{}") {
@@ -2318,6 +2405,89 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_session_engagement_scores_session
     ON session_engagement_scores(session_id, last_activity_at);
 
+  CREATE TABLE IF NOT EXISTS algorithm_characters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    prompt_text TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    archived_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_algorithm_characters_active
+    ON algorithm_characters(is_active, archived_at, id);
+
+  CREATE TABLE IF NOT EXISTS algorithm_situations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    prompt_text TEXT,
+    required_character_ids_json TEXT NOT NULL DEFAULT '[]',
+    allowed_character_ids_json TEXT NOT NULL DEFAULT '[]',
+    is_active INTEGER NOT NULL DEFAULT 1,
+    archived_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_algorithm_situations_active
+    ON algorithm_situations(is_active, archived_at, id);
+
+  CREATE TABLE IF NOT EXISTS algorithm_environments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    prompt_text TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    archived_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_algorithm_environments_active
+    ON algorithm_environments(is_active, archived_at, id);
+
+  CREATE TABLE IF NOT EXISTS algorithm_scenes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    character_count INTEGER NOT NULL DEFAULT 1,
+    character_slots_json TEXT NOT NULL DEFAULT '[]',
+    character_ids_json TEXT NOT NULL DEFAULT '[]',
+    situation_ids_json TEXT NOT NULL DEFAULT '[]',
+    environment_id INTEGER,
+    environment_mode TEXT NOT NULL DEFAULT 'selected',
+    context_scene_id INTEGER,
+    prompt_override TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    archived_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_algorithm_scenes_active
+    ON algorithm_scenes(is_active, archived_at, sort_order, id);
+
+  CREATE TABLE IF NOT EXISTS algorithm_scene_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    scene_id INTEGER NOT NULL,
+    run_order INTEGER NOT NULL,
+    selection_source TEXT,
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    heart_count INTEGER NOT NULL DEFAULT 0,
+    bored_count INTEGER NOT NULL DEFAULT 0,
+    comment_count INTEGER NOT NULL DEFAULT 0,
+    score REAL,
+    prompt_snapshot TEXT,
+    reason TEXT,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY(scene_id) REFERENCES algorithm_scenes(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_algorithm_scene_runs_session
+    ON algorithm_scene_runs(session_id, run_order, id);
+  CREATE INDEX IF NOT EXISTS idx_algorithm_scene_runs_open
+    ON algorithm_scene_runs(session_id, ended_at, id);
+
   CREATE TABLE IF NOT EXISTS session_join_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL,
@@ -2378,6 +2548,19 @@ db.exec(`
 const pollColumns = db.prepare("PRAGMA table_info(polls)").all();
 if (!pollColumns.some((column) => String(column.name || "") === "duration_seconds")) {
   db.exec(`ALTER TABLE polls ADD COLUMN duration_seconds INTEGER NOT NULL DEFAULT ${DEFAULT_POLL_DURATION_SECONDS}`);
+}
+const algorithmSceneColumns = db.prepare("PRAGMA table_info(algorithm_scenes)").all();
+if (!algorithmSceneColumns.some((column) => String(column.name || "") === "character_count")) {
+  db.exec("ALTER TABLE algorithm_scenes ADD COLUMN character_count INTEGER NOT NULL DEFAULT 1");
+}
+if (!algorithmSceneColumns.some((column) => String(column.name || "") === "character_slots_json")) {
+  db.exec("ALTER TABLE algorithm_scenes ADD COLUMN character_slots_json TEXT NOT NULL DEFAULT '[]'");
+}
+if (!algorithmSceneColumns.some((column) => String(column.name || "") === "environment_mode")) {
+  db.exec("ALTER TABLE algorithm_scenes ADD COLUMN environment_mode TEXT NOT NULL DEFAULT 'selected'");
+}
+if (!algorithmSceneColumns.some((column) => String(column.name || "") === "context_scene_id")) {
+  db.exec("ALTER TABLE algorithm_scenes ADD COLUMN context_scene_id INTEGER");
 }
 
 const sql = {
@@ -2484,6 +2667,216 @@ const sql = {
   ),
   deleteSessionEngagementRowsBySession: db.prepare(
     `DELETE FROM session_engagement_scores
+     WHERE session_id = ?`
+  ),
+  getAlgorithmCharacters: db.prepare(
+    `SELECT id, name, description, is_active AS isActive, archived_at AS archivedAt,
+      created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_characters
+     ORDER BY archived_at IS NOT NULL ASC, is_active DESC, name COLLATE NOCASE ASC, id ASC`
+  ),
+  getAlgorithmCharacterById: db.prepare(
+    `SELECT id, name, description, is_active AS isActive, archived_at AS archivedAt,
+      created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_characters
+     WHERE id = ?`
+  ),
+  insertAlgorithmCharacter: db.prepare(
+    `INSERT INTO algorithm_characters (name, description, prompt_text, is_active, archived_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, NULL, ?, ?)`
+  ),
+  updateAlgorithmCharacter: db.prepare(
+    `UPDATE algorithm_characters
+     SET name = ?, description = ?, prompt_text = ?, is_active = ?, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  archiveAlgorithmCharacter: db.prepare(
+    `UPDATE algorithm_characters
+     SET is_active = 0, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  deleteAlgorithmCharacter: db.prepare(
+    `DELETE FROM algorithm_characters
+     WHERE id = ? AND is_active = 0`
+  ),
+  getAlgorithmSituations: db.prepare(
+    `SELECT id, name, description,
+      required_character_ids_json AS requiredCharacterIdsJson,
+      allowed_character_ids_json AS allowedCharacterIdsJson,
+      is_active AS isActive, archived_at AS archivedAt, created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_situations
+     ORDER BY archived_at IS NOT NULL ASC, is_active DESC, name COLLATE NOCASE ASC, id ASC`
+  ),
+  getAlgorithmSituationById: db.prepare(
+    `SELECT id, name, description,
+      required_character_ids_json AS requiredCharacterIdsJson,
+      allowed_character_ids_json AS allowedCharacterIdsJson,
+      is_active AS isActive, archived_at AS archivedAt, created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_situations
+     WHERE id = ?`
+  ),
+  insertAlgorithmSituation: db.prepare(
+    `INSERT INTO algorithm_situations (
+      name, description, prompt_text, required_character_ids_json, allowed_character_ids_json,
+      is_active, archived_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`
+  ),
+  updateAlgorithmSituation: db.prepare(
+    `UPDATE algorithm_situations
+     SET name = ?, description = ?, prompt_text = ?, required_character_ids_json = ?,
+      allowed_character_ids_json = ?, is_active = ?, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  archiveAlgorithmSituation: db.prepare(
+    `UPDATE algorithm_situations
+     SET is_active = 0, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  deleteAlgorithmSituation: db.prepare(
+    `DELETE FROM algorithm_situations
+     WHERE id = ? AND is_active = 0`
+  ),
+  getAlgorithmEnvironments: db.prepare(
+    `SELECT id, name, description, is_active AS isActive, archived_at AS archivedAt,
+      created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_environments
+     ORDER BY archived_at IS NOT NULL ASC, is_active DESC, name COLLATE NOCASE ASC, id ASC`
+  ),
+  getAlgorithmEnvironmentById: db.prepare(
+    `SELECT id, name, description, is_active AS isActive, archived_at AS archivedAt,
+      created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_environments
+     WHERE id = ?`
+  ),
+  insertAlgorithmEnvironment: db.prepare(
+    `INSERT INTO algorithm_environments (name, description, prompt_text, is_active, archived_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, NULL, ?, ?)`
+  ),
+  updateAlgorithmEnvironment: db.prepare(
+    `UPDATE algorithm_environments
+     SET name = ?, description = ?, prompt_text = ?, is_active = ?, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  archiveAlgorithmEnvironment: db.prepare(
+    `UPDATE algorithm_environments
+     SET is_active = 0, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  deleteAlgorithmEnvironment: db.prepare(
+    `DELETE FROM algorithm_environments
+     WHERE id = ? AND is_active = 0`
+  ),
+  getAlgorithmScenes: db.prepare(
+    `SELECT id, title, sort_order AS sortOrder, character_count AS characterCount,
+      character_slots_json AS characterSlotsJson, character_ids_json AS characterIdsJson,
+      situation_ids_json AS situationIdsJson, environment_id AS environmentId,
+      environment_mode AS environmentMode, context_scene_id AS contextSceneId,
+      prompt_override AS promptOverride,
+      is_active AS isActive, archived_at AS archivedAt,
+      created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_scenes
+     ORDER BY archived_at IS NOT NULL ASC, is_active DESC, sort_order ASC, id ASC`
+  ),
+  getAlgorithmSceneById: db.prepare(
+    `SELECT id, title, sort_order AS sortOrder, character_count AS characterCount,
+      character_slots_json AS characterSlotsJson, character_ids_json AS characterIdsJson,
+      situation_ids_json AS situationIdsJson, environment_id AS environmentId,
+      environment_mode AS environmentMode, context_scene_id AS contextSceneId,
+      prompt_override AS promptOverride,
+      is_active AS isActive, archived_at AS archivedAt,
+      created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_scenes
+     WHERE id = ?`
+  ),
+  insertAlgorithmScene: db.prepare(
+    `INSERT INTO algorithm_scenes (
+      title, sort_order, character_count, character_slots_json, character_ids_json,
+      situation_ids_json, environment_id, environment_mode, prompt_override,
+      context_scene_id, is_active, archived_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`
+  ),
+  updateAlgorithmScene: db.prepare(
+    `UPDATE algorithm_scenes
+     SET title = ?, sort_order = ?, character_count = ?, character_slots_json = ?,
+      character_ids_json = ?, situation_ids_json = ?, environment_id = ?,
+      environment_mode = ?, prompt_override = ?, context_scene_id = ?,
+      is_active = ?, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  updateAlgorithmSceneSortOrder: db.prepare(
+    `UPDATE algorithm_scenes
+     SET sort_order = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  getMaxAlgorithmSceneSortOrder: db.prepare(
+    `SELECT COALESCE(MAX(sort_order), 0) AS n
+     FROM algorithm_scenes`
+  ),
+  archiveAlgorithmScene: db.prepare(
+    `UPDATE algorithm_scenes
+     SET is_active = 0, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  deleteAlgorithmScene: db.prepare(
+    `DELETE FROM algorithm_scenes
+     WHERE id = ? AND is_active = 0`
+  ),
+  countAlgorithmRunsByScene: db.prepare(
+    `SELECT COUNT(1) AS n
+     FROM algorithm_scene_runs
+     WHERE scene_id = ?`
+  ),
+  getAlgorithmRunsBySession: db.prepare(
+    `SELECT id, session_id AS sessionId, scene_id AS sceneId, run_order AS runOrder,
+      selection_source AS selectionSource, started_at AS startedAt, ended_at AS endedAt,
+      heart_count AS heartCount, bored_count AS boredCount, comment_count AS commentCount,
+      score, prompt_snapshot AS promptSnapshot, reason
+     FROM algorithm_scene_runs
+     WHERE session_id = ?
+     ORDER BY run_order ASC, id ASC`
+  ),
+  getOpenAlgorithmRunBySession: db.prepare(
+    `SELECT id, session_id AS sessionId, scene_id AS sceneId, run_order AS runOrder,
+      selection_source AS selectionSource, started_at AS startedAt, ended_at AS endedAt,
+      heart_count AS heartCount, bored_count AS boredCount, comment_count AS commentCount,
+      score, prompt_snapshot AS promptSnapshot, reason
+     FROM algorithm_scene_runs
+     WHERE session_id = ? AND ended_at IS NULL
+     ORDER BY id DESC
+     LIMIT 1`
+  ),
+  getAlgorithmRunById: db.prepare(
+    `SELECT id, session_id AS sessionId, scene_id AS sceneId, run_order AS runOrder,
+      selection_source AS selectionSource, started_at AS startedAt, ended_at AS endedAt,
+      heart_count AS heartCount, bored_count AS boredCount, comment_count AS commentCount,
+      score, prompt_snapshot AS promptSnapshot, reason
+     FROM algorithm_scene_runs
+     WHERE id = ?`
+  ),
+  getMaxAlgorithmRunOrderBySession: db.prepare(
+    `SELECT COALESCE(MAX(run_order), 0) AS n
+     FROM algorithm_scene_runs
+     WHERE session_id = ?`
+  ),
+  insertAlgorithmSceneRun: db.prepare(
+    `INSERT INTO algorithm_scene_runs (
+      session_id, scene_id, run_order, selection_source, started_at, ended_at,
+      heart_count, bored_count, comment_count, score, prompt_snapshot, reason
+    ) VALUES (?, ?, ?, ?, ?, NULL, 0, 0, 0, NULL, ?, ?)`
+  ),
+  updateAlgorithmSceneRunMetrics: db.prepare(
+    `UPDATE algorithm_scene_runs
+     SET heart_count = ?, bored_count = ?, comment_count = ?
+     WHERE id = ? AND ended_at IS NULL`
+  ),
+  endAlgorithmSceneRun: db.prepare(
+    `UPDATE algorithm_scene_runs
+     SET ended_at = ?, heart_count = ?, bored_count = ?, comment_count = ?,
+      score = ?, prompt_snapshot = ?, reason = ?
+     WHERE id = ? AND ended_at IS NULL`
+  ),
+  deleteAlgorithmRunsBySession: db.prepare(
+    `DELETE FROM algorithm_scene_runs
      WHERE session_id = ?`
   ),
   insertModerationAction: db.prepare(
@@ -3066,6 +3459,729 @@ function getPollResults(poll) {
   return { counts, totalVotes: counts.reduce((sum, n) => sum + n, 0) };
 }
 
+function sanitizeAlgorithmText(input, max = 2000) {
+  return String(input || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim()
+    .slice(0, max);
+}
+
+function parseAlgorithmIdJson(value) {
+  const parsed = safeJsonParse(value || "[]", []);
+  return normalizeIdList(Array.isArray(parsed) ? parsed : []);
+}
+
+function parseAlgorithmSlotJson(value) {
+  const parsed = safeJsonParse(value || "[]", []);
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .slice(0, 10)
+    .map((item) => {
+      const id = Number.parseInt(String(item || ""), 10);
+      return Number.isInteger(id) && id > 0 ? id : 0;
+    });
+}
+
+function parseAlgorithmCharacterRow(row) {
+  if (!row) return null;
+  return normalizeCharacter({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    isActive: Number(row.isActive || 0) > 0,
+    archivedAt: row.archivedAt || "",
+  });
+}
+
+function parseAlgorithmSituationRow(row) {
+  if (!row) return null;
+  return normalizeSituation({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    requiredCharacterIds: parseAlgorithmIdJson(row.requiredCharacterIdsJson),
+    allowedCharacterIds: parseAlgorithmIdJson(row.allowedCharacterIdsJson),
+    isActive: Number(row.isActive || 0) > 0,
+    archivedAt: row.archivedAt || "",
+  });
+}
+
+function parseAlgorithmEnvironmentRow(row) {
+  if (!row) return null;
+  return normalizeEnvironment({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    isActive: Number(row.isActive || 0) > 0,
+    archivedAt: row.archivedAt || "",
+  });
+}
+
+function parseAlgorithmSceneRow(row) {
+  if (!row) return null;
+  return normalizeScene({
+    id: row.id,
+    title: row.title,
+    sortOrder: row.sortOrder,
+    characterCount: row.characterCount,
+    characterSlots: parseAlgorithmSlotJson(row.characterSlotsJson),
+    characterIds: parseAlgorithmIdJson(row.characterIdsJson),
+    situationIds: parseAlgorithmIdJson(row.situationIdsJson),
+    environmentId: row.environmentId,
+    environmentMode: row.environmentMode,
+    contextSceneId: row.contextSceneId,
+    promptOverride: row.promptOverride,
+    isActive: Number(row.isActive || 0) > 0,
+    archivedAt: row.archivedAt || "",
+  });
+}
+
+function parseAlgorithmRunRow(row) {
+  if (!row) return null;
+  return normalizeRun({
+    id: row.id,
+    sessionId: row.sessionId,
+    sceneId: row.sceneId,
+    runOrder: row.runOrder,
+    selectionSource: row.selectionSource,
+    startedAt: row.startedAt,
+    endedAt: row.endedAt,
+    heartCount: row.heartCount,
+    boredCount: row.boredCount,
+    commentCount: row.commentCount,
+    score: row.score,
+    promptSnapshot: row.promptSnapshot,
+    reason: row.reason,
+  });
+}
+
+function getAlgorithmSettings() {
+  return normalizeAlgorithmSettings({
+    calibrationCount: getSetting(
+      ALGORITHM_CALIBRATION_COUNT_SETTING_KEY,
+      String(DEFAULT_ALGORITHM_SETTINGS.calibrationCount)
+    ),
+    globalPrompt: getSetting(ALGORITHM_GLOBAL_PROMPT_SETTING_KEY, DEFAULT_ALGORITHM_SETTINGS.globalPrompt),
+    promptTemplate: getSetting(ALGORITHM_PROMPT_TEMPLATE_SETTING_KEY, DEFAULT_ALGORITHM_SETTINGS.promptTemplate),
+  });
+}
+
+function saveAlgorithmSettings(patch = {}) {
+  const current = getAlgorithmSettings();
+  const next = normalizeAlgorithmSettings({
+    ...current,
+    ...(patch && typeof patch === "object" ? patch : {}),
+  });
+  setSetting(ALGORITHM_CALIBRATION_COUNT_SETTING_KEY, String(next.calibrationCount));
+  setSetting(ALGORITHM_GLOBAL_PROMPT_SETTING_KEY, next.globalPrompt);
+  setSetting(ALGORITHM_PROMPT_TEMPLATE_SETTING_KEY, next.promptTemplate);
+  return next;
+}
+
+function getAlgorithmCatalog() {
+  return {
+    characters: sql.getAlgorithmCharacters.all().map(parseAlgorithmCharacterRow).filter(Boolean),
+    situations: sql.getAlgorithmSituations.all().map(parseAlgorithmSituationRow).filter(Boolean),
+    environments: sql.getAlgorithmEnvironments.all().map(parseAlgorithmEnvironmentRow).filter(Boolean),
+    scenes: sql.getAlgorithmScenes.all().map(parseAlgorithmSceneRow).filter(Boolean),
+  };
+}
+
+function getAlgorithmRunsForCurrentSession() {
+  return sql.getAlgorithmRunsBySession.all(currentSession.id).map(parseAlgorithmRunRow).filter(Boolean);
+}
+
+function getActiveAlgorithmRunForCurrentSession() {
+  return parseAlgorithmRunRow(sql.getOpenAlgorithmRunBySession.get(currentSession.id));
+}
+
+function getAlgorithmSceneById(sceneId) {
+  return parseAlgorithmSceneRow(sql.getAlgorithmSceneById.get(sceneId));
+}
+
+function buildAlgorithmEntityLabels(catalog) {
+  const labels = { characters: {}, situations: {}, environments: {}, scenes: {} };
+  for (const character of catalog.characters || []) labels.characters[character.id] = character.name;
+  for (const situation of catalog.situations || []) labels.situations[situation.id] = situation.name;
+  for (const environment of catalog.environments || []) labels.environments[environment.id] = environment.name;
+  for (const scene of catalog.scenes || []) labels.scenes[scene.id] = scene.title;
+  return labels;
+}
+
+function expandAlgorithmScene(scene, catalog) {
+  if (!scene) return null;
+  const characterById = new Map((catalog.characters || []).map((item) => [Number(item.id), item]));
+  const situationById = new Map((catalog.situations || []).map((item) => [Number(item.id), item]));
+  const environmentById = new Map((catalog.environments || []).map((item) => [Number(item.id), item]));
+  return {
+    ...scene,
+    characters: scene.characterIds.map((id) => characterById.get(Number(id))).filter(Boolean),
+    situations: scene.situationIds.map((id) => situationById.get(Number(id))).filter(Boolean),
+    environment: scene.environmentId ? (environmentById.get(Number(scene.environmentId)) || null) : null,
+    contextScene: scene.contextSceneId ? (getAlgorithmSceneById(scene.contextSceneId) || null) : null,
+  };
+}
+
+function buildAlgorithmPromptForScene(scene, catalog, recommendation = null) {
+  const expanded = expandAlgorithmScene(scene, catalog);
+  if (!expanded) return "";
+  const settings = getAlgorithmSettings();
+  const audienceContext = buildAudienceContext({
+    recommendation,
+    entityLabels: buildAlgorithmEntityLabels(catalog),
+  });
+  return composeScenePrompt({
+    scene: expanded,
+    characters: expanded.characters,
+    situations: expanded.situations,
+    environment: expanded.environment,
+    settings,
+    audienceContext,
+  });
+}
+
+function buildAlgorithmRecommendation(catalog = getAlgorithmCatalog(), runs = getAlgorithmRunsForCurrentSession()) {
+  const settings = getAlgorithmSettings();
+  const recommendation = pickRecommendation({
+    scenes: catalog.scenes,
+    runs,
+    settings,
+    catalog,
+  });
+  const scene = recommendation && recommendation.scene
+    ? getAlgorithmSceneById(recommendation.scene.id) || recommendation.scene
+    : null;
+  const expanded = expandAlgorithmScene(scene, catalog);
+  const prompt = expanded ? buildAlgorithmPromptForScene(expanded, catalog, recommendation) : "";
+  return {
+    ...recommendation,
+    scene: expanded,
+    prompt,
+  };
+}
+
+function assertAlgorithmSceneReady(scene, catalog = getAlgorithmCatalog(), runs = getAlgorithmRunsForCurrentSession()) {
+  const validation = validateSceneLinks(scene, catalog);
+  if (!validation.ok) {
+    const err = new Error("scene_links_invalid");
+    err.issues = validation.issues;
+    throw err;
+  }
+  const order = buildAlgorithmOrder({
+    scenes: catalog.scenes,
+    runs,
+    settings: getAlgorithmSettings(),
+    catalog,
+  });
+  const invalid = (order.invalid || []).find((entry) => Number(entry.sceneId || 0) === Number(scene.id || 0));
+  if (invalid) {
+    const err = new Error("scene_links_invalid");
+    err.issues = invalid.issues || [];
+    throw err;
+  }
+  const blocked = (order.blockedContext || []).find((entry) => Number(entry.sceneId || 0) === Number(scene.id || 0));
+  if (blocked) {
+    const err = new Error("scene_context_unmet");
+    err.issues = blocked.issues || [];
+    throw err;
+  }
+}
+
+function buildAlgorithmTouchDesignerPayload(bundle, options = {}) {
+  const safeBundle = bundle || {};
+  const scene = safeBundle.scene || null;
+  const expandedScene = scene && scene.characters ? scene : null;
+  const characterById = new Map(expandedScene ? expandedScene.characters.map((item) => [Number(item.id || 0), item]) : []);
+  const prompt = String(safeBundle.prompt || "");
+  const maxPromptChars = options.fullPrompt
+    ? prompt.length
+    : ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS;
+  const limitedPrompt = prompt.slice(0, Math.max(0, maxPromptChars));
+  return {
+    sceneId: scene ? Number(scene.id || 0) : 0,
+    title: scene ? String(scene.title || "") : "",
+    prompt: limitedPrompt,
+    promptTruncated: limitedPrompt.length < prompt.length,
+    characters: expandedScene ? expandedScene.characters.map((item) => ({
+      id: Number(item.id || 0),
+      name: String(item.name || ""),
+      description: String(item.description || ""),
+    })) : [],
+    characterCount: scene ? Number(scene.characterCount || (scene.characterSlots || []).length || 0) : 0,
+    characterSlots: scene && Array.isArray(scene.characterSlots) ? scene.characterSlots.map((id, index) => {
+      const safeId = Number(id || 0);
+      const character = characterById.get(safeId);
+      return {
+        slot: index + 1,
+        mode: safeId ? "selected" : "random",
+        id: safeId,
+        name: character ? String(character.name || "") : "",
+      };
+    }) : [],
+    situations: expandedScene ? expandedScene.situations.map((item) => ({
+      id: Number(item.id || 0),
+      name: String(item.name || ""),
+      description: String(item.description || ""),
+    })) : [],
+    environmentMode: scene ? String(scene.environmentMode || "selected") : "selected",
+    environment: expandedScene && expandedScene.environment
+      ? {
+          id: Number(expandedScene.environment.id || 0),
+          name: String(expandedScene.environment.name || ""),
+          description: String(expandedScene.environment.description || ""),
+        }
+      : null,
+    contextScene: scene && scene.contextSceneId
+      ? {
+          id: Number(scene.contextSceneId || 0),
+          title: String(expandedScene && expandedScene.contextScene && expandedScene.contextScene.title || ""),
+        }
+      : null,
+    score: Number(safeBundle.score || 0),
+    reason: String(safeBundle.reason || ""),
+    calibration: safeBundle.calibration || null,
+  };
+}
+
+function getAlgorithmState() {
+  const catalog = getAlgorithmCatalog();
+  const runs = getAlgorithmRunsForCurrentSession();
+  activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
+  const settings = getAlgorithmSettings();
+  const currentOrder = buildAlgorithmOrder({
+    scenes: catalog.scenes,
+    runs,
+    settings,
+    catalog,
+  });
+  const recommendation = buildAlgorithmRecommendation(catalog, runs);
+  const entityScores = currentOrder.entityScores || computeEntityScores({ scenes: catalog.scenes, runs });
+  const activeScene = activeAlgorithmRun
+    ? expandAlgorithmScene(getAlgorithmSceneById(activeAlgorithmRun.sceneId), catalog)
+    : null;
+  return {
+    ok: true,
+    settings,
+    session: {
+      id: Number(currentSession.id || 0),
+      name: String(currentSession.name || ""),
+      isActive: isCurrentSessionActive(),
+    },
+    catalog,
+    runs,
+    activeRun: activeAlgorithmRun,
+    activeScene,
+    entityScores,
+    recommendation,
+    currentOrder,
+    touchDesigner: {
+      promptMaxChars: ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS,
+      oscFeedbackAddress: OSC_CONTROL_FEEDBACK_ADDRESS,
+      oscFeedbackMode: getOscControlState().feedbackMode,
+    },
+    runtime: {
+      serverInstanceId: SERVER_INSTANCE_ID,
+      buildVersion: BUILD_VERSION,
+      buildLabel: BUILD_LABEL,
+    },
+  };
+}
+
+function upsertAlgorithmCharacterFromBody(body = {}) {
+  const now = nowIso();
+  const item = normalizeCharacter({
+    id: body.id,
+    name: sanitizeAlgorithmText(body.name, 120),
+    description: sanitizeAlgorithmText(body.description, 1600),
+    isActive: body.isActive,
+    archivedAt: body.archivedAt,
+  });
+  if (!item.name) throw new Error("name_required");
+  if (item.id) {
+    const existing = parseAlgorithmCharacterRow(sql.getAlgorithmCharacterById.get(item.id));
+    if (!existing) throw new Error("character_not_found");
+    const archivedAt = item.isActive ? "" : (existing.archivedAt || "");
+    sql.updateAlgorithmCharacter.run(
+      item.name,
+      item.description,
+      "",
+      item.isActive ? 1 : 0,
+      archivedAt || null,
+      now,
+      item.id
+    );
+    return parseAlgorithmCharacterRow(sql.getAlgorithmCharacterById.get(item.id));
+  }
+  const insert = sql.insertAlgorithmCharacter.run(item.name, item.description, "", item.isActive ? 1 : 0, now, now);
+  return parseAlgorithmCharacterRow(sql.getAlgorithmCharacterById.get(insert.lastInsertRowid));
+}
+
+function upsertAlgorithmSituationFromBody(body = {}) {
+  const now = nowIso();
+  const item = normalizeSituation({
+    id: body.id,
+    name: sanitizeAlgorithmText(body.name, 140),
+    description: sanitizeAlgorithmText(body.description, 1800),
+    requiredCharacterIds: Array.isArray(body.requiredCharacterIds) ? body.requiredCharacterIds : [],
+    allowedCharacterIds: Array.isArray(body.allowedCharacterIds) ? body.allowedCharacterIds : [],
+    isActive: body.isActive,
+    archivedAt: body.archivedAt,
+  });
+  if (!item.name) throw new Error("name_required");
+  const requiredJson = safeJsonStringify(item.requiredCharacterIds, "[]");
+  const allowedJson = safeJsonStringify(item.allowedCharacterIds, "[]");
+  if (item.id) {
+    const existing = parseAlgorithmSituationRow(sql.getAlgorithmSituationById.get(item.id));
+    if (!existing) throw new Error("situation_not_found");
+    const archivedAt = item.isActive ? "" : (existing.archivedAt || "");
+    sql.updateAlgorithmSituation.run(
+      item.name,
+      item.description,
+      "",
+      requiredJson,
+      allowedJson,
+      item.isActive ? 1 : 0,
+      archivedAt || null,
+      now,
+      item.id
+    );
+    return parseAlgorithmSituationRow(sql.getAlgorithmSituationById.get(item.id));
+  }
+  const insert = sql.insertAlgorithmSituation.run(
+    item.name,
+    item.description,
+    "",
+    requiredJson,
+    allowedJson,
+    item.isActive ? 1 : 0,
+    now,
+    now
+  );
+  return parseAlgorithmSituationRow(sql.getAlgorithmSituationById.get(insert.lastInsertRowid));
+}
+
+function upsertAlgorithmEnvironmentFromBody(body = {}) {
+  const now = nowIso();
+  const item = normalizeEnvironment({
+    id: body.id,
+    name: sanitizeAlgorithmText(body.name, 140),
+    description: sanitizeAlgorithmText(body.description, 1800),
+    isActive: body.isActive,
+    archivedAt: body.archivedAt,
+  });
+  if (!item.name) throw new Error("name_required");
+  if (item.id) {
+    const existing = parseAlgorithmEnvironmentRow(sql.getAlgorithmEnvironmentById.get(item.id));
+    if (!existing) throw new Error("environment_not_found");
+    const archivedAt = item.isActive ? "" : (existing.archivedAt || "");
+    sql.updateAlgorithmEnvironment.run(
+      item.name,
+      item.description,
+      "",
+      item.isActive ? 1 : 0,
+      archivedAt || null,
+      now,
+      item.id
+    );
+    return parseAlgorithmEnvironmentRow(sql.getAlgorithmEnvironmentById.get(item.id));
+  }
+  const insert = sql.insertAlgorithmEnvironment.run(item.name, item.description, "", item.isActive ? 1 : 0, now, now);
+  return parseAlgorithmEnvironmentRow(sql.getAlgorithmEnvironmentById.get(insert.lastInsertRowid));
+}
+
+function upsertAlgorithmSceneFromBody(body = {}) {
+  const now = nowIso();
+  const safeBody = body && typeof body === "object" ? body : {};
+  const hasSortOrder = Object.prototype.hasOwnProperty.call(safeBody, "sortOrder")
+    && String(safeBody.sortOrder || "").trim() !== "";
+  const incomingId = Number.parseInt(String(safeBody.id || ""), 10);
+  const existing = Number.isInteger(incomingId) && incomingId > 0
+    ? parseAlgorithmSceneRow(sql.getAlgorithmSceneById.get(incomingId))
+    : null;
+  if (incomingId && !existing) throw new Error("scene_not_found");
+  const nextSortOrder = hasSortOrder
+    ? safeBody.sortOrder
+    : existing
+      ? existing.sortOrder
+      : Number(sql.getMaxAlgorithmSceneSortOrder.get().n || 0) + 10;
+  const incomingCharacterIds = Array.isArray(safeBody.characterSlots)
+    ? safeBody.characterSlots
+    : Array.isArray(safeBody.characterIds) ? safeBody.characterIds : [];
+  const item = normalizeScene({
+    id: safeBody.id,
+    title: sanitizeAlgorithmText(safeBody.title, 180),
+    sortOrder: nextSortOrder,
+    characterCount: safeBody.characterCount,
+    characterSlots: incomingCharacterIds,
+    characterIds: incomingCharacterIds,
+    situationIds: Array.isArray(safeBody.situationIds) ? safeBody.situationIds : [],
+    environmentId: safeBody.environmentId,
+    environmentMode: safeBody.environmentMode,
+    contextSceneId: safeBody.contextSceneId,
+    promptOverride: sanitizeAlgorithmText(safeBody.promptOverride, 4000),
+    isActive: safeBody.isActive,
+    archivedAt: safeBody.archivedAt,
+  });
+  if (!item.title) throw new Error("title_required");
+  const catalog = getAlgorithmCatalog();
+  const validation = validateSceneLinks(item, catalog);
+  if (!validation.ok) {
+    const err = new Error("scene_links_invalid");
+    err.issues = validation.issues;
+    throw err;
+  }
+  item.characterIds = normalizeIdList(item.characterSlots.filter(Boolean));
+  const characterJson = safeJsonStringify(item.characterIds, "[]");
+  const characterSlotsJson = safeJsonStringify(item.characterSlots, "[]");
+  const situationJson = safeJsonStringify(item.situationIds, "[]");
+  const environmentId = item.environmentMode === "random" ? null : item.environmentId || null;
+  const contextSceneId = item.contextSceneId || null;
+  if (item.id) {
+    const archivedAt = item.isActive ? "" : (existing.archivedAt || "");
+    sql.updateAlgorithmScene.run(
+      item.title,
+      item.sortOrder,
+      item.characterCount,
+      characterSlotsJson,
+      characterJson,
+      situationJson,
+      environmentId,
+      item.environmentMode,
+      item.promptOverride,
+      contextSceneId,
+      item.isActive ? 1 : 0,
+      archivedAt || null,
+      now,
+      item.id
+    );
+    return parseAlgorithmSceneRow(sql.getAlgorithmSceneById.get(item.id));
+  }
+  const insert = sql.insertAlgorithmScene.run(
+    item.title,
+    item.sortOrder,
+    item.characterCount,
+    characterSlotsJson,
+    characterJson,
+    situationJson,
+    environmentId,
+    item.environmentMode,
+    item.promptOverride,
+    contextSceneId,
+    item.isActive ? 1 : 0,
+    now,
+    now
+  );
+  return parseAlgorithmSceneRow(sql.getAlgorithmSceneById.get(insert.lastInsertRowid));
+}
+
+function reorderAlgorithmScenes(sceneIds = []) {
+  const ids = normalizeIdList(Array.isArray(sceneIds) ? sceneIds : []);
+  if (!ids.length) throw new Error("scene_ids_required");
+  const existingIds = new Set(sql.getAlgorithmScenes.all().map((row) => Number(row.id || 0)));
+  for (const id of ids) {
+    if (!existingIds.has(Number(id))) throw new Error("scene_not_found");
+  }
+  const now = nowIso();
+  ids.forEach((id, index) => {
+    sql.updateAlgorithmSceneSortOrder.run((index + 1) * 10, now, id);
+  });
+  return getAlgorithmCatalog().scenes;
+}
+
+function archiveAlgorithmItem(kind, id) {
+  const now = nowIso();
+  const safeId = Number.parseInt(String(id || ""), 10);
+  if (!Number.isInteger(safeId) || safeId < 1) throw new Error("id_required");
+  if (kind === "character") {
+    sql.archiveAlgorithmCharacter.run(now, now, safeId);
+    return { kind, id: safeId };
+  }
+  if (kind === "situation") {
+    sql.archiveAlgorithmSituation.run(now, now, safeId);
+    return { kind, id: safeId };
+  }
+  if (kind === "environment") {
+    sql.archiveAlgorithmEnvironment.run(now, now, safeId);
+    return { kind, id: safeId };
+  }
+  if (kind === "scene") {
+    sql.archiveAlgorithmScene.run(now, now, safeId);
+    return { kind, id: safeId };
+  }
+  throw new Error("kind_invalid");
+}
+
+function isAlgorithmEntityReferenced(kind, id) {
+  const safeId = Number.parseInt(String(id || ""), 10);
+  if (!Number.isInteger(safeId) || safeId < 1) return false;
+  const catalog = getAlgorithmCatalog();
+  if (kind === "scene") {
+    const row = sql.countAlgorithmRunsByScene.get(safeId);
+    if (Number(row && row.n || 0) > 0) return true;
+    return (catalog.scenes || []).some((scene) => Number(scene.contextSceneId || 0) === safeId);
+  }
+  for (const scene of catalog.scenes || []) {
+    if (kind === "character" && scene.characterIds.includes(safeId)) return true;
+    if (kind === "situation" && scene.situationIds.includes(safeId)) return true;
+    if (kind === "environment" && Number(scene.environmentId || 0) === safeId) return true;
+  }
+  return false;
+}
+
+function deleteInactiveAlgorithmItem(kind, id) {
+  const safeId = Number.parseInt(String(id || ""), 10);
+  if (!Number.isInteger(safeId) || safeId < 1) throw new Error("id_required");
+  if (isAlgorithmEntityReferenced(kind, safeId)) throw new Error("item_in_use");
+  if (kind === "character") {
+    const item = parseAlgorithmCharacterRow(sql.getAlgorithmCharacterById.get(safeId));
+    if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
+    sql.deleteAlgorithmCharacter.run(safeId);
+    return { kind, id: safeId };
+  }
+  if (kind === "situation") {
+    const item = parseAlgorithmSituationRow(sql.getAlgorithmSituationById.get(safeId));
+    if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
+    sql.deleteAlgorithmSituation.run(safeId);
+    return { kind, id: safeId };
+  }
+  if (kind === "environment") {
+    const item = parseAlgorithmEnvironmentRow(sql.getAlgorithmEnvironmentById.get(safeId));
+    if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
+    sql.deleteAlgorithmEnvironment.run(safeId);
+    return { kind, id: safeId };
+  }
+  if (kind === "scene") {
+    const item = parseAlgorithmSceneRow(sql.getAlgorithmSceneById.get(safeId));
+    if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
+    sql.deleteAlgorithmScene.run(safeId);
+    return { kind, id: safeId };
+  }
+  throw new Error("kind_invalid");
+}
+
+function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
+  if (!isCurrentSessionActive()) throw new Error("session_inactive");
+  const scene = getAlgorithmSceneById(sceneId);
+  if (!scene || !scene.isActive || scene.archivedAt) throw new Error("scene_not_found");
+  const catalog = getAlgorithmCatalog();
+  const runs = getAlgorithmRunsForCurrentSession();
+  assertAlgorithmSceneReady(scene, catalog, runs);
+  if (activeAlgorithmRun && !activeAlgorithmRun.endedAt) {
+    endActiveAlgorithmSceneRun("auto_ended_by_new_scene");
+  }
+  const orderRow = sql.getMaxAlgorithmRunOrderBySession.get(currentSession.id);
+  const runOrder = Number(orderRow && orderRow.n || 0) + 1;
+  const recommendation = buildAlgorithmRecommendation(catalog, runs);
+  const prompt = buildAlgorithmPromptForScene(scene, catalog, recommendation);
+  const now = nowIso();
+  const insert = sql.insertAlgorithmSceneRun.run(
+    currentSession.id,
+    scene.id,
+    runOrder,
+    String(selectionSource || "manual").slice(0, 80),
+    now,
+    prompt,
+    String(recommendation && recommendation.reason || "").slice(0, 1000)
+  );
+  activeAlgorithmRun = parseAlgorithmRunRow(sql.getAlgorithmRunById.get(insert.lastInsertRowid));
+  writeDebug("algorithm_scene_started", {
+    runId: Number(activeAlgorithmRun && activeAlgorithmRun.id || 0),
+    sceneId: Number(scene.id || 0),
+    selectionSource: String(selectionSource || "manual").slice(0, 80),
+  });
+  return activeAlgorithmRun;
+}
+
+function endActiveAlgorithmSceneRun(reason = "manual") {
+  activeAlgorithmRun = activeAlgorithmRun || getActiveAlgorithmRunForCurrentSession();
+  if (!activeAlgorithmRun || activeAlgorithmRun.endedAt) return null;
+  const run = {
+    ...activeAlgorithmRun,
+    score: calculateRunScore(activeAlgorithmRun),
+  };
+  const catalog = getAlgorithmCatalog();
+  const scene = getAlgorithmSceneById(run.sceneId);
+  const prompt = scene ? buildAlgorithmPromptForScene(scene, catalog, buildAlgorithmRecommendation(catalog, getAlgorithmRunsForCurrentSession())) : run.promptSnapshot;
+  const now = nowIso();
+  sql.endAlgorithmSceneRun.run(
+    now,
+    Math.floor(Number(run.heartCount || 0)),
+    Math.floor(Number(run.boredCount || 0)),
+    Math.floor(Number(run.commentCount || 0)),
+    run.score,
+    prompt || run.promptSnapshot || "",
+    String(reason || "manual").slice(0, 1000),
+    run.id
+  );
+  const ended = parseAlgorithmRunRow(sql.getAlgorithmRunById.get(run.id));
+  writeDebug("algorithm_scene_ended", {
+    runId: Number(ended && ended.id || 0),
+    sceneId: Number(ended && ended.sceneId || 0),
+    score: Number(ended && ended.score || 0),
+    heartCount: Number(ended && ended.heartCount || 0),
+    boredCount: Number(ended && ended.boredCount || 0),
+    commentCount: Number(ended && ended.commentCount || 0),
+  });
+  activeAlgorithmRun = null;
+  return ended;
+}
+
+function resetAlgorithmRunsForCurrentSession() {
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  if (!sessionId) throw new Error("session_required");
+  activeAlgorithmRun = null;
+  const result = sql.deleteAlgorithmRunsBySession.run(sessionId);
+  writeDebug("algorithm_runs_reset", {
+    sessionId,
+    changes: Number(result && result.changes || 0),
+  });
+  return {
+    sessionId,
+    deletedRuns: Number(result && result.changes || 0),
+  };
+}
+
+function recordAlgorithmReaction(reaction) {
+  activeAlgorithmRun = activeAlgorithmRun || getActiveAlgorithmRunForCurrentSession();
+  if (!activeAlgorithmRun || activeAlgorithmRun.endedAt) return null;
+  if (String(reaction || "") === "heart") activeAlgorithmRun.heartCount += 1;
+  if (String(reaction || "") === "bored") activeAlgorithmRun.boredCount += 1;
+  sql.updateAlgorithmSceneRunMetrics.run(
+    Math.floor(Number(activeAlgorithmRun.heartCount || 0)),
+    Math.floor(Number(activeAlgorithmRun.boredCount || 0)),
+    Math.floor(Number(activeAlgorithmRun.commentCount || 0)),
+    activeAlgorithmRun.id
+  );
+  return activeAlgorithmRun;
+}
+
+function recordAlgorithmComment() {
+  activeAlgorithmRun = activeAlgorithmRun || getActiveAlgorithmRunForCurrentSession();
+  if (!activeAlgorithmRun || activeAlgorithmRun.endedAt) return null;
+  activeAlgorithmRun.commentCount += 1;
+  sql.updateAlgorithmSceneRunMetrics.run(
+    Math.floor(Number(activeAlgorithmRun.heartCount || 0)),
+    Math.floor(Number(activeAlgorithmRun.boredCount || 0)),
+    Math.floor(Number(activeAlgorithmRun.commentCount || 0)),
+    activeAlgorithmRun.id
+  );
+  return activeAlgorithmRun;
+}
+
+function sendAlgorithmApiError(res, err) {
+  const code = String(err && err.message ? err.message : "algorithm_error");
+  const status = code.includes("not_found") ? 404
+    : code.includes("invalid") || code.includes("required") || code.includes("in_use") || code.includes("must") ? 400
+      : code === "session_inactive" || code === "scene_context_unmet" ? 409
+        : 500;
+  res.status(status).json({
+    ok: false,
+    error: code,
+    issues: Array.isArray(err && err.issues) ? err.issues : undefined,
+  });
+}
+
 const adminTokens = new Map();
 const adminLoginAttempts = new Map();
 const connectedClients = new Map();
@@ -3079,6 +4195,7 @@ let reactionCounts = createReactionCounts();
 const engagementLeaderboard = new Map();
 const engagementCommentScoreState = new Map();
 restorePersistedEngagementRowsForSession(currentSession.id);
+let activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
 let pollAutoCloseTimer = null;
 
 function getPollEndsAtIso(poll) {
@@ -4139,6 +5256,7 @@ function beginNewSession(name, createdBy = "admin") {
   const insert = sql.insertSession.run(sessionName, now);
   currentSession = sql.getSessionById.get(insert.lastInsertRowid);
   activePoll = null;
+  activeAlgorithmRun = null;
   reactionCounts = createReactionCounts();
   engagementLeaderboard.clear();
   engagementCommentScoreState.clear();
@@ -4167,6 +5285,7 @@ function endCurrentSession(createdBy = "admin") {
     };
   }
   activePoll = null;
+  activeAlgorithmRun = null;
   reactionCounts = createReactionCounts();
   engagementLeaderboard.clear();
   engagementCommentScoreState.clear();
@@ -6154,6 +7273,131 @@ function buildOscControlCommands() {
       },
     },
     {
+      address: "/foryou/algorithm/state",
+      args: "(geen)",
+      description: "Vraag compacte algoritme-status op.",
+      feedback: true,
+      feedbackMessage() {
+        return "Algoritme-status";
+      },
+      execute() {
+        const state = getAlgorithmState();
+        const recommendation = state.recommendation || {};
+        return {
+          sessionId: Number(state.session && state.session.id || 0),
+          activeRun: state.activeRun
+            ? {
+                id: Number(state.activeRun.id || 0),
+                sceneId: Number(state.activeRun.sceneId || 0),
+                heartCount: Number(state.activeRun.heartCount || 0),
+                boredCount: Number(state.activeRun.boredCount || 0),
+                commentCount: Number(state.activeRun.commentCount || 0),
+              }
+            : null,
+          recommendation: {
+            sceneId: Number(recommendation.scene && recommendation.scene.id || 0),
+            title: String(recommendation.scene && recommendation.scene.title || ""),
+            score: Number(recommendation.score || 0),
+            reason: String(recommendation.reason || ""),
+            calibration: recommendation.calibration || null,
+          },
+        };
+      },
+    },
+    {
+      address: "/foryou/algorithm/next",
+      args: "(geen)",
+      description: "Vraag de volgende concrete algoritme-situatie + prompt op.",
+      feedback: true,
+      feedbackMessage(result) {
+        return result && result.title ? `Volgende situatie: ${result.title}` : "Geen algoritme-situatie";
+      },
+      execute() {
+        const recommendation = buildAlgorithmRecommendation();
+        return buildAlgorithmTouchDesignerPayload(recommendation);
+      },
+    },
+    {
+      address: "/foryou/algorithm/start_scene",
+      args: "[scene_id]",
+      description: "Start een algoritme-situatie-run.",
+      feedback: true,
+      feedbackMessage(result) {
+        return result && result.title ? `Situatie gestart: ${result.title}` : "Situatie gestart";
+      },
+      execute(ctx) {
+        let sceneId = Number.parseInt(getOscArgString(ctx.args, 0, "0"), 10);
+        if (!Number.isInteger(sceneId) || sceneId < 1) {
+          const recommendation = buildAlgorithmRecommendation();
+          sceneId = Number(recommendation && recommendation.scene && recommendation.scene.id || 0);
+        }
+        if (!sceneId) throw new Error("scene_id_required");
+        const run = startAlgorithmSceneRun(sceneId, "osc");
+        const catalog = getAlgorithmCatalog();
+        const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
+        const payload = buildAlgorithmTouchDesignerPayload({
+          scene,
+          prompt: run.promptSnapshot,
+          score: 0,
+          reason: "Situatie gestart via OSC.",
+          calibration: buildAlgorithmRecommendation(catalog, getAlgorithmRunsForCurrentSession()).calibration,
+        });
+        return { ...payload, runId: Number(run.id || 0) };
+      },
+    },
+    {
+      address: "/foryou/algorithm/end_scene",
+      args: "(geen)",
+      description: "Eindig de actieve algoritme-situatie-run en geef de volgende situatie terug.",
+      feedback: true,
+      feedbackMessage(result) {
+        return result && result.next && result.next.title ? `Situatie geeindigd. Volgende: ${result.next.title}` : "Situatie geeindigd";
+      },
+      execute() {
+        const ended = endActiveAlgorithmSceneRun("osc");
+        const next = buildAlgorithmTouchDesignerPayload(buildAlgorithmRecommendation());
+        return {
+          endedRun: ended
+            ? {
+                id: Number(ended.id || 0),
+                sceneId: Number(ended.sceneId || 0),
+                score: Number(ended.score || 0),
+                heartCount: Number(ended.heartCount || 0),
+                boredCount: Number(ended.boredCount || 0),
+                commentCount: Number(ended.commentCount || 0),
+              }
+            : null,
+          next,
+        };
+      },
+    },
+    {
+      address: "/foryou/algorithm/select_scene",
+      args: "[scene_id]",
+      description: "Selecteer een vaste situatie en ontvang de prompt zonder een run te starten.",
+      feedback: true,
+      feedbackMessage(result) {
+        return result && result.title ? `Situatie geselecteerd: ${result.title}` : "Situatie geselecteerd";
+      },
+      execute(ctx) {
+        const sceneId = Number.parseInt(getOscArgString(ctx.args, 0, "0"), 10);
+        if (!Number.isInteger(sceneId) || sceneId < 1) throw new Error("scene_id_required");
+        const scene = getAlgorithmSceneById(sceneId);
+        if (!scene || !scene.isActive || scene.archivedAt) throw new Error("scene_not_found");
+        const catalog = getAlgorithmCatalog();
+        const runs = getAlgorithmRunsForCurrentSession();
+        assertAlgorithmSceneReady(scene, catalog, runs);
+        const recommendation = buildAlgorithmRecommendation(catalog, runs);
+        return buildAlgorithmTouchDesignerPayload({
+          scene: expandAlgorithmScene(scene, catalog),
+          prompt: buildAlgorithmPromptForScene(scene, catalog, recommendation),
+          score: Number(recommendation && recommendation.score || 0),
+          reason: "Handmatig geselecteerd via OSC.",
+          calibration: recommendation && recommendation.calibration,
+        });
+      },
+    },
+    {
       address: "/foryou/admin/restart",
       args: "(geen)",
       description: "Start server-restart flow (zelfde als admin knop).",
@@ -6238,6 +7482,38 @@ function getOscControlFeedbackTarget(info) {
   return { address: targetAddress, port: targetPort, mode: "reply_to_sender" };
 }
 
+function trimOscPromptFields(value, maxPromptChars) {
+  if (!value || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map((item) => trimOscPromptFields(item, maxPromptChars));
+  const out = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (key === "prompt" && typeof item === "string") {
+      out[key] = item.slice(0, maxPromptChars);
+      if (item.length > maxPromptChars) out.promptTruncated = true;
+      continue;
+    }
+    out[key] = item && typeof item === "object" ? trimOscPromptFields(item, maxPromptChars) : item;
+  }
+  return out;
+}
+
+function stringifyOscFeedbackData(data) {
+  const maxChars = OSC_CONTROL_FEEDBACK_DATA_MAX_CHARS;
+  let json = safeJsonStringify(data, "{}");
+  if (json.length <= maxChars) return json;
+  for (const promptChars of [2600, 1800, 1000, 500]) {
+    json = safeJsonStringify(trimOscPromptFields(data, promptChars), "{}");
+    if (json.length <= maxChars) return json;
+  }
+  const fallback = data && typeof data === "object" ? data : {};
+  return safeJsonStringify({
+    truncated: true,
+    sceneId: Number(fallback.sceneId || (fallback.next && fallback.next.sceneId) || 0),
+    title: String(fallback.title || (fallback.next && fallback.next.title) || ""),
+    reason: String(fallback.reason || ""),
+  }, "{}").slice(0, maxChars);
+}
+
 function createOscControlFeedbackPacket(payload) {
   const status = String(payload && payload.status || "ok").toLowerCase() === "error" ? "error" : "ok";
   const commandAddress = String(payload && payload.commandAddress || "").trim();
@@ -6245,8 +7521,7 @@ function createOscControlFeedbackPacket(payload) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 260);
-  const dataJson = safeJsonStringify(payload && payload.data !== undefined ? payload.data : {}, "{}")
-    .slice(0, OSC_CONTROL_FEEDBACK_DATA_MAX_CHARS);
+  const dataJson = stringifyOscFeedbackData(payload && payload.data !== undefined ? payload.data : {});
   return {
     address: OSC_CONTROL_FEEDBACK_ADDRESS,
     args: [
@@ -6592,6 +7867,7 @@ function getAdminState(req) {
       debugLogEnabled: DEBUG_LOG_ENABLED,
       adminPasswordMinLength: ADMIN_PASSWORD_MIN_LENGTH,
     },
+    networkAgent: unifiNetworkAgent.getConfigSummary(),
     session: {
       id: Number(currentSession.id),
       name: currentSession.name,
@@ -7319,6 +8595,10 @@ app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "admin.html"));
 });
 
+app.get("/algoritme", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "algoritme.html"));
+});
+
 app.get("/stage", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "stage.html"));
 });
@@ -7494,6 +8774,175 @@ app.post("/admin/stop", requireAdmin, (req, res) => {
 
 app.get("/admin/state", requireAdmin, (req, res) => {
   res.json(getAdminState(req));
+});
+
+app.get("/admin/algorithm/state", requireAdmin, (req, res) => {
+  res.json(getAlgorithmState(req));
+});
+
+app.post("/admin/algorithm/settings", requireAdmin, (req, res) => {
+  try {
+    const settings = saveAlgorithmSettings(req.body && typeof req.body === "object" ? req.body : {});
+    res.json({ ok: true, settings, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/characters/upsert", requireAdmin, (req, res) => {
+  try {
+    const character = upsertAlgorithmCharacterFromBody(req.body || {});
+    res.json({ ok: true, character, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/situations/upsert", requireAdmin, (req, res) => {
+  try {
+    const situation = upsertAlgorithmSituationFromBody(req.body || {});
+    res.json({ ok: true, situation, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/environments/upsert", requireAdmin, (req, res) => {
+  try {
+    const environment = upsertAlgorithmEnvironmentFromBody(req.body || {});
+    res.json({ ok: true, environment, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/scenes/upsert", requireAdmin, (req, res) => {
+  try {
+    const scene = upsertAlgorithmSceneFromBody(req.body || {});
+    res.json({ ok: true, scene, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/scenes/reorder", requireAdmin, (req, res) => {
+  try {
+    const scenes = reorderAlgorithmScenes(req.body && req.body.sceneIds);
+    res.json({ ok: true, scenes, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/archive", requireAdmin, (req, res) => {
+  try {
+    const result = archiveAlgorithmItem(String(req.body && req.body.kind || ""), req.body && req.body.id);
+    res.json({ ok: true, archived: result, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/delete", requireAdmin, (req, res) => {
+  try {
+    const result = deleteInactiveAlgorithmItem(String(req.body && req.body.kind || ""), req.body && req.body.id);
+    res.json({ ok: true, deleted: result, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/runs/start", requireAdmin, (req, res) => {
+  try {
+    let sceneId = Number.parseInt(String(req.body && req.body.sceneId || ""), 10);
+    if (!Number.isInteger(sceneId) || sceneId < 1) {
+      const recommendation = buildAlgorithmRecommendation();
+      sceneId = Number(recommendation && recommendation.scene && recommendation.scene.id || 0);
+    }
+    if (!sceneId) throw new Error("scene_id_required");
+    const run = startAlgorithmSceneRun(sceneId, String(req.body && req.body.selectionSource || "manual"));
+    res.json({ ok: true, run, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/runs/end", requireAdmin, (req, res) => {
+  try {
+    const run = endActiveAlgorithmSceneRun(String(req.body && req.body.reason || "manual"));
+    res.json({ ok: true, run, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/runs/reset", requireAdmin, (req, res) => {
+  try {
+    const reset = resetAlgorithmRunsForCurrentSession();
+    res.json({ ok: true, reset, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/recommendation/recompute", requireAdmin, (req, res) => {
+  try {
+    const state = getAlgorithmState(req);
+    res.json({ ok: true, recommendation: state.recommendation, state });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/touchdesigner/send-current", requireAdmin, (req, res) => {
+  try {
+    const state = getAlgorithmState(req);
+    let bundle = state.recommendation;
+    const target = String(req.body && req.body.target || "current").trim().toLowerCase();
+    if (target !== "next" && state.activeScene) {
+      bundle = {
+        scene: state.activeScene,
+        prompt: state.activeRun && state.activeRun.promptSnapshot
+          ? state.activeRun.promptSnapshot
+          : buildAlgorithmPromptForScene(state.activeScene, state.catalog, state.recommendation),
+        score: calculateRunScore(state.activeRun || {}),
+        reason: "Actieve situatie.",
+        calibration: state.recommendation && state.recommendation.calibration,
+      };
+    }
+    const payload = buildAlgorithmTouchDesignerPayload(bundle);
+    const sent = sendOscControlFeedback(null, {
+      status: "ok",
+      commandAddress: "/foryou/algorithm/send_current",
+      message: payload.title ? `Algorithm situation: ${payload.title}` : "Algorithm situation",
+      data: payload,
+    });
+    res.json({ ok: true, sent, payload, oscFeedbackMode: getOscControlState().feedbackMode });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.get("/admin/network/status", requireAdmin, async (req, res) => {
+  try {
+    const snapshot = await unifiNetworkAgent.getSnapshot();
+    res.json(snapshot);
+  } catch (err) {
+    const code = String(err && (err.code || err.message) || "unifi_error");
+    const statusCode = Number(err && err.statusCode || 0) || 502;
+    writeDebug("unifi_network_status_failed", {
+      code,
+      upstreamStatus: Number(err && err.upstreamStatus || 0) || 0,
+      detail: err && err.detail ? err.detail : "",
+    });
+    res.status(Math.max(400, Math.min(599, statusCode))).json({
+      ok: false,
+      error: code,
+      upstreamStatus: Number(err && err.upstreamStatus || 0) || 0,
+      detail: err && err.detail ? err.detail : null,
+      agent: unifiNetworkAgent.getConfigSummary(),
+    });
+  }
 });
 
 app.post("/admin/stage/settings", requireAdmin, (req, res) => {
@@ -8666,6 +10115,7 @@ wss.on("connection", (ws, req) => {
       if (!allowReaction(meta.clientKey)) return;
       const leaderEntry = recordEmojiEngagement(meta);
       reactionCounts[reaction] = Number(reactionCounts[reaction] || 0) + 1;
+      recordAlgorithmReaction(reaction);
       const counts = reactionCountsSnapshot(reactionCounts);
       const total = Number(counts[reaction] || 0);
       const leaderboard = getStageEngagementLeaderboardSnapshot();
@@ -8951,6 +10401,7 @@ wss.on("connection", (ws, req) => {
       status: "accepted",
       detail: "",
     });
+    recordAlgorithmComment();
 
     broadcastToClients(payload);
     if (stageEngagementLeaderboard) {

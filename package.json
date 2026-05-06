@@ -6,7 +6,9 @@
     "start": "node server.js",
     "smoke": "node scripts/smoke-test.js",
     "simulate": "node scripts/simulate-chatters.js",
-    "test:sim": "node scripts/test-crowd-engine.js"
+    "test:sim": "node scripts/test-crowd-engine.js",
+    "test:algorithm": "node scripts/test-show-algorithm.js",
+    "unifi:status": "node scripts/unifi-status.js"
   },
   "keywords": [],
   "author": "",

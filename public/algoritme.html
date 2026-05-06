@@ -1,0 +1,2085 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Algoritme - For You</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f3ea;
+        --panel: #fffdf8;
+        --panel-2: #f0efe8;
+        --text: #1f2933;
+        --muted: #667085;
+        --line: #d8d3c7;
+        --accent: #0f766e;
+        --accent-2: #b42318;
+        --ink: #111827;
+        --good: #166534;
+        --bad: #991b1b;
+        --shadow: 0 16px 42px rgba(28, 25, 23, 0.11);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+      }
+
+      button {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+        border-radius: 8px;
+        padding: 9px 12px;
+        cursor: pointer;
+      }
+
+      button:hover { border-color: #9ca3af; }
+      button.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+      button.danger {
+        border-color: #fecaca;
+        background: #fff5f5;
+        color: var(--bad);
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      input,
+      textarea,
+      select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 9px 10px;
+        background: #fff;
+        color: var(--text);
+      }
+
+      textarea {
+        min-height: 92px;
+        resize: vertical;
+        line-height: 1.35;
+      }
+
+      label {
+        display: grid;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.01em;
+      }
+
+      .login {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      .loginCard {
+        width: min(420px, 100%);
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        padding: 20px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .app {
+        display: none;
+        min-height: 100vh;
+      }
+
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        border-bottom: 1px solid var(--line);
+        background: rgba(247, 243, 234, 0.94);
+        backdrop-filter: blur(14px);
+      }
+
+      .bar {
+        max-width: 1680px;
+        margin: 0 auto;
+        padding: 14px 18px;
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        color: var(--ink);
+        letter-spacing: 0;
+      }
+
+      h1 { font-size: 22px; }
+      h2 { font-size: 16px; }
+      h3 { font-size: 14px; }
+
+      .meta {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .actions,
+      .row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      main {
+        max-width: 1680px;
+        margin: 0 auto;
+        padding: 18px;
+        display: grid;
+        grid-template-columns: minmax(320px, 0.95fr) minmax(360px, 1.05fr) minmax(420px, 1.2fr);
+        gap: 14px;
+        align-items: start;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        box-shadow: 0 10px 26px rgba(28, 25, 23, 0.06);
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .catalogPanel {
+        grid-column: 1 / -1;
+      }
+
+      .catalogWindows {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(260px, 1fr));
+        gap: 12px;
+        align-items: start;
+      }
+
+      .catalogWindow {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fffaf0;
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .promptPanel {
+        grid-column: span 2;
+      }
+
+      .stack { display: grid; gap: 10px; }
+      .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+
+      .tabs {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+      }
+
+      .tabs button {
+        padding: 8px 7px;
+        font-size: 13px;
+      }
+
+      .tabs button.active {
+        border-color: var(--accent);
+        background: #e6fffb;
+        color: #115e59;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 26px;
+        border-radius: 999px;
+        padding: 4px 9px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .badge.good { color: var(--good); background: #ecfdf3; border-color: #bbf7d0; }
+      .badge.bad { color: var(--bad); background: #fef2f2; border-color: #fecaca; }
+      .badge.warning { color: #92400e; background: #fffbeb; border-color: #fde68a; }
+
+      .list {
+        display: grid;
+        gap: 6px;
+        max-height: 340px;
+        overflow: auto;
+        padding-right: 2px;
+      }
+
+      .listItem {
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 8px;
+        padding: 9px 10px;
+        display: grid;
+        gap: 4px;
+        text-align: left;
+      }
+
+      #scenesList .listItem {
+        cursor: grab;
+      }
+
+      #scenesList .listItem:active {
+        cursor: grabbing;
+      }
+
+      .dragGhost {
+        opacity: 0.5;
+      }
+
+      .orderPanel {
+        grid-column: 1 / -1;
+      }
+
+      .orderList {
+        max-height: 420px;
+      }
+
+      .orderItem {
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: start;
+      }
+
+      .orderNumber {
+        display: inline-grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .orderBody {
+        min-width: 0;
+        display: grid;
+        gap: 4px;
+      }
+
+      .orderTitle {
+        font-weight: 900;
+        color: var(--ink);
+        overflow-wrap: anywhere;
+      }
+
+      .orderMeta {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .orderEditActions {
+        display: none;
+      }
+
+      .orderEditActions.active {
+        display: flex;
+      }
+
+      #currentOrderList.editing .listItem {
+        cursor: grab;
+      }
+
+      #currentOrderList.editing .listItem:active {
+        cursor: grabbing;
+      }
+
+      .listItem.active {
+        border-color: var(--accent);
+        background: #f0fdfa;
+      }
+
+      .itemToggle {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        border-radius: 0;
+        padding: 0;
+        text-align: left;
+      }
+
+      .itemToggle:hover {
+        border-color: transparent;
+      }
+
+      .itemDetails {
+        border-top: 1px solid var(--line);
+        padding-top: 9px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .itemDescription {
+        white-space: pre-wrap;
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      details.inactiveBlock {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfaf6;
+        padding: 8px;
+      }
+
+      details.inactiveBlock summary {
+        cursor: pointer;
+        color: var(--muted);
+        font-weight: 800;
+        font-size: 13px;
+      }
+
+      .nameLine {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+        font-weight: 800;
+      }
+
+      .small {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .checkGrid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        max-height: 160px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+        background: #fff;
+      }
+
+      .checkGrid label {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .checkGrid input {
+        width: auto;
+      }
+
+      .statGrid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .stat {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 10px;
+      }
+
+      .stat .k {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .stat .v {
+        font-size: 24px;
+        color: var(--ink);
+        font-weight: 900;
+      }
+
+      .promptBox {
+        min-height: 360px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+
+      .msg {
+        min-height: 20px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .error { color: var(--bad); }
+      .hidden { display: none !important; }
+
+      @media (max-width: 1180px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+
+        .catalogPanel,
+        .promptPanel {
+          grid-column: auto;
+        }
+
+        .catalogWindows {
+          grid-template-columns: 1fr;
+        }
+
+      }
+    </style>
+  </head>
+  <body>
+    <section id="login" class="login">
+      <form id="loginForm" class="loginCard">
+        <div class="stack">
+          <h1>Algoritme</h1>
+          <div class="meta">Admin login</div>
+        </div>
+        <label>
+          Wachtwoord
+          <input id="password" type="password" autocomplete="current-password" />
+        </label>
+        <label class="row" style="font-weight:600;color:var(--text);">
+          <input id="rememberDevice" type="checkbox" style="width:auto;" />
+          Onthoud dit apparaat
+        </label>
+        <button class="primary" type="submit">Login</button>
+        <div id="loginMsg" class="msg error"></div>
+      </form>
+    </section>
+
+    <section id="app" class="app">
+      <header>
+        <div class="bar">
+          <div>
+            <h1>Algoritme</h1>
+            <div id="topMeta" class="meta"></div>
+          </div>
+          <div class="actions">
+            <a href="/admin"><button type="button">Admin</button></a>
+            <a href="/stage"><button type="button">Stage</button></a>
+            <span id="buildBadge" class="badge">build ...</span>
+            <button id="refreshBtn" type="button">Refresh</button>
+            <button id="logoutBtn" type="button">Logout</button>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <section class="panel catalogPanel">
+          <div class="catalogWindows">
+          <div id="charactersPane" class="catalogWindow">
+            <div class="row"><h2>Personages</h2><button id="newCharacterBtn" type="button">Voeg toe</button></div>
+            <div id="characterForm" class="stack hidden">
+              <label>Naam<input id="characterName" maxlength="120" /></label>
+              <label>Beschrijving<textarea id="characterDescription"></textarea></label>
+              <div class="actions">
+                <button id="saveCharacterBtn" class="primary" type="button">Opslaan</button>
+                <button id="cancelCharacterBtn" type="button">Annuleer</button>
+              </div>
+            </div>
+            <div id="charactersList" class="list"></div>
+            <details class="inactiveBlock">
+              <summary>Non-actieve personages</summary>
+              <div id="charactersInactiveList" class="list" style="margin-top:8px;"></div>
+            </details>
+          </div>
+
+          <div id="environmentsPane" class="catalogWindow">
+            <div class="row"><h2>Omgevingen</h2><button id="newEnvironmentBtn" type="button">Voeg toe</button></div>
+            <div id="environmentForm" class="stack hidden">
+              <label>Naam<input id="environmentName" maxlength="140" /></label>
+              <label>Beschrijving<textarea id="environmentDescription"></textarea></label>
+              <div class="actions">
+                <button id="saveEnvironmentBtn" class="primary" type="button">Opslaan</button>
+                <button id="cancelEnvironmentBtn" type="button">Annuleer</button>
+              </div>
+            </div>
+            <div id="environmentsList" class="list"></div>
+            <details class="inactiveBlock">
+              <summary>Non-actieve omgevingen</summary>
+              <div id="environmentsInactiveList" class="list" style="margin-top:8px;"></div>
+            </details>
+          </div>
+
+          <div id="scenesPane" class="catalogWindow">
+            <div class="row"><h2>Situaties</h2><button id="newSceneBtn" type="button">Voeg toe</button></div>
+            <div id="sceneForm" class="stack hidden">
+              <div class="small">Sleep situaties in deze lijst om de vaste volgorde te wijzigen. Nieuwe situaties komen automatisch onderaan.</div>
+              <label>Naam<input id="sceneTitle" maxlength="180" /></label>
+              <label>Contextsituatie<select id="sceneContextEnabled"><option value="no">Nee</option><option value="yes">Ja</option></select></label>
+              <label id="sceneContextWrap" class="hidden">Speel eerst<select id="sceneContextScene"></select></label>
+              <div id="sceneContextHint" class="small"></div>
+              <label>Aantal personages<select id="sceneCharacterCount"></select></label>
+              <div id="sceneCharacterSlots" class="stack"></div>
+              <div id="sceneCharacterSlotsHint" class="small"></div>
+              <label>Omgeving<select id="sceneEnvironment"></select></label>
+              <label>Beschrijving<textarea id="scenePrompt"></textarea></label>
+              <div class="actions">
+                <button id="saveSceneBtn" class="primary" type="button">Opslaan</button>
+                <button id="cancelSceneBtn" type="button">Annuleer</button>
+              </div>
+            </div>
+            <div id="scenesList" class="list"></div>
+            <details class="inactiveBlock">
+              <summary>Non-actieve situaties</summary>
+              <div id="scenesInactiveList" class="list" style="margin-top:8px;"></div>
+            </details>
+          </div>
+          </div>
+
+          <div id="catalogMsg" class="msg"></div>
+        </section>
+
+        <section class="panel orderPanel">
+          <div class="row">
+            <h2>Huidige Volgorde</h2>
+            <span id="orderCalibrationBadge" class="badge"></span>
+            <span id="orderCycleBadge" class="badge"></span>
+            <button id="editOrderBtn" type="button">Pas calibratievolgorde aan</button>
+          </div>
+          <div id="orderSummary" class="small"></div>
+          <div class="row">
+            <span id="orderListBadge" class="badge"></span>
+            <span id="orderInvalidBadge" class="badge warning"></span>
+          </div>
+          <div id="currentOrderList" class="list orderList"></div>
+          <div id="orderEditHint" class="small hidden">Sleep de situaties in deze lijst. De eerste calibratieposities blijven vast; daarna mag het algoritme de live volgorde bepalen.</div>
+          <div id="orderEditActions" class="actions orderEditActions">
+            <button id="saveOrderBtn" class="primary" type="button">Bewaar volgorde</button>
+            <button id="cancelOrderBtn" type="button">Annuleer</button>
+          </div>
+          <div id="orderMsg" class="msg"></div>
+        </section>
+
+        <section class="panel">
+          <div class="row">
+            <h2>Live situatie</h2>
+            <span id="calibrationBadge" class="badge"></span>
+          </div>
+          <div class="statGrid">
+            <div class="stat"><div class="k">Heart</div><div id="heartStat" class="v">0</div></div>
+            <div class="stat"><div class="k">Bored</div><div id="boredStat" class="v">0</div></div>
+            <div class="stat"><div class="k">Comments</div><div id="commentStat" class="v">0</div></div>
+          </div>
+          <div class="panel" style="box-shadow:none;background:#fff;">
+            <div class="small">Up Next</div>
+            <h3 id="upNextTitle">Geen volgende situatie</h3>
+            <div id="upNextMeta" class="small"></div>
+          </div>
+          <div class="actions">
+            <button id="sceneToggleBtn" class="primary" type="button">Volgende situatie</button>
+            <button id="resetRunsBtn" class="danger" type="button">Reset runs</button>
+          </div>
+          <div class="panel" style="box-shadow:none;background:#fff;">
+            <h3 id="activeSceneTitle">Geen actieve situatie</h3>
+            <div id="activeSceneMeta" class="small"></div>
+          </div>
+
+          <div class="row">
+            <h2>Aanbeveling</h2>
+            <span id="recommendationScore" class="badge"></span>
+          </div>
+          <div class="panel" style="box-shadow:none;background:#fff;">
+            <h3 id="recommendationTitle">Geen aanbeveling</h3>
+            <div id="recommendationReason" class="small"></div>
+          </div>
+          <div class="actions">
+            <button id="recomputeBtn" type="button">Herbereken</button>
+            <button id="sendCurrentBtn" type="button">Stuur actief</button>
+            <button id="sendNextBtn" type="button">Stuur aanbeveling</button>
+          </div>
+
+          <div class="two">
+            <label>Calibratie situaties<input id="calibrationCount" type="number" min="0" max="50" step="1" /></label>
+            <label>&nbsp;<button id="saveSettingsBtn" class="primary" type="button">Bewaar settings</button></label>
+          </div>
+          <label>Globale system prompt<textarea id="globalPrompt"></textarea></label>
+          <label>Prompt template<textarea id="promptTemplate"></textarea></label>
+          <div id="liveMsg" class="msg"></div>
+        </section>
+
+        <section class="panel promptPanel">
+          <div class="row">
+            <h2>Prompt naar TouchDesigner</h2>
+            <span id="promptMeta" class="badge"></span>
+          </div>
+          <textarea id="promptOutput" class="promptBox" readonly></textarea>
+          <div class="two">
+            <div class="panel" style="box-shadow:none;background:#fff;">
+              <h3>Top personages</h3>
+              <div id="topCharacters" class="stack"></div>
+            </div>
+            <div class="panel" style="box-shadow:none;background:#fff;">
+              <h3>Top situaties</h3>
+              <div id="topSituations" class="stack"></div>
+            </div>
+          </div>
+          <div class="panel" style="box-shadow:none;background:#fff;">
+            <h3>Runs</h3>
+            <div id="runsList" class="list"></div>
+          </div>
+          <div id="promptMsg" class="msg"></div>
+        </section>
+      </main>
+    </section>
+
+    <script src="/vendor/Sortable.min.js"></script>
+    <script>
+      (() => {
+        const TOKEN_KEY = "algorithm_admin_token_v1";
+        let token = "";
+        let state = null;
+        let edit = { character: 0, environment: 0, scene: 0 };
+        let expanded = { character: 0, environment: 0, scene: 0 };
+        let sceneDraft = {
+          open: false,
+          id: 0,
+          title: "",
+          promptOverride: "",
+          characterCount: 1,
+          characterSlots: [0],
+          environmentValue: "random",
+          contextEnabled: false,
+          contextSceneId: 0,
+        };
+        let refreshTimer = null;
+        let sceneSortable = null;
+        let orderBaseSortable = null;
+        let orderEditOpen = false;
+        let orderDraftIds = [];
+
+        const $ = (id) => document.getElementById(id);
+        const loginEl = $("login");
+        const appEl = $("app");
+        const loginFormEl = $("loginForm");
+        const loginMsgEl = $("loginMsg");
+        const passwordEl = $("password");
+        const rememberDeviceEl = $("rememberDevice");
+        const topMetaEl = $("topMeta");
+        const buildBadgeEl = $("buildBadge");
+
+        function esc(value) {
+          return String(value || "").replace(/[&<>"']/g, (ch) => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            "\"": "&quot;",
+            "'": "&#39;",
+          }[ch]));
+        }
+
+        function setToken(next) {
+          token = String(next || "");
+          try {
+            if (token) localStorage.setItem(TOKEN_KEY, token);
+            else localStorage.removeItem(TOKEN_KEY);
+          } catch {}
+        }
+
+        function loadToken() {
+          try {
+            token = String(localStorage.getItem(TOKEN_KEY) || "");
+          } catch {
+            token = "";
+          }
+        }
+
+        async function api(path, options = {}) {
+          const headers = Object.assign({}, options.headers || {});
+          if (token) headers["x-admin-token"] = token;
+          const res = await fetch(path, Object.assign({}, options, { headers }));
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const err = new Error(body && body.error ? body.error : "request_failed");
+            err.body = body;
+            err.status = res.status;
+            throw err;
+          }
+          return body;
+        }
+
+        function showLogin(message = "") {
+          appEl.style.display = "none";
+          loginEl.style.display = "grid";
+          loginMsgEl.textContent = message;
+          stopRefresh();
+        }
+
+        function showApp() {
+          loginEl.style.display = "none";
+          appEl.style.display = "block";
+        }
+
+        function startRefresh() {
+          stopRefresh();
+          refreshTimer = setInterval(() => loadState(false), 2500);
+        }
+
+        function stopRefresh() {
+          if (!refreshTimer) return;
+          clearInterval(refreshTimer);
+          refreshTimer = null;
+        }
+
+        function setMsg(id, text, isError = false) {
+          const el = $(id);
+          if (!el) return;
+          el.textContent = text || "";
+          el.classList.toggle("error", !!isError);
+        }
+
+        async function login() {
+          loginMsgEl.textContent = "";
+          try {
+            const body = await api("/admin/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                password: passwordEl.value,
+                rememberDevice: rememberDeviceEl.checked,
+                deviceLabel: navigator.userAgent || "",
+              }),
+            });
+            setToken(body.token);
+            passwordEl.value = "";
+            await loadState(true);
+          } catch (err) {
+            loginMsgEl.textContent = err && err.message === "too_many_attempts"
+              ? "Te veel pogingen."
+              : "Login mislukt.";
+          }
+        }
+
+        async function tryDeviceLogin() {
+          try {
+            const body = await api("/admin/login/device", { method: "POST" });
+            setToken(body.token);
+            await loadState(true);
+            return true;
+          } catch {
+            return false;
+          }
+        }
+
+        async function loadState(show = false) {
+          try {
+            const data = await api("/admin/algorithm/state");
+            state = data;
+            render();
+            showApp();
+            startRefresh();
+          } catch (err) {
+            if (show || err.status === 401) {
+              setToken("");
+              showLogin("Log in als admin.");
+            }
+          }
+        }
+
+        function catalogKey(kind) {
+          return {
+            character: "characters",
+            situation: "situations",
+            environment: "environments",
+            scene: "scenes",
+          }[kind] || kind;
+        }
+
+        function catalogItems(kind) {
+          return (state && state.catalog && state.catalog[catalogKey(kind)]) || [];
+        }
+
+        function isActiveItem(item) {
+          return !!(item && item.isActive && !item.archivedAt);
+        }
+
+        function activeItems(kind) {
+          return catalogItems(kind).filter(isActiveItem);
+        }
+
+        function inactiveItems(kind) {
+          return catalogItems(kind).filter((item) => !isActiveItem(item));
+        }
+
+        function activeItemsWithSelected(kind, selectedIds) {
+          const selected = new Set((selectedIds || []).map(Number));
+          return catalogItems(kind).filter((item) => isActiveItem(item) || selected.has(Number(item.id)));
+        }
+
+        function itemById(kind, id) {
+          return catalogItems(kind).find((item) => Number(item.id) === Number(id)) || null;
+        }
+
+        function editedIsActive(kind, id) {
+          const existing = itemById(kind, id);
+          return existing ? isActiveItem(existing) : true;
+        }
+
+        function renderTabs() {}
+
+        function renderCatalogList(id, items, options = {}) {
+          const el = $(id);
+          const kind = options.kind || "item";
+          const selectedId = options.selectedId || 0;
+          const labelFn = options.labelFn || ((item) => item.name || item.title || "Naamloos");
+          const detailFn = options.detailFn || ((item) => item.description || "");
+          const badgesFn = options.badgesFn || (() => []);
+          const emptyText = options.emptyText || "Nog leeg.";
+          const inactive = !!options.inactive;
+          if (!items.length) {
+            el.innerHTML = `<div class="small">${esc(emptyText)}</div>`;
+            return;
+          }
+          el.innerHTML = items.map((item) => {
+            const isExpanded = Number(expanded[kind]) === Number(item.id);
+            const detail = String(detailFn(item) || "").trim();
+            const isSelected = Number(selectedId) === Number(item.id);
+            const status = isActiveItem(item) ? "actief" : "non-actief";
+            const primaryAction = inactive ? "Maak actief" : "Zet non-actief";
+            const primaryActionName = inactive ? "activate" : "deactivate";
+            const extraBadges = badgesFn(item).map((badge) => {
+              const className = badge && badge.className ? ` ${esc(badge.className)}` : "";
+              return `<span class="badge${className}">${esc(badge && badge.label || "")}</span>`;
+            }).join("");
+            return `
+              <div class="listItem ${isExpanded || isSelected ? "active" : ""}" data-id="${item.id}">
+                <button class="itemToggle" type="button" data-catalog-action="toggle" data-kind="${kind}" data-id="${item.id}">
+                  <span class="nameLine">
+                    <span>${esc(labelFn(item))}</span>
+                    <span class="actions"><span class="badge">${status}</span>${extraBadges}</span>
+                  </span>
+                </button>
+                ${isExpanded ? `
+                  <div class="itemDetails">
+                    <div class="itemDescription">${esc(detail || "Geen beschrijving.")}</div>
+                    <div class="actions">
+                      <button type="button" data-catalog-action="edit" data-kind="${kind}" data-id="${item.id}">Pas aan</button>
+                      <button class="${inactive ? "" : "danger"}" type="button" data-catalog-action="${primaryActionName}" data-kind="${kind}" data-id="${item.id}">${primaryAction}</button>
+                      ${inactive ? `<button class="danger" type="button" data-catalog-action="delete" data-kind="${kind}" data-id="${item.id}">Verwijder</button>` : ""}
+                    </div>
+                  </div>
+                ` : ""}
+              </div>
+            `;
+          }).join("");
+        }
+
+        function renderCharactersList(id, items, inactive = false) {
+          renderCatalogList(id, items, {
+            kind: "character",
+            selectedId: edit.character,
+            inactive,
+            labelFn: (item) => item.name || "Naamloos",
+            detailFn: (item) => item.description || "",
+            emptyText: inactive ? "Geen non-actieve personages." : "Nog geen personages.",
+          });
+        }
+
+        function renderChecks(containerId, items, selectedIds) {
+          const selected = new Set((selectedIds || []).map(Number));
+          const el = $(containerId);
+          el.innerHTML = items.length ? items.map((item) => `
+            <label><input type="checkbox" value="${item.id}" ${selected.has(Number(item.id)) ? "checked" : ""} />${esc(item.name || item.title)}</label>
+          `).join("") : '<div class="small">Geen items.</div>';
+        }
+
+        function checkedIds(containerId) {
+          return Array.from($(containerId).querySelectorAll("input[type=checkbox]:checked"))
+            .map((input) => Number(input.value))
+            .filter((id) => Number.isInteger(id) && id > 0);
+        }
+
+        function setChecks(containerId, ids) {
+          const selected = new Set((ids || []).map(Number));
+          $(containerId).querySelectorAll("input[type=checkbox]").forEach((input) => {
+            input.checked = selected.has(Number(input.value));
+          });
+        }
+
+        function clampSceneCharacterCount(value) {
+          const n = Number.parseInt(String(value || ""), 10);
+          if (!Number.isInteger(n)) return 1;
+          return Math.max(1, Math.min(10, n));
+        }
+
+        function sceneSlotsFromItem(item = null, fallbackSlots = null) {
+          const raw = Array.isArray(fallbackSlots)
+            ? fallbackSlots
+            : item && Array.isArray(item.characterSlots) && item.characterSlots.length
+              ? item.characterSlots
+              : item && Array.isArray(item.characterIds) && item.characterIds.length
+                ? item.characterIds
+                : [0];
+          const count = clampSceneCharacterCount(
+            item && item.characterCount ? item.characterCount : raw.length || 1
+          );
+          return Array.from({ length: count }, (_, index) => {
+            const id = Number.parseInt(String(raw[index] || ""), 10);
+            return Number.isInteger(id) && id > 0 ? id : 0;
+          });
+        }
+
+        function sceneSlotValues() {
+          return Array.from($("sceneCharacterSlots").querySelectorAll("select[data-scene-character-slot]"))
+            .map((select) => {
+              const id = Number.parseInt(String(select.value || ""), 10);
+              return Number.isInteger(id) && id > 0 ? id : 0;
+            });
+        }
+
+        function sceneFormSlotValues() {
+          const current = sceneSlotValues();
+          const count = clampSceneCharacterCount($("sceneCharacterCount").value);
+          return Array.from({ length: count }, (_, index) => current[index] || 0);
+        }
+
+        function sceneDraftFromItem(item = null) {
+          const slots = sceneSlotsFromItem(item);
+          const contextSceneId = Number(item && item.contextSceneId || 0);
+          return {
+            open: true,
+            id: Number(item && item.id || 0),
+            title: item ? item.title || "" : "",
+            promptOverride: item ? item.promptOverride || "" : "",
+            characterCount: slots.length,
+            characterSlots: slots,
+            environmentValue: item && item.environmentMode !== "random" && item.environmentId
+              ? String(item.environmentId)
+              : "random",
+            contextEnabled: contextSceneId > 0,
+            contextSceneId,
+          };
+        }
+
+        function resetSceneDraft() {
+          sceneDraft = {
+            open: false,
+            id: 0,
+            title: "",
+            promptOverride: "",
+            characterCount: 1,
+            characterSlots: [0],
+            environmentValue: "random",
+            contextEnabled: false,
+            contextSceneId: 0,
+          };
+        }
+
+        function isSceneFormOpen() {
+          return sceneDraft.open && !$("sceneForm").classList.contains("hidden");
+        }
+
+        function syncSceneDraftFromDom() {
+          if (!isSceneFormOpen()) return;
+          sceneDraft.title = $("sceneTitle").value;
+          sceneDraft.promptOverride = $("scenePrompt").value;
+          sceneDraft.characterSlots = sceneFormSlotValues();
+          sceneDraft.characterCount = sceneDraft.characterSlots.length;
+          sceneDraft.environmentValue = $("sceneEnvironment").value || "random";
+          sceneDraft.contextEnabled = $("sceneContextEnabled").value === "yes";
+          sceneDraft.contextSceneId = sceneDraft.contextEnabled ? Number($("sceneContextScene").value || 0) : 0;
+        }
+
+        function contextSceneTitle(id) {
+          const scene = itemById("scenes", id);
+          return scene ? scene.title || `Situatie ${id}` : `Situatie ${id}`;
+        }
+
+        function sceneHasContextCycle(scene) {
+          if (!scene || !scene.contextSceneId) return false;
+          const startId = Number(scene.id || 0);
+          if (!startId) return false;
+          const seen = new Set([startId]);
+          let cursor = itemById("scenes", scene.contextSceneId);
+          while (cursor && cursor.contextSceneId) {
+            const nextId = Number(cursor.contextSceneId || 0);
+            if (seen.has(nextId)) return true;
+            seen.add(nextId);
+            cursor = itemById("scenes", nextId);
+          }
+          return false;
+        }
+
+        function sceneLinkIssues(scene) {
+          if (!scene) return [];
+          const issues = [];
+          sceneSlotsFromItem(scene).forEach((id, index) => {
+            if (!id) return;
+            const character = itemById("characters", id);
+            if (!character) issues.push(`Personage ${index + 1} ontbreekt (#${id}).`);
+            else if (!isActiveItem(character)) issues.push(`Personage ${index + 1} is non-actief: ${character.name}.`);
+          });
+          if (scene.environmentMode !== "random" && scene.environmentId) {
+            const environment = itemById("environments", scene.environmentId);
+            if (!environment) issues.push(`Omgeving ontbreekt (#${scene.environmentId}).`);
+            else if (!isActiveItem(environment)) issues.push(`Omgeving is non-actief: ${environment.name}.`);
+          }
+          if (scene.contextSceneId) {
+            const contextScene = itemById("scenes", scene.contextSceneId);
+            if (Number(scene.contextSceneId) === Number(scene.id)) issues.push("Contextsituatie mag niet dezelfde situatie zijn.");
+            else if (!contextScene) issues.push(`Contextsituatie ontbreekt (#${scene.contextSceneId}).`);
+            else if (!isActiveItem(contextScene)) issues.push(`Contextsituatie is non-actief: ${contextScene.title}.`);
+            else if (sceneHasContextCycle(scene)) issues.push("Contextsituaties vormen een cirkel.");
+          }
+          return issues;
+        }
+
+        function sceneHasLinkWarnings(scene) {
+          return sceneLinkIssues(scene).length > 0;
+        }
+
+        function renderSceneCharacterHint(slots = []) {
+          const selectedIds = slots.filter((id) => id > 0);
+          const activeCharacters = activeItems("characters");
+          const uniqueSelectedCount = new Set(selectedIds).size;
+          $("sceneCharacterSlotsHint").textContent = slots.length > activeCharacters.length
+            ? `Er zijn ${activeCharacters.length} actieve personages. Extra rollen blijven random totdat je meer personages toevoegt.`
+            : uniqueSelectedCount >= activeCharacters.length && activeCharacters.length > 0
+              ? "Alle actieve personages zijn al gekozen; andere rollen kunnen random blijven."
+              : "";
+        }
+
+        function updateSceneCharacterSlotOptions() {
+          const selects = Array.from($("sceneCharacterSlots").querySelectorAll("select[data-scene-character-slot]"));
+          const slots = selects.map((select) => {
+            const id = Number.parseInt(String(select.value || ""), 10);
+            return Number.isInteger(id) && id > 0 ? id : 0;
+          });
+          const selectedSlotByCharacterId = new Map();
+          slots.forEach((id, index) => {
+            if (id > 0 && !selectedSlotByCharacterId.has(id)) selectedSlotByCharacterId.set(id, index);
+          });
+
+          selects.forEach((select, index) => {
+            const current = Number.parseInt(String(select.value || ""), 10) || 0;
+            select.querySelectorAll("option").forEach((option) => {
+              const value = Number.parseInt(String(option.value || ""), 10) || 0;
+              if (!value) {
+                option.disabled = false;
+                option.textContent = "Random";
+                return;
+              }
+              const baseLabel = option.getAttribute("data-character-name") || option.textContent.replace(/\s+\(al in personage \d+\)$/, "");
+              const inactive = option.getAttribute("data-character-active") === "0";
+              const takenIndex = selectedSlotByCharacterId.get(value);
+              const unavailable = Number.isInteger(takenIndex) && takenIndex !== index && value !== current;
+              option.disabled = inactive || unavailable;
+              option.textContent = inactive
+                ? `${baseLabel} (non-actief)`
+                : unavailable ? `${baseLabel} (al in personage ${takenIndex + 1})` : baseLabel;
+            });
+          });
+
+          renderSceneCharacterHint(slots);
+        }
+
+        function renderSceneCharacterControls(item = null, fallbackSlots = null) {
+          const slots = sceneSlotsFromItem(item, fallbackSlots);
+          const selectedIds = slots.filter((id) => id > 0);
+          $("sceneCharacterCount").innerHTML = Array.from({ length: 10 }, (_, index) => {
+            const value = index + 1;
+            return `<option value="${value}">${value}</option>`;
+          }).join("");
+          $("sceneCharacterCount").value = String(slots.length);
+          const selectableCharacters = activeItemsWithSelected("characters", selectedIds);
+          $("sceneCharacterSlots").innerHTML = slots.map((slotValue, index) => `
+            <label>
+              Personage ${index + 1}
+              <select data-scene-character-slot="${index}">
+                <option value="0">Random</option>
+                ${selectableCharacters.map((item) => {
+                  const itemId = Number(item.id || 0);
+                  const selected = itemId === Number(slotValue);
+                  return `<option value="${item.id}" data-character-name="${esc(item.name)}" data-character-active="${isActiveItem(item) ? "1" : "0"}" ${selected ? "selected" : ""}>${esc(item.name)}</option>`;
+                }).join("")}
+              </select>
+            </label>
+          `).join("");
+          updateSceneCharacterSlotOptions();
+        }
+
+        function renderSceneEnvironmentOptions(environmentValue = "random") {
+          const selectedId = environmentValue === "random" ? 0 : Number(environmentValue || 0);
+          $("sceneEnvironment").innerHTML = '<option value="random">Random</option>' + activeItemsWithSelected("environments", selectedId ? [selectedId] : [])
+            .map((item) => {
+              const active = isActiveItem(item);
+              const label = active ? item.name : `${item.name} (non-actief)`;
+              return `<option value="${item.id}" ${active ? "" : "disabled"}>${esc(label)}</option>`;
+            })
+            .join("");
+          const safeValue = Array.from($("sceneEnvironment").options).some((option) => option.value === String(environmentValue))
+            ? String(environmentValue)
+            : "random";
+          $("sceneEnvironment").value = safeValue;
+          sceneDraft.environmentValue = safeValue;
+        }
+
+        function renderSceneContextControls() {
+          const enabled = !!sceneDraft.contextEnabled;
+          const selectedId = Number(sceneDraft.contextSceneId || 0);
+          const currentId = Number(sceneDraft.id || edit.scene || 0);
+          $("sceneContextEnabled").value = enabled ? "yes" : "no";
+          $("sceneContextWrap").classList.toggle("hidden", !enabled);
+          $("sceneContextHint").textContent = "";
+          if (!enabled) {
+            $("sceneContextScene").innerHTML = '<option value="0">Geen</option>';
+            sceneDraft.contextSceneId = 0;
+            return;
+          }
+          const items = activeItemsWithSelected("scenes", selectedId ? [selectedId] : [])
+            .filter((item) => Number(item.id || 0) !== currentId);
+          $("sceneContextScene").innerHTML = '<option value="0">Kies contextsituatie</option>' + items.map((item) => {
+            const active = isActiveItem(item);
+            const label = active ? item.title : `${item.title} (non-actief)`;
+            return `<option value="${item.id}" ${active ? "" : "disabled"}>${esc(label)}</option>`;
+          }).join("");
+          const hasSelectedOption = Array.from($("sceneContextScene").options)
+            .some((option) => option.value === String(selectedId) && !option.disabled);
+          $("sceneContextScene").value = hasSelectedOption ? String(selectedId) : "0";
+          sceneDraft.contextSceneId = Number($("sceneContextScene").value || 0);
+          if (!items.some(isActiveItem)) {
+            $("sceneContextHint").textContent = "Voeg eerst een andere actieve situatie toe om als context te gebruiken.";
+          } else if (!sceneDraft.contextSceneId) {
+            $("sceneContextHint").textContent = "Kies welke situatie eerst gespeeld moet zijn.";
+          }
+        }
+
+        function applySceneDraftToFields() {
+          $("sceneTitle").value = sceneDraft.title || "";
+          $("scenePrompt").value = sceneDraft.promptOverride || "";
+          renderSceneCharacterControls({
+            characterCount: sceneDraft.characterCount,
+            characterSlots: sceneDraft.characterSlots,
+          }, sceneDraft.characterSlots);
+          renderSceneEnvironmentOptions(sceneDraft.environmentValue || "random");
+          renderSceneContextControls();
+        }
+
+        function refreshOpenSceneDraftControls() {
+          if (!isSceneFormOpen()) return;
+          syncSceneDraftFromDom();
+          renderSceneCharacterControls({
+            characterCount: sceneDraft.characterCount,
+            characterSlots: sceneDraft.characterSlots,
+          }, sceneDraft.characterSlots);
+          renderSceneEnvironmentOptions(sceneDraft.environmentValue || "random");
+          renderSceneContextControls();
+        }
+
+        function setCharacterFormVisible(visible) {
+          $("characterForm").classList.toggle("hidden", !visible);
+          if (!visible) {
+            edit.character = 0;
+            $("characterName").value = "";
+            $("characterDescription").value = "";
+          }
+        }
+
+        function setEnvironmentFormVisible(visible) {
+          $("environmentForm").classList.toggle("hidden", !visible);
+          if (!visible) {
+            edit.environment = 0;
+            $("environmentName").value = "";
+            $("environmentDescription").value = "";
+          }
+        }
+
+        function setSceneFormVisible(visible) {
+          $("sceneForm").classList.toggle("hidden", !visible);
+          if (!visible) {
+            edit.scene = 0;
+            $("sceneTitle").value = "";
+            $("scenePrompt").value = "";
+            resetSceneDraft();
+            renderSceneCharacterControls(null, [0]);
+            renderSceneEnvironmentOptions("random");
+            renderSceneContextControls();
+          }
+        }
+
+        function describeScene(scene) {
+          const characterNames = sceneSlotsFromItem(scene).map((id, index) => {
+            if (!id) return `Personage ${index + 1}: random`;
+            const character = itemById("characters", id);
+            return character
+              ? `Personage ${index + 1}: ${character.name}${isActiveItem(character) ? "" : " (non-actief)"}`
+              : `Personage ${index + 1}: #${id}`;
+          }).join("\n");
+          const environment = itemById("environments", scene.environmentId || 0);
+          const warnings = sceneLinkIssues(scene);
+          return [
+            warnings.length ? `Waarschuwing: ${warnings.join(" ")}` : "",
+            characterNames,
+            scene.environmentMode === "random" ? "Omgeving: random" : environment ? `Omgeving: ${environment.name}${isActiveItem(environment) ? "" : " (non-actief)"}` : "",
+            scene.contextSceneId ? `Context: ${contextSceneTitle(scene.contextSceneId)}` : "",
+            scene.promptOverride ? "Heeft beschrijving." : "",
+          ].filter(Boolean).join("\n") || "Nog geen koppelingen.";
+        }
+
+        function orderEntryScene(entry) {
+          if (entry && entry.scene) return entry.scene;
+          return itemById("scenes", entry && entry.sceneId) || null;
+        }
+
+        function orderEntryTitle(entry) {
+          const scene = orderEntryScene(entry);
+          return String(entry && entry.title || (scene && scene.title) || "Naamloze situatie");
+        }
+
+        function renderOrderBadges(entry, options = {}) {
+          const badges = [];
+          const nextId = Number(options.nextSceneId || 0);
+          const sceneId = Number(entry && entry.sceneId || 0);
+          if (entry && entry.active) badges.push({ label: "nu", className: "good" });
+          if (nextId && sceneId === nextId) badges.push({ label: "volgende", className: "good" });
+          if (entry && entry.calibration) badges.push({ label: "calibratie" });
+          if (entry && entry.played) badges.push({ label: "gespeeld" });
+          if (entry && entry.invalid) badges.push({ label: "waarschuwing", className: "warning" });
+          if (entry && entry.hidden) badges.push({ label: "verborgen" });
+          return badges.map((badge) => {
+            const className = badge.className ? ` ${badge.className}` : "";
+            return `<span class="badge${className}">${esc(badge.label)}</span>`;
+          }).join("");
+        }
+
+        function sceneScoreMap() {
+          const rows = state && state.currentOrder && state.currentOrder.entityScores && state.currentOrder.entityScores.scenes
+            ? state.currentOrder.entityScores.scenes
+            : state && state.entityScores && state.entityScores.scenes || [];
+          return new Map((rows || []).map((item) => [Number(item.id || 0), Number(item.average || 0)]));
+        }
+
+        function orderEntryScore(entry, scores = sceneScoreMap()) {
+          const raw = Number(entry && entry.score);
+          if (Number.isFinite(raw) && raw !== 0) return raw;
+          const fallback = scores.get(Number(entry && entry.sceneId || 0));
+          if (Number.isFinite(fallback)) return fallback;
+          return Number.isFinite(raw) ? raw : 0;
+        }
+
+        function formatOrderPoints(entry, scores) {
+          return `${orderEntryScore(entry, scores).toFixed(2)} punten`;
+        }
+
+        function buildLiveOrderRows() {
+          const order = state && state.currentOrder ? state.currentOrder : {};
+          const groups = [
+            Array.isArray(order.calibrationScenes) ? order.calibrationScenes : [],
+            Array.isArray(order.upcoming) ? order.upcoming : [],
+            Array.isArray(order.hiddenPlayed) ? order.hiddenPlayed : [],
+            Array.isArray(order.invalid) ? order.invalid : [],
+          ];
+          const rows = [];
+          const seen = new Set();
+          for (const group of groups) {
+            for (const entry of group) {
+              const id = Number(entry && entry.sceneId || 0);
+              if (!id || seen.has(id)) continue;
+              seen.add(id);
+              rows.push(entry);
+            }
+          }
+          return rows;
+        }
+
+        function buildEditableOrderRows() {
+          const ids = orderDraftIds.length ? orderDraftIds : activeItems("scenes").map((item) => Number(item.id || 0));
+          const calibrationCount = Number(state && state.settings && state.settings.calibrationCount || 5);
+          const liveById = new Map(buildLiveOrderRows().map((entry) => [Number(entry.sceneId || 0), entry]));
+          return ids.map((id, index) => {
+            const scene = itemById("scenes", id);
+            if (!scene) return null;
+            const liveEntry = liveById.get(Number(id)) || {};
+            return {
+              ...liveEntry,
+              scene,
+              sceneId: Number(scene.id || 0),
+              title: scene.title || "",
+              calibration: index < calibrationCount,
+              invalid: sceneHasLinkWarnings(scene),
+              issues: sceneLinkIssues(scene),
+            };
+          }).filter(Boolean);
+        }
+
+        function renderUnifiedOrderList(rows, options = {}) {
+          const nextSceneId = Number(options.nextSceneId || 0);
+          const scores = sceneScoreMap();
+          const editing = !!options.editing;
+          const el = $("currentOrderList");
+          el.classList.toggle("editing", editing);
+          if (!rows.length) {
+            el.innerHTML = '<div class="small">Nog geen actieve situaties.</div>';
+            return;
+          }
+          el.innerHTML = rows.map((entry, index) => {
+            const issues = entry && Array.isArray(entry.issues) && entry.issues.length
+              ? `<span class="badge warning">${esc(entry.issues.length + " probleem" + (entry.issues.length === 1 ? "" : "en"))}</span>`
+              : "";
+            const scene = orderEntryScene(entry);
+            const contextId = Number(entry && entry.contextSceneId || scene && scene.contextSceneId || 0);
+            const contextBadge = contextId ? `<span class="badge">context: ${esc(contextSceneTitle(contextId))}</span>` : "";
+            return `
+              <div class="listItem orderItem ${entry && entry.active ? "active" : ""}" data-id="${Number(entry && entry.sceneId || 0)}">
+                <span class="orderNumber">${index + 1}</span>
+                <span class="orderBody">
+                  <span class="nameLine">
+                    <span class="orderTitle">${esc(orderEntryTitle(entry))}</span>
+                    <span class="actions">${renderOrderBadges(entry, { nextSceneId })}</span>
+                  </span>
+                  <span class="orderMeta">
+                    <span class="badge">${esc(formatOrderPoints(entry, scores))}</span>
+                    ${contextBadge}
+                    ${issues}
+                  </span>
+                </span>
+              </div>
+            `;
+          }).join("");
+        }
+
+        function renumberOrderList() {
+          $("currentOrderList").querySelectorAll(".orderNumber").forEach((el, index) => {
+            el.textContent = String(index + 1);
+          });
+        }
+
+        function destroyOrderBaseSortable() {
+          if (orderBaseSortable && typeof orderBaseSortable.destroy === "function") orderBaseSortable.destroy();
+          orderBaseSortable = null;
+        }
+
+        function initOrderBaseSortable() {
+          const el = $("currentOrderList");
+          if (!el || orderBaseSortable) return;
+          if (!window.Sortable || typeof window.Sortable.create !== "function") {
+            setMsg("orderMsg", "Calibratievolgorde slepen is uitgeschakeld: Sortable ontbreekt.", true);
+            return;
+          }
+          orderBaseSortable = window.Sortable.create(el, {
+            animation: 130,
+            ghostClass: "dragGhost",
+            filter: ".small",
+            onEnd: () => {
+              orderDraftIds = Array.from(el.querySelectorAll(".listItem[data-id]"))
+                .map((item) => Number(item.getAttribute("data-id") || 0))
+                .filter((id) => Number.isInteger(id) && id > 0);
+              renumberOrderList();
+            },
+          });
+        }
+
+        function openOrderEditor() {
+          orderEditOpen = true;
+          orderDraftIds = activeItems("scenes").map((item) => Number(item.id || 0)).filter(Boolean);
+          destroyOrderBaseSortable();
+          renderCurrentOrder();
+          initOrderBaseSortable();
+          setMsg("orderMsg", "");
+        }
+
+        function closeOrderEditor() {
+          orderEditOpen = false;
+          orderDraftIds = [];
+          destroyOrderBaseSortable();
+        }
+
+        async function saveOrderEditor() {
+          const sceneIds = Array.from($("currentOrderList").querySelectorAll(".listItem[data-id]"))
+            .map((item) => Number(item.getAttribute("data-id") || 0))
+            .filter((id) => Number.isInteger(id) && id > 0);
+          if (!sceneIds.length) {
+            setMsg("orderMsg", "Geen actieve situaties om op te slaan.", true);
+            return;
+          }
+          try {
+            const result = await api("/admin/algorithm/scenes/reorder", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sceneIds }),
+            });
+            state = result.state || state;
+            closeOrderEditor();
+            render();
+            setMsg("orderMsg", "Volgorde opgeslagen.");
+          } catch (err) {
+            setMsg("orderMsg", formatError(err), true);
+          }
+        }
+
+        function renderCurrentOrder() {
+          const order = state && state.currentOrder ? state.currentOrder : {};
+          const calibration = order.calibration || { active: false, completed: 0, total: Number(state && state.settings && state.settings.calibrationCount || 5) };
+          const nextSceneId = Number(order.next && order.next.sceneId || state && state.recommendation && state.recommendation.scene && state.recommendation.scene.id || 0);
+          const calibrationRows = Array.isArray(order.calibrationScenes) ? order.calibrationScenes : [];
+          const upcomingRows = Array.isArray(order.upcoming) ? order.upcoming : [];
+          const hiddenRows = Array.isArray(order.hiddenPlayed) ? order.hiddenPlayed : [];
+          const invalidRows = Array.isArray(order.invalid) ? order.invalid : [];
+          $("orderCalibrationBadge").textContent = calibration.active
+            ? `calibratie ${calibration.completed}/${calibration.total}`
+            : "algoritme actief";
+          $("orderCalibrationBadge").className = "badge " + (calibration.active ? "" : "good");
+          $("orderCycleBadge").textContent = order.cycleComplete ? "alles gespeeld" : `${Number(order.playableCount || 0)} speelbaar`;
+          $("orderCycleBadge").className = "badge " + (order.cycleComplete ? "good" : "");
+          $("orderListBadge").textContent = orderEditOpen
+            ? `${activeItems("scenes").length} in basisvolgorde`
+            : `${calibrationRows.length + upcomingRows.length + hiddenRows.length} in lijst`;
+          $("orderInvalidBadge").textContent = `${invalidRows.length} waarschuwing`;
+          $("orderSummary").textContent = orderEditOpen
+            ? "Je past nu de basisvolgorde aan. De eerste posities worden de calibratiesituaties."
+            : calibration.active
+              ? "De eerste posities zijn calibratie. Klik op pas aan om deze lijst direct te slepen."
+              : order.cycleComplete
+                ? "Alle speelbare situaties zijn gespeeld; de lijst mag opnieuw gaan rouleren."
+                : "De lijst wordt live gerankt uit publieksreacties. Punten laten zien waarom iets hoger of lager staat.";
+          $("editOrderBtn").classList.toggle("hidden", orderEditOpen);
+          $("orderEditHint").classList.toggle("hidden", !orderEditOpen);
+          $("orderEditActions").classList.toggle("active", orderEditOpen);
+          if (orderEditOpen) destroyOrderBaseSortable();
+          renderUnifiedOrderList(orderEditOpen ? buildEditableOrderRows() : buildLiveOrderRows(), {
+            nextSceneId,
+            editing: orderEditOpen,
+          });
+          if (orderEditOpen) initOrderBaseSortable();
+        }
+
+        function renderCatalog() {
+          const sceneFormOpen = isSceneFormOpen();
+          if (sceneFormOpen) syncSceneDraftFromDom();
+          renderCharactersList("charactersList", activeItems("characters"), false);
+          renderCharactersList("charactersInactiveList", inactiveItems("characters"), true);
+          renderCatalogList("environmentsList", activeItems("environments"), {
+            kind: "environment",
+            selectedId: edit.environment,
+            labelFn: (item) => item.name || "Naamloos",
+            detailFn: (item) => item.description || "",
+            emptyText: "Nog geen omgevingen.",
+          });
+          renderCatalogList("environmentsInactiveList", inactiveItems("environments"), {
+            kind: "environment",
+            selectedId: edit.environment,
+            inactive: true,
+            labelFn: (item) => item.name || "Naamloos",
+            detailFn: (item) => item.description || "",
+            emptyText: "Geen non-actieve omgevingen.",
+          });
+          renderCatalogList("scenesList", activeItems("scenes"), {
+            kind: "scene",
+            selectedId: edit.scene,
+            labelFn: (item) => item.title || "Naamloze situatie",
+            detailFn: describeScene,
+            badgesFn: (item) => sceneHasLinkWarnings(item) ? [{ label: "waarschuwing", className: "warning" }] : [],
+            emptyText: "Nog geen situaties.",
+          });
+          renderCatalogList("scenesInactiveList", inactiveItems("scenes"), {
+            kind: "scene",
+            selectedId: edit.scene,
+            inactive: true,
+            labelFn: (item) => item.title || "Naamloze situatie",
+            detailFn: describeScene,
+            badgesFn: (item) => sceneHasLinkWarnings(item) ? [{ label: "waarschuwing", className: "warning" }] : [],
+            emptyText: "Geen non-actieve situaties.",
+          });
+          initSceneSortable();
+
+          if (!sceneFormOpen) {
+            const selectedScene = itemById("scenes", edit.scene) || {};
+            renderSceneCharacterControls(selectedScene, null);
+            renderSceneEnvironmentOptions(
+              selectedScene.environmentMode === "random" ? "random" : String(selectedScene.environmentId || "random")
+            );
+            sceneDraft.contextEnabled = Number(selectedScene.contextSceneId || 0) > 0;
+            sceneDraft.contextSceneId = Number(selectedScene.contextSceneId || 0);
+            renderSceneContextControls();
+          }
+
+        }
+
+        function preparedSceneId() {
+          return Number(state && state.recommendation && state.recommendation.scene && state.recommendation.scene.id || 0);
+        }
+
+        function fillCharacter(item = null) {
+          edit.character = Number(item && item.id || 0);
+          expanded.character = edit.character || 0;
+          $("characterName").value = item ? item.name || "" : "";
+          $("characterDescription").value = item ? item.description || "" : "";
+          setCharacterFormVisible(true);
+          renderCatalog();
+        }
+
+        function fillEnvironment(item = null) {
+          edit.environment = Number(item && item.id || 0);
+          expanded.environment = edit.environment || 0;
+          $("environmentName").value = item ? item.name || "" : "";
+          $("environmentDescription").value = item ? item.description || "" : "";
+          setEnvironmentFormVisible(true);
+          renderCatalog();
+        }
+
+        function fillScene(item = null) {
+          edit.scene = Number(item && item.id || 0);
+          expanded.scene = edit.scene || 0;
+          sceneDraft = sceneDraftFromItem(item);
+          setSceneFormVisible(true);
+          applySceneDraftToFields();
+          renderCatalog();
+          $("sceneEnvironment").value = sceneDraft.environmentValue || "random";
+        }
+
+        function renderLive() {
+          const activeRun = state.activeRun || null;
+          const activeScene = state.activeScene || null;
+          const recommendation = state.recommendation || {};
+          const calibration = recommendation.calibration || { active: false, completed: 0, total: 0 };
+          const runtime = state.runtime || {};
+          topMetaEl.textContent = `Sessie ${state.session.id} - ${state.session.isActive ? "actief" : "gesloten"}`;
+          buildBadgeEl.textContent = runtime.buildLabel || runtime.buildVersion || "build onbekend";
+          $("calibrationBadge").textContent = calibration.active
+            ? `calibratie ${calibration.completed}/${calibration.total}`
+            : "algoritme actief";
+          $("calibrationBadge").className = "badge " + (calibration.active ? "" : "good");
+          $("heartStat").textContent = String(activeRun ? activeRun.heartCount || 0 : 0);
+          $("boredStat").textContent = String(activeRun ? activeRun.boredCount || 0 : 0);
+          $("commentStat").textContent = String(activeRun ? activeRun.commentCount || 0 : 0);
+          $("activeSceneTitle").textContent = activeScene ? activeScene.title : "Geen actieve situatie";
+          $("activeSceneMeta").textContent = activeRun
+            ? `Run ${activeRun.runOrder} - gestart ${formatTime(activeRun.startedAt)}`
+            : "";
+          $("upNextTitle").textContent = recommendation.scene ? recommendation.scene.title : "Geen volgende situatie";
+          $("upNextMeta").textContent = recommendation.scene
+            ? `${Number(recommendation.score || 0).toFixed(2)} punten`
+            : "";
+          $("recommendationTitle").textContent = recommendation.scene ? recommendation.scene.title : "Geen aanbeveling";
+          $("recommendationReason").textContent = recommendation.reason || "";
+          $("recommendationScore").textContent = recommendation.scene ? `score ${Number(recommendation.score || 0).toFixed(2)}` : "";
+          $("promptOutput").value = recommendation.prompt || "";
+          $("promptMeta").textContent = recommendation.prompt ? `${recommendation.prompt.length} tekens` : "geen prompt";
+          $("sceneToggleBtn").textContent = activeRun ? "Stop situatie" : "Volgende situatie";
+          $("sceneToggleBtn").classList.toggle("danger", !!activeRun);
+          $("sceneToggleBtn").classList.toggle("primary", !activeRun);
+          if (document.activeElement !== $("calibrationCount")) $("calibrationCount").value = String(state.settings.calibrationCount || 5);
+          if (document.activeElement !== $("globalPrompt")) $("globalPrompt").value = state.settings.globalPrompt || "";
+          if (document.activeElement !== $("promptTemplate")) $("promptTemplate").value = state.settings.promptTemplate || "";
+        }
+
+        function renderScores() {
+          const labels = {
+            characters: Object.fromEntries((state.catalog.characters || []).map((item) => [item.id, item.name])),
+            scenes: Object.fromEntries((state.catalog.scenes || []).map((item) => [item.id, item.title])),
+          };
+          $("topCharacters").innerHTML = renderScoreRows(state.entityScores.characters || [], labels.characters);
+          $("topSituations").innerHTML = renderScoreRows(sceneScoreRows(), labels.scenes);
+          $("runsList").innerHTML = (state.runs || []).slice().reverse().map((run) => {
+            const scene = itemById("scenes", run.sceneId);
+            const status = run.endedAt ? `score ${Number(run.score || 0).toFixed(2)}` : "actief";
+            return `<div class="listItem"><span class="nameLine"><span>${esc(scene ? scene.title : "Situatie " + run.sceneId)}</span><span class="badge">${status}</span></span><span class="small">♥ ${run.heartCount || 0} | bored ${run.boredCount || 0} | comments ${run.commentCount || 0}</span></div>`;
+          }).join("") || '<div class="small">Nog geen runs.</div>';
+        }
+
+        function sceneScoreRows() {
+          const buckets = new Map();
+          for (const run of state.runs || []) {
+            if (!run || !run.endedAt || !run.sceneId) continue;
+            const score = Number(run.score || 0);
+            if (!Number.isFinite(score)) continue;
+            const id = Number(run.sceneId);
+            const bucket = buckets.get(id) || { id, count: 0, total: 0 };
+            bucket.count += 1;
+            bucket.total += score;
+            buckets.set(id, bucket);
+          }
+          return Array.from(buckets.values())
+            .map((item) => ({ id: item.id, count: item.count, average: item.count ? item.total / item.count : 0 }))
+            .sort((a, b) => Number(b.average || 0) - Number(a.average || 0));
+        }
+
+        function renderScoreRows(items, labels) {
+          return (items || []).slice(0, 6).map((item) => `
+            <div class="listItem">
+              <span class="nameLine"><span>${esc(labels[item.id] || ("#" + item.id))}</span><span class="badge">${Number(item.average || 0).toFixed(2)}</span></span>
+              <span class="small">${item.count || 0} runs</span>
+            </div>
+          `).join("") || '<div class="small">Nog geen scores.</div>';
+        }
+
+        function initSceneSortable() {
+          const el = $("scenesList");
+          if (!el || sceneSortable) return;
+          if (!window.Sortable || typeof window.Sortable.create !== "function") {
+            setMsg("catalogMsg", "Situaties herschikken is uitgeschakeld: Sortable ontbreekt.", true);
+            return;
+          }
+          sceneSortable = window.Sortable.create(el, {
+            animation: 130,
+            ghostClass: "dragGhost",
+            filter: ".small",
+            onEnd: async () => {
+              const sceneIds = Array.from(el.querySelectorAll(".listItem[data-id]"))
+                .map((item) => Number(item.getAttribute("data-id") || 0))
+                .filter((id) => Number.isInteger(id) && id > 0);
+              if (!sceneIds.length) return;
+              try {
+                const result = await post("/admin/algorithm/scenes/reorder", { sceneIds }, "catalogMsg");
+                state = result.state || state;
+                render();
+                setMsg("catalogMsg", "Vaste volgorde opgeslagen.");
+              } catch (err) {
+                setMsg("catalogMsg", formatError(err), true);
+                loadState(false);
+              }
+            },
+          });
+        }
+
+        function formatTime(value) {
+          const ts = Date.parse(String(value || ""));
+          if (!Number.isFinite(ts)) return "";
+          return new Date(ts).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        }
+
+        function render() {
+          if (!state) return;
+          renderTabs();
+          renderCatalog();
+          renderCurrentOrder();
+          renderLive();
+          renderScores();
+        }
+
+        async function post(path, body, msgTarget = "catalogMsg") {
+          const result = await api(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body || {}),
+          });
+          state = result.state || state;
+          render();
+          setMsg(msgTarget, "Opgeslagen.");
+          return result;
+        }
+
+        function archiveBody(kind, id) {
+          return { kind, id };
+        }
+
+        function upsertPathForKind(kind) {
+          return {
+            character: "/admin/algorithm/characters/upsert",
+            situation: "/admin/algorithm/situations/upsert",
+            environment: "/admin/algorithm/environments/upsert",
+            scene: "/admin/algorithm/scenes/upsert",
+          }[kind] || "";
+        }
+
+        function upsertBodyForItem(kind, item, isActive) {
+          if (!item) return null;
+          if (kind === "character") {
+            return { id: item.id, name: item.name, description: item.description, isActive };
+          }
+          if (kind === "situation") {
+            return {
+              id: item.id,
+              name: item.name,
+              description: item.description,
+              requiredCharacterIds: item.requiredCharacterIds || [],
+              allowedCharacterIds: item.allowedCharacterIds || [],
+              isActive,
+            };
+          }
+          if (kind === "environment") {
+            return { id: item.id, name: item.name, description: item.description, isActive };
+          }
+          if (kind === "scene") {
+            const characterSlots = sceneSlotsFromItem(item);
+            return {
+              id: item.id,
+              title: item.title,
+              characterCount: characterSlots.length,
+              characterSlots,
+              characterIds: characterSlots.filter((id) => id > 0),
+              situationIds: [],
+              environmentMode: item.environmentMode || "selected",
+              environmentId: item.environmentMode === "random" ? 0 : item.environmentId || 0,
+              contextSceneId: item.contextSceneId || 0,
+              promptOverride: item.promptOverride || "",
+              isActive,
+            };
+          }
+          return null;
+        }
+
+        function fillByKind(kind, item) {
+          if (kind === "character") fillCharacter(item);
+          if (kind === "environment") fillEnvironment(item);
+          if (kind === "scene") fillScene(item);
+        }
+
+        function clearEditForKind(kind) {
+          if (kind === "character") {
+            setCharacterFormVisible(false);
+            return;
+          }
+          if (kind === "environment") setEnvironmentFormVisible(false);
+          if (kind === "scene") setSceneFormVisible(false);
+        }
+
+        async function handleCatalogAction(event) {
+          const btn = event.target.closest("button[data-catalog-action]");
+          if (!btn) return;
+          const kind = btn.getAttribute("data-kind") || "";
+          const id = Number(btn.getAttribute("data-id") || 0);
+          const action = btn.getAttribute("data-catalog-action") || "";
+          if (!kind || !id) return;
+          const item = itemById(kind, id);
+          if (action === "toggle") {
+            expanded[kind] = Number(expanded[kind]) === id ? 0 : id;
+            if (kind === "character") setCharacterFormVisible(false);
+            if (kind === "environment") setEnvironmentFormVisible(false);
+            if (kind === "scene") setSceneFormVisible(false);
+            renderCatalog();
+            return;
+          }
+          if (action === "edit") {
+            fillByKind(kind, item);
+            return;
+          }
+          if (action === "deactivate") {
+            await deactivateSelected(kind, id);
+            return;
+          }
+          if (action === "activate") {
+            await activateSelected(kind, id);
+            return;
+          }
+          if (action === "delete") {
+            await deleteSelected(kind, id);
+          }
+        }
+
+        function bindEvents() {
+          loginFormEl.addEventListener("submit", (event) => {
+            event.preventDefault();
+            login();
+          });
+          $("refreshBtn").addEventListener("click", () => loadState(false));
+          $("logoutBtn").addEventListener("click", () => {
+            setToken("");
+            showLogin("");
+          });
+
+          [
+            "charactersList",
+            "charactersInactiveList",
+            "environmentsList",
+            "environmentsInactiveList",
+            "scenesList",
+            "scenesInactiveList",
+          ].forEach((id) => {
+            $(id).addEventListener("click", handleCatalogAction);
+          });
+
+          $("newCharacterBtn").addEventListener("click", () => fillCharacter(null));
+          $("cancelCharacterBtn").addEventListener("click", () => {
+            setCharacterFormVisible(false);
+            renderCatalog();
+          });
+          $("newEnvironmentBtn").addEventListener("click", () => fillEnvironment(null));
+          $("newSceneBtn").addEventListener("click", () => fillScene(null));
+          $("cancelEnvironmentBtn").addEventListener("click", () => {
+            setEnvironmentFormVisible(false);
+            renderCatalog();
+          });
+          $("cancelSceneBtn").addEventListener("click", () => {
+            setSceneFormVisible(false);
+            renderCatalog();
+          });
+          $("sceneTitle").addEventListener("input", () => {
+            sceneDraft.title = $("sceneTitle").value;
+          });
+          $("scenePrompt").addEventListener("input", () => {
+            sceneDraft.promptOverride = $("scenePrompt").value;
+          });
+          $("sceneEnvironment").addEventListener("change", () => {
+            sceneDraft.environmentValue = $("sceneEnvironment").value || "random";
+          });
+          $("sceneContextEnabled").addEventListener("change", () => {
+            sceneDraft.contextEnabled = $("sceneContextEnabled").value === "yes";
+            if (!sceneDraft.contextEnabled) sceneDraft.contextSceneId = 0;
+            renderSceneContextControls();
+          });
+          $("sceneContextScene").addEventListener("change", () => {
+            sceneDraft.contextSceneId = Number($("sceneContextScene").value || 0);
+          });
+          $("sceneCharacterCount").addEventListener("change", () => {
+            const next = sceneFormSlotValues();
+            sceneDraft.characterCount = next.length;
+            sceneDraft.characterSlots = next;
+            renderSceneCharacterControls({
+              characterCount: sceneDraft.characterCount,
+              characterSlots: sceneDraft.characterSlots,
+            }, sceneDraft.characterSlots);
+          });
+          $("sceneCharacterSlots").addEventListener("change", () => {
+            sceneDraft.characterSlots = sceneFormSlotValues();
+            sceneDraft.characterCount = sceneDraft.characterSlots.length;
+            updateSceneCharacterSlotOptions();
+          });
+
+          $("saveCharacterBtn").addEventListener("click", async () => {
+            try {
+              const result = await post("/admin/algorithm/characters/upsert", {
+                id: edit.character || undefined,
+                name: $("characterName").value,
+                description: $("characterDescription").value,
+                isActive: editedIsActive("character", edit.character),
+              });
+              expanded.character = Number(result.character && result.character.id || 0);
+              setCharacterFormVisible(false);
+              renderCatalog();
+              refreshOpenSceneDraftControls();
+            } catch (err) { setMsg("catalogMsg", formatError(err), true); }
+          });
+
+          $("saveEnvironmentBtn").addEventListener("click", async () => {
+            try {
+              const result = await post("/admin/algorithm/environments/upsert", {
+                id: edit.environment || undefined,
+                name: $("environmentName").value,
+                description: $("environmentDescription").value,
+                isActive: editedIsActive("environment", edit.environment),
+              });
+              expanded.environment = Number(result.environment && result.environment.id || 0);
+              setEnvironmentFormVisible(false);
+              renderCatalog();
+              refreshOpenSceneDraftControls();
+            } catch (err) { setMsg("catalogMsg", formatError(err), true); }
+          });
+
+          $("saveSceneBtn").addEventListener("click", async () => {
+            try {
+              syncSceneDraftFromDom();
+              const characterSlots = sceneDraft.characterSlots;
+              const environmentValue = sceneDraft.environmentValue || "random";
+              if (sceneDraft.contextEnabled && !sceneDraft.contextSceneId) {
+                setMsg("catalogMsg", "Kies eerst een contextsituatie, of zet Contextsituatie op Nee.", true);
+                return;
+              }
+              const result = await post("/admin/algorithm/scenes/upsert", {
+                id: edit.scene || undefined,
+                title: sceneDraft.title,
+                characterCount: characterSlots.length,
+                characterSlots,
+                characterIds: characterSlots.filter((id) => id > 0),
+                situationIds: [],
+                environmentMode: environmentValue === "random" ? "random" : "selected",
+                environmentId: environmentValue === "random" ? 0 : Number(environmentValue || 0),
+                contextSceneId: sceneDraft.contextEnabled ? Number(sceneDraft.contextSceneId || 0) : 0,
+                promptOverride: sceneDraft.promptOverride,
+                isActive: editedIsActive("scene", edit.scene),
+              });
+              expanded.scene = Number(result.scene && result.scene.id || 0);
+              setSceneFormVisible(false);
+              renderCatalog();
+            } catch (err) { setMsg("catalogMsg", formatError(err), true); }
+          });
+
+          $("saveSettingsBtn").addEventListener("click", async () => {
+            try {
+              await post("/admin/algorithm/settings", {
+                calibrationCount: $("calibrationCount").value,
+                globalPrompt: $("globalPrompt").value,
+                promptTemplate: $("promptTemplate").value,
+              }, "liveMsg");
+            } catch (err) { setMsg("liveMsg", formatError(err), true); }
+          });
+
+          $("editOrderBtn").addEventListener("click", openOrderEditor);
+          $("cancelOrderBtn").addEventListener("click", () => {
+            closeOrderEditor();
+            renderCurrentOrder();
+            setMsg("orderMsg", "");
+          });
+          $("saveOrderBtn").addEventListener("click", saveOrderEditor);
+
+          $("sceneToggleBtn").addEventListener("click", toggleSceneRun);
+          $("resetRunsBtn").addEventListener("click", async () => {
+            if (!window.confirm("Reset alle algoritme-runs van deze sessie? Hearts, bored, comments en calibratie beginnen opnieuw.")) return;
+            try {
+              await post("/admin/algorithm/runs/reset", {}, "liveMsg");
+              setMsg("liveMsg", "Algoritme-runs gereset.");
+            } catch (err) { setMsg("liveMsg", formatError(err), true); }
+          });
+          $("recomputeBtn").addEventListener("click", async () => {
+            try {
+              await post("/admin/algorithm/recommendation/recompute", {}, "liveMsg");
+            } catch (err) { setMsg("liveMsg", formatError(err), true); }
+          });
+          $("sendCurrentBtn").addEventListener("click", () => sendTouchDesigner("current"));
+          $("sendNextBtn").addEventListener("click", () => sendTouchDesigner("next"));
+        }
+
+        async function deactivateSelected(kind, id) {
+          if (!id) {
+            setMsg("catalogMsg", "Geen item geselecteerd.", true);
+            return;
+          }
+          try {
+            await post("/admin/algorithm/archive", archiveBody(kind, id));
+            clearEditForKind(kind);
+            expanded[kind] = id;
+            renderCatalog();
+            refreshOpenSceneDraftControls();
+            setMsg("catalogMsg", "Non-actief gezet.");
+          } catch (err) {
+            setMsg("catalogMsg", formatError(err), true);
+          }
+        }
+
+        async function activateSelected(kind, id) {
+          const item = itemById(kind, id);
+          const path = upsertPathForKind(kind);
+          const body = upsertBodyForItem(kind, item, true);
+          if (!item || !path || !body) {
+            setMsg("catalogMsg", "Item niet gevonden.", true);
+            return;
+          }
+          try {
+            await post(path, body);
+            expanded[kind] = id;
+            renderCatalog();
+            refreshOpenSceneDraftControls();
+            setMsg("catalogMsg", "Actief gemaakt.");
+          } catch (err) {
+            setMsg("catalogMsg", formatError(err), true);
+          }
+        }
+
+        async function deleteSelected(kind, id) {
+          if (!id) {
+            setMsg("catalogMsg", "Geen item geselecteerd.", true);
+            return;
+          }
+          const item = itemById(kind, id);
+          const label = item ? (item.name || item.title || "dit item") : "dit item";
+          if (!window.confirm(`Verwijder ${label} definitief?`)) return;
+          try {
+            await post("/admin/algorithm/delete", { kind, id });
+            expanded[kind] = 0;
+            clearEditForKind(kind);
+            renderCatalog();
+            refreshOpenSceneDraftControls();
+            setMsg("catalogMsg", "Verwijderd.");
+          } catch (err) {
+            setMsg("catalogMsg", formatError(err), true);
+          }
+        }
+
+        async function startScene(sceneId, selectionSource) {
+          if (!sceneId) {
+            setMsg("liveMsg", "Geen situatie geselecteerd.", true);
+            return;
+          }
+          try {
+            await post("/admin/algorithm/runs/start", { sceneId, selectionSource }, "liveMsg");
+          } catch (err) {
+            setMsg("liveMsg", formatError(err), true);
+          }
+        }
+
+        async function toggleSceneRun() {
+          if (state && state.activeRun) {
+            try {
+              await post("/admin/algorithm/runs/end", { reason: "manual" }, "liveMsg");
+            } catch (err) {
+              setMsg("liveMsg", formatError(err), true);
+            }
+            return;
+          }
+          startScene(preparedSceneId(), "up_next");
+        }
+
+        async function sendTouchDesigner(target) {
+          try {
+            const result = await api("/admin/algorithm/touchdesigner/send-current", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ target }),
+            });
+            setMsg("promptMsg", result.sent ? "Verstuurd via OSC." : "Niet verstuurd: stel een vast OSC feedback target in.");
+          } catch (err) {
+            setMsg("promptMsg", formatError(err), true);
+          }
+        }
+
+        function formatError(err) {
+          const issues = err && err.body && Array.isArray(err.body.issues) ? " (" + err.body.issues.join(", ") + ")" : "";
+          const code = String(err && err.message || "request_failed");
+          const friendly = {
+            item_in_use: "Kan niet verwijderen: dit item wordt nog gebruikt.",
+            item_must_be_inactive: "Zet dit item eerst non-actief.",
+            scene_links_invalid: "Situatie-koppelingen kloppen nog niet.",
+            scene_context_unmet: "Deze situatie heeft eerst een contextsituatie nodig.",
+            name_required: "Naam is verplicht.",
+            title_required: "Titel is verplicht.",
+          }[code];
+          return (friendly || code) + issues;
+        }
+
+        bindEvents();
+        loadToken();
+        if (token) {
+          loadState(true);
+        } else {
+          tryDeviceLogin().then((ok) => {
+            if (!ok) showLogin("");
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>
