@@ -301,6 +301,10 @@
         grid-row: 2;
       }
 
+      .oscPanel {
+        grid-column: 1 / 2;
+      }
+
       .orderPanel {
         grid-column: 2 / -1;
         grid-row: 2;
@@ -537,6 +541,92 @@
         white-space: pre-wrap;
       }
 
+      .toggleLine {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 13px;
+        font-weight: 800;
+        color: var(--text);
+      }
+
+      .segmentedToggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #f8fafc;
+        padding: 3px;
+      }
+
+      .segmentedToggleInput {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .segmentedToggle button {
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        padding: 5px 12px;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 900;
+        line-height: 1;
+      }
+
+      .segmentedToggle button:hover {
+        border-color: transparent;
+      }
+
+      .segmentedToggle.on button[data-osc-send="1"],
+      .segmentedToggle.off button[data-osc-send="0"] {
+        background: #2563eb;
+        color: #fff;
+        box-shadow: 0 1px 4px rgba(37, 99, 235, 0.22);
+      }
+
+      .oscReceiveBox {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 9px 10px;
+        display: grid;
+        gap: 4px;
+      }
+
+      .oscReceiveBox.flash {
+        border-color: #22c55e;
+        background: #ecfdf3;
+      }
+
+      .commandList {
+        display: grid;
+        gap: 6px;
+        margin-top: 8px;
+        max-height: 220px;
+        overflow: auto;
+      }
+
+      .commandRow {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 7px 8px;
+        display: grid;
+        gap: 2px;
+      }
+
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 12px;
+      }
+
       .msg {
         min-height: 20px;
         color: var(--muted);
@@ -554,6 +644,7 @@
         .catalogPanel,
         .livePanel,
         .orderPanel,
+        .oscPanel,
         .promptPanel {
           grid-column: auto;
           grid-row: auto;
@@ -733,6 +824,55 @@
           <div id="liveMsg" class="msg"></div>
         </section>
 
+        <section class="panel oscPanel">
+          <div class="row">
+            <h2>OSC / TouchDesigner</h2>
+            <span id="oscStatusBadge" class="badge"></span>
+          </div>
+          <div class="toggleLine">
+            <span>OSC verzenden</span>
+            <div id="oscSendToggle" class="segmentedToggle off" role="group" aria-label="OSC verzenden">
+              <input id="oscSendEnabled" class="segmentedToggleInput" type="checkbox" />
+              <button id="oscSendOnBtn" type="button" data-osc-send="1">Aan</button>
+              <button id="oscSendOffBtn" type="button" data-osc-send="0">Uit</button>
+            </div>
+          </div>
+          <div class="two">
+            <label>Receive poort<input id="oscReceivePort" type="number" min="1" max="65535" step="1" /></label>
+            <label>Send poort<input id="oscSendPort" type="number" min="0" max="65535" step="1" /></label>
+          </div>
+          <label>Send host<input id="oscSendHost" maxlength="120" placeholder="192.168.1.49" /></label>
+          <div id="oscStatusText" class="small"></div>
+          <div id="oscLastSend" class="small"></div>
+          <div>
+            <div class="queueStatusLabel">Wat wordt er verzonden</div>
+            <div id="oscLastSendMessages" class="commandList"></div>
+          </div>
+          <div id="oscReceiveBox" class="oscReceiveBox">
+            <span class="queueStatusLabel">Laatste ontvangen</span>
+            <span id="oscLastReceived" class="small">Nog niets ontvangen.</span>
+          </div>
+          <div class="actions">
+            <button id="saveOscSettingsBtn" class="primary" type="button">Bewaar OSC</button>
+            <button id="testOscBtn" type="button">Test OSC</button>
+            <button id="sendUpNextBtn" type="button">Stuur Up Next</button>
+          </div>
+          <details class="inactiveBlock">
+            <summary>Commands send / receive</summary>
+            <div class="two" style="margin-top:8px;">
+              <div>
+                <h3>Send</h3>
+                <div id="oscSendCommands" class="commandList"></div>
+              </div>
+              <div>
+                <h3>Receive</h3>
+                <div id="oscReceiveCommands" class="commandList"></div>
+              </div>
+            </div>
+          </details>
+          <div id="oscMsg" class="msg"></div>
+        </section>
+
         <section class="panel promptPanel">
           <div class="row">
             <h2>Prompt naar TouchDesigner</h2>
@@ -792,6 +932,9 @@
         let orderEditOpen = false;
         let orderDraftIds = [];
         let scrollOrderSelectionOnNextRender = false;
+        let lastSeenOscReceivedSerial = 0;
+        let oscDraftDirty = false;
+        let oscDraftHold = null;
 
         const $ = (id) => document.getElementById(id);
         const loginEl = $("login");
@@ -1942,6 +2085,145 @@
           if (document.activeElement !== $("promptTemplate")) $("promptTemplate").value = state.settings.promptTemplate || "";
         }
 
+        function renderOsc() {
+          const osc = state && state.osc ? state.osc : {};
+          const sendEnabled = !!osc.sendEnabled;
+          const ready = !!osc.ready && (!sendEnabled || !!osc.sendReady);
+          const serverValues = oscServerValues(osc);
+          reconcileOscDraftHold(serverValues);
+          const displayValues = oscDraftHold && Date.now() < oscDraftHold.until ? oscDraftHold.values : serverValues;
+          const sendHost = displayValues.sendHost;
+          const sendPort = displayValues.sendPort;
+          $("oscStatusBadge").textContent = sendEnabled
+            ? ready ? "verzenden aan" : "OSC fout"
+            : "verzenden uit";
+          $("oscStatusBadge").className = "badge " + (sendEnabled && ready ? "good" : sendEnabled ? "bad" : "");
+          if (!oscDraftDirty && !isOscDraftFocused()) {
+            $("oscSendEnabled").checked = displayValues.sendEnabled;
+            $("oscReceivePort").value = displayValues.listenPort;
+            $("oscSendHost").value = displayValues.sendHost;
+            $("oscSendPort").value = displayValues.sendPort;
+          }
+          updateOscSendToggle();
+          const receive = `${osc.listenAddress || "127.0.0.1"}:${displayValues.listenPort}`;
+          const sendTarget = sendHost && sendPort > 0 ? `${sendHost}:${sendPort}` : "geen send target";
+          $("oscStatusText").textContent = `Receive ${receive} · Send ${sendTarget}` +
+            (osc.lastError ? ` · receive fout: ${osc.lastError}` : "") +
+            (osc.sendLastError ? ` · send fout: ${osc.sendLastError}` : "");
+          const last = osc.lastAlgorithmOscSend || {};
+          $("oscLastSend").textContent = last.at
+            ? `${last.sent ? "Laatst verstuurd" : "Laatste poging"}: ${last.title || "geen Up Next"} (${last.reason || last.messageCount + " berichten"})`
+            : "Nog geen Up Next verzonden.";
+          renderOscMessagePreview("oscLastSendMessages", last.messages || []);
+          const received = osc.lastReceived || {};
+          const receivedSerial = Number(received.serial || 0);
+          $("oscLastReceived").textContent = received.at
+            ? `${formatTime(received.at)} · ${received.address || "-"} · ${received.status || "received"} · ${received.senderIp || "-"}:${received.senderPort || 0}` +
+              (received.args && received.args.length ? ` · ${received.args.map((item) => JSON.stringify(item)).join(", ")}` : "") +
+              (received.message ? ` · ${received.message}` : "")
+            : "Nog niets ontvangen.";
+          const receiveBox = $("oscReceiveBox");
+          if (receivedSerial && receivedSerial !== lastSeenOscReceivedSerial) {
+            lastSeenOscReceivedSerial = receivedSerial;
+            receiveBox.classList.add("flash");
+            window.setTimeout(() => receiveBox.classList.remove("flash"), 900);
+          }
+          renderOscCommandList("oscSendCommands", osc.sendCommands || []);
+          renderOscCommandList("oscReceiveCommands", osc.receiveCommands || []);
+        }
+
+        function oscServerValues(osc) {
+          return {
+            sendEnabled: !!(osc && osc.sendEnabled),
+            listenPort: String(Number(osc && osc.listenPort || 1234)),
+            sendHost: String((osc && (osc.sendHost !== undefined ? osc.sendHost : osc.feedbackHost)) || "192.168.1.49"),
+            sendPort: String(Number(osc && (osc.sendPort || osc.feedbackPort) || 0) || ""),
+          };
+        }
+
+        function currentOscFieldValues() {
+          return {
+            sendEnabled: !!$("oscSendEnabled").checked,
+            listenPort: String($("oscReceivePort").value || ""),
+            sendHost: String($("oscSendHost").value || "").trim(),
+            sendPort: String($("oscSendPort").value || ""),
+          };
+        }
+
+        function sameOscValues(a, b) {
+          return !!a && !!b
+            && !!a.sendEnabled === !!b.sendEnabled
+            && String(a.listenPort || "") === String(b.listenPort || "")
+            && String(a.sendHost || "") === String(b.sendHost || "")
+            && String(a.sendPort || "") === String(b.sendPort || "");
+        }
+
+        function holdOscDraft(values) {
+          oscDraftHold = { values: { ...values }, until: Date.now() + 6000 };
+        }
+
+        function reconcileOscDraftHold(serverValues) {
+          if (!oscDraftHold) return;
+          if (sameOscValues(oscDraftHold.values, serverValues) || Date.now() > oscDraftHold.until) {
+            oscDraftHold = null;
+          }
+        }
+
+        function isOscSendToggleFocused() {
+          return document.activeElement === $("oscSendEnabled")
+            || document.activeElement === $("oscSendOnBtn")
+            || document.activeElement === $("oscSendOffBtn");
+        }
+
+        function isOscDraftFocused() {
+          return isOscSendToggleFocused()
+            || document.activeElement === $("oscReceivePort")
+            || document.activeElement === $("oscSendHost")
+            || document.activeElement === $("oscSendPort");
+        }
+
+        function markOscDraftDirty() {
+          oscDraftDirty = true;
+        }
+
+        function setOscSendEnabled(enabled) {
+          $("oscSendEnabled").checked = !!enabled;
+          markOscDraftDirty();
+          updateOscSendToggle();
+        }
+
+        function updateOscSendToggle() {
+          const enabled = !!$("oscSendEnabled").checked;
+          const toggle = $("oscSendToggle");
+          toggle.classList.toggle("on", enabled);
+          toggle.classList.toggle("off", !enabled);
+          $("oscSendOnBtn").setAttribute("aria-pressed", enabled ? "true" : "false");
+          $("oscSendOffBtn").setAttribute("aria-pressed", enabled ? "false" : "true");
+        }
+
+        function renderOscCommandList(id, commands) {
+          const rows = (commands || []).map((command) => `
+            <div class="commandRow">
+              <span class="mono">${esc(command.address || "")} ${esc(command.args || "")}</span>
+              <span class="small">${esc(command.description || "")}</span>
+            </div>
+          `).join("");
+          $(id).innerHTML = rows || '<div class="small">Geen commands.</div>';
+        }
+
+        function renderOscMessagePreview(id, messages) {
+          const rows = (messages || []).map((message) => {
+            const args = Array.isArray(message.args) ? message.args.map((item) => JSON.stringify(item)).join(", ") : "";
+            return `
+              <div class="commandRow">
+                <span class="mono">${esc(message.address || "")}</span>
+                <span class="small">${esc(args || "(trigger)")}</span>
+              </div>
+            `;
+          }).join("");
+          $(id).innerHTML = rows || '<div class="small">Nog geen verzonden OSC-waarden.</div>';
+        }
+
         function renderScores() {
           const labels = {
             characters: Object.fromEntries((state.catalog.characters || []).map((item) => [item.id, item.name])),
@@ -1994,6 +2276,7 @@
           renderCatalog();
           renderCurrentOrder();
           renderLive();
+          renderOsc();
           renderScores();
         }
 
@@ -2020,6 +2303,40 @@
           } catch (err) {
             setMsg(msgTarget, formatError(err), true);
           }
+        }
+
+        async function saveOscSettings(successText = "OSC instellingen opgeslagen.") {
+          try {
+            const result = await applyOscSettingsFromFields();
+            state = result.state || state;
+            render();
+            setMsg("oscMsg", result.warning === "send_target_required"
+              ? "Host/poort opgeslagen. OSC verzenden blijft uit tot host en poort allebei ingevuld zijn."
+              : result.warning === "osc_bind_failed"
+              ? "Send host/poort opgeslagen. Receive poort heeft nog een fout; kies eventueel een andere receive poort."
+              : successText);
+            return true;
+          } catch (err) {
+            setMsg("oscMsg", formatError(err), true);
+            return false;
+          }
+        }
+
+        async function applyOscSettingsFromFields() {
+          const values = currentOscFieldValues();
+          const result = await api("/admin/algorithm/osc/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sendEnabled: values.sendEnabled,
+              listenPort: values.listenPort,
+              sendHost: values.sendHost,
+              sendPort: values.sendPort,
+            }),
+          });
+          holdOscDraft(values);
+          oscDraftDirty = false;
+          return result;
         }
 
         function archiveBody(kind, id) {
@@ -2285,6 +2602,21 @@
           $("savePromptSettingsBtn").addEventListener("click", () => {
             saveAlgorithmSettings("promptMsg", "Prompt instellingen opgeslagen.");
           });
+          ["oscReceivePort", "oscSendHost", "oscSendPort"].forEach((id) => {
+            $(id).addEventListener("input", markOscDraftDirty);
+            $(id).addEventListener("change", markOscDraftDirty);
+          });
+          $("saveOscSettingsBtn").addEventListener("click", () => saveOscSettings());
+          $("oscSendOnBtn").addEventListener("click", () => {
+            setOscSendEnabled(true);
+            saveOscSettings("OSC verzenden aan.");
+          });
+          $("oscSendOffBtn").addEventListener("click", () => {
+            setOscSendEnabled(false);
+            saveOscSettings("OSC verzenden uit.");
+          });
+          $("testOscBtn").addEventListener("click", sendOscTest);
+          $("sendUpNextBtn").addEventListener("click", () => sendTouchDesigner("next"));
 
           $("editOrderBtn").addEventListener("click", openOrderEditor);
           $("cancelOrderBtn").addEventListener("click", () => {
@@ -2403,15 +2735,45 @@
 
         async function sendTouchDesigner(target) {
           try {
+            const settingsResult = await applyOscSettingsFromFields();
+            state = settingsResult.state || state;
             const result = await api("/admin/algorithm/touchdesigner/send-current", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ target }),
             });
-            setMsg("promptMsg", result.sent ? "Verstuurd via OSC." : "Niet verstuurd: stel een vast OSC feedback target in.");
+            state = result.state || state;
+            render();
+            const oscSend = result.oscSend || {};
+            setMsg("oscMsg", result.sent ? "Up Next verstuurd via OSC." : `Niet verstuurd: ${formatOscReason(oscSend.reason)}.`);
           } catch (err) {
-            setMsg("promptMsg", formatError(err), true);
+            setMsg("oscMsg", formatError(err), true);
           }
+        }
+
+        async function sendOscTest() {
+          try {
+            const settingsResult = await applyOscSettingsFromFields();
+            state = settingsResult.state || state;
+            const result = await api("/admin/algorithm/osc/test", { method: "POST" });
+            state = result.state || state;
+            render();
+            const oscSend = result.oscSend || {};
+            setMsg("oscMsg", result.sent ? "Test naar TouchDesigner verstuurd." : `Test niet verstuurd: ${formatOscReason(oscSend.reason)}.`);
+          } catch (err) {
+            setMsg("oscMsg", formatError(err), true);
+          }
+        }
+
+        function formatOscReason(reason) {
+          const friendly = {
+            send_disabled: "OSC verzenden staat uit",
+            no_up_next: "geen Up Next beschikbaar",
+            osc_not_ready: "OSC receive poort is niet actief",
+            osc_send_not_ready: "OSC send socket is niet actief",
+            send_target_required: "vul send host en send poort in",
+          };
+          return friendly[String(reason || "")] || String(reason || "onbekende reden");
         }
 
         function formatError(err) {
@@ -2425,6 +2787,7 @@
             performer_not_found: "Speler niet gevonden.",
             name_required: "Naam is verplicht.",
             title_required: "Titel is verplicht.",
+            invalid_send_target: "Vul eerst send host en send poort in voordat OSC verzenden aan gaat.",
             request_failed: err && err.status === 404
               ? "Start run is nog niet beschikbaar op deze server. Herstart de lokale server en refresh de pagina."
               : "Verzoek mislukt. Refresh de pagina en probeer opnieuw.",
