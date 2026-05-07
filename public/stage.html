@@ -4,6 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Stage Output</title>
+    <link rel="icon" type="image/svg+xml" href="/favicons/stage.svg" />
+    <script>
+      (() => {
+        const runtime = location.port === "3310" || location.hostname === "192.168.1.49" ? "Mac Studio" : "MacBook";
+        document.title = document.title.replace(/\s+-\s+(MacBook|Mac Studio)$/, "") + " - " + runtime;
+      })();
+    </script>
     <style>
       :root {
         --stage-width: 1080px;

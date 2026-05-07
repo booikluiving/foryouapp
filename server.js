@@ -1180,6 +1180,66 @@ let oscControlFeedbackHost = DEFAULT_OSC_CONTROL_FEEDBACK_HOST;
 let oscControlFeedbackPort = DEFAULT_OSC_CONTROL_FEEDBACK_PORT;
 
 const app = express();
+const FAVICON_PRODUCT = {
+  bg: "#312e81",
+  bg2: "#2563eb",
+  ink: "#ffffff",
+  line: "#93c5fd",
+  accent: "#c084fc",
+};
+const FAVICON_PAGES = {
+  app: { label: "For You App", glyph: "FY" },
+  admin: { label: "For You Admin", glyph: "AD" },
+  algoritme: { label: "For You Algoritme", glyph: "AL" },
+  stage: { label: "For You Stage", glyph: "ST" },
+};
+
+function escapeFaviconSvg(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function faviconRuntimeFromRequest(req) {
+  const explicit = String(process.env.FORYOU_RUNTIME || "").toLowerCase();
+  if (explicit === "studio" || explicit === "mac-studio") return "studio";
+  if (explicit === "macbook" || explicit === "local") return "macbook";
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "");
+  const normalizedHost = host.split(",")[0].trim();
+  const portPart = normalizedHost.includes(":") ? normalizedHost.split(":").pop() : "";
+  if (portPart === "3310" || normalizedHost.startsWith("192.168.1.49")) return "studio";
+  return "macbook";
+}
+
+function renderForYouRuntimeMark(runtimeId) {
+  if (runtimeId === "studio") {
+    return '<path d="M42 4 H60 V22 Z" fill="' + FAVICON_PRODUCT.accent + '"/><path d="M46 5 L59 18" stroke="' + FAVICON_PRODUCT.ink + '" stroke-width="3" stroke-linecap="round" opacity=".78"/>';
+  }
+  return '<circle cx="52" cy="52" r="6" fill="' + FAVICON_PRODUCT.accent + '" stroke="' + FAVICON_PRODUCT.ink + '" stroke-width="2"/>';
+}
+
+function renderForYouFaviconSvg(pageId, runtimeId) {
+  const page = FAVICON_PAGES[pageId] || FAVICON_PAGES.app;
+  const runtimeLabel = runtimeId === "studio" ? "Mac Studio" : "MacBook";
+  const title = page.label + " " + runtimeLabel;
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="' + escapeFaviconSvg(title) + '">' +
+    '<title>' + escapeFaviconSvg(title) + '</title>' +
+    '<defs><linearGradient id="bg" x1="10" y1="5" x2="54" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="' + FAVICON_PRODUCT.bg + '"/><stop offset="1" stop-color="' + FAVICON_PRODUCT.bg2 + '"/></linearGradient></defs>' +
+    '<rect x="4" y="4" width="56" height="56" rx="14" fill="url(#bg)" stroke="' + FAVICON_PRODUCT.line + '" stroke-width="4"/>' +
+    '<text x="32" y="38" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="' + (page.glyph.length > 1 ? 18 : 24) + '" font-weight="900" letter-spacing="0" fill="' + FAVICON_PRODUCT.ink + '">' + escapeFaviconSvg(page.glyph) + '</text>' +
+    renderForYouRuntimeMark(runtimeId) +
+    '</svg>\n';
+}
+
+function sendForYouFavicon(req, res, pageId) {
+  const runtimeId = faviconRuntimeFromRequest(req);
+  res.type("image/svg+xml");
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.send(renderForYouFaviconSvg(pageId, runtimeId));
+}
+
 const unifiNetworkAgent = createUnifiNetworkAgent({ rootDir: __dirname });
 app.use((req, res, next) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
@@ -1189,8 +1249,12 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: "64kb" }));
 app.use(express.static(path.join(__dirname, "public")));
+app.get("/favicons/:page.svg", (req, res) => {
+  const pageId = String(req.params.page || "app").replace(/\.svg$/, "");
+  sendForYouFavicon(req, res, pageId);
+});
 app.get("/favicon.ico", (req, res) => {
-  res.status(204).end();
+  sendForYouFavicon(req, res, "app");
 });
 
 const DEBUG_LOG_PATH = path.join(__dirname, "debug.log");
