@@ -1,6 +1,10 @@
 #!/bin/zsh
 set -euo pipefail
 
+echo "Niet geinstalleerd: deze LaunchAgent-sync is vervangen door de local-first Sync-module op /algoritme."
+echo "De oude versie kon nieuwe velden overschrijven en blijft daarom bewust uit."
+exit 3
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 APP_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 LABEL="${FORYOU_SYNC_LABEL:-nl.foryou.macbook.algorithm-sync}"

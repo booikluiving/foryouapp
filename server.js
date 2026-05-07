@@ -38,8 +38,22 @@ const {
   normalizeSceneForPerformerRoles,
   normalizeSituation,
   pickRecommendation,
+  resolveRandomCharacterSlotsForPerformerRoles,
+  resolveRandomEnvironmentForScene,
   validateSceneLinks,
 } = require("./lib/show-algorithm");
+const {
+  SYNC_VERSION,
+  compareSyncStamp,
+  incomingWins,
+  normalizeOscProfile,
+  normalizePeerUrl,
+  normalizePeerUrls,
+  normalizeSyncIso,
+  normalizeSyncSettingRows,
+  safeSyncJsonParse,
+  syncSettingIsAllowed,
+} = require("./lib/local-sync");
 const { createUnifiNetworkAgent } = require("./lib/unifi-network-agent");
 
 loadLocalDotEnv(__dirname);
@@ -156,6 +170,18 @@ const ALGORITHM_RUN_STARTED_SETTING_PREFIX = "algorithm_run_started_session_";
 const ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS = 3500;
 const ALGORITHM_OSC_CHARACTER_SLOT_COUNT = 3;
 const DEFAULT_ALGORITHM_PERFORMERS = Object.freeze(["Megan", "Brent", "Booi"]);
+const SYNC_DEVICE_ID_SETTING_KEY = "sync_device_id";
+const SYNC_PEERS_SETTING_KEY = "sync_peer_urls_json";
+const SYNC_PAUSED_SETTING_KEY = "sync_paused";
+const SYNC_LAST_RUN_SETTING_KEY = "sync_last_run_at";
+const SYNC_DEFAULT_PEER_URLS = normalizePeerUrls(
+  String(process.env.FORYOU_SYNC_PEERS || process.env.SYNC_PEERS || "").split(",")
+);
+const SYNC_SECRET = String(process.env.FORYOU_SYNC_SECRET || process.env.SYNC_SECRET || ADMIN_PASSWORD || "").trim();
+const SYNC_HTTP_TIMEOUT_MS = clampInt(process.env.FORYOU_SYNC_HTTP_TIMEOUT_MS || "4500", 1000, 30000, 4500);
+const SYNC_AUTO_INTERVAL_MS = clampInt(process.env.FORYOU_SYNC_AUTO_INTERVAL_MS || "30000", 5000, 300000, 30000);
+const SYNC_STALE_AFTER_MS = clampInt(process.env.FORYOU_SYNC_STALE_AFTER_MS || String(2 * 60 * 1000), 30000, 3600000, 2 * 60 * 1000);
+const OSC_PROFILE_SETTING_PREFIX = "osc_profile_";
 const SIM_DEFAULTS = {
   clients: 50,
   durationSec: 0,
@@ -1259,7 +1285,7 @@ app.use((req, res, next) => {
   res.setHeader("Expires", "0");
   next();
 });
-app.use(express.json({ limit: "64kb" }));
+app.use(express.json({ limit: "6mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/favicons/:page.svg", (req, res) => {
   const pageId = String(req.params.page || "app").replace(/\.svg$/, "");
@@ -2399,7 +2425,8 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     started_at TEXT NOT NULL,
-    ended_at TEXT
+    ended_at TEXT,
+    updated_at TEXT
   );
 
   CREATE TABLE IF NOT EXISTS chat_messages (
@@ -2574,6 +2601,7 @@ db.exec(`
     score REAL,
     prompt_snapshot TEXT,
     reason TEXT,
+    updated_at TEXT,
     FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
     FOREIGN KEY(scene_id) REFERENCES algorithm_scenes(id)
   );
@@ -2581,6 +2609,23 @@ db.exec(`
     ON algorithm_scene_runs(session_id, run_order, id);
   CREATE INDEX IF NOT EXISTS idx_algorithm_scene_runs_open
     ON algorithm_scene_runs(session_id, ended_at, id);
+
+  CREATE TABLE IF NOT EXISTS algorithm_character_votes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    run_id INTEGER NOT NULL,
+    scene_id INTEGER NOT NULL,
+    character_id INTEGER NOT NULL,
+    client_key TEXT NOT NULL,
+    voted_at TEXT NOT NULL,
+    UNIQUE(run_id, client_key),
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY(run_id) REFERENCES algorithm_scene_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY(scene_id) REFERENCES algorithm_scenes(id),
+    FOREIGN KEY(character_id) REFERENCES algorithm_characters(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_algorithm_character_votes_run
+    ON algorithm_character_votes(run_id, character_id);
 
   CREATE TABLE IF NOT EXISTS session_join_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2637,8 +2682,32 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_admin_trusted_devices_selector ON admin_trusted_devices(selector);
   CREATE INDEX IF NOT EXISTS idx_admin_trusted_devices_expiry ON admin_trusted_devices(expires_at);
+
+  CREATE TABLE IF NOT EXISTS sync_peer_state (
+    peer_url TEXT PRIMARY KEY,
+    last_ok_at TEXT,
+    last_error_at TEXT,
+    last_error TEXT,
+    last_seen_device_id TEXT,
+    last_seen_build TEXT,
+    last_received_change_at TEXT,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS sync_tombstones (
+    entity TEXT NOT NULL,
+    entity_id INTEGER NOT NULL,
+    deleted_at TEXT NOT NULL,
+    updated_by_device_id TEXT,
+    PRIMARY KEY (entity, entity_id)
+  );
 `);
 
+const sessionColumns = db.prepare("PRAGMA table_info(sessions)").all();
+if (!sessionColumns.some((column) => String(column.name || "") === "updated_at")) {
+  db.exec("ALTER TABLE sessions ADD COLUMN updated_at TEXT");
+  db.exec("UPDATE sessions SET updated_at = COALESCE(ended_at, started_at, datetime('now')) WHERE updated_at IS NULL");
+}
 const pollColumns = db.prepare("PRAGMA table_info(polls)").all();
 if (!pollColumns.some((column) => String(column.name || "") === "duration_seconds")) {
   db.exec(`ALTER TABLE polls ADD COLUMN duration_seconds INTEGER NOT NULL DEFAULT ${DEFAULT_POLL_DURATION_SECONDS}`);
@@ -2674,6 +2743,11 @@ if (!algorithmSceneColumns.some((column) => String(column.name || "") === "envir
 if (!algorithmSceneColumns.some((column) => String(column.name || "") === "context_scene_id")) {
   db.exec("ALTER TABLE algorithm_scenes ADD COLUMN context_scene_id INTEGER");
 }
+const algorithmRunColumns = db.prepare("PRAGMA table_info(algorithm_scene_runs)").all();
+if (!algorithmRunColumns.some((column) => String(column.name || "") === "updated_at")) {
+  db.exec("ALTER TABLE algorithm_scene_runs ADD COLUMN updated_at TEXT");
+  db.exec("UPDATE algorithm_scene_runs SET updated_at = COALESCE(ended_at, started_at, datetime('now')) WHERE updated_at IS NULL");
+}
 
 function seedDefaultAlgorithmPerformers() {
   const countRow = db.prepare("SELECT COUNT(1) AS n FROM algorithm_performers").get();
@@ -2697,16 +2771,16 @@ seedDefaultAlgorithmPerformers();
 
 const sql = {
   getOpenSession: db.prepare(
-    `SELECT id, name, started_at AS startedAt, ended_at AS endedAt
+    `SELECT id, name, started_at AS startedAt, ended_at AS endedAt, updated_at AS updatedAt
      FROM sessions
      WHERE ended_at IS NULL
      ORDER BY id DESC
      LIMIT 1`
   ),
-  closeOpenSessions: db.prepare(`UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL`),
-  insertSession: db.prepare(`INSERT INTO sessions (name, started_at) VALUES (?, ?)`),
+  closeOpenSessions: db.prepare(`UPDATE sessions SET ended_at = ?, updated_at = ? WHERE ended_at IS NULL`),
+  insertSession: db.prepare(`INSERT INTO sessions (name, started_at, updated_at) VALUES (?, ?, ?)`),
   getSessionById: db.prepare(
-    `SELECT id, name, started_at AS startedAt, ended_at AS endedAt
+    `SELECT id, name, started_at AS startedAt, ended_at AS endedAt, updated_at AS updatedAt
      FROM sessions
      WHERE id = ?`
   ),
@@ -2995,7 +3069,7 @@ const sql = {
     `SELECT id, session_id AS sessionId, scene_id AS sceneId, run_order AS runOrder,
       selection_source AS selectionSource, started_at AS startedAt, ended_at AS endedAt,
       heart_count AS heartCount, bored_count AS boredCount, comment_count AS commentCount,
-      score, prompt_snapshot AS promptSnapshot, reason
+      score, prompt_snapshot AS promptSnapshot, reason, updated_at AS updatedAt
      FROM algorithm_scene_runs
      WHERE session_id = ?
      ORDER BY run_order ASC, id ASC`
@@ -3004,7 +3078,7 @@ const sql = {
     `SELECT id, session_id AS sessionId, scene_id AS sceneId, run_order AS runOrder,
       selection_source AS selectionSource, started_at AS startedAt, ended_at AS endedAt,
       heart_count AS heartCount, bored_count AS boredCount, comment_count AS commentCount,
-      score, prompt_snapshot AS promptSnapshot, reason
+      score, prompt_snapshot AS promptSnapshot, reason, updated_at AS updatedAt
      FROM algorithm_scene_runs
      WHERE session_id = ? AND ended_at IS NULL
      ORDER BY id DESC
@@ -3014,9 +3088,19 @@ const sql = {
     `SELECT id, session_id AS sessionId, scene_id AS sceneId, run_order AS runOrder,
       selection_source AS selectionSource, started_at AS startedAt, ended_at AS endedAt,
       heart_count AS heartCount, bored_count AS boredCount, comment_count AS commentCount,
-      score, prompt_snapshot AS promptSnapshot, reason
+      score, prompt_snapshot AS promptSnapshot, reason, updated_at AS updatedAt
      FROM algorithm_scene_runs
      WHERE id = ?`
+  ),
+  getLatestEndedAlgorithmRunBySession: db.prepare(
+    `SELECT id, session_id AS sessionId, scene_id AS sceneId, run_order AS runOrder,
+      selection_source AS selectionSource, started_at AS startedAt, ended_at AS endedAt,
+      heart_count AS heartCount, bored_count AS boredCount, comment_count AS commentCount,
+      score, prompt_snapshot AS promptSnapshot, reason, updated_at AS updatedAt
+     FROM algorithm_scene_runs
+     WHERE session_id = ? AND ended_at IS NOT NULL
+     ORDER BY ended_at DESC, id DESC
+     LIMIT 1`
   ),
   getMaxAlgorithmRunOrderBySession: db.prepare(
     `SELECT COALESCE(MAX(run_order), 0) AS n
@@ -3026,23 +3110,40 @@ const sql = {
   insertAlgorithmSceneRun: db.prepare(
     `INSERT INTO algorithm_scene_runs (
       session_id, scene_id, run_order, selection_source, started_at, ended_at,
-      heart_count, bored_count, comment_count, score, prompt_snapshot, reason
-    ) VALUES (?, ?, ?, ?, ?, NULL, 0, 0, 0, NULL, ?, ?)`
+      heart_count, bored_count, comment_count, score, prompt_snapshot, reason, updated_at
+    ) VALUES (?, ?, ?, ?, ?, NULL, 0, 0, 0, NULL, ?, ?, ?)`
   ),
   updateAlgorithmSceneRunMetrics: db.prepare(
     `UPDATE algorithm_scene_runs
-     SET heart_count = ?, bored_count = ?, comment_count = ?
+     SET heart_count = ?, bored_count = ?, comment_count = ?, updated_at = ?
      WHERE id = ? AND ended_at IS NULL`
   ),
   endAlgorithmSceneRun: db.prepare(
     `UPDATE algorithm_scene_runs
      SET ended_at = ?, heart_count = ?, bored_count = ?, comment_count = ?,
-      score = ?, prompt_snapshot = ?, reason = ?
+      score = ?, prompt_snapshot = ?, reason = ?, updated_at = ?
      WHERE id = ? AND ended_at IS NULL`
   ),
   deleteAlgorithmRunsBySession: db.prepare(
     `DELETE FROM algorithm_scene_runs
      WHERE session_id = ?`
+  ),
+  insertAlgorithmCharacterVoteIfNew: db.prepare(
+    `INSERT OR IGNORE INTO algorithm_character_votes (
+      session_id, run_id, scene_id, character_id, client_key, voted_at
+    ) VALUES (?, ?, ?, ?, ?, ?)`
+  ),
+  getAlgorithmCharacterVoteByRunClient: db.prepare(
+    `SELECT id, character_id AS characterId, voted_at AS votedAt
+     FROM algorithm_character_votes
+     WHERE run_id = ? AND client_key = ?
+     LIMIT 1`
+  ),
+  getAlgorithmCharacterVoteCountsByRun: db.prepare(
+    `SELECT character_id AS characterId, COUNT(1) AS votes
+     FROM algorithm_character_votes
+     WHERE run_id = ?
+     GROUP BY character_id`
   ),
   insertModerationAction: db.prepare(
     `INSERT INTO moderation_actions (
@@ -3213,11 +3314,55 @@ const sql = {
      WHERE expires_at <= ? OR revoked_at IS NOT NULL`
   ),
   getSetting: db.prepare(`SELECT value FROM settings WHERE key = ?`),
+  getSettingRow: db.prepare(`SELECT key, value, updated_at AS updatedAt FROM settings WHERE key = ?`),
+  getSettingsForSync: db.prepare(`SELECT key, value, updated_at FROM settings ORDER BY key ASC`),
   upsertSetting: db.prepare(
     `INSERT INTO settings (key, value, updated_at)
      VALUES (?, ?, ?)
      ON CONFLICT(key)
      DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+  ),
+  upsertSettingIfNewer: db.prepare(
+    `INSERT INTO settings (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key)
+     DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+     WHERE excluded.updated_at >= settings.updated_at`
+  ),
+  getSyncPeerStates: db.prepare(
+    `SELECT peer_url AS peerUrl, last_ok_at AS lastOkAt, last_error_at AS lastErrorAt,
+      last_error AS lastError, last_seen_device_id AS lastSeenDeviceId,
+      last_seen_build AS lastSeenBuild, last_received_change_at AS lastReceivedChangeAt,
+      updated_at AS updatedAt
+     FROM sync_peer_state
+     ORDER BY peer_url ASC`
+  ),
+  upsertSyncPeerState: db.prepare(
+    `INSERT INTO sync_peer_state (
+      peer_url, last_ok_at, last_error_at, last_error, last_seen_device_id,
+      last_seen_build, last_received_change_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(peer_url)
+    DO UPDATE SET
+      last_ok_at = excluded.last_ok_at,
+      last_error_at = excluded.last_error_at,
+      last_error = excluded.last_error,
+      last_seen_device_id = excluded.last_seen_device_id,
+      last_seen_build = excluded.last_seen_build,
+      last_received_change_at = excluded.last_received_change_at,
+      updated_at = excluded.updated_at`
+  ),
+  getSyncTombstones: db.prepare(
+    `SELECT entity, entity_id AS entityId, deleted_at AS deletedAt, updated_by_device_id AS updatedByDeviceId
+     FROM sync_tombstones
+     ORDER BY deleted_at ASC, entity ASC, entity_id ASC`
+  ),
+  upsertSyncTombstone: db.prepare(
+    `INSERT INTO sync_tombstones (entity, entity_id, deleted_at, updated_by_device_id)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(entity, entity_id)
+     DO UPDATE SET deleted_at = excluded.deleted_at, updated_by_device_id = excluded.updated_by_device_id
+     WHERE excluded.deleted_at >= sync_tombstones.deleted_at`
   ),
 };
 
@@ -3229,6 +3374,501 @@ function getSetting(key, fallback = "") {
 
 function setSetting(key, value) {
   sql.upsertSetting.run(String(key), String(value), nowIso());
+}
+
+function setSettingAt(key, value, updatedAt = nowIso()) {
+  sql.upsertSetting.run(String(key), String(value), normalizeSyncIso(updatedAt, nowIso()));
+}
+
+function setSettingIfNewer(key, value, updatedAt = nowIso()) {
+  sql.upsertSettingIfNewer.run(String(key), String(value), normalizeSyncIso(updatedAt, nowIso()));
+}
+
+function syncDeviceSlug(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "device";
+}
+
+function getOrCreateSyncDeviceId() {
+  const existing = String(getSetting(SYNC_DEVICE_ID_SETTING_KEY, "") || "").trim();
+  if (/^[a-z0-9-]{8,80}$/i.test(existing)) return existing;
+  const generated = `${syncDeviceSlug(os.hostname())}-${crypto.randomBytes(5).toString("hex")}`;
+  setSetting(SYNC_DEVICE_ID_SETTING_KEY, generated);
+  return generated;
+}
+
+const LOCAL_SYNC_DEVICE_ID = getOrCreateSyncDeviceId();
+
+function defaultSyncPeerUrls() {
+  if (SYNC_DEFAULT_PEER_URLS.length) return SYNC_DEFAULT_PEER_URLS.slice();
+  return PORT === 3310 ? [] : ["http://192.168.1.49:3310"];
+}
+
+function getSyncPeerUrls() {
+  const parsed = safeSyncJsonParse(getSetting(SYNC_PEERS_SETTING_KEY, ""), null);
+  const stored = normalizePeerUrls(Array.isArray(parsed) ? parsed : []);
+  if (stored.length) return stored;
+  return defaultSyncPeerUrls();
+}
+
+function saveSyncPeerUrls(urls = []) {
+  const peers = normalizePeerUrls(urls);
+  setSetting(SYNC_PEERS_SETTING_KEY, safeJsonStringify(peers, "[]"));
+  return peers;
+}
+
+function isSyncPaused() {
+  return parseBooleanLike(getSetting(SYNC_PAUSED_SETTING_KEY, "0"), false);
+}
+
+function setSyncPaused(paused) {
+  setSetting(SYNC_PAUSED_SETTING_KEY, paused ? "1" : "0");
+  return isSyncPaused();
+}
+
+function currentOscProfileSettingKey(deviceId = LOCAL_SYNC_DEVICE_ID) {
+  return `${OSC_PROFILE_SETTING_PREFIX}${String(deviceId || LOCAL_SYNC_DEVICE_ID)}`;
+}
+
+function getCurrentOscProfile() {
+  const fallback = {
+    sendEnabled: oscControlSendEnabled,
+    listenPort: currentOscListenPort,
+    sendHost: oscControlFeedbackHost,
+    sendPort: oscControlFeedbackPort,
+  };
+  const raw = getSetting(currentOscProfileSettingKey(), "");
+  const parsed = raw ? safeSyncJsonParse(raw, null) : null;
+  return normalizeOscProfile(parsed || fallback, fallback);
+}
+
+function saveCurrentOscProfile(profilePatch = {}) {
+  const current = getCurrentOscProfile();
+  const next = normalizeOscProfile({ ...current, ...profilePatch, updatedAt: nowIso() }, current);
+  setSetting(currentOscProfileSettingKey(), safeJsonStringify(next, "{}"));
+  return next;
+}
+
+function ensureCurrentOscProfile() {
+  const key = currentOscProfileSettingKey();
+  const existing = getSetting(key, "");
+  if (existing) return getCurrentOscProfile();
+  return saveCurrentOscProfile({
+    sendEnabled: oscControlSendEnabled,
+    listenPort: currentOscListenPort,
+    sendHost: oscControlFeedbackHost,
+    sendPort: oscControlFeedbackPort,
+  });
+}
+
+function applyCurrentOscProfileToRuntime() {
+  const profile = ensureCurrentOscProfile();
+  currentOscListenPort = clampInt(profile.listenPort, 1, 65535, currentOscListenPort);
+  oscControlFeedbackHost = normalizeOscControlFeedbackHost(profile.sendHost);
+  oscControlFeedbackPort = clampInt(profile.sendPort, 0, 65535, oscControlFeedbackPort);
+  oscControlSendEnabled = !!profile.sendEnabled && !!oscControlFeedbackHost && oscControlFeedbackPort > 0;
+  setSetting("osc_listen_port", String(currentOscListenPort));
+  setSetting("osc_feedback_host", oscControlFeedbackHost);
+  setSetting("osc_feedback_port", String(oscControlFeedbackPort));
+  setSetting("osc_send_enabled", oscControlSendEnabled ? "1" : "0");
+  return profile;
+}
+
+const SYNC_TABLE_DEFS = Object.freeze([
+  {
+    name: "sessions",
+    columns: ["id", "name", "started_at", "ended_at", "updated_at"],
+    updatedAtColumn: "updated_at",
+  },
+  {
+    name: "algorithm_performers",
+    columns: ["id", "name", "sort_order", "role_slot", "is_active", "archived_at", "created_at", "updated_at"],
+    updatedAtColumn: "updated_at",
+  },
+  {
+    name: "algorithm_characters",
+    columns: ["id", "name", "description", "prompt_text", "performer_id", "is_active", "archived_at", "created_at", "updated_at"],
+    updatedAtColumn: "updated_at",
+  },
+  {
+    name: "algorithm_situations",
+    columns: ["id", "name", "description", "prompt_text", "required_character_ids_json", "allowed_character_ids_json", "is_active", "archived_at", "created_at", "updated_at"],
+    updatedAtColumn: "updated_at",
+  },
+  {
+    name: "algorithm_environments",
+    columns: ["id", "name", "description", "prompt_text", "is_active", "archived_at", "created_at", "updated_at"],
+    updatedAtColumn: "updated_at",
+  },
+  {
+    name: "algorithm_scenes",
+    columns: ["id", "title", "sort_order", "character_count", "character_slots_json", "character_ids_json", "situation_ids_json", "environment_id", "environment_mode", "context_scene_id", "prompt_override", "is_active", "archived_at", "created_at", "updated_at"],
+    updatedAtColumn: "updated_at",
+  },
+  {
+    name: "algorithm_scene_runs",
+    columns: ["id", "session_id", "scene_id", "run_order", "selection_source", "started_at", "ended_at", "heart_count", "bored_count", "comment_count", "score", "prompt_snapshot", "reason", "updated_at"],
+    updatedAtColumn: "updated_at",
+  },
+]);
+
+const SYNC_TABLE_DEF_BY_NAME = new Map(SYNC_TABLE_DEFS.map((def) => [def.name, def]));
+
+function syncTableSelectSql(def) {
+  return `SELECT ${def.columns.join(", ")} FROM ${def.name} ORDER BY id ASC`;
+}
+
+function syncTableLocalUpdatedAt(def) {
+  return db.prepare(`SELECT ${def.updatedAtColumn} AS updatedAt FROM ${def.name} WHERE id = ?`);
+}
+
+function syncTableUpsert(def) {
+  const columns = def.columns;
+  const placeholders = columns.map(() => "?").join(", ");
+  const updates = columns
+    .filter((column) => column !== "id")
+    .map((column) => `${column} = excluded.${column}`)
+    .join(", ");
+  return db.prepare(
+    `INSERT INTO ${def.name} (${columns.join(", ")})
+     VALUES (${placeholders})
+     ON CONFLICT(id)
+     DO UPDATE SET ${updates}`
+  );
+}
+
+function syncTableDelete(def) {
+  return db.prepare(`DELETE FROM ${def.name} WHERE id = ?`);
+}
+
+const syncPrepared = {
+  select: new Map(SYNC_TABLE_DEFS.map((def) => [def.name, db.prepare(syncTableSelectSql(def))])),
+  getUpdatedAt: new Map(SYNC_TABLE_DEFS.map((def) => [def.name, syncTableLocalUpdatedAt(def)])),
+  upsert: new Map(SYNC_TABLE_DEFS.map((def) => [def.name, syncTableUpsert(def)])),
+  delete: new Map(SYNC_TABLE_DEFS.map((def) => [def.name, syncTableDelete(def)])),
+};
+
+function syncRowUpdatedAt(def, row) {
+  return normalizeSyncIso(row && row[def.updatedAtColumn], new Date(0).toISOString());
+}
+
+function normalizeSyncRowForTable(def, row = {}) {
+  const id = Number.parseInt(String(row.id || ""), 10);
+  if (!Number.isInteger(id) || id < 1) return null;
+  const out = {};
+  for (const column of def.columns) {
+    out[column] = Object.prototype.hasOwnProperty.call(row, column) ? row[column] : null;
+  }
+  out.id = id;
+  if (def.updatedAtColumn && !out[def.updatedAtColumn]) out[def.updatedAtColumn] = nowIso();
+  return out;
+}
+
+function getLocalSyncRowUpdatedAt(def, id) {
+  const row = syncPrepared.getUpdatedAt.get(def.name).get(id);
+  return row && row.updatedAt ? normalizeSyncIso(row.updatedAt, "") : "";
+}
+
+function upsertSyncRow(def, row) {
+  const normalized = normalizeSyncRowForTable(def, row);
+  if (!normalized) return false;
+  const localUpdatedAt = getLocalSyncRowUpdatedAt(def, normalized.id);
+  const incomingUpdatedAt = syncRowUpdatedAt(def, normalized);
+  if (localUpdatedAt && !incomingWins(localUpdatedAt, incomingUpdatedAt)) return false;
+  const values = def.columns.map((column) => normalized[column]);
+  syncPrepared.upsert.get(def.name).run(...values);
+  return true;
+}
+
+function markSyncTombstone(entity, entityId, deletedAt = nowIso()) {
+  const def = SYNC_TABLE_DEF_BY_NAME.get(String(entity || ""));
+  const safeId = Number.parseInt(String(entityId || ""), 10);
+  if (!def || !Number.isInteger(safeId) || safeId < 1) return false;
+  sql.upsertSyncTombstone.run(def.name, safeId, normalizeSyncIso(deletedAt, nowIso()), LOCAL_SYNC_DEVICE_ID);
+  return true;
+}
+
+function applySyncTombstone(tombstone) {
+  const entity = String(tombstone && (tombstone.entity || tombstone.table) || "");
+  const def = SYNC_TABLE_DEF_BY_NAME.get(entity);
+  const id = Number.parseInt(String(tombstone && (tombstone.entityId || tombstone.entity_id || tombstone.id) || ""), 10);
+  const deletedAt = normalizeSyncIso(tombstone && (tombstone.deletedAt || tombstone.deleted_at), "");
+  if (!def || !Number.isInteger(id) || id < 1 || !deletedAt) return false;
+  markSyncTombstone(def.name, id, deletedAt);
+  const localUpdatedAt = getLocalSyncRowUpdatedAt(def, id);
+  if (localUpdatedAt && compareSyncStamp(deletedAt, localUpdatedAt) < 0) return false;
+  try {
+    syncPrepared.delete.get(def.name).run(id);
+    return true;
+  } catch (err) {
+    if (def.columns.includes("is_active") && def.columns.includes("archived_at")) {
+      try {
+        db.prepare(`UPDATE ${def.name} SET is_active = 0, archived_at = ?, updated_at = ? WHERE id = ?`).run(deletedAt, deletedAt, id);
+        return true;
+      } catch {}
+    }
+    writeDebug("sync_tombstone_apply_failed", {
+      entity: def.name,
+      id,
+      message: err && err.message ? err.message : "unknown",
+    });
+  }
+  return false;
+}
+
+function exportLocalSyncPayload(options = {}) {
+  const since = normalizeSyncIso(options.since, "");
+  const newerThanSince = (value) => !since || compareSyncStamp(value, since) > 0;
+  const tables = {};
+  for (const def of SYNC_TABLE_DEFS) {
+    const rows = syncPrepared.select.get(def.name).all()
+      .filter((row) => newerThanSince(syncRowUpdatedAt(def, row)));
+    tables[def.name] = rows;
+  }
+  const settings = normalizeSyncSettingRows(sql.getSettingsForSync.all())
+    .filter((row) => newerThanSince(row.updated_at));
+  const tombstones = sql.getSyncTombstones.all()
+    .map((row) => ({
+      entity: String(row.entity || ""),
+      entityId: Number(row.entityId || 0),
+      deletedAt: normalizeSyncIso(row.deletedAt, ""),
+      updatedByDeviceId: String(row.updatedByDeviceId || ""),
+    }))
+    .filter((row) => newerThanSince(row.deletedAt));
+  const allStamps = []
+    .concat(settings.map((row) => row.updated_at))
+    .concat(tombstones.map((row) => row.deletedAt));
+  for (const def of SYNC_TABLE_DEFS) {
+    for (const row of tables[def.name] || []) allStamps.push(syncRowUpdatedAt(def, row));
+  }
+  const latestChangeAt = allStamps
+    .filter(Boolean)
+    .sort((a, b) => compareSyncStamp(a, b))
+    .pop() || "";
+  return {
+    ok: true,
+    syncVersion: SYNC_VERSION,
+    generatedAt: nowIso(),
+    device: {
+      id: LOCAL_SYNC_DEVICE_ID,
+      name: os.hostname(),
+      buildLabel: BUILD_LABEL,
+      port: PORT,
+    },
+    latestChangeAt,
+    tables,
+    settings,
+    tombstones,
+  };
+}
+
+function applyIncomingSyncPayload(payload = {}, options = {}) {
+  const incoming = payload && typeof payload === "object" ? payload : {};
+  const remoteDeviceId = String(incoming.device && incoming.device.id || "");
+  if (!incoming.tables && !incoming.settings && !incoming.tombstones) {
+    return { ok: true, appliedRows: 0, appliedSettings: 0, appliedTombstones: 0, remoteDeviceId };
+  }
+  const result = { ok: true, appliedRows: 0, skippedRows: 0, appliedSettings: 0, appliedTombstones: 0, remoteDeviceId };
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const tables = incoming.tables && typeof incoming.tables === "object" ? incoming.tables : {};
+    for (const def of SYNC_TABLE_DEFS) {
+      const rows = Array.isArray(tables[def.name]) ? tables[def.name] : [];
+      for (const row of rows) {
+        if (upsertSyncRow(def, row)) result.appliedRows += 1;
+        else result.skippedRows += 1;
+      }
+    }
+    for (const setting of normalizeSyncSettingRows(incoming.settings || [])) {
+      const before = sql.getSettingRow.get(setting.key);
+      setSettingIfNewer(setting.key, setting.value, setting.updated_at);
+      const after = sql.getSettingRow.get(setting.key);
+      if (!before || String(before.updatedAt || "") !== String(after && after.updatedAt || "")) {
+        result.appliedSettings += 1;
+      }
+    }
+    const tombstones = Array.isArray(incoming.tombstones) ? incoming.tombstones : [];
+    const tombstoneOrder = ["algorithm_character_votes", "algorithm_scene_runs", "algorithm_scenes", "algorithm_characters", "algorithm_situations", "algorithm_environments", "algorithm_performers", "sessions"];
+    tombstones
+      .slice()
+      .sort((a, b) => tombstoneOrder.indexOf(String(a.entity || "")) - tombstoneOrder.indexOf(String(b.entity || "")))
+      .forEach((tombstone) => {
+        if (applySyncTombstone(tombstone)) result.appliedTombstones += 1;
+      });
+    db.exec("COMMIT");
+  } catch (err) {
+    try { db.exec("ROLLBACK"); } catch {}
+    throw err;
+  }
+  if (result.appliedRows || result.appliedSettings || result.appliedTombstones) {
+    currentSession = ensureOpenSession();
+    activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
+    stageOutputSettings = saveStageOutputSettings(loadStageOutputSettingsFromSettings());
+    applyCurrentOscProfileToRuntime();
+    broadcastPublicAlgorithmState("sync_applied");
+  }
+  writeDebug("sync_payload_applied", {
+    remoteDeviceId,
+    appliedRows: result.appliedRows,
+    skippedRows: result.skippedRows,
+    appliedSettings: result.appliedSettings,
+    appliedTombstones: result.appliedTombstones,
+    source: String(options.source || "peer"),
+  });
+  return result;
+}
+
+function syncPeerStateRows() {
+  const states = new Map(sql.getSyncPeerStates.all().map((row) => [String(row.peerUrl || ""), row]));
+  return getSyncPeerUrls().map((url) => ({
+    url,
+    ...(states.get(url) || {}),
+  }));
+}
+
+function rememberSyncPeerResult(peerUrl, patch = {}) {
+  const url = normalizePeerUrl(peerUrl);
+  if (!url) return;
+  const now = nowIso();
+  const previous = new Map(sql.getSyncPeerStates.all().map((row) => [String(row.peerUrl || ""), row])).get(url) || {};
+  sql.upsertSyncPeerState.run(
+    url,
+    patch.lastOkAt !== undefined ? patch.lastOkAt : previous.lastOkAt || null,
+    patch.lastErrorAt !== undefined ? patch.lastErrorAt : previous.lastErrorAt || null,
+    patch.lastError !== undefined ? patch.lastError : previous.lastError || null,
+    patch.lastSeenDeviceId !== undefined ? patch.lastSeenDeviceId : previous.lastSeenDeviceId || null,
+    patch.lastSeenBuild !== undefined ? patch.lastSeenBuild : previous.lastSeenBuild || null,
+    patch.lastReceivedChangeAt !== undefined ? patch.lastReceivedChangeAt : previous.lastReceivedChangeAt || null,
+    now
+  );
+}
+
+function getSyncStatus() {
+  const peers = syncPeerStateRows();
+  const nowMs = Date.now();
+  return {
+    ok: true,
+    version: SYNC_VERSION,
+    deviceId: LOCAL_SYNC_DEVICE_ID,
+    deviceName: os.hostname(),
+    paused: isSyncPaused(),
+    staleAfterMs: SYNC_STALE_AFTER_MS,
+    lastRunAt: getSetting(SYNC_LAST_RUN_SETTING_KEY, ""),
+    peers: peers.map((peer) => {
+      const lastOkTs = Date.parse(String(peer.lastOkAt || ""));
+      const online = Number.isFinite(lastOkTs) && nowMs - lastOkTs <= SYNC_STALE_AFTER_MS;
+      return {
+        url: String(peer.url || peer.peerUrl || ""),
+        online,
+        lastOkAt: peer.lastOkAt || "",
+        lastErrorAt: peer.lastErrorAt || "",
+        lastError: peer.lastError || "",
+        lastSeenDeviceId: peer.lastSeenDeviceId || "",
+        lastSeenBuild: peer.lastSeenBuild || "",
+        lastReceivedChangeAt: peer.lastReceivedChangeAt || "",
+      };
+    }),
+  };
+}
+
+async function fetchSyncJson(url, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SYNC_HTTP_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "X-ForYou-Sync-Secret": SYNC_SECRET,
+        ...(options.headers || {}),
+      },
+    });
+    const text = await response.text();
+    const parsed = text ? safeSyncJsonParse(text, null) : null;
+    if (!response.ok) {
+      const err = new Error(parsed && parsed.error ? parsed.error : `http_${response.status}`);
+      err.status = response.status;
+      err.body = parsed;
+      throw err;
+    }
+    return parsed || {};
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function pullSyncPeer(peerUrl) {
+  const url = normalizePeerUrl(peerUrl);
+  if (!url) throw new Error("peer_url_invalid");
+  const remote = await fetchSyncJson(`${url}/admin/sync/changes`, { method: "POST", body: "{}" });
+  const applied = applyIncomingSyncPayload(remote.payload || remote, { source: url });
+  rememberSyncPeerResult(url, {
+    lastOkAt: nowIso(),
+    lastErrorAt: null,
+    lastError: "",
+    lastSeenDeviceId: String(remote.device && remote.device.id || remote.payload && remote.payload.device && remote.payload.device.id || ""),
+    lastSeenBuild: String(remote.device && remote.device.buildLabel || remote.payload && remote.payload.device && remote.payload.device.buildLabel || ""),
+    lastReceivedChangeAt: String(remote.payload && remote.payload.latestChangeAt || remote.latestChangeAt || ""),
+  });
+  return { ok: true, peerUrl: url, applied };
+}
+
+async function pushSyncPeer(peerUrl) {
+  const url = normalizePeerUrl(peerUrl);
+  if (!url) throw new Error("peer_url_invalid");
+  const payload = exportLocalSyncPayload();
+  const remote = await fetchSyncJson(`${url}/admin/sync/changes`, {
+    method: "POST",
+    body: safeJsonStringify({ payload }, "{}"),
+  });
+  const applied = applyIncomingSyncPayload(remote.payload || remote, { source: url });
+  rememberSyncPeerResult(url, {
+    lastOkAt: nowIso(),
+    lastErrorAt: null,
+    lastError: "",
+    lastSeenDeviceId: String(remote.device && remote.device.id || remote.payload && remote.payload.device && remote.payload.device.id || ""),
+    lastSeenBuild: String(remote.device && remote.device.buildLabel || remote.payload && remote.payload.device && remote.payload.device.buildLabel || ""),
+    lastReceivedChangeAt: String(remote.payload && remote.payload.latestChangeAt || remote.latestChangeAt || ""),
+  });
+  return { ok: true, peerUrl: url, sent: payload.latestChangeAt || "", applied };
+}
+
+let syncAutoRunning = false;
+
+async function syncAllPeers(source = "auto") {
+  if (isSyncPaused()) return { ok: true, paused: true, peers: [] };
+  if (syncAutoRunning) return { ok: true, skipped: "already_running", peers: [] };
+  syncAutoRunning = true;
+  const results = [];
+  try {
+    for (const peerUrl of getSyncPeerUrls()) {
+      try {
+        const result = await pushSyncPeer(peerUrl);
+        results.push(result);
+      } catch (err) {
+        const url = normalizePeerUrl(peerUrl);
+        rememberSyncPeerResult(url, {
+          lastErrorAt: nowIso(),
+          lastError: err && err.message ? err.message : "sync_failed",
+        });
+        results.push({
+          ok: false,
+          peerUrl: url,
+          error: err && err.message ? err.message : "sync_failed",
+        });
+      }
+    }
+    setSetting(SYNC_LAST_RUN_SETTING_KEY, nowIso());
+    writeDebug("sync_all_peers_complete", { source, peers: results.length, failed: results.filter((item) => !item.ok).length });
+    return { ok: true, peers: results, status: getSyncStatus() };
+  } finally {
+    syncAutoRunning = false;
+  }
 }
 
 function algorithmRunStartedSettingKey(sessionId) {
@@ -3600,6 +4240,7 @@ oscControlSendEnabled = parseBooleanLike(
 setSetting("osc_feedback_host", oscControlFeedbackHost);
 setSetting("osc_feedback_port", String(oscControlFeedbackPort));
 setSetting("osc_send_enabled", oscControlSendEnabled ? "1" : "0");
+applyCurrentOscProfileToRuntime();
 initializeAdminPasswordHash();
 if (adminPasswordSeededFromDefault) {
   console.log("Warning: using default admin password. Wijzig dit direct via env of admin console.");
@@ -3613,7 +4254,7 @@ function ensureOpenSession() {
 
   const startedAt = nowIso();
   const defaultName = "Performance " + startedAt.slice(0, 16).replace("T", " ");
-  const insert = sql.insertSession.run(defaultName, startedAt);
+  const insert = sql.insertSession.run(defaultName, startedAt, startedAt);
   return sql.getSessionById.get(insert.lastInsertRowid);
 }
 
@@ -3745,7 +4386,7 @@ function parseAlgorithmSceneRow(row) {
 
 function parseAlgorithmRunRow(row) {
   if (!row) return null;
-  return normalizeRun({
+  const run = normalizeRun({
     id: row.id,
     sessionId: row.sessionId,
     sceneId: row.sceneId,
@@ -3760,6 +4401,8 @@ function parseAlgorithmRunRow(row) {
     promptSnapshot: row.promptSnapshot,
     reason: row.reason,
   });
+  run.updatedAt = normalizeSyncIso(row.updatedAt || row.updated_at || run.endedAt || run.startedAt, "");
+  return run;
 }
 
 function getAlgorithmSettings() {
@@ -3893,8 +4536,51 @@ function expandAlgorithmScene(scene, catalog) {
   };
 }
 
-function buildAlgorithmPromptForScene(scene, catalog, recommendation = null) {
-  const expanded = expandAlgorithmScene(scene, catalog);
+function algorithmRuntimeRandomSeed(sceneId, extra = "") {
+  const runs = getAlgorithmRunsForCurrentSession();
+  const activeRun = activeAlgorithmRun && !activeAlgorithmRun.endedAt
+    ? activeAlgorithmRun
+    : getActiveAlgorithmRunForCurrentSession();
+  return [
+    Number(currentSession && currentSession.id || 0),
+    Number(sceneId || 0),
+    Number(runs.length || 0),
+    Number(activeRun && activeRun.id || 0),
+    String(extra || ""),
+  ].join(":");
+}
+
+function resolveAlgorithmSceneRandomSlots(scene, catalog, options = {}) {
+  if (!scene) return { scene: null, randomResolutions: [], randomWarnings: [] };
+  const seed = options.seed === undefined || options.seed === null
+    ? algorithmRuntimeRandomSeed(scene.id, options.source || "")
+    : options.seed;
+  const characterResolution = resolveRandomCharacterSlotsForPerformerRoles(scene.characterSlots, catalog, { seed });
+  const sceneWithCharacters = normalizeScene({
+    ...scene,
+    characterSlots: characterResolution.characterSlots,
+    characterIds: characterResolution.characterIds,
+    characterCount: ALGORITHM_ACTOR_SLOT_COUNT,
+  });
+  const environmentResolution = resolveRandomEnvironmentForScene(sceneWithCharacters, catalog, {
+    seed: `${seed}:environment`,
+  });
+  return {
+    scene: environmentResolution.scene,
+    randomResolutions: characterResolution.randomResolutions || [],
+    randomEnvironment: environmentResolution.randomEnvironment || null,
+    randomWarnings: []
+      .concat(characterResolution.randomWarnings || [])
+      .concat(environmentResolution.randomWarnings || []),
+  };
+}
+
+function buildAlgorithmPromptForScene(scene, catalog, recommendation = null, options = {}) {
+  const resolved = resolveAlgorithmSceneRandomSlots(scene, catalog, {
+    seed: options.randomSeed,
+    source: options.source || "prompt",
+  });
+  const expanded = expandAlgorithmScene(resolved.scene, catalog);
   if (!expanded) return "";
   const settings = getAlgorithmSettings();
   const audienceContext = buildAudienceContext({
@@ -3912,7 +4598,7 @@ function buildAlgorithmPromptForScene(scene, catalog, recommendation = null) {
   });
 }
 
-function buildAlgorithmRecommendation(catalog = getAlgorithmCatalog(), runs = getAlgorithmRunsForCurrentSession(), currentOrder = null) {
+function buildAlgorithmRecommendation(catalog = getAlgorithmCatalog(), runs = getAlgorithmRunsForCurrentSession(), currentOrder = null, options = {}) {
   const settings = getAlgorithmSettings();
   const recommendation = pickRecommendation({
     scenes: catalog.scenes,
@@ -3925,7 +4611,10 @@ function buildAlgorithmRecommendation(catalog = getAlgorithmCatalog(), runs = ge
     ? getAlgorithmSceneById(recommendation.scene.id) || recommendation.scene
     : null;
   const expanded = expandAlgorithmScene(scene, catalog);
-  const prompt = expanded ? buildAlgorithmPromptForScene(expanded, catalog, recommendation) : "";
+  const prompt = expanded ? buildAlgorithmPromptForScene(expanded, catalog, recommendation, {
+    randomSeed: options.randomSeed,
+    source: options.source || "recommendation",
+  }) : "";
   return {
     ...recommendation,
     scene: expanded,
@@ -3991,8 +4680,24 @@ function assertAlgorithmSceneReady(scene, catalog = getAlgorithmCatalog(), runs 
 
 function buildAlgorithmTouchDesignerPayload(bundle, options = {}) {
   const safeBundle = bundle || {};
-  const scene = safeBundle.scene || null;
-  const expandedScene = scene && scene.characters ? scene : null;
+  let scene = safeBundle.scene || null;
+  const catalog = options.catalog || null;
+  let randomResolutions = [];
+  let randomEnvironment = null;
+  let randomWarnings = [];
+  if (scene && catalog) {
+    const resolved = resolveAlgorithmSceneRandomSlots(scene, catalog, {
+      seed: options.randomSeed,
+      source: options.source || "payload",
+    });
+    scene = resolved.scene;
+    randomResolutions = resolved.randomResolutions || [];
+    randomEnvironment = resolved.randomEnvironment || null;
+    randomWarnings = resolved.randomWarnings || [];
+  }
+  const expandedScene = scene && catalog
+    ? expandAlgorithmScene(scene, catalog)
+    : scene && scene.characters ? scene : null;
   const characterById = new Map(expandedScene ? expandedScene.characters.map((item) => [Number(item.id || 0), item]) : []);
   const prompt = String(safeBundle.prompt || "");
   const maxPromptChars = options.fullPrompt
@@ -4024,6 +4729,9 @@ function buildAlgorithmTouchDesignerPayload(bundle, options = {}) {
         description: character ? String(character.description || "") : "",
       };
     }) : [],
+    randomResolutions,
+    randomEnvironment,
+    randomWarnings,
     situations: expandedScene ? expandedScene.situations.map((item) => ({
       id: Number(item.id || 0),
       name: String(item.name || ""),
@@ -4065,9 +4773,14 @@ function getAlgorithmState() {
   const algorithmRunStarted = getAlgorithmRunStartedForCurrentSession(runs, activeAlgorithmRun);
   const awaitingStart = !algorithmRunStarted && !activeAlgorithmRun && runs.length === 0;
   const currentOrder = awaitingStart ? maskAlgorithmOrderUntilRunStart(rawCurrentOrder) : rawCurrentOrder;
+  const nextSceneId = Number(currentOrder && currentOrder.next && currentOrder.next.sceneId || 0);
+  const randomSeed = algorithmRuntimeRandomSeed(nextSceneId, "up_next");
   const recommendation = awaitingStart
     ? emptyAlgorithmRecommendationForOrder(currentOrder)
-    : buildAlgorithmRecommendation(catalog, runs, currentOrder);
+    : buildAlgorithmRecommendation(catalog, runs, currentOrder, {
+        randomSeed,
+        source: "up_next",
+      });
   const entityScores = currentOrder.entityScores || computeEntityScores({ scenes: catalog.scenes, runs });
   const activeScene = activeAlgorithmRun
     ? expandAlgorithmScene(getAlgorithmSceneById(activeAlgorithmRun.sceneId), catalog)
@@ -4102,6 +4815,7 @@ function getAlgorithmState() {
       receiveCommands: getOscControlCommandDocs(),
       lastAlgorithmOscSend,
     },
+    sync: getSyncStatus(),
     touchDesigner: {
       promptMaxChars: ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS,
       oscFeedbackAddress: OSC_CONTROL_FEEDBACK_ADDRESS,
@@ -4112,6 +4826,194 @@ function getAlgorithmState() {
       buildVersion: BUILD_VERSION,
       buildLabel: BUILD_LABEL,
     },
+  };
+}
+
+function publicAlgorithmCharactersForScene(scene, catalog = getAlgorithmCatalog()) {
+  const expanded = scene && scene.characters ? scene : expandAlgorithmScene(scene, catalog);
+  const seen = new Set();
+  const characters = [];
+  for (const character of expanded && Array.isArray(expanded.characters) ? expanded.characters : []) {
+    const id = Number(character && character.id || 0);
+    const name = String(character && character.name || "").trim();
+    if (!id || !name || seen.has(id)) continue;
+    seen.add(id);
+    characters.push({ id, name });
+  }
+  return characters;
+}
+
+function buildPublicAlgorithmScenePayload(run, catalog = getAlgorithmCatalog()) {
+  const safeRun = run ? parseAlgorithmRunRow(run) || run : null;
+  if (!safeRun) return null;
+  const scene = expandAlgorithmScene(getAlgorithmSceneById(safeRun.sceneId), catalog);
+  if (!scene) return null;
+  return {
+    runId: Number(safeRun.id || 0),
+    sceneId: Number(scene.id || 0),
+    title: String(scene.title || ""),
+    startedAt: String(safeRun.startedAt || ""),
+    endedAt: safeRun.endedAt ? String(safeRun.endedAt) : null,
+    characters: publicAlgorithmCharactersForScene(scene, catalog),
+  };
+}
+
+function getLatestEndedAlgorithmRunForCurrentSession() {
+  if (!currentSession || !currentSession.id) return null;
+  return parseAlgorithmRunRow(sql.getLatestEndedAlgorithmRunBySession.get(currentSession.id));
+}
+
+function hasAlgorithmCharacterVote(runId, clientKey) {
+  const safeRunId = Number(runId || 0);
+  const safeClientKey = normalizeClientKey(clientKey);
+  if (!safeRunId || !safeClientKey) return false;
+  return !!sql.getAlgorithmCharacterVoteByRunClient.get(safeRunId, safeClientKey);
+}
+
+function getAlgorithmCharacterVoteCounts(runId) {
+  const safeRunId = Number(runId || 0);
+  if (!safeRunId) return {};
+  const counts = {};
+  for (const row of sql.getAlgorithmCharacterVoteCountsByRun.all(safeRunId)) {
+    const characterId = Number(row && row.characterId || 0);
+    if (!characterId) continue;
+    counts[characterId] = Number(row && row.votes || 0);
+  }
+  return counts;
+}
+
+function buildPublicAlgorithmVotePrompt(meta = {}, options = {}) {
+  if (!isCurrentSessionActive()) return null;
+  const activeRun = activeAlgorithmRun && !activeAlgorithmRun.endedAt
+    ? activeAlgorithmRun
+    : getActiveAlgorithmRunForCurrentSession();
+  if (activeRun && !activeRun.endedAt) return null;
+
+  const safeClientKey = normalizeClientKey(meta && meta.clientKey);
+  if (!safeClientKey) return null;
+
+  const run = options.endedRun
+    ? parseAlgorithmRunRow(options.endedRun) || options.endedRun
+    : getLatestEndedAlgorithmRunForCurrentSession();
+  if (!run || !run.endedAt) return null;
+  if (Number(run.sessionId || 0) !== Number(currentSession.id || 0)) return null;
+  if (hasAlgorithmCharacterVote(run.id, safeClientKey)) return null;
+
+  const catalog = getAlgorithmCatalog();
+  const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
+  const characters = publicAlgorithmCharactersForScene(scene, catalog);
+  if (characters.length < 2) return null;
+
+  return {
+    runId: Number(run.id || 0),
+    sceneId: Number(run.sceneId || 0),
+    title: String(scene && scene.title || ""),
+    endedAt: String(run.endedAt || ""),
+    question: "Wie vond je het leukst?",
+    characters,
+  };
+}
+
+function buildPublicAlgorithmState(meta = {}, options = {}) {
+  const activeRun = activeAlgorithmRun && !activeAlgorithmRun.endedAt
+    ? activeAlgorithmRun
+    : getActiveAlgorithmRunForCurrentSession();
+  const catalog = getAlgorithmCatalog();
+  const activeScene = activeRun && !activeRun.endedAt
+    ? buildPublicAlgorithmScenePayload(activeRun, catalog)
+    : null;
+  return {
+    type: "algorithm_state",
+    reason: String(options.reason || "state"),
+    sessionId: Number(currentSession && currentSession.id || 0),
+    activeScene,
+    vote: activeScene ? null : buildPublicAlgorithmVotePrompt(meta, options),
+  };
+}
+
+function sendPublicAlgorithmStateToClient(client, reason = "state", options = {}) {
+  if (!client || client.readyState !== WebSocket.OPEN) return false;
+  const meta = client.__meta || {};
+  try {
+    client.send(safeJsonStringify(buildPublicAlgorithmState(meta, { ...options, reason }), "{}"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function broadcastPublicAlgorithmState(reason = "state", options = {}) {
+  let sent = 0;
+  forEachChatClient((client) => {
+    if (sendPublicAlgorithmStateToClient(client, reason, options)) sent += 1;
+  });
+  return sent;
+}
+
+function recordAlgorithmCharacterVote(meta = {}, runId, characterId) {
+  if (!isCurrentSessionActive()) throw new Error("session_inactive");
+  const safeRunId = Number.parseInt(String(runId || ""), 10);
+  const safeCharacterId = Number.parseInt(String(characterId || ""), 10);
+  const safeClientKey = normalizeClientKey(meta && meta.clientKey);
+  if (!safeClientKey) throw new Error("client_required");
+  if (!Number.isInteger(safeRunId) || safeRunId < 1) throw new Error("algorithm_vote_invalid");
+  if (!Number.isInteger(safeCharacterId) || safeCharacterId < 1) throw new Error("algorithm_vote_invalid");
+
+  const activeRun = activeAlgorithmRun && !activeAlgorithmRun.endedAt
+    ? activeAlgorithmRun
+    : getActiveAlgorithmRunForCurrentSession();
+  if (activeRun && !activeRun.endedAt) throw new Error("algorithm_vote_unavailable");
+
+  const latestEndedRun = getLatestEndedAlgorithmRunForCurrentSession();
+  if (!latestEndedRun || Number(latestEndedRun.id || 0) !== safeRunId) {
+    throw new Error("algorithm_vote_unavailable");
+  }
+
+  const run = parseAlgorithmRunRow(sql.getAlgorithmRunById.get(safeRunId));
+  if (!run || !run.endedAt || Number(run.sessionId || 0) !== Number(currentSession.id || 0)) {
+    throw new Error("algorithm_vote_unavailable");
+  }
+
+  const catalog = getAlgorithmCatalog();
+  const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
+  const characters = publicAlgorithmCharactersForScene(scene, catalog);
+  if (!characters.some((character) => Number(character.id || 0) === safeCharacterId)) {
+    throw new Error("algorithm_vote_invalid");
+  }
+
+  const voteInsert = sql.insertAlgorithmCharacterVoteIfNew.run(
+    Number(currentSession.id || 0),
+    safeRunId,
+    Number(run.sceneId || 0),
+    safeCharacterId,
+    safeClientKey,
+    nowIso()
+  );
+  const counts = getAlgorithmCharacterVoteCounts(safeRunId);
+  if (!Number(voteInsert && voteInsert.changes || 0)) {
+    return {
+      ok: true,
+      alreadyVoted: true,
+      runId: safeRunId,
+      sceneId: Number(run.sceneId || 0),
+      characterId: safeCharacterId,
+      counts,
+    };
+  }
+
+  writeDebug("algorithm_character_vote", {
+    runId: safeRunId,
+    sceneId: Number(run.sceneId || 0),
+    characterId: safeCharacterId,
+    clientKey: safeClientKey,
+  });
+  return {
+    ok: true,
+    alreadyVoted: false,
+    runId: safeRunId,
+    sceneId: Number(run.sceneId || 0),
+    characterId: safeCharacterId,
+    counts,
   };
 }
 
@@ -4428,33 +5330,46 @@ function deleteInactiveAlgorithmItem(kind, id) {
   const safeId = Number.parseInt(String(id || ""), 10);
   if (!Number.isInteger(safeId) || safeId < 1) throw new Error("id_required");
   if (isAlgorithmEntityReferenced(kind, safeId)) throw new Error("item_in_use");
+  const tombstoneTable = {
+    performer: "algorithm_performers",
+    character: "algorithm_characters",
+    situation: "algorithm_situations",
+    environment: "algorithm_environments",
+    scene: "algorithm_scenes",
+  }[kind] || "";
+  const deletedAt = nowIso();
   if (kind === "performer") {
     const item = parseAlgorithmPerformerRow(sql.getAlgorithmPerformerById.get(safeId));
     if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
+    markSyncTombstone(tombstoneTable, safeId, deletedAt);
     sql.deleteAlgorithmPerformer.run(safeId);
     return { kind, id: safeId };
   }
   if (kind === "character") {
     const item = parseAlgorithmCharacterRow(sql.getAlgorithmCharacterById.get(safeId));
     if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
+    markSyncTombstone(tombstoneTable, safeId, deletedAt);
     sql.deleteAlgorithmCharacter.run(safeId);
     return { kind, id: safeId };
   }
   if (kind === "situation") {
     const item = parseAlgorithmSituationRow(sql.getAlgorithmSituationById.get(safeId));
     if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
+    markSyncTombstone(tombstoneTable, safeId, deletedAt);
     sql.deleteAlgorithmSituation.run(safeId);
     return { kind, id: safeId };
   }
   if (kind === "environment") {
     const item = parseAlgorithmEnvironmentRow(sql.getAlgorithmEnvironmentById.get(safeId));
     if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
+    markSyncTombstone(tombstoneTable, safeId, deletedAt);
     sql.deleteAlgorithmEnvironment.run(safeId);
     return { kind, id: safeId };
   }
   if (kind === "scene") {
     const item = parseAlgorithmSceneRow(sql.getAlgorithmSceneById.get(safeId));
     if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
+    markSyncTombstone(tombstoneTable, safeId, deletedAt);
     sql.deleteAlgorithmScene.run(safeId);
     return { kind, id: safeId };
   }
@@ -4483,8 +5398,15 @@ function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
   }
   const orderRow = sql.getMaxAlgorithmRunOrderBySession.get(currentSession.id);
   const runOrder = Number(orderRow && orderRow.n || 0) + 1;
-  const recommendation = buildAlgorithmRecommendation(catalog, runs);
-  const prompt = buildAlgorithmPromptForScene(scene, catalog, recommendation);
+  const randomSeed = algorithmRuntimeRandomSeed(scene.id, "up_next");
+  const recommendation = buildAlgorithmRecommendation(catalog, runs, null, {
+    randomSeed,
+    source: "up_next",
+  });
+  const prompt = buildAlgorithmPromptForScene(scene, catalog, recommendation, {
+    randomSeed,
+    source: "up_next",
+  });
   const now = nowIso();
   const insert = sql.insertAlgorithmSceneRun.run(
     currentSession.id,
@@ -4493,7 +5415,8 @@ function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
     String(selectionSource || "manual").slice(0, 80),
     now,
     prompt,
-    String(recommendation && recommendation.reason || "").slice(0, 1000)
+    String(recommendation && recommendation.reason || "").slice(0, 1000),
+    now
   );
   setAlgorithmRunStartedForCurrentSession(true);
   activeAlgorithmRun = parseAlgorithmRunRow(sql.getAlgorithmRunById.get(insert.lastInsertRowid));
@@ -4502,6 +5425,7 @@ function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
     sceneId: Number(scene.id || 0),
     selectionSource: String(selectionSource || "manual").slice(0, 80),
   });
+  broadcastPublicAlgorithmState("scene_started");
   return activeAlgorithmRun;
 }
 
@@ -4514,7 +5438,8 @@ function endActiveAlgorithmSceneRun(reason = "manual") {
   };
   const catalog = getAlgorithmCatalog();
   const scene = getAlgorithmSceneById(run.sceneId);
-  const prompt = scene ? buildAlgorithmPromptForScene(scene, catalog, buildAlgorithmRecommendation(catalog, getAlgorithmRunsForCurrentSession())) : run.promptSnapshot;
+  const prompt = run.promptSnapshot
+    || (scene ? buildAlgorithmPromptForScene(scene, catalog, buildAlgorithmRecommendation(catalog, getAlgorithmRunsForCurrentSession())) : "");
   const now = nowIso();
   sql.endAlgorithmSceneRun.run(
     now,
@@ -4524,6 +5449,7 @@ function endActiveAlgorithmSceneRun(reason = "manual") {
     run.score,
     prompt || run.promptSnapshot || "",
     String(reason || "manual").slice(0, 1000),
+    now,
     run.id
   );
   const ended = parseAlgorithmRunRow(sql.getAlgorithmRunById.get(run.id));
@@ -4536,6 +5462,7 @@ function endActiveAlgorithmSceneRun(reason = "manual") {
     commentCount: Number(ended && ended.commentCount || 0),
   });
   activeAlgorithmRun = null;
+  broadcastPublicAlgorithmState("scene_ended", { endedRun: ended });
   return ended;
 }
 
@@ -4544,11 +5471,16 @@ function resetAlgorithmRunsForCurrentSession() {
   if (!sessionId) throw new Error("session_required");
   activeAlgorithmRun = null;
   setAlgorithmRunStartedForCurrentSession(false);
+  const deletedAt = nowIso();
+  for (const run of getAlgorithmRunsForCurrentSession()) {
+    markSyncTombstone("algorithm_scene_runs", run.id, deletedAt);
+  }
   const result = sql.deleteAlgorithmRunsBySession.run(sessionId);
   writeDebug("algorithm_runs_reset", {
     sessionId,
     changes: Number(result && result.changes || 0),
   });
+  broadcastPublicAlgorithmState("runs_reset");
   return {
     sessionId,
     deletedRuns: Number(result && result.changes || 0),
@@ -4564,6 +5496,7 @@ function recordAlgorithmReaction(reaction) {
     Math.floor(Number(activeAlgorithmRun.heartCount || 0)),
     Math.floor(Number(activeAlgorithmRun.boredCount || 0)),
     Math.floor(Number(activeAlgorithmRun.commentCount || 0)),
+    nowIso(),
     activeAlgorithmRun.id
   );
   return activeAlgorithmRun;
@@ -4577,6 +5510,7 @@ function recordAlgorithmComment() {
     Math.floor(Number(activeAlgorithmRun.heartCount || 0)),
     Math.floor(Number(activeAlgorithmRun.boredCount || 0)),
     Math.floor(Number(activeAlgorithmRun.commentCount || 0)),
+    nowIso(),
     activeAlgorithmRun.id
   );
   return activeAlgorithmRun;
@@ -5520,6 +6454,23 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+function isValidSyncPeerRequest(req) {
+  const incoming = String(req.headers["x-foryou-sync-secret"] || "").trim();
+  if (!incoming || !SYNC_SECRET) return false;
+  const left = Buffer.from(incoming);
+  const right = Buffer.from(SYNC_SECRET);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function requireAdminOrSyncPeer(req, res, next) {
+  if (isValidSyncPeerRequest(req)) {
+    req.syncPeer = true;
+    next();
+    return;
+  }
+  requireAdmin(req, res, next);
+}
+
 function getClientLabel(target) {
   const scope = resolveModerationScope(target);
   if (!scope) return "iemand";
@@ -5665,8 +6616,8 @@ function beginNewSession(name, createdBy = "admin") {
   const sessionName = String(name || "").trim() || ("Performance " + now.slice(0, 16).replace("T", " "));
 
   closeActivePoll("new_session", createdBy);
-  sql.closeOpenSessions.run(now);
-  const insert = sql.insertSession.run(sessionName, now);
+  sql.closeOpenSessions.run(now, now);
+  const insert = sql.insertSession.run(sessionName, now, now);
   currentSession = sql.getSessionById.get(insert.lastInsertRowid);
   activePoll = null;
   activeAlgorithmRun = null;
@@ -5685,7 +6636,7 @@ function endCurrentSession(createdBy = "admin") {
   const now = nowIso();
   closeActivePoll("session_ended", createdBy);
   clearSessionAccessArtifacts(currentSession.id);
-  sql.closeOpenSessions.run(now);
+  sql.closeOpenSessions.run(now, now);
   const endedSession = sql.getSessionById.get(currentSession.id);
   if (endedSession) {
     currentSession = endedSession;
@@ -7414,6 +8365,7 @@ function getOscControlState() {
   const feedbackHost = normalizeOscControlFeedbackHost(oscControlFeedbackHost);
   const feedbackPort = clampInt(oscControlFeedbackPort, 0, 65535, 0);
   const feedbackMode = feedbackHost && feedbackPort > 0 ? "fixed_target" : "reply_to_sender";
+  const profile = getCurrentOscProfile();
   return {
     listenAddress: OSC_CONTROL_LISTEN_ADDRESS,
     listenPort: Number(currentOscListenPort || DEFAULT_OSC_CONTROL_LISTEN_PORT),
@@ -7428,6 +8380,8 @@ function getOscControlState() {
     feedbackMode,
     feedbackHost: feedbackHost || "",
     feedbackPort: feedbackPort > 0 ? feedbackPort : 0,
+    profileDeviceId: LOCAL_SYNC_DEVICE_ID,
+    profile,
     lastReceived: lastOscReceived,
   };
 }
@@ -7731,8 +8685,7 @@ function buildOscControlCommands() {
         return result && result.title ? `Volgende situatie: ${result.title}` : "Geen algoritme-situatie";
       },
       execute() {
-        const recommendation = buildAlgorithmRecommendation();
-        return buildAlgorithmTouchDesignerPayload(recommendation);
+        return buildAlgorithmCurrentUpNextPayload();
       },
     },
     {
@@ -7762,16 +8715,7 @@ function buildOscControlCommands() {
         const sceneId = Number(upNext && upNext.sceneId || 0);
         if (!sceneId) throw new Error("scene_id_required");
         const run = startAlgorithmSceneRun(sceneId, "osc_up_next");
-        const catalog = getAlgorithmCatalog();
-        const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
-        const payload = buildAlgorithmTouchDesignerPayload({
-          scene,
-          prompt: run.promptSnapshot,
-          score: 0,
-          reason: "Up Next gestart via OSC.",
-          calibration: buildAlgorithmRecommendation(catalog, getAlgorithmRunsForCurrentSession()).calibration,
-        });
-        return { ...payload, runId: Number(run.id || 0) };
+        return { ...upNext, prompt: run.promptSnapshot, runId: Number(run.id || 0) };
       },
     },
     {
@@ -7792,12 +8736,17 @@ function buildOscControlCommands() {
         const run = startAlgorithmSceneRun(sceneId, "osc");
         const catalog = getAlgorithmCatalog();
         const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
+        const randomSeed = algorithmRuntimeRandomSeed(sceneId, "osc_start_scene");
         const payload = buildAlgorithmTouchDesignerPayload({
           scene,
           prompt: run.promptSnapshot,
           score: 0,
           reason: "Situatie gestart via OSC.",
           calibration: buildAlgorithmRecommendation(catalog, getAlgorithmRunsForCurrentSession()).calibration,
+        }, {
+          catalog,
+          randomSeed,
+          source: "osc_start_scene",
         });
         return { ...payload, runId: Number(run.id || 0) };
       },
@@ -7857,13 +8806,24 @@ function buildOscControlCommands() {
         const catalog = getAlgorithmCatalog();
         const runs = getAlgorithmRunsForCurrentSession();
         assertAlgorithmSceneReady(scene, catalog, runs);
-        const recommendation = buildAlgorithmRecommendation(catalog, runs);
+        const randomSeed = algorithmRuntimeRandomSeed(sceneId, "osc_select_scene");
+        const recommendation = buildAlgorithmRecommendation(catalog, runs, null, {
+          randomSeed,
+          source: "osc_select_scene",
+        });
         return buildAlgorithmTouchDesignerPayload({
           scene: expandAlgorithmScene(scene, catalog),
-          prompt: buildAlgorithmPromptForScene(scene, catalog, recommendation),
+          prompt: buildAlgorithmPromptForScene(scene, catalog, recommendation, {
+            randomSeed,
+            source: "osc_select_scene",
+          }),
           score: Number(recommendation && recommendation.score || 0),
           reason: "Handmatig geselecteerd via OSC.",
           calibration: recommendation && recommendation.calibration,
+        }, {
+          catalog,
+          randomSeed,
+          source: "osc_select_scene",
         });
       },
     },
@@ -8048,9 +9008,17 @@ function buildAlgorithmCurrentUpNextPayload() {
     settings,
     catalog,
   });
-  const recommendation = buildAlgorithmRecommendation(catalog, runs, currentOrder);
-  const payload = buildAlgorithmTouchDesignerPayload(recommendation);
   const nextSceneId = Number(currentOrder && currentOrder.next && currentOrder.next.sceneId || 0);
+  const randomSeed = algorithmRuntimeRandomSeed(nextSceneId, "up_next");
+  const recommendation = buildAlgorithmRecommendation(catalog, runs, currentOrder, {
+    randomSeed,
+    source: "up_next",
+  });
+  const payload = buildAlgorithmTouchDesignerPayload(recommendation, {
+    catalog,
+    randomSeed,
+    source: "up_next",
+  });
   return {
     ...payload,
     sceneId: Number(payload.sceneId || nextSceneId || 0),
@@ -9659,6 +10627,81 @@ app.get("/admin/state", requireAdmin, (req, res) => {
   res.json(getAdminState(req));
 });
 
+app.get("/admin/sync/status", requireAdmin, (req, res) => {
+  res.json(getSyncStatus());
+});
+
+app.post("/admin/sync/settings", requireAdmin, (req, res) => {
+  try {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const peers = Object.prototype.hasOwnProperty.call(body, "peers")
+      ? saveSyncPeerUrls(body.peers)
+      : getSyncPeerUrls();
+    if (Object.prototype.hasOwnProperty.call(body, "paused")) {
+      setSyncPaused(parseBooleanLike(body.paused, false));
+    }
+    res.json({ ok: true, peers, status: getSyncStatus(), state: getAlgorithmState(req) });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err && err.message ? err.message : "sync_settings_failed" });
+  }
+});
+
+app.post("/admin/sync/heartbeat", requireAdminOrSyncPeer, (req, res) => {
+  res.json({
+    ok: true,
+    version: SYNC_VERSION,
+    device: exportLocalSyncPayload({ since: nowIso() }).device,
+    status: getSyncStatus(),
+  });
+});
+
+app.post("/admin/sync/changes", requireAdminOrSyncPeer, (req, res) => {
+  try {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const incomingPayload = body.payload && typeof body.payload === "object" ? body.payload : null;
+    const applied = incomingPayload ? applyIncomingSyncPayload(incomingPayload, { source: "sync_changes" }) : null;
+    res.json({
+      ok: true,
+      version: SYNC_VERSION,
+      device: exportLocalSyncPayload({ since: nowIso() }).device,
+      applied,
+      payload: exportLocalSyncPayload({ since: body.since }),
+    });
+  } catch (err) {
+    writeDebug("sync_changes_failed", { message: err && err.message ? err.message : "unknown" });
+    res.status(500).json({ ok: false, error: err && err.message ? err.message : "sync_changes_failed" });
+  }
+});
+
+app.post("/admin/sync/pull", requireAdmin, async (req, res) => {
+  try {
+    const peerUrl = normalizePeerUrl(req.body && req.body.peerUrl) || getSyncPeerUrls()[0] || "";
+    const result = await pullSyncPeer(peerUrl);
+    res.json({ ok: true, result, status: getSyncStatus(), state: getAlgorithmState(req) });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err && err.message ? err.message : "sync_pull_failed", status: getSyncStatus() });
+  }
+});
+
+app.post("/admin/sync/push", requireAdmin, async (req, res) => {
+  try {
+    const peerUrl = normalizePeerUrl(req.body && req.body.peerUrl) || getSyncPeerUrls()[0] || "";
+    const result = await pushSyncPeer(peerUrl);
+    res.json({ ok: true, result, status: getSyncStatus(), state: getAlgorithmState(req) });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err && err.message ? err.message : "sync_push_failed", status: getSyncStatus() });
+  }
+});
+
+app.post("/admin/sync/run", requireAdmin, async (req, res) => {
+  try {
+    const result = await syncAllPeers("manual");
+    res.json({ ok: true, result, status: getSyncStatus(), state: getAlgorithmState(req) });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err && err.message ? err.message : "sync_run_failed", status: getSyncStatus() });
+  }
+});
+
 app.get("/admin/algorithm/state", requireAdmin, (req, res) => {
   res.json(getAlgorithmState(req));
 });
@@ -9833,6 +10876,12 @@ app.post("/admin/algorithm/osc/settings", requireAdmin, async (req, res) => {
     oscControlSendEnabled = sendEnabled;
     oscControlFeedbackHost = sendHost;
     oscControlFeedbackPort = sendPort;
+    saveCurrentOscProfile({
+      sendEnabled,
+      listenPort,
+      sendHost,
+      sendPort,
+    });
     setSetting("osc_send_enabled", oscControlSendEnabled ? "1" : "0");
     setSetting("osc_feedback_host", oscControlFeedbackHost);
     setSetting("osc_feedback_port", String(oscControlFeedbackPort));
@@ -10954,6 +12003,7 @@ wss.on("connection", (ws, req) => {
       buildLabel: BUILD_LABEL,
     })
   );
+  sendPublicAlgorithmStateToClient(ws, "hello");
 
   const pollSnapshot = getPollSnapshot();
   if (pollSnapshot) {
@@ -11019,6 +12069,7 @@ wss.on("connection", (ws, req) => {
         clientKey: meta.clientKey,
         name: meta.name,
       });
+      sendPublicAlgorithmStateToClient(ws, "registered");
       return;
     }
 
@@ -11164,6 +12215,71 @@ wss.on("connection", (ws, req) => {
       writeDebug("poll_vote", { pollId: activePoll.id, clientId, clientKey: meta.clientKey, optionIndex });
       ws.send(safeJsonStringify({ type: "poll_vote_ok", pollId: activePoll.id, optionIndex }));
       broadcastPollUpdate();
+      return;
+    }
+
+    if (msg.type === "algorithm_character_vote") {
+      meta.clientTag = sanitizeClientTag(msg.clientTag || meta.clientTag);
+      meta.clientKey = buildClientKey(meta.ip, meta.clientTag);
+      persistConnectedMeta(meta);
+
+      const blockState = getBlockState(meta);
+      if (blockState) {
+        ws.send(
+          safeJsonStringify({
+            type: "error",
+            code: "user_blocked",
+            message: "Je bent geblokkeerd door de moderator.",
+          })
+        );
+        return;
+      }
+
+      const muteState = getMuteState(meta);
+      if (muteState) {
+        const muteUntilTs = parseIsoTime(muteState.expiresAt);
+        const remainingMs = muteUntilTs ? Math.max(0, muteUntilTs - Date.now()) : null;
+        ws.send(
+          safeJsonStringify({
+            type: "error",
+            code: "user_muted",
+            message: "Je bent tijdelijk gemute.",
+            mutedUntil: muteState.expiresAt || null,
+            remainingMs,
+          })
+        );
+        return;
+      }
+
+      try {
+        const vote = recordAlgorithmCharacterVote(
+          meta,
+          msg.runId,
+          msg.characterId
+        );
+        ws.send(
+          safeJsonStringify({
+            type: "algorithm_character_vote_ok",
+            ...vote,
+          })
+        );
+        sendPublicAlgorithmStateToClient(ws, "vote_recorded");
+      } catch (err) {
+        const code = String(err && err.message ? err.message : "algorithm_vote_error");
+        const messageByCode = {
+          algorithm_vote_invalid: "Kon je stem niet verwerken.",
+          algorithm_vote_unavailable: "Deze stemvraag is niet meer actief.",
+          client_required: "Kon je stem niet aan deze verbinding koppelen.",
+          session_inactive: "De sessie is beëindigd.",
+        };
+        ws.send(
+          safeJsonStringify({
+            type: "error",
+            code,
+            message: messageByCode[code] || "Kon je stem niet verwerken.",
+          })
+        );
+      }
       return;
     }
 
@@ -11424,6 +12540,11 @@ function startServerListening() {
       buildLabel: BUILD_LABEL,
       restartBootDelayMs: ADMIN_RESTART_BOOT_DELAY_MS,
     });
+    setTimeout(() => {
+      syncAllPeers("startup").catch((err) => {
+        writeDebug("sync_startup_failed", { message: err && err.message ? err.message : "unknown" });
+      });
+    }, 2500).unref();
   });
 }
 
@@ -11433,3 +12554,9 @@ if (ADMIN_RESTART_BOOT_DELAY_MS > 0) {
 } else {
   startServerListening();
 }
+
+setInterval(() => {
+  syncAllPeers("auto").catch((err) => {
+    writeDebug("sync_auto_failed", { message: err && err.message ? err.message : "unknown" });
+  });
+}, SYNC_AUTO_INTERVAL_MS).unref();
