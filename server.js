@@ -19,6 +19,8 @@ const {
   normalizeCrowdMode,
 } = require("./lib/crowd-engine");
 const {
+  ALGORITHM_ACTOR_SLOT_COUNT,
+  ALGORITHM_RANDOM_SLOT_VALUE,
   DEFAULT_ALGORITHM_SETTINGS,
   buildAudienceContext,
   buildAlgorithmOrder,
@@ -33,6 +35,7 @@ const {
   normalizePerformer,
   normalizeRun,
   normalizeScene,
+  normalizeSceneForPerformerRoles,
   normalizeSituation,
   pickRecommendation,
   validateSceneLinks,
@@ -2486,6 +2489,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     sort_order INTEGER NOT NULL DEFAULT 0,
+    role_slot INTEGER NOT NULL DEFAULT 0,
     is_active INTEGER NOT NULL DEFAULT 1,
     archived_at TEXT,
     created_at TEXT NOT NULL,
@@ -2643,6 +2647,20 @@ const algorithmCharacterColumns = db.prepare("PRAGMA table_info(algorithm_charac
 if (!algorithmCharacterColumns.some((column) => String(column.name || "") === "performer_id")) {
   db.exec("ALTER TABLE algorithm_characters ADD COLUMN performer_id INTEGER");
 }
+const algorithmPerformerColumns = db.prepare("PRAGMA table_info(algorithm_performers)").all();
+const algorithmPerformerHadRoleSlot = algorithmPerformerColumns.some((column) => String(column.name || "") === "role_slot");
+if (!algorithmPerformerHadRoleSlot) {
+  db.exec("ALTER TABLE algorithm_performers ADD COLUMN role_slot INTEGER NOT NULL DEFAULT 0");
+  db.exec(`
+    UPDATE algorithm_performers
+    SET role_slot = CASE lower(name)
+      WHEN 'booi' THEN 1
+      WHEN 'megan' THEN 2
+      WHEN 'brent' THEN 3
+      ELSE role_slot
+    END
+  `);
+}
 const algorithmSceneColumns = db.prepare("PRAGMA table_info(algorithm_scenes)").all();
 if (!algorithmSceneColumns.some((column) => String(column.name || "") === "character_count")) {
   db.exec("ALTER TABLE algorithm_scenes ADD COLUMN character_count INTEGER NOT NULL DEFAULT 1");
@@ -2662,11 +2680,16 @@ function seedDefaultAlgorithmPerformers() {
   if (Number(countRow && countRow.n || 0) > 0) return;
   const now = nowIso();
   const insert = db.prepare(
-    `INSERT INTO algorithm_performers (name, sort_order, is_active, archived_at, created_at, updated_at)
-     VALUES (?, ?, 1, NULL, ?, ?)`
+    `INSERT INTO algorithm_performers (name, sort_order, role_slot, is_active, archived_at, created_at, updated_at)
+     VALUES (?, ?, ?, 1, NULL, ?, ?)`
   );
+  const roleSlotByName = new Map([
+    ["booi", 1],
+    ["megan", 2],
+    ["brent", 3],
+  ]);
   DEFAULT_ALGORITHM_PERFORMERS.forEach((name, index) => {
-    insert.run(name, (index + 1) * 10, now, now);
+    insert.run(name, (index + 1) * 10, roleSlotByName.get(String(name || "").toLowerCase()) || 0, now, now);
   });
 }
 
@@ -2779,24 +2802,24 @@ const sql = {
      WHERE session_id = ?`
   ),
   getAlgorithmPerformers: db.prepare(
-    `SELECT id, name, sort_order AS sortOrder, is_active AS isActive,
+    `SELECT id, name, sort_order AS sortOrder, role_slot AS roleSlot, is_active AS isActive,
       archived_at AS archivedAt, created_at AS createdAt, updated_at AS updatedAt
      FROM algorithm_performers
      ORDER BY archived_at IS NOT NULL ASC, is_active DESC, sort_order ASC, name COLLATE NOCASE ASC, id ASC`
   ),
   getAlgorithmPerformerById: db.prepare(
-    `SELECT id, name, sort_order AS sortOrder, is_active AS isActive,
+    `SELECT id, name, sort_order AS sortOrder, role_slot AS roleSlot, is_active AS isActive,
       archived_at AS archivedAt, created_at AS createdAt, updated_at AS updatedAt
      FROM algorithm_performers
      WHERE id = ?`
   ),
   insertAlgorithmPerformer: db.prepare(
-    `INSERT INTO algorithm_performers (name, sort_order, is_active, archived_at, created_at, updated_at)
-     VALUES (?, ?, ?, NULL, ?, ?)`
+    `INSERT INTO algorithm_performers (name, sort_order, role_slot, is_active, archived_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, NULL, ?, ?)`
   ),
   updateAlgorithmPerformer: db.prepare(
     `UPDATE algorithm_performers
-     SET name = ?, sort_order = ?, is_active = ?, archived_at = ?, updated_at = ?
+     SET name = ?, sort_order = ?, role_slot = ?, is_active = ?, archived_at = ?, updated_at = ?
      WHERE id = ?`
   ),
   archiveAlgorithmPerformer: db.prepare(
@@ -3648,6 +3671,7 @@ function parseAlgorithmSlotJson(value) {
     .slice(0, 10)
     .map((item) => {
       const id = Number.parseInt(String(item || ""), 10);
+      if (id === ALGORITHM_RANDOM_SLOT_VALUE) return ALGORITHM_RANDOM_SLOT_VALUE;
       return Number.isInteger(id) && id > 0 ? id : 0;
     });
 }
@@ -3670,6 +3694,7 @@ function parseAlgorithmPerformerRow(row) {
     id: row.id,
     name: row.name,
     sortOrder: row.sortOrder,
+    roleSlot: row.roleSlot,
     isActive: Number(row.isActive || 0) > 0,
     archivedAt: row.archivedAt || "",
   });
@@ -3786,6 +3811,59 @@ function getAlgorithmPerformerById(performerId) {
   return parseAlgorithmPerformerRow(sql.getAlgorithmPerformerById.get(performerId));
 }
 
+function algorithmIdArrayEquals(left = [], right = []) {
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => Number(value || 0) === Number(right[index] || 0));
+}
+
+function persistAlgorithmSceneRoleSlots(scene, catalog, now = nowIso()) {
+  const item = normalizeSceneForPerformerRoles(scene, catalog);
+  const nextCharacterIds = normalizeIdList(item.characterSlots.filter(Boolean));
+  const changed = !algorithmIdArrayEquals(scene.characterSlots, item.characterSlots)
+    || !algorithmIdArrayEquals(scene.characterIds, nextCharacterIds)
+    || Number(scene.characterCount || 0) !== Number(item.characterCount || 0);
+  if (!changed) return false;
+  sql.updateAlgorithmScene.run(
+    item.title,
+    item.sortOrder,
+    item.characterCount,
+    safeJsonStringify(item.characterSlots, "[]"),
+    safeJsonStringify(nextCharacterIds, "[]"),
+    safeJsonStringify(item.situationIds, "[]"),
+    item.environmentMode === "random" ? null : item.environmentId || null,
+    item.environmentMode,
+    item.promptOverride,
+    item.contextSceneId || null,
+    item.isActive ? 1 : 0,
+    item.isActive ? null : item.archivedAt || null,
+    now,
+    item.id
+  );
+  return true;
+}
+
+function renormalizeAlgorithmScenesForPerformerRoles() {
+  const catalog = getAlgorithmCatalog();
+  const now = nowIso();
+  let count = 0;
+  for (const scene of catalog.scenes) {
+    if (scene && scene.id && persistAlgorithmSceneRoleSlots(scene, catalog, now)) count += 1;
+  }
+  return count;
+}
+
+try {
+  const normalizedSceneCount = renormalizeAlgorithmScenesForPerformerRoles();
+  if (normalizedSceneCount) {
+    writeDebug("algorithm_scene_role_slots_normalized_startup", { count: normalizedSceneCount });
+  }
+} catch (err) {
+  writeDebug("algorithm_scene_role_slots_normalize_startup_failed", {
+    message: err && err.message ? err.message : "unknown",
+  });
+}
+
 function buildAlgorithmEntityLabels(catalog) {
   const labels = { characters: {}, situations: {}, environments: {}, scenes: {} };
   for (const character of catalog.characters || []) labels.characters[character.id] = character.name;
@@ -3804,7 +3882,7 @@ function expandAlgorithmScene(scene, catalog) {
     .concat(Array.isArray(scene.characterIds) ? scene.characterIds : [])
     .concat(Array.isArray(scene.characterSlots) ? scene.characterSlots : [])
     .map((id) => Number(id || 0))
-    .filter(Boolean)));
+    .filter((id) => id > 0)));
   return {
     ...scene,
     characters: characterIds.map((id) => characterById.get(Number(id))).filter(Boolean),
@@ -3828,6 +3906,7 @@ function buildAlgorithmPromptForScene(scene, catalog, recommendation = null) {
     characters: expanded.characters,
     situations: expanded.situations,
     environment: expanded.environment,
+    performers: catalog.performers,
     settings,
     audienceContext,
   });
@@ -3931,13 +4010,15 @@ function buildAlgorithmTouchDesignerPayload(bundle, options = {}) {
       name: String(item.name || ""),
       description: String(item.description || ""),
     })) : [],
-    characterCount: scene ? Number(scene.characterCount || (scene.characterSlots || []).length || 0) : 0,
-    characterSlots: scene && Array.isArray(scene.characterSlots) ? scene.characterSlots.map((id, index) => {
-      const safeId = Number(id || 0);
+    characterCount: scene ? ALGORITHM_ACTOR_SLOT_COUNT : 0,
+    characterSlots: scene && Array.isArray(scene.characterSlots) ? Array.from({ length: ALGORITHM_ACTOR_SLOT_COUNT }, (_, index) => {
+      const safeValue = Number(scene.characterSlots[index] || 0);
+      const safeId = safeValue > 0 ? safeValue : 0;
       const character = characterById.get(safeId);
+      const mode = safeValue === ALGORITHM_RANDOM_SLOT_VALUE ? "random" : safeId ? "selected" : "none";
       return {
         slot: index + 1,
-        mode: safeId ? "selected" : "random",
+        mode,
         id: safeId,
         name: character ? String(character.name || "") : "",
         description: character ? String(character.description || "") : "",
@@ -3970,6 +4051,7 @@ function buildAlgorithmTouchDesignerPayload(bundle, options = {}) {
 }
 
 function getAlgorithmState() {
+  renormalizeAlgorithmScenesForPerformerRoles();
   const catalog = getAlgorithmCatalog();
   const runs = getAlgorithmRunsForCurrentSession();
   activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
@@ -4051,15 +4133,26 @@ function upsertAlgorithmPerformerFromBody(body = {}) {
     id: safeBody.id,
     name: sanitizeAlgorithmText(safeBody.name, 120),
     sortOrder: nextSortOrder,
+    roleSlot: safeBody.roleSlot,
     isActive: safeBody.isActive,
     archivedAt: safeBody.archivedAt,
   });
   if (!item.name) throw new Error("name_required");
+  if (item.isActive && item.roleSlot) {
+    const conflict = currentPerformers.find((performer) => (
+      Number(performer.id || 0) !== Number(item.id || 0)
+      && performer.isActive
+      && !performer.archivedAt
+      && Number(performer.roleSlot || 0) === Number(item.roleSlot || 0)
+    ));
+    if (conflict) throw new Error("role_slot_conflict");
+  }
   if (item.id) {
     const archivedAt = item.isActive ? "" : (existing.archivedAt || "");
     sql.updateAlgorithmPerformer.run(
       item.name,
       item.sortOrder,
+      item.roleSlot || 0,
       item.isActive ? 1 : 0,
       archivedAt || null,
       now,
@@ -4067,7 +4160,7 @@ function upsertAlgorithmPerformerFromBody(body = {}) {
     );
     return parseAlgorithmPerformerRow(sql.getAlgorithmPerformerById.get(item.id));
   }
-  const insert = sql.insertAlgorithmPerformer.run(item.name, item.sortOrder, item.isActive ? 1 : 0, now, now);
+  const insert = sql.insertAlgorithmPerformer.run(item.name, item.sortOrder, item.roleSlot || 0, item.isActive ? 1 : 0, now, now);
   return parseAlgorithmPerformerRow(sql.getAlgorithmPerformerById.get(insert.lastInsertRowid));
 }
 
@@ -4202,7 +4295,7 @@ function upsertAlgorithmSceneFromBody(body = {}) {
   const incomingCharacterIds = Array.isArray(safeBody.characterSlots)
     ? safeBody.characterSlots
     : Array.isArray(safeBody.characterIds) ? safeBody.characterIds : [];
-  const item = normalizeScene({
+  const rawItem = normalizeScene({
     id: safeBody.id,
     title: sanitizeAlgorithmText(safeBody.title, 180),
     sortOrder: nextSortOrder,
@@ -4217,8 +4310,9 @@ function upsertAlgorithmSceneFromBody(body = {}) {
     isActive: safeBody.isActive,
     archivedAt: safeBody.archivedAt,
   });
-  if (!item.title) throw new Error("title_required");
   const catalog = getAlgorithmCatalog();
+  const item = normalizeSceneForPerformerRoles(rawItem, catalog);
+  if (!item.title) throw new Error("title_required");
   const validation = validateSceneLinks(item, catalog);
   if (!validation.ok) {
     const err = new Error("scene_links_invalid");
@@ -4378,6 +4472,7 @@ function beginAlgorithmRunForCurrentSession() {
 
 function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
   if (!isCurrentSessionActive()) throw new Error("session_inactive");
+  renormalizeAlgorithmScenesForPerformerRoles();
   const scene = getAlgorithmSceneById(sceneId);
   if (!scene || !scene.isActive || scene.archivedAt) throw new Error("scene_not_found");
   const catalog = getAlgorithmCatalog();
@@ -7885,7 +7980,7 @@ function getAlgorithmUpNextOscAddresses() {
     addresses.push(`/foryou/algorithm/up_next/personage_${index}`);
     addresses.push(`/foryou/algorithm/up_next/personage_${index}_description`);
   }
-  addresses.push("/foryou/algorithm/up_next/description");
+  addresses.push("/foryou/algorithm/up_next/situation");
   addresses.push("/foryou/algorithm/up_next/done");
   return addresses;
 }
@@ -7896,7 +7991,9 @@ function getAlgorithmOscSendDocs() {
     ...getAlgorithmUpNextOscAddresses().map((address) => ({
       address,
       args: address.endsWith("/begin") || address.endsWith("/scene_id") || address.endsWith("/done") ? "sceneId" : "string",
-      description: "Onderdeel van de Up Next-output naar TouchDesigner.",
+      description: address.includes("/personage_")
+        ? "Resolved performer-slot in de Up Next-output naar TouchDesigner."
+        : "Onderdeel van de Up Next-output naar TouchDesigner.",
     })),
     {
       address: OSC_CONTROL_FEEDBACK_ADDRESS,
@@ -7930,6 +8027,7 @@ function rememberOscReceived(info, patch = {}) {
 }
 
 function buildAlgorithmCurrentUpNextPayload() {
+  renormalizeAlgorithmScenesForPerformerRoles();
   const catalog = getAlgorithmCatalog();
   const runs = getAlgorithmRunsForCurrentSession();
   activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
@@ -7971,15 +8069,17 @@ function algorithmOscIntArg(value) {
 function algorithmUpNextSlotLabel(payload, slotNumber) {
   const slots = Array.isArray(payload && payload.characterSlots) ? payload.characterSlots : [];
   const slot = slots.find((item) => Number(item && item.slot || 0) === Number(slotNumber));
-  if (!slot) return "";
-  if (String(slot.mode || "") === "random" || !Number(slot.id || 0)) return "Random";
+  if (!slot) return "Geen";
+  if (String(slot.mode || "") === "none") return "Geen";
+  if (String(slot.mode || "") === "random") return "Random";
+  if (!Number(slot.id || 0)) return "Geen";
   return String(slot.name || "");
 }
 
 function algorithmUpNextSlotDescription(payload, slotNumber) {
   const slots = Array.isArray(payload && payload.characterSlots) ? payload.characterSlots : [];
   const slot = slots.find((item) => Number(item && item.slot || 0) === Number(slotNumber));
-  if (!slot || String(slot.mode || "") === "random" || !Number(slot.id || 0)) return "";
+  if (!slot || String(slot.mode || "") === "none" || String(slot.mode || "") === "random" || !Number(slot.id || 0)) return "";
   return String(slot.description || "");
 }
 
@@ -8009,7 +8109,7 @@ function buildAlgorithmUpNextOscPackets(payload) {
     });
   }
   packets.push({
-    address: "/foryou/algorithm/up_next/description",
+    address: "/foryou/algorithm/up_next/situation",
     args: [algorithmOscStringArg(payload && payload.description || "")],
   });
   packets.push({ address: "/foryou/algorithm/up_next/done", args: [algorithmOscIntArg(sceneId)] });
@@ -9575,7 +9675,8 @@ app.post("/admin/algorithm/settings", requireAdmin, (req, res) => {
 app.post("/admin/algorithm/performers/upsert", requireAdmin, (req, res) => {
   try {
     const performer = upsertAlgorithmPerformerFromBody(req.body || {});
-    res.json({ ok: true, performer, state: getAlgorithmState(req) });
+    const normalizedSceneCount = renormalizeAlgorithmScenesForPerformerRoles();
+    res.json({ ok: true, performer, normalizedSceneCount, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -9584,7 +9685,8 @@ app.post("/admin/algorithm/performers/upsert", requireAdmin, (req, res) => {
 app.post("/admin/algorithm/characters/upsert", requireAdmin, (req, res) => {
   try {
     const character = upsertAlgorithmCharacterFromBody(req.body || {});
-    res.json({ ok: true, character, state: getAlgorithmState(req) });
+    const normalizedSceneCount = renormalizeAlgorithmScenesForPerformerRoles();
+    res.json({ ok: true, character, normalizedSceneCount, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
