@@ -4,6 +4,7 @@
 const assert = require("assert");
 const {
   buildAlgorithmOrder,
+  buildSceneWarnings,
   calculateRunScore,
   composeScenePrompt,
   normalizeScene,
@@ -62,6 +63,82 @@ function testCurrentOrderKeepsCalibrationFixed() {
   assert.strictEqual(order.calibration.active, true);
   assert.strictEqual(order.next.sceneId, 2);
   assert.deepStrictEqual(order.upcoming.map((entry) => entry.sceneId), [6]);
+}
+
+function testCurrentOrderRowsStartAtFirstAfterReset() {
+  const scenes = [
+    { id: 1, title: "Een", sortOrder: 1, isActive: true },
+    { id: 2, title: "Twee", sortOrder: 2, isActive: true },
+    { id: 3, title: "Drie", sortOrder: 3, isActive: true },
+  ];
+  const order = buildAlgorithmOrder({ scenes, runs: [], settings: { calibrationCount: 2 } });
+  assert.deepStrictEqual(order.rows.map((entry) => entry.sceneId), [1, 2, 3]);
+  assert.strictEqual(order.next.sceneId, 1);
+  assert.strictEqual(order.rows[0].next, true);
+  assert.strictEqual(order.rows[0].active, false);
+  assert.strictEqual(order.rows.filter((entry) => entry.next).length, 1);
+}
+
+function testCurrentOrderRowsMarkActiveWithoutNext() {
+  const scenes = [
+    { id: 1, title: "Een", sortOrder: 1, isActive: true },
+    { id: 2, title: "Twee", sortOrder: 2, isActive: true },
+  ];
+  const runs = [{ id: 1, sceneId: 1, runOrder: 1, startedAt: "2026-01-01T00:00:00.000Z" }];
+  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 2 } });
+  assert.strictEqual(order.next, null);
+  assert.strictEqual(order.rows[0].active, true);
+  assert.strictEqual(order.rows[0].next, false);
+  assert.strictEqual(order.rows.filter((entry) => entry.active).length, 1);
+  assert.strictEqual(order.rows.filter((entry) => entry.next).length, 0);
+}
+
+function testCurrentOrderRowsAdvanceAfterStop() {
+  const scenes = [
+    { id: 1, title: "Een", sortOrder: 1, isActive: true },
+    { id: 2, title: "Twee", sortOrder: 2, isActive: true },
+    { id: 3, title: "Drie", sortOrder: 3, isActive: true },
+  ];
+  const runs = [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", score: 1 }];
+  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 2 } });
+  assert.strictEqual(order.rows[0].played, true);
+  assert.strictEqual(order.rows[1].next, true);
+  assert.strictEqual(order.next.sceneId, 2);
+}
+
+function testCurrentOrderRowsKeepActiveAfterCalibration() {
+  const scenes = [
+    { id: 1, title: "Calibratie", sortOrder: 1, characterIds: [1], isActive: true },
+    { id: 2, title: "Actief later", sortOrder: 2, characterIds: [1], isActive: true },
+    { id: 3, title: "Nog later", sortOrder: 3, characterIds: [2], isActive: true },
+  ];
+  const runs = [
+    { id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", score: 10 },
+    { id: 2, sceneId: 2, runOrder: 2, startedAt: "2026-01-01T00:01:00.000Z" },
+  ];
+  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 1 } });
+  const activeRow = order.rows.find((entry) => entry.sceneId === 2);
+  assert(activeRow);
+  assert.strictEqual(activeRow.active, true);
+  assert.strictEqual(order.next, null);
+  assert.strictEqual(order.rows.filter((entry) => entry.next).length, 0);
+}
+
+function testRecommendationMatchesCurrentOrderNext() {
+  const scenes = [
+    { id: 1, title: "Calibratie", sortOrder: 1, characterIds: [1], isActive: true },
+    { id: 2, title: "Peter later", sortOrder: 2, characterIds: [1], isActive: true },
+    { id: 3, title: "Penelope later", sortOrder: 3, characterIds: [2], isActive: true },
+  ];
+  const runs = [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", score: 12 }];
+  const settings = { calibrationCount: 1 };
+  const order = buildAlgorithmOrder({ scenes, runs, settings });
+  const recommendation = pickRecommendation({ scenes, runs, settings, order });
+  assert.strictEqual(recommendation.scene.id, order.next.sceneId);
+  assert.strictEqual(
+    buildAlgorithmOrder({ scenes, runs, settings }).next.sceneId,
+    order.next.sceneId
+  );
 }
 
 function testCurrentOrderRanksAfterCalibration() {
@@ -291,6 +368,93 @@ function testSceneLinkValidation() {
   assert(inactiveLinks.issues.includes("environment_inactive:2"));
 }
 
+function testCastWarningsIgnoreFlexibleCharacters() {
+  const warnings = buildSceneWarnings(
+    { id: 1, title: "Flexibel", characterCount: 2, characterSlots: [1, 2], characterIds: [1, 2] },
+    {
+      characters: [
+        { id: 1, name: "Anne-Fleur", performerId: 0, isActive: true },
+        { id: 2, name: "Boer", performerId: 0, isActive: true },
+      ],
+      performers: [{ id: 1, name: "Megan", isActive: true }],
+    }
+  );
+  assert.deepStrictEqual(warnings, []);
+}
+
+function testCastWarningsDetectSamePerformer() {
+  const warnings = buildSceneWarnings(
+    { id: 1, title: "Dubbel", characterCount: 2, characterSlots: [1, 2], characterIds: [1, 2] },
+    {
+      characters: [
+        { id: 1, name: "Anne-Fleur", performerId: 1, isActive: true },
+        { id: 2, name: "Lisa", performerId: 1, isActive: true },
+      ],
+      performers: [{ id: 1, name: "Megan", isActive: true }],
+    }
+  );
+  assert.deepStrictEqual(warnings, ["performer_conflict:1:1,2"]);
+}
+
+function testCastWarningsAllowDifferentPerformers() {
+  const warnings = buildSceneWarnings(
+    { id: 1, title: "Geen dubbel", characterCount: 2, characterSlots: [1, 2], characterIds: [1, 2] },
+    {
+      characters: [
+        { id: 1, name: "Anne-Fleur", performerId: 1, isActive: true },
+        { id: 2, name: "Boer", performerId: 2, isActive: true },
+      ],
+      performers: [
+        { id: 1, name: "Megan", isActive: true },
+        { id: 2, name: "Booi", isActive: true },
+      ],
+    }
+  );
+  assert.deepStrictEqual(warnings, []);
+}
+
+function testCastWarningsIgnoreRandomSlots() {
+  const warnings = buildSceneWarnings(
+    { id: 1, title: "Random", characterCount: 3, characterSlots: [1, 0, 2], characterIds: [1, 2] },
+    {
+      characters: [
+        { id: 1, name: "Anne-Fleur", performerId: 1, isActive: true },
+        { id: 2, name: "Lisa", performerId: 1, isActive: true },
+      ],
+      performers: [{ id: 1, name: "Megan", isActive: true }],
+    }
+  );
+  assert.deepStrictEqual(warnings, ["performer_conflict:1:1,2"]);
+
+  const onlyRandom = buildSceneWarnings(
+    { id: 2, title: "Random alleen", characterCount: 2, characterSlots: [1, 0], characterIds: [1] },
+    {
+      characters: [{ id: 1, name: "Anne-Fleur", performerId: 1, isActive: true }],
+      performers: [{ id: 1, name: "Megan", isActive: true }],
+    }
+  );
+  assert.deepStrictEqual(onlyRandom, []);
+}
+
+function testCastWarningsDoNotBlockOrder() {
+  const catalog = {
+    performers: [{ id: 1, name: "Megan", isActive: true }],
+    characters: [
+      { id: 1, name: "Anne-Fleur", performerId: 1, isActive: true },
+      { id: 2, name: "Lisa", performerId: 1, isActive: true },
+    ],
+    situations: [],
+    environments: [],
+  };
+  const scenes = [
+    { id: 1, title: "Dubbele rol", sortOrder: 1, characterCount: 2, characterSlots: [1, 2], characterIds: [1, 2], isActive: true },
+  ];
+  const order = buildAlgorithmOrder({ scenes, runs: [], settings: { calibrationCount: 0 }, catalog: { ...catalog, scenes } });
+  assert.strictEqual(order.invalid.length, 0);
+  assert.strictEqual(order.next.sceneId, 1);
+  assert.deepStrictEqual(order.upcoming[0].warnings, ["performer_conflict:1:1,2"]);
+}
+
 function testPromptComposition() {
   const prompt = composeScenePrompt({
     scene: { id: 1, title: "De test", promptOverride: "Peter bekent iets." },
@@ -345,6 +509,11 @@ testScoreFormula();
 testCalibrationFixedOrder();
 testRecommendationSkipsLastScene();
 testCurrentOrderKeepsCalibrationFixed();
+testCurrentOrderRowsStartAtFirstAfterReset();
+testCurrentOrderRowsMarkActiveWithoutNext();
+testCurrentOrderRowsAdvanceAfterStop();
+testCurrentOrderRowsKeepActiveAfterCalibration();
+testRecommendationMatchesCurrentOrderNext();
 testCurrentOrderRanksAfterCalibration();
 testCurrentOrderHidesPlayedUntilCycleComplete();
 testCurrentOrderSkipsLastWhenEverythingPlayed();
@@ -356,6 +525,11 @@ testContextSceneUnlocksAfterRun();
 testContextSceneResetsWithRuns();
 testContextSceneDoesNotMoveToBottomWhenAlreadyAfterContext();
 testSceneLinkValidation();
+testCastWarningsIgnoreFlexibleCharacters();
+testCastWarningsDetectSamePerformer();
+testCastWarningsAllowDifferentPerformers();
+testCastWarningsIgnoreRandomSlots();
+testCastWarningsDoNotBlockOrder();
 testPromptComposition();
 testPromptCompositionWithRandomSlots();
 testPromptCompositionWithMultipleRandomSlots();

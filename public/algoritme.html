@@ -267,8 +267,14 @@
         opacity: 0.5;
       }
 
+      .livePanel {
+        grid-column: 1 / 2;
+        grid-row: 2;
+      }
+
       .orderPanel {
-        grid-column: 1 / -1;
+        grid-column: 2 / -1;
+        grid-row: 2;
       }
 
       .orderList {
@@ -278,6 +284,28 @@
       .orderItem {
         grid-template-columns: auto minmax(0, 1fr);
         align-items: start;
+      }
+
+      .orderItem.next {
+        border-color: #93c5fd;
+        background: #eff6ff;
+      }
+
+      .orderItem.active {
+        border-color: #2563eb;
+        background: #dbeafe;
+      }
+
+      .orderItem.next .orderNumber {
+        background: #dbeafe;
+        border-color: #93c5fd;
+        color: #1d4ed8;
+      }
+
+      .orderItem.active .orderNumber {
+        background: #2563eb;
+        border-color: #2563eb;
+        color: #fff;
       }
 
       .orderNumber {
@@ -310,6 +338,12 @@
         gap: 6px;
         flex-wrap: wrap;
         align-items: center;
+      }
+
+      .orderNotice {
+        color: #92400e;
+        font-size: 12px;
+        line-height: 1.35;
       }
 
       .orderEditActions {
@@ -460,8 +494,11 @@
         }
 
         .catalogPanel,
+        .livePanel,
+        .orderPanel,
         .promptPanel {
           grid-column: auto;
+          grid-row: auto;
         }
 
         .catalogWindows {
@@ -515,6 +552,7 @@
             <div class="row"><h2>Personages</h2><button id="newCharacterBtn" type="button">Voeg toe</button></div>
             <div id="characterForm" class="stack hidden">
               <label>Naam<input id="characterName" maxlength="120" /></label>
+              <label>Wordt gespeeld door<select id="characterPerformer"></select></label>
               <label>Beschrijving<textarea id="characterDescription"></textarea></label>
               <div class="actions">
                 <button id="saveCharacterBtn" class="primary" type="button">Opslaan</button>
@@ -525,6 +563,24 @@
             <details class="inactiveBlock">
               <summary>Non-actieve personages</summary>
               <div id="charactersInactiveList" class="list" style="margin-top:8px;"></div>
+            </details>
+            <details class="inactiveBlock" open>
+              <summary>Spelers beheren</summary>
+              <div id="performerForm" class="stack hidden" style="margin-top:8px;">
+                <label>Naam<input id="performerName" maxlength="120" /></label>
+                <div class="actions">
+                  <button id="savePerformerBtn" class="primary" type="button">Opslaan</button>
+                  <button id="cancelPerformerBtn" type="button">Annuleer</button>
+                </div>
+              </div>
+              <div class="actions" style="margin-top:8px;">
+                <button id="newPerformerBtn" type="button">Voeg speler toe</button>
+              </div>
+              <div id="performersList" class="list" style="margin-top:8px;"></div>
+              <details class="inactiveBlock">
+                <summary>Non-actieve spelers</summary>
+                <div id="performersInactiveList" class="list" style="margin-top:8px;"></div>
+              </details>
             </details>
           </div>
 
@@ -588,6 +644,12 @@
           </div>
           <div id="currentOrderList" class="list orderList"></div>
           <div id="orderEditHint" class="small hidden">Sleep de situaties in deze lijst. De eerste calibratieposities blijven vast; daarna mag het algoritme de live volgorde bepalen.</div>
+          <div id="orderEditSettings" class="two hidden">
+            <label>Calibratie situaties<input id="calibrationCount" type="number" min="0" max="50" step="1" /></label>
+            <div class="actions" style="align-self:end;">
+              <button id="saveCalibrationSettingsBtn" class="primary" type="button">Bewaar calibratie</button>
+            </div>
+          </div>
           <div id="orderEditActions" class="actions orderEditActions">
             <button id="saveOrderBtn" class="primary" type="button">Bewaar volgorde</button>
             <button id="cancelOrderBtn" type="button">Annuleer</button>
@@ -595,9 +657,9 @@
           <div id="orderMsg" class="msg"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel livePanel">
           <div class="row">
-            <h2>Live situatie</h2>
+            <h2>Huidige scène</h2>
             <span id="calibrationBadge" class="badge"></span>
           </div>
           <div class="statGrid">
@@ -605,40 +667,10 @@
             <div class="stat"><div class="k">Bored</div><div id="boredStat" class="v">0</div></div>
             <div class="stat"><div class="k">Comments</div><div id="commentStat" class="v">0</div></div>
           </div>
-          <div class="panel" style="box-shadow:none;background:#fff;">
-            <div class="small">Up Next</div>
-            <h3 id="upNextTitle">Geen volgende situatie</h3>
-            <div id="upNextMeta" class="small"></div>
-          </div>
           <div class="actions">
             <button id="sceneToggleBtn" class="primary" type="button">Volgende situatie</button>
             <button id="resetRunsBtn" class="danger" type="button">Reset runs</button>
           </div>
-          <div class="panel" style="box-shadow:none;background:#fff;">
-            <h3 id="activeSceneTitle">Geen actieve situatie</h3>
-            <div id="activeSceneMeta" class="small"></div>
-          </div>
-
-          <div class="row">
-            <h2>Aanbeveling</h2>
-            <span id="recommendationScore" class="badge"></span>
-          </div>
-          <div class="panel" style="box-shadow:none;background:#fff;">
-            <h3 id="recommendationTitle">Geen aanbeveling</h3>
-            <div id="recommendationReason" class="small"></div>
-          </div>
-          <div class="actions">
-            <button id="recomputeBtn" type="button">Herbereken</button>
-            <button id="sendCurrentBtn" type="button">Stuur actief</button>
-            <button id="sendNextBtn" type="button">Stuur aanbeveling</button>
-          </div>
-
-          <div class="two">
-            <label>Calibratie situaties<input id="calibrationCount" type="number" min="0" max="50" step="1" /></label>
-            <label>&nbsp;<button id="saveSettingsBtn" class="primary" type="button">Bewaar settings</button></label>
-          </div>
-          <label>Globale system prompt<textarea id="globalPrompt"></textarea></label>
-          <label>Prompt template<textarea id="promptTemplate"></textarea></label>
           <div id="liveMsg" class="msg"></div>
         </section>
 
@@ -648,6 +680,16 @@
             <span id="promptMeta" class="badge"></span>
           </div>
           <textarea id="promptOutput" class="promptBox" readonly></textarea>
+          <details class="inactiveBlock">
+            <summary>Prompt instellingen</summary>
+            <div class="stack" style="margin-top:8px;">
+              <label>Globale system prompt<textarea id="globalPrompt"></textarea></label>
+              <label>Prompt template<textarea id="promptTemplate"></textarea></label>
+              <div class="actions">
+                <button id="savePromptSettingsBtn" class="primary" type="button">Bewaar prompt instellingen</button>
+              </div>
+            </div>
+          </details>
           <div class="two">
             <div class="panel" style="box-shadow:none;background:#fff;">
               <h3>Top personages</h3>
@@ -673,8 +715,8 @@
         const TOKEN_KEY = "algorithm_admin_token_v1";
         let token = "";
         let state = null;
-        let edit = { character: 0, environment: 0, scene: 0 };
-        let expanded = { character: 0, environment: 0, scene: 0 };
+        let edit = { performer: 0, character: 0, environment: 0, scene: 0 };
+        let expanded = { performer: 0, character: 0, environment: 0, scene: 0 };
         let sceneDraft = {
           open: false,
           id: 0,
@@ -823,6 +865,7 @@
         function catalogKey(kind) {
           return {
             character: "characters",
+            performer: "performers",
             situation: "situations",
             environment: "environments",
             scene: "scenes",
@@ -857,6 +900,35 @@
         function editedIsActive(kind, id) {
           const existing = itemById(kind, id);
           return existing ? isActiveItem(existing) : true;
+        }
+
+        function performerLabel(id) {
+          const performerId = Number(id || 0);
+          if (!performerId) return "Kan iedereen spelen";
+          const performer = itemById("performers", performerId);
+          if (!performer) return `Speler ${performerId}`;
+          const name = performer.name || `Speler ${performerId}`;
+          return isActiveItem(performer) ? name : `${name} (non-actief)`;
+        }
+
+        function renderCharacterPerformerOptions(selectedId = 0) {
+          const safeSelectedId = Number(selectedId || 0);
+          const performers = activeItemsWithSelected("performers", safeSelectedId ? [safeSelectedId] : []);
+          $("characterPerformer").innerHTML = '<option value="0">Kan iedereen spelen</option>' + performers.map((item) => {
+            const active = isActiveItem(item);
+            const label = active ? item.name : `${item.name} (non-actief)`;
+            return `<option value="${item.id}" ${active ? "" : "disabled"}>${esc(label)}</option>`;
+          }).join("");
+          const hasSelectedOption = Array.from($("characterPerformer").options)
+            .some((option) => option.value === String(safeSelectedId));
+          $("characterPerformer").value = hasSelectedOption ? String(safeSelectedId) : "0";
+        }
+
+        function characterDetail(item) {
+          const parts = [];
+          parts.push(`Wordt gespeeld door: ${performerLabel(item.performerId)}`);
+          if (item.description) parts.push(item.description);
+          return parts.join("\n");
         }
 
         function renderTabs() {}
@@ -914,8 +986,19 @@
             selectedId: edit.character,
             inactive,
             labelFn: (item) => item.name || "Naamloos",
-            detailFn: (item) => item.description || "",
+            detailFn: characterDetail,
             emptyText: inactive ? "Geen non-actieve personages." : "Nog geen personages.",
+          });
+        }
+
+        function renderPerformersList(id, items, inactive = false) {
+          renderCatalogList(id, items, {
+            kind: "performer",
+            selectedId: edit.performer,
+            inactive,
+            labelFn: (item) => item.name || "Naamloos",
+            detailFn: (item) => "Speler voor vaste rolverdeling.",
+            emptyText: inactive ? "Geen non-actieve spelers." : "Nog geen spelers.",
           });
         }
 
@@ -1044,6 +1127,91 @@
           return false;
         }
 
+        function formatSceneWarning(warning) {
+          const text = String(warning || "");
+          if (text.startsWith("performer_conflict:")) {
+            const parts = text.split(":");
+            const performerId = Number(parts[1] || 0);
+            const characterIds = String(parts[2] || "")
+              .split(",")
+              .map((id) => Number(id || 0))
+              .filter((id) => id > 0);
+            const names = characterIds.map((id) => {
+              const character = itemById("characters", id);
+              return character ? character.name : `#${id}`;
+            });
+            return `Dubbele rol: ${performerLabel(performerId)} speelt ${names.join(" en ")}.`;
+          }
+          if (text.startsWith("performer_inactive:")) {
+            const parts = text.split(":");
+            const performerId = Number(parts[1] || 0);
+            const characterId = Number(parts[3] || 0);
+            const character = itemById("characters", characterId);
+            return `Speler non-actief: ${performerLabel(performerId)} is gekoppeld aan ${character ? character.name : "#" + characterId}.`;
+          }
+          return text;
+        }
+
+        function formatSceneIssue(issue) {
+          const text = String(issue || "");
+          if (!text) return "";
+          if (text.startsWith("performer_")) return formatSceneWarning(text);
+          const parts = text.split(":");
+          const code = parts[0] || "";
+          const id = Number(parts[1] || 0);
+          if (code === "title_required") return "Naam ontbreekt.";
+          if (code === "character_inactive") {
+            const character = itemById("characters", id);
+            return `Personage non-actief of ontbreekt: ${character ? character.name : "#" + id}.`;
+          }
+          if (code === "character_duplicate") {
+            const character = itemById("characters", id);
+            return `Dubbel personage: ${character ? character.name : "#" + id}.`;
+          }
+          if (code === "situation_inactive") return `Situatie non-actief of ontbreekt: #${id}.`;
+          if (code === "required_character_missing") {
+            const character = itemById("characters", id);
+            return `Verplicht personage ontbreekt: ${character ? character.name : "#" + id}.`;
+          }
+          if (code === "character_not_allowed") {
+            const character = itemById("characters", id);
+            return `Personage niet toegestaan: ${character ? character.name : "#" + id}.`;
+          }
+          if (code === "environment_inactive") {
+            const environment = itemById("environments", id);
+            return `Omgeving non-actief of ontbreekt: ${environment ? environment.name : "#" + id}.`;
+          }
+          if (code === "context_scene_self") return "Contextsituatie kan niet dezelfde situatie zijn.";
+          if (code === "context_scene_inactive") return `Contextsituatie non-actief of ontbreekt: ${contextSceneTitle(id)}.`;
+          if (code === "context_scene_invalid") return `Contextsituatie is niet speelbaar: ${contextSceneTitle(id)}.`;
+          if (code === "context_scene_cycle") return "Contextsituaties vormen een cirkel.";
+          return text;
+        }
+
+        function sceneCastWarnings(scene) {
+          if (!scene) return [];
+          const byPerformer = new Map();
+          const warnings = [];
+          sceneSlotsFromItem(scene).forEach((id) => {
+            if (!id) return;
+            const character = itemById("characters", id);
+            const performerId = Number(character && character.performerId || 0);
+            if (!character || !performerId) return;
+            const performer = itemById("performers", performerId);
+            if (!performer || !isActiveItem(performer)) {
+              warnings.push(`performer_inactive:${performerId}:character:${character.id}`);
+            }
+            const bucket = byPerformer.get(performerId) || [];
+            bucket.push(Number(character.id || 0));
+            byPerformer.set(performerId, bucket);
+          });
+          byPerformer.forEach((characterIds, performerId) => {
+            const uniqueIds = Array.from(new Set(characterIds));
+            if (uniqueIds.length > 1) warnings.push(`performer_conflict:${performerId}:${uniqueIds.join(",")}`);
+          });
+          return warnings;
+        }
+
         function sceneLinkIssues(scene) {
           if (!scene) return [];
           const issues = [];
@@ -1065,6 +1233,7 @@
             else if (!isActiveItem(contextScene)) issues.push(`Contextsituatie is non-actief: ${contextScene.title}.`);
             else if (sceneHasContextCycle(scene)) issues.push("Contextsituaties vormen een cirkel.");
           }
+          for (const warning of sceneCastWarnings(scene)) issues.push(formatSceneWarning(warning));
           return issues;
         }
 
@@ -1215,7 +1384,16 @@
           if (!visible) {
             edit.character = 0;
             $("characterName").value = "";
+            $("characterPerformer").value = "0";
             $("characterDescription").value = "";
+          }
+        }
+
+        function setPerformerFormVisible(visible) {
+          $("performerForm").classList.toggle("hidden", !visible);
+          if (!visible) {
+            edit.performer = 0;
+            $("performerName").value = "";
           }
         }
 
@@ -1305,31 +1483,15 @@
           return `${orderEntryScore(entry, scores).toFixed(2)} punten`;
         }
 
-        function buildLiveOrderRows() {
+        function currentOrderRows() {
           const order = state && state.currentOrder ? state.currentOrder : {};
-          const groups = [
-            Array.isArray(order.calibrationScenes) ? order.calibrationScenes : [],
-            Array.isArray(order.upcoming) ? order.upcoming : [],
-            Array.isArray(order.hiddenPlayed) ? order.hiddenPlayed : [],
-            Array.isArray(order.invalid) ? order.invalid : [],
-          ];
-          const rows = [];
-          const seen = new Set();
-          for (const group of groups) {
-            for (const entry of group) {
-              const id = Number(entry && entry.sceneId || 0);
-              if (!id || seen.has(id)) continue;
-              seen.add(id);
-              rows.push(entry);
-            }
-          }
-          return rows;
+          return Array.isArray(order.rows) ? order.rows : [];
         }
 
         function buildEditableOrderRows() {
           const ids = orderDraftIds.length ? orderDraftIds : activeItems("scenes").map((item) => Number(item.id || 0));
           const calibrationCount = Number(state && state.settings && state.settings.calibrationCount || 5);
-          const liveById = new Map(buildLiveOrderRows().map((entry) => [Number(entry.sceneId || 0), entry]));
+          const liveById = new Map(currentOrderRows().map((entry) => [Number(entry.sceneId || 0), entry]));
           return ids.map((id, index) => {
             const scene = itemById("scenes", id);
             if (!scene) return null;
@@ -1357,25 +1519,41 @@
             return;
           }
           el.innerHTML = rows.map((entry, index) => {
-            const issues = entry && Array.isArray(entry.issues) && entry.issues.length
-              ? `<span class="badge warning">${esc(entry.issues.length + " probleem" + (entry.issues.length === 1 ? "" : "en"))}</span>`
+            const sceneId = Number(entry && entry.sceneId || 0);
+            const rowClasses = ["listItem", "orderItem"];
+            const isNext = !editing && (!!(entry && entry.next) || (!!nextSceneId && sceneId === nextSceneId));
+            const isActive = !editing && !!(entry && entry.active);
+            if (isNext) rowClasses.push("next");
+            if (isActive) rowClasses.push("active");
+            const issueCount = entry && Array.isArray(entry.issues) ? entry.issues.length : 0;
+            const warningCount = entry && Array.isArray(entry.warnings) ? entry.warnings.length : 0;
+            const noticeMessages = []
+              .concat(entry && Array.isArray(entry.issues) ? entry.issues.map(formatSceneIssue) : [])
+              .concat(entry && Array.isArray(entry.warnings) ? entry.warnings.map(formatSceneIssue) : [])
+              .filter(Boolean);
+            const issues = issueCount || warningCount
+              ? `<span class="badge warning">${esc((issueCount + warningCount) + " waarschuwing" + ((issueCount + warningCount) === 1 ? "" : "en"))}</span>`
+              : "";
+            const notices = noticeMessages.length
+              ? `<span class="orderNotice">${esc(noticeMessages.join(" "))}</span>`
               : "";
             const scene = orderEntryScene(entry);
             const contextId = Number(entry && entry.contextSceneId || scene && scene.contextSceneId || 0);
             const contextBadge = contextId ? `<span class="badge">context: ${esc(contextSceneTitle(contextId))}</span>` : "";
             return `
-              <div class="listItem orderItem ${entry && entry.active ? "active" : ""}" data-id="${Number(entry && entry.sceneId || 0)}">
+              <div class="${rowClasses.join(" ")}" data-id="${sceneId}">
                 <span class="orderNumber">${index + 1}</span>
                 <span class="orderBody">
                   <span class="nameLine">
                     <span class="orderTitle">${esc(orderEntryTitle(entry))}</span>
-                    <span class="actions">${renderOrderBadges(entry, { nextSceneId })}</span>
+                    <span class="actions">${renderOrderBadges({ ...entry, next: isNext }, { nextSceneId: isNext ? sceneId : 0 })}</span>
                   </span>
                   <span class="orderMeta">
                     <span class="badge">${esc(formatOrderPoints(entry, scores))}</span>
                     ${contextBadge}
                     ${issues}
                   </span>
+                  ${notices}
                 </span>
               </div>
             `;
@@ -1454,11 +1632,12 @@
         function renderCurrentOrder() {
           const order = state && state.currentOrder ? state.currentOrder : {};
           const calibration = order.calibration || { active: false, completed: 0, total: Number(state && state.settings && state.settings.calibrationCount || 5) };
-          const nextSceneId = Number(order.next && order.next.sceneId || state && state.recommendation && state.recommendation.scene && state.recommendation.scene.id || 0);
-          const calibrationRows = Array.isArray(order.calibrationScenes) ? order.calibrationScenes : [];
-          const upcomingRows = Array.isArray(order.upcoming) ? order.upcoming : [];
-          const hiddenRows = Array.isArray(order.hiddenPlayed) ? order.hiddenPlayed : [];
-          const invalidRows = Array.isArray(order.invalid) ? order.invalid : [];
+          const nextSceneId = Number(order.next && order.next.sceneId || 0);
+          const rows = currentOrderRows();
+          const hasQueueStatus = rows.some((entry) => entry && (entry.next || entry.active));
+          const warningRowCount = rows
+            .filter((entry) => (entry.issues && entry.issues.length) || (entry.warnings && entry.warnings.length))
+            .length;
           $("orderCalibrationBadge").textContent = calibration.active
             ? `calibratie ${calibration.completed}/${calibration.total}`
             : "algoritme actief";
@@ -1467,10 +1646,12 @@
           $("orderCycleBadge").className = "badge " + (order.cycleComplete ? "good" : "");
           $("orderListBadge").textContent = orderEditOpen
             ? `${activeItems("scenes").length} in basisvolgorde`
-            : `${calibrationRows.length + upcomingRows.length + hiddenRows.length} in lijst`;
-          $("orderInvalidBadge").textContent = `${invalidRows.length} waarschuwing`;
+            : `${rows.length} in lijst`;
+          $("orderInvalidBadge").textContent = `${warningRowCount} waarschuwing`;
           $("orderSummary").textContent = orderEditOpen
             ? "Je past nu de basisvolgorde aan. De eerste posities worden de calibratiesituaties."
+            : rows.length && !hasQueueStatus
+              ? "Geen actieve of volgende situatie beschikbaar. Check waarschuwingen of reset de runs om opnieuw vanaf het begin te starten."
             : calibration.active
               ? "De eerste posities zijn calibratie. Klik op pas aan om deze lijst direct te slepen."
               : order.cycleComplete
@@ -1478,9 +1659,10 @@
                 : "De lijst wordt live gerankt uit publieksreacties. Punten laten zien waarom iets hoger of lager staat.";
           $("editOrderBtn").classList.toggle("hidden", orderEditOpen);
           $("orderEditHint").classList.toggle("hidden", !orderEditOpen);
+          $("orderEditSettings").classList.toggle("hidden", !orderEditOpen);
           $("orderEditActions").classList.toggle("active", orderEditOpen);
           if (orderEditOpen) destroyOrderBaseSortable();
-          renderUnifiedOrderList(orderEditOpen ? buildEditableOrderRows() : buildLiveOrderRows(), {
+          renderUnifiedOrderList(orderEditOpen ? buildEditableOrderRows() : rows, {
             nextSceneId,
             editing: orderEditOpen,
           });
@@ -1489,7 +1671,13 @@
 
         function renderCatalog() {
           const sceneFormOpen = isSceneFormOpen();
+          const characterFormOpen = !$("characterForm").classList.contains("hidden");
           if (sceneFormOpen) syncSceneDraftFromDom();
+          renderPerformersList("performersList", activeItems("performers"), false);
+          renderPerformersList("performersInactiveList", inactiveItems("performers"), true);
+          renderCharacterPerformerOptions(characterFormOpen
+            ? Number($("characterPerformer").value || 0)
+            : edit.character ? (itemById("characters", edit.character) || {}).performerId : 0);
           renderCharactersList("charactersList", activeItems("characters"), false);
           renderCharactersList("charactersInactiveList", inactiveItems("characters"), true);
           renderCatalogList("environmentsList", activeItems("environments"), {
@@ -1540,15 +1728,24 @@
         }
 
         function preparedSceneId() {
-          return Number(state && state.recommendation && state.recommendation.scene && state.recommendation.scene.id || 0);
+          return Number(state && state.currentOrder && state.currentOrder.next && state.currentOrder.next.sceneId || 0);
         }
 
         function fillCharacter(item = null) {
           edit.character = Number(item && item.id || 0);
           expanded.character = edit.character || 0;
           $("characterName").value = item ? item.name || "" : "";
+          renderCharacterPerformerOptions(item ? item.performerId || 0 : 0);
           $("characterDescription").value = item ? item.description || "" : "";
           setCharacterFormVisible(true);
+          renderCatalog();
+        }
+
+        function fillPerformer(item = null) {
+          edit.performer = Number(item && item.id || 0);
+          expanded.performer = edit.performer || 0;
+          $("performerName").value = item ? item.name || "" : "";
+          setPerformerFormVisible(true);
           renderCatalog();
         }
 
@@ -1573,10 +1770,14 @@
 
         function renderLive() {
           const activeRun = state.activeRun || null;
-          const activeScene = state.activeScene || null;
           const recommendation = state.recommendation || {};
-          const calibration = recommendation.calibration || { active: false, completed: 0, total: 0 };
+          const currentOrder = state.currentOrder || {};
+          const calibration = currentOrder.calibration || recommendation.calibration || { active: false, completed: 0, total: 0 };
           const runtime = state.runtime || {};
+          const promptText = activeRun && activeRun.promptSnapshot
+            ? activeRun.promptSnapshot
+            : recommendation.prompt || "";
+          const hasPreparedScene = !!preparedSceneId();
           topMetaEl.textContent = `Sessie ${state.session.id} - ${state.session.isActive ? "actief" : "gesloten"}`;
           buildBadgeEl.textContent = runtime.buildLabel || runtime.buildVersion || "build onbekend";
           $("calibrationBadge").textContent = calibration.active
@@ -1586,20 +1787,10 @@
           $("heartStat").textContent = String(activeRun ? activeRun.heartCount || 0 : 0);
           $("boredStat").textContent = String(activeRun ? activeRun.boredCount || 0 : 0);
           $("commentStat").textContent = String(activeRun ? activeRun.commentCount || 0 : 0);
-          $("activeSceneTitle").textContent = activeScene ? activeScene.title : "Geen actieve situatie";
-          $("activeSceneMeta").textContent = activeRun
-            ? `Run ${activeRun.runOrder} - gestart ${formatTime(activeRun.startedAt)}`
-            : "";
-          $("upNextTitle").textContent = recommendation.scene ? recommendation.scene.title : "Geen volgende situatie";
-          $("upNextMeta").textContent = recommendation.scene
-            ? `${Number(recommendation.score || 0).toFixed(2)} punten`
-            : "";
-          $("recommendationTitle").textContent = recommendation.scene ? recommendation.scene.title : "Geen aanbeveling";
-          $("recommendationReason").textContent = recommendation.reason || "";
-          $("recommendationScore").textContent = recommendation.scene ? `score ${Number(recommendation.score || 0).toFixed(2)}` : "";
-          $("promptOutput").value = recommendation.prompt || "";
-          $("promptMeta").textContent = recommendation.prompt ? `${recommendation.prompt.length} tekens` : "geen prompt";
-          $("sceneToggleBtn").textContent = activeRun ? "Stop situatie" : "Volgende situatie";
+          $("promptOutput").value = promptText;
+          $("promptMeta").textContent = promptText ? `${promptText.length} tekens` : "geen prompt";
+          $("sceneToggleBtn").textContent = activeRun ? "Stop situatie" : hasPreparedScene ? "Volgende situatie" : "Geen volgende situatie";
+          $("sceneToggleBtn").disabled = !activeRun && !hasPreparedScene;
           $("sceneToggleBtn").classList.toggle("danger", !!activeRun);
           $("sceneToggleBtn").classList.toggle("primary", !activeRun);
           if (document.activeElement !== $("calibrationCount")) $("calibrationCount").value = String(state.settings.calibrationCount || 5);
@@ -1703,12 +1894,26 @@
           return result;
         }
 
+        async function saveAlgorithmSettings(msgTarget, successText) {
+          try {
+            await post("/admin/algorithm/settings", {
+              calibrationCount: $("calibrationCount").value,
+              globalPrompt: $("globalPrompt").value,
+              promptTemplate: $("promptTemplate").value,
+            }, msgTarget);
+            setMsg(msgTarget, successText || "Settings opgeslagen.");
+          } catch (err) {
+            setMsg(msgTarget, formatError(err), true);
+          }
+        }
+
         function archiveBody(kind, id) {
           return { kind, id };
         }
 
         function upsertPathForKind(kind) {
           return {
+            performer: "/admin/algorithm/performers/upsert",
             character: "/admin/algorithm/characters/upsert",
             situation: "/admin/algorithm/situations/upsert",
             environment: "/admin/algorithm/environments/upsert",
@@ -1718,8 +1923,11 @@
 
         function upsertBodyForItem(kind, item, isActive) {
           if (!item) return null;
+          if (kind === "performer") {
+            return { id: item.id, name: item.name, sortOrder: item.sortOrder || 0, isActive };
+          }
           if (kind === "character") {
-            return { id: item.id, name: item.name, description: item.description, isActive };
+            return { id: item.id, name: item.name, description: item.description, performerId: item.performerId || 0, isActive };
           }
           if (kind === "situation") {
             return {
@@ -1754,12 +1962,17 @@
         }
 
         function fillByKind(kind, item) {
+          if (kind === "performer") fillPerformer(item);
           if (kind === "character") fillCharacter(item);
           if (kind === "environment") fillEnvironment(item);
           if (kind === "scene") fillScene(item);
         }
 
         function clearEditForKind(kind) {
+          if (kind === "performer") {
+            setPerformerFormVisible(false);
+            return;
+          }
           if (kind === "character") {
             setCharacterFormVisible(false);
             return;
@@ -1778,6 +1991,7 @@
           const item = itemById(kind, id);
           if (action === "toggle") {
             expanded[kind] = Number(expanded[kind]) === id ? 0 : id;
+            if (kind === "performer") setPerformerFormVisible(false);
             if (kind === "character") setCharacterFormVisible(false);
             if (kind === "environment") setEnvironmentFormVisible(false);
             if (kind === "scene") setSceneFormVisible(false);
@@ -1813,6 +2027,8 @@
           });
 
           [
+            "performersList",
+            "performersInactiveList",
             "charactersList",
             "charactersInactiveList",
             "environmentsList",
@@ -1823,6 +2039,11 @@
             $(id).addEventListener("click", handleCatalogAction);
           });
 
+          $("newPerformerBtn").addEventListener("click", () => fillPerformer(null));
+          $("cancelPerformerBtn").addEventListener("click", () => {
+            setPerformerFormVisible(false);
+            renderCatalog();
+          });
           $("newCharacterBtn").addEventListener("click", () => fillCharacter(null));
           $("cancelCharacterBtn").addEventListener("click", () => {
             setCharacterFormVisible(false);
@@ -1870,12 +2091,27 @@
             updateSceneCharacterSlotOptions();
           });
 
+          $("savePerformerBtn").addEventListener("click", async () => {
+            try {
+              const result = await post("/admin/algorithm/performers/upsert", {
+                id: edit.performer || undefined,
+                name: $("performerName").value,
+                isActive: editedIsActive("performer", edit.performer),
+              });
+              expanded.performer = Number(result.performer && result.performer.id || 0);
+              setPerformerFormVisible(false);
+              renderCatalog();
+              refreshOpenSceneDraftControls();
+            } catch (err) { setMsg("catalogMsg", formatError(err), true); }
+          });
+
           $("saveCharacterBtn").addEventListener("click", async () => {
             try {
               const result = await post("/admin/algorithm/characters/upsert", {
                 id: edit.character || undefined,
                 name: $("characterName").value,
                 description: $("characterDescription").value,
+                performerId: Number($("characterPerformer").value || 0),
                 isActive: editedIsActive("character", edit.character),
               });
               expanded.character = Number(result.character && result.character.id || 0);
@@ -1928,14 +2164,11 @@
             } catch (err) { setMsg("catalogMsg", formatError(err), true); }
           });
 
-          $("saveSettingsBtn").addEventListener("click", async () => {
-            try {
-              await post("/admin/algorithm/settings", {
-                calibrationCount: $("calibrationCount").value,
-                globalPrompt: $("globalPrompt").value,
-                promptTemplate: $("promptTemplate").value,
-              }, "liveMsg");
-            } catch (err) { setMsg("liveMsg", formatError(err), true); }
+          $("saveCalibrationSettingsBtn").addEventListener("click", () => {
+            saveAlgorithmSettings("orderMsg", "Calibratie opgeslagen.");
+          });
+          $("savePromptSettingsBtn").addEventListener("click", () => {
+            saveAlgorithmSettings("promptMsg", "Prompt instellingen opgeslagen.");
           });
 
           $("editOrderBtn").addEventListener("click", openOrderEditor);
@@ -1954,13 +2187,6 @@
               setMsg("liveMsg", "Algoritme-runs gereset.");
             } catch (err) { setMsg("liveMsg", formatError(err), true); }
           });
-          $("recomputeBtn").addEventListener("click", async () => {
-            try {
-              await post("/admin/algorithm/recommendation/recompute", {}, "liveMsg");
-            } catch (err) { setMsg("liveMsg", formatError(err), true); }
-          });
-          $("sendCurrentBtn").addEventListener("click", () => sendTouchDesigner("current"));
-          $("sendNextBtn").addEventListener("click", () => sendTouchDesigner("next"));
         }
 
         async function deactivateSelected(kind, id) {
@@ -2064,6 +2290,7 @@
             item_must_be_inactive: "Zet dit item eerst non-actief.",
             scene_links_invalid: "Situatie-koppelingen kloppen nog niet.",
             scene_context_unmet: "Deze situatie heeft eerst een contextsituatie nodig.",
+            performer_not_found: "Speler niet gevonden.",
             name_required: "Naam is verplicht.",
             title_required: "Titel is verplicht.",
           }[code];

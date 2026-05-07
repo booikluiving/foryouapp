@@ -22,6 +22,7 @@ const {
   DEFAULT_ALGORITHM_SETTINGS,
   buildAudienceContext,
   buildAlgorithmOrder,
+  buildSceneWarnings,
   calculateRunScore,
   composeScenePrompt,
   computeEntityScores,
@@ -29,6 +30,7 @@ const {
   normalizeCharacter,
   normalizeEnvironment,
   normalizeIdList,
+  normalizePerformer,
   normalizeRun,
   normalizeScene,
   normalizeSituation,
@@ -148,6 +150,7 @@ const ALGORITHM_CALIBRATION_COUNT_SETTING_KEY = "algorithm_calibration_count";
 const ALGORITHM_GLOBAL_PROMPT_SETTING_KEY = "algorithm_global_prompt";
 const ALGORITHM_PROMPT_TEMPLATE_SETTING_KEY = "algorithm_prompt_template";
 const ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS = 3500;
+const DEFAULT_ALGORITHM_PERFORMERS = Object.freeze(["Megan", "Brent", "Booi"]);
 const SIM_DEFAULTS = {
   clients: 50,
   durationSec: 0,
@@ -2405,11 +2408,24 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_session_engagement_scores_session
     ON session_engagement_scores(session_id, last_activity_at);
 
+  CREATE TABLE IF NOT EXISTS algorithm_performers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    archived_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_algorithm_performers_active
+    ON algorithm_performers(is_active, archived_at, sort_order, id);
+
   CREATE TABLE IF NOT EXISTS algorithm_characters (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     description TEXT,
     prompt_text TEXT,
+    performer_id INTEGER,
     is_active INTEGER NOT NULL DEFAULT 1,
     archived_at TEXT,
     created_at TEXT NOT NULL,
@@ -2549,6 +2565,10 @@ const pollColumns = db.prepare("PRAGMA table_info(polls)").all();
 if (!pollColumns.some((column) => String(column.name || "") === "duration_seconds")) {
   db.exec(`ALTER TABLE polls ADD COLUMN duration_seconds INTEGER NOT NULL DEFAULT ${DEFAULT_POLL_DURATION_SECONDS}`);
 }
+const algorithmCharacterColumns = db.prepare("PRAGMA table_info(algorithm_characters)").all();
+if (!algorithmCharacterColumns.some((column) => String(column.name || "") === "performer_id")) {
+  db.exec("ALTER TABLE algorithm_characters ADD COLUMN performer_id INTEGER");
+}
 const algorithmSceneColumns = db.prepare("PRAGMA table_info(algorithm_scenes)").all();
 if (!algorithmSceneColumns.some((column) => String(column.name || "") === "character_count")) {
   db.exec("ALTER TABLE algorithm_scenes ADD COLUMN character_count INTEGER NOT NULL DEFAULT 1");
@@ -2562,6 +2582,21 @@ if (!algorithmSceneColumns.some((column) => String(column.name || "") === "envir
 if (!algorithmSceneColumns.some((column) => String(column.name || "") === "context_scene_id")) {
   db.exec("ALTER TABLE algorithm_scenes ADD COLUMN context_scene_id INTEGER");
 }
+
+function seedDefaultAlgorithmPerformers() {
+  const countRow = db.prepare("SELECT COUNT(1) AS n FROM algorithm_performers").get();
+  if (Number(countRow && countRow.n || 0) > 0) return;
+  const now = nowIso();
+  const insert = db.prepare(
+    `INSERT INTO algorithm_performers (name, sort_order, is_active, archived_at, created_at, updated_at)
+     VALUES (?, ?, 1, NULL, ?, ?)`
+  );
+  DEFAULT_ALGORITHM_PERFORMERS.forEach((name, index) => {
+    insert.run(name, (index + 1) * 10, now, now);
+  });
+}
+
+seedDefaultAlgorithmPerformers();
 
 const sql = {
   getOpenSession: db.prepare(
@@ -2669,25 +2704,58 @@ const sql = {
     `DELETE FROM session_engagement_scores
      WHERE session_id = ?`
   ),
+  getAlgorithmPerformers: db.prepare(
+    `SELECT id, name, sort_order AS sortOrder, is_active AS isActive,
+      archived_at AS archivedAt, created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_performers
+     ORDER BY archived_at IS NOT NULL ASC, is_active DESC, sort_order ASC, name COLLATE NOCASE ASC, id ASC`
+  ),
+  getAlgorithmPerformerById: db.prepare(
+    `SELECT id, name, sort_order AS sortOrder, is_active AS isActive,
+      archived_at AS archivedAt, created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_performers
+     WHERE id = ?`
+  ),
+  insertAlgorithmPerformer: db.prepare(
+    `INSERT INTO algorithm_performers (name, sort_order, is_active, archived_at, created_at, updated_at)
+     VALUES (?, ?, ?, NULL, ?, ?)`
+  ),
+  updateAlgorithmPerformer: db.prepare(
+    `UPDATE algorithm_performers
+     SET name = ?, sort_order = ?, is_active = ?, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  archiveAlgorithmPerformer: db.prepare(
+    `UPDATE algorithm_performers
+     SET is_active = 0, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  deleteAlgorithmPerformer: db.prepare(
+    `DELETE FROM algorithm_performers
+     WHERE id = ? AND is_active = 0`
+  ),
   getAlgorithmCharacters: db.prepare(
-    `SELECT id, name, description, is_active AS isActive, archived_at AS archivedAt,
+    `SELECT id, name, description, performer_id AS performerId,
+      is_active AS isActive, archived_at AS archivedAt,
       created_at AS createdAt, updated_at AS updatedAt
      FROM algorithm_characters
      ORDER BY archived_at IS NOT NULL ASC, is_active DESC, name COLLATE NOCASE ASC, id ASC`
   ),
   getAlgorithmCharacterById: db.prepare(
-    `SELECT id, name, description, is_active AS isActive, archived_at AS archivedAt,
+    `SELECT id, name, description, performer_id AS performerId,
+      is_active AS isActive, archived_at AS archivedAt,
       created_at AS createdAt, updated_at AS updatedAt
      FROM algorithm_characters
      WHERE id = ?`
   ),
   insertAlgorithmCharacter: db.prepare(
-    `INSERT INTO algorithm_characters (name, description, prompt_text, is_active, archived_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, NULL, ?, ?)`
+    `INSERT INTO algorithm_characters (name, description, prompt_text, performer_id, is_active, archived_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`
   ),
   updateAlgorithmCharacter: db.prepare(
     `UPDATE algorithm_characters
-     SET name = ?, description = ?, prompt_text = ?, is_active = ?, archived_at = ?, updated_at = ?
+     SET name = ?, description = ?, prompt_text = ?, performer_id = ?,
+      is_active = ?, archived_at = ?, updated_at = ?
      WHERE id = ?`
   ),
   archiveAlgorithmCharacter: db.prepare(
@@ -3489,6 +3557,18 @@ function parseAlgorithmCharacterRow(row) {
     id: row.id,
     name: row.name,
     description: row.description,
+    performerId: row.performerId,
+    isActive: Number(row.isActive || 0) > 0,
+    archivedAt: row.archivedAt || "",
+  });
+}
+
+function parseAlgorithmPerformerRow(row) {
+  if (!row) return null;
+  return normalizePerformer({
+    id: row.id,
+    name: row.name,
+    sortOrder: row.sortOrder,
     isActive: Number(row.isActive || 0) > 0,
     archivedAt: row.archivedAt || "",
   });
@@ -3581,6 +3661,7 @@ function saveAlgorithmSettings(patch = {}) {
 
 function getAlgorithmCatalog() {
   return {
+    performers: sql.getAlgorithmPerformers.all().map(parseAlgorithmPerformerRow).filter(Boolean),
     characters: sql.getAlgorithmCharacters.all().map(parseAlgorithmCharacterRow).filter(Boolean),
     situations: sql.getAlgorithmSituations.all().map(parseAlgorithmSituationRow).filter(Boolean),
     environments: sql.getAlgorithmEnvironments.all().map(parseAlgorithmEnvironmentRow).filter(Boolean),
@@ -3598,6 +3679,10 @@ function getActiveAlgorithmRunForCurrentSession() {
 
 function getAlgorithmSceneById(sceneId) {
   return parseAlgorithmSceneRow(sql.getAlgorithmSceneById.get(sceneId));
+}
+
+function getAlgorithmPerformerById(performerId) {
+  return parseAlgorithmPerformerRow(sql.getAlgorithmPerformerById.get(performerId));
 }
 
 function buildAlgorithmEntityLabels(catalog) {
@@ -3620,6 +3705,7 @@ function expandAlgorithmScene(scene, catalog) {
     situations: scene.situationIds.map((id) => situationById.get(Number(id))).filter(Boolean),
     environment: scene.environmentId ? (environmentById.get(Number(scene.environmentId)) || null) : null,
     contextScene: scene.contextSceneId ? (getAlgorithmSceneById(scene.contextSceneId) || null) : null,
+    castWarnings: buildSceneWarnings(scene, catalog),
   };
 }
 
@@ -3641,13 +3727,14 @@ function buildAlgorithmPromptForScene(scene, catalog, recommendation = null) {
   });
 }
 
-function buildAlgorithmRecommendation(catalog = getAlgorithmCatalog(), runs = getAlgorithmRunsForCurrentSession()) {
+function buildAlgorithmRecommendation(catalog = getAlgorithmCatalog(), runs = getAlgorithmRunsForCurrentSession(), currentOrder = null) {
   const settings = getAlgorithmSettings();
   const recommendation = pickRecommendation({
     scenes: catalog.scenes,
     runs,
     settings,
     catalog,
+    order: currentOrder,
   });
   const scene = recommendation && recommendation.scene
     ? getAlgorithmSceneById(recommendation.scene.id) || recommendation.scene
@@ -3738,6 +3825,7 @@ function buildAlgorithmTouchDesignerPayload(bundle, options = {}) {
           title: String(expandedScene && expandedScene.contextScene && expandedScene.contextScene.title || ""),
         }
       : null,
+    castWarnings: expandedScene && Array.isArray(expandedScene.castWarnings) ? expandedScene.castWarnings : [],
     score: Number(safeBundle.score || 0),
     reason: String(safeBundle.reason || ""),
     calibration: safeBundle.calibration || null,
@@ -3755,7 +3843,7 @@ function getAlgorithmState() {
     settings,
     catalog,
   });
-  const recommendation = buildAlgorithmRecommendation(catalog, runs);
+  const recommendation = buildAlgorithmRecommendation(catalog, runs, currentOrder);
   const entityScores = currentOrder.entityScores || computeEntityScores({ scenes: catalog.scenes, runs });
   const activeScene = activeAlgorithmRun
     ? expandAlgorithmScene(getAlgorithmSceneById(activeAlgorithmRun.sceneId), catalog)
@@ -3788,16 +3876,56 @@ function getAlgorithmState() {
   };
 }
 
+function upsertAlgorithmPerformerFromBody(body = {}) {
+  const now = nowIso();
+  const safeBody = body && typeof body === "object" ? body : {};
+  const incomingId = Number.parseInt(String(safeBody.id || ""), 10);
+  const existing = Number.isInteger(incomingId) && incomingId > 0
+    ? parseAlgorithmPerformerRow(sql.getAlgorithmPerformerById.get(incomingId))
+    : null;
+  if (incomingId && !existing) throw new Error("performer_not_found");
+  const currentPerformers = sql.getAlgorithmPerformers.all().map(parseAlgorithmPerformerRow).filter(Boolean);
+  const nextSortOrder = safeBody.sortOrder !== undefined && safeBody.sortOrder !== null && String(safeBody.sortOrder).trim() !== ""
+    ? safeBody.sortOrder
+    : existing
+      ? existing.sortOrder
+      : currentPerformers.reduce((max, item) => Math.max(max, Number(item.sortOrder || 0)), 0) + 10;
+  const item = normalizePerformer({
+    id: safeBody.id,
+    name: sanitizeAlgorithmText(safeBody.name, 120),
+    sortOrder: nextSortOrder,
+    isActive: safeBody.isActive,
+    archivedAt: safeBody.archivedAt,
+  });
+  if (!item.name) throw new Error("name_required");
+  if (item.id) {
+    const archivedAt = item.isActive ? "" : (existing.archivedAt || "");
+    sql.updateAlgorithmPerformer.run(
+      item.name,
+      item.sortOrder,
+      item.isActive ? 1 : 0,
+      archivedAt || null,
+      now,
+      item.id
+    );
+    return parseAlgorithmPerformerRow(sql.getAlgorithmPerformerById.get(item.id));
+  }
+  const insert = sql.insertAlgorithmPerformer.run(item.name, item.sortOrder, item.isActive ? 1 : 0, now, now);
+  return parseAlgorithmPerformerRow(sql.getAlgorithmPerformerById.get(insert.lastInsertRowid));
+}
+
 function upsertAlgorithmCharacterFromBody(body = {}) {
   const now = nowIso();
   const item = normalizeCharacter({
     id: body.id,
     name: sanitizeAlgorithmText(body.name, 120),
     description: sanitizeAlgorithmText(body.description, 1600),
+    performerId: body.performerId,
     isActive: body.isActive,
     archivedAt: body.archivedAt,
   });
   if (!item.name) throw new Error("name_required");
+  if (item.performerId && !getAlgorithmPerformerById(item.performerId)) throw new Error("performer_not_found");
   if (item.id) {
     const existing = parseAlgorithmCharacterRow(sql.getAlgorithmCharacterById.get(item.id));
     if (!existing) throw new Error("character_not_found");
@@ -3806,6 +3934,7 @@ function upsertAlgorithmCharacterFromBody(body = {}) {
       item.name,
       item.description,
       "",
+      item.performerId || null,
       item.isActive ? 1 : 0,
       archivedAt || null,
       now,
@@ -3813,7 +3942,15 @@ function upsertAlgorithmCharacterFromBody(body = {}) {
     );
     return parseAlgorithmCharacterRow(sql.getAlgorithmCharacterById.get(item.id));
   }
-  const insert = sql.insertAlgorithmCharacter.run(item.name, item.description, "", item.isActive ? 1 : 0, now, now);
+  const insert = sql.insertAlgorithmCharacter.run(
+    item.name,
+    item.description,
+    "",
+    item.performerId || null,
+    item.isActive ? 1 : 0,
+    now,
+    now
+  );
   return parseAlgorithmCharacterRow(sql.getAlgorithmCharacterById.get(insert.lastInsertRowid));
 }
 
@@ -3993,6 +4130,10 @@ function archiveAlgorithmItem(kind, id) {
   const now = nowIso();
   const safeId = Number.parseInt(String(id || ""), 10);
   if (!Number.isInteger(safeId) || safeId < 1) throw new Error("id_required");
+  if (kind === "performer") {
+    sql.archiveAlgorithmPerformer.run(now, now, safeId);
+    return { kind, id: safeId };
+  }
   if (kind === "character") {
     sql.archiveAlgorithmCharacter.run(now, now, safeId);
     return { kind, id: safeId };
@@ -4016,6 +4157,9 @@ function isAlgorithmEntityReferenced(kind, id) {
   const safeId = Number.parseInt(String(id || ""), 10);
   if (!Number.isInteger(safeId) || safeId < 1) return false;
   const catalog = getAlgorithmCatalog();
+  if (kind === "performer") {
+    return (catalog.characters || []).some((character) => Number(character.performerId || 0) === safeId);
+  }
   if (kind === "scene") {
     const row = sql.countAlgorithmRunsByScene.get(safeId);
     if (Number(row && row.n || 0) > 0) return true;
@@ -4033,6 +4177,12 @@ function deleteInactiveAlgorithmItem(kind, id) {
   const safeId = Number.parseInt(String(id || ""), 10);
   if (!Number.isInteger(safeId) || safeId < 1) throw new Error("id_required");
   if (isAlgorithmEntityReferenced(kind, safeId)) throw new Error("item_in_use");
+  if (kind === "performer") {
+    const item = parseAlgorithmPerformerRow(sql.getAlgorithmPerformerById.get(safeId));
+    if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
+    sql.deleteAlgorithmPerformer.run(safeId);
+    return { kind, id: safeId };
+  }
   if (kind === "character") {
     const item = parseAlgorithmCharacterRow(sql.getAlgorithmCharacterById.get(safeId));
     if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
@@ -8784,6 +8934,15 @@ app.post("/admin/algorithm/settings", requireAdmin, (req, res) => {
   try {
     const settings = saveAlgorithmSettings(req.body && typeof req.body === "object" ? req.body : {});
     res.json({ ok: true, settings, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/performers/upsert", requireAdmin, (req, res) => {
+  try {
+    const performer = upsertAlgorithmPerformerFromBody(req.body || {});
+    res.json({ ok: true, performer, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }

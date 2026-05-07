@@ -6,11 +6,21 @@ const path = require("path");
 const { DatabaseSync } = require("node:sqlite");
 
 const TABLES = Object.freeze({
+  algorithm_performers: [
+    "id",
+    "name",
+    "sort_order",
+    "is_active",
+    "archived_at",
+    "created_at",
+    "updated_at",
+  ],
   algorithm_characters: [
     "id",
     "name",
     "description",
     "prompt_text",
+    "performer_id",
     "is_active",
     "archived_at",
     "created_at",
@@ -100,6 +110,21 @@ function openDb(dbPath) {
 }
 
 function ensureAlgorithmSchema(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS algorithm_performers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      archived_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  const characterColumns = db.prepare("PRAGMA table_info(algorithm_characters)").all();
+  if (!characterColumns.some((column) => String(column.name || "") === "performer_id")) {
+    db.exec("ALTER TABLE algorithm_characters ADD COLUMN performer_id INTEGER");
+  }
   const sceneColumns = db.prepare("PRAGMA table_info(algorithm_scenes)").all();
   if (!sceneColumns.some((column) => String(column.name || "") === "context_scene_id")) {
     db.exec("ALTER TABLE algorithm_scenes ADD COLUMN context_scene_id INTEGER");
@@ -183,6 +208,7 @@ function importCatalog(dbPath, payload) {
     importRows(db, "algorithm_situations", TABLES.algorithm_situations, normalizeRows(payload, "algorithm_situations"));
     importRows(db, "algorithm_environments", TABLES.algorithm_environments, normalizeRows(payload, "algorithm_environments"));
     importRows(db, "algorithm_characters", TABLES.algorithm_characters, normalizeRows(payload, "algorithm_characters"));
+    importRows(db, "algorithm_performers", TABLES.algorithm_performers, normalizeRows(payload, "algorithm_performers"));
     importSettings(db, payload.settings);
     db.exec("COMMIT");
   } catch (err) {
