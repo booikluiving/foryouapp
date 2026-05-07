@@ -10,6 +10,7 @@ const TABLES = Object.freeze({
     "id",
     "name",
     "sort_order",
+    "role_slot",
     "is_active",
     "archived_at",
     "created_at",
@@ -121,6 +122,19 @@ function ensureAlgorithmSchema(db) {
       updated_at TEXT NOT NULL
     )
   `);
+  const performerColumns = db.prepare("PRAGMA table_info(algorithm_performers)").all();
+  if (!performerColumns.some((column) => String(column.name || "") === "role_slot")) {
+    db.exec("ALTER TABLE algorithm_performers ADD COLUMN role_slot INTEGER NOT NULL DEFAULT 0");
+    db.exec(`
+      UPDATE algorithm_performers
+      SET role_slot = CASE lower(name)
+        WHEN 'booi' THEN 1
+        WHEN 'megan' THEN 2
+        WHEN 'brent' THEN 3
+        ELSE role_slot
+      END
+    `);
+  }
   const characterColumns = db.prepare("PRAGMA table_info(algorithm_characters)").all();
   if (!characterColumns.some((column) => String(column.name || "") === "performer_id")) {
     db.exec("ALTER TABLE algorithm_characters ADD COLUMN performer_id INTEGER");

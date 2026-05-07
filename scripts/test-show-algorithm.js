@@ -3,11 +3,15 @@
 
 const assert = require("assert");
 const {
+  ALGORITHM_RANDOM_SLOT_VALUE,
   buildAlgorithmOrder,
   buildSceneWarnings,
   calculateRunScore,
   composeScenePrompt,
+  normalizePerformer,
   normalizeScene,
+  normalizeSceneCharacterSlotsForPerformerRoles,
+  normalizeSceneForPerformerRoles,
   pickRecommendation,
   validateSceneLinks,
 } = require("../lib/show-algorithm");
@@ -505,6 +509,99 @@ function testCastWarningsDoNotBlockOrder() {
   assert.deepStrictEqual(order.upcoming[0].warnings, ["performer_conflict:1:1,2"]);
 }
 
+function testPerformerRoleSlotNormalization() {
+  assert.strictEqual(normalizePerformer({ name: "Booi", roleSlot: 1 }).roleSlot, 1);
+  assert.strictEqual(normalizePerformer({ name: "Megan", roleSlot: 2 }).roleSlot, 2);
+  assert.strictEqual(normalizePerformer({ name: "Brent", roleSlot: 3 }).roleSlot, 3);
+  assert.strictEqual(normalizePerformer({ name: "Iedereen", roleSlot: 8 }).roleSlot, 3);
+  assert.strictEqual(normalizePerformer({ name: "Geen", roleSlot: -1 }).roleSlot, 0);
+}
+
+function testRoleSlotsMoveFixedPerformersToActorSlots() {
+  const catalog = {
+    performers: [
+      { id: 1, name: "Booi", roleSlot: 1, isActive: true },
+      { id: 2, name: "Megan", roleSlot: 2, isActive: true },
+      { id: 3, name: "Brent", roleSlot: 3, isActive: true },
+    ],
+    characters: [
+      { id: 11, name: "Booi-rol", performerId: 1, isActive: true },
+      { id: 12, name: "Megan-rol", performerId: 2, isActive: true },
+      { id: 13, name: "Brent-rol", performerId: 3, isActive: true },
+    ],
+  };
+  assert.deepStrictEqual(
+    normalizeSceneCharacterSlotsForPerformerRoles([12, 11, 13], catalog),
+    [11, 12, 13]
+  );
+}
+
+function testRoleSlotsFillFreeActorSlotsWithFlexibleCharacters() {
+  const catalog = {
+    performers: [{ id: 2, name: "Megan", roleSlot: 2, isActive: true }],
+    characters: [
+      { id: 1, name: "Flex", performerId: 0, isActive: true },
+      { id: 2, name: "Megan-rol", performerId: 2, isActive: true },
+    ],
+  };
+  assert.deepStrictEqual(
+    normalizeSceneCharacterSlotsForPerformerRoles([2, 1], catalog),
+    [1, 2, 0]
+  );
+}
+
+function testRoleSlotsKeepEmptyActorSlotsAsNone() {
+  const catalog = {
+    performers: [{ id: 3, name: "Brent", roleSlot: 3, isActive: true }],
+    characters: [{ id: 3, name: "Brent-rol", performerId: 3, isActive: true }],
+  };
+  assert.deepStrictEqual(
+    normalizeSceneCharacterSlotsForPerformerRoles([3, 0], catalog),
+    [0, 0, 3]
+  );
+}
+
+function testRoleSlotsKeepExplicitRandomOnActorSlot() {
+  const catalog = {
+    performers: [{ id: 3, name: "Brent", roleSlot: 3, isActive: true }],
+    characters: [{ id: 3, name: "Brent-rol", performerId: 3, isActive: true }],
+  };
+  assert.deepStrictEqual(
+    normalizeSceneCharacterSlotsForPerformerRoles([0, ALGORITHM_RANDOM_SLOT_VALUE, 3], catalog),
+    [0, ALGORITHM_RANDOM_SLOT_VALUE, 3]
+  );
+}
+
+function testRoleSlotsKeepExtraRolesAfterActorSlots() {
+  const catalog = {
+    performers: [{ id: 3, name: "Brent", roleSlot: 3, isActive: true }],
+    characters: [
+      { id: 1, name: "Flex 1", performerId: 0, isActive: true },
+      { id: 2, name: "Flex 2", performerId: 0, isActive: true },
+      { id: 3, name: "Brent-rol", performerId: 3, isActive: true },
+      { id: 4, name: "Flex 3", performerId: 0, isActive: true },
+    ],
+  };
+  assert.deepStrictEqual(
+    normalizeSceneCharacterSlotsForPerformerRoles([3, 1, 2, 4], catalog),
+    [1, 2, 3, 4]
+  );
+}
+
+function testSceneForPerformerRolesUpdatesCharacterIdsAndCount() {
+  const catalog = {
+    performers: [{ id: 3, name: "Brent", roleSlot: 3, isActive: true }],
+    characters: [{ id: 3, name: "Brent-rol", performerId: 3, isActive: true }],
+  };
+  const scene = normalizeSceneForPerformerRoles(
+    { id: 1, title: "Brent solo", characterCount: 1, characterSlots: [3], characterIds: [3] },
+    catalog
+  );
+  assert.deepStrictEqual(scene.characterSlots, [0, 0, 3]);
+  assert.deepStrictEqual(scene.characterIds, [3]);
+  assert.strictEqual(scene.characterCount, 3);
+}
+
 function testPromptComposition() {
   const prompt = composeScenePrompt({
     scene: { id: 1, title: "De test", promptOverride: "Peter bekent iets." },
@@ -526,33 +623,33 @@ function testPromptCompositionWithRandomSlots() {
     scene: {
       id: 1,
       title: "Random bezoek",
-      characterCount: 2,
-      characterSlots: [1, 0],
+      characterCount: 3,
+      characterSlots: [1, ALGORITHM_RANDOM_SLOT_VALUE, 0],
       environmentMode: "random",
       promptOverride: "Iemand verschijnt onverwacht.",
     },
     characters: [{ id: 1, name: "Peter", description: "Peter is nerveus." }],
+    performers: [{ id: 1, name: "Megan", roleSlot: 2, isActive: true }],
     settings: { calibrationCount: 1 },
   });
   assert(prompt.includes("Personage 1: Peter Peter is nerveus."));
-  assert(prompt.includes("Personage 2: random personage."));
+  assert(prompt.includes("Personage 2: random personage voor Megan."));
   assert(prompt.includes("Locatie: Random omgeving"));
 }
 
-function testPromptCompositionWithMultipleRandomSlots() {
+function testPromptCompositionSkipsEmptySlots() {
   const prompt = composeScenePrompt({
     scene: {
       id: 1,
-      title: "Random drietal",
+      title: "Leeg drietal",
       characterCount: 3,
       characterSlots: [0, 0, 0],
       environmentMode: "random",
     },
     settings: { calibrationCount: 1 },
   });
-  assert(prompt.includes("Personage 1: random personage."));
-  assert(prompt.includes("Personage 2: random personage."));
-  assert(prompt.includes("Personage 3: random personage."));
+  assert(prompt.includes("Geen personages."));
+  assert(!prompt.includes("random personage."));
 }
 
 testScoreFormula();
@@ -582,8 +679,15 @@ testCastWarningsDetectSamePerformer();
 testCastWarningsAllowDifferentPerformers();
 testCastWarningsIgnoreRandomSlots();
 testCastWarningsDoNotBlockOrder();
+testPerformerRoleSlotNormalization();
+testRoleSlotsMoveFixedPerformersToActorSlots();
+testRoleSlotsFillFreeActorSlotsWithFlexibleCharacters();
+testRoleSlotsKeepEmptyActorSlotsAsNone();
+testRoleSlotsKeepExplicitRandomOnActorSlot();
+testRoleSlotsKeepExtraRolesAfterActorSlots();
+testSceneForPerformerRolesUpdatesCharacterIdsAndCount();
 testPromptComposition();
 testPromptCompositionWithRandomSlots();
-testPromptCompositionWithMultipleRandomSlots();
+testPromptCompositionSkipsEmptySlots();
 
 console.log("show-algorithm tests passed");

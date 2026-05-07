@@ -231,6 +231,35 @@
       .stack { display: grid; gap: 10px; }
       .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
       .three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+      .slotOverview {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+      }
+
+      .slotCell {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px 9px;
+        min-width: 0;
+      }
+
+      .slotCell strong,
+      .slotCell span {
+        display: block;
+        overflow-wrap: anywhere;
+      }
+
+      .slotCell strong {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .slotCell span {
+        margin-top: 3px;
+        font-weight: 800;
+      }
 
       .tabs {
         display: grid;
@@ -654,6 +683,10 @@
           grid-template-columns: 1fr;
         }
 
+        .slotOverview {
+          grid-template-columns: 1fr;
+        }
+
       }
     </style>
   </head>
@@ -714,20 +747,27 @@
               <div id="charactersInactiveList" class="list" style="margin-top:8px;"></div>
             </details>
             <details class="inactiveBlock" open>
-              <summary>Spelers beheren</summary>
+              <summary>Performers beheren</summary>
+              <div id="performerSlotOverview" class="slotOverview" style="margin-top:8px;"></div>
               <div id="performerForm" class="stack hidden" style="margin-top:8px;">
                 <label>Naam<input id="performerName" maxlength="120" /></label>
+                <label>Performer-slot<select id="performerRoleSlot">
+                  <option value="0">Geen vast performer-slot</option>
+                  <option value="1">Performer 1</option>
+                  <option value="2">Performer 2</option>
+                  <option value="3">Performer 3</option>
+                </select></label>
                 <div class="actions">
                   <button id="savePerformerBtn" class="primary" type="button">Opslaan</button>
                   <button id="cancelPerformerBtn" type="button">Annuleer</button>
                 </div>
               </div>
               <div class="actions" style="margin-top:8px;">
-                <button id="newPerformerBtn" type="button">Voeg speler toe</button>
+                <button id="newPerformerBtn" type="button">Voeg performer toe</button>
               </div>
               <div id="performersList" class="list" style="margin-top:8px;"></div>
               <details class="inactiveBlock">
-                <summary>Non-actieve spelers</summary>
+                <summary>Non-actieve performers</summary>
                 <div id="performersInactiveList" class="list" style="margin-top:8px;"></div>
               </details>
             </details>
@@ -758,9 +798,10 @@
               <label>Contextsituatie<select id="sceneContextEnabled"><option value="no">Nee</option><option value="yes">Ja</option></select></label>
               <label id="sceneContextWrap" class="hidden">Speel eerst<select id="sceneContextScene"></select></label>
               <div id="sceneContextHint" class="small"></div>
-              <label>Aantal personages<select id="sceneCharacterCount"></select></label>
+              <select id="sceneCharacterCount" class="hidden"></select>
               <div id="sceneCharacterSlots" class="stack"></div>
               <div id="sceneCharacterSlotsHint" class="small"></div>
+              <div id="scenePerformerPreview" class="slotOverview"></div>
               <label>Omgeving<select id="sceneEnvironment"></select></label>
               <label>Beschrijving<textarea id="scenePrompt"></textarea></label>
               <div class="actions">
@@ -912,6 +953,9 @@
     <script>
       (() => {
         const TOKEN_KEY = "algorithm_admin_token_v1";
+        const ACTOR_SLOT_COUNT = 3;
+        const SLOT_NONE = 0;
+        const SLOT_RANDOM = -1;
         let token = "";
         let state = null;
         let edit = { performer: 0, character: 0, environment: 0, scene: 0 };
@@ -921,8 +965,8 @@
           id: 0,
           title: "",
           promptOverride: "",
-          characterCount: 1,
-          characterSlots: [0],
+          characterCount: ACTOR_SLOT_COUNT,
+          characterSlots: [0, 0, 0],
           environmentValue: "random",
           contextEnabled: false,
           contextSceneId: 0,
@@ -1131,9 +1175,72 @@
           const performerId = Number(id || 0);
           if (!performerId) return "Kan iedereen spelen";
           const performer = itemById("performers", performerId);
-          if (!performer) return `Speler ${performerId}`;
-          const name = performer.name || `Speler ${performerId}`;
-          return isActiveItem(performer) ? name : `${name} (non-actief)`;
+          if (!performer) return `Performer ${performerId}`;
+          const name = performer.name || `Performer ${performerId}`;
+          const roleSlot = Number(performer.roleSlot || 0);
+          const base = roleSlot >= 1 && roleSlot <= 3
+            ? `Performer ${roleSlot} - ${name}`
+            : name;
+          return isActiveItem(performer) ? base : `${base} (non-actief)`;
+        }
+
+        function performerRoleSlotLabel(slot) {
+          const safeSlot = Number(slot || 0);
+          if (safeSlot < 1 || safeSlot > 3) return "Geen vast performer-slot";
+          const performer = activeItems("performers").find((item) => Number(item.roleSlot || 0) === safeSlot);
+          return performer ? `Performer ${safeSlot} - ${performer.name}` : `Performer ${safeSlot} - vrij`;
+        }
+
+        function performerPreviewLabel(slot) {
+          const safeSlot = Number(slot || 0);
+          if (safeSlot < 1 || safeSlot > 3) return "Performer";
+          const performer = activeItems("performers").find((item) => Number(item.roleSlot || 0) === safeSlot);
+          return performer ? `Performer ${safeSlot} - ${performer.name}` : `Performer ${safeSlot} - vrij`;
+        }
+
+        function roleSlotForCharacterId(characterId) {
+          const character = itemById("characters", characterId);
+          const performer = character && character.performerId ? itemById("performers", character.performerId) : null;
+          const roleSlot = Number(performer && performer.roleSlot || 0);
+          return roleSlot >= 1 && roleSlot <= 3 ? roleSlot : 0;
+        }
+
+        function performerForRoleSlot(slot) {
+          const safeSlot = Number(slot || 0);
+          return activeItems("performers").find((item) => Number(item.roleSlot || 0) === safeSlot) || null;
+        }
+
+        function slotValueFromRaw(value) {
+          const n = Number.parseInt(String(value || ""), 10);
+          if (n === SLOT_RANDOM) return SLOT_RANDOM;
+          return Number.isInteger(n) && n > 0 ? n : SLOT_NONE;
+        }
+
+        function normalizeSceneSlotsByPerformerRoles(slots = []) {
+          const source = (Array.isArray(slots) ? slots : []).map(slotValueFromRaw);
+          if (!source.length) return [0, 0, 0];
+          const fixed = Array.from({ length: ACTOR_SLOT_COUNT }, () => SLOT_NONE);
+          const flexible = [];
+          source.slice(0, ACTOR_SLOT_COUNT).forEach((id, index) => {
+            if (id === SLOT_RANDOM) fixed[index] = SLOT_RANDOM;
+          });
+          source.forEach((id) => {
+            const roleSlot = id ? roleSlotForCharacterId(id) : 0;
+            if (id && roleSlot >= 1 && roleSlot <= 3) {
+              if (fixed[roleSlot - 1] <= 0) fixed[roleSlot - 1] = id;
+              return;
+            }
+            if (id > 0) flexible.push(id);
+          });
+          for (let index = 0; index < fixed.length && flexible.length; index += 1) {
+            if (fixed[index] === SLOT_NONE) fixed[index] = flexible.shift();
+          }
+          return fixed;
+        }
+
+        function normalizeOpenSceneDraftSlots() {
+          sceneDraft.characterSlots = normalizeSceneSlotsByPerformerRoles(sceneDraft.characterSlots);
+          sceneDraft.characterCount = ACTOR_SLOT_COUNT;
         }
 
         function renderCharacterPerformerOptions(selectedId = 0) {
@@ -1141,7 +1248,7 @@
           const performers = activeItemsWithSelected("performers", safeSelectedId ? [safeSelectedId] : []);
           $("characterPerformer").innerHTML = '<option value="0">Kan iedereen spelen</option>' + performers.map((item) => {
             const active = isActiveItem(item);
-            const label = active ? item.name : `${item.name} (non-actief)`;
+            const label = performerLabel(item.id);
             return `<option value="${item.id}" ${active ? "" : "disabled"}>${esc(label)}</option>`;
           }).join("");
           const hasSelectedOption = Array.from($("characterPerformer").options)
@@ -1154,6 +1261,22 @@
           parts.push(`Wordt gespeeld door: ${performerLabel(item.performerId)}`);
           if (item.description) parts.push(item.description);
           return parts.join("\n");
+        }
+
+        function performerDetail(item) {
+          return `Performer-slot: ${performerRoleSlotLabel(item.roleSlot)}`;
+        }
+
+        function renderPerformerSlotOverview() {
+          $("performerSlotOverview").innerHTML = [1, 2, 3].map((slot) => {
+            const performer = activeItems("performers").find((item) => Number(item.roleSlot || 0) === slot);
+            return `
+              <div class="slotCell">
+                <strong>Performer ${slot}</strong>
+                <span>${esc(performer ? performer.name : "vrij")}</span>
+              </div>
+            `;
+          }).join("");
         }
 
         function renderTabs() {}
@@ -1222,8 +1345,8 @@
             selectedId: edit.performer,
             inactive,
             labelFn: (item) => item.name || "Naamloos",
-            detailFn: (item) => "Speler voor vaste rolverdeling.",
-            emptyText: inactive ? "Geen non-actieve spelers." : "Nog geen spelers.",
+            detailFn: performerDetail,
+            emptyText: inactive ? "Geen non-actieve performers." : "Nog geen performers.",
           });
         }
 
@@ -1249,9 +1372,7 @@
         }
 
         function clampSceneCharacterCount(value) {
-          const n = Number.parseInt(String(value || ""), 10);
-          if (!Number.isInteger(n)) return 1;
-          return Math.max(1, Math.min(10, n));
+          return ACTOR_SLOT_COUNT;
         }
 
         function sceneSlotsFromItem(item = null, fallbackSlots = null) {
@@ -1262,38 +1383,32 @@
               : item && Array.isArray(item.characterIds) && item.characterIds.length
                 ? item.characterIds
                 : [0];
-          const count = clampSceneCharacterCount(
-            item && item.characterCount ? item.characterCount : raw.length || 1
-          );
-          return Array.from({ length: count }, (_, index) => {
-            const id = Number.parseInt(String(raw[index] || ""), 10);
-            return Number.isInteger(id) && id > 0 ? id : 0;
+          return Array.from({ length: ACTOR_SLOT_COUNT }, (_, index) => {
+            return slotValueFromRaw(raw[index]);
           });
         }
 
         function sceneSlotValues() {
           return Array.from($("sceneCharacterSlots").querySelectorAll("select[data-scene-character-slot]"))
             .map((select) => {
-              const id = Number.parseInt(String(select.value || ""), 10);
-              return Number.isInteger(id) && id > 0 ? id : 0;
+              return slotValueFromRaw(select.value);
             });
         }
 
         function sceneFormSlotValues() {
           const current = sceneSlotValues();
-          const count = clampSceneCharacterCount($("sceneCharacterCount").value);
-          return Array.from({ length: count }, (_, index) => current[index] || 0);
+          return Array.from({ length: ACTOR_SLOT_COUNT }, (_, index) => slotValueFromRaw(current[index]));
         }
 
         function sceneDraftFromItem(item = null) {
-          const slots = sceneSlotsFromItem(item);
+          const slots = normalizeSceneSlotsByPerformerRoles(sceneSlotsFromItem(item));
           const contextSceneId = Number(item && item.contextSceneId || 0);
           return {
             open: true,
             id: Number(item && item.id || 0),
             title: item ? item.title || "" : "",
             promptOverride: item ? item.promptOverride || "" : "",
-            characterCount: slots.length,
+            characterCount: ACTOR_SLOT_COUNT,
             characterSlots: slots,
             environmentValue: item && item.environmentMode !== "random" && item.environmentId
               ? String(item.environmentId)
@@ -1309,8 +1424,8 @@
             id: 0,
             title: "",
             promptOverride: "",
-            characterCount: 1,
-            characterSlots: [0],
+            characterCount: ACTOR_SLOT_COUNT,
+            characterSlots: [0, 0, 0],
             environmentValue: "random",
             contextEnabled: false,
             contextSceneId: 0,
@@ -1326,7 +1441,7 @@
           sceneDraft.title = $("sceneTitle").value;
           sceneDraft.promptOverride = $("scenePrompt").value;
           sceneDraft.characterSlots = sceneFormSlotValues();
-          sceneDraft.characterCount = sceneDraft.characterSlots.length;
+          sceneDraft.characterCount = ACTOR_SLOT_COUNT;
           sceneDraft.environmentValue = $("sceneEnvironment").value || "random";
           sceneDraft.contextEnabled = $("sceneContextEnabled").value === "yes";
           sceneDraft.contextSceneId = sceneDraft.contextEnabled ? Number($("sceneContextScene").value || 0) : 0;
@@ -1372,7 +1487,18 @@
             const performerId = Number(parts[1] || 0);
             const characterId = Number(parts[3] || 0);
             const character = itemById("characters", characterId);
-            return `Speler non-actief: ${performerLabel(performerId)} is gekoppeld aan ${character ? character.name : "#" + characterId}.`;
+            return `Performer non-actief: ${performerLabel(performerId)} is gekoppeld aan ${character ? character.name : "#" + characterId}.`;
+          }
+          if (text.startsWith("too_many_roles:")) {
+            const characterIds = String(text.split(":")[1] || "")
+              .split(",")
+              .map((id) => Number(id || 0))
+              .filter((id) => id > 0);
+            const names = characterIds.map((id) => {
+              const character = itemById("characters", id);
+              return character ? character.name : `#${id}`;
+            });
+            return `Te veel rollen voor 3 performers: ${names.join(", ")} staat buiten de performerslots.`;
           }
           return text;
         }
@@ -1381,6 +1507,7 @@
           const text = String(issue || "");
           if (!text) return "";
           if (text.startsWith("performer_")) return formatSceneWarning(text);
+          if (text.startsWith("too_many_roles:")) return formatSceneWarning(text);
           const parts = text.split(":");
           const code = parts[0] || "";
           const id = Number(parts[1] || 0);
@@ -1417,8 +1544,11 @@
           if (!scene) return [];
           const byPerformer = new Map();
           const warnings = [];
-          sceneSlotsFromItem(scene).forEach((id) => {
-            if (!id) return;
+          const rawSlots = Array.isArray(scene.characterSlots) && scene.characterSlots.length
+            ? scene.characterSlots.map(slotValueFromRaw)
+            : sceneSlotsFromItem(scene);
+          rawSlots.forEach((id) => {
+            if (id <= 0) return;
             const character = itemById("characters", id);
             const performerId = Number(character && character.performerId || 0);
             if (!character || !performerId) return;
@@ -1434,6 +1564,8 @@
             const uniqueIds = Array.from(new Set(characterIds));
             if (uniqueIds.length > 1) warnings.push(`performer_conflict:${performerId}:${uniqueIds.join(",")}`);
           });
+          const overflowIds = rawSlots.slice(ACTOR_SLOT_COUNT).filter((id) => id > 0);
+          if (overflowIds.length) warnings.push(`too_many_roles:${overflowIds.join(",")}`);
           return warnings;
         }
 
@@ -1441,7 +1573,7 @@
           if (!scene) return [];
           const issues = [];
           sceneSlotsFromItem(scene).forEach((id, index) => {
-            if (!id) return;
+            if (id <= 0) return;
             const character = itemById("characters", id);
             if (!character) issues.push(`Personage ${index + 1} ontbreekt (#${id}).`);
             else if (!isActiveItem(character)) issues.push(`Personage ${index + 1} is non-actief: ${character.name}.`);
@@ -1468,43 +1600,60 @@
 
         function renderSceneCharacterHint(slots = []) {
           const selectedIds = slots.filter((id) => id > 0);
-          const activeCharacters = activeItems("characters");
           const uniqueSelectedCount = new Set(selectedIds).size;
-          $("sceneCharacterSlotsHint").textContent = slots.length > activeCharacters.length
-            ? `Er zijn ${activeCharacters.length} actieve personages. Extra rollen blijven random totdat je meer personages toevoegt.`
-            : uniqueSelectedCount >= activeCharacters.length && activeCharacters.length > 0
-              ? "Alle actieve personages zijn al gekozen; andere rollen kunnen random blijven."
-              : "";
+          $("sceneCharacterSlotsHint").textContent = uniqueSelectedCount < selectedIds.length
+            ? "Een concreet personage kan maar in een veld tegelijk staan."
+            : "";
+        }
+
+        function sceneSlotValueLabel(id) {
+          const safeId = slotValueFromRaw(id);
+          if (safeId === SLOT_NONE) return "Geen";
+          if (safeId === SLOT_RANDOM) return "Random";
+          const character = itemById("characters", safeId);
+          return character
+            ? `${character.name}${isActiveItem(character) ? "" : " (non-actief)"}`
+            : `#${safeId}`;
+        }
+
+        function renderScenePerformerPreview(slots = []) {
+          const el = $("scenePerformerPreview");
+          if (!el) return;
+          const resolvedSlots = normalizeSceneSlotsByPerformerRoles(slots);
+          el.innerHTML = resolvedSlots.map((id, index) => `
+            <div class="slotCell">
+              <strong>${esc(performerPreviewLabel(index + 1))}</strong>
+              <span>${esc(sceneSlotValueLabel(id))}</span>
+            </div>
+          `).join("");
         }
 
         function updateSceneCharacterSlotOptions() {
           const selects = Array.from($("sceneCharacterSlots").querySelectorAll("select[data-scene-character-slot]"));
-          const slots = selects.map((select) => {
-            const id = Number.parseInt(String(select.value || ""), 10);
-            return Number.isInteger(id) && id > 0 ? id : 0;
-          });
+          const slots = selects.map((select) => slotValueFromRaw(select.value));
           const selectedSlotByCharacterId = new Map();
           slots.forEach((id, index) => {
             if (id > 0 && !selectedSlotByCharacterId.has(id)) selectedSlotByCharacterId.set(id, index);
           });
 
           selects.forEach((select, index) => {
-            const current = Number.parseInt(String(select.value || ""), 10) || 0;
+            const current = slotValueFromRaw(select.value);
             select.querySelectorAll("option").forEach((option) => {
-              const value = Number.parseInt(String(option.value || ""), 10) || 0;
-              if (!value) {
+              const value = slotValueFromRaw(option.value);
+              if (value === SLOT_NONE || value === SLOT_RANDOM) {
                 option.disabled = false;
-                option.textContent = "Random";
+                option.textContent = value === SLOT_RANDOM ? "Random" : "Geen";
                 return;
               }
               const baseLabel = option.getAttribute("data-character-name") || option.textContent.replace(/\s+\(al in personage \d+\)$/, "");
               const inactive = option.getAttribute("data-character-active") === "0";
               const takenIndex = selectedSlotByCharacterId.get(value);
               const unavailable = Number.isInteger(takenIndex) && takenIndex !== index && value !== current;
-              option.disabled = inactive || unavailable;
+              option.disabled = (inactive || unavailable) && value !== current;
               option.textContent = inactive
                 ? `${baseLabel} (non-actief)`
-                : unavailable ? `${baseLabel} (al in personage ${takenIndex + 1})` : baseLabel;
+                : unavailable ? `${baseLabel} (al in personage ${takenIndex + 1})`
+                : baseLabel;
             });
           });
 
@@ -1514,17 +1663,15 @@
         function renderSceneCharacterControls(item = null, fallbackSlots = null) {
           const slots = sceneSlotsFromItem(item, fallbackSlots);
           const selectedIds = slots.filter((id) => id > 0);
-          $("sceneCharacterCount").innerHTML = Array.from({ length: 10 }, (_, index) => {
-            const value = index + 1;
-            return `<option value="${value}">${value}</option>`;
-          }).join("");
-          $("sceneCharacterCount").value = String(slots.length);
+          $("sceneCharacterCount").innerHTML = `<option value="${ACTOR_SLOT_COUNT}">${ACTOR_SLOT_COUNT}</option>`;
+          $("sceneCharacterCount").value = String(ACTOR_SLOT_COUNT);
           const selectableCharacters = activeItemsWithSelected("characters", selectedIds);
           $("sceneCharacterSlots").innerHTML = slots.map((slotValue, index) => `
             <label>
               Personage ${index + 1}
               <select data-scene-character-slot="${index}">
-                <option value="0">Random</option>
+                <option value="0" ${slotValue === SLOT_NONE ? "selected" : ""}>Geen</option>
+                <option value="-1" ${slotValue === SLOT_RANDOM ? "selected" : ""}>Random</option>
                 ${selectableCharacters.map((item) => {
                   const itemId = Number(item.id || 0);
                   const selected = itemId === Number(slotValue);
@@ -1534,6 +1681,7 @@
             </label>
           `).join("");
           updateSceneCharacterSlotOptions();
+          renderScenePerformerPreview(slots);
         }
 
         function renderSceneEnvironmentOptions(environmentValue = "random") {
@@ -1596,6 +1744,7 @@
         function refreshOpenSceneDraftControls() {
           if (!isSceneFormOpen()) return;
           syncSceneDraftFromDom();
+          normalizeOpenSceneDraftSlots();
           renderSceneCharacterControls({
             characterCount: sceneDraft.characterCount,
             characterSlots: sceneDraft.characterSlots,
@@ -1619,6 +1768,7 @@
           if (!visible) {
             edit.performer = 0;
             $("performerName").value = "";
+            $("performerRoleSlot").value = "0";
           }
         }
 
@@ -1638,19 +1788,21 @@
             $("sceneTitle").value = "";
             $("scenePrompt").value = "";
             resetSceneDraft();
-            renderSceneCharacterControls(null, [0]);
+            renderSceneCharacterControls(null, [0, 0, 0]);
             renderSceneEnvironmentOptions("random");
             renderSceneContextControls();
           }
         }
 
         function describeScene(scene) {
-          const characterNames = sceneSlotsFromItem(scene).map((id, index) => {
-            if (!id) return `Personage ${index + 1}: random`;
+          const characterNames = normalizeSceneSlotsByPerformerRoles(sceneSlotsFromItem(scene)).map((id, index) => {
+            const roleLabel = performerPreviewLabel(index + 1);
+            if (id === SLOT_NONE) return `${roleLabel}: Geen`;
+            if (id === SLOT_RANDOM) return `${roleLabel}: Random`;
             const character = itemById("characters", id);
             return character
-              ? `Personage ${index + 1}: ${character.name}${isActiveItem(character) ? "" : " (non-actief)"}`
-              : `Personage ${index + 1}: #${id}`;
+              ? `${roleLabel}: ${character.name}${isActiveItem(character) ? "" : " (non-actief)"}`
+              : `${roleLabel}: #${id}`;
           }).join("\n");
           const environment = itemById("environments", scene.environmentId || 0);
           const warnings = sceneLinkIssues(scene);
@@ -1952,6 +2104,7 @@
           const sceneFormOpen = isSceneFormOpen();
           const characterFormOpen = !$("characterForm").classList.contains("hidden");
           if (sceneFormOpen) syncSceneDraftFromDom();
+          renderPerformerSlotOverview();
           renderPerformersList("performersList", activeItems("performers"), false);
           renderPerformersList("performersInactiveList", inactiveItems("performers"), true);
           renderCharacterPerformerOptions(characterFormOpen
@@ -2024,6 +2177,7 @@
           edit.performer = Number(item && item.id || 0);
           expanded.performer = edit.performer || 0;
           $("performerName").value = item ? item.name || "" : "";
+          $("performerRoleSlot").value = String(Number(item && item.roleSlot || 0));
           setPerformerFormVisible(true);
           renderCatalog();
         }
@@ -2356,7 +2510,7 @@
         function upsertBodyForItem(kind, item, isActive) {
           if (!item) return null;
           if (kind === "performer") {
-            return { id: item.id, name: item.name, sortOrder: item.sortOrder || 0, isActive };
+            return { id: item.id, name: item.name, sortOrder: item.sortOrder || 0, roleSlot: item.roleSlot || 0, isActive };
           }
           if (kind === "character") {
             return { id: item.id, name: item.name, description: item.description, performerId: item.performerId || 0, isActive };
@@ -2510,8 +2664,9 @@
           });
           $("sceneCharacterCount").addEventListener("change", () => {
             const next = sceneFormSlotValues();
-            sceneDraft.characterCount = next.length;
+            sceneDraft.characterCount = ACTOR_SLOT_COUNT;
             sceneDraft.characterSlots = next;
+            normalizeOpenSceneDraftSlots();
             renderSceneCharacterControls({
               characterCount: sceneDraft.characterCount,
               characterSlots: sceneDraft.characterSlots,
@@ -2519,8 +2674,12 @@
           });
           $("sceneCharacterSlots").addEventListener("change", () => {
             sceneDraft.characterSlots = sceneFormSlotValues();
-            sceneDraft.characterCount = sceneDraft.characterSlots.length;
-            updateSceneCharacterSlotOptions();
+            sceneDraft.characterCount = ACTOR_SLOT_COUNT;
+            normalizeOpenSceneDraftSlots();
+            renderSceneCharacterControls({
+              characterCount: sceneDraft.characterCount,
+              characterSlots: sceneDraft.characterSlots,
+            }, sceneDraft.characterSlots);
           });
 
           $("savePerformerBtn").addEventListener("click", async () => {
@@ -2528,6 +2687,7 @@
               const result = await post("/admin/algorithm/performers/upsert", {
                 id: edit.performer || undefined,
                 name: $("performerName").value,
+                roleSlot: Number($("performerRoleSlot").value || 0),
                 isActive: editedIsActive("performer", edit.performer),
               });
               expanded.performer = Number(result.performer && result.performer.id || 0);
@@ -2571,6 +2731,7 @@
           $("saveSceneBtn").addEventListener("click", async () => {
             try {
               syncSceneDraftFromDom();
+              normalizeOpenSceneDraftSlots();
               const characterSlots = sceneDraft.characterSlots;
               const environmentValue = sceneDraft.environmentValue || "random";
               if (sceneDraft.contextEnabled && !sceneDraft.contextSceneId) {
@@ -2580,7 +2741,7 @@
               const result = await post("/admin/algorithm/scenes/upsert", {
                 id: edit.scene || undefined,
                 title: sceneDraft.title,
-                characterCount: characterSlots.length,
+                characterCount: ACTOR_SLOT_COUNT,
                 characterSlots,
                 characterIds: characterSlots.filter((id) => id > 0),
                 situationIds: [],
@@ -2784,7 +2945,8 @@
             item_must_be_inactive: "Zet dit item eerst non-actief.",
             scene_links_invalid: "Situatie-koppelingen kloppen nog niet.",
             scene_context_unmet: "Deze situatie heeft eerst een contextsituatie nodig.",
-            performer_not_found: "Speler niet gevonden.",
+            performer_not_found: "Performer niet gevonden.",
+            role_slot_conflict: "Deze performer-slot is al gekoppeld aan een andere actieve performer.",
             name_required: "Naam is verplicht.",
             title_required: "Titel is verplicht.",
             invalid_send_target: "Vul eerst send host en send poort in voordat OSC verzenden aan gaat.",
