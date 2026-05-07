@@ -79,18 +79,21 @@ function testCurrentOrderRowsStartAtFirstAfterReset() {
   assert.strictEqual(order.rows.filter((entry) => entry.next).length, 1);
 }
 
-function testCurrentOrderRowsMarkActiveWithoutNext() {
+function testCurrentOrderRowsMarkActiveWithNext() {
   const scenes = [
     { id: 1, title: "Een", sortOrder: 1, isActive: true },
     { id: 2, title: "Twee", sortOrder: 2, isActive: true },
   ];
   const runs = [{ id: 1, sceneId: 1, runOrder: 1, startedAt: "2026-01-01T00:00:00.000Z" }];
   const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 2 } });
-  assert.strictEqual(order.next, null);
+  assert.strictEqual(order.active.sceneId, 1);
+  assert.strictEqual(order.next.sceneId, 2);
   assert.strictEqual(order.rows[0].active, true);
   assert.strictEqual(order.rows[0].next, false);
+  assert.strictEqual(order.rows[1].active, false);
+  assert.strictEqual(order.rows[1].next, true);
   assert.strictEqual(order.rows.filter((entry) => entry.active).length, 1);
-  assert.strictEqual(order.rows.filter((entry) => entry.next).length, 0);
+  assert.strictEqual(order.rows.filter((entry) => entry.next).length, 1);
 }
 
 function testCurrentOrderRowsAdvanceAfterStop() {
@@ -118,10 +121,39 @@ function testCurrentOrderRowsKeepActiveAfterCalibration() {
   ];
   const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 1 } });
   const activeRow = order.rows.find((entry) => entry.sceneId === 2);
+  const nextRow = order.rows.find((entry) => entry.sceneId === 3);
   assert(activeRow);
   assert.strictEqual(activeRow.active, true);
-  assert.strictEqual(order.next, null);
-  assert.strictEqual(order.rows.filter((entry) => entry.next).length, 0);
+  assert(nextRow);
+  assert.strictEqual(nextRow.next, true);
+  assert.strictEqual(order.active.sceneId, 2);
+  assert.strictEqual(order.next.sceneId, 3);
+  assert.strictEqual(order.rows.filter((entry) => entry.next).length, 1);
+}
+
+function testCurrentOrderRowsKeepActiveAndNextDeepInList() {
+  const scenes = Array.from({ length: 35 }, (_, index) => ({
+    id: index + 1,
+    title: `Situatie ${index + 1}`,
+    sortOrder: index + 1,
+    isActive: true,
+  }));
+  const runs = Array.from({ length: 32 }, (_, index) => ({
+    id: index + 1,
+    sceneId: index + 1,
+    runOrder: index + 1,
+    endedAt: `2026-01-01T00:${String(index).padStart(2, "0")}:00.000Z`,
+    score: 0,
+  })).concat([
+    { id: 33, sceneId: 33, runOrder: 33, startedAt: "2026-01-01T01:00:00.000Z" },
+  ]);
+  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 5 } });
+  assert.strictEqual(order.active.sceneId, 33);
+  assert.strictEqual(order.next.sceneId, 34);
+  assert.strictEqual(order.rows[32].active, true);
+  assert.strictEqual(order.rows[33].next, true);
+  assert.strictEqual(order.rows.filter((entry) => entry.active).length, 1);
+  assert.strictEqual(order.rows.filter((entry) => entry.next).length, 1);
 }
 
 function testRecommendationMatchesCurrentOrderNext() {
@@ -139,6 +171,21 @@ function testRecommendationMatchesCurrentOrderNext() {
     buildAlgorithmOrder({ scenes, runs, settings }).next.sceneId,
     order.next.sceneId
   );
+}
+
+function testRecommendationMatchesCurrentOrderNextDuringActiveRun() {
+  const scenes = [
+    { id: 1, title: "Een", sortOrder: 1, isActive: true },
+    { id: 2, title: "Twee", sortOrder: 2, isActive: true },
+    { id: 3, title: "Drie", sortOrder: 3, isActive: true },
+  ];
+  const runs = [{ id: 1, sceneId: 1, runOrder: 1, startedAt: "2026-01-01T00:00:00.000Z" }];
+  const settings = { calibrationCount: 2 };
+  const order = buildAlgorithmOrder({ scenes, runs, settings });
+  const recommendation = pickRecommendation({ scenes, runs, settings, order });
+  assert.strictEqual(order.active.sceneId, 1);
+  assert.strictEqual(order.next.sceneId, 2);
+  assert.strictEqual(recommendation.scene.id, order.next.sceneId);
 }
 
 function testCurrentOrderRanksAfterCalibration() {
@@ -510,10 +557,12 @@ testCalibrationFixedOrder();
 testRecommendationSkipsLastScene();
 testCurrentOrderKeepsCalibrationFixed();
 testCurrentOrderRowsStartAtFirstAfterReset();
-testCurrentOrderRowsMarkActiveWithoutNext();
+testCurrentOrderRowsMarkActiveWithNext();
 testCurrentOrderRowsAdvanceAfterStop();
 testCurrentOrderRowsKeepActiveAfterCalibration();
+testCurrentOrderRowsKeepActiveAndNextDeepInList();
 testRecommendationMatchesCurrentOrderNext();
+testRecommendationMatchesCurrentOrderNextDuringActiveRun();
 testCurrentOrderRanksAfterCalibration();
 testCurrentOrderHidesPlayedUntilCycleComplete();
 testCurrentOrderSkipsLastWhenEverythingPlayed();

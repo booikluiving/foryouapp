@@ -310,6 +310,35 @@
         max-height: 420px;
       }
 
+      .queueStatus {
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 8px;
+        padding: 9px 10px;
+        display: grid;
+        gap: 4px;
+      }
+
+      .queueStatusLine {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        flex-wrap: wrap;
+      }
+
+      .queueStatusLabel {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+
+      .queueStatusTitle {
+        color: var(--ink);
+        font-weight: 900;
+        overflow-wrap: anywhere;
+      }
+
       .orderItem {
         grid-template-columns: auto minmax(0, 1fr);
         align-items: start;
@@ -633,7 +662,7 @@
           <div id="scenesPane" class="catalogWindow">
             <div class="row"><h2>Situaties</h2><button id="newSceneBtn" type="button">Voeg toe</button></div>
             <div id="sceneForm" class="stack hidden">
-              <div class="small">Sleep situaties in deze lijst om de vaste volgorde te wijzigen. Nieuwe situaties komen automatisch onderaan.</div>
+              <div class="small">Deze lijst staat alfabetisch. De speelvolgorde pas je aan bij Huidige Volgorde.</div>
               <label>Naam<input id="sceneTitle" maxlength="180" /></label>
               <label>Contextsituatie<select id="sceneContextEnabled"><option value="no">Nee</option><option value="yes">Ja</option></select></label>
               <label id="sceneContextWrap" class="hidden">Speel eerst<select id="sceneContextScene"></select></label>
@@ -667,6 +696,7 @@
             <button id="editOrderBtn" type="button">Pas calibratievolgorde aan</button>
           </div>
           <div id="orderSummary" class="small"></div>
+          <div id="orderQueueStatus" class="queueStatus"></div>
           <div class="row">
             <span id="orderListBadge" class="badge"></span>
             <span id="orderInvalidBadge" class="badge warning"></span>
@@ -758,10 +788,10 @@
           contextSceneId: 0,
         };
         let refreshTimer = null;
-        let sceneSortable = null;
         let orderBaseSortable = null;
         let orderEditOpen = false;
         let orderDraftIds = [];
+        let scrollOrderSelectionOnNextRender = false;
 
         const $ = (id) => document.getElementById(id);
         const loginEl = $("login");
@@ -803,11 +833,18 @@
           const headers = Object.assign({}, options.headers || {});
           if (token) headers["x-admin-token"] = token;
           const res = await fetch(path, Object.assign({}, options, { headers }));
-          const body = await res.json().catch(() => ({}));
+          const raw = await res.text().catch(() => "");
+          let body = {};
+          try {
+            body = raw ? JSON.parse(raw) : {};
+          } catch {
+            body = {};
+          }
           if (!res.ok) {
             const err = new Error(body && body.error ? body.error : "request_failed");
             err.body = body;
             err.status = res.status;
+            err.responseText = raw;
             throw err;
           }
           return body;
@@ -920,6 +957,22 @@
         function activeItemsWithSelected(kind, selectedIds) {
           const selected = new Set((selectedIds || []).map(Number));
           return catalogItems(kind).filter((item) => isActiveItem(item) || selected.has(Number(item.id)));
+        }
+
+        function catalogLabel(kind, item) {
+          if (kind === "scene" || kind === "scenes") return String(item && item.title || "");
+          return String(item && item.name || "");
+        }
+
+        function alphabeticCatalogItems(kind, items) {
+          return (items || []).slice().sort((a, b) => {
+            const byLabel = catalogLabel(kind, a).localeCompare(catalogLabel(kind, b), "nl-NL", {
+              numeric: true,
+              sensitivity: "base",
+            });
+            if (byLabel !== 0) return byLabel;
+            return Number(a && a.id || 0) - Number(b && b.id || 0);
+          });
         }
 
         function itemById(kind, id) {
@@ -1342,7 +1395,7 @@
 
         function renderSceneEnvironmentOptions(environmentValue = "random") {
           const selectedId = environmentValue === "random" ? 0 : Number(environmentValue || 0);
-          $("sceneEnvironment").innerHTML = '<option value="random">Random</option>' + activeItemsWithSelected("environments", selectedId ? [selectedId] : [])
+          $("sceneEnvironment").innerHTML = '<option value="random">Random</option>' + alphabeticCatalogItems("environments", activeItemsWithSelected("environments", selectedId ? [selectedId] : []))
             .map((item) => {
               const active = isActiveItem(item);
               const label = active ? item.name : `${item.name} (non-actief)`;
@@ -1368,7 +1421,7 @@
             sceneDraft.contextSceneId = 0;
             return;
           }
-          const items = activeItemsWithSelected("scenes", selectedId ? [selectedId] : [])
+          const items = alphabeticCatalogItems("scenes", activeItemsWithSelected("scenes", selectedId ? [selectedId] : []))
             .filter((item) => Number(item.id || 0) !== currentId);
           $("sceneContextScene").innerHTML = '<option value="0">Kies contextsituatie</option>' + items.map((item) => {
             const active = isActiveItem(item);
@@ -1517,6 +1570,54 @@
           return Array.isArray(order.rows) ? order.rows : [];
         }
 
+        function currentOrderActiveEntry(rows = currentOrderRows()) {
+          const order = state && state.currentOrder ? state.currentOrder : {};
+          if (order.active && Number(order.active.sceneId || 0)) return order.active;
+          return rows.find((entry) => entry && entry.active) || null;
+        }
+
+        function currentOrderNextEntry(rows = currentOrderRows()) {
+          const order = state && state.currentOrder ? state.currentOrder : {};
+          if (order.next && Number(order.next.sceneId || 0)) return order.next;
+          return rows.find((entry) => entry && entry.next) || null;
+        }
+
+        function isAlgorithmRunStarted() {
+          const activeRun = state && state.activeRun ? state.activeRun : null;
+          if (activeRun) return true;
+          return !!(state && state.algorithmRun && state.algorithmRun.started);
+        }
+
+        function renderQueueStatus(rows = currentOrderRows()) {
+          const runStarted = isAlgorithmRunStarted();
+          const activeEntry = currentOrderActiveEntry(rows);
+          const nextEntry = runStarted ? currentOrderNextEntry(rows) : null;
+          const activeRun = state && state.activeRun ? state.activeRun : null;
+          const activeRunBadge = activeRun
+            ? `<span class="badge warning">actieve run #${Number(activeRun.runOrder || activeRun.id || 0)}</span>`
+            : "";
+          const activeLine = !runStarted
+            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="small">Run nog niet gestart</span></div>`
+            : activeEntry
+            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="queueStatusTitle">${esc(orderEntryTitle(activeEntry))}</span>${activeRunBadge}</div>`
+            : `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="small">Geen actieve situatie</span></div>`;
+          const nextLine = !runStarted
+            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Volgende</span><span class="small">Klik Start run om rij 1 klaar te zetten</span></div>`
+            : nextEntry
+            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Volgende</span><span class="queueStatusTitle">${esc(orderEntryTitle(nextEntry))}</span><span class="badge">${esc(formatOrderPoints(nextEntry))}</span></div>`
+            : `<div class="queueStatusLine"><span class="queueStatusLabel">Volgende</span><span class="small">Geen volgende situatie</span></div>`;
+          $("orderQueueStatus").innerHTML = activeLine + nextLine;
+        }
+
+        function scrollOrderSelectionIntoView() {
+          if (!scrollOrderSelectionOnNextRender || orderEditOpen) return;
+          scrollOrderSelectionOnNextRender = false;
+          const list = $("currentOrderList");
+          const target = list.querySelector(".orderItem.active") || list.querySelector(".orderItem.next");
+          if (!target) return;
+          target.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }
+
         function buildEditableOrderRows() {
           const ids = orderDraftIds.length ? orderDraftIds : activeItems("scenes").map((item) => Number(item.id || 0));
           const calibrationCount = Number(state && state.settings && state.settings.calibrationCount || 5);
@@ -1661,9 +1762,11 @@
         function renderCurrentOrder() {
           const order = state && state.currentOrder ? state.currentOrder : {};
           const calibration = order.calibration || { active: false, completed: 0, total: Number(state && state.settings && state.settings.calibrationCount || 5) };
-          const nextSceneId = Number(order.next && order.next.sceneId || 0);
+          const runStarted = isAlgorithmRunStarted();
+          const nextSceneId = runStarted ? Number(order.next && order.next.sceneId || 0) : 0;
           const rows = currentOrderRows();
-          const hasQueueStatus = rows.some((entry) => entry && (entry.next || entry.active));
+          const displayRows = runStarted ? rows : rows.map((entry) => ({ ...entry, next: false }));
+          const hasQueueStatus = displayRows.some((entry) => entry && (entry.next || entry.active));
           const warningRowCount = rows
             .filter((entry) => (entry.issues && entry.issues.length) || (entry.warnings && entry.warnings.length))
             .length;
@@ -1679,6 +1782,8 @@
           $("orderInvalidBadge").textContent = `${warningRowCount} waarschuwing`;
           $("orderSummary").textContent = orderEditOpen
             ? "Je past nu de basisvolgorde aan. De eerste posities worden de calibratiesituaties."
+            : !runStarted
+              ? "Klik Start run om de eerste situatie klaar te zetten."
             : rows.length && !hasQueueStatus
               ? "Geen actieve of volgende situatie beschikbaar. Check waarschuwingen of reset de runs om opnieuw vanaf het begin te starten."
             : calibration.active
@@ -1690,11 +1795,13 @@
           $("orderEditHint").classList.toggle("hidden", !orderEditOpen);
           $("orderEditSettings").classList.toggle("hidden", !orderEditOpen);
           $("orderEditActions").classList.toggle("active", orderEditOpen);
+          renderQueueStatus(rows);
           if (orderEditOpen) destroyOrderBaseSortable();
-          renderUnifiedOrderList(orderEditOpen ? buildEditableOrderRows() : rows, {
+          renderUnifiedOrderList(orderEditOpen ? buildEditableOrderRows() : displayRows, {
             nextSceneId,
             editing: orderEditOpen,
           });
+          scrollOrderSelectionIntoView();
           if (orderEditOpen) initOrderBaseSortable();
         }
 
@@ -1709,14 +1816,14 @@
             : edit.character ? (itemById("characters", edit.character) || {}).performerId : 0);
           renderCharactersList("charactersList", activeItems("characters"), false);
           renderCharactersList("charactersInactiveList", inactiveItems("characters"), true);
-          renderCatalogList("environmentsList", activeItems("environments"), {
+          renderCatalogList("environmentsList", alphabeticCatalogItems("environments", activeItems("environments")), {
             kind: "environment",
             selectedId: edit.environment,
             labelFn: (item) => item.name || "Naamloos",
             detailFn: (item) => item.description || "",
             emptyText: "Nog geen omgevingen.",
           });
-          renderCatalogList("environmentsInactiveList", inactiveItems("environments"), {
+          renderCatalogList("environmentsInactiveList", alphabeticCatalogItems("environments", inactiveItems("environments")), {
             kind: "environment",
             selectedId: edit.environment,
             inactive: true,
@@ -1724,7 +1831,7 @@
             detailFn: (item) => item.description || "",
             emptyText: "Geen non-actieve omgevingen.",
           });
-          renderCatalogList("scenesList", activeItems("scenes"), {
+          renderCatalogList("scenesList", alphabeticCatalogItems("scenes", activeItems("scenes")), {
             kind: "scene",
             selectedId: edit.scene,
             labelFn: (item) => item.title || "Naamloze situatie",
@@ -1732,7 +1839,7 @@
             badgesFn: (item) => sceneHasLinkWarnings(item) ? [{ label: "waarschuwing", className: "warning" }] : [],
             emptyText: "Nog geen situaties.",
           });
-          renderCatalogList("scenesInactiveList", inactiveItems("scenes"), {
+          renderCatalogList("scenesInactiveList", alphabeticCatalogItems("scenes", inactiveItems("scenes")), {
             kind: "scene",
             selectedId: edit.scene,
             inactive: true,
@@ -1741,7 +1848,6 @@
             badgesFn: (item) => sceneHasLinkWarnings(item) ? [{ label: "waarschuwing", className: "warning" }] : [],
             emptyText: "Geen non-actieve situaties.",
           });
-          initSceneSortable();
 
           if (!sceneFormOpen) {
             const selectedScene = itemById("scenes", edit.scene) || {};
@@ -1757,6 +1863,7 @@
         }
 
         function preparedSceneId() {
+          if (!isAlgorithmRunStarted()) return 0;
           return Number(state && state.currentOrder && state.currentOrder.next && state.currentOrder.next.sceneId || 0);
         }
 
@@ -1807,6 +1914,8 @@
             ? activeRun.promptSnapshot
             : recommendation.prompt || "";
           const hasPreparedScene = !!preparedSceneId();
+          const runStarted = isAlgorithmRunStarted();
+          const canStartAlgorithmRun = currentOrderRows().length > 0;
           topMetaEl.textContent = `Sessie ${state.session.id} - ${state.session.isActive ? "actief" : "gesloten"}`;
           buildBadgeEl.textContent = runtime.buildLabel || runtime.buildVersion || "build onbekend";
           $("calibrationBadge").textContent = calibration.active
@@ -1818,8 +1927,14 @@
           $("commentStat").textContent = String(activeRun ? activeRun.commentCount || 0 : 0);
           $("promptOutput").value = promptText;
           $("promptMeta").textContent = promptText ? `${promptText.length} tekens` : "geen prompt";
-          $("sceneToggleBtn").textContent = activeRun ? "Stop situatie" : hasPreparedScene ? "Volgende situatie" : "Geen volgende situatie";
-          $("sceneToggleBtn").disabled = !activeRun && !hasPreparedScene;
+          $("sceneToggleBtn").textContent = activeRun
+            ? "Stop situatie"
+            : !runStarted
+              ? "Start run"
+              : hasPreparedScene
+              ? "Volgende situatie"
+              : "Geen volgende situatie";
+          $("sceneToggleBtn").disabled = !activeRun && (!runStarted ? !canStartAlgorithmRun : !hasPreparedScene);
           $("sceneToggleBtn").classList.toggle("danger", !!activeRun);
           $("sceneToggleBtn").classList.toggle("primary", !activeRun);
           if (document.activeElement !== $("calibrationCount")) $("calibrationCount").value = String(state.settings.calibrationCount || 5);
@@ -1865,35 +1980,6 @@
               <span class="small">${item.count || 0} runs</span>
             </div>
           `).join("") || '<div class="small">Nog geen scores.</div>';
-        }
-
-        function initSceneSortable() {
-          const el = $("scenesList");
-          if (!el || sceneSortable) return;
-          if (!window.Sortable || typeof window.Sortable.create !== "function") {
-            setMsg("catalogMsg", "Situaties herschikken is uitgeschakeld: Sortable ontbreekt.", true);
-            return;
-          }
-          sceneSortable = window.Sortable.create(el, {
-            animation: 130,
-            ghostClass: "dragGhost",
-            filter: ".small",
-            onEnd: async () => {
-              const sceneIds = Array.from(el.querySelectorAll(".listItem[data-id]"))
-                .map((item) => Number(item.getAttribute("data-id") || 0))
-                .filter((id) => Number.isInteger(id) && id > 0);
-              if (!sceneIds.length) return;
-              try {
-                const result = await post("/admin/algorithm/scenes/reorder", { sceneIds }, "catalogMsg");
-                state = result.state || state;
-                render();
-                setMsg("catalogMsg", "Vaste volgorde opgeslagen.");
-              } catch (err) {
-                setMsg("catalogMsg", formatError(err), true);
-                loadState(false);
-              }
-            },
-          });
         }
 
         function formatTime(value) {
@@ -2212,8 +2298,9 @@
           $("resetRunsBtn").addEventListener("click", async () => {
             if (!window.confirm("Reset alle algoritme-runs van deze sessie? Hearts, bored, comments en calibratie beginnen opnieuw.")) return;
             try {
+              scrollOrderSelectionOnNextRender = true;
               await post("/admin/algorithm/runs/reset", {}, "liveMsg");
-              setMsg("liveMsg", "Algoritme-runs gereset.");
+              setMsg("liveMsg", "Algoritme-runs gereset. Klik Start run om bij rij 1 te beginnen.");
             } catch (err) { setMsg("liveMsg", formatError(err), true); }
           });
         }
@@ -2280,7 +2367,18 @@
             return;
           }
           try {
+            scrollOrderSelectionOnNextRender = true;
             await post("/admin/algorithm/runs/start", { sceneId, selectionSource }, "liveMsg");
+          } catch (err) {
+            setMsg("liveMsg", formatError(err), true);
+          }
+        }
+
+        async function beginAlgorithmRun() {
+          try {
+            scrollOrderSelectionOnNextRender = true;
+            await post("/admin/algorithm/runs/begin", {}, "liveMsg");
+            setMsg("liveMsg", "Run gestart. De eerste situatie staat klaar.");
           } catch (err) {
             setMsg("liveMsg", formatError(err), true);
           }
@@ -2289,10 +2387,15 @@
         async function toggleSceneRun() {
           if (state && state.activeRun) {
             try {
+              scrollOrderSelectionOnNextRender = true;
               await post("/admin/algorithm/runs/end", { reason: "manual" }, "liveMsg");
             } catch (err) {
               setMsg("liveMsg", formatError(err), true);
             }
+            return;
+          }
+          if (!isAlgorithmRunStarted()) {
+            beginAlgorithmRun();
             return;
           }
           startScene(preparedSceneId(), "up_next");
@@ -2322,6 +2425,9 @@
             performer_not_found: "Speler niet gevonden.",
             name_required: "Naam is verplicht.",
             title_required: "Titel is verplicht.",
+            request_failed: err && err.status === 404
+              ? "Start run is nog niet beschikbaar op deze server. Herstart de lokale server en refresh de pagina."
+              : "Verzoek mislukt. Refresh de pagina en probeer opnieuw.",
           }[code];
           return (friendly || code) + issues;
         }
