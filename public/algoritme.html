@@ -249,6 +249,24 @@
         gap: 12px;
       }
 
+      .scoreControl {
+        display: grid;
+        grid-template-columns: minmax(140px, 0.45fr) minmax(180px, 1fr) minmax(64px, auto);
+        gap: 10px;
+        align-items: center;
+      }
+
+      .scoreControl input[type="range"] {
+        width: 100%;
+      }
+
+      .scoreValue {
+        font-weight: 900;
+        color: var(--ink);
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
       .stack { display: grid; gap: 10px; }
       .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
       .three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
@@ -706,6 +724,14 @@
           grid-template-columns: 1fr;
         }
 
+        .scoreControl {
+          grid-template-columns: 1fr;
+        }
+
+        .scoreValue {
+          text-align: left;
+        }
+
       }
     </style>
   </head>
@@ -915,6 +941,38 @@
           </details>
 
           <details class="settingsBlock">
+            <summary>Score-algoritme</summary>
+            <div class="settingsBlockBody">
+              <div class="scoreControl">
+                <span>Hearts</span>
+                <input id="scoreHeartWeight" type="range" min="-5" max="5" step="0.1" />
+                <output id="scoreHeartWeightValue" class="scoreValue">1.00</output>
+              </div>
+              <div class="scoreControl">
+                <span>Bored</span>
+                <input id="scoreBoredWeight" type="range" min="-5" max="5" step="0.1" />
+                <output id="scoreBoredWeightValue" class="scoreValue">-1.50</output>
+              </div>
+              <div class="scoreControl">
+                <span>Comments</span>
+                <input id="scoreCommentWeight" type="range" min="-5" max="5" step="0.1" />
+                <output id="scoreCommentWeightValue" class="scoreValue">0.25</output>
+              </div>
+              <div class="scoreControl">
+                <span>Tijdcorrectie</span>
+                <input id="scoreTimeBlend" type="range" min="0" max="1" step="0.05" />
+                <output id="scoreTimeBlendValue" class="scoreValue">0%</output>
+              </div>
+              <div id="scoreSettingsPreview" class="small"></div>
+              <div class="actions">
+                <button id="saveScoreSettingsBtn" class="primary" type="button">Bewaar score-instellingen</button>
+                <button id="resetScoreSettingsBtn" type="button">Reset naar standaard</button>
+              </div>
+              <div id="scoreMsg" class="msg"></div>
+            </div>
+          </details>
+
+          <details class="settingsBlock">
             <summary>OSC / TouchDesigner</summary>
             <div class="settingsBlockBody">
               <div class="toggleLine">
@@ -1004,6 +1062,12 @@
         const ACTOR_SLOT_COUNT = 3;
         const SLOT_NONE = 0;
         const SLOT_RANDOM = -1;
+        const DEFAULT_SCORE_SETTINGS = {
+          heartWeight: 1,
+          boredWeight: -1.5,
+          commentWeight: 0.25,
+          timeNormalizedBlend: 0,
+        };
         let token = "";
         let state = null;
         let edit = { performer: 0, character: 0, environment: 0, scene: 0 };
@@ -1911,7 +1975,8 @@
         }
 
         function formatOrderPoints(entry, scores) {
-          return `${orderEntryScore(entry, scores).toFixed(2)} punten`;
+          const suffix = Number(state && state.settings && state.settings.timeNormalizedBlend || 0) > 0 ? " · tijdmix" : "";
+          return `${orderEntryScore(entry, scores).toFixed(2)} punten${suffix}`;
         }
 
         function currentOrderRows() {
@@ -2291,6 +2356,7 @@
           if (document.activeElement !== $("calibrationCount")) $("calibrationCount").value = String(state.settings.calibrationCount || 5);
           if (document.activeElement !== $("globalPrompt")) $("globalPrompt").value = state.settings.globalPrompt || "";
           if (document.activeElement !== $("promptTemplate")) $("promptTemplate").value = state.settings.promptTemplate || "";
+          renderScoreAlgorithmSettings();
         }
 
         function renderOsc() {
@@ -2481,17 +2547,83 @@
           $(id).innerHTML = rows || '<div class="small">Nog geen verzonden OSC-waarden.</div>';
         }
 
+        function clampNumber(value, min, max, fallback) {
+          const n = Number.parseFloat(String(value));
+          if (!Number.isFinite(n)) return fallback;
+          return Math.min(max, Math.max(min, n));
+        }
+
+        function scoreSettingsFromState() {
+          const settings = state && state.settings ? state.settings : {};
+          return {
+            heartWeight: clampNumber(settings.heartWeight, -5, 5, DEFAULT_SCORE_SETTINGS.heartWeight),
+            boredWeight: clampNumber(settings.boredWeight, -5, 5, DEFAULT_SCORE_SETTINGS.boredWeight),
+            commentWeight: clampNumber(settings.commentWeight, -5, 5, DEFAULT_SCORE_SETTINGS.commentWeight),
+            timeNormalizedBlend: clampNumber(settings.timeNormalizedBlend, 0, 1, DEFAULT_SCORE_SETTINGS.timeNormalizedBlend),
+          };
+        }
+
+        function currentScoreSettingsFromFields() {
+          return {
+            heartWeight: clampNumber($("scoreHeartWeight").value, -5, 5, DEFAULT_SCORE_SETTINGS.heartWeight),
+            boredWeight: clampNumber($("scoreBoredWeight").value, -5, 5, DEFAULT_SCORE_SETTINGS.boredWeight),
+            commentWeight: clampNumber($("scoreCommentWeight").value, -5, 5, DEFAULT_SCORE_SETTINGS.commentWeight),
+            timeNormalizedBlend: clampNumber($("scoreTimeBlend").value, 0, 1, DEFAULT_SCORE_SETTINGS.timeNormalizedBlend),
+          };
+        }
+
+        function isScoreSettingsFocused() {
+          return [
+            "scoreHeartWeight",
+            "scoreBoredWeight",
+            "scoreCommentWeight",
+            "scoreTimeBlend",
+          ].some((id) => document.activeElement === $(id));
+        }
+
+        function setScoreSettingsFields(settings) {
+          $("scoreHeartWeight").value = String(settings.heartWeight);
+          $("scoreBoredWeight").value = String(settings.boredWeight);
+          $("scoreCommentWeight").value = String(settings.commentWeight);
+          $("scoreTimeBlend").value = String(settings.timeNormalizedBlend);
+        }
+
+        function formatScoreWeight(value) {
+          return Number(value || 0).toFixed(2);
+        }
+
+        function updateScoreSettingsPreview(settings = currentScoreSettingsFromFields()) {
+          $("scoreHeartWeightValue").textContent = formatScoreWeight(settings.heartWeight);
+          $("scoreBoredWeightValue").textContent = formatScoreWeight(settings.boredWeight);
+          $("scoreCommentWeightValue").textContent = formatScoreWeight(settings.commentWeight);
+          $("scoreTimeBlendValue").textContent = `${Math.round(Number(settings.timeNormalizedBlend || 0) * 100)}%`;
+          const rawPart = `Hearts ${formatScoreWeight(settings.heartWeight)}, bored ${formatScoreWeight(settings.boredWeight)}, comments ${formatScoreWeight(settings.commentWeight)}`;
+          const blend = Number(settings.timeNormalizedBlend || 0);
+          $("scoreSettingsPreview").textContent = `${rawPart}. Tijdcorrectie: ${Math.round(blend * 100)}% per minuut, ${Math.round((1 - blend) * 100)}% totaal.`;
+        }
+
+        function renderScoreAlgorithmSettings() {
+          if (!isScoreSettingsFocused()) setScoreSettingsFields(scoreSettingsFromState());
+          updateScoreSettingsPreview();
+        }
+
         function renderScores() {
           const labels = {
             characters: Object.fromEntries((state.catalog.characters || []).map((item) => [item.id, item.name])),
             scenes: Object.fromEntries((state.catalog.scenes || []).map((item) => [item.id, item.title])),
           };
+          const blend = Number(state && state.settings && state.settings.timeNormalizedBlend || 0);
           $("topCharacters").innerHTML = renderScoreRows(state.entityScores.characters || [], labels.characters);
           $("topSituations").innerHTML = renderScoreRows(sceneScoreRows(), labels.scenes);
           $("runsList").innerHTML = (state.runs || []).slice().reverse().map((run) => {
             const scene = itemById("scenes", run.sceneId);
             const status = run.endedAt ? `score ${Number(run.score || 0).toFixed(2)}` : "actief";
-            return `<div class="listItem"><span class="nameLine"><span>${esc(scene ? scene.title : "Situatie " + run.sceneId)}</span><span class="badge">${status}</span></span><span class="small">♥ ${run.heartCount || 0} | bored ${run.boredCount || 0} | comments ${run.commentCount || 0}</span></div>`;
+            const details = run.scoreDetails || {};
+            const duration = formatDuration(Number(run.durationSeconds || details.durationSeconds || 0));
+            const perMinute = blend > 0 && run.endedAt
+              ? ` · per minuut ${Number(details.perMinuteScore || 0).toFixed(2)}`
+              : "";
+            return `<div class="listItem"><span class="nameLine"><span>${esc(scene ? scene.title : "Situatie " + run.sceneId)}</span><span class="badge">${status}</span></span><span class="small">♥ ${run.heartCount || 0} | bored ${run.boredCount || 0} | comments ${run.commentCount || 0}${duration ? " · duur " + esc(duration) : ""}${perMinute}</span></div>`;
           }).join("") || '<div class="small">Nog geen runs.</div>';
         }
 
@@ -2527,6 +2659,14 @@
           return new Date(ts).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
         }
 
+        function formatDuration(seconds) {
+          const total = Math.max(0, Math.round(Number(seconds || 0)));
+          if (!total) return "";
+          const minutes = Math.floor(total / 60);
+          const rest = total % 60;
+          return minutes ? `${minutes}m ${String(rest).padStart(2, "0")}s` : `${rest}s`;
+        }
+
         function render() {
           if (!state) return;
           renderTabs();
@@ -2556,6 +2696,10 @@
               calibrationCount: $("calibrationCount").value,
               globalPrompt: $("globalPrompt").value,
               promptTemplate: $("promptTemplate").value,
+              heartWeight: $("scoreHeartWeight").value,
+              boredWeight: $("scoreBoredWeight").value,
+              commentWeight: $("scoreCommentWeight").value,
+              timeNormalizedBlend: $("scoreTimeBlend").value,
             }, msgTarget);
             setMsg(msgTarget, successText || "Settings opgeslagen.");
           } catch (err) {
@@ -2911,6 +3055,18 @@
           });
           $("savePromptSettingsBtn").addEventListener("click", () => {
             saveAlgorithmSettings("promptMsg", "Prompt instellingen opgeslagen.");
+          });
+          ["scoreHeartWeight", "scoreBoredWeight", "scoreCommentWeight", "scoreTimeBlend"].forEach((id) => {
+            $(id).addEventListener("input", () => updateScoreSettingsPreview());
+            $(id).addEventListener("change", () => updateScoreSettingsPreview());
+          });
+          $("saveScoreSettingsBtn").addEventListener("click", () => {
+            saveAlgorithmSettings("scoreMsg", "Score-instellingen opgeslagen.");
+          });
+          $("resetScoreSettingsBtn").addEventListener("click", () => {
+            setScoreSettingsFields(DEFAULT_SCORE_SETTINGS);
+            updateScoreSettingsPreview(DEFAULT_SCORE_SETTINGS);
+            saveAlgorithmSettings("scoreMsg", "Score-instellingen teruggezet.");
           });
           ["oscReceivePort", "oscSendHost", "oscSendPort"].forEach((id) => {
             $(id).addEventListener("input", markOscDraftDirty);

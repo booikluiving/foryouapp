@@ -7,7 +7,9 @@ const {
   buildAlgorithmOrder,
   buildSceneWarnings,
   calculateRunScore,
+  calculateRunScoreDetails,
   composeScenePrompt,
+  computeEntityScores,
   normalizePerformer,
   normalizeScene,
   normalizeSceneCharacterSlotsForPerformerRoles,
@@ -29,6 +31,97 @@ function testScoreFormula() {
   assert.strictEqual(
     calculateRunScore({ heartCount: 10, boredCount: 2, commentCount: 4 }),
     8
+  );
+}
+
+function testScoreWeightsAffectRuns() {
+  const run = { heartCount: 10, boredCount: 2, commentCount: 4 };
+  assert.strictEqual(calculateRunScore(run, { heartWeight: 2 }), 18);
+  assert(calculateRunScore(run, { boredWeight: -2 }) < calculateRunScore(run));
+  assert(calculateRunScore(run, { commentWeight: 1 }) > calculateRunScore(run));
+}
+
+function testTimeNormalizedScoreBlend() {
+  const run = {
+    heartCount: 10,
+    boredCount: 0,
+    commentCount: 0,
+    startedAt: "2026-01-01T00:00:00.000Z",
+    endedAt: "2026-01-01T00:02:00.000Z",
+  };
+  const raw = calculateRunScoreDetails(run, { timeNormalizedBlend: 0 });
+  const blended = calculateRunScoreDetails(run, { timeNormalizedBlend: 0.5 });
+  const perMinute = calculateRunScoreDetails(run, { timeNormalizedBlend: 1 });
+  assert.strictEqual(raw.rawScore, 10);
+  assert.strictEqual(raw.score, 10);
+  assert.strictEqual(perMinute.perMinuteScore, 5);
+  assert.strictEqual(perMinute.score, 5);
+  assert.strictEqual(blended.score, 7.5);
+}
+
+function testTimeNormalizedScoreRewardsShortRuns() {
+  const shortRun = {
+    heartCount: 10,
+    startedAt: "2026-01-01T00:00:00.000Z",
+    endedAt: "2026-01-01T00:01:00.000Z",
+  };
+  const longRun = {
+    heartCount: 10,
+    startedAt: "2026-01-01T00:00:00.000Z",
+    endedAt: "2026-01-01T00:05:00.000Z",
+  };
+  assert.strictEqual(calculateRunScore(shortRun, { timeNormalizedBlend: 0 }), calculateRunScore(longRun, { timeNormalizedBlend: 0 }));
+  assert(calculateRunScore(shortRun, { timeNormalizedBlend: 1 }) > calculateRunScore(longRun, { timeNormalizedBlend: 1 }));
+}
+
+function testEntityScoresUseCurrentScoreSettings() {
+  const scores = computeEntityScores({
+    scenes: [{ id: 1, title: "Peter", characterIds: [1], isActive: true }],
+    runs: [{
+      id: 1,
+      sceneId: 1,
+      endedAt: "2026-01-01T00:01:00.000Z",
+      score: 999,
+      heartCount: 2,
+    }],
+    settings: { heartWeight: 3 },
+  });
+  assert.strictEqual(scores.scenes[0].average, 6);
+  assert.strictEqual(scores.characters[0].average, 6);
+}
+
+function testRecommendationUsesCurrentScoreSettings() {
+  const scenes = [
+    { id: 1, title: "Lang sterk", sortOrder: 1, characterIds: [1], isActive: true },
+    { id: 2, title: "Kort sterk", sortOrder: 2, characterIds: [2], isActive: true },
+    { id: 3, title: "Lang vervolg", sortOrder: 3, characterIds: [1], isActive: true },
+    { id: 4, title: "Kort vervolg", sortOrder: 4, characterIds: [2], isActive: true },
+  ];
+  const runs = [
+    {
+      id: 1,
+      sceneId: 1,
+      runOrder: 1,
+      heartCount: 10,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      endedAt: "2026-01-01T00:05:00.000Z",
+    },
+    {
+      id: 2,
+      sceneId: 2,
+      runOrder: 2,
+      heartCount: 3,
+      startedAt: "2026-01-01T00:10:00.000Z",
+      endedAt: "2026-01-01T00:10:30.000Z",
+    },
+  ];
+  assert.strictEqual(
+    pickRecommendation({ scenes, runs, settings: { calibrationCount: 0, timeNormalizedBlend: 0 } }).scene.id,
+    3
+  );
+  assert.strictEqual(
+    pickRecommendation({ scenes, runs, settings: { calibrationCount: 0, timeNormalizedBlend: 1 } }).scene.id,
+    4
   );
 }
 
@@ -762,6 +855,10 @@ function testSyncLastWriteWins() {
 
 function testSyncSettingsFilterSecrets() {
   assert.strictEqual(syncSettingIsAllowed("algorithm_global_prompt"), true);
+  assert.strictEqual(syncSettingIsAllowed("algorithm_score_heart_weight"), true);
+  assert.strictEqual(syncSettingIsAllowed("algorithm_score_bored_weight"), true);
+  assert.strictEqual(syncSettingIsAllowed("algorithm_score_comment_weight"), true);
+  assert.strictEqual(syncSettingIsAllowed("algorithm_score_time_normalized_blend"), true);
   assert.strictEqual(syncSettingIsAllowed("osc_profile_device-1"), true);
   assert.strictEqual(syncSettingIsAllowed("admin_password_hash_scrypt_v1"), false);
   const rows = normalizeSyncSettingRows([
@@ -793,6 +890,11 @@ function testOscProfilesAreDeviceScoped() {
 }
 
 testScoreFormula();
+testScoreWeightsAffectRuns();
+testTimeNormalizedScoreBlend();
+testTimeNormalizedScoreRewardsShortRuns();
+testEntityScoresUseCurrentScoreSettings();
+testRecommendationUsesCurrentScoreSettings();
 testCalibrationFixedOrder();
 testRecommendationSkipsLastScene();
 testCurrentOrderKeepsCalibrationFixed();
