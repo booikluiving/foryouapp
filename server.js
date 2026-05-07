@@ -151,6 +151,7 @@ const ALGORITHM_GLOBAL_PROMPT_SETTING_KEY = "algorithm_global_prompt";
 const ALGORITHM_PROMPT_TEMPLATE_SETTING_KEY = "algorithm_prompt_template";
 const ALGORITHM_RUN_STARTED_SETTING_PREFIX = "algorithm_run_started_session_";
 const ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS = 3500;
+const ALGORITHM_OSC_CHARACTER_SLOT_COUNT = 3;
 const DEFAULT_ALGORITHM_PERFORMERS = Object.freeze(["Megan", "Brent", "Booi"]);
 const SIM_DEFAULTS = {
   clients: 50,
@@ -3853,6 +3854,35 @@ function buildAlgorithmRecommendation(catalog = getAlgorithmCatalog(), runs = ge
   };
 }
 
+function maskAlgorithmOrderUntilRunStart(order) {
+  const safeOrder = order && typeof order === "object" ? order : {};
+  const clearNext = (entry) => entry && typeof entry === "object" ? { ...entry, next: false } : entry;
+  return {
+    ...safeOrder,
+    calibrationScenes: Array.isArray(safeOrder.calibrationScenes) ? safeOrder.calibrationScenes.map(clearNext) : [],
+    upcoming: Array.isArray(safeOrder.upcoming) ? safeOrder.upcoming.map(clearNext) : [],
+    hiddenPlayed: Array.isArray(safeOrder.hiddenPlayed) ? safeOrder.hiddenPlayed.map(clearNext) : [],
+    blockedContext: Array.isArray(safeOrder.blockedContext) ? safeOrder.blockedContext.map(clearNext) : [],
+    invalid: Array.isArray(safeOrder.invalid) ? safeOrder.invalid.map(clearNext) : [],
+    rows: Array.isArray(safeOrder.rows) ? safeOrder.rows.map(clearNext) : [],
+    next: null,
+    lockedNextSceneId: 0,
+  };
+}
+
+function emptyAlgorithmRecommendationForOrder(order, reason = "Start de run om de eerste situatie klaar te zetten.") {
+  const safeOrder = order && typeof order === "object" ? order : {};
+  return {
+    scene: null,
+    score: 0,
+    reason,
+    calibration: safeOrder.calibration || null,
+    entityScores: safeOrder.entityScores || null,
+    candidates: [],
+    prompt: "",
+  };
+}
+
 function assertAlgorithmSceneReady(scene, catalog = getAlgorithmCatalog(), runs = getAlgorithmRunsForCurrentSession()) {
   const validation = validateSceneLinks(scene, catalog);
   if (!validation.ok) {
@@ -3910,6 +3940,7 @@ function buildAlgorithmTouchDesignerPayload(bundle, options = {}) {
         mode: safeId ? "selected" : "random",
         id: safeId,
         name: character ? String(character.name || "") : "",
+        description: character ? String(character.description || "") : "",
       };
     }) : [],
     situations: expandedScene ? expandedScene.situations.map((item) => ({
@@ -3943,18 +3974,22 @@ function getAlgorithmState() {
   const runs = getAlgorithmRunsForCurrentSession();
   activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
   const settings = getAlgorithmSettings();
-  const currentOrder = buildAlgorithmOrder({
+  const rawCurrentOrder = buildAlgorithmOrder({
     scenes: catalog.scenes,
     runs,
     settings,
     catalog,
   });
-  const recommendation = buildAlgorithmRecommendation(catalog, runs, currentOrder);
+  const algorithmRunStarted = getAlgorithmRunStartedForCurrentSession(runs, activeAlgorithmRun);
+  const awaitingStart = !algorithmRunStarted && !activeAlgorithmRun && runs.length === 0;
+  const currentOrder = awaitingStart ? maskAlgorithmOrderUntilRunStart(rawCurrentOrder) : rawCurrentOrder;
+  const recommendation = awaitingStart
+    ? emptyAlgorithmRecommendationForOrder(currentOrder)
+    : buildAlgorithmRecommendation(catalog, runs, currentOrder);
   const entityScores = currentOrder.entityScores || computeEntityScores({ scenes: catalog.scenes, runs });
   const activeScene = activeAlgorithmRun
     ? expandAlgorithmScene(getAlgorithmSceneById(activeAlgorithmRun.sceneId), catalog)
     : null;
-  const algorithmRunStarted = getAlgorithmRunStartedForCurrentSession(runs, activeAlgorithmRun);
   return {
     ok: true,
     settings,
@@ -3971,7 +4006,7 @@ function getAlgorithmState() {
       sessionId: Number(currentSession.id || 0),
       started: algorithmRunStarted,
       hasHistory: runs.length > 0,
-      awaitingStart: !algorithmRunStarted && !activeAlgorithmRun && runs.length === 0,
+      awaitingStart,
     },
     entityScores,
     recommendation,
@@ -7844,9 +7879,11 @@ function getAlgorithmUpNextOscAddresses() {
     "/foryou/algorithm/up_next/scene_id",
     "/foryou/algorithm/up_next/title",
     "/foryou/algorithm/up_next/environment",
+    "/foryou/algorithm/up_next/environment_description",
   ];
-  for (let index = 1; index <= 10; index += 1) {
+  for (let index = 1; index <= ALGORITHM_OSC_CHARACTER_SLOT_COUNT; index += 1) {
     addresses.push(`/foryou/algorithm/up_next/personage_${index}`);
+    addresses.push(`/foryou/algorithm/up_next/personage_${index}_description`);
   }
   addresses.push("/foryou/algorithm/up_next/description");
   addresses.push("/foryou/algorithm/up_next/done");
@@ -7895,6 +7932,17 @@ function rememberOscReceived(info, patch = {}) {
 function buildAlgorithmCurrentUpNextPayload() {
   const catalog = getAlgorithmCatalog();
   const runs = getAlgorithmRunsForCurrentSession();
+  activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
+  const algorithmRunStarted = getAlgorithmRunStartedForCurrentSession(runs, activeAlgorithmRun);
+  if (!algorithmRunStarted && !activeAlgorithmRun && runs.length === 0) {
+    return buildAlgorithmTouchDesignerPayload({
+      scene: null,
+      prompt: "",
+      score: 0,
+      reason: "Run nog niet gestart.",
+      calibration: null,
+    });
+  }
   const settings = getAlgorithmSettings();
   const currentOrder = buildAlgorithmOrder({
     scenes: catalog.scenes,
@@ -7928,21 +7976,36 @@ function algorithmUpNextSlotLabel(payload, slotNumber) {
   return String(slot.name || "");
 }
 
+function algorithmUpNextSlotDescription(payload, slotNumber) {
+  const slots = Array.isArray(payload && payload.characterSlots) ? payload.characterSlots : [];
+  const slot = slots.find((item) => Number(item && item.slot || 0) === Number(slotNumber));
+  if (!slot || String(slot.mode || "") === "random" || !Number(slot.id || 0)) return "";
+  return String(slot.description || "");
+}
+
 function buildAlgorithmUpNextOscPackets(payload) {
   const sceneId = Number(payload && payload.sceneId || 0);
   const environmentName = String(payload && payload.environmentMode || "") === "random"
     ? "Random"
     : String(payload && payload.environment && payload.environment.name || "");
+  const environmentDescription = String(payload && payload.environmentMode || "") === "random"
+    ? ""
+    : String(payload && payload.environment && payload.environment.description || "");
   const packets = [
     { address: "/foryou/algorithm/up_next/begin", args: [algorithmOscIntArg(sceneId)] },
     { address: "/foryou/algorithm/up_next/scene_id", args: [algorithmOscIntArg(sceneId)] },
     { address: "/foryou/algorithm/up_next/title", args: [algorithmOscStringArg(payload && payload.title || "")] },
     { address: "/foryou/algorithm/up_next/environment", args: [algorithmOscStringArg(environmentName)] },
+    { address: "/foryou/algorithm/up_next/environment_description", args: [algorithmOscStringArg(environmentDescription)] },
   ];
-  for (let index = 1; index <= 10; index += 1) {
+  for (let index = 1; index <= ALGORITHM_OSC_CHARACTER_SLOT_COUNT; index += 1) {
     packets.push({
       address: `/foryou/algorithm/up_next/personage_${index}`,
       args: [algorithmOscStringArg(algorithmUpNextSlotLabel(payload, index))],
+    });
+    packets.push({
+      address: `/foryou/algorithm/up_next/personage_${index}_description`,
+      args: [algorithmOscStringArg(algorithmUpNextSlotDescription(payload, index))],
     });
   }
   packets.push({
@@ -9585,8 +9648,8 @@ app.post("/admin/algorithm/runs/start", requireAdmin, (req, res) => {
   try {
     let sceneId = Number.parseInt(String(req.body && req.body.sceneId || ""), 10);
     if (!Number.isInteger(sceneId) || sceneId < 1) {
-      const recommendation = buildAlgorithmRecommendation();
-      sceneId = Number(recommendation && recommendation.scene && recommendation.scene.id || 0);
+      const upNext = buildAlgorithmCurrentUpNextPayload();
+      sceneId = Number(upNext && upNext.sceneId || 0);
     }
     if (!sceneId) throw new Error("scene_id_required");
     const run = startAlgorithmSceneRun(sceneId, String(req.body && req.body.selectionSource || "manual"));
