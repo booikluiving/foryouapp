@@ -149,6 +149,7 @@ let currentEngagementCommentPoints = DEFAULT_ENGAGEMENT_COMMENT_POINTS;
 const ALGORITHM_CALIBRATION_COUNT_SETTING_KEY = "algorithm_calibration_count";
 const ALGORITHM_GLOBAL_PROMPT_SETTING_KEY = "algorithm_global_prompt";
 const ALGORITHM_PROMPT_TEMPLATE_SETTING_KEY = "algorithm_prompt_template";
+const ALGORITHM_RUN_STARTED_SETTING_PREFIX = "algorithm_run_started_session_";
 const ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS = 3500;
 const DEFAULT_ALGORITHM_PERFORMERS = Object.freeze(["Megan", "Brent", "Booi"]);
 const SIM_DEFAULTS = {
@@ -3198,6 +3199,25 @@ function setSetting(key, value) {
   sql.upsertSetting.run(String(key), String(value), nowIso());
 }
 
+function algorithmRunStartedSettingKey(sessionId) {
+  const safeSessionId = Number.parseInt(String(sessionId || ""), 10);
+  return ALGORITHM_RUN_STARTED_SETTING_PREFIX + (Number.isInteger(safeSessionId) && safeSessionId > 0 ? safeSessionId : 0);
+}
+
+function setAlgorithmRunStartedForCurrentSession(started) {
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  if (!sessionId) throw new Error("session_required");
+  setSetting(algorithmRunStartedSettingKey(sessionId), started ? "1" : "0");
+}
+
+function getAlgorithmRunStartedForCurrentSession(runs = [], activeRun = null) {
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  if (!sessionId) return false;
+  if (activeRun && !activeRun.endedAt) return true;
+  if (Array.isArray(runs) && runs.length > 0) return true;
+  return getSetting(algorithmRunStartedSettingKey(sessionId), "0") === "1";
+}
+
 function normalizeAdminPasswordInput(input) {
   return String(input || "").trim();
 }
@@ -3912,6 +3932,7 @@ function getAlgorithmState() {
   const activeScene = activeAlgorithmRun
     ? expandAlgorithmScene(getAlgorithmSceneById(activeAlgorithmRun.sceneId), catalog)
     : null;
+  const algorithmRunStarted = getAlgorithmRunStartedForCurrentSession(runs, activeAlgorithmRun);
   return {
     ok: true,
     settings,
@@ -3924,6 +3945,12 @@ function getAlgorithmState() {
     runs,
     activeRun: activeAlgorithmRun,
     activeScene,
+    algorithmRun: {
+      sessionId: Number(currentSession.id || 0),
+      started: algorithmRunStarted,
+      hasHistory: runs.length > 0,
+      awaitingStart: !algorithmRunStarted && !activeAlgorithmRun && runs.length === 0,
+    },
     entityScores,
     recommendation,
     currentOrder,
@@ -4274,6 +4301,15 @@ function deleteInactiveAlgorithmItem(kind, id) {
   throw new Error("kind_invalid");
 }
 
+function beginAlgorithmRunForCurrentSession() {
+  if (!isCurrentSessionActive()) throw new Error("session_inactive");
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  if (!sessionId) throw new Error("session_required");
+  setAlgorithmRunStartedForCurrentSession(true);
+  writeDebug("algorithm_run_started", { sessionId });
+  return { sessionId, started: true };
+}
+
 function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
   if (!isCurrentSessionActive()) throw new Error("session_inactive");
   const scene = getAlgorithmSceneById(sceneId);
@@ -4298,6 +4334,7 @@ function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
     prompt,
     String(recommendation && recommendation.reason || "").slice(0, 1000)
   );
+  setAlgorithmRunStartedForCurrentSession(true);
   activeAlgorithmRun = parseAlgorithmRunRow(sql.getAlgorithmRunById.get(insert.lastInsertRowid));
   writeDebug("algorithm_scene_started", {
     runId: Number(activeAlgorithmRun && activeAlgorithmRun.id || 0),
@@ -4345,6 +4382,7 @@ function resetAlgorithmRunsForCurrentSession() {
   const sessionId = Number(currentSession && currentSession.id || 0);
   if (!sessionId) throw new Error("session_required");
   activeAlgorithmRun = null;
+  setAlgorithmRunStartedForCurrentSession(false);
   const result = sql.deleteAlgorithmRunsBySession.run(sessionId);
   writeDebug("algorithm_runs_reset", {
     sessionId,
@@ -9084,6 +9122,15 @@ app.post("/admin/algorithm/runs/start", requireAdmin, (req, res) => {
     }
     if (!sceneId) throw new Error("scene_id_required");
     const run = startAlgorithmSceneRun(sceneId, String(req.body && req.body.selectionSource || "manual"));
+    res.json({ ok: true, run, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/runs/begin", requireAdmin, (req, res) => {
+  try {
+    const run = beginAlgorithmRunForCurrentSession();
     res.json({ ok: true, run, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
