@@ -171,6 +171,11 @@ const ALGORITHM_HEART_WEIGHT_SETTING_KEY = "algorithm_score_heart_weight";
 const ALGORITHM_BORED_WEIGHT_SETTING_KEY = "algorithm_score_bored_weight";
 const ALGORITHM_COMMENT_WEIGHT_SETTING_KEY = "algorithm_score_comment_weight";
 const ALGORITHM_TIME_BLEND_SETTING_KEY = "algorithm_score_time_normalized_blend";
+const ALGORITHM_CHARACTER_COOLDOWN_SETTING_KEY = "algorithm_variation_character_cooldown_window";
+const ALGORITHM_DIVERSITY_WEIGHT_SETTING_KEY = "algorithm_variation_diversity_weight";
+const ALGORITHM_EXPLORATION_WEIGHT_SETTING_KEY = "algorithm_variation_exploration_weight";
+const ALGORITHM_RETRY_WEIGHT_SETTING_KEY = "algorithm_variation_retry_weight";
+const ALGORITHM_SCENE_REPEAT_PENALTY_SETTING_KEY = "algorithm_variation_scene_repeat_penalty";
 const ALGORITHM_RUN_STARTED_SETTING_PREFIX = "algorithm_run_started_session_";
 const ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS = 3500;
 const ALGORITHM_OSC_CHARACTER_SLOT_COUNT = 3;
@@ -4422,6 +4427,11 @@ function getAlgorithmSettings() {
     boredWeight: getSetting(ALGORITHM_BORED_WEIGHT_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.boredWeight)),
     commentWeight: getSetting(ALGORITHM_COMMENT_WEIGHT_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.commentWeight)),
     timeNormalizedBlend: getSetting(ALGORITHM_TIME_BLEND_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.timeNormalizedBlend)),
+    characterCooldownWindow: getSetting(ALGORITHM_CHARACTER_COOLDOWN_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.characterCooldownWindow)),
+    diversityWeight: getSetting(ALGORITHM_DIVERSITY_WEIGHT_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.diversityWeight)),
+    explorationWeight: getSetting(ALGORITHM_EXPLORATION_WEIGHT_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.explorationWeight)),
+    retryWeight: getSetting(ALGORITHM_RETRY_WEIGHT_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.retryWeight)),
+    sceneRepeatPenalty: getSetting(ALGORITHM_SCENE_REPEAT_PENALTY_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.sceneRepeatPenalty)),
   });
 }
 
@@ -4438,6 +4448,11 @@ function saveAlgorithmSettings(patch = {}) {
   setSetting(ALGORITHM_BORED_WEIGHT_SETTING_KEY, String(next.boredWeight));
   setSetting(ALGORITHM_COMMENT_WEIGHT_SETTING_KEY, String(next.commentWeight));
   setSetting(ALGORITHM_TIME_BLEND_SETTING_KEY, String(next.timeNormalizedBlend));
+  setSetting(ALGORITHM_CHARACTER_COOLDOWN_SETTING_KEY, String(next.characterCooldownWindow));
+  setSetting(ALGORITHM_DIVERSITY_WEIGHT_SETTING_KEY, String(next.diversityWeight));
+  setSetting(ALGORITHM_EXPLORATION_WEIGHT_SETTING_KEY, String(next.explorationWeight));
+  setSetting(ALGORITHM_RETRY_WEIGHT_SETTING_KEY, String(next.retryWeight));
+  setSetting(ALGORITHM_SCENE_REPEAT_PENALTY_SETTING_KEY, String(next.sceneRepeatPenalty));
   return next;
 }
 
