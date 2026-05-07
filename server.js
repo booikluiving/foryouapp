@@ -1159,7 +1159,7 @@ const OSC_CONTROL_FEEDBACK_ADDRESS = String(
   process.env.OSC_CONTROL_FEEDBACK_ADDRESS || "/foryou/control/feedback"
 ).trim() || "/foryou/control/feedback";
 const DEFAULT_OSC_CONTROL_FEEDBACK_HOST = String(
-  process.env.OSC_CONTROL_FEEDBACK_HOST || ""
+  process.env.OSC_CONTROL_FEEDBACK_HOST || "192.168.1.49"
 ).trim();
 const DEFAULT_OSC_CONTROL_FEEDBACK_PORT = clampInt(
   process.env.OSC_CONTROL_FEEDBACK_PORT || "0",
@@ -1177,8 +1177,15 @@ let currentOscListenPort = DEFAULT_OSC_CONTROL_LISTEN_PORT;
 let oscControlUdpPort = null;
 let oscControlReady = false;
 let oscControlLastError = "";
+let oscSendUdpPort = null;
+let oscSendReady = false;
+let oscSendLastError = "";
 let oscControlFeedbackHost = DEFAULT_OSC_CONTROL_FEEDBACK_HOST;
 let oscControlFeedbackPort = DEFAULT_OSC_CONTROL_FEEDBACK_PORT;
+let oscControlSendEnabled = parseBooleanLike(process.env.OSC_CONTROL_SEND_ENABLED || process.env.OSC_SEND_ENABLED || "0", false);
+let lastAlgorithmOscSend = null;
+let lastOscReceived = null;
+let lastOscReceivedSerial = 0;
 
 const app = express();
 const FAVICON_PRODUCT = {
@@ -3559,8 +3566,16 @@ oscControlFeedbackPort = clampInt(
   65535,
   DEFAULT_OSC_CONTROL_FEEDBACK_PORT
 );
+oscControlSendEnabled = parseBooleanLike(
+  getSetting(
+    "osc_send_enabled",
+    parseBooleanLike(process.env.OSC_CONTROL_SEND_ENABLED || process.env.OSC_SEND_ENABLED || "0", false) ? "1" : "0"
+  ),
+  false
+);
 setSetting("osc_feedback_host", oscControlFeedbackHost);
 setSetting("osc_feedback_port", String(oscControlFeedbackPort));
+setSetting("osc_send_enabled", oscControlSendEnabled ? "1" : "0");
 initializeAdminPasswordHash();
 if (adminPasswordSeededFromDefault) {
   console.log("Warning: using default admin password. Wijzig dit direct via env of admin console.");
@@ -3784,9 +3799,14 @@ function expandAlgorithmScene(scene, catalog) {
   const characterById = new Map((catalog.characters || []).map((item) => [Number(item.id), item]));
   const situationById = new Map((catalog.situations || []).map((item) => [Number(item.id), item]));
   const environmentById = new Map((catalog.environments || []).map((item) => [Number(item.id), item]));
+  const characterIds = Array.from(new Set([]
+    .concat(Array.isArray(scene.characterIds) ? scene.characterIds : [])
+    .concat(Array.isArray(scene.characterSlots) ? scene.characterSlots : [])
+    .map((id) => Number(id || 0))
+    .filter(Boolean)));
   return {
     ...scene,
-    characters: scene.characterIds.map((id) => characterById.get(Number(id))).filter(Boolean),
+    characters: characterIds.map((id) => characterById.get(Number(id))).filter(Boolean),
     situations: scene.situationIds.map((id) => situationById.get(Number(id))).filter(Boolean),
     environment: scene.environmentId ? (environmentById.get(Number(scene.environmentId)) || null) : null,
     contextScene: scene.contextSceneId ? (getAlgorithmSceneById(scene.contextSceneId) || null) : null,
@@ -3873,6 +3893,7 @@ function buildAlgorithmTouchDesignerPayload(bundle, options = {}) {
   return {
     sceneId: scene ? Number(scene.id || 0) : 0,
     title: scene ? String(scene.title || "") : "",
+    description: scene ? String(scene.promptOverride || "") : "",
     prompt: limitedPrompt,
     promptTruncated: limitedPrompt.length < prompt.length,
     characters: expandedScene ? expandedScene.characters.map((item) => ({
@@ -3955,6 +3976,15 @@ function getAlgorithmState() {
     entityScores,
     recommendation,
     currentOrder,
+    osc: {
+      ...getOscControlState(),
+      sendHost: getOscControlState().feedbackHost,
+      sendPort: getOscControlState().feedbackPort,
+      upNextAddresses: getAlgorithmUpNextOscAddresses(),
+      sendCommands: getAlgorithmOscSendDocs(),
+      receiveCommands: getOscControlCommandDocs(),
+      lastAlgorithmOscSend,
+    },
     touchDesigner: {
       promptMaxChars: ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS,
       oscFeedbackAddress: OSC_CONTROL_FEEDBACK_ADDRESS,
@@ -7260,10 +7290,15 @@ function getOscControlState() {
     ready: !!oscControlReady,
     lastError: String(oscControlLastError || ""),
     allowRemote: !!OSC_CONTROL_ALLOW_REMOTE,
+    sendReady: !!oscSendReady,
+    sendLastError: String(oscSendLastError || ""),
+    sendLocalAddress: "0.0.0.0",
+    sendEnabled: !!oscControlSendEnabled,
     feedbackAddress: OSC_CONTROL_FEEDBACK_ADDRESS,
     feedbackMode,
     feedbackHost: feedbackHost || "",
     feedbackPort: feedbackPort > 0 ? feedbackPort : 0,
+    lastReceived: lastOscReceived,
   };
 }
 
@@ -7571,6 +7606,45 @@ function buildOscControlCommands() {
       },
     },
     {
+      address: "/foryou/algorithm/start_run",
+      args: "(geen)",
+      description: "Start de algoritme-run en stuur Up Next naar TouchDesigner.",
+      feedback: true,
+      feedbackMessage(result) {
+        return result && result.upNext && result.upNext.title ? `Run gestart. Up Next: ${result.upNext.title}` : "Run gestart";
+      },
+      execute() {
+        const run = beginAlgorithmRunForCurrentSession();
+        const oscSend = sendAlgorithmUpNextOsc("osc_start_run");
+        return { run, upNext: oscSend.payload || null, oscSend: oscSend.last || oscSend };
+      },
+    },
+    {
+      address: "/foryou/algorithm/start_next",
+      args: "(geen)",
+      description: "Start de situatie die nu als Up Next klaarstaat.",
+      feedback: true,
+      feedbackMessage(result) {
+        return result && result.title ? `Situatie gestart: ${result.title}` : "Situatie gestart";
+      },
+      execute() {
+        const upNext = buildAlgorithmCurrentUpNextPayload();
+        const sceneId = Number(upNext && upNext.sceneId || 0);
+        if (!sceneId) throw new Error("scene_id_required");
+        const run = startAlgorithmSceneRun(sceneId, "osc_up_next");
+        const catalog = getAlgorithmCatalog();
+        const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
+        const payload = buildAlgorithmTouchDesignerPayload({
+          scene,
+          prompt: run.promptSnapshot,
+          score: 0,
+          reason: "Up Next gestart via OSC.",
+          calibration: buildAlgorithmRecommendation(catalog, getAlgorithmRunsForCurrentSession()).calibration,
+        });
+        return { ...payload, runId: Number(run.id || 0) };
+      },
+    },
+    {
       address: "/foryou/algorithm/start_scene",
       args: "[scene_id]",
       description: "Start een algoritme-situatie-run.",
@@ -7608,7 +7682,7 @@ function buildOscControlCommands() {
       },
       execute() {
         const ended = endActiveAlgorithmSceneRun("osc");
-        const next = buildAlgorithmTouchDesignerPayload(buildAlgorithmRecommendation());
+        const oscSend = sendAlgorithmUpNextOsc("osc_end_scene");
         return {
           endedRun: ended
             ? {
@@ -7620,8 +7694,21 @@ function buildOscControlCommands() {
                 commentCount: Number(ended.commentCount || 0),
               }
             : null,
-          next,
+          next: oscSend.payload || null,
+          oscSend: oscSend.last || oscSend,
         };
+      },
+    },
+    {
+      address: "/foryou/algorithm/reset_run",
+      args: "(geen)",
+      description: "Reset alle algoritme-runs van de huidige sessie.",
+      feedback: true,
+      feedbackMessage(result) {
+        return result && result.deletedRuns ? `Run gereset (${result.deletedRuns} verwijderd)` : "Run gereset";
+      },
+      execute() {
+        return resetAlgorithmRunsForCurrentSession();
       },
     },
     {
@@ -7735,6 +7822,285 @@ function getOscControlFeedbackTarget(info) {
   return { address: targetAddress, port: targetPort, mode: "reply_to_sender" };
 }
 
+function isOscBroadcastAddress(address) {
+  const host = String(address || "").trim();
+  if (host === "255.255.255.255") return true;
+  if (/^\d{1,3}(?:\.\d{1,3}){2}\.255$/.test(host)) return true;
+  return false;
+}
+
+function sendOscPacketToTarget(packet, target) {
+  if (!oscSendUdpPort || !oscSendReady) throw new Error("osc_send_not_ready");
+  if (!target || !target.address || !target.port) throw new Error("send_target_required");
+  if (isOscBroadcastAddress(target.address) && oscSendUdpPort.socket && typeof oscSendUdpPort.socket.setBroadcast === "function") {
+    oscSendUdpPort.socket.setBroadcast(true);
+  }
+  oscSendUdpPort.send(packet, target.address, target.port);
+}
+
+function getAlgorithmUpNextOscAddresses() {
+  const addresses = [
+    "/foryou/algorithm/up_next/begin",
+    "/foryou/algorithm/up_next/scene_id",
+    "/foryou/algorithm/up_next/title",
+    "/foryou/algorithm/up_next/environment",
+  ];
+  for (let index = 1; index <= 10; index += 1) {
+    addresses.push(`/foryou/algorithm/up_next/personage_${index}`);
+  }
+  addresses.push("/foryou/algorithm/up_next/description");
+  addresses.push("/foryou/algorithm/up_next/done");
+  return addresses;
+}
+
+function getAlgorithmOscSendDocs() {
+  return [
+    { address: "/foryou/algorithm/test", args: "1", description: "Numerieke trigger vanuit de algoritme-UI naar TouchDesigner." },
+    ...getAlgorithmUpNextOscAddresses().map((address) => ({
+      address,
+      args: address.endsWith("/begin") || address.endsWith("/scene_id") || address.endsWith("/done") ? "sceneId" : "string",
+      description: "Onderdeel van de Up Next-output naar TouchDesigner.",
+    })),
+    {
+      address: OSC_CONTROL_FEEDBACK_ADDRESS,
+      args: "status commandAddress message dataJson timestamp",
+      description: "Optionele feedback op inkomende OSC-commands, alleen wanneer OSC verzenden aan staat.",
+    },
+  ];
+}
+
+function getOscArgPreview(args) {
+  return getOscArgValues(args).map((value) => {
+    if (typeof value === "string") return value.slice(0, 180);
+    if (typeof value === "number" || typeof value === "boolean") return value;
+    return safeJsonStringify(value, "").slice(0, 180);
+  });
+}
+
+function rememberOscReceived(info, patch = {}) {
+  const previous = lastOscReceived || {};
+  lastOscReceived = {
+    serial: patch.serial !== undefined ? Number(patch.serial || 0) : Number(previous.serial || 0),
+    at: patch.at || previous.at || nowIso(),
+    address: String(patch.address !== undefined ? patch.address : previous.address || ""),
+    args: Array.isArray(patch.args) ? patch.args : Array.isArray(previous.args) ? previous.args : [],
+    senderIp: String(patch.senderIp !== undefined ? patch.senderIp : previous.senderIp || ""),
+    senderPort: Number(patch.senderPort !== undefined ? patch.senderPort : previous.senderPort || 0),
+    status: String(patch.status !== undefined ? patch.status : previous.status || "received"),
+    message: String(patch.message !== undefined ? patch.message : previous.message || ""),
+  };
+  return lastOscReceived;
+}
+
+function buildAlgorithmCurrentUpNextPayload() {
+  const catalog = getAlgorithmCatalog();
+  const runs = getAlgorithmRunsForCurrentSession();
+  const settings = getAlgorithmSettings();
+  const currentOrder = buildAlgorithmOrder({
+    scenes: catalog.scenes,
+    runs,
+    settings,
+    catalog,
+  });
+  const recommendation = buildAlgorithmRecommendation(catalog, runs, currentOrder);
+  const payload = buildAlgorithmTouchDesignerPayload(recommendation);
+  const nextSceneId = Number(currentOrder && currentOrder.next && currentOrder.next.sceneId || 0);
+  return {
+    ...payload,
+    sceneId: Number(payload.sceneId || nextSceneId || 0),
+    currentOrderNextSceneId: nextSceneId,
+  };
+}
+
+function algorithmOscStringArg(value) {
+  return { type: "s", value: String(value === undefined || value === null ? "" : value) };
+}
+
+function algorithmOscIntArg(value) {
+  return { type: "i", value: Math.floor(Number(value || 0)) };
+}
+
+function algorithmUpNextSlotLabel(payload, slotNumber) {
+  const slots = Array.isArray(payload && payload.characterSlots) ? payload.characterSlots : [];
+  const slot = slots.find((item) => Number(item && item.slot || 0) === Number(slotNumber));
+  if (!slot) return "";
+  if (String(slot.mode || "") === "random" || !Number(slot.id || 0)) return "Random";
+  return String(slot.name || "");
+}
+
+function buildAlgorithmUpNextOscPackets(payload) {
+  const sceneId = Number(payload && payload.sceneId || 0);
+  const environmentName = String(payload && payload.environmentMode || "") === "random"
+    ? "Random"
+    : String(payload && payload.environment && payload.environment.name || "");
+  const packets = [
+    { address: "/foryou/algorithm/up_next/begin", args: [algorithmOscIntArg(sceneId)] },
+    { address: "/foryou/algorithm/up_next/scene_id", args: [algorithmOscIntArg(sceneId)] },
+    { address: "/foryou/algorithm/up_next/title", args: [algorithmOscStringArg(payload && payload.title || "")] },
+    { address: "/foryou/algorithm/up_next/environment", args: [algorithmOscStringArg(environmentName)] },
+  ];
+  for (let index = 1; index <= 10; index += 1) {
+    packets.push({
+      address: `/foryou/algorithm/up_next/personage_${index}`,
+      args: [algorithmOscStringArg(algorithmUpNextSlotLabel(payload, index))],
+    });
+  }
+  packets.push({
+    address: "/foryou/algorithm/up_next/description",
+    args: [algorithmOscStringArg(payload && payload.description || "")],
+  });
+  packets.push({ address: "/foryou/algorithm/up_next/done", args: [algorithmOscIntArg(sceneId)] });
+  return packets;
+}
+
+function buildAlgorithmOscPacketPreview(packets) {
+  return (Array.isArray(packets) ? packets : []).map((packet) => ({
+    address: String(packet && packet.address || ""),
+    args: Array.isArray(packet && packet.args)
+      ? packet.args.map((arg) => {
+          if (arg && typeof arg === "object" && Object.prototype.hasOwnProperty.call(arg, "value")) {
+            return arg.value;
+          }
+          return arg;
+        })
+      : [],
+  }));
+}
+
+function rememberAlgorithmOscSend(result) {
+  lastAlgorithmOscSend = {
+    at: nowIso(),
+    source: String(result && result.source || ""),
+    sent: !!(result && result.sent),
+    disabled: !!(result && result.disabled),
+    reason: String(result && result.reason || ""),
+    messageCount: Number(result && result.messageCount || 0),
+    targetHost: String(result && result.targetHost || ""),
+    targetPort: Number(result && result.targetPort || 0),
+    sceneId: Number(result && result.sceneId || 0),
+    title: String(result && result.title || ""),
+    messages: Array.isArray(result && result.messages) ? result.messages : [],
+  };
+  return lastAlgorithmOscSend;
+}
+
+function sendAlgorithmUpNextOsc(source = "manual") {
+  const payload = buildAlgorithmCurrentUpNextPayload();
+  const sceneId = Number(payload && payload.sceneId || 0);
+  const baseResult = {
+    source: String(source || "manual"),
+    sceneId,
+    title: String(payload && payload.title || ""),
+    payload,
+  };
+  const packets = sceneId ? buildAlgorithmUpNextOscPackets(payload) : [];
+  const messages = buildAlgorithmOscPacketPreview(packets);
+  if (!oscControlSendEnabled) {
+    return { ...baseResult, messages, last: rememberAlgorithmOscSend({ ...baseResult, messages, sent: false, disabled: true, reason: "send_disabled" }) };
+  }
+  if (!sceneId) {
+    return { ...baseResult, messages, last: rememberAlgorithmOscSend({ ...baseResult, messages, sent: false, reason: "no_up_next" }) };
+  }
+  if (!oscSendUdpPort || !oscSendReady) {
+    return { ...baseResult, messages, last: rememberAlgorithmOscSend({ ...baseResult, messages, sent: false, reason: "osc_send_not_ready" }) };
+  }
+  const target = getOscControlFeedbackTarget(null);
+  if (!target) {
+    return { ...baseResult, messages, last: rememberAlgorithmOscSend({ ...baseResult, messages, sent: false, reason: "send_target_required" }) };
+  }
+  try {
+    for (const packet of packets) {
+      sendOscPacketToTarget(packet, target);
+    }
+    writeDebug("algorithm_up_next_osc_sent", {
+      source: String(source || "manual"),
+      sceneId,
+      title: String(payload && payload.title || ""),
+      targetAddress: target.address,
+      targetPort: target.port,
+      messageCount: packets.length,
+    });
+    return {
+      ...baseResult,
+      sent: true,
+      messageCount: packets.length,
+      targetHost: target.address,
+      targetPort: target.port,
+      messages,
+      last: rememberAlgorithmOscSend({
+        ...baseResult,
+        sent: true,
+        messageCount: packets.length,
+        targetHost: target.address,
+        targetPort: target.port,
+        messages,
+      }),
+    };
+  } catch (err) {
+    const reason = err && err.message ? err.message : "osc_send_failed";
+    writeDebug("algorithm_up_next_osc_error", {
+      source: String(source || "manual"),
+      sceneId,
+      targetAddress: target.address,
+      targetPort: target.port,
+      message: reason,
+    });
+    return { ...baseResult, messages, last: rememberAlgorithmOscSend({ ...baseResult, messages, sent: false, reason }) };
+  }
+}
+
+function sendAlgorithmOscTest() {
+  const source = "osc_test";
+  const baseResult = { source, sceneId: 0, title: "OSC trigger", payload: { trigger: true } };
+  const packet = {
+    address: "/foryou/algorithm/test",
+    args: [algorithmOscIntArg(1)],
+  };
+  const messages = buildAlgorithmOscPacketPreview([packet]);
+  if (!oscControlSendEnabled) {
+    return { ...baseResult, messages, last: rememberAlgorithmOscSend({ ...baseResult, messages, sent: false, disabled: true, reason: "send_disabled" }) };
+  }
+  if (!oscSendUdpPort || !oscSendReady) {
+    return { ...baseResult, messages, last: rememberAlgorithmOscSend({ ...baseResult, messages, sent: false, reason: "osc_send_not_ready" }) };
+  }
+  const target = getOscControlFeedbackTarget(null);
+  if (!target) {
+    return { ...baseResult, messages, last: rememberAlgorithmOscSend({ ...baseResult, messages, sent: false, reason: "send_target_required" }) };
+  }
+  try {
+    sendOscPacketToTarget(packet, target);
+    writeDebug("algorithm_osc_test_sent", {
+      targetAddress: target.address,
+      targetPort: target.port,
+      trigger: true,
+    });
+    return {
+      ...baseResult,
+      sent: true,
+      messageCount: 1,
+      targetHost: target.address,
+      targetPort: target.port,
+      messages,
+      last: rememberAlgorithmOscSend({
+        ...baseResult,
+        sent: true,
+        messageCount: 1,
+        targetHost: target.address,
+        targetPort: target.port,
+        messages,
+      }),
+    };
+  } catch (err) {
+    const reason = err && err.message ? err.message : "osc_send_failed";
+    writeDebug("algorithm_osc_test_error", {
+      targetAddress: target.address,
+      targetPort: target.port,
+      message: reason,
+    });
+    return { ...baseResult, messages, last: rememberAlgorithmOscSend({ ...baseResult, messages, sent: false, reason }) };
+  }
+}
+
 function trimOscPromptFields(value, maxPromptChars) {
   if (!value || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map((item) => trimOscPromptFields(item, maxPromptChars));
@@ -7788,12 +8154,19 @@ function createOscControlFeedbackPacket(payload) {
 }
 
 function sendOscControlFeedback(info, payload) {
+  if (!oscControlSendEnabled) {
+    writeDebug("osc_feedback_blocked", {
+      commandAddress: String(payload && payload.commandAddress || ""),
+      reason: "send_disabled",
+    });
+    return false;
+  }
   if (!oscControlUdpPort || !oscControlReady) return false;
   const target = getOscControlFeedbackTarget(info);
   if (!target) return false;
   try {
     const packet = createOscControlFeedbackPacket(payload);
-    oscControlUdpPort.send(packet, target.address, target.port);
+    sendOscPacketToTarget(packet, target);
     writeDebug("osc_feedback_sent", {
       status: String(payload && payload.status || "ok"),
       commandAddress: String(payload && payload.commandAddress || ""),
@@ -7817,14 +8190,37 @@ function sendOscControlFeedback(info, payload) {
 
 function executeOscControlCommand(packet, info = null) {
   const senderIp = normalizeIp(info && info.address ? info.address : "unknown");
+  const senderPort = clampInt(info && info.port, 0, 65535, 0);
   const address = String(packet && packet.address || "").trim();
   if (!address) return;
+  const receivedSerial = lastOscReceivedSerial + 1;
+  lastOscReceivedSerial = receivedSerial;
+  rememberOscReceived(info, {
+    serial: receivedSerial,
+    at: nowIso(),
+    address,
+    args: getOscArgPreview(packet && packet.args),
+    senderIp,
+    senderPort,
+    status: "received",
+    message: "Ontvangen",
+  });
   if (!isOscControlSenderAllowed(info)) {
+    rememberOscReceived(info, {
+      serial: receivedSerial,
+      status: "rejected",
+      message: "Afzender geweigerd",
+    });
     writeDebug("osc_cmd_rejected_sender", { address, senderIp, allowRemote: OSC_CONTROL_ALLOW_REMOTE });
     return;
   }
   const command = OSC_CONTROL_COMMAND_MAP.get(address.toLowerCase());
   if (!command) {
+    rememberOscReceived(info, {
+      serial: receivedSerial,
+      status: "unknown_command",
+      message: "Onbekend command",
+    });
     writeDebug("osc_cmd_unknown", { address, senderIp });
     sendOscControlFeedback(info, {
       status: "error",
@@ -7844,6 +8240,11 @@ function executeOscControlCommand(packet, info = null) {
         argCount: Array.isArray(args) ? args.length : 0,
         result: safeJsonStringify(result, "{}").slice(0, 500),
       });
+      rememberOscReceived(info, {
+        serial: receivedSerial,
+        status: "ok",
+        message: "Command verwerkt",
+      });
       if (command.feedback) {
         const rawMessage = typeof command.feedbackMessage === "function"
           ? command.feedbackMessage(result, args)
@@ -7862,6 +8263,11 @@ function executeOscControlCommand(packet, info = null) {
       writeDebug("osc_cmd_error", {
         address,
         senderIp,
+        message: errMessage,
+      });
+      rememberOscReceived(info, {
+        serial: receivedSerial,
+        status: "error",
         message: errMessage,
       });
       if (command.feedback) {
@@ -7893,6 +8299,67 @@ function closeOscControlPort(portInstance) {
   try {
     portInstance.close();
   } catch {}
+}
+
+function bindOscSendPort(requestedBy = "system") {
+  const previousPort = oscSendUdpPort;
+  const previousReady = oscSendReady;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const candidate = new osc.UDPPort({
+      localAddress: "0.0.0.0",
+      localPort: 0,
+      metadata: true,
+      broadcast: true,
+    });
+
+    const finishError = (err) => {
+      if (settled) return;
+      settled = true;
+      oscSendReady = previousPort ? previousReady : false;
+      oscSendLastError = String(err && err.message ? err.message : "unknown");
+      writeDebug("osc_send_bind_error", {
+        by: String(requestedBy || "system"),
+        listenAddress: "0.0.0.0",
+        message: oscSendLastError,
+      });
+      closeOscControlPort(candidate);
+      reject(err || new Error("osc_send_bind_failed"));
+    };
+
+    candidate.on("error", (err) => {
+      if (!settled) {
+        finishError(err);
+        return;
+      }
+      oscSendReady = false;
+      oscSendLastError = String(err && err.message ? err.message : "unknown");
+      writeDebug("osc_send_runtime_error", {
+        listenAddress: "0.0.0.0",
+        message: oscSendLastError,
+      });
+    });
+
+    candidate.once("ready", () => {
+      if (settled) return;
+      settled = true;
+      oscSendUdpPort = candidate;
+      oscSendReady = true;
+      oscSendLastError = "";
+      writeDebug("osc_send_bound", {
+        by: String(requestedBy || "system"),
+        listenAddress: "0.0.0.0",
+      });
+      if (previousPort && previousPort !== candidate) closeOscControlPort(previousPort);
+      resolve(getOscControlState());
+    });
+
+    try {
+      candidate.open();
+    } catch (err) {
+      finishError(err);
+    }
+  });
 }
 
 function bindOscControlPort(nextPort, requestedBy = "system") {
@@ -9132,7 +9599,8 @@ app.post("/admin/algorithm/runs/start", requireAdmin, (req, res) => {
 app.post("/admin/algorithm/runs/begin", requireAdmin, (req, res) => {
   try {
     const run = beginAlgorithmRunForCurrentSession();
-    res.json({ ok: true, run, state: getAlgorithmState(req) });
+    const oscSend = sendAlgorithmUpNextOsc("start_run");
+    res.json({ ok: true, run, oscSend: oscSend.last || oscSend, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -9141,7 +9609,8 @@ app.post("/admin/algorithm/runs/begin", requireAdmin, (req, res) => {
 app.post("/admin/algorithm/runs/end", requireAdmin, (req, res) => {
   try {
     const run = endActiveAlgorithmSceneRun(String(req.body && req.body.reason || "manual"));
-    res.json({ ok: true, run, state: getAlgorithmState(req) });
+    const oscSend = sendAlgorithmUpNextOsc("end_scene");
+    res.json({ ok: true, run, oscSend: oscSend.last || oscSend, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -9167,28 +9636,85 @@ app.post("/admin/algorithm/recommendation/recompute", requireAdmin, (req, res) =
 
 app.post("/admin/algorithm/touchdesigner/send-current", requireAdmin, (req, res) => {
   try {
-    const state = getAlgorithmState(req);
-    let bundle = state.recommendation;
-    const target = String(req.body && req.body.target || "current").trim().toLowerCase();
-    if (target !== "next" && state.activeScene) {
-      bundle = {
-        scene: state.activeScene,
-        prompt: state.activeRun && state.activeRun.promptSnapshot
-          ? state.activeRun.promptSnapshot
-          : buildAlgorithmPromptForScene(state.activeScene, state.catalog, state.recommendation),
-        score: calculateRunScore(state.activeRun || {}),
-        reason: "Actieve situatie.",
-        calibration: state.recommendation && state.recommendation.calibration,
-      };
-    }
-    const payload = buildAlgorithmTouchDesignerPayload(bundle);
-    const sent = sendOscControlFeedback(null, {
-      status: "ok",
-      commandAddress: "/foryou/algorithm/send_current",
-      message: payload.title ? `Algorithm situation: ${payload.title}` : "Algorithm situation",
-      data: payload,
+    const oscSend = sendAlgorithmUpNextOsc("manual_up_next");
+    res.json({
+      ok: true,
+      sent: !!(oscSend.last && oscSend.last.sent),
+      payload: oscSend.payload || null,
+      oscSend: oscSend.last || oscSend,
+      state: getAlgorithmState(req),
     });
-    res.json({ ok: true, sent, payload, oscFeedbackMode: getOscControlState().feedbackMode });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/osc/settings", requireAdmin, async (req, res) => {
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const rawListenPort = Object.prototype.hasOwnProperty.call(body, "listenPort") ? body.listenPort : body.receivePort;
+  const rawSendHost = Object.prototype.hasOwnProperty.call(body, "sendHost") ? body.sendHost : body.host;
+  const rawSendPort = Object.prototype.hasOwnProperty.call(body, "sendPort") ? body.sendPort : body.port;
+  const listenPort = clampInt(rawListenPort, 1, 65535, -1);
+  const sendHost = normalizeOscControlFeedbackHost(rawSendHost);
+  const sendPort = clampInt(rawSendPort, 0, 65535, 0);
+  const requestedSendEnabled = parseBooleanLike(req.body && req.body.sendEnabled, false);
+  const sendTargetReady = !!sendHost && sendPort > 0;
+  const sendEnabled = requestedSendEnabled && sendTargetReady;
+  if (listenPort < 1) {
+    res.status(400).json({ ok: false, error: "invalid_listen_port" });
+    return;
+  }
+  try {
+    oscControlSendEnabled = sendEnabled;
+    oscControlFeedbackHost = sendHost;
+    oscControlFeedbackPort = sendPort;
+    setSetting("osc_send_enabled", oscControlSendEnabled ? "1" : "0");
+    setSetting("osc_feedback_host", oscControlFeedbackHost);
+    setSetting("osc_feedback_port", String(oscControlFeedbackPort));
+    let warning = requestedSendEnabled && !sendTargetReady ? "send_target_required" : "";
+    if (listenPort !== Number(currentOscListenPort || 0) || !oscControlReady) {
+      try {
+        await bindOscControlPort(listenPort, "algorithm_ui");
+      } catch (err) {
+        warning = warning || "osc_bind_failed";
+        writeDebug("algorithm_osc_receive_bind_failed_after_save", {
+          listenPort,
+          sendHost,
+          sendPort,
+          message: err && err.message ? err.message : "unknown",
+        });
+      }
+    }
+    const oscState = getOscControlState();
+    writeDebug("algorithm_osc_settings_updated", {
+      by: "admin",
+      requestedSendEnabled,
+      sendEnabled: oscState.sendEnabled,
+      listenAddress: oscState.listenAddress,
+      listenPort: oscState.listenPort,
+      sendHost: oscState.feedbackHost,
+      sendPort: oscState.feedbackPort,
+      warning,
+    });
+    res.json({ ok: true, warning, osc: oscState, state: getAlgorithmState(req) });
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: "osc_bind_failed",
+      message: err && err.message ? err.message : "unknown",
+    });
+  }
+});
+
+app.post("/admin/algorithm/osc/test", requireAdmin, (req, res) => {
+  try {
+    const oscSend = sendAlgorithmOscTest();
+    res.json({
+      ok: true,
+      sent: !!(oscSend.last && oscSend.last.sent),
+      oscSend: oscSend.last || oscSend,
+      state: getAlgorithmState(req),
+    });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -10708,6 +11234,12 @@ bindOscControlPort(currentOscListenPort, "startup").catch((err) => {
   writeDebug("osc_control_startup_failed", {
     listenAddress: OSC_CONTROL_LISTEN_ADDRESS,
     listenPort: currentOscListenPort,
+    message: err && err.message ? err.message : "unknown",
+  });
+});
+bindOscSendPort("startup").catch((err) => {
+  writeDebug("osc_send_startup_failed", {
+    listenAddress: "0.0.0.0",
     message: err && err.message ? err.message : "unknown",
   });
 });
