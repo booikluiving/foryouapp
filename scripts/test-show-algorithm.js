@@ -74,6 +74,7 @@ function testCurrentOrderRowsStartAtFirstAfterReset() {
   const order = buildAlgorithmOrder({ scenes, runs: [], settings: { calibrationCount: 2 } });
   assert.deepStrictEqual(order.rows.map((entry) => entry.sceneId), [1, 2, 3]);
   assert.strictEqual(order.next.sceneId, 1);
+  assert.strictEqual(order.next.rank, 1);
   assert.strictEqual(order.rows[0].next, true);
   assert.strictEqual(order.rows[0].active, false);
   assert.strictEqual(order.rows.filter((entry) => entry.next).length, 1);
@@ -88,6 +89,7 @@ function testCurrentOrderRowsMarkActiveWithNext() {
   const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 2 } });
   assert.strictEqual(order.active.sceneId, 1);
   assert.strictEqual(order.next.sceneId, 2);
+  assert.strictEqual(order.next.rank, 2);
   assert.strictEqual(order.rows[0].active, true);
   assert.strictEqual(order.rows[0].next, false);
   assert.strictEqual(order.rows[1].active, false);
@@ -107,6 +109,7 @@ function testCurrentOrderRowsAdvanceAfterStop() {
   assert.strictEqual(order.rows[0].played, true);
   assert.strictEqual(order.rows[1].next, true);
   assert.strictEqual(order.next.sceneId, 2);
+  assert.strictEqual(order.next.rank, 2);
 }
 
 function testCurrentOrderRowsKeepActiveAfterCalibration() {
