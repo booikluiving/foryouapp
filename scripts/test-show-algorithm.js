@@ -125,6 +125,148 @@ function testRecommendationUsesCurrentScoreSettings() {
   );
 }
 
+function testRecentPopularCharacterGetsDiversityPenalty() {
+  const scenes = [
+    { id: 1, title: "Penelope calibratie", sortOrder: 1, characterIds: [1], isActive: true },
+    { id: 2, title: "Penelope terug", sortOrder: 2, characterIds: [1], isActive: true },
+    { id: 3, title: "Ander personage", sortOrder: 3, characterIds: [2], isActive: true },
+    { id: 4, title: "Ander ijkpunt", sortOrder: 4, characterIds: [2], isActive: true },
+  ];
+  const runs = [
+    { id: 1, sceneId: 4, runOrder: 1, heartCount: 8, endedAt: "2026-01-01T00:00:00.000Z" },
+    { id: 2, sceneId: 1, runOrder: 2, heartCount: 10, endedAt: "2026-01-01T00:01:00.000Z" },
+  ];
+  const order = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { calibrationCount: 0, characterCooldownWindow: 1, diversityWeight: 5, explorationWeight: 0.5 },
+  });
+  assert.strictEqual(order.next.sceneId, 3);
+  const penelope = order.rows.find((entry) => entry.sceneId === 2);
+  assert(penelope.scoreBreakdown.recencyPenalty > 0);
+}
+
+function testPopularCharacterReturnsAfterCooldownWindow() {
+  const scenes = [
+    { id: 1, title: "Penelope oud", sortOrder: 1, characterIds: [1], isActive: true },
+    { id: 2, title: "Penelope terug", sortOrder: 2, characterIds: [1], isActive: true },
+    { id: 3, title: "Minder sterk alternatief", sortOrder: 3, characterIds: [2], isActive: true },
+    { id: 4, title: "Tussenruimte A", sortOrder: 4, characterIds: [3], isActive: true },
+    { id: 5, title: "Tussenruimte B", sortOrder: 5, characterIds: [4], isActive: true },
+    { id: 6, title: "Tussenruimte C", sortOrder: 6, characterIds: [5], isActive: true },
+  ];
+  const runs = [
+    { id: 1, sceneId: 1, runOrder: 1, heartCount: 10, endedAt: "2026-01-01T00:00:00.000Z" },
+    { id: 2, sceneId: 4, runOrder: 2, heartCount: 1, endedAt: "2026-01-01T00:01:00.000Z" },
+    { id: 3, sceneId: 5, runOrder: 3, heartCount: 1, endedAt: "2026-01-01T00:02:00.000Z" },
+    { id: 4, sceneId: 6, runOrder: 4, heartCount: 1, endedAt: "2026-01-01T00:03:00.000Z" },
+  ];
+  const order = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { calibrationCount: 0, characterCooldownWindow: 3, diversityWeight: 5 },
+  });
+  assert.strictEqual(order.next.sceneId, 2);
+  assert.strictEqual(order.next.scoreBreakdown.recencyPenalty, 0);
+}
+
+function testActiveSceneCountsForDiversityPenalty() {
+  const scenes = [
+    { id: 1, title: "Penelope actief", sortOrder: 1, characterIds: [1], isActive: true },
+    { id: 2, title: "Penelope meteen terug", sortOrder: 2, characterIds: [1], isActive: true },
+    { id: 3, title: "Ademruimte", sortOrder: 3, characterIds: [2], isActive: true },
+    { id: 4, title: "Penelope eerder", sortOrder: 4, characterIds: [1], isActive: true },
+    { id: 5, title: "Ademruimte eerder", sortOrder: 5, characterIds: [2], isActive: true },
+    { id: 6, title: "Filler laatst", sortOrder: 6, characterIds: [3], isActive: true },
+  ];
+  const runs = [
+    { id: 1, sceneId: 4, runOrder: 1, heartCount: 10, endedAt: "2026-01-01T00:00:00.000Z" },
+    { id: 2, sceneId: 5, runOrder: 2, heartCount: 8, endedAt: "2026-01-01T00:01:00.000Z" },
+    { id: 3, sceneId: 6, runOrder: 3, heartCount: 0, endedAt: "2026-01-01T00:02:00.000Z" },
+    { id: 4, sceneId: 1, runOrder: 4, startedAt: "2026-01-01T00:03:00.000Z" },
+  ];
+  const order = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { calibrationCount: 0, characterCooldownWindow: 1, diversityWeight: 5 },
+  });
+  assert.strictEqual(order.active.sceneId, 1);
+  assert.strictEqual(order.next.sceneId, 3);
+  assert(order.rows.find((entry) => entry.sceneId === 2).scoreBreakdown.recencyPenalty > 0);
+}
+
+function testExplorationBonusRewardsUnderTestedScenes() {
+  const scenes = [
+    { id: 1, title: "Bekender personage", sortOrder: 1, characterIds: [1], isActive: true },
+    { id: 2, title: "Nieuw personage", sortOrder: 2, characterIds: [2], isActive: true },
+    { id: 3, title: "Oude test", sortOrder: 3, characterIds: [1], isActive: true },
+  ];
+  const runs = [
+    { id: 1, sceneId: 3, runOrder: 1, heartCount: 0, endedAt: "2026-01-01T00:00:00.000Z" },
+  ];
+  const order = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 1 },
+  });
+  assert.strictEqual(order.next.sceneId, 2);
+  assert(order.next.scoreBreakdown.explorationBonus > order.rows.find((entry) => entry.sceneId === 1).scoreBreakdown.explorationBonus);
+}
+
+function testRetryBonusIsSoft() {
+  const scenes = [
+    { id: 1, title: "Slecht gevallen", sortOrder: 1, characterIds: [1], isActive: true },
+    { id: 2, title: "Nog steeds sterker", sortOrder: 2, characterIds: [2], isActive: true },
+    { id: 3, title: "Laatst gespeeld", sortOrder: 3, characterIds: [3], isActive: true },
+  ];
+  const runs = [
+    { id: 1, sceneId: 1, runOrder: 1, boredCount: 1, endedAt: "2026-01-01T00:00:00.000Z" },
+    { id: 2, sceneId: 2, runOrder: 2, heartCount: 2, endedAt: "2026-01-01T00:01:00.000Z" },
+    { id: 3, sceneId: 3, runOrder: 3, heartCount: 0, endedAt: "2026-01-01T00:02:00.000Z" },
+  ];
+  const order = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { calibrationCount: 0, diversityWeight: 0, retryWeight: 0.35, sceneRepeatPenalty: 1 },
+  });
+  const low = order.rows.find((entry) => entry.sceneId === 1);
+  assert(low.scoreBreakdown.retryBonus > 0);
+  assert.strictEqual(order.next.sceneId, 2);
+}
+
+function testSceneRepeatPenaltyAfterCycle() {
+  const scenes = [
+    { id: 1, title: "Een", sortOrder: 1, characterIds: [1], isActive: true },
+    { id: 2, title: "Twee", sortOrder: 2, characterIds: [2], isActive: true },
+    { id: 3, title: "Drie", sortOrder: 3, characterIds: [3], isActive: true },
+  ];
+  const runs = [
+    { id: 1, sceneId: 1, runOrder: 1, heartCount: 3, endedAt: "2026-01-01T00:00:00.000Z" },
+    { id: 2, sceneId: 2, runOrder: 2, heartCount: 3, endedAt: "2026-01-01T00:01:00.000Z" },
+    { id: 3, sceneId: 3, runOrder: 3, heartCount: 3, endedAt: "2026-01-01T00:02:00.000Z" },
+  ];
+  const order = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { calibrationCount: 0, sceneRepeatPenalty: 2 },
+  });
+  assert.strictEqual(order.cycleComplete, true);
+  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 1).scoreBreakdown.sceneRepeatPenalty, 2);
+}
+
+function testFinalScoreTieBreaksDeterministically() {
+  const scenes = [
+    { id: 2, title: "Tweede", sortOrder: 2, isActive: true },
+    { id: 1, title: "Eerste", sortOrder: 1, isActive: true },
+  ];
+  const order = buildAlgorithmOrder({
+    scenes,
+    runs: [],
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
+  });
+  assert.strictEqual(order.next.sceneId, 1);
+}
+
 function testCalibrationFixedOrder() {
   const scenes = [
     { id: 1, title: "Een", sortOrder: 1, isActive: true },
@@ -305,7 +447,7 @@ function testCurrentOrderRanksAfterCalibration() {
   ];
   const order = buildAlgorithmOrder({
     scenes,
-    runs: [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", score: 12 }],
+    runs: [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", heartCount: 12 }],
     settings: { calibrationCount: 1 },
   });
   assert.strictEqual(order.calibration.active, false);
@@ -859,6 +1001,11 @@ function testSyncSettingsFilterSecrets() {
   assert.strictEqual(syncSettingIsAllowed("algorithm_score_bored_weight"), true);
   assert.strictEqual(syncSettingIsAllowed("algorithm_score_comment_weight"), true);
   assert.strictEqual(syncSettingIsAllowed("algorithm_score_time_normalized_blend"), true);
+  assert.strictEqual(syncSettingIsAllowed("algorithm_variation_character_cooldown_window"), true);
+  assert.strictEqual(syncSettingIsAllowed("algorithm_variation_diversity_weight"), true);
+  assert.strictEqual(syncSettingIsAllowed("algorithm_variation_exploration_weight"), true);
+  assert.strictEqual(syncSettingIsAllowed("algorithm_variation_retry_weight"), true);
+  assert.strictEqual(syncSettingIsAllowed("algorithm_variation_scene_repeat_penalty"), true);
   assert.strictEqual(syncSettingIsAllowed("osc_profile_device-1"), true);
   assert.strictEqual(syncSettingIsAllowed("admin_password_hash_scrypt_v1"), false);
   const rows = normalizeSyncSettingRows([
@@ -895,6 +1042,13 @@ testTimeNormalizedScoreBlend();
 testTimeNormalizedScoreRewardsShortRuns();
 testEntityScoresUseCurrentScoreSettings();
 testRecommendationUsesCurrentScoreSettings();
+testRecentPopularCharacterGetsDiversityPenalty();
+testPopularCharacterReturnsAfterCooldownWindow();
+testActiveSceneCountsForDiversityPenalty();
+testExplorationBonusRewardsUnderTestedScenes();
+testRetryBonusIsSoft();
+testSceneRepeatPenaltyAfterCycle();
+testFinalScoreTieBreaksDeterministically();
 testCalibrationFixedOrder();
 testRecommendationSkipsLastScene();
 testCurrentOrderKeepsCalibrationFixed();

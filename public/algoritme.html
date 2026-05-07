@@ -973,6 +973,43 @@
           </details>
 
           <details class="settingsBlock">
+            <summary>Variatie en ontdekking</summary>
+            <div class="settingsBlockBody">
+              <div class="scoreControl">
+                <span>Herhaalafstand personages</span>
+                <input id="variationCharacterCooldownWindow" type="number" min="0" max="10" step="1" />
+                <output id="variationCharacterCooldownWindowValue" class="scoreValue">3</output>
+              </div>
+              <div class="scoreControl">
+                <span>Diversiteit vs populariteit</span>
+                <input id="variationDiversityWeight" type="range" min="0" max="5" step="0.1" />
+                <output id="variationDiversityWeightValue" class="scoreValue">1.00</output>
+              </div>
+              <div class="scoreControl">
+                <span>Ontdekking</span>
+                <input id="variationExplorationWeight" type="range" min="0" max="5" step="0.1" />
+                <output id="variationExplorationWeightValue" class="scoreValue">0.50</output>
+              </div>
+              <div class="scoreControl">
+                <span>Herkansing</span>
+                <input id="variationRetryWeight" type="range" min="0" max="2" step="0.05" />
+                <output id="variationRetryWeightValue" class="scoreValue">0.35</output>
+              </div>
+              <div class="scoreControl">
+                <span>Scèneherhaling dempen</span>
+                <input id="variationSceneRepeatPenalty" type="range" min="0" max="5" step="0.1" />
+                <output id="variationSceneRepeatPenaltyValue" class="scoreValue">1.00</output>
+              </div>
+              <div id="variationSettingsPreview" class="small"></div>
+              <div class="actions">
+                <button id="saveVariationSettingsBtn" class="primary" type="button">Bewaar variatie</button>
+                <button id="resetVariationSettingsBtn" type="button">Reset variatie</button>
+              </div>
+              <div id="variationMsg" class="msg"></div>
+            </div>
+          </details>
+
+          <details class="settingsBlock">
             <summary>OSC / TouchDesigner</summary>
             <div class="settingsBlockBody">
               <div class="toggleLine">
@@ -1067,6 +1104,13 @@
           boredWeight: -1.5,
           commentWeight: 0.25,
           timeNormalizedBlend: 0,
+        };
+        const DEFAULT_VARIATION_SETTINGS = {
+          characterCooldownWindow: 3,
+          diversityWeight: 1,
+          explorationWeight: 0.5,
+          retryWeight: 0.35,
+          sceneRepeatPenalty: 1,
         };
         let token = "";
         let state = null;
@@ -1979,6 +2023,21 @@
           return `${orderEntryScore(entry, scores).toFixed(2)} punten${suffix}`;
         }
 
+        function formatOrderScoreBreakdown(entry) {
+          const b = entry && entry.scoreBreakdown ? entry.scoreBreakdown : null;
+          if (!b) return "";
+          const parts = [`basis ${Number(b.baseScore || 0).toFixed(2)}`];
+          const recency = Number(b.recencyPenalty || 0);
+          const exploration = Number(b.explorationBonus || 0);
+          const retry = Number(b.retryBonus || 0);
+          const repeat = Number(b.sceneRepeatPenalty || 0);
+          if (recency) parts.push(`variatie -${recency.toFixed(2)}`);
+          if (exploration) parts.push(`ontdekking +${exploration.toFixed(2)}`);
+          if (retry) parts.push(`herkansing +${retry.toFixed(2)}`);
+          if (repeat) parts.push(`herhaling -${repeat.toFixed(2)}`);
+          return parts.join(" · ");
+        }
+
         function currentOrderRows() {
           const order = state && state.currentOrder ? state.currentOrder : {};
           return Array.isArray(order.rows) ? order.rows : [];
@@ -2081,6 +2140,10 @@
             const notices = noticeMessages.length
               ? `<span class="orderNotice">${esc(noticeMessages.join(" "))}</span>`
               : "";
+            const scoreBreakdownText = !editing ? formatOrderScoreBreakdown(entry) : "";
+            const scoreBreakdown = scoreBreakdownText
+              ? `<span class="orderNotice">${esc(scoreBreakdownText)}</span>`
+              : "";
             const scene = orderEntryScene(entry);
             const contextId = Number(entry && entry.contextSceneId || scene && scene.contextSceneId || 0);
             const contextBadge = contextId ? `<span class="badge">context: ${esc(contextSceneTitle(contextId))}</span>` : "";
@@ -2098,6 +2161,7 @@
                     ${issues}
                   </span>
                   ${notices}
+                  ${scoreBreakdown}
                 </span>
               </div>
             `;
@@ -2357,6 +2421,7 @@
           if (document.activeElement !== $("globalPrompt")) $("globalPrompt").value = state.settings.globalPrompt || "";
           if (document.activeElement !== $("promptTemplate")) $("promptTemplate").value = state.settings.promptTemplate || "";
           renderScoreAlgorithmSettings();
+          renderVariationSettings();
         }
 
         function renderOsc() {
@@ -2607,6 +2672,59 @@
           updateScoreSettingsPreview();
         }
 
+        function variationSettingsFromState() {
+          const settings = state && state.settings ? state.settings : {};
+          return {
+            characterCooldownWindow: Math.round(clampNumber(settings.characterCooldownWindow, 0, 10, DEFAULT_VARIATION_SETTINGS.characterCooldownWindow)),
+            diversityWeight: clampNumber(settings.diversityWeight, 0, 5, DEFAULT_VARIATION_SETTINGS.diversityWeight),
+            explorationWeight: clampNumber(settings.explorationWeight, 0, 5, DEFAULT_VARIATION_SETTINGS.explorationWeight),
+            retryWeight: clampNumber(settings.retryWeight, 0, 2, DEFAULT_VARIATION_SETTINGS.retryWeight),
+            sceneRepeatPenalty: clampNumber(settings.sceneRepeatPenalty, 0, 5, DEFAULT_VARIATION_SETTINGS.sceneRepeatPenalty),
+          };
+        }
+
+        function currentVariationSettingsFromFields() {
+          return {
+            characterCooldownWindow: Math.round(clampNumber($("variationCharacterCooldownWindow").value, 0, 10, DEFAULT_VARIATION_SETTINGS.characterCooldownWindow)),
+            diversityWeight: clampNumber($("variationDiversityWeight").value, 0, 5, DEFAULT_VARIATION_SETTINGS.diversityWeight),
+            explorationWeight: clampNumber($("variationExplorationWeight").value, 0, 5, DEFAULT_VARIATION_SETTINGS.explorationWeight),
+            retryWeight: clampNumber($("variationRetryWeight").value, 0, 2, DEFAULT_VARIATION_SETTINGS.retryWeight),
+            sceneRepeatPenalty: clampNumber($("variationSceneRepeatPenalty").value, 0, 5, DEFAULT_VARIATION_SETTINGS.sceneRepeatPenalty),
+          };
+        }
+
+        function isVariationSettingsFocused() {
+          return [
+            "variationCharacterCooldownWindow",
+            "variationDiversityWeight",
+            "variationExplorationWeight",
+            "variationRetryWeight",
+            "variationSceneRepeatPenalty",
+          ].some((id) => document.activeElement === $(id));
+        }
+
+        function setVariationSettingsFields(settings) {
+          $("variationCharacterCooldownWindow").value = String(settings.characterCooldownWindow);
+          $("variationDiversityWeight").value = String(settings.diversityWeight);
+          $("variationExplorationWeight").value = String(settings.explorationWeight);
+          $("variationRetryWeight").value = String(settings.retryWeight);
+          $("variationSceneRepeatPenalty").value = String(settings.sceneRepeatPenalty);
+        }
+
+        function updateVariationSettingsPreview(settings = currentVariationSettingsFromFields()) {
+          $("variationCharacterCooldownWindowValue").textContent = String(settings.characterCooldownWindow);
+          $("variationDiversityWeightValue").textContent = formatScoreWeight(settings.diversityWeight);
+          $("variationExplorationWeightValue").textContent = formatScoreWeight(settings.explorationWeight);
+          $("variationRetryWeightValue").textContent = formatScoreWeight(settings.retryWeight);
+          $("variationSceneRepeatPenaltyValue").textContent = formatScoreWeight(settings.sceneRepeatPenalty);
+          $("variationSettingsPreview").textContent = `Laatste ${settings.characterCooldownWindow} situaties tellen mee voor personage-afwisseling. Diversiteit ${formatScoreWeight(settings.diversityWeight)}, ontdekking ${formatScoreWeight(settings.explorationWeight)}, herkansing ${formatScoreWeight(settings.retryWeight)}, scèneherhaling ${formatScoreWeight(settings.sceneRepeatPenalty)}.`;
+        }
+
+        function renderVariationSettings() {
+          if (!isVariationSettingsFocused()) setVariationSettingsFields(variationSettingsFromState());
+          updateVariationSettingsPreview();
+        }
+
         function renderScores() {
           const labels = {
             characters: Object.fromEntries((state.catalog.characters || []).map((item) => [item.id, item.name])),
@@ -2700,6 +2818,11 @@
               boredWeight: $("scoreBoredWeight").value,
               commentWeight: $("scoreCommentWeight").value,
               timeNormalizedBlend: $("scoreTimeBlend").value,
+              characterCooldownWindow: $("variationCharacterCooldownWindow").value,
+              diversityWeight: $("variationDiversityWeight").value,
+              explorationWeight: $("variationExplorationWeight").value,
+              retryWeight: $("variationRetryWeight").value,
+              sceneRepeatPenalty: $("variationSceneRepeatPenalty").value,
             }, msgTarget);
             setMsg(msgTarget, successText || "Settings opgeslagen.");
           } catch (err) {
@@ -3067,6 +3190,18 @@
             setScoreSettingsFields(DEFAULT_SCORE_SETTINGS);
             updateScoreSettingsPreview(DEFAULT_SCORE_SETTINGS);
             saveAlgorithmSettings("scoreMsg", "Score-instellingen teruggezet.");
+          });
+          ["variationCharacterCooldownWindow", "variationDiversityWeight", "variationExplorationWeight", "variationRetryWeight", "variationSceneRepeatPenalty"].forEach((id) => {
+            $(id).addEventListener("input", () => updateVariationSettingsPreview());
+            $(id).addEventListener("change", () => updateVariationSettingsPreview());
+          });
+          $("saveVariationSettingsBtn").addEventListener("click", () => {
+            saveAlgorithmSettings("variationMsg", "Variatie opgeslagen.");
+          });
+          $("resetVariationSettingsBtn").addEventListener("click", () => {
+            setVariationSettingsFields(DEFAULT_VARIATION_SETTINGS);
+            updateVariationSettingsPreview(DEFAULT_VARIATION_SETTINGS);
+            saveAlgorithmSettings("variationMsg", "Variatie teruggezet.");
           });
           ["oscReceivePort", "oscSendHost", "oscSendPort"].forEach((id) => {
             $(id).addEventListener("input", markOscDraftDirty);
