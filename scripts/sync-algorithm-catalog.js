@@ -244,6 +244,15 @@ function main() {
     return;
   }
 
+  if (process.env.FORYOU_ALLOW_DESTRUCTIVE_LEGACY_SYNC !== "1") {
+    console.error([
+      "Legacy catalog import is disabled.",
+      "Use the local-first HTTP sync in /algoritme instead.",
+      "Set FORYOU_ALLOW_DESTRUCTIVE_LEGACY_SYNC=1 only for an intentional one-off recovery import.",
+    ].join("\n"));
+    process.exit(3);
+  }
+
   const inputPath = argValue(args, "--input", "");
   const shouldBackup = args.includes("--backup");
   const payload = readPayload(inputPath);

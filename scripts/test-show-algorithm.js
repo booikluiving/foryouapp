@@ -13,8 +13,17 @@ const {
   normalizeSceneCharacterSlotsForPerformerRoles,
   normalizeSceneForPerformerRoles,
   pickRecommendation,
+  resolveRandomCharacterSlotsForPerformerRoles,
+  resolveRandomEnvironmentForScene,
   validateSceneLinks,
 } = require("../lib/show-algorithm");
+const {
+  incomingWins,
+  normalizeOscProfile,
+  normalizePeerUrls,
+  normalizeSyncSettingRows,
+  syncSettingIsAllowed,
+} = require("../lib/local-sync");
 
 function testScoreFormula() {
   assert.strictEqual(
@@ -561,14 +570,17 @@ function testRoleSlotsKeepEmptyActorSlotsAsNone() {
   );
 }
 
-function testRoleSlotsKeepExplicitRandomOnActorSlot() {
+function testRoleSlotsPlaceRandomAfterConcreteActorSlots() {
   const catalog = {
     performers: [{ id: 3, name: "Brent", roleSlot: 3, isActive: true }],
-    characters: [{ id: 3, name: "Brent-rol", performerId: 3, isActive: true }],
+    characters: [
+      { id: 1, name: "Flex", performerId: 0, isActive: true },
+      { id: 3, name: "Brent-rol", performerId: 3, isActive: true },
+    ],
   };
   assert.deepStrictEqual(
-    normalizeSceneCharacterSlotsForPerformerRoles([0, ALGORITHM_RANDOM_SLOT_VALUE, 3], catalog),
-    [0, ALGORITHM_RANDOM_SLOT_VALUE, 3]
+    normalizeSceneCharacterSlotsForPerformerRoles([1, 3, ALGORITHM_RANDOM_SLOT_VALUE], catalog),
+    [1, ALGORITHM_RANDOM_SLOT_VALUE, 3]
   );
 }
 
@@ -602,6 +614,97 @@ function testSceneForPerformerRolesUpdatesCharacterIdsAndCount() {
   assert.strictEqual(scene.characterCount, 3);
 }
 
+function testRandomSlotsResolveWithinPerformerCandidates() {
+  const catalog = {
+    performers: [
+      { id: 1, name: "Booi", roleSlot: 1, isActive: true },
+      { id: 2, name: "Megan", roleSlot: 2, isActive: true },
+      { id: 3, name: "Brent", roleSlot: 3, isActive: true },
+    ],
+    characters: [
+      { id: 1, name: "Peter", performerId: 0, isActive: true },
+      { id: 2, name: "Antoine", performerId: 3, isActive: true },
+      { id: 3, name: "Adolf", performerId: 3, isActive: true },
+      { id: 4, name: "Anne-Fleur", performerId: 2, isActive: true },
+      { id: 5, name: "Lisa", performerId: 2, isActive: true },
+    ],
+  };
+  const result = resolveRandomCharacterSlotsForPerformerRoles(
+    [1, 3, ALGORITHM_RANDOM_SLOT_VALUE],
+    catalog,
+    { seed: "peter-adolf-random" }
+  );
+  assert.strictEqual(result.characterSlots[0], 1);
+  assert.strictEqual(result.characterSlots[2], 3);
+  assert([4, 5].includes(result.characterSlots[1]));
+  assert(!result.characterSlots.includes(2));
+  assert.strictEqual(new Set(result.characterSlots.filter((id) => id > 0)).size, 3);
+}
+
+function testMultipleRandomSlotsResolvePerPerformerWithoutDuplicates() {
+  const catalog = {
+    performers: [
+      { id: 1, name: "Booi", roleSlot: 1, isActive: true },
+      { id: 2, name: "Megan", roleSlot: 2, isActive: true },
+      { id: 3, name: "Brent", roleSlot: 3, isActive: true },
+    ],
+    characters: [
+      { id: 1, name: "Booi-random", performerId: 1, isActive: true },
+      { id: 2, name: "Megan-random-1", performerId: 2, isActive: true },
+      { id: 3, name: "Megan-random-2", performerId: 2, isActive: true },
+      { id: 4, name: "Brent-vast", performerId: 3, isActive: true },
+      { id: 5, name: "Brent-anders", performerId: 3, isActive: true },
+    ],
+  };
+  const result = resolveRandomCharacterSlotsForPerformerRoles(
+    [4, ALGORITHM_RANDOM_SLOT_VALUE, ALGORITHM_RANDOM_SLOT_VALUE],
+    catalog,
+    { seed: "two-randoms" }
+  );
+  assert.strictEqual(result.characterSlots[0], 1);
+  assert([2, 3].includes(result.characterSlots[1]));
+  assert.strictEqual(result.characterSlots[2], 4);
+  assert(!result.characterSlots.includes(5));
+  assert.strictEqual(new Set(result.characterSlots.filter((id) => id > 0)).size, 3);
+}
+
+function testRandomEnvironmentResolvesToConcreteEnvironment() {
+  const catalog = {
+    environments: [
+      { id: 1, name: "Keuken", description: "Een krappe keuken.", isActive: true },
+      { id: 2, name: "Tennisbaan", description: "Een natte tennisbaan.", isActive: true },
+    ],
+  };
+  const result = resolveRandomEnvironmentForScene(
+    { id: 1, title: "Random plek", environmentMode: "random" },
+    catalog,
+    { seed: "random-environment" }
+  );
+  assert.strictEqual(result.scene.environmentMode, "selected");
+  assert([1, 2].includes(result.scene.environmentId));
+  assert(result.randomEnvironment && result.randomEnvironment.name);
+}
+
+function testPromptCompositionWithResolvedRandomEnvironmentHasNoRandomPlaceholder() {
+  const catalog = {
+    environments: [
+      { id: 7, name: "Kelder", description: "Een lage kelder.", isActive: true },
+    ],
+  };
+  const resolved = resolveRandomEnvironmentForScene(
+    { id: 1, title: "Random plek", environmentMode: "random" },
+    catalog,
+    { seed: "resolved-env-prompt" }
+  );
+  const prompt = composeScenePrompt({
+    scene: resolved.scene,
+    environment: catalog.environments[0],
+    settings: { calibrationCount: 1 },
+  });
+  assert(prompt.includes("Locatie: Kelder"));
+  assert(!prompt.includes("Random omgeving"));
+}
+
 function testPromptComposition() {
   const prompt = composeScenePrompt({
     scene: { id: 1, title: "De test", promptOverride: "Peter bekent iets." },
@@ -633,8 +736,8 @@ function testPromptCompositionWithRandomSlots() {
     settings: { calibrationCount: 1 },
   });
   assert(prompt.includes("Personage 1: Peter Peter is nerveus."));
-  assert(prompt.includes("Personage 2: random personage voor Megan."));
-  assert(prompt.includes("Locatie: Random omgeving"));
+  assert(!prompt.includes("random personage voor"));
+  assert(!prompt.includes("Random omgeving"));
 }
 
 function testPromptCompositionSkipsEmptySlots() {
@@ -650,6 +753,43 @@ function testPromptCompositionSkipsEmptySlots() {
   });
   assert(prompt.includes("Geen personages."));
   assert(!prompt.includes("random personage."));
+}
+
+function testSyncLastWriteWins() {
+  assert.strictEqual(incomingWins("2026-05-07T10:00:00.000Z", "2026-05-07T10:00:01.000Z"), true);
+  assert.strictEqual(incomingWins("2026-05-07T10:00:01.000Z", "2026-05-07T10:00:00.000Z"), false);
+}
+
+function testSyncSettingsFilterSecrets() {
+  assert.strictEqual(syncSettingIsAllowed("algorithm_global_prompt"), true);
+  assert.strictEqual(syncSettingIsAllowed("osc_profile_device-1"), true);
+  assert.strictEqual(syncSettingIsAllowed("admin_password_hash_scrypt_v1"), false);
+  const rows = normalizeSyncSettingRows([
+    { key: "algorithm_global_prompt", value: "A", updated_at: "2026-05-07T10:00:00.000Z" },
+    { key: "admin_password_hash_scrypt_v1", value: "secret", updated_at: "2026-05-07T10:00:00.000Z" },
+  ]);
+  assert.deepStrictEqual(rows.map((row) => row.key), ["algorithm_global_prompt"]);
+}
+
+function testSyncPeerNormalization() {
+  assert.deepStrictEqual(
+    normalizePeerUrls(["http://192.168.1.49:3310/", "http://192.168.1.49:3310", "ftp://x"]),
+    ["http://192.168.1.49:3310"]
+  );
+}
+
+function testOscProfilesAreDeviceScoped() {
+  const profile = normalizeOscProfile({
+    sendEnabled: true,
+    listenPort: 6767,
+    sendHost: "192.168.1.49",
+    sendPort: 8002,
+  });
+  assert.strictEqual(profile.sendEnabled, true);
+  assert.strictEqual(profile.listenPort, 6767);
+  assert.strictEqual(profile.sendHost, "192.168.1.49");
+  assert.strictEqual(profile.sendPort, 8002);
+  assert.strictEqual(normalizeOscProfile({ sendEnabled: true, sendHost: "", sendPort: 8002 }).sendEnabled, false);
 }
 
 testScoreFormula();
@@ -683,11 +823,19 @@ testPerformerRoleSlotNormalization();
 testRoleSlotsMoveFixedPerformersToActorSlots();
 testRoleSlotsFillFreeActorSlotsWithFlexibleCharacters();
 testRoleSlotsKeepEmptyActorSlotsAsNone();
-testRoleSlotsKeepExplicitRandomOnActorSlot();
+testRoleSlotsPlaceRandomAfterConcreteActorSlots();
 testRoleSlotsKeepExtraRolesAfterActorSlots();
 testSceneForPerformerRolesUpdatesCharacterIdsAndCount();
+testRandomSlotsResolveWithinPerformerCandidates();
+testMultipleRandomSlotsResolvePerPerformerWithoutDuplicates();
+testRandomEnvironmentResolvesToConcreteEnvironment();
+testPromptCompositionWithResolvedRandomEnvironmentHasNoRandomPlaceholder();
 testPromptComposition();
 testPromptCompositionWithRandomSlots();
 testPromptCompositionSkipsEmptySlots();
+testSyncLastWriteWins();
+testSyncSettingsFilterSecrets();
+testSyncPeerNormalization();
+testOscProfilesAreDeviceScoped();
 
 console.log("show-algorithm tests passed");

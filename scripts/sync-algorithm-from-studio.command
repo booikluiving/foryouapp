@@ -1,6 +1,10 @@
 #!/bin/zsh
 set -euo pipefail
 
+echo "Deze oude eenrichtings-sync is uitgefaseerd."
+echo "Gebruik de local-first Sync-module op /algoritme; die overschrijft geen tabellen destructief."
+exit 3
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 APP_DIR="${FORYOU_LOCAL_APP_DIR:-$(cd -- "$SCRIPT_DIR/.." && pwd)}"
 SYNC_SCRIPT_DIR="${FORYOU_SYNC_SCRIPT_DIR:-$SCRIPT_DIR}"
