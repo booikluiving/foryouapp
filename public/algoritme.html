@@ -4,6 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Algoritme - For You</title>
+    <link rel="icon" type="image/svg+xml" href="/favicons/algoritme.svg" />
+    <script>
+      (() => {
+        const runtime = location.port === "3310" || location.hostname === "192.168.1.49" ? "Mac Studio" : "MacBook";
+        document.title = document.title.replace(/\s+-\s+(MacBook|Mac Studio)$/, "") + " - " + runtime;
+      })();
+    </script>
     <style>
       :root {
         color-scheme: light;
