@@ -7,8 +7,30 @@
     <link rel="icon" type="image/svg+xml" href="/favicons/algoritme.svg" />
     <script>
       (() => {
-        const runtime = location.port === "3310" || location.hostname === "192.168.1.49" ? "Mac Studio" : "Lokaal";
-        document.title = "For You - Algoritme" + " (" + runtime + ")";
+        const baseTitle = "For You - Algoritme";
+        const runtimeName = () => (
+          location.port === "3310" || location.hostname === "192.168.1.49" ? "Mac Studio" : "Lokaal"
+        );
+        const fullTitle = () => baseTitle + " (" + runtimeName() + ")";
+        const applyTitle = () => {
+          const nextTitle = fullTitle();
+          if (document.title !== nextTitle) document.title = nextTitle;
+        };
+        applyTitle();
+        document.addEventListener("DOMContentLoaded", applyTitle);
+        window.addEventListener("pageshow", applyTitle);
+        window.addEventListener("focus", applyTitle);
+        const titleEl = document.querySelector("title");
+        if (titleEl && "MutationObserver" in window) {
+          new MutationObserver(applyTitle).observe(titleEl, {
+            childList: true,
+            characterData: true,
+            subtree: true,
+          });
+        }
+        setTimeout(applyTitle, 0);
+        setTimeout(applyTitle, 250);
+        setTimeout(applyTitle, 1000);
       })();
     </script>
     <style>
