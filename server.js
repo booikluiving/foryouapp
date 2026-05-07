@@ -26,6 +26,7 @@ const {
   buildAlgorithmOrder,
   buildSceneWarnings,
   calculateRunScore,
+  calculateRunScoreDetails,
   composeScenePrompt,
   computeEntityScores,
   normalizeAlgorithmSettings,
@@ -166,6 +167,10 @@ let currentEngagementCommentPoints = DEFAULT_ENGAGEMENT_COMMENT_POINTS;
 const ALGORITHM_CALIBRATION_COUNT_SETTING_KEY = "algorithm_calibration_count";
 const ALGORITHM_GLOBAL_PROMPT_SETTING_KEY = "algorithm_global_prompt";
 const ALGORITHM_PROMPT_TEMPLATE_SETTING_KEY = "algorithm_prompt_template";
+const ALGORITHM_HEART_WEIGHT_SETTING_KEY = "algorithm_score_heart_weight";
+const ALGORITHM_BORED_WEIGHT_SETTING_KEY = "algorithm_score_bored_weight";
+const ALGORITHM_COMMENT_WEIGHT_SETTING_KEY = "algorithm_score_comment_weight";
+const ALGORITHM_TIME_BLEND_SETTING_KEY = "algorithm_score_time_normalized_blend";
 const ALGORITHM_RUN_STARTED_SETTING_PREFIX = "algorithm_run_started_session_";
 const ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS = 3500;
 const ALGORITHM_OSC_CHARACTER_SLOT_COUNT = 3;
@@ -4413,6 +4418,10 @@ function getAlgorithmSettings() {
     ),
     globalPrompt: getSetting(ALGORITHM_GLOBAL_PROMPT_SETTING_KEY, DEFAULT_ALGORITHM_SETTINGS.globalPrompt),
     promptTemplate: getSetting(ALGORITHM_PROMPT_TEMPLATE_SETTING_KEY, DEFAULT_ALGORITHM_SETTINGS.promptTemplate),
+    heartWeight: getSetting(ALGORITHM_HEART_WEIGHT_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.heartWeight)),
+    boredWeight: getSetting(ALGORITHM_BORED_WEIGHT_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.boredWeight)),
+    commentWeight: getSetting(ALGORITHM_COMMENT_WEIGHT_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.commentWeight)),
+    timeNormalizedBlend: getSetting(ALGORITHM_TIME_BLEND_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.timeNormalizedBlend)),
   });
 }
 
@@ -4425,6 +4434,10 @@ function saveAlgorithmSettings(patch = {}) {
   setSetting(ALGORITHM_CALIBRATION_COUNT_SETTING_KEY, String(next.calibrationCount));
   setSetting(ALGORITHM_GLOBAL_PROMPT_SETTING_KEY, next.globalPrompt);
   setSetting(ALGORITHM_PROMPT_TEMPLATE_SETTING_KEY, next.promptTemplate);
+  setSetting(ALGORITHM_HEART_WEIGHT_SETTING_KEY, String(next.heartWeight));
+  setSetting(ALGORITHM_BORED_WEIGHT_SETTING_KEY, String(next.boredWeight));
+  setSetting(ALGORITHM_COMMENT_WEIGHT_SETTING_KEY, String(next.commentWeight));
+  setSetting(ALGORITHM_TIME_BLEND_SETTING_KEY, String(next.timeNormalizedBlend));
   return next;
 }
 
@@ -4440,6 +4453,20 @@ function getAlgorithmCatalog() {
 
 function getAlgorithmRunsForCurrentSession() {
   return sql.getAlgorithmRunsBySession.all(currentSession.id).map(parseAlgorithmRunRow).filter(Boolean);
+}
+
+function decorateAlgorithmRunsWithScores(runs = [], settings = getAlgorithmSettings()) {
+  const safeSettings = normalizeAlgorithmSettings(settings);
+  return (Array.isArray(runs) ? runs : []).map((run) => {
+    const details = calculateRunScoreDetails(run, safeSettings);
+    return {
+      ...run,
+      score: details.score,
+      scoreSnapshot: Number.isFinite(Number(run && run.score)) ? Number(run.score) : null,
+      scoreDetails: details,
+      durationSeconds: details.durationSeconds,
+    };
+  });
 }
 
 function getActiveAlgorithmRunForCurrentSession() {
@@ -4761,17 +4788,20 @@ function buildAlgorithmTouchDesignerPayload(bundle, options = {}) {
 function getAlgorithmState() {
   renormalizeAlgorithmScenesForPerformerRoles();
   const catalog = getAlgorithmCatalog();
-  const runs = getAlgorithmRunsForCurrentSession();
-  activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
+  const rawRuns = getAlgorithmRunsForCurrentSession();
+  const rawActiveRun = getActiveAlgorithmRunForCurrentSession();
   const settings = getAlgorithmSettings();
+  const runs = decorateAlgorithmRunsWithScores(rawRuns, settings);
+  const activeRun = rawActiveRun ? decorateAlgorithmRunsWithScores([rawActiveRun], settings)[0] : null;
+  activeAlgorithmRun = rawActiveRun;
   const rawCurrentOrder = buildAlgorithmOrder({
     scenes: catalog.scenes,
     runs,
     settings,
     catalog,
   });
-  const algorithmRunStarted = getAlgorithmRunStartedForCurrentSession(runs, activeAlgorithmRun);
-  const awaitingStart = !algorithmRunStarted && !activeAlgorithmRun && runs.length === 0;
+  const algorithmRunStarted = getAlgorithmRunStartedForCurrentSession(runs, activeRun);
+  const awaitingStart = !algorithmRunStarted && !activeRun && runs.length === 0;
   const currentOrder = awaitingStart ? maskAlgorithmOrderUntilRunStart(rawCurrentOrder) : rawCurrentOrder;
   const nextSceneId = Number(currentOrder && currentOrder.next && currentOrder.next.sceneId || 0);
   const randomSeed = algorithmRuntimeRandomSeed(nextSceneId, "up_next");
@@ -4781,9 +4811,9 @@ function getAlgorithmState() {
         randomSeed,
         source: "up_next",
       });
-  const entityScores = currentOrder.entityScores || computeEntityScores({ scenes: catalog.scenes, runs });
-  const activeScene = activeAlgorithmRun
-    ? expandAlgorithmScene(getAlgorithmSceneById(activeAlgorithmRun.sceneId), catalog)
+  const entityScores = currentOrder.entityScores || computeEntityScores({ scenes: catalog.scenes, runs, settings });
+  const activeScene = activeRun
+    ? expandAlgorithmScene(getAlgorithmSceneById(activeRun.sceneId), catalog)
     : null;
   return {
     ok: true,
@@ -4795,7 +4825,7 @@ function getAlgorithmState() {
     },
     catalog,
     runs,
-    activeRun: activeAlgorithmRun,
+    activeRun,
     activeScene,
     algorithmRun: {
       sessionId: Number(currentSession.id || 0),
@@ -5432,15 +5462,17 @@ function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
 function endActiveAlgorithmSceneRun(reason = "manual") {
   activeAlgorithmRun = activeAlgorithmRun || getActiveAlgorithmRunForCurrentSession();
   if (!activeAlgorithmRun || activeAlgorithmRun.endedAt) return null;
+  const now = nowIso();
+  const settings = getAlgorithmSettings();
   const run = {
     ...activeAlgorithmRun,
-    score: calculateRunScore(activeAlgorithmRun),
+    endedAt: now,
+    score: calculateRunScore({ ...activeAlgorithmRun, endedAt: now }, settings),
   };
   const catalog = getAlgorithmCatalog();
   const scene = getAlgorithmSceneById(run.sceneId);
   const prompt = run.promptSnapshot
     || (scene ? buildAlgorithmPromptForScene(scene, catalog, buildAlgorithmRecommendation(catalog, getAlgorithmRunsForCurrentSession())) : "");
-  const now = nowIso();
   sql.endAlgorithmSceneRun.run(
     now,
     Math.floor(Number(run.heartCount || 0)),
