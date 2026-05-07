@@ -2342,8 +2342,9 @@ function computeBuildFingerprint(filePaths = []) {
   const sortedPaths = Array.isArray(filePaths) ? filePaths.slice().sort() : [];
   for (const filePath of sortedPaths) {
     const safePath = String(filePath || "");
+    const hashPath = path.relative(__dirname, safePath).split(path.sep).join("/") || path.basename(safePath);
     hash.update("\n");
-    hash.update(safePath);
+    hash.update(hashPath);
     hash.update("\n");
     try {
       const fileData = fs.readFileSync(safePath);
