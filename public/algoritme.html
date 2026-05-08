@@ -52,6 +52,13 @@
 
       * { box-sizing: border-box; }
 
+      html,
+      body {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+      }
+
       body {
         margin: 0;
         font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -73,6 +80,8 @@
         border-radius: 8px;
         padding: 9px 12px;
         cursor: pointer;
+        max-width: 100%;
+        overflow-wrap: anywhere;
       }
 
       button:hover { border-color: #9ca3af; }
@@ -138,6 +147,7 @@
       .app {
         display: none;
         min-height: 100vh;
+        min-width: 0;
       }
 
       header {
@@ -150,6 +160,7 @@
       }
 
       .bar {
+        width: 100%;
         max-width: 1680px;
         margin: 0 auto;
         padding: 14px 18px;
@@ -157,6 +168,22 @@
         gap: 14px;
         align-items: center;
         justify-content: space-between;
+        flex-wrap: wrap;
+        min-width: 0;
+      }
+
+      .bar > div {
+        min-width: 0;
+      }
+
+      .bar .actions {
+        min-width: 0;
+        justify-content: flex-end;
+      }
+
+      .bar .actions a {
+        display: inline-flex;
+        min-width: 0;
       }
 
       h1,
@@ -182,14 +209,20 @@
         gap: 8px;
         flex-wrap: wrap;
         align-items: center;
+        min-width: 0;
       }
 
       main {
+        width: 100%;
         max-width: 1680px;
         margin: 0 auto;
         padding: 18px;
         display: grid;
         grid-template-columns: minmax(320px, 0.95fr) minmax(360px, 1.05fr) minmax(420px, 1.2fr);
+        grid-template-areas:
+          "live order order"
+          "catalog catalog catalog"
+          "settings settings settings";
         gap: 14px;
         align-items: start;
       }
@@ -202,10 +235,54 @@
         padding: 14px;
         display: grid;
         gap: 12px;
+        min-width: 0;
       }
 
       .catalogPanel {
-        grid-column: 1 / -1;
+        grid-area: catalog;
+        min-width: 0;
+      }
+
+      .panelSummary {
+        cursor: pointer;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: space-between;
+        list-style: none;
+      }
+
+      .panelSummary::-webkit-details-marker,
+      .catalogWindowSummary::-webkit-details-marker {
+        display: none;
+      }
+
+      .panelSummary::before,
+      .catalogWindowSummary::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-right: 2px solid var(--muted);
+        border-bottom: 2px solid var(--muted);
+        transform: rotate(-45deg);
+        transition: transform 140ms ease;
+        flex: 0 0 auto;
+      }
+
+      details[open] > .panelSummary::before,
+      details[open] > .catalogWindowSummary::before {
+        transform: rotate(45deg);
+      }
+
+      .panelSummary h2,
+      .catalogWindowSummary h2 {
+        margin-right: auto;
+      }
+
+      .catalogPanelBody {
+        display: grid;
+        gap: 12px;
+        min-width: 0;
       }
 
       .catalogWindows {
@@ -213,19 +290,41 @@
         grid-template-columns: repeat(3, minmax(260px, 1fr));
         gap: 12px;
         align-items: start;
+        min-width: 0;
       }
 
       .catalogWindow {
         border: 1px solid var(--line);
         border-radius: 10px;
         background: #fffaf0;
+        padding: 0;
+        display: grid;
+        gap: 10px;
+        overflow: hidden;
+        min-width: 0;
+      }
+
+      .catalogWindowSummary {
+        cursor: pointer;
+        padding: 12px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: space-between;
+        list-style: none;
+      }
+
+      .catalogWindowBody {
+        border-top: 1px solid var(--line);
         padding: 12px;
         display: grid;
         gap: 10px;
+        min-width: 0;
       }
 
       .settingsPanel {
-        grid-column: 1 / -1;
+        grid-area: settings;
+        min-width: 0;
       }
 
       .settingsBlock {
@@ -233,6 +332,7 @@
         border-radius: 8px;
         background: #fff;
         padding: 0;
+        min-width: 0;
       }
 
       .settingsBlock > summary {
@@ -247,6 +347,7 @@
         padding: 12px;
         display: grid;
         gap: 12px;
+        min-width: 0;
       }
 
       .scoreControl {
@@ -258,6 +359,10 @@
 
       .scoreControl input[type="range"] {
         width: 100%;
+      }
+
+      .livePanel .scoreControl {
+        grid-template-columns: minmax(110px, 0.55fr) minmax(120px, 1fr) minmax(56px, auto);
       }
 
       .scoreValue {
@@ -320,6 +425,7 @@
       .badge {
         display: inline-flex;
         align-items: center;
+        min-width: 0;
         min-height: 26px;
         border-radius: 999px;
         padding: 4px 9px;
@@ -328,6 +434,7 @@
         color: var(--muted);
         font-size: 12px;
         font-weight: 700;
+        overflow-wrap: anywhere;
       }
 
       .badge.good { color: var(--good); background: #ecfdf3; border-color: #bbf7d0; }
@@ -365,13 +472,29 @@
       }
 
       .livePanel {
-        grid-column: 1 / 2;
-        grid-row: 2;
+        grid-area: live;
+        min-width: 0;
+      }
+
+      .liveActions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        align-items: stretch;
+      }
+
+      .liveActions button {
+        width: 100%;
+        min-width: 0;
+        min-height: 48px;
+        line-height: 1.15;
+        white-space: normal;
+        text-align: center;
       }
 
       .orderPanel {
-        grid-column: 2 / -1;
-        grid-row: 2;
+        grid-area: order;
+        min-width: 0;
       }
 
       .orderList {
@@ -388,23 +511,38 @@
       }
 
       .queueStatusLine {
-        display: flex;
+        display: grid;
+        grid-template-columns: minmax(68px, auto) minmax(0, 1fr) auto;
         gap: 8px;
-        align-items: baseline;
-        flex-wrap: wrap;
+        align-items: start;
+        min-height: 42px;
       }
 
       .queueStatusLabel {
         color: var(--muted);
         font-size: 12px;
         font-weight: 900;
+        line-height: 1.2;
         text-transform: uppercase;
       }
 
+      .queueStatusValue,
       .queueStatusTitle {
         color: var(--ink);
-        font-weight: 900;
+        font-size: 13px;
+        font-weight: 800;
+        line-height: 1.25;
+        min-height: 32px;
         overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
+
+      .queueStatusValue.muted {
+        color: var(--muted);
+        font-weight: 700;
       }
 
       .orderItem {
@@ -466,6 +604,59 @@
         align-items: center;
       }
 
+      .orderCast {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .castBadge {
+        max-width: 100%;
+        color: #4b5563;
+        background: #ece8df;
+        border-color: #d8d0c0;
+        white-space: normal;
+        line-height: 1.2;
+        overflow-wrap: anywhere;
+      }
+
+      .castBadge.castRandom {
+        color: #4f46e5;
+        background: #eeefff;
+        border-color: #d8dafb;
+      }
+
+      .castBadge.castNone {
+        color: #6b7280;
+        background: #f4f4f5;
+        border-color: #dedee3;
+      }
+
+      .environmentBadge {
+        color: #5f6f52;
+        background: #edf1e7;
+        border-color: #d9dfcf;
+      }
+
+      .environmentBadge.environmentNone {
+        color: var(--muted);
+        background: #f8fafc;
+        border-color: var(--line);
+      }
+
+      .environmentBadge.environmentRandom {
+        color: #6f5f3f;
+        background: #f3eadb;
+        border-color: #e2d2ba;
+      }
+
+      .scoreBadge {
+        color: #697386;
+        background: #f8f6f0;
+        border-color: #ded8ca;
+      }
+
       .orderNotice {
         color: #92400e;
         font-size: 12px;
@@ -520,6 +711,38 @@
         line-height: 1.4;
       }
 
+      .sceneDetails {
+        display: grid;
+        gap: 8px;
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .sceneRoleRow {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .sceneMetaLine,
+      .sceneDescriptionBlock {
+        display: grid;
+        gap: 3px;
+      }
+
+      .sceneMetaLine strong,
+      .sceneDescriptionBlock strong {
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+
+      .sceneDescriptionBlock span {
+        white-space: pre-wrap;
+      }
+
       details.inactiveBlock {
         border: 1px solid var(--line);
         border-radius: 8px;
@@ -540,6 +763,7 @@
         gap: 10px;
         align-items: center;
         font-weight: 800;
+        min-width: 0;
       }
 
       .small {
@@ -699,21 +923,21 @@
         font-size: 13px;
       }
 
+      #orderSummary:empty {
+        display: none;
+      }
+
       .error { color: var(--bad); }
       .hidden { display: none !important; }
 
       @media (max-width: 1180px) {
         main {
           grid-template-columns: 1fr;
-        }
-
-        .catalogPanel,
-        .livePanel,
-        .orderPanel,
-        .oscPanel,
-        .promptPanel {
-          grid-column: auto;
-          grid-row: auto;
+          grid-template-areas:
+            "live"
+            "order"
+            "catalog"
+            "settings";
         }
 
         .catalogWindows {
@@ -732,6 +956,17 @@
           text-align: left;
         }
 
+      }
+
+      @media (max-width: 720px) {
+        .bar {
+          align-items: flex-start;
+        }
+
+        .bar .actions {
+          width: 100%;
+          justify-content: flex-start;
+        }
       }
     </style>
   </head>
@@ -773,10 +1008,17 @@
       </header>
 
       <main>
-        <section class="panel catalogPanel">
+        <details class="panel catalogPanel" data-ui-state-key="catalog.panel" open>
+          <summary class="panelSummary">
+            <h2>Catalogus</h2>
+            <span class="badge">Personages / Omgevingen / Situaties</span>
+          </summary>
+          <div class="catalogPanelBody">
           <div class="catalogWindows">
-          <div id="charactersPane" class="catalogWindow">
-            <div class="row"><h2>Personages</h2><button id="newCharacterBtn" type="button">Voeg toe</button></div>
+          <details id="charactersPane" class="catalogWindow" data-ui-state-key="catalog.window.characters" open>
+            <summary class="catalogWindowSummary"><h2>Personages</h2></summary>
+            <div class="catalogWindowBody">
+            <div class="actions"><button id="newCharacterBtn" type="button">Voeg toe</button></div>
             <div id="characterForm" class="stack hidden">
               <label>Naam<input id="characterName" maxlength="120" /></label>
               <label>Wordt gespeeld door<select id="characterPerformer"></select></label>
@@ -787,39 +1029,17 @@
               </div>
             </div>
             <div id="charactersList" class="list"></div>
-            <details class="inactiveBlock">
+            <details class="inactiveBlock" data-ui-state-key="catalog.characters.inactive">
               <summary>Non-actieve personages</summary>
               <div id="charactersInactiveList" class="list" style="margin-top:8px;"></div>
             </details>
-            <details class="inactiveBlock" open>
-              <summary>Performers beheren</summary>
-              <div id="performerSlotOverview" class="slotOverview" style="margin-top:8px;"></div>
-              <div id="performerForm" class="stack hidden" style="margin-top:8px;">
-                <label>Naam<input id="performerName" maxlength="120" /></label>
-                <label>Performer-slot<select id="performerRoleSlot">
-                  <option value="0">Geen vast performer-slot</option>
-                  <option value="1">Performer 1</option>
-                  <option value="2">Performer 2</option>
-                  <option value="3">Performer 3</option>
-                </select></label>
-                <div class="actions">
-                  <button id="savePerformerBtn" class="primary" type="button">Opslaan</button>
-                  <button id="cancelPerformerBtn" type="button">Annuleer</button>
-                </div>
-              </div>
-              <div class="actions" style="margin-top:8px;">
-                <button id="newPerformerBtn" type="button">Voeg performer toe</button>
-              </div>
-              <div id="performersList" class="list" style="margin-top:8px;"></div>
-              <details class="inactiveBlock">
-                <summary>Non-actieve performers</summary>
-                <div id="performersInactiveList" class="list" style="margin-top:8px;"></div>
-              </details>
-            </details>
-          </div>
+            </div>
+          </details>
 
-          <div id="environmentsPane" class="catalogWindow">
-            <div class="row"><h2>Omgevingen</h2><button id="newEnvironmentBtn" type="button">Voeg toe</button></div>
+          <details id="environmentsPane" class="catalogWindow" data-ui-state-key="catalog.window.environments" open>
+            <summary class="catalogWindowSummary"><h2>Omgevingen</h2></summary>
+            <div class="catalogWindowBody">
+            <div class="actions"><button id="newEnvironmentBtn" type="button">Voeg toe</button></div>
             <div id="environmentForm" class="stack hidden">
               <label>Naam<input id="environmentName" maxlength="140" /></label>
               <label>Beschrijving<textarea id="environmentDescription"></textarea></label>
@@ -829,14 +1049,17 @@
               </div>
             </div>
             <div id="environmentsList" class="list"></div>
-            <details class="inactiveBlock">
+            <details class="inactiveBlock" data-ui-state-key="catalog.environments.inactive">
               <summary>Non-actieve omgevingen</summary>
               <div id="environmentsInactiveList" class="list" style="margin-top:8px;"></div>
             </details>
-          </div>
+            </div>
+          </details>
 
-          <div id="scenesPane" class="catalogWindow">
-            <div class="row"><h2>Situaties</h2><button id="newSceneBtn" type="button">Voeg toe</button></div>
+          <details id="scenesPane" class="catalogWindow" data-ui-state-key="catalog.window.scenes" open>
+            <summary class="catalogWindowSummary"><h2>Situaties</h2></summary>
+            <div class="catalogWindowBody">
+            <div class="actions"><button id="newSceneBtn" type="button">Voeg toe</button></div>
             <div id="sceneForm" class="stack hidden">
               <div class="small">Deze lijst staat alfabetisch. De speelvolgorde pas je aan bij Huidige Volgorde.</div>
               <label>Naam<input id="sceneTitle" maxlength="180" /></label>
@@ -855,36 +1078,33 @@
               </div>
             </div>
             <div id="scenesList" class="list"></div>
-            <details class="inactiveBlock">
+            <details class="inactiveBlock" data-ui-state-key="catalog.scenes.inactive">
               <summary>Non-actieve situaties</summary>
               <div id="scenesInactiveList" class="list" style="margin-top:8px;"></div>
             </details>
-          </div>
+            </div>
+          </details>
           </div>
 
           <div id="catalogMsg" class="msg"></div>
-        </section>
+          </div>
+        </details>
 
         <section class="panel orderPanel">
           <div class="row">
             <h2>Huidige Volgorde</h2>
-            <span id="orderCalibrationBadge" class="badge"></span>
             <span id="orderCycleBadge" class="badge"></span>
-            <button id="editOrderBtn" type="button">Pas calibratievolgorde aan</button>
+            <button id="editOrderBtn" type="button">Pas volgorde aan</button>
           </div>
           <div id="orderSummary" class="small"></div>
-          <div id="orderQueueStatus" class="queueStatus"></div>
           <div class="row">
             <span id="orderListBadge" class="badge"></span>
             <span id="orderInvalidBadge" class="badge warning"></span>
           </div>
           <div id="currentOrderList" class="list orderList"></div>
           <div id="orderEditHint" class="small hidden">Sleep de situaties in deze lijst. De eerste calibratieposities blijven vast; daarna mag het algoritme de live volgorde bepalen.</div>
-          <div id="orderEditSettings" class="two hidden">
+          <div id="orderEditSettings" class="stack hidden">
             <label>Calibratie situaties<input id="calibrationCount" type="number" min="0" max="50" step="1" /></label>
-            <div class="actions" style="align-self:end;">
-              <button id="saveCalibrationSettingsBtn" class="primary" type="button">Bewaar calibratie</button>
-            </div>
           </div>
           <div id="orderEditActions" class="actions orderEditActions">
             <button id="saveOrderBtn" class="primary" type="button">Bewaar volgorde</button>
@@ -896,51 +1116,19 @@
         <section class="panel livePanel">
           <div class="row">
             <h2>Huidige scène</h2>
-            <span id="calibrationBadge" class="badge"></span>
           </div>
           <div class="statGrid">
             <div class="stat"><div class="k">Heart</div><div id="heartStat" class="v">0</div></div>
             <div class="stat"><div class="k">Bored</div><div id="boredStat" class="v">0</div></div>
             <div class="stat"><div class="k">Comments</div><div id="commentStat" class="v">0</div></div>
           </div>
-          <div class="actions">
+          <div id="orderQueueStatus" class="queueStatus"></div>
+          <div class="actions liveActions">
             <button id="sceneToggleBtn" class="primary" type="button">Volgende situatie</button>
+            <button id="previousSceneBtn" type="button">Vorige situatie</button>
             <button id="resetRunsBtn" class="danger" type="button">Reset runs</button>
           </div>
-          <div id="liveMsg" class="msg"></div>
-        </section>
-
-        <section class="panel settingsPanel">
-          <div class="row">
-            <h2>Instellingen</h2>
-            <span id="syncStatusBadge" class="badge"></span>
-            <span id="oscStatusBadge" class="badge"></span>
-            <span id="promptMeta" class="badge"></span>
-          </div>
-
-          <details class="settingsBlock">
-            <summary>Sync</summary>
-            <div class="settingsBlockBody">
-              <div id="syncStatusText" class="small"></div>
-              <label>Mac Studio / peer URL<input id="syncPeerUrl" maxlength="300" placeholder="http://192.168.1.49:3310" /></label>
-              <div class="toggleLine">
-                <span>Sync pauzeren</span>
-                <div id="syncPauseToggle" class="segmentedToggle off" role="group" aria-label="Sync pauzeren">
-                  <input id="syncPaused" class="segmentedToggleInput" type="checkbox" />
-                  <button id="syncPauseOnBtn" type="button" data-sync-paused="1">Aan</button>
-                  <button id="syncPauseOffBtn" type="button" data-sync-paused="0">Uit</button>
-                </div>
-              </div>
-              <div id="syncPeersList" class="commandList"></div>
-              <div class="actions">
-                <button id="saveSyncSettingsBtn" class="primary" type="button">Bewaar sync</button>
-                <button id="syncNowBtn" type="button">Sync nu</button>
-              </div>
-              <div id="syncMsg" class="msg"></div>
-            </div>
-          </details>
-
-          <details class="settingsBlock">
+          <details class="settingsBlock" data-ui-state-key="settings.score">
             <summary>Score-algoritme</summary>
             <div class="settingsBlockBody">
               <div class="scoreControl">
@@ -972,7 +1160,7 @@
             </div>
           </details>
 
-          <details class="settingsBlock">
+          <details class="settingsBlock" data-ui-state-key="settings.variation">
             <summary>Variatie en ontdekking</summary>
             <div class="settingsBlockBody">
               <div class="scoreControl">
@@ -1008,8 +1196,68 @@
               <div id="variationMsg" class="msg"></div>
             </div>
           </details>
+          <div id="liveMsg" class="msg"></div>
+        </section>
 
-          <details class="settingsBlock">
+        <section class="panel settingsPanel">
+          <div class="row">
+            <h2>Instellingen</h2>
+            <span id="syncStatusBadge" class="badge"></span>
+            <span id="oscStatusBadge" class="badge"></span>
+            <span id="promptMeta" class="badge"></span>
+          </div>
+
+          <details class="settingsBlock" data-ui-state-key="settings.performers.manage" open>
+            <summary>Performers beheren</summary>
+            <div class="settingsBlockBody">
+              <div id="performerSlotOverview" class="slotOverview"></div>
+              <div id="performerForm" class="stack hidden">
+                <label>Naam<input id="performerName" maxlength="120" /></label>
+                <label>Performer-slot<select id="performerRoleSlot">
+                  <option value="0">Geen vast performer-slot</option>
+                  <option value="1">Performer 1</option>
+                  <option value="2">Performer 2</option>
+                  <option value="3">Performer 3</option>
+                </select></label>
+                <div class="actions">
+                  <button id="savePerformerBtn" class="primary" type="button">Opslaan</button>
+                  <button id="cancelPerformerBtn" type="button">Annuleer</button>
+                </div>
+              </div>
+              <div class="actions">
+                <button id="newPerformerBtn" type="button">Voeg performer toe</button>
+              </div>
+              <div id="performersList" class="list"></div>
+              <details class="inactiveBlock" data-ui-state-key="settings.performers.inactive">
+                <summary>Non-actieve performers</summary>
+                <div id="performersInactiveList" class="list" style="margin-top:8px;"></div>
+              </details>
+            </div>
+          </details>
+
+          <details class="settingsBlock" data-ui-state-key="settings.sync">
+            <summary>Sync</summary>
+            <div class="settingsBlockBody">
+              <div id="syncStatusText" class="small"></div>
+              <label>Mac Studio / peer URL<input id="syncPeerUrl" maxlength="300" placeholder="http://192.168.1.49:3310" /></label>
+              <div class="toggleLine">
+                <span>Sync pauzeren</span>
+                <div id="syncPauseToggle" class="segmentedToggle off" role="group" aria-label="Sync pauzeren">
+                  <input id="syncPaused" class="segmentedToggleInput" type="checkbox" />
+                  <button id="syncPauseOnBtn" type="button" data-sync-paused="1">Aan</button>
+                  <button id="syncPauseOffBtn" type="button" data-sync-paused="0">Uit</button>
+                </div>
+              </div>
+              <div id="syncPeersList" class="commandList"></div>
+              <div class="actions">
+                <button id="saveSyncSettingsBtn" class="primary" type="button">Bewaar sync</button>
+                <button id="syncNowBtn" type="button">Sync nu</button>
+              </div>
+              <div id="syncMsg" class="msg"></div>
+            </div>
+          </details>
+
+          <details class="settingsBlock" data-ui-state-key="settings.osc">
             <summary>OSC / TouchDesigner</summary>
             <div class="settingsBlockBody">
               <div class="toggleLine">
@@ -1040,7 +1288,7 @@
                 <button id="testOscBtn" type="button">Test OSC</button>
                 <button id="sendUpNextBtn" type="button">Stuur Up Next</button>
               </div>
-              <details class="inactiveBlock">
+              <details class="inactiveBlock" data-ui-state-key="settings.osc.commands">
                 <summary>Commands send / receive</summary>
                 <div class="two" style="margin-top:8px;">
                   <div>
@@ -1057,11 +1305,11 @@
             </div>
           </details>
 
-          <details class="settingsBlock">
+          <details class="settingsBlock" data-ui-state-key="settings.prompt">
             <summary>Prompt naar TouchDesigner</summary>
             <div class="settingsBlockBody">
               <textarea id="promptOutput" class="promptBox" readonly></textarea>
-              <details class="inactiveBlock">
+              <details class="inactiveBlock" data-ui-state-key="settings.prompt.settings">
                 <summary>Prompt instellingen</summary>
                 <div class="stack" style="margin-top:8px;">
                   <label>Globale system prompt<textarea id="globalPrompt"></textarea></label>
@@ -1096,6 +1344,7 @@
     <script>
       (() => {
         const TOKEN_KEY = "algorithm_admin_token_v1";
+        const UI_STATE_KEY = "algorithm_ui_state_v1";
         const ACTOR_SLOT_COUNT = 3;
         const SLOT_NONE = 0;
         const SLOT_RANDOM = -1;
@@ -1131,7 +1380,9 @@
         let orderBaseSortable = null;
         let orderEditOpen = false;
         let orderDraftIds = [];
+        let orderListAnchorKey = "";
         let scrollOrderSelectionOnNextRender = false;
+        let initialOrderListScrollPending = true;
         let lastSeenOscReceivedSerial = 0;
         let oscDraftDirty = false;
         let oscDraftHold = null;
@@ -1171,6 +1422,66 @@
           } catch {
             token = "";
           }
+        }
+
+        function readUiState() {
+          try {
+            const parsed = JSON.parse(localStorage.getItem(UI_STATE_KEY) || "{}");
+            return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+          } catch {
+            return {};
+          }
+        }
+
+        function writeUiState(uiState) {
+          try {
+            localStorage.setItem(UI_STATE_KEY, JSON.stringify(uiState || {}));
+          } catch {}
+        }
+
+        function normalizeExpanded(raw = {}) {
+          const next = { performer: 0, character: 0, environment: 0, scene: 0 };
+          Object.keys(next).forEach((kind) => {
+            const id = Number(raw && raw[kind] || 0);
+            next[kind] = Number.isInteger(id) && id > 0 ? id : 0;
+          });
+          return next;
+        }
+
+        function persistExpandedState() {
+          const uiState = readUiState();
+          uiState.expanded = { ...expanded };
+          writeUiState(uiState);
+        }
+
+        function setExpanded(kind, id) {
+          if (!Object.prototype.hasOwnProperty.call(expanded, kind)) return;
+          const safeId = Number(id || 0);
+          expanded[kind] = Number.isInteger(safeId) && safeId > 0 ? safeId : 0;
+          persistExpandedState();
+        }
+
+        function initPersistedUiState() {
+          const uiState = readUiState();
+          expanded = normalizeExpanded(uiState.expanded);
+          const detailsState = uiState.details && typeof uiState.details === "object" && !Array.isArray(uiState.details)
+            ? uiState.details
+            : {};
+          document.querySelectorAll("details[data-ui-state-key]").forEach((detailsEl) => {
+            const key = detailsEl.getAttribute("data-ui-state-key") || "";
+            if (!key) return;
+            if (Object.prototype.hasOwnProperty.call(detailsState, key)) {
+              detailsEl.open = !!detailsState[key];
+            }
+            detailsEl.addEventListener("toggle", () => {
+              const nextState = readUiState();
+              const nextDetailsState = nextState.details && typeof nextState.details === "object" && !Array.isArray(nextState.details)
+                ? nextState.details
+                : {};
+              nextState.details = { ...nextDetailsState, [key]: !!detailsEl.open };
+              writeUiState(nextState);
+            });
+          });
         }
 
         async function api(path, options = {}) {
@@ -1257,12 +1568,24 @@
           }
         }
 
-        async function loadState(show = false) {
+        function stateHasOrderScrollAnchor(data) {
+          if (!data || typeof data !== "object") return false;
+          const order = data.currentOrder || {};
+          return !!(data.activeRun
+            || (order.active && Number(order.active.sceneId || 0))
+            || (data.algorithmRun && data.algorithmRun.started && order.next && Number(order.next.sceneId || 0)));
+        }
+
+        async function loadState(show = false, options = {}) {
           try {
             const data = await api("/admin/algorithm/state");
             state = data;
-            render();
+            const shouldScrollOrder = !!(options && options.scrollOrder)
+              || (!!initialOrderListScrollPending && stateHasOrderScrollAnchor(data));
+            if (shouldScrollOrder) scrollOrderSelectionOnNextRender = true;
+            initialOrderListScrollPending = false;
             showApp();
+            render();
             startRefresh();
           } catch (err) {
             if (show || err.status === 401) {
@@ -1449,6 +1772,7 @@
           const selectedId = options.selectedId || 0;
           const labelFn = options.labelFn || ((item) => item.name || item.title || "Naamloos");
           const detailFn = options.detailFn || ((item) => item.description || "");
+          const detailHtmlFn = options.detailHtmlFn || null;
           const badgesFn = options.badgesFn || (() => []);
           const emptyText = options.emptyText || "Nog leeg.";
           const inactive = !!options.inactive;
@@ -1458,7 +1782,8 @@
           }
           el.innerHTML = items.map((item) => {
             const isExpanded = Number(expanded[kind]) === Number(item.id);
-            const detail = String(detailFn(item) || "").trim();
+            const detailHtml = detailHtmlFn ? String(detailHtmlFn(item) || "") : "";
+            const detail = detailHtml ? "" : String(detailFn(item) || "").trim();
             const isSelected = Number(selectedId) === Number(item.id);
             const status = isActiveItem(item) ? "actief" : "non-actief";
             const primaryAction = inactive ? "Maak actief" : "Zet non-actief";
@@ -1477,7 +1802,7 @@
                 </button>
                 ${isExpanded ? `
                   <div class="itemDetails">
-                    <div class="itemDescription">${esc(detail || "Geen beschrijving.")}</div>
+                    ${detailHtml || `<div class="itemDescription">${esc(detail || "Geen beschrijving.")}</div>`}
                     <div class="actions">
                       <button type="button" data-catalog-action="edit" data-kind="${kind}" data-id="${item.id}">Pas aan</button>
                       <button class="${inactive ? "" : "danger"}" type="button" data-catalog-action="${primaryActionName}" data-kind="${kind}" data-id="${item.id}">${primaryAction}</button>
@@ -1958,7 +2283,7 @@
 
         function describeScene(scene) {
           const characterNames = normalizeSceneSlotsByPerformerRoles(sceneSlotsFromItem(scene)).map((id, index) => {
-            const roleLabel = performerPreviewLabel(index + 1);
+            const roleLabel = index + 1;
             if (id === SLOT_NONE) return `${roleLabel}: Geen`;
             if (id === SLOT_RANDOM) return `${roleLabel}: Random`;
             const character = itemById("characters", id);
@@ -1973,8 +2298,40 @@
             characterNames,
             scene.environmentMode === "random" ? "Omgeving: random" : environment ? `Omgeving: ${environment.name}${isActiveItem(environment) ? "" : " (non-actief)"}` : "",
             scene.contextSceneId ? `Context: ${contextSceneTitle(scene.contextSceneId)}` : "",
-            scene.promptOverride ? "Heeft beschrijving." : "",
+            scene.promptOverride ? `Beschrijving:\n${scene.promptOverride}` : "Geen beschrijving.",
           ].filter(Boolean).join("\n") || "Nog geen koppelingen.";
+        }
+
+        function renderSceneDetails(scene) {
+          const slots = normalizeSceneSlotsByPerformerRoles(sceneSlotsFromItem(scene)).slice(0, ACTOR_SLOT_COUNT);
+          const roleBadges = slots.map((id, index) => {
+            const className = id === SLOT_RANDOM ? "castRandom" : id === SLOT_NONE ? "castNone" : "";
+            return `<span class="badge castBadge ${className}">${esc(`${index + 1}: ${sceneSlotValueLabel(id)}`)}</span>`;
+          }).join("");
+          const environment = itemById("environments", scene.environmentId || 0);
+          const environmentLabel = scene.environmentMode === "random"
+            ? "Random"
+            : environment ? `${environment.name}${isActiveItem(environment) ? "" : " (non-actief)"}` : "Geen omgeving";
+          const context = scene.contextSceneId
+            ? `<div class="sceneMetaLine"><strong>Context</strong><span>${esc(contextSceneTitle(scene.contextSceneId))}</span></div>`
+            : "";
+          const warnings = sceneLinkIssues(scene);
+          const warning = warnings.length
+            ? `<div class="orderNotice">${esc(`Waarschuwing: ${warnings.join(" ")}`)}</div>`
+            : "";
+          const description = String(scene.promptOverride || "").trim();
+          return `
+            <div class="sceneDetails">
+              ${warning}
+              <div class="sceneRoleRow">${roleBadges}</div>
+              <div class="sceneMetaLine"><strong>Omgeving</strong><span>${esc(environmentLabel)}</span></div>
+              ${context}
+              <div class="sceneDescriptionBlock">
+                <strong>Beschrijving</strong>
+                <span>${esc(description || "Geen beschrijving.")}</span>
+              </div>
+            </div>
+          `;
         }
 
         function orderEntryScene(entry) {
@@ -1985,6 +2342,149 @@
         function orderEntryTitle(entry) {
           const scene = orderEntryScene(entry);
           return String(entry && entry.title || (scene && scene.title) || "Naamloze situatie");
+        }
+
+        function stableHash(input = "") {
+          const text = String(input || "");
+          let hash = 2166136261;
+          for (let index = 0; index < text.length; index += 1) {
+            hash ^= text.charCodeAt(index);
+            hash = Math.imul(hash, 16777619);
+          }
+          return hash >>> 0;
+        }
+
+        function activePerformerForSlot(slotNumber) {
+          const safeSlot = Number(slotNumber || 0);
+          if (safeSlot < 1 || safeSlot > ACTOR_SLOT_COUNT) return null;
+          return activeItems("performers").find((item) => Number(item.roleSlot || 0) === safeSlot) || null;
+        }
+
+        function randomCharacterCandidatesForSlot(slotNumber, usedCharacterIds = new Set()) {
+          const performer = activePerformerForSlot(slotNumber);
+          const used = usedCharacterIds instanceof Set ? usedCharacterIds : new Set();
+          const activeCharacters = activeItems("characters")
+            .filter((item) => !used.has(Number(item.id || 0)))
+            .filter((item) => {
+              const performerId = Number(item.performerId || 0);
+              if (!performerId) return true;
+              return performer && Number(performer.id || 0) === performerId;
+            });
+          const performerSpecific = performer
+            ? activeCharacters.filter((item) => Number(item.performerId || 0) === Number(performer.id || 0))
+            : [];
+          return performerSpecific.length ? performerSpecific : activeCharacters;
+        }
+
+        function pickRandomCharacterForSlot(slotNumber, usedCharacterIds, seed) {
+          const candidates = randomCharacterCandidatesForSlot(slotNumber, usedCharacterIds);
+          if (!candidates.length || !seed) return null;
+          const candidateKey = candidates.map((item) => Number(item.id || 0)).join(",");
+          const index = stableHash(`${seed}:slot:${slotNumber}:candidates:${candidateKey}`) % candidates.length;
+          return candidates[index] || null;
+        }
+
+        function pickRandomEnvironment(seed) {
+          const candidates = activeItems("environments");
+          if (!candidates.length || !seed) return null;
+          const candidateKey = candidates.map((item) => Number(item.id || 0)).join(",");
+          const index = stableHash(`${seed}:environment:environment:candidates:${candidateKey}`) % candidates.length;
+          return candidates[index] || null;
+        }
+
+        function latestRunForScene(sceneId) {
+          const safeSceneId = Number(sceneId || 0);
+          if (!safeSceneId) return null;
+          const runs = Array.isArray(state && state.runs) ? state.runs : [];
+          return runs
+            .filter((run) => Number(run && run.sceneId || 0) === safeSceneId)
+            .sort((a, b) => Number(b && b.runOrder || b && b.id || 0) - Number(a && a.runOrder || a && a.id || 0))[0] || null;
+        }
+
+        function orderEntryRandomSeed(entry) {
+          const sceneId = Number(entry && entry.sceneId || 0);
+          if (!sceneId || !(state && state.session)) return "";
+          const run = latestRunForScene(sceneId);
+          if (run && (entry.active || entry.played)) {
+            return [
+              Number(state.session.id || 0),
+              sceneId,
+              Math.max(0, Number(run.runOrder || 1) - 1),
+              0,
+              "up_next",
+            ].join(":");
+          }
+          const currentNextId = Number(state && state.currentOrder && state.currentOrder.next && state.currentOrder.next.sceneId || 0);
+          if (entry.next || (currentNextId && currentNextId === sceneId)) {
+            return [
+              Number(state.session.id || 0),
+              sceneId,
+              Array.isArray(state.runs) ? state.runs.length : 0,
+              Number(state.activeRun && state.activeRun.id || 0),
+              "up_next",
+            ].join(":");
+          }
+          return "";
+        }
+
+        function orderCastSlots(entry) {
+          const scene = orderEntryScene(entry);
+          if (!scene) return [];
+          const slots = normalizeSceneSlotsByPerformerRoles(sceneSlotsFromItem(scene)).slice(0, ACTOR_SLOT_COUNT);
+          const usedCharacterIds = new Set(slots.filter((id) => id > 0));
+          const randomSeed = orderEntryRandomSeed(entry);
+          return slots.map((id, index) => {
+            const slotNumber = index + 1;
+            if (id === SLOT_RANDOM) {
+              const character = pickRandomCharacterForSlot(slotNumber, usedCharacterIds, randomSeed);
+              if (character) {
+                usedCharacterIds.add(Number(character.id || 0));
+                return { className: "castRandom", label: `${slotNumber}: ${character.name || "Naamloos"} (random)` };
+              }
+              return { className: "castRandom", label: `${slotNumber}: Random` };
+            }
+            if (id > 0) {
+              const character = itemById("characters", id);
+              return {
+                className: "",
+                label: `${slotNumber}: ${character ? character.name || "Naamloos" : "#" + id}`,
+              };
+            }
+            return { className: "castNone", label: `${slotNumber}: Geen` };
+          });
+        }
+
+        function renderOrderCast(entry) {
+          const slots = orderCastSlots(entry);
+          const environment = orderEnvironmentBadge(entry);
+          if (!slots.length && !environment) return "";
+          return `
+            <span class="orderCast">
+              ${slots.map((slot) => `<span class="badge castBadge ${esc(slot.className)}">${esc(slot.label)}</span>`).join("")}
+              ${environment ? `<span class="badge castBadge ${esc(environment.className)}">${esc(environment.label)}</span>` : ""}
+            </span>
+          `;
+        }
+
+        function orderEnvironmentBadge(entry) {
+          const scene = orderEntryScene(entry);
+          if (!scene) return null;
+          if (scene.environmentMode === "random") {
+            const environment = pickRandomEnvironment(orderEntryRandomSeed(entry));
+            return {
+              className: "environmentBadge environmentRandom",
+              label: environment ? `Omgeving: ${environment.name || "Naamloos"} (random)` : "Omgeving: Random",
+            };
+          }
+          const environmentId = Number(scene.environmentId || 0);
+          if (environmentId) {
+            const environment = itemById("environments", environmentId);
+            return {
+              className: "environmentBadge",
+              label: `Omgeving: ${environment ? environment.name || "Naamloos" : "#" + environmentId}${environment && !isActiveItem(environment) ? " (non-actief)" : ""}`,
+            };
+          }
+          return { className: "environmentBadge environmentNone", label: "Omgeving: Geen" };
         }
 
         function renderOrderBadges(entry, options = {}) {
@@ -2070,25 +2570,69 @@
             ? `<span class="badge warning">actieve run #${Number(activeRun.runOrder || activeRun.id || 0)}</span>`
             : "";
           const activeLine = !runStarted
-            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="small">Run nog niet gestart</span></div>`
+            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="queueStatusValue muted">Run nog niet gestart</span></div>`
             : activeEntry
-            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="queueStatusTitle">${esc(orderEntryTitle(activeEntry))}</span>${activeRunBadge}</div>`
-            : `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="small">Geen actieve situatie</span></div>`;
+            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="queueStatusValue">${esc(orderEntryTitle(activeEntry))}</span>${activeRunBadge}</div>`
+            : `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="queueStatusValue muted">Geen actieve situatie</span></div>`;
           const nextLine = !runStarted
-            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Volgende</span><span class="small">Klik Start run om rij 1 klaar te zetten</span></div>`
+            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Volgende</span><span class="queueStatusValue muted">Klik Start run om rij 1 klaar te zetten</span></div>`
             : nextEntry
-            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Volgende</span><span class="queueStatusTitle">${esc(orderEntryTitle(nextEntry))}</span><span class="badge">${esc(formatOrderPoints(nextEntry))}</span></div>`
-            : `<div class="queueStatusLine"><span class="queueStatusLabel">Volgende</span><span class="small">Geen volgende situatie</span></div>`;
+            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Volgende</span><span class="queueStatusValue">${esc(orderEntryTitle(nextEntry))}</span><span class="badge">${esc(formatOrderPoints(nextEntry))}</span></div>`
+            : `<div class="queueStatusLine"><span class="queueStatusLabel">Volgende</span><span class="queueStatusValue muted">Geen volgende situatie</span></div>`;
           $("orderQueueStatus").innerHTML = activeLine + nextLine;
         }
 
-        function scrollOrderSelectionIntoView() {
-          if (!scrollOrderSelectionOnNextRender || orderEditOpen) return;
-          scrollOrderSelectionOnNextRender = false;
+        function stabilizeOrderListScroll(rows = [], options = {}) {
           const list = $("currentOrderList");
-          const target = list.querySelector(".orderItem.active") || list.querySelector(".orderItem.next");
-          if (!target) return;
-          target.scrollIntoView({ block: "nearest", inline: "nearest" });
+          if (!list) return;
+          if (options.editing) {
+            orderListAnchorKey = "editing";
+            scrollOrderSelectionOnNextRender = false;
+            return;
+          }
+          const anchor = (rows || []).find((entry) => entry && entry.active)
+            || (rows || []).find((entry) => entry && entry.next)
+            || (rows || [])[0]
+            || null;
+          const key = [
+            Number(anchor && anchor.sceneId || 0),
+            Number(state && state.activeRun && state.activeRun.id || 0),
+            Number(state && state.currentOrder && state.currentOrder.next && state.currentOrder.next.sceneId || 0),
+          ].join(":");
+          if (!scrollOrderSelectionOnNextRender) {
+            orderListAnchorKey = key;
+            return;
+          }
+          const anchorSceneId = Number(anchor && anchor.sceneId || 0);
+          const targetSelector = anchorSceneId ? `.orderItem[data-id="${anchorSceneId}"]` : "";
+          const target = targetSelector ? list.querySelector(targetSelector) : null;
+          if (!target) {
+            scrollOrderSelectionOnNextRender = false;
+            orderListAnchorKey = key;
+            return;
+          }
+          const shouldAnimate = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          const applyScroll = (behavior = "auto") => {
+            const currentList = $("currentOrderList");
+            const currentTarget = currentList && targetSelector ? currentList.querySelector(targetSelector) : null;
+            if (!currentList || !currentTarget) return;
+            const targetTop = Math.max(0, currentTarget.getBoundingClientRect().top - currentList.getBoundingClientRect().top + currentList.scrollTop);
+            try {
+              currentList.scrollTo({ top: targetTop, behavior });
+            } catch {
+              currentList.scrollTop = targetTop;
+            }
+          };
+          applyScroll(shouldAnimate ? "smooth" : "auto");
+          window.requestAnimationFrame(() => {
+            applyScroll("auto");
+            window.requestAnimationFrame(() => applyScroll("auto"));
+          });
+          window.setTimeout(() => applyScroll("auto"), 80);
+          if (scrollOrderSelectionOnNextRender || key !== orderListAnchorKey) {
+            orderListAnchorKey = key;
+          }
+          scrollOrderSelectionOnNextRender = false;
         }
 
         function buildEditableOrderRows() {
@@ -2111,18 +2655,32 @@
           }).filter(Boolean);
         }
 
+        function orderListSortValue(entry) {
+          const scene = orderEntryScene(entry);
+          const sortOrder = Number(scene && scene.sortOrder || entry && entry.sortOrder || 0);
+          if (Number.isFinite(sortOrder) && sortOrder > 0) return sortOrder;
+          const catalogIndex = activeItems("scenes").findIndex((item) => Number(item.id || 0) === Number(entry && entry.sceneId || 0));
+          return catalogIndex >= 0 ? (catalogIndex + 1) * 10 : Number.MAX_SAFE_INTEGER;
+        }
+
         function renderUnifiedOrderList(rows, options = {}) {
           const nextSceneId = Number(options.nextSceneId || 0);
           const scores = sceneScoreMap();
           const editing = !!options.editing;
+          const renderedRows = editing ? rows : (rows || []).slice().sort((a, b) => {
+            const byOrder = orderListSortValue(a) - orderListSortValue(b);
+            if (byOrder) return byOrder;
+            return Number(a && a.sceneId || 0) - Number(b && b.sceneId || 0);
+          });
           const el = $("currentOrderList");
           el.classList.toggle("editing", editing);
-          if (!rows.length) {
+          if (!renderedRows.length) {
             el.innerHTML = '<div class="small">Nog geen actieve situaties.</div>';
             return;
           }
-          el.innerHTML = rows.map((entry, index) => {
+          el.innerHTML = renderedRows.map((entry, index) => {
             const sceneId = Number(entry && entry.sceneId || 0);
+            const displayNumber = index + 1;
             const rowClasses = ["listItem", "orderItem"];
             const isNext = !editing && (!!(entry && entry.next) || (!!nextSceneId && sceneId === nextSceneId));
             const isActive = !editing && !!(entry && entry.active);
@@ -2149,17 +2707,18 @@
             const contextBadge = contextId ? `<span class="badge">context: ${esc(contextSceneTitle(contextId))}</span>` : "";
             return `
               <div class="${rowClasses.join(" ")}" data-id="${sceneId}">
-                <span class="orderNumber">${index + 1}</span>
+                <span class="orderNumber">${displayNumber}</span>
                 <span class="orderBody">
                   <span class="nameLine">
                     <span class="orderTitle">${esc(orderEntryTitle(entry))}</span>
                     <span class="actions">${renderOrderBadges({ ...entry, next: isNext }, { nextSceneId: isNext ? sceneId : 0 })}</span>
                   </span>
                   <span class="orderMeta">
-                    <span class="badge">${esc(formatOrderPoints(entry, scores))}</span>
+                    <span class="badge scoreBadge">${esc(formatOrderPoints(entry, scores))}</span>
                     ${contextBadge}
                     ${issues}
                   </span>
+                  ${renderOrderCast(entry)}
                   ${notices}
                   ${scoreBreakdown}
                 </span>
@@ -2188,6 +2747,13 @@
           }
           orderBaseSortable = window.Sortable.create(el, {
             animation: 130,
+            scroll: true,
+            bubbleScroll: true,
+            forceAutoScrollFallback: true,
+            scrollSensitivity: 90,
+            scrollSpeed: 14,
+            fallbackOnBody: true,
+            fallbackTolerance: 4,
             ghostClass: "dragGhost",
             filter: ".small",
             onEnd: () => {
@@ -2223,6 +2789,11 @@
             return;
           }
           try {
+            await api("/admin/algorithm/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(algorithmSettingsBody()),
+            });
             const result = await api("/admin/algorithm/scenes/reorder", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -2231,7 +2802,7 @@
             state = result.state || state;
             closeOrderEditor();
             render();
-            setMsg("orderMsg", "Volgorde opgeslagen.");
+            setMsg("orderMsg", "Volgorde en calibratie opgeslagen.");
           } catch (err) {
             setMsg("orderMsg", formatError(err), true);
           }
@@ -2248,38 +2819,29 @@
           const warningRowCount = rows
             .filter((entry) => (entry.issues && entry.issues.length) || (entry.warnings && entry.warnings.length))
             .length;
-          $("orderCalibrationBadge").textContent = calibration.active
-            ? `calibratie ${calibration.completed}/${calibration.total}`
-            : "algoritme actief";
-          $("orderCalibrationBadge").className = "badge " + (calibration.active ? "" : "good");
           $("orderCycleBadge").textContent = order.cycleComplete ? "alles gespeeld" : `${Number(order.playableCount || 0)} speelbaar`;
           $("orderCycleBadge").className = "badge " + (order.cycleComplete ? "good" : "");
-          $("orderListBadge").textContent = orderEditOpen
-            ? `${activeItems("scenes").length} in basisvolgorde`
-            : `${rows.length} in lijst`;
-          $("orderInvalidBadge").textContent = `${warningRowCount} waarschuwing`;
+          $("orderListBadge").textContent = "";
+          $("orderListBadge").classList.add("hidden");
+          $("orderInvalidBadge").textContent = warningRowCount ? `${warningRowCount} waarschuwing${warningRowCount === 1 ? "" : "en"}` : "";
+          $("orderInvalidBadge").classList.toggle("hidden", !warningRowCount);
           $("orderSummary").textContent = orderEditOpen
             ? "Je past nu de basisvolgorde aan. De eerste posities worden de calibratiesituaties."
-            : !runStarted
-              ? "Klik Start run om de eerste situatie klaar te zetten."
-            : rows.length && !hasQueueStatus
+            : rows.length && !hasQueueStatus && runStarted
               ? "Geen actieve of volgende situatie beschikbaar. Check waarschuwingen of reset de runs om opnieuw vanaf het begin te starten."
-            : calibration.active
-              ? "De eerste posities zijn calibratie. Klik op pas aan om deze lijst direct te slepen."
-              : order.cycleComplete
-                ? "Alle speelbare situaties zijn gespeeld; de lijst mag opnieuw gaan rouleren."
-                : "De lijst wordt live gerankt uit publieksreacties. Punten laten zien waarom iets hoger of lager staat.";
+              : "";
           $("editOrderBtn").classList.toggle("hidden", orderEditOpen);
           $("orderEditHint").classList.toggle("hidden", !orderEditOpen);
           $("orderEditSettings").classList.toggle("hidden", !orderEditOpen);
           $("orderEditActions").classList.toggle("active", orderEditOpen);
           renderQueueStatus(rows);
           if (orderEditOpen) destroyOrderBaseSortable();
-          renderUnifiedOrderList(orderEditOpen ? buildEditableOrderRows() : displayRows, {
+          const rowsForList = orderEditOpen ? buildEditableOrderRows() : displayRows;
+          renderUnifiedOrderList(rowsForList, {
             nextSceneId,
             editing: orderEditOpen,
           });
-          scrollOrderSelectionIntoView();
+          stabilizeOrderListScroll(rowsForList, { editing: orderEditOpen });
           if (orderEditOpen) initOrderBaseSortable();
         }
 
@@ -2314,7 +2876,7 @@
             kind: "scene",
             selectedId: edit.scene,
             labelFn: (item) => item.title || "Naamloze situatie",
-            detailFn: describeScene,
+            detailHtmlFn: renderSceneDetails,
             badgesFn: (item) => sceneHasLinkWarnings(item) ? [{ label: "waarschuwing", className: "warning" }] : [],
             emptyText: "Nog geen situaties.",
           });
@@ -2323,7 +2885,7 @@
             selectedId: edit.scene,
             inactive: true,
             labelFn: (item) => item.title || "Naamloze situatie",
-            detailFn: describeScene,
+            detailHtmlFn: renderSceneDetails,
             badgesFn: (item) => sceneHasLinkWarnings(item) ? [{ label: "waarschuwing", className: "warning" }] : [],
             emptyText: "Geen non-actieve situaties.",
           });
@@ -2348,7 +2910,7 @@
 
         function fillCharacter(item = null) {
           edit.character = Number(item && item.id || 0);
-          expanded.character = edit.character || 0;
+          setExpanded("character", edit.character);
           $("characterName").value = item ? item.name || "" : "";
           renderCharacterPerformerOptions(item ? item.performerId || 0 : 0);
           $("characterDescription").value = item ? item.description || "" : "";
@@ -2358,7 +2920,7 @@
 
         function fillPerformer(item = null) {
           edit.performer = Number(item && item.id || 0);
-          expanded.performer = edit.performer || 0;
+          setExpanded("performer", edit.performer);
           $("performerName").value = item ? item.name || "" : "";
           $("performerRoleSlot").value = String(Number(item && item.roleSlot || 0));
           setPerformerFormVisible(true);
@@ -2367,7 +2929,7 @@
 
         function fillEnvironment(item = null) {
           edit.environment = Number(item && item.id || 0);
-          expanded.environment = edit.environment || 0;
+          setExpanded("environment", edit.environment);
           $("environmentName").value = item ? item.name || "" : "";
           $("environmentDescription").value = item ? item.description || "" : "";
           setEnvironmentFormVisible(true);
@@ -2376,7 +2938,7 @@
 
         function fillScene(item = null) {
           edit.scene = Number(item && item.id || 0);
-          expanded.scene = edit.scene || 0;
+          setExpanded("scene", edit.scene);
           sceneDraft = sceneDraftFromItem(item);
           setSceneFormVisible(true);
           applySceneDraftToFields();
@@ -2398,10 +2960,6 @@
           const canStartAlgorithmRun = currentOrderRows().length > 0;
           topMetaEl.textContent = `Sessie ${state.session.id} - ${state.session.isActive ? "actief" : "gesloten"}`;
           buildBadgeEl.textContent = runtime.buildLabel || runtime.buildVersion || "build onbekend";
-          $("calibrationBadge").textContent = calibration.active
-            ? `calibratie ${calibration.completed}/${calibration.total}`
-            : "algoritme actief";
-          $("calibrationBadge").className = "badge " + (calibration.active ? "" : "good");
           $("heartStat").textContent = String(activeRun ? activeRun.heartCount || 0 : 0);
           $("boredStat").textContent = String(activeRun ? activeRun.boredCount || 0 : 0);
           $("commentStat").textContent = String(activeRun ? activeRun.commentCount || 0 : 0);
@@ -2417,6 +2975,7 @@
           $("sceneToggleBtn").disabled = !activeRun && (!runStarted ? !canStartAlgorithmRun : !hasPreparedScene);
           $("sceneToggleBtn").classList.toggle("danger", !!activeRun);
           $("sceneToggleBtn").classList.toggle("primary", !activeRun);
+          $("previousSceneBtn").disabled = !runStarted || !(state.runs || []).some((run) => run && run.endedAt);
           if (document.activeElement !== $("calibrationCount")) $("calibrationCount").value = String(state.settings.calibrationCount || 5);
           if (document.activeElement !== $("globalPrompt")) $("globalPrompt").value = state.settings.globalPrompt || "";
           if (document.activeElement !== $("promptTemplate")) $("promptTemplate").value = state.settings.promptTemplate || "";
@@ -2808,22 +3367,26 @@
           return result;
         }
 
+        function algorithmSettingsBody() {
+          return {
+            calibrationCount: $("calibrationCount").value,
+            globalPrompt: $("globalPrompt").value,
+            promptTemplate: $("promptTemplate").value,
+            heartWeight: $("scoreHeartWeight").value,
+            boredWeight: $("scoreBoredWeight").value,
+            commentWeight: $("scoreCommentWeight").value,
+            timeNormalizedBlend: $("scoreTimeBlend").value,
+            characterCooldownWindow: $("variationCharacterCooldownWindow").value,
+            diversityWeight: $("variationDiversityWeight").value,
+            explorationWeight: $("variationExplorationWeight").value,
+            retryWeight: $("variationRetryWeight").value,
+            sceneRepeatPenalty: $("variationSceneRepeatPenalty").value,
+          };
+        }
+
         async function saveAlgorithmSettings(msgTarget, successText) {
           try {
-            await post("/admin/algorithm/settings", {
-              calibrationCount: $("calibrationCount").value,
-              globalPrompt: $("globalPrompt").value,
-              promptTemplate: $("promptTemplate").value,
-              heartWeight: $("scoreHeartWeight").value,
-              boredWeight: $("scoreBoredWeight").value,
-              commentWeight: $("scoreCommentWeight").value,
-              timeNormalizedBlend: $("scoreTimeBlend").value,
-              characterCooldownWindow: $("variationCharacterCooldownWindow").value,
-              diversityWeight: $("variationDiversityWeight").value,
-              explorationWeight: $("variationExplorationWeight").value,
-              retryWeight: $("variationRetryWeight").value,
-              sceneRepeatPenalty: $("variationSceneRepeatPenalty").value,
-            }, msgTarget);
+            await post("/admin/algorithm/settings", algorithmSettingsBody(), msgTarget);
             setMsg(msgTarget, successText || "Settings opgeslagen.");
           } catch (err) {
             setMsg(msgTarget, formatError(err), true);
@@ -2992,7 +3555,7 @@
           if (!kind || !id) return;
           const item = itemById(kind, id);
           if (action === "toggle") {
-            expanded[kind] = Number(expanded[kind]) === id ? 0 : id;
+            setExpanded(kind, Number(expanded[kind]) === id ? 0 : id);
             if (kind === "performer") setPerformerFormVisible(false);
             if (kind === "character") setCharacterFormVisible(false);
             if (kind === "environment") setEnvironmentFormVisible(false);
@@ -3022,7 +3585,7 @@
             event.preventDefault();
             login();
           });
-          $("refreshBtn").addEventListener("click", () => loadState(false));
+          $("refreshBtn").addEventListener("click", () => loadState(false, { scrollOrder: true }));
           $("logoutBtn").addEventListener("click", () => {
             setToken("");
             showLogin("");
@@ -3106,7 +3669,7 @@
                 roleSlot: Number($("performerRoleSlot").value || 0),
                 isActive: editedIsActive("performer", edit.performer),
               });
-              expanded.performer = Number(result.performer && result.performer.id || 0);
+              setExpanded("performer", Number(result.performer && result.performer.id || 0));
               setPerformerFormVisible(false);
               renderCatalog();
               refreshOpenSceneDraftControls();
@@ -3122,7 +3685,7 @@
                 performerId: Number($("characterPerformer").value || 0),
                 isActive: editedIsActive("character", edit.character),
               });
-              expanded.character = Number(result.character && result.character.id || 0);
+              setExpanded("character", Number(result.character && result.character.id || 0));
               setCharacterFormVisible(false);
               renderCatalog();
               refreshOpenSceneDraftControls();
@@ -3137,7 +3700,7 @@
                 description: $("environmentDescription").value,
                 isActive: editedIsActive("environment", edit.environment),
               });
-              expanded.environment = Number(result.environment && result.environment.id || 0);
+              setExpanded("environment", Number(result.environment && result.environment.id || 0));
               setEnvironmentFormVisible(false);
               renderCatalog();
               refreshOpenSceneDraftControls();
@@ -3167,15 +3730,12 @@
                 promptOverride: sceneDraft.promptOverride,
                 isActive: editedIsActive("scene", edit.scene),
               });
-              expanded.scene = Number(result.scene && result.scene.id || 0);
+              setExpanded("scene", Number(result.scene && result.scene.id || 0));
               setSceneFormVisible(false);
               renderCatalog();
             } catch (err) { setMsg("catalogMsg", formatError(err), true); }
           });
 
-          $("saveCalibrationSettingsBtn").addEventListener("click", () => {
-            saveAlgorithmSettings("orderMsg", "Calibratie opgeslagen.");
-          });
           $("savePromptSettingsBtn").addEventListener("click", () => {
             saveAlgorithmSettings("promptMsg", "Prompt instellingen opgeslagen.");
           });
@@ -3239,6 +3799,7 @@
           });
           $("saveOrderBtn").addEventListener("click", saveOrderEditor);
 
+          $("previousSceneBtn").addEventListener("click", restorePreviousScene);
           $("sceneToggleBtn").addEventListener("click", toggleSceneRun);
           $("resetRunsBtn").addEventListener("click", async () => {
             if (!window.confirm("Reset alle algoritme-runs van deze sessie? Hearts, bored, comments en calibratie beginnen opnieuw.")) return;
@@ -3258,7 +3819,7 @@
           try {
             await post("/admin/algorithm/archive", archiveBody(kind, id));
             clearEditForKind(kind);
-            expanded[kind] = id;
+            setExpanded(kind, id);
             renderCatalog();
             refreshOpenSceneDraftControls();
             setMsg("catalogMsg", "Non-actief gezet.");
@@ -3277,7 +3838,7 @@
           }
           try {
             await post(path, body);
-            expanded[kind] = id;
+            setExpanded(kind, id);
             renderCatalog();
             refreshOpenSceneDraftControls();
             setMsg("catalogMsg", "Actief gemaakt.");
@@ -3296,7 +3857,7 @@
           if (!window.confirm(`Verwijder ${label} definitief?`)) return;
           try {
             await post("/admin/algorithm/delete", { kind, id });
-            expanded[kind] = 0;
+            setExpanded(kind, 0);
             clearEditForKind(kind);
             renderCatalog();
             refreshOpenSceneDraftControls();
@@ -3324,6 +3885,19 @@
             scrollOrderSelectionOnNextRender = true;
             await post("/admin/algorithm/runs/begin", {}, "liveMsg");
             setMsg("liveMsg", "Run gestart. De eerste situatie staat klaar.");
+          } catch (err) {
+            setMsg("liveMsg", formatError(err), true);
+          }
+        }
+
+        async function restorePreviousScene() {
+          try {
+            scrollOrderSelectionOnNextRender = true;
+            const result = await post("/admin/algorithm/runs/previous", { reason: "manual" }, "liveMsg");
+            const restored = result.previous && result.previous.restoredRun ? result.previous.restoredRun : null;
+            setMsg("liveMsg", restored && restored.title
+              ? `Vorige situatie teruggezet: ${restored.title}`
+              : "Vorige situatie teruggezet.");
           } catch (err) {
             setMsg("liveMsg", formatError(err), true);
           }
@@ -3397,6 +3971,7 @@
             item_must_be_inactive: "Zet dit item eerst non-actief.",
             scene_links_invalid: "Situatie-koppelingen kloppen nog niet.",
             scene_context_unmet: "Deze situatie heeft eerst een contextsituatie nodig.",
+            previous_run_unavailable: "Er is nog geen vorige situatie om naar terug te gaan.",
             performer_not_found: "Performer niet gevonden.",
             role_slot_conflict: "Deze performer-slot is al gekoppeld aan een andere actieve performer.",
             name_required: "Naam is verplicht.",
@@ -3409,6 +3984,7 @@
           return (friendly || code) + issues;
         }
 
+        initPersistedUiState();
         bindEvents();
         loadToken();
         if (token) {
