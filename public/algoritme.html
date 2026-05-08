@@ -3380,13 +3380,16 @@
 
         function runActionExpectedState() {
           const runs = Array.isArray(state && state.runs) ? state.runs : [];
-          return {
+          const expected = {
             activeRunId: Number(state && state.activeRun && state.activeRun.id || 0),
-            nextSceneId: Number(state && state.currentOrder && state.currentOrder.next && state.currentOrder.next.sceneId || 0),
             runCount: runs.length,
             latestRunId: latestRunId(),
             runStarted: isAlgorithmRunStarted(),
           };
+          if (expected.runStarted) {
+            expected.nextSceneId = Number(state && state.currentOrder && state.currentOrder.next && state.currentOrder.next.sceneId || 0);
+          }
+          return expected;
         }
 
         async function withRunActionPending(work) {
