@@ -180,6 +180,7 @@ const ALGORITHM_SCENE_REPEAT_PENALTY_SETTING_KEY = "algorithm_variation_scene_re
 const ALGORITHM_RUN_STARTED_SETTING_PREFIX = "algorithm_run_started_session_";
 const ALGORITHM_PREPARED_NEXT_SETTING_PREFIX = "algorithm_prepared_next_session_";
 const ALGORITHM_LOCKED_QUEUE_SETTING_PREFIX = "algorithm_locked_queue_session_";
+const ALGORITHM_RUN_ACTION_DUPLICATE_WINDOW_MS = 750;
 const ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS = 3500;
 const ALGORITHM_OSC_CHARACTER_SLOT_COUNT = 3;
 const DEFAULT_ALGORITHM_PERFORMERS = Object.freeze(["Megan", "Brent", "Booi"]);
@@ -4911,6 +4912,103 @@ function initializeAlgorithmLockedQueueForCurrentSession(source = "start_run") {
   return fillAlgorithmLockedQueueForCurrentSession(source, targetLength, { queue });
 }
 
+function latestAlgorithmRunId(runs = []) {
+  const latest = sortedAlgorithmRunsForQueue(runs).slice().pop() || null;
+  return Number(latest && latest.id || 0);
+}
+
+function normalizeAlgorithmExpectedState(input = null) {
+  const src = input && typeof input === "object" && !Array.isArray(input) ? input : null;
+  if (!src) return null;
+  const out = {};
+  const intKeys = ["activeRunId", "nextSceneId", "runCount", "latestRunId"];
+  for (const key of intKeys) {
+    if (!Object.prototype.hasOwnProperty.call(src, key)) continue;
+    const n = Number.parseInt(String(src[key] || "0"), 10);
+    out[key] = Number.isInteger(n) && n > 0 ? n : 0;
+  }
+  if (Object.prototype.hasOwnProperty.call(src, "runStarted")) {
+    out.runStarted = !!src.runStarted;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+function getAlgorithmRunActionSnapshot() {
+  const runs = getAlgorithmRunsForCurrentSession();
+  const activeRun = getActiveAlgorithmRunForCurrentSession();
+  const settings = getAlgorithmSettings();
+  const decoratedRuns = decorateAlgorithmRunsWithScores(runs, settings);
+  const decoratedActive = activeRun ? decorateAlgorithmRunsWithScores([activeRun], settings)[0] : null;
+  const order = buildAlgorithmOrderForCurrentSession(getAlgorithmCatalog(), decoratedRuns, settings);
+  return {
+    activeRunId: Number(decoratedActive && decoratedActive.id || 0),
+    nextSceneId: Number(order && order.next && order.next.sceneId || 0),
+    runCount: Number(runs.length || 0),
+    latestRunId: latestAlgorithmRunId(runs),
+    runStarted: getAlgorithmRunStartedForCurrentSession(decoratedRuns, decoratedActive),
+  };
+}
+
+function assertAlgorithmExpectedState(expectedInput = null) {
+  const expected = normalizeAlgorithmExpectedState(expectedInput);
+  if (!expected) return getAlgorithmRunActionSnapshot();
+  const current = getAlgorithmRunActionSnapshot();
+  for (const [key, expectedValue] of Object.entries(expected)) {
+    if (current[key] !== expectedValue) {
+      const err = new Error("stale_algorithm_state");
+      err.issues = [`${key}:${expectedValue}->${current[key]}`];
+      throw err;
+    }
+  }
+  return current;
+}
+
+function currentAlgorithmRunActionLockKey() {
+  return String(Number(currentSession && currentSession.id || 0));
+}
+
+function withAlgorithmRunActionGuard(actionName, expectedState, fn) {
+  const key = currentAlgorithmRunActionLockKey();
+  if (!Number(key || 0)) throw new Error("session_required");
+  if (algorithmRunActionLocks.has(key)) throw new Error("algorithm_action_in_progress");
+  algorithmRunActionLocks.set(key, {
+    action: String(actionName || "run_action").slice(0, 80),
+    startedAt: Date.now(),
+  });
+  try {
+    assertAlgorithmExpectedState(expectedState);
+    return fn();
+  } finally {
+    algorithmRunActionLocks.delete(key);
+  }
+}
+
+function assertAlgorithmOscRunDuplicateWindow(actionName, ctx = {}) {
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  const args = Array.isArray(ctx && ctx.args) ? ctx.args : [];
+  const key = [
+    sessionId,
+    String(actionName || "osc_run_action").slice(0, 80),
+    safeJsonStringify(args, "[]").slice(0, 500),
+  ].join(":");
+  const now = Date.now();
+  for (const [itemKey, item] of algorithmOscRunActionWindows.entries()) {
+    if (now - Number(item && item.at || 0) > ALGORITHM_RUN_ACTION_DUPLICATE_WINDOW_MS * 4) {
+      algorithmOscRunActionWindows.delete(itemKey);
+    }
+  }
+  const previous = algorithmOscRunActionWindows.get(key);
+  if (previous && now - Number(previous.at || 0) < ALGORITHM_RUN_ACTION_DUPLICATE_WINDOW_MS) {
+    throw new Error("algorithm_action_in_progress");
+  }
+  algorithmOscRunActionWindows.set(key, { at: now });
+}
+
+function runAlgorithmOscAction(actionName, ctx, fn) {
+  assertAlgorithmOscRunDuplicateWindow(actionName, ctx);
+  return withAlgorithmRunActionGuard(`osc:${actionName}`, null, fn);
+}
+
 function ensureAlgorithmPreparedNextForCurrentSession(source = "manual") {
   renormalizeAlgorithmScenesForPerformerRoles();
   const catalog = getAlgorithmCatalog();
@@ -5957,13 +6055,19 @@ function sendAlgorithmApiError(res, err) {
   const code = String(err && err.message ? err.message : "algorithm_error");
   const status = code.includes("not_found") ? 404
     : code.includes("invalid") || code.includes("required") || code.includes("in_use") || code.includes("must") ? 400
-      : code === "session_inactive" || code === "scene_context_unmet" || code === "previous_run_unavailable" || code === "prepared_next_mismatch" ? 409
+      : code === "session_inactive" || code === "scene_context_unmet" || code === "previous_run_unavailable" || code === "prepared_next_mismatch" || code === "algorithm_action_in_progress" || code === "stale_algorithm_state" ? 409
         : 500;
-  res.status(status).json({
+  const payload = {
     ok: false,
     error: code,
     issues: Array.isArray(err && err.issues) ? err.issues : undefined,
-  });
+  };
+  if (code === "algorithm_action_in_progress" || code === "stale_algorithm_state") {
+    try {
+      payload.state = getAlgorithmState();
+    } catch {}
+  }
+  res.status(status).json(payload);
 }
 
 const adminTokens = new Map();
@@ -5973,6 +6077,8 @@ const stageSubscribers = new Set();
 const socketIoCompatClients = new Set();
 const mutedUsers = new Map();
 const blockedUsers = new Map();
+const algorithmRunActionLocks = new Map();
+const algorithmOscRunActionWindows = new Map();
 let currentSession = ensureOpenSession();
 let activePoll = parsePollRow(sql.getActivePoll.get(currentSession.id));
 let reactionCounts = createReactionCounts();
@@ -9133,11 +9239,13 @@ function buildOscControlCommands() {
       feedbackMessage(result) {
         return result && result.upNext && result.upNext.title ? `Run gestart. Up Next: ${result.upNext.title}` : "Run gestart";
       },
-      execute() {
-        const run = beginAlgorithmRunForCurrentSession();
-        initializeAlgorithmLockedQueueForCurrentSession("osc_start_run");
-        const oscSend = sendAlgorithmUpNextOsc("osc_start_run");
-        return { run, upNext: oscSend.payload || null, oscSend: oscSend.last || oscSend };
+      execute(ctx) {
+        return runAlgorithmOscAction("start_run", ctx, () => {
+          const run = beginAlgorithmRunForCurrentSession();
+          initializeAlgorithmLockedQueueForCurrentSession("osc_start_run");
+          const oscSend = sendAlgorithmUpNextOsc("osc_start_run");
+          return { run, upNext: oscSend.payload || null, oscSend: oscSend.last || oscSend };
+        });
       },
     },
     {
@@ -9148,19 +9256,21 @@ function buildOscControlCommands() {
       feedbackMessage(result) {
         return result && result.title ? `Situatie gestart: ${result.title}` : "Situatie gestart";
       },
-      execute() {
-        const upNext = buildAlgorithmCurrentUpNextPayload();
-        const sceneId = Number(upNext && upNext.sceneId || 0);
-        if (!sceneId) throw new Error("scene_id_required");
-        const run = startAlgorithmSceneRun(sceneId, "osc_up_next");
-        const oscSend = sendAlgorithmUpNextOsc("osc_scene_started");
-        return {
-          ...upNext,
-          prompt: run.promptSnapshot,
-          runId: Number(run.id || 0),
-          next: oscSend.payload || null,
-          oscSend: oscSend.last || oscSend,
-        };
+      execute(ctx) {
+        return runAlgorithmOscAction("start_next", ctx, () => {
+          const upNext = buildAlgorithmCurrentUpNextPayload();
+          const sceneId = Number(upNext && upNext.sceneId || 0);
+          if (!sceneId) throw new Error("scene_id_required");
+          const run = startAlgorithmSceneRun(sceneId, "osc_up_next");
+          const oscSend = sendAlgorithmUpNextOsc("osc_scene_started");
+          return {
+            ...upNext,
+            prompt: run.promptSnapshot,
+            runId: Number(run.id || 0),
+            next: oscSend.payload || null,
+            oscSend: oscSend.last || oscSend,
+          };
+        });
       },
     },
     {
@@ -9172,36 +9282,38 @@ function buildOscControlCommands() {
         return result && result.title ? `Situatie gestart: ${result.title}` : "Situatie gestart";
       },
       execute(ctx) {
-        let sceneId = Number.parseInt(getOscArgString(ctx.args, 0, "0"), 10);
-        let selectionSource = "osc";
-        if (!Number.isInteger(sceneId) || sceneId < 1) {
-          const upNext = buildAlgorithmCurrentUpNextPayload("osc_start_scene");
-          sceneId = Number(upNext && upNext.sceneId || 0);
-          selectionSource = "osc_up_next";
-        }
-        if (!sceneId) throw new Error("scene_id_required");
-        const run = startAlgorithmSceneRun(sceneId, selectionSource);
-        const catalog = getAlgorithmCatalog();
-        const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
-        const randomSeed = algorithmRuntimeRandomSeed(sceneId, "osc_start_scene");
-        const payload = buildAlgorithmTouchDesignerPayload({
-          scene,
-          prompt: run.promptSnapshot,
-          score: 0,
-          reason: "Situatie gestart via OSC.",
-          calibration: buildAlgorithmRecommendation(catalog, getAlgorithmRunsForCurrentSession()).calibration,
-        }, {
-          catalog,
-          randomSeed,
-          source: "osc_start_scene",
+        return runAlgorithmOscAction("start_scene", ctx, () => {
+          let sceneId = Number.parseInt(getOscArgString(ctx.args, 0, "0"), 10);
+          let selectionSource = "osc";
+          if (!Number.isInteger(sceneId) || sceneId < 1) {
+            const upNext = buildAlgorithmCurrentUpNextPayload("osc_start_scene");
+            sceneId = Number(upNext && upNext.sceneId || 0);
+            selectionSource = "osc_up_next";
+          }
+          if (!sceneId) throw new Error("scene_id_required");
+          const run = startAlgorithmSceneRun(sceneId, selectionSource);
+          const catalog = getAlgorithmCatalog();
+          const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
+          const randomSeed = algorithmRuntimeRandomSeed(sceneId, "osc_start_scene");
+          const payload = buildAlgorithmTouchDesignerPayload({
+            scene,
+            prompt: run.promptSnapshot,
+            score: 0,
+            reason: "Situatie gestart via OSC.",
+            calibration: buildAlgorithmRecommendation(catalog, getAlgorithmRunsForCurrentSession()).calibration,
+          }, {
+            catalog,
+            randomSeed,
+            source: "osc_start_scene",
+          });
+          const oscSend = sendAlgorithmUpNextOsc("osc_scene_started");
+          return {
+            ...payload,
+            runId: Number(run.id || 0),
+            next: oscSend.payload || null,
+            oscSend: oscSend.last || oscSend,
+          };
         });
-        const oscSend = sendAlgorithmUpNextOsc("osc_scene_started");
-        return {
-          ...payload,
-          runId: Number(run.id || 0),
-          next: oscSend.payload || null,
-          oscSend: oscSend.last || oscSend,
-        };
       },
     },
     {
@@ -9212,24 +9324,26 @@ function buildOscControlCommands() {
       feedbackMessage(result) {
         return result && result.next && result.next.title ? `Situatie geeindigd. Volgende: ${result.next.title}` : "Situatie geeindigd";
       },
-      execute() {
-        const ended = endActiveAlgorithmSceneRun("osc");
-        fillAlgorithmLockedQueueForCurrentSession("osc_end_scene", algorithmLockedQueueTargetForRuns(getAlgorithmRunsForCurrentSession(), 2));
-        const oscSend = sendAlgorithmUpNextOsc("osc_end_scene");
-        return {
-          endedRun: ended
-            ? {
-                id: Number(ended.id || 0),
-                sceneId: Number(ended.sceneId || 0),
-                score: Number(ended.score || 0),
-                heartCount: Number(ended.heartCount || 0),
-                boredCount: Number(ended.boredCount || 0),
-                commentCount: Number(ended.commentCount || 0),
-              }
-            : null,
-          next: oscSend.payload || null,
-          oscSend: oscSend.last || oscSend,
-        };
+      execute(ctx) {
+        return runAlgorithmOscAction("end_scene", ctx, () => {
+          const ended = endActiveAlgorithmSceneRun("osc");
+          fillAlgorithmLockedQueueForCurrentSession("osc_end_scene", algorithmLockedQueueTargetForRuns(getAlgorithmRunsForCurrentSession(), 2));
+          const oscSend = sendAlgorithmUpNextOsc("osc_end_scene");
+          return {
+            endedRun: ended
+              ? {
+                  id: Number(ended.id || 0),
+                  sceneId: Number(ended.sceneId || 0),
+                  score: Number(ended.score || 0),
+                  heartCount: Number(ended.heartCount || 0),
+                  boredCount: Number(ended.boredCount || 0),
+                  commentCount: Number(ended.commentCount || 0),
+                }
+              : null,
+            next: oscSend.payload || null,
+            oscSend: oscSend.last || oscSend,
+          };
+        });
       },
     },
     {
@@ -9242,14 +9356,16 @@ function buildOscControlCommands() {
           ? `Vorige situatie: ${result.restoredRun.title}`
           : "Vorige situatie teruggezet";
       },
-      execute() {
-        const previous = restorePreviousAlgorithmSceneRunForCurrentSession("osc");
-        const oscSend = sendAlgorithmUpNextOsc("osc_previous_scene");
-        return {
-          ...previous,
-          next: oscSend.payload || null,
-          oscSend: oscSend.last || oscSend,
-        };
+      execute(ctx) {
+        return runAlgorithmOscAction("previous_scene", ctx, () => {
+          const previous = restorePreviousAlgorithmSceneRunForCurrentSession("osc");
+          const oscSend = sendAlgorithmUpNextOsc("osc_previous_scene");
+          return {
+            ...previous,
+            next: oscSend.payload || null,
+            oscSend: oscSend.last || oscSend,
+          };
+        });
       },
     },
     {
@@ -9260,8 +9376,8 @@ function buildOscControlCommands() {
       feedbackMessage(result) {
         return result && result.deletedRuns ? `Run gereset (${result.deletedRuns} verwijderd)` : "Run gereset";
       },
-      execute() {
-        return resetAlgorithmRunsForCurrentSession();
+      execute(ctx) {
+        return runAlgorithmOscAction("reset_run", ctx, () => resetAlgorithmRunsForCurrentSession());
       },
     },
     {
@@ -11269,17 +11385,20 @@ app.post("/admin/algorithm/delete", requireAdmin, (req, res) => {
 
 app.post("/admin/algorithm/runs/start", requireAdmin, (req, res) => {
   try {
-    let sceneId = Number.parseInt(String(req.body && req.body.sceneId || ""), 10);
-    let selectionSource = String(req.body && req.body.selectionSource || "");
-    if (!Number.isInteger(sceneId) || sceneId < 1) {
-      const upNext = buildAlgorithmCurrentUpNextPayload();
-      sceneId = Number(upNext && upNext.sceneId || 0);
-      selectionSource = selectionSource || "up_next";
-    }
-    if (!sceneId) throw new Error("scene_id_required");
-    const run = startAlgorithmSceneRun(sceneId, selectionSource || "manual");
-    const oscSend = sendAlgorithmUpNextOsc("scene_started");
-    res.json({ ok: true, run, oscSend: oscSend.last || oscSend, state: getAlgorithmState(req) });
+    const result = withAlgorithmRunActionGuard("start", req.body && req.body.expectedState, () => {
+      let sceneId = Number.parseInt(String(req.body && req.body.sceneId || ""), 10);
+      let selectionSource = String(req.body && req.body.selectionSource || "");
+      if (!Number.isInteger(sceneId) || sceneId < 1) {
+        const upNext = buildAlgorithmCurrentUpNextPayload();
+        sceneId = Number(upNext && upNext.sceneId || 0);
+        selectionSource = selectionSource || "up_next";
+      }
+      if (!sceneId) throw new Error("scene_id_required");
+      const run = startAlgorithmSceneRun(sceneId, selectionSource || "manual");
+      const oscSend = sendAlgorithmUpNextOsc("scene_started");
+      return { run, oscSend };
+    });
+    res.json({ ok: true, run: result.run, oscSend: result.oscSend.last || result.oscSend, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -11287,10 +11406,13 @@ app.post("/admin/algorithm/runs/start", requireAdmin, (req, res) => {
 
 app.post("/admin/algorithm/runs/begin", requireAdmin, (req, res) => {
   try {
-    const run = beginAlgorithmRunForCurrentSession();
-    initializeAlgorithmLockedQueueForCurrentSession("start_run");
-    const oscSend = sendAlgorithmUpNextOsc("start_run");
-    res.json({ ok: true, run, oscSend: oscSend.last || oscSend, state: getAlgorithmState(req) });
+    const result = withAlgorithmRunActionGuard("begin", req.body && req.body.expectedState, () => {
+      const run = beginAlgorithmRunForCurrentSession();
+      initializeAlgorithmLockedQueueForCurrentSession("start_run");
+      const oscSend = sendAlgorithmUpNextOsc("start_run");
+      return { run, oscSend };
+    });
+    res.json({ ok: true, run: result.run, oscSend: result.oscSend.last || result.oscSend, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -11298,10 +11420,13 @@ app.post("/admin/algorithm/runs/begin", requireAdmin, (req, res) => {
 
 app.post("/admin/algorithm/runs/end", requireAdmin, (req, res) => {
   try {
-    const run = endActiveAlgorithmSceneRun(String(req.body && req.body.reason || "manual"));
-    fillAlgorithmLockedQueueForCurrentSession("end_scene", algorithmLockedQueueTargetForRuns(getAlgorithmRunsForCurrentSession(), 2));
-    const oscSend = sendAlgorithmUpNextOsc("end_scene");
-    res.json({ ok: true, run, oscSend: oscSend.last || oscSend, state: getAlgorithmState(req) });
+    const result = withAlgorithmRunActionGuard("end", req.body && req.body.expectedState, () => {
+      const run = endActiveAlgorithmSceneRun(String(req.body && req.body.reason || "manual"));
+      fillAlgorithmLockedQueueForCurrentSession("end_scene", algorithmLockedQueueTargetForRuns(getAlgorithmRunsForCurrentSession(), 2));
+      const oscSend = sendAlgorithmUpNextOsc("end_scene");
+      return { run, oscSend };
+    });
+    res.json({ ok: true, run: result.run, oscSend: result.oscSend.last || result.oscSend, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -11309,9 +11434,12 @@ app.post("/admin/algorithm/runs/end", requireAdmin, (req, res) => {
 
 app.post("/admin/algorithm/runs/previous", requireAdmin, (req, res) => {
   try {
-    const previous = restorePreviousAlgorithmSceneRunForCurrentSession(String(req.body && req.body.reason || "manual"));
-    const oscSend = sendAlgorithmUpNextOsc("previous_scene");
-    res.json({ ok: true, previous, oscSend: oscSend.last || oscSend, state: getAlgorithmState(req) });
+    const result = withAlgorithmRunActionGuard("previous", req.body && req.body.expectedState, () => {
+      const previous = restorePreviousAlgorithmSceneRunForCurrentSession(String(req.body && req.body.reason || "manual"));
+      const oscSend = sendAlgorithmUpNextOsc("previous_scene");
+      return { previous, oscSend };
+    });
+    res.json({ ok: true, previous: result.previous, oscSend: result.oscSend.last || result.oscSend, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -11319,7 +11447,7 @@ app.post("/admin/algorithm/runs/previous", requireAdmin, (req, res) => {
 
 app.post("/admin/algorithm/runs/reset", requireAdmin, (req, res) => {
   try {
-    const reset = resetAlgorithmRunsForCurrentSession();
+    const reset = withAlgorithmRunActionGuard("reset", req.body && req.body.expectedState, () => resetAlgorithmRunsForCurrentSession());
     res.json({ ok: true, reset, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
