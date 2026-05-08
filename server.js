@@ -4952,6 +4952,9 @@ function getAlgorithmRunActionSnapshot() {
 function assertAlgorithmExpectedState(expectedInput = null) {
   const expected = normalizeAlgorithmExpectedState(expectedInput);
   if (!expected) return getAlgorithmRunActionSnapshot();
+  if (expected.runStarted === false && expected.nextSceneId === 0) {
+    delete expected.nextSceneId;
+  }
   const current = getAlgorithmRunActionSnapshot();
   for (const [key, expectedValue] of Object.entries(expected)) {
     if (current[key] !== expectedValue) {
