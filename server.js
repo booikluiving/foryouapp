@@ -3134,6 +3134,15 @@ const sql = {
       score = ?, prompt_snapshot = ?, reason = ?, updated_at = ?
      WHERE id = ? AND ended_at IS NULL`
   ),
+  reopenAlgorithmSceneRun: db.prepare(
+    `UPDATE algorithm_scene_runs
+     SET ended_at = NULL, score = NULL, updated_at = ?
+     WHERE id = ? AND session_id = ?`
+  ),
+  deleteAlgorithmRunById: db.prepare(
+    `DELETE FROM algorithm_scene_runs
+     WHERE id = ? AND session_id = ?`
+  ),
   deleteAlgorithmRunsBySession: db.prepare(
     `DELETE FROM algorithm_scene_runs
      WHERE session_id = ?`
@@ -5513,6 +5522,95 @@ function endActiveAlgorithmSceneRun(reason = "manual") {
   return ended;
 }
 
+function summarizeAlgorithmRun(run) {
+  if (!run) return null;
+  const scene = getAlgorithmSceneById(run.sceneId);
+  return {
+    id: Number(run.id || 0),
+    sceneId: Number(run.sceneId || 0),
+    runOrder: Number(run.runOrder || 0),
+    title: String(scene && scene.title || ""),
+    startedAt: String(run.startedAt || ""),
+    endedAt: run.endedAt ? String(run.endedAt) : null,
+    heartCount: Number(run.heartCount || 0),
+    boredCount: Number(run.boredCount || 0),
+    commentCount: Number(run.commentCount || 0),
+  };
+}
+
+function sortAlgorithmRunsNewestFirst(runs = []) {
+  return (Array.isArray(runs) ? runs : []).slice().sort((a, b) => {
+    const byOrder = Number(b && b.runOrder || 0) - Number(a && a.runOrder || 0);
+    if (byOrder) return byOrder;
+    return Number(b && b.id || 0) - Number(a && a.id || 0);
+  });
+}
+
+function latestEndedAlgorithmRunBefore(runs = [], run = null) {
+  const activeOrder = Number(run && run.runOrder || 0);
+  const activeId = Number(run && run.id || 0);
+  if (!activeOrder && !activeId) return null;
+  return sortAlgorithmRunsNewestFirst(runs).find((item) => {
+    if (!item || !item.endedAt) return false;
+    const itemOrder = Number(item.runOrder || 0);
+    const itemId = Number(item.id || 0);
+    return itemOrder < activeOrder || (itemOrder === activeOrder && itemId < activeId);
+  }) || null;
+}
+
+function latestEndedAlgorithmRun(runs = []) {
+  return sortAlgorithmRunsNewestFirst(runs).find((run) => run && run.endedAt) || null;
+}
+
+function restorePreviousAlgorithmSceneRunForCurrentSession(source = "manual") {
+  if (!isCurrentSessionActive()) throw new Error("session_inactive");
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  if (!sessionId) throw new Error("session_required");
+  const runs = getAlgorithmRunsForCurrentSession();
+  const openRun = activeAlgorithmRun && !activeAlgorithmRun.endedAt
+    ? activeAlgorithmRun
+    : getActiveAlgorithmRunForCurrentSession();
+  const previousRun = openRun
+    ? latestEndedAlgorithmRunBefore(runs, openRun)
+    : latestEndedAlgorithmRun(runs);
+  if (!previousRun) throw new Error("previous_run_unavailable");
+
+  const now = nowIso();
+  const deletedRuns = [];
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    if (openRun && !openRun.endedAt) {
+      markSyncTombstone("algorithm_scene_runs", openRun.id, now);
+      const deleted = sql.deleteAlgorithmRunById.run(openRun.id, sessionId);
+      if (!deleted || Number(deleted.changes || 0) < 1) throw new Error("previous_run_unavailable");
+    }
+    const reopened = sql.reopenAlgorithmSceneRun.run(now, previousRun.id, sessionId);
+    if (!reopened || Number(reopened.changes || 0) < 1) throw new Error("previous_run_unavailable");
+    db.exec("COMMIT");
+  } catch (err) {
+    try { db.exec("ROLLBACK"); } catch {}
+    throw err;
+  }
+  if (openRun && !openRun.endedAt) deletedRuns.push(openRun);
+  activeAlgorithmRun = parseAlgorithmRunRow(sql.getAlgorithmRunById.get(previousRun.id));
+  setAlgorithmRunStartedForCurrentSession(true);
+  writeDebug("algorithm_previous_scene_restored", {
+    source: String(source || "manual").slice(0, 80),
+    sessionId,
+    restoredRunId: Number(activeAlgorithmRun && activeAlgorithmRun.id || 0),
+    restoredSceneId: Number(activeAlgorithmRun && activeAlgorithmRun.sceneId || 0),
+    deletedRunIds: deletedRuns.map((run) => Number(run.id || 0)),
+  });
+  broadcastPublicAlgorithmState("previous_scene_restored", {
+    restoredRun: activeAlgorithmRun,
+    deletedRuns,
+  });
+  return {
+    restoredRun: summarizeAlgorithmRun(activeAlgorithmRun),
+    deletedRuns: deletedRuns.map(summarizeAlgorithmRun).filter(Boolean),
+  };
+}
+
 function resetAlgorithmRunsForCurrentSession() {
   const sessionId = Number(currentSession && currentSession.id || 0);
   if (!sessionId) throw new Error("session_required");
@@ -5567,7 +5665,7 @@ function sendAlgorithmApiError(res, err) {
   const code = String(err && err.message ? err.message : "algorithm_error");
   const status = code.includes("not_found") ? 404
     : code.includes("invalid") || code.includes("required") || code.includes("in_use") || code.includes("must") ? 400
-      : code === "session_inactive" || code === "scene_context_unmet" ? 409
+      : code === "session_inactive" || code === "scene_context_unmet" || code === "previous_run_unavailable" ? 409
         : 500;
   res.status(status).json({
     ok: false,
@@ -8826,6 +8924,26 @@ function buildOscControlCommands() {
       },
     },
     {
+      address: "/foryou/algorithm/previous_scene",
+      args: "(geen)",
+      description: "Zet de vorige algoritme-situatie weer actief en stuur de nieuwe Up Next.",
+      feedback: true,
+      feedbackMessage(result) {
+        return result && result.restoredRun && result.restoredRun.title
+          ? `Vorige situatie: ${result.restoredRun.title}`
+          : "Vorige situatie teruggezet";
+      },
+      execute() {
+        const previous = restorePreviousAlgorithmSceneRunForCurrentSession("osc");
+        const oscSend = sendAlgorithmUpNextOsc("osc_previous_scene");
+        return {
+          ...previous,
+          next: oscSend.payload || null,
+          oscSend: oscSend.last || oscSend,
+        };
+      },
+    },
+    {
       address: "/foryou/algorithm/reset_run",
       args: "(geen)",
       description: "Reset alle algoritme-runs van de huidige sessie.",
@@ -10866,6 +10984,16 @@ app.post("/admin/algorithm/runs/end", requireAdmin, (req, res) => {
     const run = endActiveAlgorithmSceneRun(String(req.body && req.body.reason || "manual"));
     const oscSend = sendAlgorithmUpNextOsc("end_scene");
     res.json({ ok: true, run, oscSend: oscSend.last || oscSend, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/runs/previous", requireAdmin, (req, res) => {
+  try {
+    const previous = restorePreviousAlgorithmSceneRunForCurrentSession(String(req.body && req.body.reason || "manual"));
+    const oscSend = sendAlgorithmUpNextOsc("previous_scene");
+    res.json({ ok: true, previous, oscSend: oscSend.last || oscSend, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
