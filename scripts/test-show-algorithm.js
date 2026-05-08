@@ -10,6 +10,7 @@ const {
   calculateRunScoreDetails,
   composeScenePrompt,
   computeEntityScores,
+  normalizeAlgorithmSettings,
   normalizePerformer,
   normalizeScene,
   normalizeSceneCharacterSlotsForPerformerRoles,
@@ -168,6 +169,61 @@ function testPopularCharacterReturnsAfterCooldownWindow() {
   });
   assert.strictEqual(order.next.sceneId, 2);
   assert.strictEqual(order.next.scoreBreakdown.recencyPenalty, 0);
+}
+
+function testVariationSettingsAcceptWideWeights() {
+  const settings = normalizeAlgorithmSettings({
+    diversityWeight: 50,
+    explorationWeight: 20,
+    retryWeight: 10,
+    sceneRepeatPenalty: 50,
+  });
+  assert.strictEqual(settings.diversityWeight, 50);
+  assert.strictEqual(settings.explorationWeight, 20);
+  assert.strictEqual(settings.retryWeight, 10);
+  assert.strictEqual(settings.sceneRepeatPenalty, 50);
+
+  const clamped = normalizeAlgorithmSettings({
+    diversityWeight: 500,
+    explorationWeight: 200,
+    retryWeight: 100,
+    sceneRepeatPenalty: 500,
+  });
+  assert.strictEqual(clamped.diversityWeight, 50);
+  assert.strictEqual(clamped.explorationWeight, 20);
+  assert.strictEqual(clamped.retryWeight, 10);
+  assert.strictEqual(clamped.sceneRepeatPenalty, 50);
+}
+
+function testHighDiversityWeightCanOverrulePopularity() {
+  const scenes = [
+    { id: 1, title: "Lisa populair", sortOrder: 1, characterIds: [1], isActive: true },
+    { id: 2, title: "Lisa meteen terug", sortOrder: 2, characterIds: [1], isActive: true },
+    { id: 3, title: "Ander personage", sortOrder: 3, characterIds: [2], isActive: true },
+  ];
+  const runs = [
+    { id: 1, sceneId: 1, runOrder: 1, heartCount: 40, endedAt: "2026-01-01T00:00:00.000Z" },
+  ];
+  const baseSettings = {
+    calibrationCount: 0,
+    characterCooldownWindow: 3,
+    explorationWeight: 0,
+    retryWeight: 0,
+    sceneRepeatPenalty: 0,
+  };
+  const subtle = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { ...baseSettings, diversityWeight: 5 },
+  });
+  const strong = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { ...baseSettings, diversityWeight: 50 },
+  });
+  assert.strictEqual(subtle.next.sceneId, 2);
+  assert.strictEqual(strong.next.sceneId, 3);
+  assert.strictEqual(strong.rows.find((entry) => entry.sceneId === 2).scoreBreakdown.recencyPenalty, 50);
 }
 
 function testActiveSceneCountsForDiversityPenalty() {
@@ -1286,6 +1342,8 @@ testEntityScoresUseCurrentScoreSettings();
 testRecommendationUsesCurrentScoreSettings();
 testRecentPopularCharacterGetsDiversityPenalty();
 testPopularCharacterReturnsAfterCooldownWindow();
+testVariationSettingsAcceptWideWeights();
+testHighDiversityWeightCanOverrulePopularity();
 testActiveSceneCountsForDiversityPenalty();
 testExplorationBonusRewardsUnderTestedScenes();
 testRetryBonusIsSoft();

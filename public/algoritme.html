@@ -1170,22 +1170,22 @@
               </div>
               <div class="scoreControl">
                 <span>Diversiteit vs populariteit</span>
-                <input id="variationDiversityWeight" type="range" min="0" max="5" step="0.1" />
+                <input id="variationDiversityWeight" type="range" min="0" max="50" step="0.5" />
                 <output id="variationDiversityWeightValue" class="scoreValue">1.00</output>
               </div>
               <div class="scoreControl">
                 <span>Ontdekking</span>
-                <input id="variationExplorationWeight" type="range" min="0" max="5" step="0.1" />
+                <input id="variationExplorationWeight" type="range" min="0" max="20" step="0.25" />
                 <output id="variationExplorationWeightValue" class="scoreValue">0.50</output>
               </div>
               <div class="scoreControl">
                 <span>Herkansing</span>
-                <input id="variationRetryWeight" type="range" min="0" max="2" step="0.05" />
+                <input id="variationRetryWeight" type="range" min="0" max="10" step="0.1" />
                 <output id="variationRetryWeightValue" class="scoreValue">0.35</output>
               </div>
               <div class="scoreControl">
                 <span>Scèneherhaling dempen</span>
-                <input id="variationSceneRepeatPenalty" type="range" min="0" max="5" step="0.1" />
+                <input id="variationSceneRepeatPenalty" type="range" min="0" max="50" step="0.5" />
                 <output id="variationSceneRepeatPenaltyValue" class="scoreValue">1.00</output>
               </div>
               <div id="variationSettingsPreview" class="small"></div>
@@ -1361,6 +1361,13 @@
           retryWeight: 0.35,
           sceneRepeatPenalty: 1,
         };
+        const VARIATION_LIMITS = {
+          characterCooldownWindow: { min: 0, max: 10 },
+          diversityWeight: { min: 0, max: 50 },
+          explorationWeight: { min: 0, max: 20 },
+          retryWeight: { min: 0, max: 10 },
+          sceneRepeatPenalty: { min: 0, max: 50 },
+        };
         let token = "";
         let state = null;
         let edit = { performer: 0, character: 0, environment: 0, scene: 0 };
@@ -1387,6 +1394,7 @@
         let oscDraftDirty = false;
         let oscDraftHold = null;
         let syncDraftDirty = false;
+        let runActionPending = false;
 
         const $ = (id) => document.getElementById(id);
         const loginEl = $("login");
@@ -1496,6 +1504,7 @@
             body = {};
           }
           if (!res.ok) {
+            if (body && body.state) state = body.state;
             const err = new Error(body && body.error ? body.error : "request_failed");
             err.body = body;
             err.status = res.status;
@@ -2958,6 +2967,7 @@
           const hasPreparedScene = !!preparedSceneId();
           const runStarted = isAlgorithmRunStarted();
           const canStartAlgorithmRun = currentOrderRows().length > 0;
+          const runActionDisabled = !!runActionPending;
           topMetaEl.textContent = `Sessie ${state.session.id} - ${state.session.isActive ? "actief" : "gesloten"}`;
           buildBadgeEl.textContent = runtime.buildLabel || runtime.buildVersion || "build onbekend";
           $("heartStat").textContent = String(activeRun ? activeRun.heartCount || 0 : 0);
@@ -2965,17 +2975,20 @@
           $("commentStat").textContent = String(activeRun ? activeRun.commentCount || 0 : 0);
           $("promptOutput").value = promptText;
           $("promptMeta").textContent = promptText ? `${promptText.length} tekens` : "geen prompt";
-          $("sceneToggleBtn").textContent = activeRun
+          $("sceneToggleBtn").textContent = runActionPending
+            ? "Bezig..."
+            : activeRun
             ? "Stop situatie"
             : !runStarted
               ? "Start run"
               : hasPreparedScene
               ? "Volgende situatie"
               : "Geen volgende situatie";
-          $("sceneToggleBtn").disabled = !activeRun && (!runStarted ? !canStartAlgorithmRun : !hasPreparedScene);
+          $("sceneToggleBtn").disabled = runActionDisabled || (!activeRun && (!runStarted ? !canStartAlgorithmRun : !hasPreparedScene));
           $("sceneToggleBtn").classList.toggle("danger", !!activeRun);
           $("sceneToggleBtn").classList.toggle("primary", !activeRun);
-          $("previousSceneBtn").disabled = !runStarted || !(state.runs || []).some((run) => run && run.endedAt);
+          $("previousSceneBtn").disabled = runActionDisabled || !runStarted || !(state.runs || []).some((run) => run && run.endedAt);
+          $("resetRunsBtn").disabled = runActionDisabled;
           if (document.activeElement !== $("calibrationCount")) $("calibrationCount").value = String(state.settings.calibrationCount || 5);
           if (document.activeElement !== $("globalPrompt")) $("globalPrompt").value = state.settings.globalPrompt || "";
           if (document.activeElement !== $("promptTemplate")) $("promptTemplate").value = state.settings.promptTemplate || "";
@@ -3234,21 +3247,21 @@
         function variationSettingsFromState() {
           const settings = state && state.settings ? state.settings : {};
           return {
-            characterCooldownWindow: Math.round(clampNumber(settings.characterCooldownWindow, 0, 10, DEFAULT_VARIATION_SETTINGS.characterCooldownWindow)),
-            diversityWeight: clampNumber(settings.diversityWeight, 0, 5, DEFAULT_VARIATION_SETTINGS.diversityWeight),
-            explorationWeight: clampNumber(settings.explorationWeight, 0, 5, DEFAULT_VARIATION_SETTINGS.explorationWeight),
-            retryWeight: clampNumber(settings.retryWeight, 0, 2, DEFAULT_VARIATION_SETTINGS.retryWeight),
-            sceneRepeatPenalty: clampNumber(settings.sceneRepeatPenalty, 0, 5, DEFAULT_VARIATION_SETTINGS.sceneRepeatPenalty),
+            characterCooldownWindow: Math.round(clampNumber(settings.characterCooldownWindow, VARIATION_LIMITS.characterCooldownWindow.min, VARIATION_LIMITS.characterCooldownWindow.max, DEFAULT_VARIATION_SETTINGS.characterCooldownWindow)),
+            diversityWeight: clampNumber(settings.diversityWeight, VARIATION_LIMITS.diversityWeight.min, VARIATION_LIMITS.diversityWeight.max, DEFAULT_VARIATION_SETTINGS.diversityWeight),
+            explorationWeight: clampNumber(settings.explorationWeight, VARIATION_LIMITS.explorationWeight.min, VARIATION_LIMITS.explorationWeight.max, DEFAULT_VARIATION_SETTINGS.explorationWeight),
+            retryWeight: clampNumber(settings.retryWeight, VARIATION_LIMITS.retryWeight.min, VARIATION_LIMITS.retryWeight.max, DEFAULT_VARIATION_SETTINGS.retryWeight),
+            sceneRepeatPenalty: clampNumber(settings.sceneRepeatPenalty, VARIATION_LIMITS.sceneRepeatPenalty.min, VARIATION_LIMITS.sceneRepeatPenalty.max, DEFAULT_VARIATION_SETTINGS.sceneRepeatPenalty),
           };
         }
 
         function currentVariationSettingsFromFields() {
           return {
-            characterCooldownWindow: Math.round(clampNumber($("variationCharacterCooldownWindow").value, 0, 10, DEFAULT_VARIATION_SETTINGS.characterCooldownWindow)),
-            diversityWeight: clampNumber($("variationDiversityWeight").value, 0, 5, DEFAULT_VARIATION_SETTINGS.diversityWeight),
-            explorationWeight: clampNumber($("variationExplorationWeight").value, 0, 5, DEFAULT_VARIATION_SETTINGS.explorationWeight),
-            retryWeight: clampNumber($("variationRetryWeight").value, 0, 2, DEFAULT_VARIATION_SETTINGS.retryWeight),
-            sceneRepeatPenalty: clampNumber($("variationSceneRepeatPenalty").value, 0, 5, DEFAULT_VARIATION_SETTINGS.sceneRepeatPenalty),
+            characterCooldownWindow: Math.round(clampNumber($("variationCharacterCooldownWindow").value, VARIATION_LIMITS.characterCooldownWindow.min, VARIATION_LIMITS.characterCooldownWindow.max, DEFAULT_VARIATION_SETTINGS.characterCooldownWindow)),
+            diversityWeight: clampNumber($("variationDiversityWeight").value, VARIATION_LIMITS.diversityWeight.min, VARIATION_LIMITS.diversityWeight.max, DEFAULT_VARIATION_SETTINGS.diversityWeight),
+            explorationWeight: clampNumber($("variationExplorationWeight").value, VARIATION_LIMITS.explorationWeight.min, VARIATION_LIMITS.explorationWeight.max, DEFAULT_VARIATION_SETTINGS.explorationWeight),
+            retryWeight: clampNumber($("variationRetryWeight").value, VARIATION_LIMITS.retryWeight.min, VARIATION_LIMITS.retryWeight.max, DEFAULT_VARIATION_SETTINGS.retryWeight),
+            sceneRepeatPenalty: clampNumber($("variationSceneRepeatPenalty").value, VARIATION_LIMITS.sceneRepeatPenalty.min, VARIATION_LIMITS.sceneRepeatPenalty.max, DEFAULT_VARIATION_SETTINGS.sceneRepeatPenalty),
           };
         }
 
@@ -3353,6 +3366,39 @@
           renderSync();
           renderOsc();
           renderScores();
+        }
+
+        function latestRunId() {
+          const runs = Array.isArray(state && state.runs) ? state.runs : [];
+          const latest = runs.slice().sort((a, b) => {
+            const byOrder = Number(b && b.runOrder || 0) - Number(a && a.runOrder || 0);
+            if (byOrder) return byOrder;
+            return Number(b && b.id || 0) - Number(a && a.id || 0);
+          })[0] || null;
+          return Number(latest && latest.id || 0);
+        }
+
+        function runActionExpectedState() {
+          const runs = Array.isArray(state && state.runs) ? state.runs : [];
+          return {
+            activeRunId: Number(state && state.activeRun && state.activeRun.id || 0),
+            nextSceneId: Number(state && state.currentOrder && state.currentOrder.next && state.currentOrder.next.sceneId || 0),
+            runCount: runs.length,
+            latestRunId: latestRunId(),
+            runStarted: isAlgorithmRunStarted(),
+          };
+        }
+
+        async function withRunActionPending(work) {
+          if (runActionPending) return null;
+          runActionPending = true;
+          renderLive();
+          try {
+            return await work();
+          } finally {
+            runActionPending = false;
+            render();
+          }
         }
 
         async function post(path, body, msgTarget = "catalogMsg") {
@@ -3803,11 +3849,13 @@
           $("sceneToggleBtn").addEventListener("click", toggleSceneRun);
           $("resetRunsBtn").addEventListener("click", async () => {
             if (!window.confirm("Reset alle algoritme-runs van deze sessie? Hearts, bored, comments en calibratie beginnen opnieuw.")) return;
-            try {
-              scrollOrderSelectionOnNextRender = true;
-              await post("/admin/algorithm/runs/reset", {}, "liveMsg");
-              setMsg("liveMsg", "Algoritme-runs gereset. Klik Start run om bij rij 1 te beginnen.");
-            } catch (err) { setMsg("liveMsg", formatError(err), true); }
+            await withRunActionPending(async () => {
+              try {
+                scrollOrderSelectionOnNextRender = true;
+                await post("/admin/algorithm/runs/reset", { expectedState: runActionExpectedState() }, "liveMsg");
+                setMsg("liveMsg", "Algoritme-runs gereset. Klik Start run om bij rij 1 te beginnen.");
+              } catch (err) { setMsg("liveMsg", formatError(err), true); }
+            });
           });
         }
 
@@ -3872,52 +3920,59 @@
             setMsg("liveMsg", "Geen situatie geselecteerd.", true);
             return;
           }
-          try {
-            scrollOrderSelectionOnNextRender = true;
-            await post("/admin/algorithm/runs/start", { sceneId, selectionSource }, "liveMsg");
-          } catch (err) {
-            setMsg("liveMsg", formatError(err), true);
-          }
-        }
-
-        async function beginAlgorithmRun() {
-          try {
-            scrollOrderSelectionOnNextRender = true;
-            await post("/admin/algorithm/runs/begin", {}, "liveMsg");
-            setMsg("liveMsg", "Run gestart. De eerste situatie staat klaar.");
-          } catch (err) {
-            setMsg("liveMsg", formatError(err), true);
-          }
-        }
-
-        async function restorePreviousScene() {
-          try {
-            scrollOrderSelectionOnNextRender = true;
-            const result = await post("/admin/algorithm/runs/previous", { reason: "manual" }, "liveMsg");
-            const restored = result.previous && result.previous.restoredRun ? result.previous.restoredRun : null;
-            setMsg("liveMsg", restored && restored.title
-              ? `Vorige situatie teruggezet: ${restored.title}`
-              : "Vorige situatie teruggezet.");
-          } catch (err) {
-            setMsg("liveMsg", formatError(err), true);
-          }
-        }
-
-        async function toggleSceneRun() {
-          if (state && state.activeRun) {
+          return withRunActionPending(async () => {
             try {
               scrollOrderSelectionOnNextRender = true;
-              await post("/admin/algorithm/runs/end", { reason: "manual" }, "liveMsg");
+              await post("/admin/algorithm/runs/start", { sceneId, selectionSource, expectedState: runActionExpectedState() }, "liveMsg");
             } catch (err) {
               setMsg("liveMsg", formatError(err), true);
             }
-            return;
+          });
+        }
+
+        async function beginAlgorithmRun() {
+          return withRunActionPending(async () => {
+            try {
+              scrollOrderSelectionOnNextRender = true;
+              await post("/admin/algorithm/runs/begin", { expectedState: runActionExpectedState() }, "liveMsg");
+              setMsg("liveMsg", "Run gestart. De eerste situatie staat klaar.");
+            } catch (err) {
+              setMsg("liveMsg", formatError(err), true);
+            }
+          });
+        }
+
+        async function restorePreviousScene() {
+          return withRunActionPending(async () => {
+            try {
+              scrollOrderSelectionOnNextRender = true;
+              const result = await post("/admin/algorithm/runs/previous", { reason: "manual", expectedState: runActionExpectedState() }, "liveMsg");
+              const restored = result.previous && result.previous.restoredRun ? result.previous.restoredRun : null;
+              setMsg("liveMsg", restored && restored.title
+                ? `Vorige situatie teruggezet: ${restored.title}`
+                : "Vorige situatie teruggezet.");
+            } catch (err) {
+              setMsg("liveMsg", formatError(err), true);
+            }
+          });
+        }
+
+        async function toggleSceneRun() {
+          if (runActionPending) return;
+          if (state && state.activeRun) {
+            return withRunActionPending(async () => {
+              try {
+                scrollOrderSelectionOnNextRender = true;
+                await post("/admin/algorithm/runs/end", { reason: "manual", expectedState: runActionExpectedState() }, "liveMsg");
+              } catch (err) {
+                setMsg("liveMsg", formatError(err), true);
+              }
+            });
           }
           if (!isAlgorithmRunStarted()) {
-            beginAlgorithmRun();
-            return;
+            return beginAlgorithmRun();
           }
-          startScene(preparedSceneId(), "up_next");
+          return startScene(preparedSceneId(), "up_next");
         }
 
         async function sendTouchDesigner(target) {
@@ -3964,8 +4019,8 @@
         }
 
         function formatError(err) {
-          const issues = err && err.body && Array.isArray(err.body.issues) ? " (" + err.body.issues.join(", ") + ")" : "";
           const code = String(err && err.message || "request_failed");
+          const issues = code === "stale_algorithm_state" ? "" : err && err.body && Array.isArray(err.body.issues) ? " (" + err.body.issues.join(", ") + ")" : "";
           const friendly = {
             item_in_use: "Kan niet verwijderen: dit item wordt nog gebruikt.",
             item_must_be_inactive: "Zet dit item eerst non-actief.",
@@ -3973,6 +4028,8 @@
             scene_context_unmet: "Deze situatie heeft eerst een contextsituatie nodig.",
             previous_run_unavailable: "Er is nog geen vorige situatie om naar terug te gaan.",
             prepared_next_mismatch: "De voorbereide volgende situatie is veranderd. Refresh en probeer opnieuw.",
+            algorithm_action_in_progress: "Er wordt al een run-actie verwerkt. Wacht heel even.",
+            stale_algorithm_state: "Deze actie was al verwerkt of de volgorde is bijgewerkt. Refresh/state is bijgewerkt.",
             performer_not_found: "Performer niet gevonden.",
             role_slot_conflict: "Deze performer-slot is al gekoppeld aan een andere actieve performer.",
             name_required: "Naam is verplicht.",
