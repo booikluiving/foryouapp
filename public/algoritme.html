@@ -2404,6 +2404,7 @@
         function orderEntryRandomSeed(entry) {
           const sceneId = Number(entry && entry.sceneId || 0);
           if (!sceneId || !(state && state.session)) return "";
+          if (entry && entry.randomSeed) return String(entry.randomSeed || "");
           const run = latestRunForScene(sceneId);
           if (run && (entry.active || entry.played)) {
             return [
@@ -2493,6 +2494,8 @@
           const sceneId = Number(entry && entry.sceneId || 0);
           if (entry && entry.active) badges.push({ label: "nu", className: "good" });
           if (nextId && sceneId === nextId) badges.push({ label: "volgende", className: "good" });
+          if (entry && entry.lockedNext) badges.push({ label: "klaar voor Touch" });
+          if (entry && entry.lockedFuture) badges.push({ label: "gepland" });
           if (entry && entry.calibration) badges.push({ label: "calibratie" });
           if (entry && entry.played) badges.push({ label: "gespeeld" });
           if (entry && entry.invalid) badges.push({ label: "waarschuwing", className: "warning" });
@@ -2540,6 +2543,7 @@
 
         function currentOrderRows() {
           const order = state && state.currentOrder ? state.currentOrder : {};
+          if (Array.isArray(order.queueRows) && order.queueRows.length) return order.queueRows;
           return Array.isArray(order.rows) ? order.rows : [];
         }
 
@@ -2667,11 +2671,7 @@
           const nextSceneId = Number(options.nextSceneId || 0);
           const scores = sceneScoreMap();
           const editing = !!options.editing;
-          const renderedRows = editing ? rows : (rows || []).slice().sort((a, b) => {
-            const byOrder = orderListSortValue(a) - orderListSortValue(b);
-            if (byOrder) return byOrder;
-            return Number(a && a.sceneId || 0) - Number(b && b.sceneId || 0);
-          });
+          const renderedRows = rows || [];
           const el = $("currentOrderList");
           el.classList.toggle("editing", editing);
           if (!renderedRows.length) {
@@ -3972,6 +3972,7 @@
             scene_links_invalid: "Situatie-koppelingen kloppen nog niet.",
             scene_context_unmet: "Deze situatie heeft eerst een contextsituatie nodig.",
             previous_run_unavailable: "Er is nog geen vorige situatie om naar terug te gaan.",
+            prepared_next_mismatch: "De voorbereide volgende situatie is veranderd. Refresh en probeer opnieuw.",
             performer_not_found: "Performer niet gevonden.",
             role_slot_conflict: "Deze performer-slot is al gekoppeld aan een andere actieve performer.",
             name_required: "Naam is verplicht.",

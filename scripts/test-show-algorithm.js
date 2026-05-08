@@ -455,6 +455,248 @@ function testCurrentOrderRanksAfterCalibration() {
   assert.strictEqual(order.next.sceneId, 2);
 }
 
+function testPreparedNextLocksLiveQueueAfterCalibration() {
+  const scenes = Array.from({ length: 12 }, (_, index) => ({
+    id: index + 1,
+    title: `Situatie ${index + 1}`,
+    sortOrder: index + 1,
+    characterIds: [index === 0 || index === 10 ? 1 : index + 10],
+    isActive: true,
+  }));
+  const runs = [1, 2, 3, 4, 5].map((sceneId, index) => ({
+    id: sceneId,
+    sceneId,
+    runOrder: sceneId,
+    endedAt: `2026-01-01T00:0${index}:00.000Z`,
+    heartCount: sceneId === 1 ? 12 : 0,
+  }));
+  const settings = {
+    calibrationCount: 5,
+    diversityWeight: 0,
+    explorationWeight: 0,
+    retryWeight: 0,
+    sceneRepeatPenalty: 0,
+  };
+  const unlocked = buildAlgorithmOrder({ scenes, runs, settings });
+  assert.strictEqual(unlocked.next.sceneId, 11);
+  const locked = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings,
+    preparedNext: { sceneId: 11, source: "test", lockedAt: "2026-01-01T00:05:00.000Z" },
+  });
+  assert.strictEqual(locked.preparedNext.locked, true);
+  assert.strictEqual(locked.next.sceneId, 11);
+  assert.strictEqual(locked.next.lockedNext, true);
+  assert.deepStrictEqual(locked.queueRows.slice(0, 6).map((entry) => entry.sceneId), [1, 2, 3, 4, 5, 11]);
+}
+
+function testPreparedNextDoesNotMoveWhenRankingChanges() {
+  const scenes = [
+    { id: 1, title: "Calibratie", sortOrder: 1, characterIds: [1], isActive: true },
+    { id: 2, title: "Oud voorbereid", sortOrder: 2, characterIds: [2], isActive: true },
+    { id: 3, title: "Nieuw hoger", sortOrder: 3, characterIds: [3], isActive: true },
+    { id: 4, title: "Smaakmaker", sortOrder: 4, characterIds: [3], isActive: true },
+  ];
+  const runs = [
+    { id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", heartCount: 1 },
+    { id: 2, sceneId: 4, runOrder: 2, endedAt: "2026-01-01T00:01:00.000Z", heartCount: 20 },
+  ];
+  const settings = { calibrationCount: 1, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 };
+  assert.strictEqual(buildAlgorithmOrder({ scenes, runs, settings }).next.sceneId, 3);
+  const locked = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings,
+    preparedNext: { sceneId: 2, source: "end_scene", lockedAt: "2026-01-01T00:02:00.000Z" },
+  });
+  assert.strictEqual(locked.preparedNext.locked, true);
+  assert.strictEqual(locked.next.sceneId, 2);
+  assert.deepStrictEqual(locked.queueRows.slice(0, 3).map((entry) => entry.sceneId), [1, 4, 2]);
+}
+
+function testPreparedNextInvalidatesWhenStartedOrPlayed() {
+  const scenes = [
+    { id: 1, title: "Een", sortOrder: 1, isActive: true },
+    { id: 2, title: "Twee", sortOrder: 2, isActive: true },
+  ];
+  const activeOrder = buildAlgorithmOrder({
+    scenes,
+    runs: [{ id: 1, sceneId: 2, runOrder: 1, startedAt: "2026-01-01T00:00:00.000Z" }],
+    settings: { calibrationCount: 0 },
+    preparedNext: { sceneId: 2, source: "test" },
+  });
+  assert.strictEqual(activeOrder.preparedNext.locked, false);
+  assert.strictEqual(activeOrder.preparedNext.invalidReason, "scene_active");
+
+  const playedOrder = buildAlgorithmOrder({
+    scenes,
+    runs: [{ id: 1, sceneId: 2, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" }],
+    settings: { calibrationCount: 0 },
+    preparedNext: { sceneId: 2, source: "test" },
+  });
+  assert.strictEqual(playedOrder.preparedNext.locked, false);
+  assert.strictEqual(playedOrder.preparedNext.invalidReason, "scene_already_played");
+}
+
+function testPreparedNextLocksFollowingSceneDuringActiveRun() {
+  const scenes = Array.from({ length: 12 }, (_, index) => ({
+    id: index + 1,
+    title: `Situatie ${index + 1}`,
+    sortOrder: index + 1,
+    characterIds: [index === 0 || index === 10 ? 1 : index + 10],
+    isActive: true,
+  }));
+  const runs = [1, 2, 3, 4, 5].map((sceneId, index) => ({
+    id: sceneId,
+    sceneId,
+    runOrder: sceneId,
+    endedAt: `2026-01-01T00:0${index}:00.000Z`,
+    heartCount: sceneId === 1 ? 12 : 0,
+  }));
+  runs.push({
+    id: 6,
+    sceneId: 6,
+    runOrder: 6,
+    startedAt: "2026-01-01T00:06:00.000Z",
+  });
+  const settings = {
+    calibrationCount: 5,
+    diversityWeight: 0,
+    explorationWeight: 0,
+    retryWeight: 0,
+    sceneRepeatPenalty: 0,
+  };
+  const unlocked = buildAlgorithmOrder({ scenes, runs, settings });
+  assert.strictEqual(unlocked.next.sceneId, 11);
+
+  const locked = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings,
+    preparedNext: { sceneId: 7, source: "scene_started", lockedAt: "2026-01-01T00:06:00.000Z" },
+  });
+  assert.strictEqual(locked.active.sceneId, 6);
+  assert.strictEqual(locked.preparedNext.locked, true);
+  assert.strictEqual(locked.next.sceneId, 7);
+  assert.strictEqual(locked.next.lockedNext, true);
+  assert.deepStrictEqual(locked.queueRows.slice(0, 7).map((entry) => entry.sceneId), [1, 2, 3, 4, 5, 6, 7]);
+  assert.strictEqual(locked.queueRows[5].active, true);
+  assert.strictEqual(locked.queueRows[6].next, true);
+  assert.strictEqual(locked.queueRows[6].lockedNext, true);
+}
+
+function testLiveRankingMovesHighSceneIntoNextQueuePosition() {
+  const scenes = Array.from({ length: 50 }, (_, index) => ({
+    id: index + 1,
+    title: `Situatie ${index + 1}`,
+    sortOrder: index + 1,
+    characterIds: [index === 0 || index === 45 ? 1 : index + 10],
+    isActive: true,
+  }));
+  const runs = [1, 2, 3, 4, 5].map((sceneId, index) => ({
+    id: sceneId,
+    sceneId,
+    runOrder: sceneId,
+    endedAt: `2026-01-01T00:0${index}:00.000Z`,
+    heartCount: sceneId === 1 ? 12 : 0,
+  }));
+  const order = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: {
+      calibrationCount: 5,
+      diversityWeight: 0,
+      explorationWeight: 0,
+      retryWeight: 0,
+      sceneRepeatPenalty: 0,
+    },
+  });
+  assert.strictEqual(order.next.sceneId, 46);
+  assert.strictEqual(order.queueRows[5].sceneId, 46);
+  assert.strictEqual(order.queueRows[5].queuePosition, 6);
+}
+
+function testLockedQueueShowsFifthNextAndSixthPlannedAfterStoppingFourthCalibration() {
+  const scenes = Array.from({ length: 50 }, (_, index) => ({
+    id: index + 1,
+    title: `Situatie ${index + 1}`,
+    sortOrder: index + 1,
+    characterIds: [index === 0 || index === 45 ? 1 : index + 10],
+    isActive: true,
+  }));
+  const runs = [1, 2, 3, 4].map((sceneId, index) => ({
+    id: sceneId,
+    sceneId,
+    runOrder: sceneId,
+    endedAt: `2026-01-01T00:0${index}:00.000Z`,
+    heartCount: sceneId === 1 ? 12 : 0,
+  }));
+  const lockedQueue = [1, 2, 3, 4, 5, 46].map((sceneId, index) => ({
+    position: index + 1,
+    sceneId,
+    source: "test",
+    lockedAt: `2026-01-01T00:0${index}:00.000Z`,
+    randomSeed: `seed-${index + 1}`,
+  }));
+  const order = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { calibrationCount: 5 },
+    lockedQueue,
+  });
+  assert.strictEqual(order.next.sceneId, 5);
+  assert.strictEqual(order.next.lockedNext, true);
+  assert.strictEqual(order.next.randomSeed, "seed-5");
+  assert.deepStrictEqual(order.queueRows.slice(0, 6).map((entry) => entry.sceneId), [1, 2, 3, 4, 5, 46]);
+  assert.strictEqual(order.queueRows[4].next, true);
+  assert.strictEqual(order.queueRows[5].lockedFuture, true);
+  assert.strictEqual(order.queueRows[5].queuePosition, 6);
+}
+
+function testLockedQueueRevealsSixthWhenFifthCalibrationStarts() {
+  const scenes = Array.from({ length: 50 }, (_, index) => ({
+    id: index + 1,
+    title: `Situatie ${index + 1}`,
+    sortOrder: index + 1,
+    characterIds: [index === 0 || index === 45 ? 1 : index + 10],
+    isActive: true,
+  }));
+  const runs = [1, 2, 3, 4].map((sceneId, index) => ({
+    id: sceneId,
+    sceneId,
+    runOrder: sceneId,
+    endedAt: `2026-01-01T00:0${index}:00.000Z`,
+    heartCount: sceneId === 1 ? 12 : 0,
+  }));
+  runs.push({
+    id: 5,
+    sceneId: 5,
+    runOrder: 5,
+    startedAt: "2026-01-01T00:05:00.000Z",
+  });
+  const lockedQueue = [1, 2, 3, 4, 5, 46].map((sceneId, index) => ({
+    position: index + 1,
+    sceneId,
+    source: "test",
+    randomSeed: `seed-${index + 1}`,
+  }));
+  const order = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { calibrationCount: 5 },
+    lockedQueue,
+  });
+  assert.strictEqual(order.active.sceneId, 5);
+  assert.strictEqual(order.next.sceneId, 46);
+  assert.strictEqual(order.next.queuePosition, 6);
+  assert.strictEqual(order.next.randomSeed, "seed-6");
+  assert.deepStrictEqual(order.queueRows.slice(0, 6).map((entry) => entry.sceneId), [1, 2, 3, 4, 5, 46]);
+  assert.strictEqual(order.queueRows[4].active, true);
+  assert.strictEqual(order.queueRows[5].next, true);
+  assert.strictEqual(order.queueRows[5].lockedNext, true);
+}
+
 function testCurrentOrderHidesPlayedUntilCycleComplete() {
   const scenes = [
     { id: 1, title: "Een", sortOrder: 1, isActive: true },
@@ -1060,6 +1302,13 @@ testCurrentOrderRowsKeepActiveAndNextDeepInList();
 testRecommendationMatchesCurrentOrderNext();
 testRecommendationMatchesCurrentOrderNextDuringActiveRun();
 testCurrentOrderRanksAfterCalibration();
+testPreparedNextLocksLiveQueueAfterCalibration();
+testPreparedNextDoesNotMoveWhenRankingChanges();
+testPreparedNextInvalidatesWhenStartedOrPlayed();
+testPreparedNextLocksFollowingSceneDuringActiveRun();
+testLiveRankingMovesHighSceneIntoNextQueuePosition();
+testLockedQueueShowsFifthNextAndSixthPlannedAfterStoppingFourthCalibration();
+testLockedQueueRevealsSixthWhenFifthCalibrationStarts();
 testCurrentOrderHidesPlayedUntilCycleComplete();
 testCurrentOrderSkipsLastWhenEverythingPlayed();
 testCurrentOrderKeepsInvalidOutOfUpcoming();

@@ -33,6 +33,7 @@ const {
   normalizeCharacter,
   normalizeEnvironment,
   normalizeIdList,
+  normalizeLockedQueue,
   normalizePerformer,
   normalizeRun,
   normalizeScene,
@@ -177,6 +178,8 @@ const ALGORITHM_EXPLORATION_WEIGHT_SETTING_KEY = "algorithm_variation_exploratio
 const ALGORITHM_RETRY_WEIGHT_SETTING_KEY = "algorithm_variation_retry_weight";
 const ALGORITHM_SCENE_REPEAT_PENALTY_SETTING_KEY = "algorithm_variation_scene_repeat_penalty";
 const ALGORITHM_RUN_STARTED_SETTING_PREFIX = "algorithm_run_started_session_";
+const ALGORITHM_PREPARED_NEXT_SETTING_PREFIX = "algorithm_prepared_next_session_";
+const ALGORITHM_LOCKED_QUEUE_SETTING_PREFIX = "algorithm_locked_queue_session_";
 const ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS = 3500;
 const ALGORITHM_OSC_CHARACTER_SLOT_COUNT = 3;
 const DEFAULT_ALGORITHM_PERFORMERS = Object.freeze(["Megan", "Brent", "Booi"]);
@@ -3909,6 +3912,95 @@ function getAlgorithmRunStartedForCurrentSession(runs = [], activeRun = null) {
   return getSetting(algorithmRunStartedSettingKey(sessionId), "0") === "1";
 }
 
+function algorithmPreparedNextSettingKey(sessionId) {
+  const safeSessionId = Number.parseInt(String(sessionId || ""), 10);
+  return ALGORITHM_PREPARED_NEXT_SETTING_PREFIX + (Number.isInteger(safeSessionId) && safeSessionId > 0 ? safeSessionId : 0);
+}
+
+function normalizeAlgorithmPreparedNext(value = null) {
+  const src = typeof value === "string"
+    ? safeJsonParse(value || "{}", {})
+    : value && typeof value === "object" ? value : {};
+  const sceneId = Number.parseInt(String(src.sceneId || ""), 10);
+  return {
+    sceneId: Number.isInteger(sceneId) && sceneId > 0 ? sceneId : 0,
+    locked: Number.isInteger(sceneId) && sceneId > 0,
+    source: String(src.source || "").slice(0, 80),
+    lockedAt: String(src.lockedAt || "").slice(0, 80),
+  };
+}
+
+function getAlgorithmPreparedNextForCurrentSession() {
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  if (!sessionId) return normalizeAlgorithmPreparedNext(null);
+  return normalizeAlgorithmPreparedNext(getSetting(algorithmPreparedNextSettingKey(sessionId), ""));
+}
+
+function setAlgorithmPreparedNextForCurrentSession(sceneId, source = "manual") {
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  if (!sessionId) throw new Error("session_required");
+  const safeSceneId = Number.parseInt(String(sceneId || ""), 10);
+  if (!Number.isInteger(safeSceneId) || safeSceneId < 1) {
+    clearAlgorithmPreparedNextForCurrentSession("invalid_scene_id");
+    return normalizeAlgorithmPreparedNext(null);
+  }
+  const lock = {
+    sceneId: safeSceneId,
+    source: String(source || "manual").slice(0, 80),
+    lockedAt: nowIso(),
+  };
+  setSetting(algorithmPreparedNextSettingKey(sessionId), safeJsonStringify(lock, "{}"));
+  return normalizeAlgorithmPreparedNext(lock);
+}
+
+function clearAlgorithmPreparedNextForCurrentSession(reason = "manual") {
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  if (!sessionId) return false;
+  const key = algorithmPreparedNextSettingKey(sessionId);
+  const previous = getSetting(key, "");
+  if (!previous) return false;
+  setSetting(key, "");
+  writeDebug("algorithm_prepared_next_cleared", {
+    sessionId,
+    reason: String(reason || "manual").slice(0, 80),
+  });
+  return true;
+}
+
+function algorithmLockedQueueSettingKey(sessionId) {
+  const safeSessionId = Number.parseInt(String(sessionId || ""), 10);
+  return ALGORITHM_LOCKED_QUEUE_SETTING_PREFIX + (Number.isInteger(safeSessionId) && safeSessionId > 0 ? safeSessionId : 0);
+}
+
+function getAlgorithmLockedQueueForCurrentSession() {
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  if (!sessionId) return [];
+  return normalizeLockedQueue(safeJsonParse(getSetting(algorithmLockedQueueSettingKey(sessionId), "[]"), []));
+}
+
+function setAlgorithmLockedQueueForCurrentSession(queue = []) {
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  if (!sessionId) throw new Error("session_required");
+  const normalized = normalizeLockedQueue(queue);
+  setSetting(algorithmLockedQueueSettingKey(sessionId), safeJsonStringify(normalized, "[]"));
+  return normalized;
+}
+
+function clearAlgorithmLockedQueueForCurrentSession(reason = "manual") {
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  if (!sessionId) return false;
+  const key = algorithmLockedQueueSettingKey(sessionId);
+  const previous = getSetting(key, "");
+  clearAlgorithmPreparedNextForCurrentSession(reason);
+  if (!previous) return false;
+  setSetting(key, "");
+  writeDebug("algorithm_locked_queue_cleared", {
+    sessionId,
+    reason: String(reason || "manual").slice(0, 80),
+  });
+  return true;
+}
+
 function normalizeAdminPasswordInput(input) {
   return String(input || "").trim();
 }
@@ -4601,6 +4693,16 @@ function algorithmRuntimeRandomSeed(sceneId, extra = "") {
   ].join(":");
 }
 
+function algorithmQueueRandomSeed(sceneId, position, source = "queue") {
+  return [
+    Number(currentSession && currentSession.id || 0),
+    Number(sceneId || 0),
+    "queue",
+    Number(position || 0),
+    String(source || "queue"),
+  ].join(":");
+}
+
 function resolveAlgorithmSceneRandomSlots(scene, catalog, options = {}) {
   if (!scene) return { scene: null, randomResolutions: [], randomWarnings: [] };
   const seed = options.seed === undefined || options.seed === null
@@ -4673,6 +4775,177 @@ function buildAlgorithmRecommendation(catalog = getAlgorithmCatalog(), runs = ge
   };
 }
 
+function buildAlgorithmOrderForCurrentSession(catalog, runs, settings, options = {}) {
+  const lockedQueue = Object.prototype.hasOwnProperty.call(options || {}, "lockedQueue")
+    ? options.lockedQueue
+    : getAlgorithmLockedQueueForCurrentSession();
+  const preparedNext = Object.prototype.hasOwnProperty.call(options || {}, "preparedNext")
+    ? options.preparedNext
+    : null;
+  const order = buildAlgorithmOrder({
+    scenes: catalog.scenes,
+    runs,
+    settings,
+    catalog,
+    preparedNext,
+    lockedQueue,
+  });
+  return order;
+}
+
+function sortedAlgorithmRunsForQueue(runs = []) {
+  return (Array.isArray(runs) ? runs : []).map(normalizeRun).filter((run) => run.id || run.sceneId).sort((a, b) => {
+    const byOrder = Number(a.runOrder || 0) - Number(b.runOrder || 0);
+    if (byOrder) return byOrder;
+    return Number(a.id || 0) - Number(b.id || 0);
+  });
+}
+
+function makeAlgorithmLockedQueueEntry(sceneId, position, source = "queue", patch = {}) {
+  const safeSceneId = Number(sceneId || 0);
+  const safePosition = Number(position || 0);
+  return {
+    position: safePosition,
+    sceneId: safeSceneId,
+    source: String(source || "queue").slice(0, 80),
+    lockedAt: String(patch.lockedAt || nowIso()).slice(0, 80),
+    randomSeed: String(patch.randomSeed || algorithmQueueRandomSeed(safeSceneId, safePosition, source)).slice(0, 200),
+  };
+}
+
+function reconcileAlgorithmLockedQueueWithRuns(queue = [], runs = [], source = "queue") {
+  const existing = normalizeLockedQueue(queue);
+  const bySceneId = new Map(existing.map((entry) => [Number(entry.sceneId || 0), entry]));
+  const prefixRuns = sortedAlgorithmRunsForQueue(runs);
+  const prefixSceneIds = new Set(prefixRuns.map((run) => Number(run.sceneId || 0)).filter(Boolean));
+  const next = [];
+
+  for (const run of prefixRuns) {
+    const position = Number(run.runOrder || 0) || next.length + 1;
+    const previous = bySceneId.get(Number(run.sceneId || 0)) || null;
+    next.push(makeAlgorithmLockedQueueEntry(run.sceneId, position, run.selectionSource || source, {
+      lockedAt: previous && previous.lockedAt || run.startedAt || nowIso(),
+      randomSeed: previous && previous.randomSeed || "",
+    }));
+  }
+
+  const future = existing
+    .filter((entry) => !prefixSceneIds.has(Number(entry.sceneId || 0)))
+    .sort((a, b) => Number(a.position || 0) - Number(b.position || 0));
+  for (const entry of future) {
+    const position = next.length + 1;
+    next.push(makeAlgorithmLockedQueueEntry(entry.sceneId, position, entry.source || source, {
+      lockedAt: entry.lockedAt,
+      randomSeed: entry.randomSeed,
+    }));
+  }
+  return normalizeLockedQueue(next);
+}
+
+function algorithmLockedQueueTargetForRuns(runs = [], lookahead = 1) {
+  const orderedRuns = sortedAlgorithmRunsForQueue(runs);
+  const completedCount = orderedRuns.filter((run) => run.endedAt).length;
+  const activeCount = orderedRuns.some((run) => !run.endedAt) ? 1 : 0;
+  return completedCount + activeCount + Math.max(0, Number(lookahead || 0));
+}
+
+function fillAlgorithmLockedQueueForCurrentSession(source = "manual", targetLength = 1, options = {}) {
+  renormalizeAlgorithmScenesForPerformerRoles();
+  const catalog = getAlgorithmCatalog();
+  const runs = getAlgorithmRunsForCurrentSession();
+  const settings = getAlgorithmSettings();
+  let queue = reconcileAlgorithmLockedQueueWithRuns(
+    Object.prototype.hasOwnProperty.call(options || {}, "queue") ? options.queue : getAlgorithmLockedQueueForCurrentSession(),
+    runs,
+    source
+  );
+  const initialOrder = buildAlgorithmOrderForCurrentSession(catalog, runs, settings, { lockedQueue: queue });
+  const playableCount = Number(initialOrder && initialOrder.playableCount || 0);
+  const safeTargetLength = Math.min(Math.max(0, Number(targetLength || 0)), playableCount || Math.max(0, Number(targetLength || 0)));
+  const lockedSceneIds = () => new Set(queue.map((entry) => Number(entry.sceneId || 0)).filter(Boolean));
+  const calibrationSceneIds = (initialOrder.calibrationScenes || []).map((entry) => Number(entry.sceneId || 0)).filter(Boolean);
+
+  while (queue.length < safeTargetLength) {
+    const nextPosition = queue.length + 1;
+    let sceneId = 0;
+    if (nextPosition <= calibrationSceneIds.length) {
+      const reserved = lockedSceneIds();
+      sceneId = calibrationSceneIds.find((id) => !reserved.has(Number(id || 0))) || 0;
+    }
+    if (!sceneId) {
+      const rankingSettings = { ...settings, calibrationCount: 0 };
+      const rankingOrder = buildAlgorithmOrderForCurrentSession(catalog, runs, rankingSettings, { lockedQueue: queue });
+      const reserved = lockedSceneIds();
+      const candidate = (rankingOrder.upcoming || []).find((entry) => {
+        const candidateSceneId = Number(entry && entry.sceneId || 0);
+        return candidateSceneId && !reserved.has(candidateSceneId) && !entry.blocked && !entry.invalid && !entry.active && !entry.played;
+      }) || null;
+      sceneId = Number(candidate && candidate.sceneId || 0);
+    }
+    if (!sceneId) break;
+    queue.push(makeAlgorithmLockedQueueEntry(sceneId, nextPosition, source));
+    queue = normalizeLockedQueue(queue);
+  }
+
+  queue = setAlgorithmLockedQueueForCurrentSession(queue);
+  const order = buildAlgorithmOrderForCurrentSession(catalog, runs, settings, { lockedQueue: queue });
+  writeDebug("algorithm_locked_queue_filled", {
+    sessionId: Number(currentSession && currentSession.id || 0),
+    source: String(source || "manual").slice(0, 80),
+    targetLength: safeTargetLength,
+    queue: queue.map((entry) => ({ position: entry.position, sceneId: entry.sceneId })),
+  });
+  return { catalog, runs, settings, queue, order };
+}
+
+function initializeAlgorithmLockedQueueForCurrentSession(source = "start_run") {
+  clearAlgorithmLockedQueueForCurrentSession(source);
+  const catalog = getAlgorithmCatalog();
+  const runs = getAlgorithmRunsForCurrentSession();
+  const settings = getAlgorithmSettings();
+  const order = buildAlgorithmOrderForCurrentSession(catalog, runs, settings, { lockedQueue: [] });
+  const calibrationSceneIds = (order.calibrationScenes || []).map((entry) => Number(entry.sceneId || 0)).filter(Boolean);
+  let queue = calibrationSceneIds.map((sceneId, index) => makeAlgorithmLockedQueueEntry(sceneId, index + 1, source));
+  queue = setAlgorithmLockedQueueForCurrentSession(queue);
+  const targetLength = Math.max(queue.length, 1);
+  return fillAlgorithmLockedQueueForCurrentSession(source, targetLength, { queue });
+}
+
+function ensureAlgorithmPreparedNextForCurrentSession(source = "manual") {
+  renormalizeAlgorithmScenesForPerformerRoles();
+  const catalog = getAlgorithmCatalog();
+  const runs = getAlgorithmRunsForCurrentSession();
+  const settings = getAlgorithmSettings();
+  const existing = getAlgorithmPreparedNextForCurrentSession();
+  let order = buildAlgorithmOrderForCurrentSession(catalog, runs, settings, { preparedNext: existing });
+  if (existing.sceneId && order.preparedNext && order.preparedNext.locked && order.next) {
+    return { catalog, runs, settings, order, preparedNext: order.preparedNext, created: false };
+  }
+
+  order = buildAlgorithmOrderForCurrentSession(catalog, runs, settings, { preparedNext: null });
+  const sceneId = Number(order && order.next && order.next.sceneId || 0);
+  if (!sceneId) {
+    clearAlgorithmPreparedNextForCurrentSession("no_up_next");
+    return { catalog, runs, settings, order, preparedNext: order.preparedNext || null, created: false };
+  }
+
+  const preparedNext = setAlgorithmPreparedNextForCurrentSession(sceneId, source);
+  const lockedOrder = buildAlgorithmOrderForCurrentSession(catalog, runs, settings, { preparedNext });
+  writeDebug("algorithm_prepared_next_locked", {
+    sessionId: Number(currentSession && currentSession.id || 0),
+    sceneId,
+    source: String(source || "manual").slice(0, 80),
+  });
+  return {
+    catalog,
+    runs,
+    settings,
+    order: lockedOrder,
+    preparedNext: lockedOrder.preparedNext || preparedNext,
+    created: true,
+  };
+}
+
 function maskAlgorithmOrderUntilRunStart(order) {
   const safeOrder = order && typeof order === "object" ? order : {};
   const clearNext = (entry) => entry && typeof entry === "object" ? { ...entry, next: false } : entry;
@@ -4684,8 +4957,11 @@ function maskAlgorithmOrderUntilRunStart(order) {
     blockedContext: Array.isArray(safeOrder.blockedContext) ? safeOrder.blockedContext.map(clearNext) : [],
     invalid: Array.isArray(safeOrder.invalid) ? safeOrder.invalid.map(clearNext) : [],
     rows: Array.isArray(safeOrder.rows) ? safeOrder.rows.map(clearNext) : [],
+    queueRows: Array.isArray(safeOrder.queueRows) ? safeOrder.queueRows.map(clearNext) : [],
+    lockedQueue: [],
     next: null,
     lockedNextSceneId: 0,
+    preparedNext: { sceneId: 0, locked: false, source: "", lockedAt: "", invalidReason: "" },
   };
 }
 
@@ -4818,12 +5094,7 @@ function getAlgorithmState() {
   const runs = decorateAlgorithmRunsWithScores(rawRuns, settings);
   const activeRun = rawActiveRun ? decorateAlgorithmRunsWithScores([rawActiveRun], settings)[0] : null;
   activeAlgorithmRun = rawActiveRun;
-  const rawCurrentOrder = buildAlgorithmOrder({
-    scenes: catalog.scenes,
-    runs,
-    settings,
-    catalog,
-  });
+  const rawCurrentOrder = buildAlgorithmOrderForCurrentSession(catalog, runs, settings);
   const algorithmRunStarted = getAlgorithmRunStartedForCurrentSession(runs, activeRun);
   const awaitingStart = !algorithmRunStarted && !activeRun && runs.length === 0;
   const currentOrder = awaitingStart ? maskAlgorithmOrderUntilRunStart(rawCurrentOrder) : rawCurrentOrder;
@@ -5330,6 +5601,7 @@ function reorderAlgorithmScenes(sceneIds = []) {
   ids.forEach((id, index) => {
     sql.updateAlgorithmSceneSortOrder.run((index + 1) * 10, now, id);
   });
+  clearAlgorithmLockedQueueForCurrentSession("scenes_reordered");
   return getAlgorithmCatalog().scenes;
 }
 
@@ -5445,15 +5717,24 @@ function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
   const scene = getAlgorithmSceneById(sceneId);
   if (!scene || !scene.isActive || scene.archivedAt) throw new Error("scene_not_found");
   const catalog = getAlgorithmCatalog();
-  const runs = getAlgorithmRunsForCurrentSession();
-  assertAlgorithmSceneReady(scene, catalog, runs);
+  activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
   if (activeAlgorithmRun && !activeAlgorithmRun.endedAt) {
     endActiveAlgorithmSceneRun("auto_ended_by_new_scene");
   }
+  const runs = getAlgorithmRunsForCurrentSession();
+  const sourceKey = String(selectionSource || "manual").toLowerCase();
+  const settings = getAlgorithmSettings();
+  const currentOrder = buildAlgorithmOrderForCurrentSession(catalog, runs, settings);
+  const lockedStartEntry = (currentOrder.queueRows || []).find((entry) => Number(entry && entry.sceneId || 0) === Number(scene.id || 0)) || null;
+  const lockedNextSceneId = Number(currentOrder && currentOrder.next && currentOrder.next.sceneId || 0);
+  if (sourceKey.includes("up_next") && lockedNextSceneId && lockedNextSceneId !== Number(scene.id || 0)) {
+    throw new Error("prepared_next_mismatch");
+  }
+  assertAlgorithmSceneReady(scene, catalog, runs);
   const orderRow = sql.getMaxAlgorithmRunOrderBySession.get(currentSession.id);
   const runOrder = Number(orderRow && orderRow.n || 0) + 1;
-  const randomSeed = algorithmRuntimeRandomSeed(scene.id, "up_next");
-  const recommendation = buildAlgorithmRecommendation(catalog, runs, null, {
+  const randomSeed = String(lockedStartEntry && lockedStartEntry.randomSeed || "") || algorithmRuntimeRandomSeed(scene.id, "up_next");
+  const recommendation = buildAlgorithmRecommendation(catalog, runs, currentOrder, {
     randomSeed,
     source: "up_next",
   });
@@ -5473,11 +5754,17 @@ function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
     now
   );
   setAlgorithmRunStartedForCurrentSession(true);
+  clearAlgorithmPreparedNextForCurrentSession("scene_started");
   activeAlgorithmRun = parseAlgorithmRunRow(sql.getAlgorithmRunById.get(insert.lastInsertRowid));
+  const nextPreparation = fillAlgorithmLockedQueueForCurrentSession(
+    "scene_started",
+    algorithmLockedQueueTargetForRuns(getAlgorithmRunsForCurrentSession(), 1)
+  );
   writeDebug("algorithm_scene_started", {
     runId: Number(activeAlgorithmRun && activeAlgorithmRun.id || 0),
     sceneId: Number(scene.id || 0),
     selectionSource: String(selectionSource || "manual").slice(0, 80),
+    preparedNextSceneId: Number(nextPreparation && nextPreparation.order && nextPreparation.order.next && nextPreparation.order.next.sceneId || 0),
   });
   broadcastPublicAlgorithmState("scene_started");
   return activeAlgorithmRun;
@@ -5594,6 +5881,10 @@ function restorePreviousAlgorithmSceneRunForCurrentSession(source = "manual") {
   if (openRun && !openRun.endedAt) deletedRuns.push(openRun);
   activeAlgorithmRun = parseAlgorithmRunRow(sql.getAlgorithmRunById.get(previousRun.id));
   setAlgorithmRunStartedForCurrentSession(true);
+  const targetLength = Number(activeAlgorithmRun && activeAlgorithmRun.runOrder || 0) + 1;
+  const truncatedQueue = getAlgorithmLockedQueueForCurrentSession()
+    .filter((entry) => Number(entry && entry.position || 0) <= targetLength);
+  fillAlgorithmLockedQueueForCurrentSession("previous_scene", targetLength, { queue: truncatedQueue });
   writeDebug("algorithm_previous_scene_restored", {
     source: String(source || "manual").slice(0, 80),
     sessionId,
@@ -5616,6 +5907,7 @@ function resetAlgorithmRunsForCurrentSession() {
   if (!sessionId) throw new Error("session_required");
   activeAlgorithmRun = null;
   setAlgorithmRunStartedForCurrentSession(false);
+  clearAlgorithmLockedQueueForCurrentSession("runs_reset");
   const deletedAt = nowIso();
   for (const run of getAlgorithmRunsForCurrentSession()) {
     markSyncTombstone("algorithm_scene_runs", run.id, deletedAt);
@@ -5665,7 +5957,7 @@ function sendAlgorithmApiError(res, err) {
   const code = String(err && err.message ? err.message : "algorithm_error");
   const status = code.includes("not_found") ? 404
     : code.includes("invalid") || code.includes("required") || code.includes("in_use") || code.includes("must") ? 400
-      : code === "session_inactive" || code === "scene_context_unmet" || code === "previous_run_unavailable" ? 409
+      : code === "session_inactive" || code === "scene_context_unmet" || code === "previous_run_unavailable" || code === "prepared_next_mismatch" ? 409
         : 500;
   res.status(status).json({
     ok: false,
@@ -8843,6 +9135,7 @@ function buildOscControlCommands() {
       },
       execute() {
         const run = beginAlgorithmRunForCurrentSession();
+        initializeAlgorithmLockedQueueForCurrentSession("osc_start_run");
         const oscSend = sendAlgorithmUpNextOsc("osc_start_run");
         return { run, upNext: oscSend.payload || null, oscSend: oscSend.last || oscSend };
       },
@@ -8860,7 +9153,14 @@ function buildOscControlCommands() {
         const sceneId = Number(upNext && upNext.sceneId || 0);
         if (!sceneId) throw new Error("scene_id_required");
         const run = startAlgorithmSceneRun(sceneId, "osc_up_next");
-        return { ...upNext, prompt: run.promptSnapshot, runId: Number(run.id || 0) };
+        const oscSend = sendAlgorithmUpNextOsc("osc_scene_started");
+        return {
+          ...upNext,
+          prompt: run.promptSnapshot,
+          runId: Number(run.id || 0),
+          next: oscSend.payload || null,
+          oscSend: oscSend.last || oscSend,
+        };
       },
     },
     {
@@ -8873,12 +9173,14 @@ function buildOscControlCommands() {
       },
       execute(ctx) {
         let sceneId = Number.parseInt(getOscArgString(ctx.args, 0, "0"), 10);
+        let selectionSource = "osc";
         if (!Number.isInteger(sceneId) || sceneId < 1) {
-          const recommendation = buildAlgorithmRecommendation();
-          sceneId = Number(recommendation && recommendation.scene && recommendation.scene.id || 0);
+          const upNext = buildAlgorithmCurrentUpNextPayload("osc_start_scene");
+          sceneId = Number(upNext && upNext.sceneId || 0);
+          selectionSource = "osc_up_next";
         }
         if (!sceneId) throw new Error("scene_id_required");
-        const run = startAlgorithmSceneRun(sceneId, "osc");
+        const run = startAlgorithmSceneRun(sceneId, selectionSource);
         const catalog = getAlgorithmCatalog();
         const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
         const randomSeed = algorithmRuntimeRandomSeed(sceneId, "osc_start_scene");
@@ -8893,7 +9195,13 @@ function buildOscControlCommands() {
           randomSeed,
           source: "osc_start_scene",
         });
-        return { ...payload, runId: Number(run.id || 0) };
+        const oscSend = sendAlgorithmUpNextOsc("osc_scene_started");
+        return {
+          ...payload,
+          runId: Number(run.id || 0),
+          next: oscSend.payload || null,
+          oscSend: oscSend.last || oscSend,
+        };
       },
     },
     {
@@ -8906,6 +9214,7 @@ function buildOscControlCommands() {
       },
       execute() {
         const ended = endActiveAlgorithmSceneRun("osc");
+        fillAlgorithmLockedQueueForCurrentSession("osc_end_scene", algorithmLockedQueueTargetForRuns(getAlgorithmRunsForCurrentSession(), 2));
         const oscSend = sendAlgorithmUpNextOsc("osc_end_scene");
         return {
           endedRun: ended
@@ -9151,10 +9460,10 @@ function rememberOscReceived(info, patch = {}) {
   return lastOscReceived;
 }
 
-function buildAlgorithmCurrentUpNextPayload() {
+function buildAlgorithmCurrentUpNextPayload(source = "up_next") {
   renormalizeAlgorithmScenesForPerformerRoles();
-  const catalog = getAlgorithmCatalog();
-  const runs = getAlgorithmRunsForCurrentSession();
+  let catalog = getAlgorithmCatalog();
+  let runs = getAlgorithmRunsForCurrentSession();
   activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
   const algorithmRunStarted = getAlgorithmRunStartedForCurrentSession(runs, activeAlgorithmRun);
   if (!algorithmRunStarted && !activeAlgorithmRun && runs.length === 0) {
@@ -9167,14 +9476,18 @@ function buildAlgorithmCurrentUpNextPayload() {
     });
   }
   const settings = getAlgorithmSettings();
-  const currentOrder = buildAlgorithmOrder({
-    scenes: catalog.scenes,
-    runs,
-    settings,
-    catalog,
-  });
+  let currentOrder = buildAlgorithmOrderForCurrentSession(catalog, runs, settings);
+  if (!Number(currentOrder && currentOrder.next && currentOrder.next.sceneId || 0)) {
+    const prepared = fillAlgorithmLockedQueueForCurrentSession(
+      source,
+      algorithmLockedQueueTargetForRuns(runs, 1)
+    );
+    catalog = prepared.catalog;
+    runs = prepared.runs;
+    currentOrder = prepared.order;
+  }
   const nextSceneId = Number(currentOrder && currentOrder.next && currentOrder.next.sceneId || 0);
-  const randomSeed = algorithmRuntimeRandomSeed(nextSceneId, "up_next");
+  const randomSeed = String(currentOrder && currentOrder.next && currentOrder.next.randomSeed || "") || algorithmRuntimeRandomSeed(nextSceneId, "up_next");
   const recommendation = buildAlgorithmRecommendation(catalog, runs, currentOrder, {
     randomSeed,
     source: "up_next",
@@ -9281,7 +9594,7 @@ function rememberAlgorithmOscSend(result) {
 }
 
 function sendAlgorithmUpNextOsc(source = "manual") {
-  const payload = buildAlgorithmCurrentUpNextPayload();
+  const payload = buildAlgorithmCurrentUpNextPayload(source);
   const sceneId = Number(payload && payload.sceneId || 0);
   const baseResult = {
     source: String(source || "manual"),
@@ -10957,13 +11270,16 @@ app.post("/admin/algorithm/delete", requireAdmin, (req, res) => {
 app.post("/admin/algorithm/runs/start", requireAdmin, (req, res) => {
   try {
     let sceneId = Number.parseInt(String(req.body && req.body.sceneId || ""), 10);
+    let selectionSource = String(req.body && req.body.selectionSource || "");
     if (!Number.isInteger(sceneId) || sceneId < 1) {
       const upNext = buildAlgorithmCurrentUpNextPayload();
       sceneId = Number(upNext && upNext.sceneId || 0);
+      selectionSource = selectionSource || "up_next";
     }
     if (!sceneId) throw new Error("scene_id_required");
-    const run = startAlgorithmSceneRun(sceneId, String(req.body && req.body.selectionSource || "manual"));
-    res.json({ ok: true, run, state: getAlgorithmState(req) });
+    const run = startAlgorithmSceneRun(sceneId, selectionSource || "manual");
+    const oscSend = sendAlgorithmUpNextOsc("scene_started");
+    res.json({ ok: true, run, oscSend: oscSend.last || oscSend, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -10972,6 +11288,7 @@ app.post("/admin/algorithm/runs/start", requireAdmin, (req, res) => {
 app.post("/admin/algorithm/runs/begin", requireAdmin, (req, res) => {
   try {
     const run = beginAlgorithmRunForCurrentSession();
+    initializeAlgorithmLockedQueueForCurrentSession("start_run");
     const oscSend = sendAlgorithmUpNextOsc("start_run");
     res.json({ ok: true, run, oscSend: oscSend.last || oscSend, state: getAlgorithmState(req) });
   } catch (err) {
@@ -10982,6 +11299,7 @@ app.post("/admin/algorithm/runs/begin", requireAdmin, (req, res) => {
 app.post("/admin/algorithm/runs/end", requireAdmin, (req, res) => {
   try {
     const run = endActiveAlgorithmSceneRun(String(req.body && req.body.reason || "manual"));
+    fillAlgorithmLockedQueueForCurrentSession("end_scene", algorithmLockedQueueTargetForRuns(getAlgorithmRunsForCurrentSession(), 2));
     const oscSend = sendAlgorithmUpNextOsc("end_scene");
     res.json({ ok: true, run, oscSend: oscSend.last || oscSend, state: getAlgorithmState(req) });
   } catch (err) {
