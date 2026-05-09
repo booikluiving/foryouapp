@@ -89,6 +89,9 @@
         background: var(--bg);
         color: var(--ink);
       }
+      [hidden] {
+        display: none !important;
+      }
       input, textarea, button {
         font-size: 18px;
         padding: 12px;
@@ -194,6 +197,56 @@
       }
       #sceneVoteOptions button:disabled {
         opacity: 0.62;
+      }
+      #sceneVoteOptions button.sceneSkipButton {
+        background: var(--button-bg);
+        color: var(--muted);
+      }
+      body[data-interaction-mode="scene_vote"] #scenePanel {
+        align-items: stretch;
+        overflow: visible;
+      }
+      body[data-interaction-mode="scene_vote"] #sceneVote {
+        min-height: 240px;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: center;
+        gap: 14px;
+        padding: 18px;
+        color: var(--ink);
+        font-size: 18px;
+        white-space: normal;
+        overflow: visible;
+      }
+      body[data-interaction-mode="scene_vote"] .sceneQuestion {
+        max-width: none;
+        overflow: visible;
+        text-align: center;
+        text-overflow: clip;
+        white-space: normal;
+        font-size: 24px;
+        font-weight: 800;
+        line-height: 1.08;
+      }
+      body[data-interaction-mode="scene_vote"] #sceneVoteOptions {
+        flex: 0 0 auto;
+        flex-direction: column;
+        gap: 10px;
+        overflow: visible;
+      }
+      body[data-interaction-mode="scene_vote"] #sceneVoteOptions button {
+        width: 100%;
+        min-height: 58px;
+        border-radius: 8px;
+        padding: 14px 16px;
+        font-size: 18px;
+        font-weight: 800;
+        line-height: 1.1;
+      }
+      body[data-interaction-mode="scene_vote"] #sceneVoteOptions button.sceneSkipButton {
+        min-height: 46px;
+        font-size: 15px;
+        font-weight: 700;
       }
       .topBar { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
       .titleWrap {
@@ -307,6 +360,17 @@
         margin-bottom: 8px;
         padding-bottom: 2px;
       }
+      #reactionBar:not([hidden]) {
+        position: fixed;
+        left: 50%;
+        bottom: calc(18px + env(safe-area-inset-bottom));
+        z-index: 22;
+        width: min(680px, calc(100vw - 24px));
+        margin: 0;
+        padding: 0;
+        gap: 12px;
+        transform: translateX(-50%);
+      }
       #reactionBar button {
         width: auto;
         min-width: 0;
@@ -331,6 +395,13 @@
         transform-origin: center;
         transition: transform 120ms ease, filter 120ms ease, box-shadow 180ms ease;
         backface-visibility: hidden;
+      }
+      #reactionBar:not([hidden]) button {
+        min-height: clamp(104px, 18dvh, 150px);
+        padding: 18px 12px;
+        border-radius: 12px;
+        background: var(--surface-elevated);
+        box-shadow: var(--shadow);
       }
       #reactionBar button:active,
       #reactionBar button.reaction-pressed {
@@ -397,6 +468,10 @@
         font-size: 1em;
         font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
       }
+      #reactionBar:not([hidden]) .reactionEmoji {
+        font-size: clamp(48px, 9vw, 76px);
+        line-height: 1;
+      }
       .reactionCount {
         display: block;
         font-size: 12px;
@@ -404,11 +479,16 @@
         margin-top: 0;
         line-height: 1;
       }
+      #reactionBar:not([hidden]) .reactionCount {
+        font-size: clamp(18px, 3.8vw, 28px);
+        font-weight: 800;
+        opacity: 0.82;
+      }
       #reactionBurstLayer {
         position: fixed;
         left: 0;
         right: 0;
-        bottom: 90px;
+        bottom: calc(170px + env(safe-area-inset-bottom));
         height: 50vh;
         pointer-events: none;
         overflow: hidden;
@@ -573,6 +653,30 @@
           flex: 0 0 auto;
           max-width: 44%;
         }
+        body[data-interaction-mode="scene_vote"] #scenePanel {
+          flex: 1 1 auto;
+          min-height: 0;
+          align-items: center;
+        }
+        body[data-interaction-mode="scene_vote"] #sceneVote {
+          min-height: min(58dvh, 440px);
+          padding: 20px 16px;
+          gap: 16px;
+        }
+        body[data-interaction-mode="scene_vote"] .sceneQuestion {
+          font-size: clamp(28px, 8vw, 38px);
+        }
+        body[data-interaction-mode="scene_vote"] #sceneVoteOptions {
+          gap: 12px;
+        }
+        body[data-interaction-mode="scene_vote"] #sceneVoteOptions button {
+          min-height: 66px;
+          font-size: clamp(19px, 5vw, 24px);
+        }
+        body[data-interaction-mode="scene_vote"] #sceneVoteOptions button.sceneSkipButton {
+          min-height: 50px;
+          font-size: 16px;
+        }
         #pollBox {
           margin-top: 0;
           max-height: 28dvh;
@@ -600,13 +704,23 @@
           margin-bottom: 2px;
           padding-bottom: 4px;
         }
+        #reactionBar:not([hidden]) {
+          bottom: calc(18px + env(safe-area-inset-bottom));
+          width: calc(100vw - 24px);
+          gap: 10px;
+        }
         #reactionBar button {
           min-height: 60px;
           font-size: 22px;
           padding-bottom: 13px;
         }
+        #reactionBar:not([hidden]) button {
+          min-height: clamp(122px, 22dvh, 178px);
+          padding: 22px 10px;
+          border-radius: 14px;
+        }
         #reactionBurstLayer {
-          bottom: 136px;
+          bottom: calc(210px + env(safe-area-inset-bottom));
         }
       }
     </style>
@@ -652,7 +766,7 @@
       </div>
     </div>
 
-    <div id="reactionBar">
+    <div id="reactionBar" hidden>
       <button type="button" data-reaction="heart" aria-label="Positief"><span class="reactionEmoji" aria-hidden="true">❤️</span><span class="reactionCount" data-reaction-count="heart">0</span></button>
       <button type="button" data-reaction="bored" aria-label="Negatief"><span class="reactionEmoji" aria-hidden="true">👎</span><span class="reactionCount" data-reaction-count="bored">0</span></button>
     </div>
@@ -757,8 +871,10 @@
       let activeAlgorithmScene = null;
       let sceneVotePrompt = null;
       let sceneVotePending = false;
+      let interactionMode = "chat";
       const VOTED_POLL_STORAGE_KEY = "live_voted_poll_id";
       const SCENE_VOTE_STORAGE_KEY = "live_algorithm_character_vote_run_id";
+      const SCENE_VOTE_SKIP_STORAGE_KEY = "live_algorithm_character_vote_skip_run_id";
       const THEME_PREF_KEY = "live_theme_pref_v1";
       const THEME_MODES = ["auto", "light", "dark"];
       const DEBUG_CLIENT_PREF_KEY = "live_client_debug_v1";
@@ -850,10 +966,30 @@
         return Number.isInteger(safeRunId) && safeRunId > 0 && getStoredSceneVoteRunId() === safeRunId;
       }
 
+      function getStoredSceneVoteSkipRunId() {
+        const parsed = Number.parseInt(String(localStorage.getItem(SCENE_VOTE_SKIP_STORAGE_KEY) || ""), 10);
+        return Number.isInteger(parsed) ? parsed : null;
+      }
+
+      function hasStoredSceneVoteSkip(runId) {
+        const safeRunId = Number.parseInt(String(runId || ""), 10);
+        return Number.isInteger(safeRunId) && safeRunId > 0 && getStoredSceneVoteSkipRunId() === safeRunId;
+      }
+
+      function hasStoredSceneVoteResolution(runId) {
+        return hasStoredSceneVote(runId) || hasStoredSceneVoteSkip(runId);
+      }
+
       function setStoredSceneVoteRunId(runId) {
         const safeRunId = Number.parseInt(String(runId || ""), 10);
         if (!Number.isInteger(safeRunId) || safeRunId < 1) return;
         localStorage.setItem(SCENE_VOTE_STORAGE_KEY, String(safeRunId));
+      }
+
+      function setStoredSceneVoteSkipRunId(runId) {
+        const safeRunId = Number.parseInt(String(runId || ""), 10);
+        if (!Number.isInteger(safeRunId) || safeRunId < 1) return;
+        localStorage.setItem(SCENE_VOTE_SKIP_STORAGE_KEY, String(safeRunId));
       }
 
       function formatCountdownMs(ms) {
@@ -1041,6 +1177,10 @@
 
       function sendReaction(reactionKey) {
         if (!reactionEmoji[reactionKey]) return;
+        if (interactionMode !== "scene_reaction") {
+          showToast("Reageren kan alleen tijdens een actieve scene.", { subtle: true, autoHideMs: 1800 });
+          return;
+        }
         if (!ws || ws.readyState !== WebSocket.OPEN) {
           appendChat("Offline");
           ensureFreshConnection();
@@ -1118,6 +1258,7 @@
           pollVotePending = false;
           stopPollCountdownLoop();
           pollBoxEl.hidden = true;
+          renderInteractionMode();
           return;
         }
 
@@ -1127,6 +1268,7 @@
           selectedPollOptionIndex = null;
           pollVotePending = false;
           pollBoxEl.hidden = true;
+          renderInteractionMode();
           return;
         }
 
@@ -1154,6 +1296,7 @@
         renderPollMeta();
         startPollCountdownLoop();
         pollBoxEl.hidden = false;
+        renderInteractionMode();
       }
 
       function closePoll() {
@@ -1162,6 +1305,7 @@
         pollVotePending = false;
         stopPollCountdownLoop();
         pollBoxEl.hidden = true;
+        renderInteractionMode();
       }
 
       function resetPollVotePending() {
@@ -1194,14 +1338,23 @@
         return names.slice(0, -1).join(", ") + " en " + names[names.length - 1];
       }
 
-      function renderScenePanel() {
+      function resolveInteractionMode() {
         const active = activeAlgorithmScene && activeAlgorithmScene.runId ? activeAlgorithmScene : null;
-        const vote = sceneVotePrompt && sceneVotePrompt.runId && !hasStoredSceneVote(sceneVotePrompt.runId)
+        if (active) return "scene_reaction";
+        if (sceneVotePrompt && sceneVotePrompt.runId && !hasStoredSceneVoteResolution(sceneVotePrompt.runId)) {
+          return "scene_vote";
+        }
+        return "chat";
+      }
+
+      function renderScenePanelContent(mode) {
+        const active = activeAlgorithmScene && activeAlgorithmScene.runId ? activeAlgorithmScene : null;
+        const vote = sceneVotePrompt && sceneVotePrompt.runId && !hasStoredSceneVoteResolution(sceneVotePrompt.runId)
           ? sceneVotePrompt
           : null;
 
-        if (active) {
-          const title = String(active.title || "Scène").trim() || "Scène";
+        if (mode === "scene_reaction" && active) {
+          const title = String(active.title || "Scene").trim() || "Scene";
           const cast = formatSceneCast(active.characters);
           sceneNowTitleEl.textContent = title;
           sceneNowCastEl.textContent = cast ? "met " + cast : "";
@@ -1215,7 +1368,7 @@
         sceneNowTitleEl.textContent = "";
         sceneNowCastEl.textContent = "";
 
-        if (!vote) {
+        if (mode !== "scene_vote" || !vote) {
           sceneVoteEl.hidden = true;
           sceneVoteQuestionEl.textContent = "";
           sceneVoteOptionsEl.textContent = "";
@@ -1241,8 +1394,47 @@
           button.setAttribute("data-scene-vote-character", String(character.id));
           fragment.appendChild(button);
         }
+        const skipButton = document.createElement("button");
+        skipButton.type = "button";
+        skipButton.className = "sceneSkipButton";
+        skipButton.textContent = "Overslaan";
+        skipButton.disabled = sceneVotePending;
+        skipButton.setAttribute("data-scene-vote-skip", "1");
+        fragment.appendChild(skipButton);
         sceneVoteOptionsEl.appendChild(fragment);
         sceneVoteEl.hidden = false;
+      }
+
+      function renderInteractionMode() {
+        const nextMode = resolveInteractionMode();
+        const leavingReactionMode = interactionMode === "scene_reaction" && nextMode !== "scene_reaction";
+        interactionMode = nextMode;
+        if (leavingReactionMode) clearPendingReactionQueue();
+
+        const chatMode = interactionMode === "chat";
+        const reactionMode = interactionMode === "scene_reaction";
+        const voteMode = interactionMode === "scene_vote";
+        const connected = !!(ws && ws.readyState === WebSocket.OPEN) && !pausedByServer;
+
+        document.body.dataset.interactionMode = interactionMode;
+        nameLabelEl.parentElement.hidden = !chatMode;
+        chatFeedEl.hidden = !chatMode;
+        textEl.hidden = !chatMode;
+        sendBtn.hidden = !chatMode;
+        reactionBarEl.hidden = !reactionMode;
+        pollBoxEl.hidden = !chatMode || !activePoll;
+
+        if (!chatMode) resetPollVotePending();
+        if (!reactionMode) clearReactionButtonPressedState();
+
+        textEl.disabled = !chatMode || !connected;
+        sendBtn.disabled = !chatMode || !connected;
+        sceneVoteOptionsEl.setAttribute("aria-busy", voteMode && sceneVotePending ? "true" : "false");
+        renderScenePanelContent(interactionMode);
+      }
+
+      function renderScenePanel() {
+        renderInteractionMode();
       }
 
       function handleAlgorithmState(msg) {
@@ -1253,9 +1445,9 @@
           ? msg.vote
           : null;
         activeAlgorithmScene = active;
-        sceneVotePrompt = active || !vote || hasStoredSceneVote(vote.runId) ? null : vote;
+        sceneVotePrompt = active || !vote || hasStoredSceneVoteResolution(vote.runId) ? null : vote;
         sceneVotePending = false;
-        renderScenePanel();
+        renderInteractionMode();
       }
 
       function submitSceneCharacterVote(characterId) {
@@ -1263,9 +1455,9 @@
         const runId = Number.parseInt(String(sceneVotePrompt.runId || ""), 10);
         const safeCharacterId = Number.parseInt(String(characterId || ""), 10);
         if (!Number.isInteger(runId) || runId < 1 || !Number.isInteger(safeCharacterId) || safeCharacterId < 1) return;
-        if (hasStoredSceneVote(runId)) {
+        if (hasStoredSceneVoteResolution(runId)) {
           sceneVotePrompt = null;
-          renderScenePanel();
+          renderInteractionMode();
           return;
         }
         if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -1274,7 +1466,7 @@
           return;
         }
         sceneVotePending = true;
-        renderScenePanel();
+        renderInteractionMode();
         try {
           ws.send(
             JSON.stringify({
@@ -1286,7 +1478,39 @@
           );
         } catch {
           sceneVotePending = false;
-          renderScenePanel();
+          renderInteractionMode();
+          appendChat("Offline");
+          ensureFreshConnection();
+        }
+      }
+
+      function skipSceneCharacterVote() {
+        if (!sceneVotePrompt || sceneVotePending) return;
+        const runId = Number.parseInt(String(sceneVotePrompt.runId || ""), 10);
+        if (!Number.isInteger(runId) || runId < 1) return;
+        if (hasStoredSceneVoteResolution(runId)) {
+          sceneVotePrompt = null;
+          renderInteractionMode();
+          return;
+        }
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          appendChat("Offline");
+          ensureFreshConnection();
+          return;
+        }
+        sceneVotePending = true;
+        renderInteractionMode();
+        try {
+          ws.send(
+            JSON.stringify({
+              type: "algorithm_character_vote_skip",
+              runId,
+              clientTag,
+            })
+          );
+        } catch {
+          sceneVotePending = false;
+          renderInteractionMode();
           appendChat("Offline");
           ensureFreshConnection();
         }
@@ -1559,7 +1783,6 @@
       }
       setDevPanelOpen(false);
       updateReactionCounterUi();
-      renderScenePanel();
 
       let hasShownConnectedToast = false;
       let connectTimeoutTimer = null;
@@ -1582,6 +1805,8 @@
       let currentBuildLabel = "";
       let hardReloadInProgress = false;
       let pageDeactivating = false;
+
+      renderInteractionMode();
 
       const CONNECT_TIMEOUT_MS = 7000;
       const CONNECTION_CHECK_MS = 2000;
@@ -1987,7 +2212,7 @@
 
       function setUiConnected(connected, { notify = true } = {}) {
         statusEl.textContent = connected ? "Connected" : "Disconnected, reconnecting";
-        sendBtn.disabled = !connected;
+        renderInteractionMode();
         if (!notify) return;
 
         if (connected) {
@@ -2150,6 +2375,24 @@
           }
           closePoll();
           appendChat("Je stem was al opgeslagen.");
+          return;
+        }
+        if (code === "chat_paused_for_scene") {
+          showToast("Tijdens de scene kun je alleen hart/bored drukken.", { subtle: true, autoHideMs: 2400 });
+          return;
+        }
+        if (code === "poll_paused_for_scene") {
+          resetPollVotePending();
+          showToast("Poll stemmen is gepauzeerd tijdens de scene.", { subtle: true, autoHideMs: 2400 });
+          return;
+        }
+        if (code === "reaction_unavailable") {
+          showToast("Reageren kan alleen tijdens een actieve scene.", { subtle: true, autoHideMs: 2200 });
+          return;
+        }
+        if (code === "algorithm_vote_required") {
+          resetPollVotePending();
+          showToast("Stem of sla over om verder te chatten.", { subtle: true, autoHideMs: 2400 });
           return;
         }
         if (code === "algorithm_vote_invalid") {
@@ -2354,6 +2597,7 @@
                 activePoll.totalVotes = Number(msg.totalVotes || 0);
                 renderPollOptions();
                 renderPollMeta();
+                renderInteractionMode();
               }
               noteServerSeen();
               return;
@@ -2371,8 +2615,18 @@
               if (Number.isInteger(votedRunId)) setStoredSceneVoteRunId(votedRunId);
               sceneVotePrompt = null;
               sceneVotePending = false;
-              renderScenePanel();
+              renderInteractionMode();
               showToast("Stem opgeslagen.", { subtle: true, autoHideMs: 1600 });
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "algorithm_character_vote_skip_ok") {
+              const skippedRunId = Number(msg.runId);
+              if (Number.isInteger(skippedRunId)) setStoredSceneVoteSkipRunId(skippedRunId);
+              sceneVotePrompt = null;
+              sceneVotePending = false;
+              renderInteractionMode();
+              showToast("Stemvraag overgeslagen.", { subtle: true, autoHideMs: 1600 });
               noteServerSeen();
               return;
             }
@@ -2459,6 +2713,14 @@
           );
           return;
         }
+        if (interactionMode === "scene_reaction") {
+          showToast("Tijdens de scene kun je alleen hart/bored drukken.", { subtle: true, autoHideMs: 2200 });
+          return;
+        }
+        if (interactionMode === "scene_vote") {
+          showToast("Stem of sla over om verder te chatten.", { subtle: true, autoHideMs: 2200 });
+          return;
+        }
         const text = textEl.value.trim();
         if (!text) return;
 
@@ -2488,6 +2750,14 @@
 
       function submitPollVote() {
         if (!activePoll) return;
+        if (interactionMode === "scene_reaction") {
+          showToast("Poll stemmen is gepauzeerd tijdens de scene.", { subtle: true, autoHideMs: 2200 });
+          return;
+        }
+        if (interactionMode === "scene_vote") {
+          showToast("Stem of sla over om verder te chatten.", { subtle: true, autoHideMs: 2200 });
+          return;
+        }
         if (!Number.isInteger(selectedPollOptionIndex)) return;
         const remainingMs = getPollRemainingMs();
         if (remainingMs !== null && remainingMs <= 0) {
@@ -2525,6 +2795,11 @@
       });
       pollSubmitBtn.addEventListener("click", submitPollVote);
       sceneVoteOptionsEl.addEventListener("click", (e) => {
+        const skipBtn = e.target.closest("button[data-scene-vote-skip]");
+        if (skipBtn && sceneVoteOptionsEl.contains(skipBtn)) {
+          skipSceneCharacterVote();
+          return;
+        }
         const btn = e.target.closest("button[data-scene-vote-character]");
         if (!btn || !sceneVoteOptionsEl.contains(btn)) return;
         const characterId = Number.parseInt(btn.getAttribute("data-scene-vote-character"), 10);
