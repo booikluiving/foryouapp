@@ -2641,6 +2641,21 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_algorithm_character_votes_run
     ON algorithm_character_votes(run_id, character_id);
 
+  CREATE TABLE IF NOT EXISTS algorithm_character_vote_skips (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    run_id INTEGER NOT NULL,
+    scene_id INTEGER NOT NULL,
+    client_key TEXT NOT NULL,
+    skipped_at TEXT NOT NULL,
+    UNIQUE(run_id, client_key),
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY(run_id) REFERENCES algorithm_scene_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY(scene_id) REFERENCES algorithm_scenes(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_algorithm_character_vote_skips_run
+    ON algorithm_character_vote_skips(run_id);
+
   CREATE TABLE IF NOT EXISTS session_join_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL,
@@ -3167,6 +3182,17 @@ const sql = {
      FROM algorithm_character_votes
      WHERE run_id = ?
      GROUP BY character_id`
+  ),
+  insertAlgorithmCharacterVoteSkipIfNew: db.prepare(
+    `INSERT OR IGNORE INTO algorithm_character_vote_skips (
+      session_id, run_id, scene_id, client_key, skipped_at
+    ) VALUES (?, ?, ?, ?, ?)`
+  ),
+  getAlgorithmCharacterVoteSkipByRunClient: db.prepare(
+    `SELECT id, skipped_at AS skippedAt
+     FROM algorithm_character_vote_skips
+     WHERE run_id = ? AND client_key = ?
+     LIMIT 1`
   ),
   insertModerationAction: db.prepare(
     `INSERT INTO moderation_actions (
@@ -5296,6 +5322,24 @@ function hasAlgorithmCharacterVote(runId, clientKey) {
   return !!sql.getAlgorithmCharacterVoteByRunClient.get(safeRunId, safeClientKey);
 }
 
+function hasAlgorithmCharacterVoteSkip(runId, clientKey) {
+  const safeRunId = Number(runId || 0);
+  const safeClientKey = normalizeClientKey(clientKey);
+  if (!safeRunId || !safeClientKey) return false;
+  return !!sql.getAlgorithmCharacterVoteSkipByRunClient.get(safeRunId, safeClientKey);
+}
+
+function hasResolvedAlgorithmCharacterVotePrompt(runId, clientKey) {
+  return hasAlgorithmCharacterVote(runId, clientKey) || hasAlgorithmCharacterVoteSkip(runId, clientKey);
+}
+
+function getCurrentActiveAlgorithmSceneRun() {
+  activeAlgorithmRun = activeAlgorithmRun && !activeAlgorithmRun.endedAt
+    ? activeAlgorithmRun
+    : getActiveAlgorithmRunForCurrentSession();
+  return activeAlgorithmRun && !activeAlgorithmRun.endedAt ? activeAlgorithmRun : null;
+}
+
 function getAlgorithmCharacterVoteCounts(runId) {
   const safeRunId = Number(runId || 0);
   if (!safeRunId) return {};
@@ -5310,9 +5354,7 @@ function getAlgorithmCharacterVoteCounts(runId) {
 
 function buildPublicAlgorithmVotePrompt(meta = {}, options = {}) {
   if (!isCurrentSessionActive()) return null;
-  const activeRun = activeAlgorithmRun && !activeAlgorithmRun.endedAt
-    ? activeAlgorithmRun
-    : getActiveAlgorithmRunForCurrentSession();
+  const activeRun = getCurrentActiveAlgorithmSceneRun();
   if (activeRun && !activeRun.endedAt) return null;
 
   const safeClientKey = normalizeClientKey(meta && meta.clientKey);
@@ -5323,7 +5365,7 @@ function buildPublicAlgorithmVotePrompt(meta = {}, options = {}) {
     : getLatestEndedAlgorithmRunForCurrentSession();
   if (!run || !run.endedAt) return null;
   if (Number(run.sessionId || 0) !== Number(currentSession.id || 0)) return null;
-  if (hasAlgorithmCharacterVote(run.id, safeClientKey)) return null;
+  if (hasResolvedAlgorithmCharacterVotePrompt(run.id, safeClientKey)) return null;
 
   const catalog = getAlgorithmCatalog();
   const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
@@ -5341,9 +5383,7 @@ function buildPublicAlgorithmVotePrompt(meta = {}, options = {}) {
 }
 
 function buildPublicAlgorithmState(meta = {}, options = {}) {
-  const activeRun = activeAlgorithmRun && !activeAlgorithmRun.endedAt
-    ? activeAlgorithmRun
-    : getActiveAlgorithmRunForCurrentSession();
+  const activeRun = getCurrentActiveAlgorithmSceneRun();
   const catalog = getAlgorithmCatalog();
   const activeScene = activeRun && !activeRun.endedAt
     ? buildPublicAlgorithmScenePayload(activeRun, catalog)
@@ -5399,10 +5439,14 @@ function recordAlgorithmCharacterVote(meta = {}, runId, characterId) {
   if (!run || !run.endedAt || Number(run.sessionId || 0) !== Number(currentSession.id || 0)) {
     throw new Error("algorithm_vote_unavailable");
   }
+  if (hasAlgorithmCharacterVoteSkip(safeRunId, safeClientKey)) {
+    throw new Error("algorithm_vote_unavailable");
+  }
 
   const catalog = getAlgorithmCatalog();
   const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
   const characters = publicAlgorithmCharactersForScene(scene, catalog);
+  if (characters.length < 2) throw new Error("algorithm_vote_unavailable");
   if (!characters.some((character) => Number(character.id || 0) === safeCharacterId)) {
     throw new Error("algorithm_vote_invalid");
   }
@@ -5440,6 +5484,61 @@ function recordAlgorithmCharacterVote(meta = {}, runId, characterId) {
     sceneId: Number(run.sceneId || 0),
     characterId: safeCharacterId,
     counts,
+  };
+}
+
+function recordAlgorithmCharacterVoteSkip(meta = {}, runId) {
+  if (!isCurrentSessionActive()) throw new Error("session_inactive");
+  const safeRunId = Number.parseInt(String(runId || ""), 10);
+  const safeClientKey = normalizeClientKey(meta && meta.clientKey);
+  if (!safeClientKey) throw new Error("client_required");
+  if (!Number.isInteger(safeRunId) || safeRunId < 1) throw new Error("algorithm_vote_invalid");
+
+  const activeRun = getCurrentActiveAlgorithmSceneRun();
+  if (activeRun && !activeRun.endedAt) throw new Error("algorithm_vote_unavailable");
+
+  const latestEndedRun = getLatestEndedAlgorithmRunForCurrentSession();
+  if (!latestEndedRun || Number(latestEndedRun.id || 0) !== safeRunId) {
+    throw new Error("algorithm_vote_unavailable");
+  }
+
+  const run = parseAlgorithmRunRow(sql.getAlgorithmRunById.get(safeRunId));
+  if (!run || !run.endedAt || Number(run.sessionId || 0) !== Number(currentSession.id || 0)) {
+    throw new Error("algorithm_vote_unavailable");
+  }
+
+  const catalog = getAlgorithmCatalog();
+  const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
+  const characters = publicAlgorithmCharactersForScene(scene, catalog);
+  if (characters.length < 2) throw new Error("algorithm_vote_unavailable");
+
+  if (hasAlgorithmCharacterVote(safeRunId, safeClientKey)) {
+    return {
+      ok: true,
+      alreadyResolved: true,
+      runId: safeRunId,
+      sceneId: Number(run.sceneId || 0),
+    };
+  }
+
+  const skipInsert = sql.insertAlgorithmCharacterVoteSkipIfNew.run(
+    Number(currentSession.id || 0),
+    safeRunId,
+    Number(run.sceneId || 0),
+    safeClientKey,
+    nowIso()
+  );
+  writeDebug("algorithm_character_vote_skip", {
+    runId: safeRunId,
+    sceneId: Number(run.sceneId || 0),
+    clientKey: safeClientKey,
+    alreadyResolved: !Number(skipInsert && skipInsert.changes || 0),
+  });
+  return {
+    ok: true,
+    alreadyResolved: !Number(skipInsert && skipInsert.changes || 0),
+    runId: safeRunId,
+    sceneId: Number(run.sceneId || 0),
   };
 }
 
@@ -12749,6 +12848,17 @@ wss.on("connection", (ws, req) => {
         return;
       }
 
+      if (!getCurrentActiveAlgorithmSceneRun()) {
+        ws.send(
+          safeJsonStringify({
+            type: "error",
+            code: "reaction_unavailable",
+            message: "Reageren kan alleen tijdens een actieve scène.",
+          })
+        );
+        return;
+      }
+
       if (!allowReaction(meta.clientKey)) return;
       const leaderEntry = recordEmojiEngagement(meta);
       reactionCounts[reaction] = Number(reactionCounts[reaction] || 0) + 1;
@@ -12819,6 +12929,28 @@ wss.on("connection", (ws, req) => {
             message: "Je bent tijdelijk gemute.",
             mutedUntil: muteState.expiresAt || null,
             remainingMs,
+          })
+        );
+        return;
+      }
+
+      if (getCurrentActiveAlgorithmSceneRun()) {
+        ws.send(
+          safeJsonStringify({
+            type: "error",
+            code: "poll_paused_for_scene",
+            message: "Poll stemmen is gepauzeerd tijdens de scène.",
+          })
+        );
+        return;
+      }
+
+      if (buildPublicAlgorithmVotePrompt(meta)) {
+        ws.send(
+          safeJsonStringify({
+            type: "error",
+            code: "algorithm_vote_required",
+            message: "Stem of sla over om verder te gaan.",
           })
         );
         return;
@@ -12907,6 +13039,67 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
+    if (msg.type === "algorithm_character_vote_skip") {
+      meta.clientTag = sanitizeClientTag(msg.clientTag || meta.clientTag);
+      meta.clientKey = buildClientKey(meta.ip, meta.clientTag);
+      persistConnectedMeta(meta);
+
+      const blockState = getBlockState(meta);
+      if (blockState) {
+        ws.send(
+          safeJsonStringify({
+            type: "error",
+            code: "user_blocked",
+            message: "Je bent geblokkeerd door de moderator.",
+          })
+        );
+        return;
+      }
+
+      const muteState = getMuteState(meta);
+      if (muteState) {
+        const muteUntilTs = parseIsoTime(muteState.expiresAt);
+        const remainingMs = muteUntilTs ? Math.max(0, muteUntilTs - Date.now()) : null;
+        ws.send(
+          safeJsonStringify({
+            type: "error",
+            code: "user_muted",
+            message: "Je bent tijdelijk gemute.",
+            mutedUntil: muteState.expiresAt || null,
+            remainingMs,
+          })
+        );
+        return;
+      }
+
+      try {
+        const skip = recordAlgorithmCharacterVoteSkip(meta, msg.runId);
+        ws.send(
+          safeJsonStringify({
+            type: "algorithm_character_vote_skip_ok",
+            ...skip,
+          })
+        );
+        sendPublicAlgorithmStateToClient(ws, "vote_skipped");
+      } catch (err) {
+        const code = String(err && err.message ? err.message : "algorithm_vote_error");
+        const messageByCode = {
+          algorithm_vote_invalid: "Kon je stemvraag niet verwerken.",
+          algorithm_vote_unavailable: "Deze stemvraag is niet meer actief.",
+          client_required: "Kon je keuze niet aan deze verbinding koppelen.",
+          session_inactive: "De sessie is beëindigd.",
+        };
+        ws.send(
+          safeJsonStringify({
+            type: "error",
+            code,
+            message: messageByCode[code] || "Kon je stemvraag niet verwerken.",
+          })
+        );
+      }
+      return;
+    }
+
     if (msg.type !== "comment") return;
 
     meta.clientTag = sanitizeClientTag(msg.clientTag || meta.clientTag);
@@ -12974,6 +13167,28 @@ wss.on("connection", (ws, req) => {
         clientKey: meta.clientKey,
         mutedUntil: muteState.expiresAt || null,
       });
+      return;
+    }
+
+    if (getCurrentActiveAlgorithmSceneRun()) {
+      rejectComment(
+        "chat_paused_for_scene",
+        "Chatten is gepauzeerd tijdens de scène.",
+        "paused_for_scene",
+        "active scene"
+      );
+      writeDebug("comment_paused_for_scene", { clientId, ip, clientKey: meta.clientKey });
+      return;
+    }
+
+    if (buildPublicAlgorithmVotePrompt(meta)) {
+      rejectComment(
+        "algorithm_vote_required",
+        "Stem of sla over om verder te gaan.",
+        "vote_required",
+        "algorithm vote required"
+      );
+      writeDebug("comment_vote_required", { clientId, ip, clientKey: meta.clientKey });
       return;
     }
 
