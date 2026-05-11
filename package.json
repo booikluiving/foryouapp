@@ -8,6 +8,8 @@
     "simulate": "node scripts/simulate-chatters.js",
     "test:sim": "node scripts/test-crowd-engine.js",
     "test:algorithm": "node scripts/test-show-algorithm.js",
+    "test:dropbox-catalog": "node scripts/test-dropbox-catalog-sync.js",
+    "sync:dropbox-catalog": "node scripts/run-dropbox-catalog-sync.js",
     "unifi:status": "node scripts/unifi-status.js"
   },
   "keywords": [],

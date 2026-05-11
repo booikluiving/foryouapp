@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 APP_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-REQUESTED_PORT="${PORT:-3000}"
+REQUESTED_PORT="${PORT:-3010}"
 PORT_WAS_EXPLICIT=0
 if [[ -n "${PORT:-}" ]]; then
   PORT_WAS_EXPLICIT=1
@@ -36,7 +36,7 @@ is_port_listening() {
 
 find_free_port() {
   local candidate=""
-  for candidate in 3310 3311 3312 3313 3314 3315 3001 3002 3003 3004 3005 3006 3007 3008 3009 3010; do
+  for candidate in 3010 3011 3012 3013 3014 3015 3310 3311 3312 3313 3314 3315; do
     if ! is_port_listening "$candidate"; then
       echo "$candidate"
       return 0
@@ -47,7 +47,7 @@ find_free_port() {
 
 find_existing_foryou_port() {
   local candidate=""
-  for candidate in 3310 3311 3312 3313 3314 3315 3001 3002 3003 3004 3005 3006 3007 3008 3009 3010; do
+  for candidate in 3010 3011 3012 3013 3014 3015 3310 3311 3312 3313 3314 3315; do
     if is_foryou_healthy_port "$candidate"; then
       echo "$candidate"
       return 0

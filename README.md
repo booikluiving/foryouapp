@@ -26,6 +26,7 @@ Belangrijke onderdelen:
   - Toegang is sessiegebonden: bij een nieuwe sessie is opnieuw scannen/joinen vereist.
 - Stage output pagina (`/stage`) voor OBS/Electron/TouchDesigner browser output met toggles en live styling (QR/chat/emoji, schaal, positie, achtergrond transparant/zwart).
 - Algoritme-pagina (`/algoritme`) voor vaste speelbare situaties, personage- en omgevingsbeschrijvingen, calibratie, live score en OSC-output naar TouchDesigner.
+- Catalogus-saves op `/algoritme` spiegelen direct naar Dropbox en de lokale `database.md` mirror; API-playground/OpenAI tooling blijft lokaal en wordt niet naar de Mac Studio gedeployed.
 - Open tabs (`/`, `/admin`, `/stage`) verversen automatisch na een server-restart op basis van server-instance detectie.
 
 ## Tech stack
@@ -39,15 +40,20 @@ Belangrijke onderdelen:
 ## Snel starten
 ```bash
 npm install
-npm start
+PORT=3010 npm start
 ```
 
-Standaard luistert de server op `0.0.0.0:3000`.
+Standaard voor deze lokale werkmap is `0.0.0.0:3010`.
 Publieke stage/join links gebruiken automatisch het actuele LAN-IP + poort (fallback: localhost).
+
+## Projectafspraak: poorten
+De lokale app/show-server in deze werkmap draait op `3010`. Start geen tweede For You-server op `3000` of een willekeurige fallbackpoort als er al een server draait. Controleer eerst de bestaande poort en herstart dezelfde poort als dat nodig is.
+
+De Mac Studio show-machine gebruikt via de launchd/setup-scripts `3310`. Dat is een aparte machine-afspraak. Wijzig `3010` of `3310` alleen bewust en expliciet.
 
 ## Omgevingsvariabelen
 Belangrijkste env vars:
-- `PORT` (default: `3000`)
+- `PORT` (lokale default: `3010`; Mac Studio setup: `3310`)
 - `ADMIN_PASSWORD` (default: `admin`)
 - `POLL_DURATION_SECONDS` (default: `60`)
 - `ADMIN_RESTART_BOOT_DELAY_MS` (default: `0`)
@@ -66,14 +72,14 @@ Belangrijkste env vars:
 
 Voorbeeld:
 ```bash
-ADMIN_PASSWORD="kies-een-sterk-wachtwoord" PORT=3000 npm start
+ADMIN_PASSWORD="kies-een-sterk-wachtwoord" PORT=3010 npm start
 ```
 
 Voor UniFi-configuratie: kopieer `.env.example` naar `.env` op de Mac Studio en vul daar de echte key in.
 
 ## NPM scripts
 - `npm start` start de server (`server.js`)
-- `npm run smoke -- --url http://127.0.0.1:3000` controleert health, pagina's en WebSockets
+- `npm run smoke -- --url http://127.0.0.1:3010` controleert health, pagina's en WebSockets
 - `npm run test:algorithm` test de losse algoritme-engine
 - `npm run simulate` start de losse simulator CLI (`scripts/simulate-chatters.js`)
 - `npm run unifi:status` test de read-only UniFi network agent
@@ -82,7 +88,7 @@ Voor UniFi-configuratie: kopieer `.env.example` naar `.env` op de Mac Studio en 
 - `scripts/mac-studio-status.command` toont launchd, health, URLs, git status en logs
 
 Mac launcher:
-- `scripts/open-admin.command` start lokaal de server (indien nodig), opent admin via huidig LAN-IP (fallback localhost) en sluit daarna het Terminal-venster. Als poort `3000` bezet is door een andere app, kiest de launcher automatisch een vrije fallbackpoort.
+- `scripts/open-admin.command` gebruikt lokaal poort `3010`, start de server alleen als er nog geen For You-server draait, opent admin via huidig LAN-IP (fallback localhost) en sluit daarna het Terminal-venster. Gebruik geen extra fallbackpoort zonder bewuste reden.
 - Dubbelklik op dit `.command` bestand of zet er een snelkoppeling/icoon van op je bureaublad.
 - Zie `MAC_STUDIO_SETUP.md` voor de show-machine setup.
 
@@ -94,8 +100,8 @@ node scripts/smoke-test.js --help
 
 Smoke-test met optionele admin/join-checks:
 ```bash
-SMOKE_ADMIN_PASSWORD="jouw-admin-wachtwoord" npm run smoke -- --url http://127.0.0.1:3000
-SMOKE_JOIN_TOKEN="token-uit-admin-qr" npm run smoke -- --url http://127.0.0.1:3000 --send-comment
+SMOKE_ADMIN_PASSWORD="jouw-admin-wachtwoord" npm run smoke -- --url http://127.0.0.1:3010
+SMOKE_JOIN_TOKEN="token-uit-admin-qr" npm run smoke -- --url http://127.0.0.1:3010 --send-comment
 ```
 
 ## Routes
@@ -161,6 +167,24 @@ Admin API endpoints (subset):
 - `brainrot.txt` woordenlijst voor bot-stijl
 - `data/sim/*.txt` bot-datapools (zinnen, templates, namen, emoji’s), 1 regel per item
 - `data/` lokale SQLite data
+
+## Dropbox catalogus-sync
+De app kan de catalogus continu spiegelen naar `Dropbox/For You/Database/`.
+Daar staan canonieke `.foryou.md` bestanden voor personages, omgevingen, situaties en stijlregels, plus exports voor runs/scores en interne chatlogs.
+Bestandsnamen beginnen met de naam en bevatten daarna type plus vast ID, zoals `peter-character-0002.foryou.md`, zodat Dropbox en GPT makkelijker kunnen zoeken.
+Chatlogs worden zowel als machineleesbare JSONL als leesbare Markdown-transcripts geëxporteerd.
+
+Belangrijk: `data/live.sqlite` zelf wordt niet via Dropbox gesynct. SQLite blijft de lokale runtime-database; de Dropbox-map is de gedeelde bestandslaag voor redactie, analyse en GPT-context. Speelbare scène-compositie blijft in SQLite en wordt niet als aparte GPT-facing catalogusmap geëxporteerd.
+
+Configuratie:
+- `FORYOU_DROPBOX_CATALOG_DIR` (default: `~/Dropbox/For You/Database`, met macOS CloudStorage-detectie)
+- `FORYOU_DROPBOX_CATALOG_ENABLED=0` om uit te zetten
+- `FORYOU_DROPBOX_CATALOG_INTERVAL_MS` (default: `2000`)
+
+Zie `docs/DROPBOX_CATALOG_SYNC.md` voor de volledige structuur en conflictregels.
+
+## Lokale API playground
+De API playground en OpenAI/vector-store tooling zijn bewust local-only. `public/api-playground.html`, `lib/openai-catalog-sync.js`, `api/` en `api-playground/` staan in `.gitignore` en worden niet naar de Mac Studio gedeployed.
 
 ## Moderatie en botstijl aanpassen
 - Voeg woorden toe in `moderation/bad-words.txt` voor blokkeren.

@@ -12,7 +12,7 @@ const {
 } = require("../lib/crowd-engine");
 
 const DEFAULTS = {
-  url: "ws://127.0.0.1:3000",
+  url: "ws://127.0.0.1:3010",
   clients: 50,
   durationSec: 180,
   spawnMs: 80,
@@ -443,7 +443,7 @@ function showHelp() {
   console.log(`Usage: node scripts/simulate-chatters.js [options]
 
 Options:
-  --url <ws-url>              Default: ws://127.0.0.1:3000
+  --url <ws-url>              Default: ws://127.0.0.1:3010
   --clients <n>               Number of simulated users, max 200 (default: 50)
   --duration <sec>            Test duration in seconds, 0 = infinite (default: 180)
   --spawn-ms <ms>             Delay between client starts (default: 80)
