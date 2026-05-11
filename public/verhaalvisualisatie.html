@@ -198,7 +198,7 @@
 
     .toolbar-row {
       display: grid;
-      grid-template-columns: minmax(220px, 1fr) minmax(150px, 190px) auto auto;
+      grid-template-columns: minmax(220px, 1fr) minmax(150px, 190px) auto auto auto;
       gap: 10px;
       align-items: center;
     }
@@ -253,9 +253,53 @@
       overflow: hidden;
     }
 
+    .graph-wrap:fullscreen {
+      width: 100vw;
+      height: 100vh;
+      min-height: 100vh;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .graph-wrap.is-fullscreen {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      width: 100vw;
+      height: 100vh;
+      min-height: 100vh;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
     #graph {
       position: absolute;
       inset: 0;
+    }
+
+    .graph-floating-actions {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 4;
+      display: none;
+      gap: 8px;
+    }
+
+    .graph-wrap:fullscreen .graph-floating-actions,
+    .graph-wrap.is-fullscreen .graph-floating-actions {
+      display: flex;
+    }
+
+    .graph-floating-actions button {
+      width: auto;
+      min-height: 34px;
+      background: rgba(26, 26, 26, 0.84);
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.22);
+      backdrop-filter: blur(14px);
     }
 
     .graph-message {
@@ -491,6 +535,7 @@
           </select>
           <button type="button" id="fitButton">Fit</button>
           <button type="button" id="resetLayoutButton">Reset layout</button>
+          <button type="button" id="fullscreenButton">Volledig scherm</button>
         </div>
 
         <div class="filter-grid" aria-label="Filters">
@@ -508,8 +553,12 @@
       </section>
 
       <section class="workspace">
-        <div class="graph-wrap">
+        <div class="graph-wrap" id="graphWrap">
           <div id="graph" aria-label="Verhaalnetwerk"></div>
+          <div class="graph-floating-actions" aria-label="Volledig scherm controles">
+            <button type="button" id="fullscreenFitButton">Fit</button>
+            <button type="button" id="exitFullscreenButton">Sluit</button>
+          </div>
           <div class="graph-message" id="graphMessage"></div>
         </div>
 
@@ -547,6 +596,7 @@
         graph: null,
         cy: null,
         selectedNodeId: "",
+        fullscreenFallback: false,
       };
 
       const els = {
@@ -562,6 +612,9 @@
         layoutSelect: document.getElementById("layoutSelect"),
         fitButton: document.getElementById("fitButton"),
         resetLayoutButton: document.getElementById("resetLayoutButton"),
+        fullscreenButton: document.getElementById("fullscreenButton"),
+        fullscreenFitButton: document.getElementById("fullscreenFitButton"),
+        exitFullscreenButton: document.getElementById("exitFullscreenButton"),
         toggleCharacters: document.getElementById("toggleCharacters"),
         toggleScenes: document.getElementById("toggleScenes"),
         toggleEnvironments: document.getElementById("toggleEnvironments"),
@@ -569,6 +622,7 @@
         toggleHappensEdges: document.getElementById("toggleHappensEdges"),
         statsLine: document.getElementById("statsLine"),
         detailsPanel: document.getElementById("detailsPanel"),
+        graphWrap: document.getElementById("graphWrap"),
         graphMessage: document.getElementById("graphMessage"),
       };
 
@@ -946,6 +1000,59 @@
         if (visible.length > 0) cy.fit(visible, 56);
       }
 
+      function resizeGraph({ fit = false } = {}) {
+        if (!state.cy) return;
+        state.cy.resize();
+        if (fit) fitVisible();
+      }
+
+      function graphIsFullscreen() {
+        return document.fullscreenElement === els.graphWrap || state.fullscreenFallback;
+      }
+
+      function updateFullscreenUi() {
+        const active = graphIsFullscreen();
+        els.graphWrap.classList.toggle("is-fullscreen", active);
+        els.fullscreenButton.textContent = active ? "Sluit groot" : "Volledig scherm";
+        els.fullscreenButton.setAttribute("aria-pressed", active ? "true" : "false");
+        requestAnimationFrame(() => resizeGraph({ fit: active }));
+      }
+
+      async function enterGraphFullscreen() {
+        try {
+          if (els.graphWrap.requestFullscreen) {
+            state.fullscreenFallback = false;
+            await els.graphWrap.requestFullscreen();
+          } else {
+            state.fullscreenFallback = true;
+            els.graphWrap.classList.add("is-fullscreen");
+          }
+        } catch {
+          state.fullscreenFallback = true;
+          els.graphWrap.classList.add("is-fullscreen");
+        }
+        updateFullscreenUi();
+      }
+
+      async function exitGraphFullscreen() {
+        try {
+          if (document.fullscreenElement === els.graphWrap && document.exitFullscreen) {
+            await document.exitFullscreen();
+          }
+        } catch {}
+        state.fullscreenFallback = false;
+        els.graphWrap.classList.remove("is-fullscreen");
+        updateFullscreenUi();
+      }
+
+      function toggleGraphFullscreen() {
+        if (graphIsFullscreen()) {
+          exitGraphFullscreen();
+        } else {
+          enterGraphFullscreen();
+        }
+      }
+
       function updateCounts() {
         const cy = state.cy;
         if (!cy) return;
@@ -1170,6 +1277,9 @@
       els.fitButton.addEventListener("click", fitVisible);
       els.resetLayoutButton.addEventListener("click", () => runLayout(true));
       els.layoutSelect.addEventListener("change", () => runLayout(true));
+      els.fullscreenButton.addEventListener("click", toggleGraphFullscreen);
+      els.fullscreenFitButton.addEventListener("click", fitVisible);
+      els.exitFullscreenButton.addEventListener("click", exitGraphFullscreen);
       els.detailsPanel.addEventListener("click", (event) => {
         const target = event.target && event.target.closest ? event.target.closest("[data-clear-focus]") : null;
         if (!target) return;
@@ -1188,6 +1298,8 @@
           fitVisible();
         });
       });
+      document.addEventListener("fullscreenchange", updateFullscreenUi);
+      window.addEventListener("resize", () => resizeGraph());
 
       if (state.token) {
         showApp();
