@@ -253,16 +253,7 @@
       overflow: hidden;
     }
 
-    .graph-wrap:fullscreen {
-      width: 100vw;
-      height: 100vh;
-      min-height: 100vh;
-      border: 0;
-      border-radius: 0;
-      box-shadow: none;
-    }
-
-    .graph-wrap.is-fullscreen {
+    .graph-wrap.is-large-view {
       position: fixed;
       inset: 0;
       z-index: 100;
@@ -274,32 +265,81 @@
       box-shadow: none;
     }
 
-    #graph {
-      position: absolute;
-      inset: 0;
+    body.graph-viewport-open {
+      overflow: hidden;
     }
 
-    .graph-floating-actions {
-      position: absolute;
-      top: 14px;
-      right: 14px;
-      z-index: 4;
+    body.graph-viewport-open header,
+    body.graph-viewport-open .details,
+    body.graph-viewport-open .legend {
       display: none;
+    }
+
+    body.graph-viewport-open main {
+      width: 100%;
+      margin: 0;
+    }
+
+    body.graph-viewport-open .toolbar {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 120;
+      width: min(1280px, calc(100vw - 24px));
+      max-height: calc(100vh - 24px);
+      overflow: auto;
+      background: rgba(255, 253, 248, 0.88);
+      border-color: rgba(255, 255, 255, 0.38);
+      box-shadow: 0 18px 64px rgba(0, 0, 0, 0.32);
+      backdrop-filter: blur(18px);
+      padding: 10px;
       gap: 8px;
     }
 
-    .graph-wrap:fullscreen .graph-floating-actions,
-    .graph-wrap.is-fullscreen .graph-floating-actions {
-      display: flex;
+    body.graph-viewport-open .toolbar-row {
+      grid-template-columns: minmax(210px, 1fr) minmax(130px, 180px) minmax(76px, auto) minmax(112px, auto) minmax(104px, auto);
+      gap: 8px;
     }
 
-    .graph-floating-actions button {
-      width: auto;
+    body.graph-viewport-open .filter-grid {
+      grid-template-columns: repeat(5, minmax(112px, 1fr));
+      gap: 8px;
+    }
+
+    body.graph-viewport-open input[type="search"],
+    body.graph-viewport-open select,
+    body.graph-viewport-open button,
+    body.graph-viewport-open .check-line {
       min-height: 34px;
-      background: rgba(26, 26, 26, 0.84);
-      color: #fff;
-      border-color: rgba(255, 255, 255, 0.22);
-      backdrop-filter: blur(14px);
+      font-size: 0.86rem;
+    }
+
+    body.graph-viewport-open .check-line {
+      padding: 6px 9px;
+    }
+
+    body.graph-viewport-open input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+    }
+
+    body.graph-viewport-open .stats {
+      font-size: 0.8rem;
+    }
+
+    body.graph-viewport-open .stat-pill {
+      padding: 5px 9px;
+    }
+
+    body.graph-viewport-open .workspace {
+      display: block;
+      min-height: 100vh;
+    }
+
+    #graph {
+      position: absolute;
+      inset: 0;
     }
 
     .graph-message {
@@ -535,7 +575,7 @@
           </select>
           <button type="button" id="fitButton">Fit</button>
           <button type="button" id="resetLayoutButton">Reset layout</button>
-          <button type="button" id="fullscreenButton">Volledig scherm</button>
+          <button type="button" id="largeViewButton">Grote kaart</button>
         </div>
 
         <div class="filter-grid" aria-label="Filters">
@@ -555,10 +595,6 @@
       <section class="workspace">
         <div class="graph-wrap" id="graphWrap">
           <div id="graph" aria-label="Verhaalnetwerk"></div>
-          <div class="graph-floating-actions" aria-label="Volledig scherm controles">
-            <button type="button" id="fullscreenFitButton">Fit</button>
-            <button type="button" id="exitFullscreenButton">Sluit</button>
-          </div>
           <div class="graph-message" id="graphMessage"></div>
         </div>
 
@@ -596,7 +632,7 @@
         graph: null,
         cy: null,
         selectedNodeId: "",
-        fullscreenFallback: false,
+        largeViewActive: false,
       };
 
       const els = {
@@ -612,9 +648,7 @@
         layoutSelect: document.getElementById("layoutSelect"),
         fitButton: document.getElementById("fitButton"),
         resetLayoutButton: document.getElementById("resetLayoutButton"),
-        fullscreenButton: document.getElementById("fullscreenButton"),
-        fullscreenFitButton: document.getElementById("fullscreenFitButton"),
-        exitFullscreenButton: document.getElementById("exitFullscreenButton"),
+        largeViewButton: document.getElementById("largeViewButton"),
         toggleCharacters: document.getElementById("toggleCharacters"),
         toggleScenes: document.getElementById("toggleScenes"),
         toggleEnvironments: document.getElementById("toggleEnvironments"),
@@ -1006,50 +1040,30 @@
         if (fit) fitVisible();
       }
 
-      function graphIsFullscreen() {
-        return document.fullscreenElement === els.graphWrap || state.fullscreenFallback;
-      }
-
-      function updateFullscreenUi() {
-        const active = graphIsFullscreen();
-        els.graphWrap.classList.toggle("is-fullscreen", active);
-        els.fullscreenButton.textContent = active ? "Sluit groot" : "Volledig scherm";
-        els.fullscreenButton.setAttribute("aria-pressed", active ? "true" : "false");
+      function updateLargeViewUi() {
+        const active = state.largeViewActive;
+        document.body.classList.toggle("graph-viewport-open", active);
+        els.graphWrap.classList.toggle("is-large-view", active);
+        els.largeViewButton.textContent = active ? "Sluit groot" : "Grote kaart";
+        els.largeViewButton.setAttribute("aria-pressed", active ? "true" : "false");
         requestAnimationFrame(() => resizeGraph({ fit: active }));
       }
 
-      async function enterGraphFullscreen() {
-        try {
-          if (els.graphWrap.requestFullscreen) {
-            state.fullscreenFallback = false;
-            await els.graphWrap.requestFullscreen();
-          } else {
-            state.fullscreenFallback = true;
-            els.graphWrap.classList.add("is-fullscreen");
-          }
-        } catch {
-          state.fullscreenFallback = true;
-          els.graphWrap.classList.add("is-fullscreen");
-        }
-        updateFullscreenUi();
+      function enterLargeView() {
+        state.largeViewActive = true;
+        updateLargeViewUi();
       }
 
-      async function exitGraphFullscreen() {
-        try {
-          if (document.fullscreenElement === els.graphWrap && document.exitFullscreen) {
-            await document.exitFullscreen();
-          }
-        } catch {}
-        state.fullscreenFallback = false;
-        els.graphWrap.classList.remove("is-fullscreen");
-        updateFullscreenUi();
+      function exitLargeView() {
+        state.largeViewActive = false;
+        updateLargeViewUi();
       }
 
-      function toggleGraphFullscreen() {
-        if (graphIsFullscreen()) {
-          exitGraphFullscreen();
+      function toggleLargeView() {
+        if (state.largeViewActive) {
+          exitLargeView();
         } else {
-          enterGraphFullscreen();
+          enterLargeView();
         }
       }
 
@@ -1277,9 +1291,12 @@
       els.fitButton.addEventListener("click", fitVisible);
       els.resetLayoutButton.addEventListener("click", () => runLayout(true));
       els.layoutSelect.addEventListener("change", () => runLayout(true));
-      els.fullscreenButton.addEventListener("click", toggleGraphFullscreen);
-      els.fullscreenFitButton.addEventListener("click", fitVisible);
-      els.exitFullscreenButton.addEventListener("click", exitGraphFullscreen);
+      els.largeViewButton.addEventListener("click", toggleLargeView);
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && state.largeViewActive) {
+          exitLargeView();
+        }
+      });
       els.detailsPanel.addEventListener("click", (event) => {
         const target = event.target && event.target.closest ? event.target.closest("[data-clear-focus]") : null;
         if (!target) return;
@@ -1298,7 +1315,6 @@
           fitVisible();
         });
       });
-      document.addEventListener("fullscreenchange", updateFullscreenUi);
       window.addEventListener("resize", () => resizeGraph());
 
       if (state.token) {
