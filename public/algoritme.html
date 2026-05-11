@@ -757,6 +757,23 @@
         font-size: 13px;
       }
 
+      .promptSettingsEditor {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfaf6;
+        padding: 10px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .promptSettingsHeader {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+
       .nameLine {
         display: flex;
         justify-content: space-between;
@@ -873,9 +890,7 @@
       }
 
       .segmentedToggle.on button[data-osc-send="1"],
-      .segmentedToggle.off button[data-osc-send="0"],
-      .segmentedToggle.on button[data-sync-paused="1"],
-      .segmentedToggle.off button[data-sync-paused="0"] {
+      .segmentedToggle.off button[data-osc-send="0"] {
         background: #2563eb;
         color: #fff;
         box-shadow: 0 1px 4px rgba(37, 99, 235, 0.22);
@@ -1238,22 +1253,7 @@
           <details class="settingsBlock" data-ui-state-key="settings.sync">
             <summary>Sync</summary>
             <div class="settingsBlockBody">
-              <div id="syncStatusText" class="small"></div>
-              <label>Mac Studio / peer URL<input id="syncPeerUrl" maxlength="300" placeholder="http://192.168.1.49:3310" /></label>
-              <div class="toggleLine">
-                <span>Sync pauzeren</span>
-                <div id="syncPauseToggle" class="segmentedToggle off" role="group" aria-label="Sync pauzeren">
-                  <input id="syncPaused" class="segmentedToggleInput" type="checkbox" />
-                  <button id="syncPauseOnBtn" type="button" data-sync-paused="1">Aan</button>
-                  <button id="syncPauseOffBtn" type="button" data-sync-paused="0">Uit</button>
-                </div>
-              </div>
-              <div id="syncPeersList" class="commandList"></div>
-              <div class="actions">
-                <button id="saveSyncSettingsBtn" class="primary" type="button">Bewaar sync</button>
-                <button id="syncNowBtn" type="button">Sync nu</button>
-              </div>
-              <div id="syncMsg" class="msg"></div>
+              <div class="small">Peer-, Dropbox- en lokale API-sync staan bewust buiten deze showpagina, zodat de show/deploy rustig blijft.</div>
             </div>
           </details>
 
@@ -1309,16 +1309,15 @@
             <summary>Prompt naar TouchDesigner</summary>
             <div class="settingsBlockBody">
               <textarea id="promptOutput" class="promptBox" readonly></textarea>
-              <details class="inactiveBlock" data-ui-state-key="settings.prompt.settings">
-                <summary>Prompt instellingen</summary>
-                <div class="stack" style="margin-top:8px;">
-                  <label>Globale system prompt<textarea id="globalPrompt"></textarea></label>
-                  <label>Prompt template<textarea id="promptTemplate"></textarea></label>
-                  <div class="actions">
-                    <button id="savePromptSettingsBtn" class="primary" type="button">Bewaar prompt instellingen</button>
-                  </div>
+              <div class="promptSettingsEditor">
+                <div class="promptSettingsHeader">
+                  <h3>Prompt instellingen</h3>
+                  <button id="savePromptSettingsBtn" class="primary" type="button">Bewaar prompt instellingen</button>
                 </div>
-              </details>
+                <label>Globale system prompt<textarea id="globalPrompt"></textarea></label>
+                <label>Prompt template<textarea id="promptTemplate"></textarea></label>
+                <div id="promptMsg" class="msg"></div>
+              </div>
               <div class="two">
                 <div class="panel" style="box-shadow:none;background:#fff;">
                   <h3>Top personages</h3>
@@ -1333,7 +1332,6 @@
                 <h3>Runs</h3>
                 <div id="runsList" class="list"></div>
               </div>
-              <div id="promptMsg" class="msg"></div>
             </div>
           </details>
         </section>
@@ -1393,8 +1391,8 @@
         let lastSeenOscReceivedSerial = 0;
         let oscDraftDirty = false;
         let oscDraftHold = null;
-        let syncDraftDirty = false;
         let runActionPending = false;
+        let promptSettingsSavePending = false;
 
         const $ = (id) => document.getElementById(id);
         const loginEl = $("login");
@@ -1508,6 +1506,7 @@
             const err = new Error(body && body.error ? body.error : "request_failed");
             err.body = body;
             err.status = res.status;
+            err.path = path;
             err.responseText = raw;
             throw err;
           }
@@ -3043,21 +3042,6 @@
           renderOscCommandList("oscReceiveCommands", osc.receiveCommands || []);
         }
 
-        function updateSyncPauseToggle() {
-          const paused = !!$("syncPaused").checked;
-          const toggle = $("syncPauseToggle");
-          toggle.classList.toggle("on", paused);
-          toggle.classList.toggle("off", !paused);
-          $("syncPauseOnBtn").setAttribute("aria-pressed", paused ? "true" : "false");
-          $("syncPauseOffBtn").setAttribute("aria-pressed", paused ? "false" : "true");
-        }
-
-        function setSyncPausedField(paused) {
-          $("syncPaused").checked = !!paused;
-          syncDraftDirty = true;
-          updateSyncPauseToggle();
-        }
-
         function renderSync() {
           const sync = state && state.sync ? state.sync : {};
           const peers = Array.isArray(sync.peers) ? sync.peers : [];
@@ -3069,27 +3053,6 @@
               ? "sync online"
               : peers.length ? "offline bewaard" : "geen peer";
           $("syncStatusBadge").className = "badge " + (!paused && onlineCount > 0 ? "good" : paused ? "" : "warning");
-          $("syncStatusText").textContent = `Dit apparaat: ${sync.deviceName || "onbekend"} · ${sync.deviceId || ""}` +
-            (sync.lastRunAt ? ` · laatste poging ${formatTime(sync.lastRunAt)}` : " · nog geen syncpoging");
-          if (!syncDraftDirty && document.activeElement !== $("syncPeerUrl")) {
-            $("syncPeerUrl").value = peers[0] ? peers[0].url || "" : "";
-            $("syncPaused").checked = paused;
-          }
-          updateSyncPauseToggle();
-          $("syncPeersList").innerHTML = peers.map((peer) => {
-            const status = peer.online ? "online" : peer.lastError ? "fout" : "offline";
-            const detail = peer.lastError
-              ? `${peer.lastError}${peer.lastErrorAt ? " om " + formatTime(peer.lastErrorAt) : ""}`
-              : peer.lastOkAt
-                ? `laatst ok ${formatTime(peer.lastOkAt)}${peer.lastSeenBuild ? " · " + peer.lastSeenBuild : ""}`
-                : "nog niet bereikt";
-            return `
-              <div class="commandRow">
-                <span class="mono">${esc(peer.url || "")}</span>
-                <span class="small">${esc(status)} · ${esc(detail)}</span>
-              </div>
-            `;
-          }).join("") || '<div class="small">Geen sync-peer ingesteld.</div>';
         }
 
         function oscServerValues(osc) {
@@ -3404,6 +3367,23 @@
           }
         }
 
+        function formatMirrorSync(mirrorSync) {
+          if (!mirrorSync) return "";
+          const parts = [];
+          if (mirrorSync.dropbox) {
+            parts.push(mirrorSync.dropbox.ok === false ? "Dropbox fout" : mirrorSync.dropbox.enabled === false ? "Dropbox uit" : "Dropbox ok");
+          }
+          if (mirrorSync.databaseMd) {
+            parts.push(mirrorSync.databaseMd.ok === false ? "database.md fout" : "database.md ok");
+          }
+          return parts.join(" · ");
+        }
+
+        function savedMessage(result, fallback = "Opgeslagen.") {
+          const mirrorText = formatMirrorSync(result && result.mirrorSync);
+          return mirrorText ? `${fallback} ${mirrorText}.` : fallback;
+        }
+
         async function post(path, body, msgTarget = "catalogMsg") {
           const result = await api(path, {
             method: "POST",
@@ -3412,7 +3392,7 @@
           });
           state = result.state || state;
           render();
-          setMsg(msgTarget, "Opgeslagen.");
+          setMsg(msgTarget, savedMessage(result));
           return result;
         }
 
@@ -3433,12 +3413,51 @@
           };
         }
 
+        function promptSettingsBody() {
+          return {
+            globalPrompt: $("globalPrompt").value,
+            promptTemplate: $("promptTemplate").value,
+          };
+        }
+
         async function saveAlgorithmSettings(msgTarget, successText) {
           try {
             await post("/admin/algorithm/settings", algorithmSettingsBody(), msgTarget);
             setMsg(msgTarget, successText || "Settings opgeslagen.");
           } catch (err) {
             setMsg(msgTarget, formatError(err), true);
+          }
+        }
+
+        async function savePromptSettings() {
+          if (promptSettingsSavePending) return;
+          const button = $("savePromptSettingsBtn");
+          const originalText = button.textContent;
+          promptSettingsSavePending = true;
+          button.disabled = true;
+          button.textContent = "Opslaan...";
+          setMsg("promptMsg", "Prompt instellingen worden opgeslagen...");
+          try {
+            const result = await api("/admin/algorithm/prompt-settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(promptSettingsBody()),
+            });
+            state = result.state || state;
+            render();
+            setMsg(
+              "promptMsg",
+              savedMessage(
+                result,
+                "Prompt instellingen opgeslagen. Nieuwe prompt is actief voor volgende situaties en TouchDesigner-output."
+              )
+            );
+          } catch (err) {
+            setMsg("promptMsg", formatError(err), true);
+          } finally {
+            promptSettingsSavePending = false;
+            button.disabled = false;
+            button.textContent = originalText;
           }
         }
 
@@ -3474,51 +3493,6 @@
           holdOscDraft(values);
           oscDraftDirty = false;
           return result;
-        }
-
-        async function saveSyncSettings(successText = "Sync-instellingen opgeslagen.") {
-          try {
-            const peerUrl = String($("syncPeerUrl").value || "").trim();
-            const result = await api("/admin/sync/settings", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                peers: peerUrl ? [peerUrl] : [],
-                paused: !!$("syncPaused").checked,
-              }),
-            });
-            state = result.state || state;
-            syncDraftDirty = false;
-            render();
-            setMsg("syncMsg", successText);
-            return true;
-          } catch (err) {
-            setMsg("syncMsg", formatError(err), true);
-            return false;
-          }
-        }
-
-        async function syncNow() {
-          try {
-            if (syncDraftDirty) {
-              const saved = await saveSyncSettings("Sync-instellingen opgeslagen. Nu synchroniseren...");
-              if (!saved) return;
-            }
-            const result = await api("/admin/sync/run", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: "{}",
-            });
-            state = result.state || state;
-            render();
-            const peers = result.result && Array.isArray(result.result.peers) ? result.result.peers : [];
-            const failed = peers.filter((peer) => !peer.ok);
-            setMsg("syncMsg", failed.length
-              ? "Sync geprobeerd. Offline peers blijven lokaal bewaard."
-              : "Gesynct.");
-          } catch (err) {
-            setMsg("syncMsg", formatError(err), true);
-          }
         }
 
         function archiveBody(kind, id) {
@@ -3785,9 +3759,7 @@
             } catch (err) { setMsg("catalogMsg", formatError(err), true); }
           });
 
-          $("savePromptSettingsBtn").addEventListener("click", () => {
-            saveAlgorithmSettings("promptMsg", "Prompt instellingen opgeslagen.");
-          });
+          $("savePromptSettingsBtn").addEventListener("click", savePromptSettings);
           ["scoreHeartWeight", "scoreBoredWeight", "scoreCommentWeight", "scoreTimeBlend"].forEach((id) => {
             $(id).addEventListener("input", () => updateScoreSettingsPreview());
             $(id).addEventListener("change", () => updateScoreSettingsPreview());
@@ -3816,18 +3788,6 @@
             $(id).addEventListener("input", markOscDraftDirty);
             $(id).addEventListener("change", markOscDraftDirty);
           });
-          $("syncPeerUrl").addEventListener("input", () => { syncDraftDirty = true; });
-          $("syncPeerUrl").addEventListener("change", () => { syncDraftDirty = true; });
-          $("syncPauseOnBtn").addEventListener("click", () => {
-            setSyncPausedField(true);
-            saveSyncSettings("Sync gepauzeerd.");
-          });
-          $("syncPauseOffBtn").addEventListener("click", () => {
-            setSyncPausedField(false);
-            saveSyncSettings("Sync actief.");
-          });
-          $("saveSyncSettingsBtn").addEventListener("click", () => saveSyncSettings());
-          $("syncNowBtn").addEventListener("click", syncNow);
           $("saveOscSettingsBtn").addEventListener("click", () => saveOscSettings());
           $("oscSendOnBtn").addEventListener("click", () => {
             setOscSendEnabled(true);
@@ -4039,7 +3999,7 @@
             title_required: "Titel is verplicht.",
             invalid_send_target: "Vul eerst send host en send poort in voordat OSC verzenden aan gaat.",
             request_failed: err && err.status === 404
-              ? "Start run is nog niet beschikbaar op deze server. Herstart de lokale server en refresh de pagina."
+              ? "Deze server kent deze actie nog niet. Herstart de lokale 3010-server en refresh de pagina."
               : "Verzoek mislukt. Refresh de pagina en probeer opnieuw.",
           }[code];
           return (friendly || code) + issues;

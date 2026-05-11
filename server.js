@@ -56,12 +56,25 @@ const {
   safeSyncJsonParse,
   syncSettingIsAllowed,
 } = require("./lib/local-sync");
+const { createDropboxCatalogSync } = require("./lib/dropbox-catalog-sync");
+const { writeCatalogDatabaseMarkdown } = require("./lib/catalog-database-md");
 const { createUnifiNetworkAgent } = require("./lib/unifi-network-agent");
 
 loadLocalDotEnv(__dirname);
 
-let PORT = Number.parseInt(process.env.PORT || "3000", 10);
-if (!Number.isFinite(PORT) || PORT < 1 || PORT > 65535) PORT = 3000;
+const LOCAL_API_PLAYGROUND_HTML_PATH = path.join(__dirname, "public", "api-playground.html");
+const LOCAL_OPENAI_CATALOG_SYNC_PATH = path.join(__dirname, "lib", "openai-catalog-sync.js");
+let createOpenAiCatalogSync = null;
+if (fs.existsSync(LOCAL_OPENAI_CATALOG_SYNC_PATH)) {
+  try {
+    ({ createOpenAiCatalogSync } = require(LOCAL_OPENAI_CATALOG_SYNC_PATH));
+  } catch (err) {
+    console.warn(`Local OpenAI catalog sync unavailable: ${err && err.message ? err.message : "unknown"}`);
+  }
+}
+
+let PORT = Number.parseInt(process.env.PORT || "3010", 10);
+if (!Number.isFinite(PORT) || PORT < 1 || PORT > 65535) PORT = 3010;
 const MODERATION_WORDS_PATH = path.join(__dirname, "moderation", "bad-words.txt");
 const MODERATION_JSON_PATH = path.join(__dirname, "moderation", "blocked-words.json");
 const MODERATION_TEXT_DEFAULT = "# Een woord per regel. Lege regels en regels met # worden genegeerd.\n";
@@ -130,6 +143,8 @@ const BUILD_VERSION_INPUT_FILES = [
   path.join(__dirname, "server.js"),
   path.join(__dirname, "lib", "show-algorithm.js"),
   path.join(__dirname, "lib", "unifi-network-agent.js"),
+  path.join(__dirname, "lib", "dropbox-catalog-sync.js"),
+  path.join(__dirname, "lib", "catalog-database-md.js"),
   path.join(__dirname, "public", "index.html"),
   path.join(__dirname, "public", "admin.html"),
   path.join(__dirname, "public", "algoritme.html"),
@@ -1232,6 +1247,8 @@ let lastOscReceived = null;
 let lastOscReceivedSerial = 0;
 
 const app = express();
+let dropboxCatalogSync = null;
+let openAiCatalogSync = null;
 const FAVICON_PRODUCT = {
   bg: "#312e81",
   bg2: "#2563eb",
@@ -5268,6 +5285,12 @@ function getAlgorithmState() {
       lastAlgorithmOscSend,
     },
     sync: getSyncStatus(),
+    dropboxCatalog: dropboxCatalogSync
+      ? dropboxCatalogSync.getStatus()
+      : { ok: true, enabled: false, running: false },
+    openAiCatalog: openAiCatalogSync
+      ? openAiCatalogSync.getStatus()
+      : { ok: true, enabled: false, ready: false, apiKeyConfigured: false },
     touchDesigner: {
       promptMaxChars: ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS,
       oscFeedbackAddress: OSC_CONTROL_FEEDBACK_ADDRESS,
@@ -6170,6 +6193,99 @@ function sendAlgorithmApiError(res, err) {
     } catch {}
   }
   res.status(status).json(payload);
+}
+
+function sendOpenAiCatalogApiError(res, err) {
+  const code = String(err && err.message ? err.message : "openai_catalog_error")
+    .replace(/sk-[A-Za-z0-9_-]+/g, "sk-...")
+    .slice(0, 300);
+  const rawStatus = Number(err && err.status || 0);
+  const status = rawStatus >= 400 && rawStatus < 600 ? rawStatus : 502;
+  writeDebug("openai_catalog_api_error", { status, message: code });
+  res.status(status).json({ ok: false, error: code });
+}
+
+function safePublicError(err, fallback = "sync_failed") {
+  return String(err && err.message ? err.message : fallback)
+    .replace(/sk-[A-Za-z0-9_-]+/g, "sk-...")
+    .slice(0, 300);
+}
+
+function cloudApiDatabaseOutputPaths() {
+  const primary = path.resolve(process.env.FORYOU_CLOUD_API_DATABASE_MD || path.join(__dirname, "output", "cloud-api", "database.md"));
+  const outputs = [primary];
+  const rootDir = dropboxCatalogSync ? dropboxCatalogSync.rootDir : "";
+  if (rootDir) {
+    const legacy = path.join(path.dirname(rootDir), "Claude API", "database.md");
+    const shouldWriteLegacy = isTruthy(process.env.FORYOU_WRITE_LEGACY_CLAUDE_DATABASE_MD || "")
+      || fs.existsSync(path.dirname(legacy));
+    if (shouldWriteLegacy && path.resolve(legacy) !== primary) outputs.push(legacy);
+  }
+  return outputs;
+}
+
+function databaseMdStatus() {
+  return cloudApiDatabaseOutputPaths().map((filePath) => {
+    try {
+      const stat = fs.statSync(filePath);
+      return {
+        filePath,
+        exists: true,
+        bytes: Number(stat.size || 0),
+        mtimeMs: Math.round(Number(stat.mtimeMs || 0)),
+        updatedAt: new Date(stat.mtimeMs).toISOString(),
+      };
+    } catch {
+      return { filePath, exists: false };
+    }
+  });
+}
+
+async function syncCatalogMirrorsAfterSave(reason = "catalog_save", options = {}) {
+  const includeOpenAi = !!(options && options.includeOpenAi);
+  const result = {
+    reason: String(reason || "catalog_save").slice(0, 80),
+    dropbox: null,
+    databaseMd: null,
+    openAi: null,
+  };
+  try {
+    result.dropbox = dropboxCatalogSync
+      ? dropboxCatalogSync.syncNow()
+      : { ok: true, enabled: false, running: false };
+  } catch (err) {
+    result.dropbox = { ok: false, error: safePublicError(err, "dropbox_catalog_sync_failed") };
+  }
+
+  try {
+    const rootDir = dropboxCatalogSync ? dropboxCatalogSync.rootDir : undefined;
+    result.databaseMd = writeCatalogDatabaseMarkdown({
+      rootDir,
+      outputPaths: cloudApiDatabaseOutputPaths(),
+    });
+  } catch (err) {
+    result.databaseMd = { ok: false, error: safePublicError(err, "database_md_sync_failed") };
+  }
+
+  if (!includeOpenAi) return result;
+
+  const openAiStatus = openAiCatalogSync
+    ? openAiCatalogSync.getStatus()
+    : { ok: true, enabled: false, ready: false };
+  if (!openAiStatus.enabled) {
+    result.openAi = { ok: true, skipped: true, reason: "openai_catalog_disabled" };
+    return result;
+  }
+  if (!openAiStatus.ready) {
+    result.openAi = { ok: false, skipped: true, reason: "openai_catalog_not_ready" };
+    return result;
+  }
+  try {
+    result.openAi = await openAiCatalogSync.syncApply({ confirm: "FULL_SYNC" });
+  } catch (err) {
+    result.openAi = { ok: false, error: safePublicError(err, "openai_catalog_sync_failed") };
+  }
+  return result;
 }
 
 const adminTokens = new Map();
@@ -11146,6 +11262,12 @@ app.get("/algoritme", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "algoritme.html"));
 });
 
+if (fs.existsSync(LOCAL_API_PLAYGROUND_HTML_PATH)) {
+  app.get(["/api-playground", "/api"], (req, res) => {
+    res.sendFile(LOCAL_API_PLAYGROUND_HTML_PATH);
+  });
+}
+
 app.get("/stage", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "stage.html"));
 });
@@ -11398,6 +11520,132 @@ app.post("/admin/sync/run", requireAdmin, async (req, res) => {
   }
 });
 
+app.get("/admin/dropbox-catalog/status", requireAdmin, (req, res) => {
+  res.json(dropboxCatalogSync ? dropboxCatalogSync.getStatus() : { ok: true, enabled: false, running: false });
+});
+
+app.post("/admin/dropbox-catalog/sync-now", requireAdmin, (req, res) => {
+  try {
+    const result = dropboxCatalogSync
+      ? dropboxCatalogSync.syncNow()
+      : { ok: true, enabled: false, running: false };
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err && err.message ? err.message : "dropbox_catalog_sync_failed" });
+  }
+});
+
+if (fs.existsSync(LOCAL_API_PLAYGROUND_HTML_PATH)) {
+app.get("/admin/openai-catalog/status", requireAdmin, (req, res) => {
+  res.json(openAiCatalogSync ? openAiCatalogSync.getStatus() : { ok: true, enabled: false, ready: false });
+});
+
+app.get("/admin/api-playground/status", requireAdmin, (req, res) => {
+  res.json({
+    ok: true,
+    sync: getSyncStatus(),
+    dropboxCatalog: dropboxCatalogSync
+      ? dropboxCatalogSync.getStatus()
+      : { ok: true, enabled: false, running: false },
+    openAiCatalog: openAiCatalogSync
+      ? openAiCatalogSync.getStatus()
+      : { ok: true, enabled: false, ready: false, apiKeyConfigured: false },
+    databaseMd: databaseMdStatus(),
+    runtime: {
+      buildLabel: BUILD_LABEL,
+      port: PORT,
+    },
+  });
+});
+
+app.post("/admin/api-playground/database-md/sync-now", requireAdmin, (req, res) => {
+  try {
+    const result = writeCatalogDatabaseMarkdown({
+      rootDir: dropboxCatalogSync ? dropboxCatalogSync.rootDir : undefined,
+      outputPaths: cloudApiDatabaseOutputPaths(),
+    });
+    res.json({ ok: true, result, databaseMd: databaseMdStatus() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safePublicError(err, "database_md_sync_failed") });
+  }
+});
+
+app.post("/admin/api-playground/sync-all", requireAdmin, async (req, res) => {
+  try {
+    const mirrorSync = await syncCatalogMirrorsAfterSave("api_playground_sync_all", { includeOpenAi: true });
+    res.json({
+      ok: true,
+      mirrorSync,
+      sync: getSyncStatus(),
+      dropboxCatalog: dropboxCatalogSync
+        ? dropboxCatalogSync.getStatus()
+        : { ok: true, enabled: false, running: false },
+      openAiCatalog: openAiCatalogSync
+        ? openAiCatalogSync.getStatus()
+        : { ok: true, enabled: false, ready: false },
+      databaseMd: databaseMdStatus(),
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safePublicError(err, "api_playground_sync_all_failed") });
+  }
+});
+
+app.get("/admin/openai-catalog/vector-stores", requireAdmin, async (req, res) => {
+  try {
+    const result = openAiCatalogSync
+      ? await openAiCatalogSync.listVectorStores()
+      : { ok: true, vectorStores: [] };
+    res.json(result);
+  } catch (err) {
+    sendOpenAiCatalogApiError(res, err);
+  }
+});
+
+app.post("/admin/openai-catalog/audit", requireAdmin, async (req, res) => {
+  try {
+    const result = openAiCatalogSync
+      ? await openAiCatalogSync.audit(req.body && typeof req.body === "object" ? req.body : {})
+      : { ok: false, error: "openai_catalog_unavailable" };
+    res.json(result);
+  } catch (err) {
+    sendOpenAiCatalogApiError(res, err);
+  }
+});
+
+app.post("/admin/openai-catalog/sync-plan", requireAdmin, async (req, res) => {
+  try {
+    const result = openAiCatalogSync
+      ? await openAiCatalogSync.syncPlan(req.body && typeof req.body === "object" ? req.body : {})
+      : { ok: false, error: "openai_catalog_unavailable" };
+    res.json(result);
+  } catch (err) {
+    sendOpenAiCatalogApiError(res, err);
+  }
+});
+
+app.post("/admin/openai-catalog/sync-apply", requireAdmin, async (req, res) => {
+  try {
+    const result = openAiCatalogSync
+      ? await openAiCatalogSync.syncApply(req.body && typeof req.body === "object" ? req.body : {})
+      : { ok: false, error: "openai_catalog_unavailable" };
+    res.status(result && result.ok === false ? 207 : 200).json(result);
+  } catch (err) {
+    sendOpenAiCatalogApiError(res, err);
+  }
+});
+
+app.post("/admin/openai-catalog/chat", requireAdmin, async (req, res) => {
+  try {
+    const result = openAiCatalogSync
+      ? await openAiCatalogSync.chat(req.body && typeof req.body === "object" ? req.body : {})
+      : { ok: false, error: "openai_catalog_unavailable" };
+    res.json(result);
+  } catch (err) {
+    sendOpenAiCatalogApiError(res, err);
+  }
+});
+}
+
 app.get("/admin/algorithm/state", requireAdmin, (req, res) => {
   res.json(getAlgorithmState(req));
 });
@@ -11406,6 +11654,23 @@ app.post("/admin/algorithm/settings", requireAdmin, (req, res) => {
   try {
     const settings = saveAlgorithmSettings(req.body && typeof req.body === "object" ? req.body : {});
     res.json({ ok: true, settings, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/prompt-settings", requireAdmin, async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const settings = saveAlgorithmSettings({
+      globalPrompt: body.globalPrompt,
+      promptTemplate: body.promptTemplate,
+    });
+    const mirrorSync = await syncCatalogMirrorsAfterSave("prompt_settings_save");
+    syncAllPeers("prompt_settings_save").catch((err) => {
+      writeDebug("sync_prompt_settings_failed", { message: err && err.message ? err.message : "unknown" });
+    });
+    res.json({ ok: true, settings, mirrorSync, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -11421,38 +11686,42 @@ app.post("/admin/algorithm/performers/upsert", requireAdmin, (req, res) => {
   }
 });
 
-app.post("/admin/algorithm/characters/upsert", requireAdmin, (req, res) => {
+app.post("/admin/algorithm/characters/upsert", requireAdmin, async (req, res) => {
   try {
     const character = upsertAlgorithmCharacterFromBody(req.body || {});
     const normalizedSceneCount = renormalizeAlgorithmScenesForPerformerRoles();
-    res.json({ ok: true, character, normalizedSceneCount, state: getAlgorithmState(req) });
+    const mirrorSync = await syncCatalogMirrorsAfterSave("character_save");
+    res.json({ ok: true, character, normalizedSceneCount, mirrorSync, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
 });
 
-app.post("/admin/algorithm/situations/upsert", requireAdmin, (req, res) => {
+app.post("/admin/algorithm/situations/upsert", requireAdmin, async (req, res) => {
   try {
     const situation = upsertAlgorithmSituationFromBody(req.body || {});
-    res.json({ ok: true, situation, state: getAlgorithmState(req) });
+    const mirrorSync = await syncCatalogMirrorsAfterSave("situation_save");
+    res.json({ ok: true, situation, mirrorSync, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
 });
 
-app.post("/admin/algorithm/environments/upsert", requireAdmin, (req, res) => {
+app.post("/admin/algorithm/environments/upsert", requireAdmin, async (req, res) => {
   try {
     const environment = upsertAlgorithmEnvironmentFromBody(req.body || {});
-    res.json({ ok: true, environment, state: getAlgorithmState(req) });
+    const mirrorSync = await syncCatalogMirrorsAfterSave("environment_save");
+    res.json({ ok: true, environment, mirrorSync, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
 });
 
-app.post("/admin/algorithm/scenes/upsert", requireAdmin, (req, res) => {
+app.post("/admin/algorithm/scenes/upsert", requireAdmin, async (req, res) => {
   try {
     const scene = upsertAlgorithmSceneFromBody(req.body || {});
-    res.json({ ok: true, scene, state: getAlgorithmState(req) });
+    const mirrorSync = await syncCatalogMirrorsAfterSave("scene_situation_save");
+    res.json({ ok: true, scene, mirrorSync, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -12392,6 +12661,43 @@ app.post("/admin/settings/osc-feedback-target", requireAdmin, (req, res) => {
     oscFeedbackPort: oscState.feedbackPort,
   });
 });
+
+dropboxCatalogSync = createDropboxCatalogSync({
+  dbPath: DB_PATH,
+  logger(event, meta) {
+    writeDebug(`dropbox_catalog_${event}`, meta);
+  },
+  onImported(meta) {
+    try {
+      currentSession = ensureOpenSession();
+      activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
+      stageOutputSettings = saveStageOutputSettings(loadStageOutputSettingsFromSettings());
+      applyCurrentOscProfileToRuntime();
+      broadcastPublicAlgorithmState("dropbox_catalog_sync", { imported: meta });
+    } catch (err) {
+      writeDebug("dropbox_catalog_import_refresh_failed", {
+        message: err && err.message ? err.message : "unknown",
+      });
+    }
+  },
+});
+const dropboxCatalogStart = dropboxCatalogSync.start();
+if (dropboxCatalogStart && dropboxCatalogStart.enabled) {
+  console.log(`Dropbox catalog sync active: ${dropboxCatalogSync.rootDir}`);
+}
+
+if (createOpenAiCatalogSync && fs.existsSync(LOCAL_API_PLAYGROUND_HTML_PATH)) {
+  openAiCatalogSync = createOpenAiCatalogSync({
+    rootDir: dropboxCatalogSync ? dropboxCatalogSync.rootDir : undefined,
+    logger(event, meta) {
+      writeDebug(`openai_catalog_${event}`, meta);
+    },
+  });
+  const openAiCatalogStatus = openAiCatalogSync.getStatus();
+  if (openAiCatalogStatus.enabled) {
+    console.log(`OpenAI catalog sync ${openAiCatalogStatus.ready ? "ready" : "configured"}: ${openAiCatalogStatus.rootDir}`);
+  }
+}
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({

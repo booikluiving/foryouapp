@@ -3,14 +3,14 @@
 
 const WebSocket = require("ws");
 
-const DEFAULT_URL = process.env.FORYOU_BASE_URL || "http://127.0.0.1:3000";
+const DEFAULT_URL = process.env.FORYOU_BASE_URL || "http://127.0.0.1:3010";
 const DEFAULT_TIMEOUT_MS = 3000;
 
 function printHelp() {
   console.log(`For You smoke test
 
 Usage:
-  npm run smoke -- --url http://127.0.0.1:3310
+  npm run smoke -- --url http://127.0.0.1:3010
 
 Options:
   --url <url>                Base URL to test (default: ${DEFAULT_URL})

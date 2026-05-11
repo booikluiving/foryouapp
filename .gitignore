@@ -13,3 +13,11 @@ data/sync-backups/
 data/sync-cache/
 output/
 tmp/
+
+# Local-only API playground / OpenAI tooling.
+# These files are for local experiments and must not be deployed to the Mac Studio.
+public/api-playground.html
+lib/openai-catalog-sync.js
+api/
+api-playground/
+Claude API/
