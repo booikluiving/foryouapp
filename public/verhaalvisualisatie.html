@@ -682,7 +682,7 @@
               "text-halign": "center",
               "text-valign": "center",
               label(ele) {
-                return ele.data("important") || ele.hasClass("searchMatch") || ele.hasClass("selectedNode")
+                return ele.data("important") || ele.hasClass("searchMatch") || ele.hasClass("selectedNode") || ele.hasClass("focusNeighbor")
                   ? ele.data("label")
                   : "";
               },
@@ -753,10 +753,33 @@
             },
           },
           {
+            selector: ".focusFaded",
+            style: {
+              opacity: 0.1,
+            },
+          },
+          {
+            selector: "edge.focusFaded",
+            style: {
+              opacity: 0.07,
+            },
+          },
+          {
+            selector: "node.focusNeighbor",
+            style: {
+              opacity: 1,
+              "border-color": "rgba(17, 17, 17, 0.62)",
+              "border-width": 3,
+              "text-background-opacity": 1,
+              "z-index": 18,
+            },
+          },
+          {
             selector: "node.searchMatch",
             style: {
               "border-color": "#1d1a17",
               "border-width": 4,
+              opacity: 1,
               "text-background-opacity": 1,
               "z-index": 20,
             },
@@ -766,6 +789,7 @@
             style: {
               "border-color": "#111",
               "border-width": 5,
+              opacity: 1,
               "z-index": 30,
             },
           },
@@ -774,6 +798,8 @@
             style: {
               width: 4,
               opacity: 0.92,
+              "line-color": "#1f2933",
+              "target-arrow-color": "#1f2933",
               "z-index": 10,
             },
           },
@@ -846,10 +872,12 @@
           });
         });
 
-        applySearch(false);
         if (state.selectedNodeId && cy.getElementById(state.selectedNodeId).style("display") === "none") {
           clearSelection();
+        } else if (state.selectedNodeId) {
+          applyFocusSelection(cy.getElementById(state.selectedNodeId));
         }
+        applySearch(false);
         updateCounts();
       }
 
@@ -938,7 +966,7 @@
 
       function clearSelection() {
         state.selectedNodeId = "";
-        if (state.cy) state.cy.elements().removeClass("selectedNode selectedNeighborhood");
+        if (state.cy) state.cy.elements().removeClass("selectedNode selectedNeighborhood focusNeighbor focusFaded");
         els.detailsPanel.innerHTML = `
           <span class="type-tag">Geen selectie</span>
           <h2>Geen node geselecteerd</h2>
@@ -947,12 +975,26 @@
       }
 
       function selectNode(node) {
-        const cy = state.cy;
-        state.selectedNodeId = node.id();
-        cy.elements().removeClass("selectedNode selectedNeighborhood");
-        node.addClass("selectedNode");
-        node.connectedEdges().filter(isVisibleElement).addClass("selectedNeighborhood");
+        applyFocusSelection(node);
         renderDetails(node);
+      }
+
+      function applyFocusSelection(node) {
+        const cy = state.cy;
+        if (!cy || !node || !node.length || node.style("display") === "none") return;
+        state.selectedNodeId = node.id();
+        const visibleElements = cy.elements().filter(isVisibleElement);
+        const selectedEdges = node.connectedEdges().filter(isVisibleElement);
+        const selectedNeighbors = selectedEdges.connectedNodes().filter(isVisibleElement).not(node);
+        const focusedElements = node.union(selectedEdges).union(selectedNeighbors);
+
+        cy.batch(() => {
+          cy.elements().removeClass("selectedNode selectedNeighborhood focusNeighbor focusFaded");
+          node.addClass("selectedNode");
+          selectedNeighbors.addClass("focusNeighbor");
+          selectedEdges.addClass("selectedNeighborhood");
+          visibleElements.not(focusedElements).addClass("focusFaded");
+        });
       }
 
       function renderDetails(node) {
@@ -984,6 +1026,7 @@
           <h3>Situaties/scènes</h3>
           ${listHtml(sceneTitles, "Geen gekoppelde situaties.")}
           <div class="detail-actions">
+            <button type="button" data-clear-focus="1">Toon alles</button>
             <a class="button-link" href="/algoritme">Open in algoritme</a>
           </div>
         `;
@@ -1003,6 +1046,7 @@
           <h3>Gekoppelde omgeving</h3>
           ${environment ? listHtml([environment.name || `Omgeving ${environment.id}`], "Geen gekoppelde omgeving.") : "<p class=\"subtle\">Geen gekoppelde omgeving.</p>"}
           <div class="detail-actions">
+            <button type="button" data-clear-focus="1">Toon alles</button>
             <a class="button-link" href="/algoritme">Open in algoritme</a>
           </div>
         `;
@@ -1019,6 +1063,7 @@
           <h3>Situaties/scènes</h3>
           ${listHtml(sceneTitles, "Geen gekoppelde situaties.")}
           <div class="detail-actions">
+            <button type="button" data-clear-focus="1">Toon alles</button>
             <a class="button-link" href="/algoritme">Open in algoritme</a>
           </div>
         `;
@@ -1112,6 +1157,11 @@
       els.fitButton.addEventListener("click", fitVisible);
       els.resetLayoutButton.addEventListener("click", () => runLayout(true));
       els.layoutSelect.addEventListener("change", () => runLayout(true));
+      els.detailsPanel.addEventListener("click", (event) => {
+        const target = event.target && event.target.closest ? event.target.closest("[data-clear-focus]") : null;
+        if (!target) return;
+        clearSelection();
+      });
 
       [
         els.toggleCharacters,
