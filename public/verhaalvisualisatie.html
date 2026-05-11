@@ -15,11 +15,13 @@
       --border: rgba(63, 54, 44, 0.16);
       --accent: #236b6f;
       --accent-dark: #184c50;
-      --character: #3e7cb1;
-      --scene: #c05a4b;
-      --environment: #4e7f54;
-      --edge-a: rgba(62, 124, 177, 0.62);
-      --edge-b: rgba(78, 127, 84, 0.62);
+      --character: #48a5ff;
+      --scene: #ff3b5f;
+      --environment: #92df3e;
+      --graph-bg: #252525;
+      --graph-line: rgba(255, 255, 255, 0.1);
+      --edge-a: rgba(72, 165, 255, 0.5);
+      --edge-b: rgba(146, 223, 62, 0.48);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
@@ -243,13 +245,10 @@
 
     .graph-wrap {
       min-height: 650px;
-      border: 1px solid var(--border);
+      border: 1px solid rgba(0, 0, 0, 0.34);
       border-radius: 8px;
-      background:
-        linear-gradient(rgba(36, 33, 29, 0.035) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(36, 33, 29, 0.035) 1px, transparent 1px),
-        #fffdf8;
-      background-size: 28px 28px;
+      background: var(--graph-bg);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.035);
       position: relative;
       overflow: hidden;
     }
@@ -264,11 +263,11 @@
       left: 16px;
       bottom: 16px;
       z-index: 2;
-      background: rgba(255, 253, 248, 0.92);
-      border: 1px solid var(--border);
+      background: rgba(37, 37, 37, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.16);
       border-radius: 8px;
       padding: 10px 12px;
-      color: var(--muted);
+      color: rgba(255, 255, 255, 0.72);
       max-width: min(420px, calc(100% - 32px));
       display: none;
     }
@@ -375,6 +374,7 @@
 
     .node-dot.character {
       background: var(--character);
+      border-radius: 2px;
     }
 
     .node-dot.scene {
@@ -384,7 +384,8 @@
 
     .node-dot.environment {
       background: var(--environment);
-      clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+      border-radius: 2px;
+      transform: rotate(45deg);
     }
 
     .line-dot {
@@ -668,29 +669,33 @@
           {
             selector: "node",
             style: {
-              "background-color": "#6f6a63",
-              "border-color": "rgba(36, 33, 29, 0.2)",
-              "border-width": 2,
-              color: "#24211d",
-              "font-size": 11,
+              "background-color": "#d8dce0",
+              "border-color": "rgba(255, 255, 255, 0.22)",
+              "border-width": 1,
+              color: "#f3f5f4",
+              "font-size": 9,
               "font-weight": 700,
-              "line-height": 1.15,
-              "text-background-color": "rgba(255, 253, 248, 0.86)",
-              "text-background-opacity": 1,
-              "text-background-padding": 4,
-              "text-background-shape": "roundrectangle",
-              "text-halign": "center",
+              "line-height": 1.12,
+              "text-background-opacity": 0,
+              "text-halign": "right",
               "text-valign": "center",
+              "text-margin-x": 8,
+              "text-outline-color": "#252525",
+              "text-outline-opacity": 0.92,
+              "text-outline-width": 2,
+              "text-wrap": "wrap",
+              "text-max-width": 100,
               label(ele) {
+                if (ele.hasClass("focusFaded") || ele.hasClass("searchDim")) return "";
                 return ele.data("important") || ele.hasClass("searchMatch") || ele.hasClass("selectedNode") || ele.hasClass("focusNeighbor")
                   ? ele.data("label")
                   : "";
               },
               width(ele) {
-                return 34 + Math.min(48, Number(ele.data("weight") || 0) * 7);
+                return 10 + Math.min(18, Number(ele.data("weight") || 0) * 2.4);
               },
               height(ele) {
-                return 34 + Math.min(48, Number(ele.data("weight") || 0) * 7);
+                return 10 + Math.min(18, Number(ele.data("weight") || 0) * 2.4);
               },
               "overlay-opacity": 0,
             },
@@ -698,97 +703,95 @@
           {
             selector: "node[type = 'character']",
             style: {
-              shape: "ellipse",
-              "background-color": "#3e7cb1",
+              shape: "rectangle",
+              "background-color": "#48a5ff",
             },
           },
           {
             selector: "node[type = 'scene']",
             style: {
               shape: "roundrectangle",
-              "background-color": "#c05a4b",
+              "background-color": "#ff3b5f",
               width(ele) {
-                return 42 + Math.min(60, Number(ele.data("weight") || 0) * 8);
+                return 12 + Math.min(22, Number(ele.data("weight") || 0) * 3);
               },
               height(ele) {
-                return 36 + Math.min(42, Number(ele.data("weight") || 0) * 5);
+                return 10 + Math.min(18, Number(ele.data("weight") || 0) * 2.4);
               },
             },
           },
           {
             selector: "node[type = 'environment']",
             style: {
-              shape: "hexagon",
-              "background-color": "#4e7f54",
+              shape: "diamond",
+              "background-color": "#92df3e",
             },
           },
           {
             selector: "edge",
             style: {
-              width: 2,
+              width: 0.8,
               "curve-style": "bezier",
-              "target-arrow-shape": "triangle",
-              "arrow-scale": 0.75,
-              opacity: 0.56,
+              "target-arrow-shape": "none",
+              opacity: 0.44,
             },
           },
           {
             selector: "edge[type = 'appears_in']",
             style: {
-              "line-color": "rgba(62, 124, 177, 0.68)",
-              "target-arrow-color": "rgba(62, 124, 177, 0.68)",
+              "line-color": "rgba(72, 165, 255, 0.52)",
             },
           },
           {
             selector: "edge[type = 'happens_in']",
             style: {
-              "line-color": "rgba(78, 127, 84, 0.72)",
-              "target-arrow-color": "rgba(78, 127, 84, 0.72)",
+              "line-color": "rgba(146, 223, 62, 0.46)",
             },
           },
           {
             selector: ".searchDim",
             style: {
-              opacity: 0.16,
+              opacity: 0.08,
             },
           },
           {
             selector: ".focusFaded",
             style: {
-              opacity: 0.1,
+              opacity: 0.12,
             },
           },
           {
             selector: "edge.focusFaded",
             style: {
-              opacity: 0.07,
+              opacity: 0.045,
             },
           },
           {
             selector: "node.focusNeighbor",
             style: {
               opacity: 1,
-              "border-color": "rgba(17, 17, 17, 0.62)",
-              "border-width": 3,
-              "text-background-opacity": 1,
+              "border-color": "rgba(255, 255, 255, 0.78)",
+              "border-width": 2,
+              "font-size": 10,
               "z-index": 18,
             },
           },
           {
             selector: "node.searchMatch",
             style: {
-              "border-color": "#1d1a17",
-              "border-width": 4,
+              "border-color": "#ffffff",
+              "border-width": 2,
+              "font-size": 10.5,
               opacity: 1,
-              "text-background-opacity": 1,
               "z-index": 20,
             },
           },
           {
             selector: ".selectedNode",
             style: {
-              "border-color": "#111",
-              "border-width": 5,
+              "border-color": "#ffffff",
+              "border-width": 3,
+              "font-size": 10.5,
               opacity: 1,
               "z-index": 30,
             },
@@ -796,11 +799,21 @@
           {
             selector: "edge.selectedNeighborhood",
             style: {
-              width: 4,
-              opacity: 0.92,
-              "line-color": "#1f2933",
-              "target-arrow-color": "#1f2933",
+              width: 1.75,
+              opacity: 0.88,
               "z-index": 10,
+            },
+          },
+          {
+            selector: "edge.selectedNeighborhood[type = 'appears_in']",
+            style: {
+              "line-color": "rgba(118, 207, 255, 0.92)",
+            },
+          },
+          {
+            selector: "edge.selectedNeighborhood[type = 'happens_in']",
+            style: {
+              "line-color": "rgba(183, 245, 101, 0.9)",
             },
           },
         ];
