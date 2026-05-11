@@ -91,6 +91,42 @@ function testEntityScoresUseCurrentScoreSettings() {
   assert.strictEqual(scores.characters[0].average, 6);
 }
 
+function testEntityScoresIncludeLabels() {
+  const scores = computeEntityScores({
+    scenes: [{ id: 1, title: "Peter", characterIds: [1], labelIds: [2, 3], isActive: true }],
+    runs: [{
+      id: 1,
+      sceneId: 1,
+      endedAt: "2026-01-01T00:01:00.000Z",
+      heartCount: 4,
+    }],
+  });
+  assert.deepStrictEqual(scores.labels.map((item) => item.id), [2, 3]);
+  assert.strictEqual(scores.labels[0].average, 4);
+}
+
+function testRecommendationUsesLabelScores() {
+  const scenes = [
+    { id: 1, title: "Absurd getest", sortOrder: 1, labelIds: [1], isActive: true },
+    { id: 2, title: "Absurd nieuw", sortOrder: 2, labelIds: [1], isActive: true },
+    { id: 3, title: "Satire nieuw", sortOrder: 3, labelIds: [2], isActive: true },
+  ];
+  const runs = [{
+    id: 1,
+    sceneId: 1,
+    runOrder: 1,
+    heartCount: 10,
+    endedAt: "2026-01-01T00:00:00.000Z",
+  }];
+  const order = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
+  });
+  assert.strictEqual(order.next.sceneId, 2);
+  assert(order.entityScores.labels.find((item) => item.id === 1));
+}
+
 function testRecommendationUsesCurrentScoreSettings() {
   const scenes = [
     { id: 1, title: "Lang sterk", sortOrder: 1, characterIds: [1], isActive: true },
@@ -1339,6 +1375,8 @@ testScoreWeightsAffectRuns();
 testTimeNormalizedScoreBlend();
 testTimeNormalizedScoreRewardsShortRuns();
 testEntityScoresUseCurrentScoreSettings();
+testEntityScoresIncludeLabels();
+testRecommendationUsesLabelScores();
 testRecommendationUsesCurrentScoreSettings();
 testRecentPopularCharacterGetsDiversityPenalty();
 testPopularCharacterReturnsAfterCooldownWindow();
