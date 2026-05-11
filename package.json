@@ -8,6 +8,7 @@
     "simulate": "node scripts/simulate-chatters.js",
     "test:sim": "node scripts/test-crowd-engine.js",
     "test:algorithm": "node scripts/test-show-algorithm.js",
+    "test:narrative-graph": "node scripts/test-narrative-graph.js",
     "test:dropbox-catalog": "node scripts/test-dropbox-catalog-sync.js",
     "sync:dropbox-catalog": "node scripts/run-dropbox-catalog-sync.js",
     "unifi:status": "node scripts/unifi-status.js"
@@ -17,6 +18,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "cytoscape": "^3.33.3",
     "express": "^5.2.1",
     "osc": "^2.4.5",
     "socket.io": "^4.8.3",

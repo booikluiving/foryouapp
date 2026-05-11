@@ -149,6 +149,9 @@ const BUILD_VERSION_INPUT_FILES = [
   path.join(__dirname, "public", "index.html"),
   path.join(__dirname, "public", "admin.html"),
   path.join(__dirname, "public", "algoritme.html"),
+  path.join(__dirname, "public", "verhaalvisualisatie.html"),
+  path.join(__dirname, "public", "narrative-graph.js"),
+  path.join(__dirname, "public", "vendor", "cytoscape.min.js"),
   path.join(__dirname, "public", "stage.html"),
   path.join(__dirname, "package.json"),
 ];
@@ -11407,6 +11410,10 @@ app.get("/admin", (req, res) => {
 
 app.get("/algoritme", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "algoritme.html"));
+});
+
+app.get("/verhaalvisualisatie", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "verhaalvisualisatie.html"));
 });
 
 if (fs.existsSync(LOCAL_API_PLAYGROUND_HTML_PATH)) {

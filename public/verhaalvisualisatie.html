@@ -1,0 +1,1140 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>For You - Verhaalvisualisatie</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f3ec;
+      --panel: #fffdf8;
+      --panel-soft: #fbf7ee;
+      --text: #24211d;
+      --muted: #70685f;
+      --border: rgba(63, 54, 44, 0.16);
+      --accent: #236b6f;
+      --accent-dark: #184c50;
+      --character: #3e7cb1;
+      --scene: #c05a4b;
+      --environment: #4e7f54;
+      --edge-a: rgba(62, 124, 177, 0.62);
+      --edge-b: rgba(78, 127, 84, 0.62);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button,
+    .button-link {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fffaf0;
+      color: var(--text);
+      min-height: 36px;
+      padding: 0 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent-dark);
+    }
+
+    button:hover,
+    .button-link:hover {
+      border-color: rgba(35, 107, 111, 0.46);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .login {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .login-card {
+      width: min(420px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 22px 70px rgba(43, 35, 26, 0.12);
+    }
+
+    .login-card h1,
+    .details h2,
+    header h1 {
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    .login-card h1 {
+      font-size: 1.45rem;
+    }
+
+    .login-card p {
+      margin: 8px 0 18px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .login-card form {
+      display: grid;
+      gap: 10px;
+    }
+
+    input[type="password"],
+    input[type="search"],
+    select {
+      min-height: 38px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      padding: 0 12px;
+      width: 100%;
+    }
+
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+
+    .error,
+    .status {
+      min-height: 20px;
+      color: #a7392d;
+      font-size: 0.9rem;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: none;
+      flex-direction: column;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 253, 248, 0.88);
+      backdrop-filter: blur(18px);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    .topbar {
+      width: min(1480px, calc(100% - 32px));
+      margin: 0 auto;
+      min-height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    header h1 {
+      font-size: 1.35rem;
+    }
+
+    .subtle {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 4px;
+    }
+
+    .top-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    main {
+      width: min(1480px, calc(100% - 32px));
+      margin: 18px auto 24px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .toolbar {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .toolbar-row {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(150px, 190px) auto auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .filter-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(150px, 1fr));
+      gap: 8px;
+    }
+
+    .check-line {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      min-height: 42px;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+    }
+
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .stat-pill {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 999px;
+      padding: 6px 10px;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 14px;
+      min-height: calc(100vh - 208px);
+    }
+
+    .graph-wrap {
+      min-height: 650px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background:
+        linear-gradient(rgba(36, 33, 29, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(36, 33, 29, 0.035) 1px, transparent 1px),
+        #fffdf8;
+      background-size: 28px 28px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #graph {
+      position: absolute;
+      inset: 0;
+    }
+
+    .graph-message {
+      position: absolute;
+      left: 16px;
+      bottom: 16px;
+      z-index: 2;
+      background: rgba(255, 253, 248, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--muted);
+      max-width: min(420px, calc(100% - 32px));
+      display: none;
+    }
+
+    .details {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      min-height: 650px;
+      overflow: auto;
+      padding: 16px;
+    }
+
+    .details h2 {
+      font-size: 1.15rem;
+      margin-bottom: 4px;
+    }
+
+    .details h3 {
+      font-size: 0.86rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin: 18px 0 8px;
+      letter-spacing: 0.06em;
+    }
+
+    .details p {
+      line-height: 1.45;
+      margin: 8px 0 0;
+    }
+
+    .details ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 7px;
+    }
+
+    .details li {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      padding: 8px 10px;
+      line-height: 1.35;
+    }
+
+    .type-tag {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .type-tag.character {
+      background: var(--character);
+    }
+
+    .type-tag.scene {
+      background: var(--scene);
+    }
+
+    .type-tag.environment {
+      background: var(--environment);
+    }
+
+    .detail-actions {
+      margin-top: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .legend {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 12px 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 18px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .node-dot,
+    .line-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      display: inline-flex;
+      flex: 0 0 auto;
+    }
+
+    .node-dot.character {
+      background: var(--character);
+    }
+
+    .node-dot.scene {
+      background: var(--scene);
+      border-radius: 4px;
+    }
+
+    .node-dot.environment {
+      background: var(--environment);
+      clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+    }
+
+    .line-dot {
+      width: 32px;
+      height: 3px;
+      border-radius: 3px;
+    }
+
+    .line-dot.appears {
+      background: var(--edge-a);
+    }
+
+    .line-dot.happens {
+      background: var(--edge-b);
+    }
+
+    @media (max-width: 1080px) {
+      .toolbar-row {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .filter-grid {
+        grid-template-columns: repeat(2, minmax(150px, 1fr));
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .details,
+      .graph-wrap {
+        min-height: 520px;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .topbar {
+        width: min(100% - 24px, 1480px);
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 12px 0;
+      }
+
+      .top-actions {
+        width: 100%;
+        justify-content: flex-start;
+      }
+
+      main {
+        width: min(100% - 24px, 1480px);
+        margin-top: 12px;
+      }
+
+      .toolbar-row,
+      .filter-grid {
+        grid-template-columns: 1fr;
+      }
+
+      button,
+      .button-link {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="login" id="loginSection">
+    <div class="login-card">
+      <h1>Verhaalvisualisatie</h1>
+      <p>Log in met hetzelfde beheerderswachtwoord als de algoritmepagina.</p>
+      <form id="loginForm">
+        <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Wachtwoord" />
+        <button class="primary" type="submit">Inloggen</button>
+        <div class="error" id="loginError" aria-live="polite"></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="app" id="appSection">
+    <header>
+      <div class="topbar">
+        <div>
+          <h1>Verhaalvisualisatie</h1>
+          <div class="subtle" id="topMeta">Data laden...</div>
+        </div>
+        <nav class="top-actions" aria-label="Navigatie">
+          <a class="button-link" href="/algoritme">Algoritme</a>
+          <a class="button-link" href="/admin">Admin</a>
+          <button type="button" id="refreshButton">Vernieuwen</button>
+          <button type="button" id="logoutButton">Uitloggen</button>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="toolbar" aria-label="Visualisatie controles">
+        <div class="toolbar-row">
+          <input id="searchInput" type="search" placeholder="Zoek personage, situatie of omgeving" />
+          <select id="layoutSelect" aria-label="Layout">
+            <option value="cose">Force / cose</option>
+            <option value="concentric">Concentric</option>
+            <option value="grid">Grid</option>
+          </select>
+          <button type="button" id="fitButton">Fit</button>
+          <button type="button" id="resetLayoutButton">Reset layout</button>
+        </div>
+
+        <div class="filter-grid" aria-label="Filters">
+          <label class="check-line"><input type="checkbox" id="toggleCharacters" checked /> Personages</label>
+          <label class="check-line"><input type="checkbox" id="toggleScenes" checked /> Situaties/scènes</label>
+          <label class="check-line"><input type="checkbox" id="toggleEnvironments" checked /> Omgevingen</label>
+          <label class="check-line"><input type="checkbox" id="toggleAppearsEdges" checked /> Personage - situatie</label>
+          <label class="check-line"><input type="checkbox" id="toggleHappensEdges" checked /> Situatie - omgeving</label>
+        </div>
+
+        <div class="stats" id="statsLine" aria-live="polite">
+          <span class="stat-pill">0 nodes zichtbaar</span>
+          <span class="stat-pill">0 verbindingen zichtbaar</span>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <div class="graph-wrap">
+          <div id="graph" aria-label="Verhaalnetwerk"></div>
+          <div class="graph-message" id="graphMessage"></div>
+        </div>
+
+        <aside class="details" id="detailsPanel">
+          <span class="type-tag">Geen selectie</span>
+          <h2>Geen node geselecteerd</h2>
+          <p class="subtle">Nog geen details.</p>
+        </aside>
+      </section>
+
+      <section class="legend" aria-label="Legenda">
+        <span class="legend-item"><span class="node-dot character"></span>Personage</span>
+        <span class="legend-item"><span class="node-dot scene"></span>Situatie/scène</span>
+        <span class="legend-item"><span class="node-dot environment"></span>Omgeving</span>
+        <span class="legend-item"><span class="line-dot appears"></span>komt voor in</span>
+        <span class="legend-item"><span class="line-dot happens"></span>speelt zich af in</span>
+      </section>
+    </main>
+  </section>
+
+  <script src="/vendor/cytoscape.min.js"></script>
+  <script src="/narrative-graph.js"></script>
+  <script>
+    (() => {
+      const TOKEN_KEY = "algorithm_admin_token_v1";
+      const TYPE_LABELS = {
+        character: "Personage",
+        scene: "Situatie/scène",
+        environment: "Omgeving",
+      };
+
+      const state = {
+        token: localStorage.getItem(TOKEN_KEY) || "",
+        catalog: null,
+        graph: null,
+        cy: null,
+        selectedNodeId: "",
+      };
+
+      const els = {
+        loginSection: document.getElementById("loginSection"),
+        appSection: document.getElementById("appSection"),
+        loginForm: document.getElementById("loginForm"),
+        passwordInput: document.getElementById("passwordInput"),
+        loginError: document.getElementById("loginError"),
+        topMeta: document.getElementById("topMeta"),
+        refreshButton: document.getElementById("refreshButton"),
+        logoutButton: document.getElementById("logoutButton"),
+        searchInput: document.getElementById("searchInput"),
+        layoutSelect: document.getElementById("layoutSelect"),
+        fitButton: document.getElementById("fitButton"),
+        resetLayoutButton: document.getElementById("resetLayoutButton"),
+        toggleCharacters: document.getElementById("toggleCharacters"),
+        toggleScenes: document.getElementById("toggleScenes"),
+        toggleEnvironments: document.getElementById("toggleEnvironments"),
+        toggleAppearsEdges: document.getElementById("toggleAppearsEdges"),
+        toggleHappensEdges: document.getElementById("toggleHappensEdges"),
+        statsLine: document.getElementById("statsLine"),
+        detailsPanel: document.getElementById("detailsPanel"),
+        graphMessage: document.getElementById("graphMessage"),
+      };
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function showLogin(message = "") {
+        els.loginSection.style.display = "grid";
+        els.appSection.style.display = "none";
+        els.loginError.textContent = message;
+        setTimeout(() => els.passwordInput.focus(), 0);
+      }
+
+      function showApp() {
+        els.loginSection.style.display = "none";
+        els.appSection.style.display = "flex";
+      }
+
+      async function apiFetch(path, options = {}) {
+        const headers = new Headers(options.headers || {});
+        if (state.token) headers.set("x-admin-token", state.token);
+        const res = await fetch(path, { ...options, headers });
+        const isLoginRequest = path === "/admin/login" || path === "/admin/login/device";
+        if ((res.status === 401 || res.status === 403) && !isLoginRequest) {
+          localStorage.removeItem(TOKEN_KEY);
+          state.token = "";
+          showLogin("Log opnieuw in om de visualisatie te openen.");
+          throw new Error("unauthorized");
+        }
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        return res.json();
+      }
+
+      async function loadState() {
+        els.topMeta.textContent = "Data laden...";
+        const payload = await apiFetch("/admin/algorithm/state");
+        state.catalog = payload.catalog || {};
+        state.graph = window.ForYouNarrativeGraph.buildNarrativeGraphData(state.catalog);
+        renderGraph();
+      }
+
+      function layoutOptions(name) {
+        if (name === "grid") {
+          return {
+            name: "grid",
+            animate: true,
+            animationDuration: 280,
+            fit: true,
+            padding: 56,
+            avoidOverlap: true,
+          };
+        }
+
+        if (name === "concentric") {
+          return {
+            name: "concentric",
+            animate: true,
+            animationDuration: 320,
+            fit: true,
+            padding: 56,
+            minNodeSpacing: 42,
+            concentric(node) {
+              if (node.data("type") === "scene") return 3 + node.data("weight");
+              if (node.data("type") === "character") return 2 + node.data("weight") * 0.25;
+              return 1 + node.data("weight") * 0.25;
+            },
+            levelWidth: () => 2,
+          };
+        }
+
+        return {
+          name: "cose",
+          animate: true,
+          animationDuration: 360,
+          fit: true,
+          padding: 56,
+          nodeRepulsion: 9000,
+          idealEdgeLength: 120,
+          edgeElasticity: 90,
+          nestingFactor: 1.2,
+          gravity: 1,
+          numIter: 900,
+          componentSpacing: 110,
+        };
+      }
+
+      function makeStylesheet() {
+        return [
+          {
+            selector: "node",
+            style: {
+              "background-color": "#6f6a63",
+              "border-color": "rgba(36, 33, 29, 0.2)",
+              "border-width": 2,
+              color: "#24211d",
+              "font-size": 11,
+              "font-weight": 700,
+              "line-height": 1.15,
+              "text-background-color": "rgba(255, 253, 248, 0.86)",
+              "text-background-opacity": 1,
+              "text-background-padding": 4,
+              "text-background-shape": "roundrectangle",
+              "text-halign": "center",
+              "text-valign": "center",
+              label(ele) {
+                return ele.data("important") || ele.hasClass("searchMatch") || ele.hasClass("selectedNode")
+                  ? ele.data("label")
+                  : "";
+              },
+              width(ele) {
+                return 34 + Math.min(48, Number(ele.data("weight") || 0) * 7);
+              },
+              height(ele) {
+                return 34 + Math.min(48, Number(ele.data("weight") || 0) * 7);
+              },
+              "overlay-opacity": 0,
+            },
+          },
+          {
+            selector: "node[type = 'character']",
+            style: {
+              shape: "ellipse",
+              "background-color": "#3e7cb1",
+            },
+          },
+          {
+            selector: "node[type = 'scene']",
+            style: {
+              shape: "roundrectangle",
+              "background-color": "#c05a4b",
+              width(ele) {
+                return 42 + Math.min(60, Number(ele.data("weight") || 0) * 8);
+              },
+              height(ele) {
+                return 36 + Math.min(42, Number(ele.data("weight") || 0) * 5);
+              },
+            },
+          },
+          {
+            selector: "node[type = 'environment']",
+            style: {
+              shape: "hexagon",
+              "background-color": "#4e7f54",
+            },
+          },
+          {
+            selector: "edge",
+            style: {
+              width: 2,
+              "curve-style": "bezier",
+              "target-arrow-shape": "triangle",
+              "arrow-scale": 0.75,
+              opacity: 0.56,
+            },
+          },
+          {
+            selector: "edge[type = 'appears_in']",
+            style: {
+              "line-color": "rgba(62, 124, 177, 0.68)",
+              "target-arrow-color": "rgba(62, 124, 177, 0.68)",
+            },
+          },
+          {
+            selector: "edge[type = 'happens_in']",
+            style: {
+              "line-color": "rgba(78, 127, 84, 0.72)",
+              "target-arrow-color": "rgba(78, 127, 84, 0.72)",
+            },
+          },
+          {
+            selector: ".searchDim",
+            style: {
+              opacity: 0.16,
+            },
+          },
+          {
+            selector: "node.searchMatch",
+            style: {
+              "border-color": "#1d1a17",
+              "border-width": 4,
+              "text-background-opacity": 1,
+              "z-index": 20,
+            },
+          },
+          {
+            selector: ".selectedNode",
+            style: {
+              "border-color": "#111",
+              "border-width": 5,
+              "z-index": 30,
+            },
+          },
+          {
+            selector: "edge.selectedNeighborhood",
+            style: {
+              width: 4,
+              opacity: 0.92,
+              "z-index": 10,
+            },
+          },
+        ];
+      }
+
+      function renderGraph() {
+        if (!state.graph) return;
+
+        if (!window.cytoscape) {
+          showGraphMessage("Cytoscape kon niet worden geladen.");
+          return;
+        }
+
+        if (!state.cy) {
+          state.cy = cytoscape({
+            container: document.getElementById("graph"),
+            elements: state.graph.elements,
+            style: makeStylesheet(),
+            wheelSensitivity: 0.18,
+            minZoom: 0.16,
+            maxZoom: 2.8,
+            layout: layoutOptions(els.layoutSelect.value),
+          });
+
+          state.cy.on("tap", "node", (event) => selectNode(event.target));
+          state.cy.on("tap", (event) => {
+            if (event.target === state.cy) clearSelection();
+          });
+        } else {
+          state.cy.elements().remove();
+          state.cy.add(state.graph.elements);
+          runLayout(false);
+        }
+
+        applyFilters();
+        updateMeta();
+      }
+
+      function getFilterState() {
+        return {
+          character: els.toggleCharacters.checked,
+          scene: els.toggleScenes.checked,
+          environment: els.toggleEnvironments.checked,
+          appears_in: els.toggleAppearsEdges.checked,
+          happens_in: els.toggleHappensEdges.checked,
+        };
+      }
+
+      function isVisibleElement(ele) {
+        return ele.style("display") !== "none";
+      }
+
+      function applyFilters() {
+        const filters = getFilterState();
+        const cy = state.cy;
+        if (!cy) return;
+
+        cy.batch(() => {
+          cy.nodes().forEach((node) => {
+            const visible = Boolean(filters[node.data("type")]);
+            node.style("display", visible ? "element" : "none");
+          });
+
+          cy.edges().forEach((edge) => {
+            const edgeVisible = Boolean(filters[edge.data("type")]);
+            const sourceVisible = edge.source().style("display") !== "none";
+            const targetVisible = edge.target().style("display") !== "none";
+            edge.style("display", edgeVisible && sourceVisible && targetVisible ? "element" : "none");
+          });
+        });
+
+        applySearch(false);
+        if (state.selectedNodeId && cy.getElementById(state.selectedNodeId).style("display") === "none") {
+          clearSelection();
+        }
+        updateCounts();
+      }
+
+      function applySearch(fitToMatches) {
+        const cy = state.cy;
+        if (!cy) return;
+
+        const query = els.searchInput.value.trim().toLowerCase();
+        cy.elements().removeClass("searchMatch searchDim");
+
+        if (!query) {
+          return;
+        }
+
+        const visibleNodes = cy.nodes().filter(isVisibleElement);
+        const matches = visibleNodes.filter((node) => {
+          const values = [
+            node.data("label"),
+            node.data("description"),
+            node.data("typeLabel"),
+          ];
+          return values.some((value) => String(value || "").toLowerCase().includes(query));
+        });
+
+        visibleNodes.not(matches).addClass("searchDim");
+        matches.addClass("searchMatch");
+
+        cy.edges().filter(isVisibleElement).forEach((edge) => {
+          if (!edge.source().hasClass("searchMatch") && !edge.target().hasClass("searchMatch")) {
+            edge.addClass("searchDim");
+          }
+        });
+
+        if (fitToMatches && matches.length > 0) {
+          const neighborhood = matches.closedNeighborhood().filter(isVisibleElement);
+          cy.fit(neighborhood, 70);
+        }
+      }
+
+      function runLayout(shouldFit = true) {
+        const cy = state.cy;
+        if (!cy) return;
+        const visible = cy.elements().filter(isVisibleElement);
+        if (visible.length === 0) return;
+        const layout = visible.layout({ ...layoutOptions(els.layoutSelect.value), fit: shouldFit });
+        layout.run();
+      }
+
+      function fitVisible() {
+        const cy = state.cy;
+        if (!cy) return;
+        const visible = cy.elements().filter(isVisibleElement);
+        if (visible.length > 0) cy.fit(visible, 56);
+      }
+
+      function updateCounts() {
+        const cy = state.cy;
+        if (!cy) return;
+        const nodes = cy.nodes().filter(isVisibleElement).length;
+        const edges = cy.edges().filter(isVisibleElement).length;
+        const totalNodes = cy.nodes().length;
+        const totalEdges = cy.edges().length;
+
+        els.statsLine.innerHTML = `
+          <span class="stat-pill">${nodes} van ${totalNodes} nodes zichtbaar</span>
+          <span class="stat-pill">${edges} van ${totalEdges} verbindingen zichtbaar</span>
+        `;
+
+        if (nodes === 0) {
+          showGraphMessage("Geen zichtbare nodes met deze filters.");
+        } else {
+          showGraphMessage("");
+        }
+      }
+
+      function updateMeta() {
+        if (!state.graph) return;
+        const meta = state.graph.metadata;
+        els.topMeta.textContent = `${meta.counts.characters} personages, ${meta.counts.scenes} situaties/scènes, ${meta.counts.environments} omgevingen`;
+      }
+
+      function showGraphMessage(message) {
+        els.graphMessage.textContent = message;
+        els.graphMessage.style.display = message ? "block" : "none";
+      }
+
+      function clearSelection() {
+        state.selectedNodeId = "";
+        if (state.cy) state.cy.elements().removeClass("selectedNode selectedNeighborhood");
+        els.detailsPanel.innerHTML = `
+          <span class="type-tag">Geen selectie</span>
+          <h2>Geen node geselecteerd</h2>
+          <p class="subtle">Nog geen details.</p>
+        `;
+      }
+
+      function selectNode(node) {
+        const cy = state.cy;
+        state.selectedNodeId = node.id();
+        cy.elements().removeClass("selectedNode selectedNeighborhood");
+        node.addClass("selectedNode");
+        node.connectedEdges().filter(isVisibleElement).addClass("selectedNeighborhood");
+        renderDetails(node);
+      }
+
+      function renderDetails(node) {
+        const type = node.data("type");
+        const sourceId = Number(node.data("entityId") || node.data("sourceId") || 0);
+        if (type === "character") return renderCharacterDetails(sourceId);
+        if (type === "scene") return renderSceneDetails(sourceId);
+        if (type === "environment") return renderEnvironmentDetails(sourceId);
+      }
+
+      function descriptionHtml(value) {
+        const text = String(value || "").trim();
+        return text ? `<p>${escapeHtml(text)}</p>` : `<p class="subtle">Geen beschrijving beschikbaar.</p>`;
+      }
+
+      function listHtml(items, emptyLabel) {
+        if (!items.length) return `<p class="subtle">${escapeHtml(emptyLabel)}</p>`;
+        return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+      }
+
+      function renderCharacterDetails(id) {
+        const character = state.graph.indexes.charactersById.get(id);
+        if (!character) return;
+        const sceneTitles = getScenesForCharacter(id).map((scene) => scene.title || `Situatie ${scene.id}`);
+        els.detailsPanel.innerHTML = `
+          <span class="type-tag character">Personage</span>
+          <h2>${escapeHtml(character.name || `Personage ${id}`)}</h2>
+          ${descriptionHtml(character.description)}
+          <h3>Situaties/scènes</h3>
+          ${listHtml(sceneTitles, "Geen gekoppelde situaties.")}
+          <div class="detail-actions">
+            <a class="button-link" href="/algoritme">Open in algoritme</a>
+          </div>
+        `;
+      }
+
+      function renderSceneDetails(id) {
+        const scene = state.graph.indexes.scenesById.get(id);
+        if (!scene) return;
+        const characterNames = getCharactersForScene(id).map((character) => character.name || `Personage ${character.id}`);
+        const environment = getEnvironmentForScene(id);
+        els.detailsPanel.innerHTML = `
+          <span class="type-tag scene">Situatie/scène</span>
+          <h2>${escapeHtml(scene.title || `Situatie ${id}`)}</h2>
+          ${descriptionHtml(scene.description || scene.promptOverride)}
+          <h3>Gekoppelde personages</h3>
+          ${listHtml(characterNames, "Geen gekoppelde personages.")}
+          <h3>Gekoppelde omgeving</h3>
+          ${environment ? listHtml([environment.name || `Omgeving ${environment.id}`], "Geen gekoppelde omgeving.") : "<p class=\"subtle\">Geen gekoppelde omgeving.</p>"}
+          <div class="detail-actions">
+            <a class="button-link" href="/algoritme">Open in algoritme</a>
+          </div>
+        `;
+      }
+
+      function renderEnvironmentDetails(id) {
+        const environment = state.graph.indexes.environmentsById.get(id);
+        if (!environment) return;
+        const sceneTitles = getScenesForEnvironment(id).map((scene) => scene.title || `Situatie ${scene.id}`);
+        els.detailsPanel.innerHTML = `
+          <span class="type-tag environment">Omgeving</span>
+          <h2>${escapeHtml(environment.name || `Omgeving ${id}`)}</h2>
+          ${descriptionHtml(environment.description)}
+          <h3>Situaties/scènes</h3>
+          ${listHtml(sceneTitles, "Geen gekoppelde situaties.")}
+          <div class="detail-actions">
+            <a class="button-link" href="/algoritme">Open in algoritme</a>
+          </div>
+        `;
+      }
+
+      function getScenesForCharacter(characterId) {
+        return state.graph.edges
+          .filter((edge) => edge.data.type === "appears_in" && edge.data.characterId === characterId)
+          .map((edge) => state.graph.indexes.scenesById.get(edge.data.sceneId))
+          .filter(Boolean)
+          .sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "nl"));
+      }
+
+      function getCharactersForScene(sceneId) {
+        return state.graph.edges
+          .filter((edge) => edge.data.type === "appears_in" && edge.data.sceneId === sceneId)
+          .map((edge) => state.graph.indexes.charactersById.get(edge.data.characterId))
+          .filter(Boolean)
+          .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "nl"));
+      }
+
+      function getEnvironmentForScene(sceneId) {
+        const edge = state.graph.edges.find((item) => item.data.type === "happens_in" && item.data.sceneId === sceneId);
+        return edge ? state.graph.indexes.environmentsById.get(edge.data.environmentId) : null;
+      }
+
+      function getScenesForEnvironment(environmentId) {
+        return state.graph.edges
+          .filter((edge) => edge.data.type === "happens_in" && edge.data.environmentId === environmentId)
+          .map((edge) => state.graph.indexes.scenesById.get(edge.data.sceneId))
+          .filter(Boolean)
+          .sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "nl"));
+      }
+
+      els.loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const password = els.passwordInput.value;
+        if (!password.trim()) {
+          els.loginError.textContent = "Vul het wachtwoord in.";
+          return;
+        }
+        try {
+          const body = await apiFetch("/admin/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              password,
+              rememberDevice: false,
+              deviceLabel: navigator.userAgent || "",
+            }),
+          });
+          state.token = body.token || "";
+          localStorage.setItem(TOKEN_KEY, state.token);
+          els.passwordInput.value = "";
+          showApp();
+          await loadState();
+        } catch (error) {
+          if (error.message !== "unauthorized") {
+            els.loginError.textContent = "Inloggen is niet gelukt.";
+          }
+        }
+      });
+
+      els.refreshButton.addEventListener("click", () => {
+        loadState().catch((error) => {
+          if (error.message !== "unauthorized") showGraphMessage("Data vernieuwen is niet gelukt.");
+        });
+      });
+
+      els.logoutButton.addEventListener("click", () => {
+        localStorage.removeItem(TOKEN_KEY);
+        state.token = "";
+        state.catalog = null;
+        state.graph = null;
+        if (state.cy) {
+          state.cy.destroy();
+          state.cy = null;
+        }
+        clearSelection();
+        showLogin("");
+      });
+
+      els.searchInput.addEventListener("input", () => applySearch(false));
+      els.searchInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          applySearch(true);
+        }
+      });
+
+      els.fitButton.addEventListener("click", fitVisible);
+      els.resetLayoutButton.addEventListener("click", () => runLayout(true));
+      els.layoutSelect.addEventListener("change", () => runLayout(true));
+
+      [
+        els.toggleCharacters,
+        els.toggleScenes,
+        els.toggleEnvironments,
+        els.toggleAppearsEdges,
+        els.toggleHappensEdges,
+      ].forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          applyFilters();
+          fitVisible();
+        });
+      });
+
+      if (state.token) {
+        showApp();
+        loadState().catch((error) => {
+          if (error.message !== "unauthorized") showLogin("Kon de bestaande sessie niet openen.");
+        });
+      } else {
+        showLogin("");
+      }
+    })();
+  </script>
+</body>
+</html>
