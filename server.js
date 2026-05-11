@@ -33,6 +33,7 @@ const {
   normalizeCharacter,
   normalizeEnvironment,
   normalizeIdList,
+  normalizeLabel,
   normalizeLockedQueue,
   normalizePerformer,
   normalizeRun,
@@ -199,6 +200,13 @@ const ALGORITHM_RUN_ACTION_DUPLICATE_WINDOW_MS = 750;
 const ALGORITHM_TOUCHDESIGNER_PROMPT_MAX_CHARS = 3500;
 const ALGORITHM_OSC_CHARACTER_SLOT_COUNT = 3;
 const DEFAULT_ALGORITHM_PERFORMERS = Object.freeze(["Megan", "Brent", "Booi"]);
+const DEFAULT_ALGORITHM_LABELS = Object.freeze([
+  "Maatschappelijk",
+  "Absurd",
+  "Grof",
+  "Herkenbaar",
+  "Satirisch",
+]);
 const SYNC_DEVICE_ID_SETTING_KEY = "sync_device_id";
 const SYNC_PEERS_SETTING_KEY = "sync_peer_urls_json";
 const SYNC_PAUSED_SETTING_KEY = "sync_paused";
@@ -2585,6 +2593,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_algorithm_situations_active
     ON algorithm_situations(is_active, archived_at, id);
 
+  CREATE TABLE IF NOT EXISTS algorithm_labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    archived_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_algorithm_labels_active
+    ON algorithm_labels(is_active, archived_at, sort_order, id);
+
   CREATE TABLE IF NOT EXISTS algorithm_environments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -2606,6 +2626,7 @@ db.exec(`
     character_slots_json TEXT NOT NULL DEFAULT '[]',
     character_ids_json TEXT NOT NULL DEFAULT '[]',
     situation_ids_json TEXT NOT NULL DEFAULT '[]',
+    label_ids_json TEXT NOT NULL DEFAULT '[]',
     environment_id INTEGER,
     environment_mode TEXT NOT NULL DEFAULT 'selected',
     context_scene_id INTEGER,
@@ -2786,6 +2807,9 @@ if (!algorithmSceneColumns.some((column) => String(column.name || "") === "chara
 if (!algorithmSceneColumns.some((column) => String(column.name || "") === "environment_mode")) {
   db.exec("ALTER TABLE algorithm_scenes ADD COLUMN environment_mode TEXT NOT NULL DEFAULT 'selected'");
 }
+if (!algorithmSceneColumns.some((column) => String(column.name || "") === "label_ids_json")) {
+  db.exec("ALTER TABLE algorithm_scenes ADD COLUMN label_ids_json TEXT NOT NULL DEFAULT '[]'");
+}
 if (!algorithmSceneColumns.some((column) => String(column.name || "") === "context_scene_id")) {
   db.exec("ALTER TABLE algorithm_scenes ADD COLUMN context_scene_id INTEGER");
 }
@@ -2813,7 +2837,21 @@ function seedDefaultAlgorithmPerformers() {
   });
 }
 
+function seedDefaultAlgorithmLabels() {
+  const countRow = db.prepare("SELECT COUNT(1) AS n FROM algorithm_labels").get();
+  if (Number(countRow && countRow.n || 0) > 0) return;
+  const now = nowIso();
+  const insert = db.prepare(
+    `INSERT INTO algorithm_labels (name, sort_order, is_active, archived_at, created_at, updated_at)
+     VALUES (?, ?, 1, NULL, ?, ?)`
+  );
+  DEFAULT_ALGORITHM_LABELS.forEach((name, index) => {
+    insert.run(name, (index + 1) * 10, now, now);
+  });
+}
+
 seedDefaultAlgorithmPerformers();
+seedDefaultAlgorithmLabels();
 
 const sql = {
   getOpenSession: db.prepare(
@@ -3021,6 +3059,36 @@ const sql = {
     `DELETE FROM algorithm_situations
      WHERE id = ? AND is_active = 0`
   ),
+  getAlgorithmLabels: db.prepare(
+    `SELECT id, name, sort_order AS sortOrder, is_active AS isActive,
+      archived_at AS archivedAt, created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_labels
+     ORDER BY archived_at IS NOT NULL ASC, is_active DESC, sort_order ASC, name COLLATE NOCASE ASC, id ASC`
+  ),
+  getAlgorithmLabelById: db.prepare(
+    `SELECT id, name, sort_order AS sortOrder, is_active AS isActive,
+      archived_at AS archivedAt, created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_labels
+     WHERE id = ?`
+  ),
+  insertAlgorithmLabel: db.prepare(
+    `INSERT INTO algorithm_labels (name, sort_order, is_active, archived_at, created_at, updated_at)
+     VALUES (?, ?, ?, NULL, ?, ?)`
+  ),
+  updateAlgorithmLabel: db.prepare(
+    `UPDATE algorithm_labels
+     SET name = ?, sort_order = ?, is_active = ?, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  archiveAlgorithmLabel: db.prepare(
+    `UPDATE algorithm_labels
+     SET is_active = 0, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  deleteAlgorithmLabel: db.prepare(
+    `DELETE FROM algorithm_labels
+     WHERE id = ? AND is_active = 0`
+  ),
   getAlgorithmEnvironments: db.prepare(
     `SELECT id, name, description, is_active AS isActive, archived_at AS archivedAt,
       created_at AS createdAt, updated_at AS updatedAt
@@ -3054,7 +3122,8 @@ const sql = {
   getAlgorithmScenes: db.prepare(
     `SELECT id, title, sort_order AS sortOrder, character_count AS characterCount,
       character_slots_json AS characterSlotsJson, character_ids_json AS characterIdsJson,
-      situation_ids_json AS situationIdsJson, environment_id AS environmentId,
+      situation_ids_json AS situationIdsJson, label_ids_json AS labelIdsJson,
+      environment_id AS environmentId,
       environment_mode AS environmentMode, context_scene_id AS contextSceneId,
       prompt_override AS promptOverride,
       is_active AS isActive, archived_at AS archivedAt,
@@ -3065,7 +3134,8 @@ const sql = {
   getAlgorithmSceneById: db.prepare(
     `SELECT id, title, sort_order AS sortOrder, character_count AS characterCount,
       character_slots_json AS characterSlotsJson, character_ids_json AS characterIdsJson,
-      situation_ids_json AS situationIdsJson, environment_id AS environmentId,
+      situation_ids_json AS situationIdsJson, label_ids_json AS labelIdsJson,
+      environment_id AS environmentId,
       environment_mode AS environmentMode, context_scene_id AS contextSceneId,
       prompt_override AS promptOverride,
       is_active AS isActive, archived_at AS archivedAt,
@@ -3076,14 +3146,14 @@ const sql = {
   insertAlgorithmScene: db.prepare(
     `INSERT INTO algorithm_scenes (
       title, sort_order, character_count, character_slots_json, character_ids_json,
-      situation_ids_json, environment_id, environment_mode, prompt_override,
+      situation_ids_json, label_ids_json, environment_id, environment_mode, prompt_override,
       context_scene_id, is_active, archived_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`
   ),
   updateAlgorithmScene: db.prepare(
     `UPDATE algorithm_scenes
      SET title = ?, sort_order = ?, character_count = ?, character_slots_json = ?,
-      character_ids_json = ?, situation_ids_json = ?, environment_id = ?,
+      character_ids_json = ?, situation_ids_json = ?, label_ids_json = ?, environment_id = ?,
       environment_mode = ?, prompt_override = ?, context_scene_id = ?,
       is_active = ?, archived_at = ?, updated_at = ?
      WHERE id = ?`
@@ -3566,13 +3636,18 @@ const SYNC_TABLE_DEFS = Object.freeze([
     updatedAtColumn: "updated_at",
   },
   {
+    name: "algorithm_labels",
+    columns: ["id", "name", "sort_order", "is_active", "archived_at", "created_at", "updated_at"],
+    updatedAtColumn: "updated_at",
+  },
+  {
     name: "algorithm_environments",
     columns: ["id", "name", "description", "prompt_text", "is_active", "archived_at", "created_at", "updated_at"],
     updatedAtColumn: "updated_at",
   },
   {
     name: "algorithm_scenes",
-    columns: ["id", "title", "sort_order", "character_count", "character_slots_json", "character_ids_json", "situation_ids_json", "environment_id", "environment_mode", "context_scene_id", "prompt_override", "is_active", "archived_at", "created_at", "updated_at"],
+    columns: ["id", "title", "sort_order", "character_count", "character_slots_json", "character_ids_json", "situation_ids_json", "label_ids_json", "environment_id", "environment_mode", "context_scene_id", "prompt_override", "is_active", "archived_at", "created_at", "updated_at"],
     updatedAtColumn: "updated_at",
   },
   {
@@ -3758,7 +3833,7 @@ function applyIncomingSyncPayload(payload = {}, options = {}) {
       }
     }
     const tombstones = Array.isArray(incoming.tombstones) ? incoming.tombstones : [];
-    const tombstoneOrder = ["algorithm_character_votes", "algorithm_scene_runs", "algorithm_scenes", "algorithm_characters", "algorithm_situations", "algorithm_environments", "algorithm_performers", "sessions"];
+    const tombstoneOrder = ["algorithm_character_votes", "algorithm_scene_runs", "algorithm_scenes", "algorithm_characters", "algorithm_situations", "algorithm_labels", "algorithm_environments", "algorithm_performers", "sessions"];
     tombstones
       .slice()
       .sort((a, b) => tombstoneOrder.indexOf(String(a.entity || "")) - tombstoneOrder.indexOf(String(b.entity || "")))
@@ -4509,6 +4584,17 @@ function parseAlgorithmSituationRow(row) {
   });
 }
 
+function parseAlgorithmLabelRow(row) {
+  if (!row) return null;
+  return normalizeLabel({
+    id: row.id,
+    name: row.name,
+    sortOrder: row.sortOrder,
+    isActive: Number(row.isActive || 0) > 0,
+    archivedAt: row.archivedAt || "",
+  });
+}
+
 function parseAlgorithmEnvironmentRow(row) {
   if (!row) return null;
   return normalizeEnvironment({
@@ -4530,6 +4616,7 @@ function parseAlgorithmSceneRow(row) {
     characterSlots: parseAlgorithmSlotJson(row.characterSlotsJson),
     characterIds: parseAlgorithmIdJson(row.characterIdsJson),
     situationIds: parseAlgorithmIdJson(row.situationIdsJson),
+    labelIds: parseAlgorithmIdJson(row.labelIdsJson),
     environmentId: row.environmentId,
     environmentMode: row.environmentMode,
     contextSceneId: row.contextSceneId,
@@ -4606,6 +4693,7 @@ function getAlgorithmCatalog() {
     performers: sql.getAlgorithmPerformers.all().map(parseAlgorithmPerformerRow).filter(Boolean),
     characters: sql.getAlgorithmCharacters.all().map(parseAlgorithmCharacterRow).filter(Boolean),
     situations: sql.getAlgorithmSituations.all().map(parseAlgorithmSituationRow).filter(Boolean),
+    labels: sql.getAlgorithmLabels.all().map(parseAlgorithmLabelRow).filter(Boolean),
     environments: sql.getAlgorithmEnvironments.all().map(parseAlgorithmEnvironmentRow).filter(Boolean),
     scenes: sql.getAlgorithmScenes.all().map(parseAlgorithmSceneRow).filter(Boolean),
   };
@@ -4661,6 +4749,7 @@ function persistAlgorithmSceneRoleSlots(scene, catalog, now = nowIso()) {
     safeJsonStringify(item.characterSlots, "[]"),
     safeJsonStringify(nextCharacterIds, "[]"),
     safeJsonStringify(item.situationIds, "[]"),
+    safeJsonStringify(item.labelIds, "[]"),
     item.environmentMode === "random" ? null : item.environmentId || null,
     item.environmentMode,
     item.promptOverride,
@@ -4695,9 +4784,10 @@ try {
 }
 
 function buildAlgorithmEntityLabels(catalog) {
-  const labels = { characters: {}, situations: {}, environments: {}, scenes: {} };
+  const labels = { characters: {}, situations: {}, labels: {}, environments: {}, scenes: {} };
   for (const character of catalog.characters || []) labels.characters[character.id] = character.name;
   for (const situation of catalog.situations || []) labels.situations[situation.id] = situation.name;
+  for (const label of catalog.labels || []) labels.labels[label.id] = label.name;
   for (const environment of catalog.environments || []) labels.environments[environment.id] = environment.name;
   for (const scene of catalog.scenes || []) labels.scenes[scene.id] = scene.title;
   return labels;
@@ -4707,6 +4797,7 @@ function expandAlgorithmScene(scene, catalog) {
   if (!scene) return null;
   const characterById = new Map((catalog.characters || []).map((item) => [Number(item.id), item]));
   const situationById = new Map((catalog.situations || []).map((item) => [Number(item.id), item]));
+  const labelById = new Map((catalog.labels || []).map((item) => [Number(item.id), item]));
   const environmentById = new Map((catalog.environments || []).map((item) => [Number(item.id), item]));
   const characterIds = Array.from(new Set([]
     .concat(Array.isArray(scene.characterIds) ? scene.characterIds : [])
@@ -4717,6 +4808,7 @@ function expandAlgorithmScene(scene, catalog) {
     ...scene,
     characters: characterIds.map((id) => characterById.get(Number(id))).filter(Boolean),
     situations: scene.situationIds.map((id) => situationById.get(Number(id))).filter(Boolean),
+    labels: scene.labelIds.map((id) => labelById.get(Number(id))).filter(Boolean),
     environment: scene.environmentId ? (environmentById.get(Number(scene.environmentId)) || null) : null,
     contextScene: scene.contextSceneId ? (getAlgorithmSceneById(scene.contextSceneId) || null) : null,
     castWarnings: buildSceneWarnings(scene, catalog),
@@ -5698,6 +5790,44 @@ function upsertAlgorithmSituationFromBody(body = {}) {
   return parseAlgorithmSituationRow(sql.getAlgorithmSituationById.get(insert.lastInsertRowid));
 }
 
+function upsertAlgorithmLabelFromBody(body = {}) {
+  const now = nowIso();
+  const safeBody = body && typeof body === "object" ? body : {};
+  const incomingId = Number.parseInt(String(safeBody.id || ""), 10);
+  const existing = Number.isInteger(incomingId) && incomingId > 0
+    ? parseAlgorithmLabelRow(sql.getAlgorithmLabelById.get(incomingId))
+    : null;
+  if (incomingId && !existing) throw new Error("label_not_found");
+  const currentLabels = sql.getAlgorithmLabels.all().map(parseAlgorithmLabelRow).filter(Boolean);
+  const nextSortOrder = safeBody.sortOrder !== undefined && safeBody.sortOrder !== null && String(safeBody.sortOrder).trim() !== ""
+    ? safeBody.sortOrder
+    : existing
+      ? existing.sortOrder
+      : currentLabels.reduce((max, item) => Math.max(max, Number(item.sortOrder || 0)), 0) + 10;
+  const item = normalizeLabel({
+    id: safeBody.id,
+    name: sanitizeAlgorithmText(safeBody.name, 120),
+    sortOrder: nextSortOrder,
+    isActive: safeBody.isActive,
+    archivedAt: safeBody.archivedAt,
+  });
+  if (!item.name) throw new Error("name_required");
+  if (item.id) {
+    const archivedAt = item.isActive ? "" : (existing.archivedAt || "");
+    sql.updateAlgorithmLabel.run(
+      item.name,
+      item.sortOrder,
+      item.isActive ? 1 : 0,
+      archivedAt || null,
+      now,
+      item.id
+    );
+    return parseAlgorithmLabelRow(sql.getAlgorithmLabelById.get(item.id));
+  }
+  const insert = sql.insertAlgorithmLabel.run(item.name, item.sortOrder, item.isActive ? 1 : 0, now, now);
+  return parseAlgorithmLabelRow(sql.getAlgorithmLabelById.get(insert.lastInsertRowid));
+}
+
 function upsertAlgorithmEnvironmentFromBody(body = {}) {
   const now = nowIso();
   const item = normalizeEnvironment({
@@ -5753,6 +5883,7 @@ function upsertAlgorithmSceneFromBody(body = {}) {
     characterSlots: incomingCharacterIds,
     characterIds: incomingCharacterIds,
     situationIds: Array.isArray(safeBody.situationIds) ? safeBody.situationIds : [],
+    labelIds: Array.isArray(safeBody.labelIds) ? safeBody.labelIds : [],
     environmentId: safeBody.environmentId,
     environmentMode: safeBody.environmentMode,
     contextSceneId: safeBody.contextSceneId,
@@ -5773,6 +5904,7 @@ function upsertAlgorithmSceneFromBody(body = {}) {
   const characterJson = safeJsonStringify(item.characterIds, "[]");
   const characterSlotsJson = safeJsonStringify(item.characterSlots, "[]");
   const situationJson = safeJsonStringify(item.situationIds, "[]");
+  const labelJson = safeJsonStringify(item.labelIds, "[]");
   const environmentId = item.environmentMode === "random" ? null : item.environmentId || null;
   const contextSceneId = item.contextSceneId || null;
   if (item.id) {
@@ -5784,6 +5916,7 @@ function upsertAlgorithmSceneFromBody(body = {}) {
       characterSlotsJson,
       characterJson,
       situationJson,
+      labelJson,
       environmentId,
       item.environmentMode,
       item.promptOverride,
@@ -5802,6 +5935,7 @@ function upsertAlgorithmSceneFromBody(body = {}) {
     characterSlotsJson,
     characterJson,
     situationJson,
+    labelJson,
     environmentId,
     item.environmentMode,
     item.promptOverride,
@@ -5844,6 +5978,10 @@ function archiveAlgorithmItem(kind, id) {
     sql.archiveAlgorithmSituation.run(now, now, safeId);
     return { kind, id: safeId };
   }
+  if (kind === "label") {
+    sql.archiveAlgorithmLabel.run(now, now, safeId);
+    return { kind, id: safeId };
+  }
   if (kind === "environment") {
     sql.archiveAlgorithmEnvironment.run(now, now, safeId);
     return { kind, id: safeId };
@@ -5870,6 +6008,7 @@ function isAlgorithmEntityReferenced(kind, id) {
   for (const scene of catalog.scenes || []) {
     if (kind === "character" && scene.characterIds.includes(safeId)) return true;
     if (kind === "situation" && scene.situationIds.includes(safeId)) return true;
+    if (kind === "label" && scene.labelIds.includes(safeId)) return true;
     if (kind === "environment" && Number(scene.environmentId || 0) === safeId) return true;
   }
   return false;
@@ -5883,6 +6022,7 @@ function deleteInactiveAlgorithmItem(kind, id) {
     performer: "algorithm_performers",
     character: "algorithm_characters",
     situation: "algorithm_situations",
+    label: "algorithm_labels",
     environment: "algorithm_environments",
     scene: "algorithm_scenes",
   }[kind] || "";
@@ -5906,6 +6046,13 @@ function deleteInactiveAlgorithmItem(kind, id) {
     if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
     markSyncTombstone(tombstoneTable, safeId, deletedAt);
     sql.deleteAlgorithmSituation.run(safeId);
+    return { kind, id: safeId };
+  }
+  if (kind === "label") {
+    const item = parseAlgorithmLabelRow(sql.getAlgorithmLabelById.get(safeId));
+    if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
+    markSyncTombstone(tombstoneTable, safeId, deletedAt);
+    sql.deleteAlgorithmLabel.run(safeId);
     return { kind, id: safeId };
   }
   if (kind === "environment") {
@@ -11702,6 +11849,16 @@ app.post("/admin/algorithm/situations/upsert", requireAdmin, async (req, res) =>
     const situation = upsertAlgorithmSituationFromBody(req.body || {});
     const mirrorSync = await syncCatalogMirrorsAfterSave("situation_save");
     res.json({ ok: true, situation, mirrorSync, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/labels/upsert", requireAdmin, async (req, res) => {
+  try {
+    const label = upsertAlgorithmLabelFromBody(req.body || {});
+    const mirrorSync = await syncCatalogMirrorsAfterSave("label_save");
+    res.json({ ok: true, label, mirrorSync, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }

@@ -72,6 +72,15 @@ function setupDb(dbPath) {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE algorithm_labels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      archived_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
     CREATE TABLE algorithm_environments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -90,6 +99,7 @@ function setupDb(dbPath) {
       character_slots_json TEXT NOT NULL DEFAULT '[]',
       character_ids_json TEXT NOT NULL DEFAULT '[]',
       situation_ids_json TEXT NOT NULL DEFAULT '[]',
+      label_ids_json TEXT NOT NULL DEFAULT '[]',
       environment_id INTEGER,
       environment_mode TEXT NOT NULL DEFAULT 'selected',
       context_scene_id INTEGER,
@@ -121,7 +131,7 @@ function setupDb(dbPath) {
   db.prepare("INSERT INTO algorithm_performers (name, sort_order, role_slot, is_active, archived_at, created_at, updated_at) VALUES (?, ?, ?, 1, NULL, ?, ?)").run("Megan", 10, 1, now, now);
   db.prepare("INSERT INTO algorithm_characters (name, description, prompt_text, performer_id, is_active, archived_at, created_at, updated_at) VALUES (?, ?, '', 1, 1, NULL, ?, ?)").run("Lotte", "Originele beschrijving", now, now);
   db.prepare("INSERT INTO algorithm_environments (name, description, prompt_text, is_active, archived_at, created_at, updated_at) VALUES (?, ?, '', 1, NULL, ?, ?)").run("Supermarkt", "Originele omgeving", now, now);
-  db.prepare("INSERT INTO algorithm_scenes (title, sort_order, character_count, character_slots_json, character_ids_json, situation_ids_json, environment_id, environment_mode, context_scene_id, prompt_override, is_active, archived_at, created_at, updated_at) VALUES (?, 10, 1, '[1]', '[1]', '[]', 1, 'selected', NULL, ?, 1, NULL, ?, ?)").run("Lotte in de supermarkt", "Originele premise", now, now);
+  db.prepare("INSERT INTO algorithm_scenes (title, sort_order, character_count, character_slots_json, character_ids_json, situation_ids_json, label_ids_json, environment_id, environment_mode, context_scene_id, prompt_override, is_active, archived_at, created_at, updated_at) VALUES (?, 10, 1, '[1]', '[1]', '[]', '[]', 1, 'selected', NULL, ?, 1, NULL, ?, ?)").run("Lotte in de supermarkt", "Originele premise", now, now);
   db.prepare("INSERT INTO sessions (name, started_at, ended_at, updated_at) VALUES ('Test', ?, NULL, ?)").run(now, now);
   db.prepare("INSERT INTO chat_messages (session_id, time, client_id, client_key, ip, name, text, status, detail) VALUES (1, ?, 7, 'client|127.0.0.1', '127.0.0.1', 'Tester', 'Hallo catalogus', 'accepted', NULL)").run(now);
   db.prepare("INSERT INTO algorithm_scene_runs (session_id, scene_id, run_order, selection_source, started_at, ended_at, heart_count, bored_count, comment_count, score, prompt_snapshot, reason, updated_at) VALUES (1, 1, 1, 'manual', ?, ?, 3, 1, 2, 4.5, 'Prompt', 'test', ?)").run(now, now, now);

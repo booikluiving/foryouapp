@@ -126,6 +126,13 @@
         letter-spacing: 0.01em;
       }
 
+      .fieldLabel {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.01em;
+      }
+
       .login {
         min-height: 100vh;
         display: grid;
@@ -959,6 +966,10 @@
           grid-template-columns: 1fr;
         }
 
+        .three {
+          grid-template-columns: 1fr;
+        }
+
         .slotOverview {
           grid-template-columns: 1fr;
         }
@@ -1085,6 +1096,10 @@
               <div id="sceneCharacterSlots" class="stack"></div>
               <div id="sceneCharacterSlotsHint" class="small"></div>
               <div id="scenePerformerPreview" class="slotOverview"></div>
+              <div class="stack">
+                <span class="fieldLabel">Labels</span>
+                <div id="sceneLabels" class="checkGrid"></div>
+              </div>
               <label>Omgeving<select id="sceneEnvironment"></select></label>
               <label>Beschrijving<textarea id="scenePrompt"></textarea></label>
               <div class="actions">
@@ -1250,6 +1265,27 @@
             </div>
           </details>
 
+          <details class="settingsBlock" data-ui-state-key="settings.labels.manage" open>
+            <summary>Labels beheren</summary>
+            <div class="settingsBlockBody">
+              <div id="labelForm" class="stack hidden">
+                <label>Naam<input id="labelName" maxlength="120" /></label>
+                <div class="actions">
+                  <button id="saveLabelBtn" class="primary" type="button">Opslaan</button>
+                  <button id="cancelLabelBtn" type="button">Annuleer</button>
+                </div>
+              </div>
+              <div class="actions">
+                <button id="newLabelBtn" type="button">Voeg label toe</button>
+              </div>
+              <div id="labelsList" class="list"></div>
+              <details class="inactiveBlock" data-ui-state-key="settings.labels.inactive">
+                <summary>Non-actieve labels</summary>
+                <div id="labelsInactiveList" class="list" style="margin-top:8px;"></div>
+              </details>
+            </div>
+          </details>
+
           <details class="settingsBlock" data-ui-state-key="settings.sync">
             <summary>Sync</summary>
             <div class="settingsBlockBody">
@@ -1318,10 +1354,14 @@
                 <label>Prompt template<textarea id="promptTemplate"></textarea></label>
                 <div id="promptMsg" class="msg"></div>
               </div>
-              <div class="two">
+              <div class="three">
                 <div class="panel" style="box-shadow:none;background:#fff;">
                   <h3>Top personages</h3>
                   <div id="topCharacters" class="stack"></div>
+                </div>
+                <div class="panel" style="box-shadow:none;background:#fff;">
+                  <h3>Top labels</h3>
+                  <div id="topLabels" class="stack"></div>
                 </div>
                 <div class="panel" style="box-shadow:none;background:#fff;">
                   <h3>Top situaties</h3>
@@ -1368,8 +1408,8 @@
         };
         let token = "";
         let state = null;
-        let edit = { performer: 0, character: 0, environment: 0, scene: 0 };
-        let expanded = { performer: 0, character: 0, environment: 0, scene: 0 };
+        let edit = { performer: 0, label: 0, character: 0, environment: 0, scene: 0 };
+        let expanded = { performer: 0, label: 0, character: 0, environment: 0, scene: 0 };
         let sceneDraft = {
           open: false,
           id: 0,
@@ -1377,6 +1417,7 @@
           promptOverride: "",
           characterCount: ACTOR_SLOT_COUNT,
           characterSlots: [0, 0, 0],
+          labelIds: [],
           environmentValue: "random",
           contextEnabled: false,
           contextSceneId: 0,
@@ -1446,7 +1487,7 @@
         }
 
         function normalizeExpanded(raw = {}) {
-          const next = { performer: 0, character: 0, environment: 0, scene: 0 };
+          const next = { performer: 0, label: 0, character: 0, environment: 0, scene: 0 };
           Object.keys(next).forEach((kind) => {
             const id = Number(raw && raw[kind] || 0);
             next[kind] = Number.isInteger(id) && id > 0 ? id : 0;
@@ -1607,6 +1648,7 @@
           return {
             character: "characters",
             performer: "performers",
+            label: "labels",
             situation: "situations",
             environment: "environments",
             scene: "scenes",
@@ -1760,6 +1802,10 @@
           return `Performer-slot: ${performerRoleSlotLabel(item.roleSlot)}`;
         }
 
+        function labelDetail(item) {
+          return item && item.name ? item.name : "";
+        }
+
         function renderPerformerSlotOverview() {
           $("performerSlotOverview").innerHTML = [1, 2, 3].map((slot) => {
             const performer = activeItems("performers").find((item) => Number(item.roleSlot || 0) === slot);
@@ -1845,6 +1891,17 @@
           });
         }
 
+        function renderLabelsList(id, items, inactive = false) {
+          renderCatalogList(id, items, {
+            kind: "label",
+            selectedId: edit.label,
+            inactive,
+            labelFn: (item) => item.name || "Naamloos",
+            detailFn: labelDetail,
+            emptyText: inactive ? "Geen non-actieve labels." : "Nog geen labels.",
+          });
+        }
+
         function renderChecks(containerId, items, selectedIds) {
           const selected = new Set((selectedIds || []).map(Number));
           const el = $(containerId);
@@ -1905,6 +1962,7 @@
             promptOverride: item ? item.promptOverride || "" : "",
             characterCount: ACTOR_SLOT_COUNT,
             characterSlots: slots,
+            labelIds: Array.isArray(item && item.labelIds) ? item.labelIds.map(Number).filter((id) => id > 0) : [],
             environmentValue: item && item.environmentMode !== "random" && item.environmentId
               ? String(item.environmentId)
               : "random",
@@ -1921,6 +1979,7 @@
             promptOverride: "",
             characterCount: ACTOR_SLOT_COUNT,
             characterSlots: [0, 0, 0],
+            labelIds: [],
             environmentValue: "random",
             contextEnabled: false,
             contextSceneId: 0,
@@ -1937,6 +1996,7 @@
           sceneDraft.promptOverride = $("scenePrompt").value;
           sceneDraft.characterSlots = sceneFormSlotValues();
           sceneDraft.characterCount = ACTOR_SLOT_COUNT;
+          sceneDraft.labelIds = checkedIds("sceneLabels");
           sceneDraft.environmentValue = $("sceneEnvironment").value || "random";
           sceneDraft.contextEnabled = $("sceneContextEnabled").value === "yes";
           sceneDraft.contextSceneId = sceneDraft.contextEnabled ? Number($("sceneContextScene").value || 0) : 0;
@@ -2016,6 +2076,7 @@
             return `Dubbel personage: ${character ? character.name : "#" + id}.`;
           }
           if (code === "situation_inactive") return `Situatie non-actief of ontbreekt: #${id}.`;
+          if (code === "label_inactive") return `Label non-actief of ontbreekt: ${labelName(id)}.`;
           if (code === "required_character_missing") {
             const character = itemById("characters", id);
             return `Verplicht personage ontbreekt: ${character ? character.name : "#" + id}.`;
@@ -2085,6 +2146,11 @@
             else if (!isActiveItem(contextScene)) issues.push(`Contextsituatie is non-actief: ${contextScene.title}.`);
             else if (sceneHasContextCycle(scene)) issues.push("Contextsituaties vormen een cirkel.");
           }
+          for (const id of Array.isArray(scene.labelIds) ? scene.labelIds : []) {
+            const label = itemById("labels", id);
+            if (!label) issues.push(`Label ontbreekt (#${id}).`);
+            else if (!isActiveItem(label)) issues.push(`Label is non-actief: ${label.name}.`);
+          }
           for (const warning of sceneCastWarnings(scene)) issues.push(formatSceneWarning(warning));
           return issues;
         }
@@ -2121,6 +2187,31 @@
               <span>${esc(sceneSlotValueLabel(id))}</span>
             </div>
           `).join("");
+        }
+
+        function renderSceneLabelControls(selectedIds = []) {
+          const safeSelectedIds = (Array.isArray(selectedIds) ? selectedIds : [])
+            .map(Number)
+            .filter((id) => id > 0);
+          renderChecks(
+            "sceneLabels",
+            alphabeticCatalogItems("labels", activeItemsWithSelected("labels", safeSelectedIds)),
+            safeSelectedIds
+          );
+        }
+
+        function labelName(id) {
+          const label = itemById("labels", id);
+          return label ? label.name || `Label ${id}` : `Label ${id}`;
+        }
+
+        function sceneLabelBadges(labelIds = []) {
+          const ids = Array.isArray(labelIds) ? labelIds.map(Number).filter((id) => id > 0) : [];
+          return ids.map((id) => {
+            const label = itemById("labels", id);
+            const suffix = label && !isActiveItem(label) ? " (non-actief)" : "";
+            return `<span class="badge">${esc((label ? label.name : "Label " + id) + suffix)}</span>`;
+          }).join("");
         }
 
         function updateSceneCharacterSlotOptions() {
@@ -2232,6 +2323,7 @@
             characterCount: sceneDraft.characterCount,
             characterSlots: sceneDraft.characterSlots,
           }, sceneDraft.characterSlots);
+          renderSceneLabelControls(sceneDraft.labelIds);
           renderSceneEnvironmentOptions(sceneDraft.environmentValue || "random");
           renderSceneContextControls();
         }
@@ -2244,6 +2336,7 @@
             characterCount: sceneDraft.characterCount,
             characterSlots: sceneDraft.characterSlots,
           }, sceneDraft.characterSlots);
+          renderSceneLabelControls(sceneDraft.labelIds);
           renderSceneEnvironmentOptions(sceneDraft.environmentValue || "random");
           renderSceneContextControls();
         }
@@ -2267,6 +2360,14 @@
           }
         }
 
+        function setLabelFormVisible(visible) {
+          $("labelForm").classList.toggle("hidden", !visible);
+          if (!visible) {
+            edit.label = 0;
+            $("labelName").value = "";
+          }
+        }
+
         function setEnvironmentFormVisible(visible) {
           $("environmentForm").classList.toggle("hidden", !visible);
           if (!visible) {
@@ -2284,6 +2385,7 @@
             $("scenePrompt").value = "";
             resetSceneDraft();
             renderSceneCharacterControls(null, [0, 0, 0]);
+            renderSceneLabelControls([]);
             renderSceneEnvironmentOptions("random");
             renderSceneContextControls();
           }
@@ -2304,6 +2406,7 @@
           return [
             warnings.length ? `Waarschuwing: ${warnings.join(" ")}` : "",
             characterNames,
+            scene.labelIds && scene.labelIds.length ? `Labels: ${scene.labelIds.map(labelName).join(", ")}` : "",
             scene.environmentMode === "random" ? "Omgeving: random" : environment ? `Omgeving: ${environment.name}${isActiveItem(environment) ? "" : " (non-actief)"}` : "",
             scene.contextSceneId ? `Context: ${contextSceneTitle(scene.contextSceneId)}` : "",
             scene.promptOverride ? `Beschrijving:\n${scene.promptOverride}` : "Geen beschrijving.",
@@ -2320,6 +2423,10 @@
           const environmentLabel = scene.environmentMode === "random"
             ? "Random"
             : environment ? `${environment.name}${isActiveItem(environment) ? "" : " (non-actief)"}` : "Geen omgeving";
+          const labels = sceneLabelBadges(scene.labelIds || []);
+          const labelLine = labels
+            ? `<div class="sceneRoleRow">${labels}</div>`
+            : "";
           const context = scene.contextSceneId
             ? `<div class="sceneMetaLine"><strong>Context</strong><span>${esc(contextSceneTitle(scene.contextSceneId))}</span></div>`
             : "";
@@ -2332,6 +2439,7 @@
             <div class="sceneDetails">
               ${warning}
               <div class="sceneRoleRow">${roleBadges}</div>
+              ${labelLine}
               <div class="sceneMetaLine"><strong>Omgeving</strong><span>${esc(environmentLabel)}</span></div>
               ${context}
               <div class="sceneDescriptionBlock">
@@ -2473,6 +2581,12 @@
               ${environment ? `<span class="badge castBadge ${esc(environment.className)}">${esc(environment.label)}</span>` : ""}
             </span>
           `;
+        }
+
+        function renderOrderLabels(entry) {
+          const scene = orderEntryScene(entry);
+          if (!scene || !Array.isArray(scene.labelIds) || !scene.labelIds.length) return "";
+          return `<span class="orderCast">${sceneLabelBadges(scene.labelIds)}</span>`;
         }
 
         function orderEnvironmentBadge(entry) {
@@ -2727,6 +2841,7 @@
                     ${issues}
                   </span>
                   ${renderOrderCast(entry)}
+                  ${renderOrderLabels(entry)}
                   ${notices}
                   ${scoreBreakdown}
                 </span>
@@ -2860,6 +2975,8 @@
           renderPerformerSlotOverview();
           renderPerformersList("performersList", activeItems("performers"), false);
           renderPerformersList("performersInactiveList", inactiveItems("performers"), true);
+          renderLabelsList("labelsList", alphabeticCatalogItems("labels", activeItems("labels")), false);
+          renderLabelsList("labelsInactiveList", alphabeticCatalogItems("labels", inactiveItems("labels")), true);
           renderCharacterPerformerOptions(characterFormOpen
             ? Number($("characterPerformer").value || 0)
             : edit.character ? (itemById("characters", edit.character) || {}).performerId : 0);
@@ -2901,6 +3018,7 @@
           if (!sceneFormOpen) {
             const selectedScene = itemById("scenes", edit.scene) || {};
             renderSceneCharacterControls(selectedScene, null);
+            renderSceneLabelControls(selectedScene.labelIds || []);
             renderSceneEnvironmentOptions(
               selectedScene.environmentMode === "random" ? "random" : String(selectedScene.environmentId || "random")
             );
@@ -2932,6 +3050,14 @@
           $("performerName").value = item ? item.name || "" : "";
           $("performerRoleSlot").value = String(Number(item && item.roleSlot || 0));
           setPerformerFormVisible(true);
+          renderCatalog();
+        }
+
+        function fillLabel(item = null) {
+          edit.label = Number(item && item.id || 0);
+          setExpanded("label", edit.label);
+          $("labelName").value = item ? item.name || "" : "";
+          setLabelFormVisible(true);
           renderCatalog();
         }
 
@@ -3263,10 +3389,12 @@
         function renderScores() {
           const labels = {
             characters: Object.fromEntries((state.catalog.characters || []).map((item) => [item.id, item.name])),
+            labels: Object.fromEntries((state.catalog.labels || []).map((item) => [item.id, item.name])),
             scenes: Object.fromEntries((state.catalog.scenes || []).map((item) => [item.id, item.title])),
           };
           const blend = Number(state && state.settings && state.settings.timeNormalizedBlend || 0);
           $("topCharacters").innerHTML = renderScoreRows(state.entityScores.characters || [], labels.characters);
+          $("topLabels").innerHTML = renderScoreRows(state.entityScores.labels || [], labels.labels);
           $("topSituations").innerHTML = renderScoreRows(sceneScoreRows(), labels.scenes);
           $("runsList").innerHTML = (state.runs || []).slice().reverse().map((run) => {
             const scene = itemById("scenes", run.sceneId);
@@ -3502,6 +3630,7 @@
         function upsertPathForKind(kind) {
           return {
             performer: "/admin/algorithm/performers/upsert",
+            label: "/admin/algorithm/labels/upsert",
             character: "/admin/algorithm/characters/upsert",
             situation: "/admin/algorithm/situations/upsert",
             environment: "/admin/algorithm/environments/upsert",
@@ -3513,6 +3642,9 @@
           if (!item) return null;
           if (kind === "performer") {
             return { id: item.id, name: item.name, sortOrder: item.sortOrder || 0, roleSlot: item.roleSlot || 0, isActive };
+          }
+          if (kind === "label") {
+            return { id: item.id, name: item.name, sortOrder: item.sortOrder || 0, isActive };
           }
           if (kind === "character") {
             return { id: item.id, name: item.name, description: item.description, performerId: item.performerId || 0, isActive };
@@ -3539,6 +3671,7 @@
               characterSlots,
               characterIds: characterSlots.filter((id) => id > 0),
               situationIds: [],
+              labelIds: item.labelIds || [],
               environmentMode: item.environmentMode || "selected",
               environmentId: item.environmentMode === "random" ? 0 : item.environmentId || 0,
               contextSceneId: item.contextSceneId || 0,
@@ -3551,6 +3684,7 @@
 
         function fillByKind(kind, item) {
           if (kind === "performer") fillPerformer(item);
+          if (kind === "label") fillLabel(item);
           if (kind === "character") fillCharacter(item);
           if (kind === "environment") fillEnvironment(item);
           if (kind === "scene") fillScene(item);
@@ -3559,6 +3693,10 @@
         function clearEditForKind(kind) {
           if (kind === "performer") {
             setPerformerFormVisible(false);
+            return;
+          }
+          if (kind === "label") {
+            setLabelFormVisible(false);
             return;
           }
           if (kind === "character") {
@@ -3580,6 +3718,7 @@
           if (action === "toggle") {
             setExpanded(kind, Number(expanded[kind]) === id ? 0 : id);
             if (kind === "performer") setPerformerFormVisible(false);
+            if (kind === "label") setLabelFormVisible(false);
             if (kind === "character") setCharacterFormVisible(false);
             if (kind === "environment") setEnvironmentFormVisible(false);
             if (kind === "scene") setSceneFormVisible(false);
@@ -3617,6 +3756,8 @@
           [
             "performersList",
             "performersInactiveList",
+            "labelsList",
+            "labelsInactiveList",
             "charactersList",
             "charactersInactiveList",
             "environmentsList",
@@ -3630,6 +3771,11 @@
           $("newPerformerBtn").addEventListener("click", () => fillPerformer(null));
           $("cancelPerformerBtn").addEventListener("click", () => {
             setPerformerFormVisible(false);
+            renderCatalog();
+          });
+          $("newLabelBtn").addEventListener("click", () => fillLabel(null));
+          $("cancelLabelBtn").addEventListener("click", () => {
+            setLabelFormVisible(false);
             renderCatalog();
           });
           $("newCharacterBtn").addEventListener("click", () => fillCharacter(null));
@@ -3683,6 +3829,9 @@
               characterSlots: sceneDraft.characterSlots,
             }, sceneDraft.characterSlots);
           });
+          $("sceneLabels").addEventListener("change", () => {
+            sceneDraft.labelIds = checkedIds("sceneLabels");
+          });
 
           $("savePerformerBtn").addEventListener("click", async () => {
             try {
@@ -3694,6 +3843,20 @@
               });
               setExpanded("performer", Number(result.performer && result.performer.id || 0));
               setPerformerFormVisible(false);
+              renderCatalog();
+              refreshOpenSceneDraftControls();
+            } catch (err) { setMsg("catalogMsg", formatError(err), true); }
+          });
+
+          $("saveLabelBtn").addEventListener("click", async () => {
+            try {
+              const result = await post("/admin/algorithm/labels/upsert", {
+                id: edit.label || undefined,
+                name: $("labelName").value,
+                isActive: editedIsActive("label", edit.label),
+              });
+              setExpanded("label", Number(result.label && result.label.id || 0));
+              setLabelFormVisible(false);
               renderCatalog();
               refreshOpenSceneDraftControls();
             } catch (err) { setMsg("catalogMsg", formatError(err), true); }
@@ -3747,6 +3910,7 @@
                 characterSlots,
                 characterIds: characterSlots.filter((id) => id > 0),
                 situationIds: [],
+                labelIds: sceneDraft.labelIds,
                 environmentMode: environmentValue === "random" ? "random" : "selected",
                 environmentId: environmentValue === "random" ? 0 : Number(environmentValue || 0),
                 contextSceneId: sceneDraft.contextEnabled ? Number(sceneDraft.contextSceneId || 0) : 0,
@@ -3994,6 +4158,7 @@
             algorithm_action_in_progress: "Er wordt al een run-actie verwerkt. Wacht heel even.",
             stale_algorithm_state: "Deze actie was al verwerkt of de volgorde is bijgewerkt. Refresh/state is bijgewerkt.",
             performer_not_found: "Performer niet gevonden.",
+            label_not_found: "Label niet gevonden.",
             role_slot_conflict: "Deze performer-slot is al gekoppeld aan een andere actieve performer.",
             name_required: "Naam is verplicht.",
             title_required: "Titel is verplicht.",
