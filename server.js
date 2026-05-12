@@ -3864,6 +3864,7 @@ function getCurrentOscProfile() {
     listenPort: currentOscListenPort,
     sendHost: oscControlFeedbackHost,
     sendPort: oscControlFeedbackPort,
+    currentScenePort: algorithmCurrentSceneOscPort,
   };
   const raw = getSetting(currentOscProfileSettingKey(), "");
   const parsed = raw ? safeSyncJsonParse(raw, null) : null;
@@ -3894,10 +3895,12 @@ function applyCurrentOscProfileToRuntime() {
   currentOscListenPort = clampInt(profile.listenPort, 1, 65535, currentOscListenPort);
   oscControlFeedbackHost = normalizeOscControlFeedbackHost(profile.sendHost);
   oscControlFeedbackPort = clampInt(profile.sendPort, 0, 65535, oscControlFeedbackPort);
+  algorithmCurrentSceneOscPort = clampInt(profile.currentScenePort, 1, 65535, algorithmCurrentSceneOscPort);
   oscControlSendEnabled = !!profile.sendEnabled && !!oscControlFeedbackHost && oscControlFeedbackPort > 0;
   setSetting("osc_listen_port", String(currentOscListenPort));
   setSetting("osc_feedback_host", oscControlFeedbackHost);
   setSetting("osc_feedback_port", String(oscControlFeedbackPort));
+  setSetting("algorithm_current_scene_osc_port", String(algorithmCurrentSceneOscPort));
   setSetting("osc_send_enabled", oscControlSendEnabled ? "1" : "0");
   return profile;
 }
@@ -12727,9 +12730,15 @@ app.post("/admin/algorithm/osc/settings", requireAdmin, async (req, res) => {
   const rawListenPort = Object.prototype.hasOwnProperty.call(body, "listenPort") ? body.listenPort : body.receivePort;
   const rawSendHost = Object.prototype.hasOwnProperty.call(body, "sendHost") ? body.sendHost : body.host;
   const rawSendPort = Object.prototype.hasOwnProperty.call(body, "sendPort") ? body.sendPort : body.port;
+  const rawCurrentScenePort = Object.prototype.hasOwnProperty.call(body, "currentScenePort")
+    ? body.currentScenePort
+    : Object.prototype.hasOwnProperty.call(body, "algorithmCurrentScenePort")
+      ? body.algorithmCurrentScenePort
+      : algorithmCurrentSceneOscPort;
   const listenPort = clampInt(rawListenPort, 1, 65535, -1);
   const sendHost = normalizeOscControlFeedbackHost(rawSendHost);
   const sendPort = clampInt(rawSendPort, 0, 65535, 0);
+  const currentScenePort = clampInt(rawCurrentScenePort, 1, 65535, -1);
   const requestedSendEnabled = parseBooleanLike(req.body && req.body.sendEnabled, false);
   const sendTargetReady = !!sendHost && sendPort > 0;
   const sendEnabled = requestedSendEnabled && sendTargetReady;
@@ -12737,19 +12746,26 @@ app.post("/admin/algorithm/osc/settings", requireAdmin, async (req, res) => {
     res.status(400).json({ ok: false, error: "invalid_listen_port" });
     return;
   }
+  if (currentScenePort < 1) {
+    res.status(400).json({ ok: false, error: "invalid_current_scene_port" });
+    return;
+  }
   try {
     oscControlSendEnabled = sendEnabled;
     oscControlFeedbackHost = sendHost;
     oscControlFeedbackPort = sendPort;
+    algorithmCurrentSceneOscPort = currentScenePort;
     saveCurrentOscProfile({
       sendEnabled,
       listenPort,
       sendHost,
       sendPort,
+      currentScenePort,
     });
     setSetting("osc_send_enabled", oscControlSendEnabled ? "1" : "0");
     setSetting("osc_feedback_host", oscControlFeedbackHost);
     setSetting("osc_feedback_port", String(oscControlFeedbackPort));
+    setSetting("algorithm_current_scene_osc_port", String(algorithmCurrentSceneOscPort));
     let warning = requestedSendEnabled && !sendTargetReady ? "send_target_required" : "";
     if (listenPort !== Number(currentOscListenPort || 0) || !oscControlReady) {
       try {
@@ -12760,6 +12776,7 @@ app.post("/admin/algorithm/osc/settings", requireAdmin, async (req, res) => {
           listenPort,
           sendHost,
           sendPort,
+          currentScenePort,
           message: err && err.message ? err.message : "unknown",
         });
       }
@@ -12773,6 +12790,7 @@ app.post("/admin/algorithm/osc/settings", requireAdmin, async (req, res) => {
       listenPort: oscState.listenPort,
       sendHost: oscState.feedbackHost,
       sendPort: oscState.feedbackPort,
+      currentScenePort: oscState.currentScenePort,
       warning,
     });
     res.json({ ok: true, warning, osc: oscState, state: getAlgorithmState(req) });
