@@ -6,6 +6,7 @@ APP_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 APP_LABEL="${FORYOU_LAUNCHD_LABEL:-nl.foryou.app}"
 APP_PORT="${FORYOU_PORT:-3310}"
 APP_BRANCH="${FORYOU_BRANCH:-main}"
+ALLOW_LIVE_BRANCH="${FORYOU_ALLOW_LIVE_BRANCH:-0}"
 PLIST_PATH="$HOME/Library/LaunchAgents/${APP_LABEL}.plist"
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
@@ -21,6 +22,10 @@ info() {
 cd "$APP_DIR"
 [[ -d .git ]] || fail "Geen git clone gevonden in $APP_DIR."
 [[ -f "$PLIST_PATH" ]] || fail "LaunchAgent ontbreekt. Run eerst scripts/mac-studio-setup.command."
+
+if [[ "$APP_PORT" == "3310" && "$APP_BRANCH" != "main" && "$ALLOW_LIVE_BRANCH" != "1" ]]; then
+  fail "Live update op poort 3310 mag standaard alleen vanaf main. Gebruik scripts/mac-studio-preview.command ${APP_BRANCH} voor branch-preview, of zet bewust FORYOU_ALLOW_LIVE_BRANCH=1."
+fi
 
 if [[ -n "$(git status --porcelain)" ]]; then
   fail "Werkmap heeft lokale wijzigingen. Commit/stash die eerst, zodat update geen showcode overschrijft."

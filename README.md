@@ -85,12 +85,33 @@ Voor UniFi-configuratie: kopieer `.env.example` naar `.env` op de Mac Studio en 
 - `npm run unifi:status` test de read-only UniFi network agent
 - `scripts/mac-studio-setup.command` installeert/start de Mac Studio show-machine via launchd
 - `scripts/mac-studio-update.command` pullt de laatste code, installeert dependencies, herstart en smoke-test
+- `scripts/mac-studio-preview.command <branch>` start een losse branch-preview op poort `3311` zonder de live showserver te raken
 - `scripts/mac-studio-status.command` toont launchd, health, URLs, git status en logs
 
 Mac launcher:
 - `scripts/open-admin.command` gebruikt lokaal poort `3010`, start de server alleen als er nog geen For You-server draait, opent admin via huidig LAN-IP (fallback localhost) en sluit daarna het Terminal-venster. Gebruik geen extra fallbackpoort zonder bewuste reden.
 - Dubbelklik op dit `.command` bestand of zet er een snelkoppeling/icoon van op je bureaublad.
 - Zie `MAC_STUDIO_SETUP.md` voor de show-machine setup.
+
+## Mac Studio branch-workflow
+Ontwikkelen op branches mag. De afspraak is alleen: live deploy naar poort `3310` loopt standaard via `main`.
+
+Voor branch-werk op de Mac Studio:
+
+```bash
+cd "$HOME/ForYou/App"
+./scripts/mac-studio-preview.command codex/mijn-branch
+```
+
+Dat maakt/gebruikt een worktree onder `$HOME/ForYou/worktrees`, start die branch op `http://127.0.0.1:3311/` en laat de live showserver op `3310` ongemoeid. Gebruik `FORYOU_PREVIEW_PORT=3312` als er al een preview draait.
+
+Stoppen:
+
+```bash
+./scripts/mac-studio-preview.command stop codex/mijn-branch
+```
+
+Mergen naar `main` en live herstarten blijft een expliciete stap na review. Alleen als je heel bewust een branch op de live poort wilt draaien, zet je `FORYOU_ALLOW_LIVE_BRANCH=1`; doe dat niet als gewone preview.
 
 CLI hulp:
 ```bash
