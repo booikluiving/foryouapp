@@ -1394,6 +1394,7 @@
                 <label>Receive poort<input id="oscReceivePort" type="number" min="1" max="65535" step="1" /></label>
                 <label>Send poort<input id="oscSendPort" type="number" min="0" max="65535" step="1" /></label>
               </div>
+              <label>Huidige scène poort<input id="oscCurrentScenePort" type="number" min="1" max="65535" step="1" /></label>
               <label>Send host<input id="oscSendHost" maxlength="120" placeholder="192.168.1.49" /></label>
               <div id="oscStatusText" class="small"></div>
               <div id="oscLastSend" class="small"></div>
@@ -3427,11 +3428,13 @@
             $("oscReceivePort").value = displayValues.listenPort;
             $("oscSendHost").value = displayValues.sendHost;
             $("oscSendPort").value = displayValues.sendPort;
+            $("oscCurrentScenePort").value = displayValues.currentScenePort;
           }
           updateOscSendToggle();
           const receive = `${osc.listenAddress || "127.0.0.1"}:${displayValues.listenPort}`;
           const sendTarget = sendHost && sendPort > 0 ? `${sendHost}:${sendPort}` : "geen send target";
-          $("oscStatusText").textContent = `Receive ${receive} · Send ${sendTarget}` +
+          const currentSceneTarget = sendHost && displayValues.currentScenePort > 0 ? `${sendHost}:${displayValues.currentScenePort}` : "geen current scene target";
+          $("oscStatusText").textContent = `Receive ${receive} · Send ${sendTarget} · Current ${currentSceneTarget}` +
             (osc.lastError ? ` · receive fout: ${osc.lastError}` : "") +
             (osc.sendLastError ? ` · send fout: ${osc.sendLastError}` : "");
           const last = osc.lastAlgorithmOscSend || {};
@@ -3475,6 +3478,7 @@
             listenPort: String(Number(osc && osc.listenPort || 1234)),
             sendHost: String((osc && (osc.sendHost !== undefined ? osc.sendHost : osc.feedbackHost)) || "192.168.1.49"),
             sendPort: String(Number(osc && (osc.sendPort || osc.feedbackPort) || 0) || ""),
+            currentScenePort: String(Number(osc && osc.currentScenePort || 8005)),
           };
         }
 
@@ -3484,6 +3488,7 @@
             listenPort: String($("oscReceivePort").value || ""),
             sendHost: String($("oscSendHost").value || "").trim(),
             sendPort: String($("oscSendPort").value || ""),
+            currentScenePort: String($("oscCurrentScenePort").value || ""),
           };
         }
 
@@ -3492,7 +3497,8 @@
             && !!a.sendEnabled === !!b.sendEnabled
             && String(a.listenPort || "") === String(b.listenPort || "")
             && String(a.sendHost || "") === String(b.sendHost || "")
-            && String(a.sendPort || "") === String(b.sendPort || "");
+            && String(a.sendPort || "") === String(b.sendPort || "")
+            && String(a.currentScenePort || "") === String(b.currentScenePort || "");
         }
 
         function holdOscDraft(values) {
@@ -3516,7 +3522,8 @@
           return isOscSendToggleFocused()
             || document.activeElement === $("oscReceivePort")
             || document.activeElement === $("oscSendHost")
-            || document.activeElement === $("oscSendPort");
+            || document.activeElement === $("oscSendPort")
+            || document.activeElement === $("oscCurrentScenePort");
         }
 
         function markOscDraftDirty() {
@@ -3904,6 +3911,7 @@
               listenPort: values.listenPort,
               sendHost: values.sendHost,
               sendPort: values.sendPort,
+              currentScenePort: values.currentScenePort,
             }),
           });
           holdOscDraft(values);
@@ -4317,7 +4325,7 @@
             updateVariationSettingsPreview(DEFAULT_VARIATION_SETTINGS);
             saveAlgorithmSettings("variationMsg", "Variatie teruggezet.");
           });
-          ["oscReceivePort", "oscSendHost", "oscSendPort"].forEach((id) => {
+          ["oscReceivePort", "oscSendHost", "oscSendPort", "oscCurrentScenePort"].forEach((id) => {
             $(id).addEventListener("input", markOscDraftDirty);
             $(id).addEventListener("change", markOscDraftDirty);
           });

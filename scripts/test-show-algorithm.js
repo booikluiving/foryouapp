@@ -1364,11 +1364,14 @@ function testOscProfilesAreDeviceScoped() {
     listenPort: 6767,
     sendHost: "192.168.1.49",
     sendPort: 8002,
+    currentScenePort: 8005,
   });
   assert.strictEqual(profile.sendEnabled, true);
   assert.strictEqual(profile.listenPort, 6767);
   assert.strictEqual(profile.sendHost, "192.168.1.49");
   assert.strictEqual(profile.sendPort, 8002);
+  assert.strictEqual(profile.currentScenePort, 8005);
+  assert.strictEqual(normalizeOscProfile({ currentScenePort: 70000 }).currentScenePort, 8005);
   assert.strictEqual(normalizeOscProfile({ sendEnabled: true, sendHost: "", sendPort: 8002 }).sendEnabled, false);
 }
 
