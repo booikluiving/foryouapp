@@ -15,7 +15,7 @@ Als GitHub om toegang vraagt: log in met je GitHub-account of configureer eerst 
 Het setup-script doet:
 
 - checkt Node 22+ en gebruikt Homebrew als Node nog ontbreekt
-- haalt `main` op uit GitHub
+- haalt `main` op uit GitHub voor de live showserver
 - installeert `npm` dependencies
 - installeert een macOS LaunchAgent
 - start de app automatisch op poort `3310`
@@ -43,6 +43,37 @@ Dat doet:
 - `npm install`
 - service restart
 - smoke-test
+
+`mac-studio-update.command` is bewust de live-update voor `main` op poort `3310`. Werk je op een branch, gebruik dan een preview in plaats van de live service te verplaatsen.
+
+## Branch-preview op de Mac Studio
+
+Branches mogen vrij gebruikt worden voor ontwikkeling en review. Start ze op een aparte poort:
+
+```bash
+cd "$HOME/ForYou/App"
+./scripts/mac-studio-preview.command codex/mijn-branch
+```
+
+Default:
+
+- branch-worktree: `$HOME/ForYou/worktrees/<branch>`
+- previewpoort: `3311`
+- live showserver: blijft `main` op `3310`
+
+Andere previewpoort:
+
+```bash
+FORYOU_PREVIEW_PORT=3312 ./scripts/mac-studio-preview.command codex/mijn-branch
+```
+
+Preview stoppen:
+
+```bash
+./scripts/mac-studio-preview.command stop codex/mijn-branch
+```
+
+Pas na review merge je de branch naar `main` en run je weer `./scripts/mac-studio-update.command` voor de live showserver.
 
 ## Status checken op de Mac Studio
 
@@ -74,7 +105,15 @@ Publiek gebruikt de LAN-link/QR met het Mac Studio IP.
 
 ## Git workflow
 
-Op je MacBook:
+Voor gewoon ontwikkelen mag je lokaal of op de Mac Studio een branch gebruiken:
+
+```bash
+git switch -c codex/mijn-branch
+git add .
+git commit -m "..."
+```
+
+Voor live deploy blijft de route:
 
 ```bash
 git add .

@@ -6,6 +6,7 @@ APP_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 APP_LABEL="${FORYOU_LAUNCHD_LABEL:-nl.foryou.app}"
 APP_PORT="${FORYOU_PORT:-3310}"
 APP_BRANCH="${FORYOU_BRANCH:-main}"
+ALLOW_LIVE_BRANCH="${FORYOU_ALLOW_LIVE_BRANCH:-0}"
 ADMIN_BOOTSTRAP_PASSWORD="${FORYOU_ADMIN_PASSWORD:-Tijdelijk_2026!}"
 PLIST_PATH="$HOME/Library/LaunchAgents/${APP_LABEL}.plist"
 LOG_DIR="$HOME/Library/Logs/ForYouApp"
@@ -103,6 +104,9 @@ ensure_clean_worktree_for_pull() {
 
 pull_latest() {
   cd "$APP_DIR"
+  if [[ "$APP_PORT" == "3310" && "$APP_BRANCH" != "main" && "$ALLOW_LIVE_BRANCH" != "1" ]]; then
+    fail "Launchd setup op live poort 3310 mag standaard alleen vanaf main. Gebruik scripts/mac-studio-preview.command ${APP_BRANCH} voor branch-preview, of zet bewust FORYOU_ALLOW_LIVE_BRANCH=1."
+  fi
   if ensure_clean_worktree_for_pull; then
     info "Laatste code ophalen van origin/${APP_BRANCH}."
     git fetch origin "$APP_BRANCH"

@@ -77,5 +77,23 @@ cd "$APP_DIR"
 git status --short --branch || true
 echo ""
 
+echo "branch previews:"
+preview_found=0
+for pid_file in "$LOG_DIR"/preview-*.pid; do
+  [[ -e "$pid_file" ]] || continue
+  preview_found=1
+  name="$(basename "$pid_file" .pid)"
+  pid="$(cat "$pid_file" 2>/dev/null || true)"
+  if [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1; then
+    echo "  ${name#preview-}: actief (pid $pid)"
+  else
+    echo "  ${name#preview-}: pidfile aanwezig, proces niet actief"
+  fi
+done
+if [[ "$preview_found" == "0" ]]; then
+  echo "  geen actieve preview-pidfiles"
+fi
+echo ""
+
 echo "laatste logs:"
 tail -n 30 "$LOG_DIR/server.err.log" 2>/dev/null || echo "  nog geen error log"
