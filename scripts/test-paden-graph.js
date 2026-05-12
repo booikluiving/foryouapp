@@ -28,6 +28,33 @@ assert.equal(layout.positions[2].y, layout.positions[3].y);
 assert.notEqual(layout.positions[2].x, layout.positions[3].x);
 assert.equal(layout.positions[4].y > layout.positions[2].y, true);
 
+const optionalRanks = Graph.computeRanks(
+  [1, 2, 3],
+  [
+    { fromSceneId: 1, toSceneId: 2 },
+    { fromSceneId: 1, toSceneId: 3, edgeType: "optional" },
+  ]
+);
+assert.equal(optionalRanks.get(2), 1);
+assert.equal(optionalRanks.get(3), 0);
+
+assert.deepEqual(
+  Graph.pathEndpoints({
+    sceneIds: [1, 2, 3],
+    edges: [
+      { fromSceneId: 1, toSceneId: 2 },
+      { fromSceneId: 1, toSceneId: 3, edgeType: "optional" },
+    ],
+    edgeMode: "manual",
+  }, { connectedOnly: true }),
+  { starts: [1], ends: [2] }
+);
+
+assert.deepEqual(
+  Graph.normalizeEdges([{ fromSceneId: 1, toSceneId: 2, edgeType: "optional" }], [1, 2]),
+  [{ fromSceneId: 1, toSceneId: 2, edgeType: "optional" }]
+);
+
 assert.deepEqual(
   Graph.getRenderableEdges({ sceneIds: [7, 8, 9], edges: [] }),
   [
@@ -93,12 +120,29 @@ assert.equal(
     edges: [{ fromSceneId: 1, toSceneId: 2 }],
     edgeMode: "manual",
   }, 3, 4),
-  "path_single_start_required:2"
+  "path_disconnected_components:2"
+);
+
+assert.equal(
+  Graph.edgeCandidateIssue({
+    sceneIds: [1, 2, 3],
+    edges: [{ fromSceneId: 1, toSceneId: 3 }],
+    edgeMode: "manual",
+  }, 2, 3),
+  ""
 );
 
 assert.deepEqual(
   Graph.connectedSceneIds([1, 2, 3], [{ fromSceneId: 1, toSceneId: 2 }]),
   [1, 2]
+);
+
+assert.equal(
+  Graph.connectedComponentCount(
+    [1, 2, 3, 4],
+    [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 3, toSceneId: 4 }]
+  ),
+  2
 );
 
 assert.equal(
@@ -116,7 +160,7 @@ assert.equal(
     edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 1, toSceneId: 3 }],
     edgeMode: "manual",
   }, 2, 3),
-  "path_edge_multiple_incoming:3"
+  ""
 );
 
 assert.deepEqual(
@@ -130,6 +174,49 @@ assert.deepEqual(
     [1, 2, 3]
   ),
   [{ fromSceneId: 1, toSceneId: 2 }]
+);
+
+assert.deepEqual(
+  Graph.normalizeThresholdsForEdges(
+    [
+      { sourceSceneId: 1, requiredCount: 2 },
+      { sourceSceneId: 2, requiredCount: 1 },
+      { sourceSceneId: 3, requiredCount: 9 },
+    ],
+    [1, 2, 3, 4],
+    [
+      { fromSceneId: 1, toSceneId: 2 },
+      { fromSceneId: 1, toSceneId: 3 },
+      { fromSceneId: 1, toSceneId: 4 },
+      { fromSceneId: 3, toSceneId: 2 },
+      { fromSceneId: 3, toSceneId: 4 },
+    ]
+  ),
+  [{ sourceSceneId: 1, requiredCount: 2 }]
+);
+
+assert.equal(
+  Graph.thresholdMapForPath({
+    sceneIds: [1, 2, 3],
+    edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 1, toSceneId: 3 }],
+    edgeMode: "manual",
+    thresholds: [{ sourceSceneId: 1, requiredCount: 1 }],
+  }).get(1),
+  1
+);
+
+const crossingPaths = [
+  { id: 1, name: "A", sceneIds: [1, 4], edges: [{ fromSceneId: 1, toSceneId: 4 }], isActive: true },
+  { id: 2, name: "B", sceneIds: [2, 4], edges: [{ fromSceneId: 2, toSceneId: 4 }], isActive: true },
+  { id: 3, name: "C", sceneIds: [3, 4], edges: [{ fromSceneId: 3, toSceneId: 4, edgeType: "optional" }], isActive: true },
+];
+assert.deepEqual(
+  Graph.crossingIncomingRoutesForPaths(crossingPaths, 4).map((route) => [route.pathId, route.fromSceneId]),
+  [[1, 1], [2, 2]]
+);
+assert.deepEqual(
+  Graph.normalizeCrossingThresholdsForPaths([{ sceneId: 4, requiredCount: 1 }], crossingPaths),
+  [{ sceneId: 4, requiredCount: 1 }]
 );
 
 const membership = Graph.analyzePathMembership([

@@ -243,7 +243,7 @@
 
       .sceneRow {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 8px;
         min-height: 32px;
         padding: 7px 9px;
@@ -266,6 +266,7 @@
         display: grid;
         gap: 2px;
         color: var(--muted);
+        padding-top: 5px;
       }
       .sceneRow .grip i {
         width: 2px;
@@ -276,15 +277,16 @@
       .sceneRow .name {
         min-width: 0;
         flex: 1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: normal;
+        overflow: visible;
+        overflow-wrap: anywhere;
       }
       .scenePathDots {
         flex: 0 0 auto;
         display: flex;
         align-items: center;
         gap: 2px;
+        padding-top: 4px;
       }
       .scenePathDots span {
         width: 7px;
@@ -642,6 +644,10 @@
         box-shadow: 0 0 0 2px var(--focus), 0 4px 14px rgba(31, 29, 26, 0.16);
       }
 
+      .pathNode.expanded {
+        z-index: 8;
+      }
+
       .pathNode.draftNode {
         border-style: dashed;
         border-color: #aaa197;
@@ -658,15 +664,40 @@
         border-width: 2px;
       }
 
+      .pathNode.multiColorNode {
+        box-shadow: 0 0 0 1px rgba(31, 29, 26, 0.14), 0 2px 8px rgba(31, 29, 26, 0.14);
+      }
+
       .pathNode .stripe,
       .ghostNode .stripe {
         position: absolute;
         top: 0;
         bottom: 0;
         left: 0;
-        width: 5px;
+        width: 6px;
         border-radius: 7px 0 0 7px;
         background: var(--active);
+      }
+
+      .nodePathColors {
+        position: absolute;
+        top: -8px;
+        right: 10px;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        padding: 2px 4px;
+        border: 1px solid rgba(42, 39, 36, 0.32);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 2px 6px rgba(31, 29, 26, 0.14);
+      }
+
+      .nodePathColors i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        box-shadow: 0 0 0 1px rgba(42, 39, 36, 0.24);
       }
 
       .pathNode .title,
@@ -675,6 +706,31 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+
+      .pathNode .nodeFullTitle {
+        display: none;
+        position: absolute;
+        left: 0;
+        top: calc(100% + 7px);
+        width: 320px;
+        max-width: min(320px, 68vw);
+        padding: 8px 10px;
+        border: 1.5px solid var(--line);
+        border-radius: 7px;
+        background: var(--surface);
+        color: var(--ink);
+        box-shadow: var(--shadow);
+        font-size: 12px;
+        font-weight: 760;
+        line-height: 1.25;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        pointer-events: none;
+      }
+
+      .pathNode.expanded .nodeFullTitle {
+        display: block;
       }
 
       .pathNode .sub,
@@ -734,7 +790,8 @@
         pointer-events: none;
       }
 
-      .edgeDelete {
+      .edgeDelete,
+      .edgeTypeToggle {
         position: absolute;
         width: 22px;
         height: 22px;
@@ -753,6 +810,55 @@
         cursor: pointer;
         z-index: 6;
         box-shadow: 0 2px 8px rgba(31, 29, 26, 0.22);
+      }
+
+      .edgeTypeToggle {
+        font-size: 12px;
+      }
+
+      .thresholdBadge {
+        position: absolute;
+        display: inline-flex;
+        align-items: center;
+        gap: 1px;
+        height: 25px;
+        padding: 2px 7px;
+        border: 1.5px solid var(--line);
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 2px 8px rgba(31, 29, 26, 0.14);
+        transform: translate(-50%, -50%);
+        z-index: 5;
+        font-size: 11px;
+        font-weight: 850;
+        line-height: 1;
+      }
+
+      .thresholdBadge.choiceGroup {
+        background: #fff9df;
+        border-style: dashed;
+      }
+
+      .crossingThresholdBadge {
+        transform: translate(0, -50%);
+        z-index: 9;
+      }
+
+      .thresholdBadge input {
+        width: 28px;
+        height: 19px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        text-align: right;
+        -moz-appearance: textfield;
+      }
+
+      .thresholdBadge input::-webkit-inner-spin-button,
+      .thresholdBadge input::-webkit-outer-spin-button {
+        opacity: 1;
       }
 
       .emptyState {

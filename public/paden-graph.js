@@ -37,7 +37,54 @@
     const fromSceneId = normalizeId(src.fromSceneId || src.from || src.sourceSceneId || src.source);
     const toSceneId = normalizeId(src.toSceneId || src.to || src.targetSceneId || src.target);
     if (!fromSceneId || !toSceneId || fromSceneId === toSceneId) return null;
-    return { fromSceneId, toSceneId };
+    const edgeType = String(src.edgeType || src.type || "").trim().toLowerCase() === "optional" ? "optional" : "";
+    return edgeType ? { fromSceneId, toSceneId, edgeType } : { fromSceneId, toSceneId };
+  }
+
+  function isOptionalEdge(edge) {
+    return String(edge && edge.edgeType || "").trim().toLowerCase() === "optional";
+  }
+
+  function normalizeThreshold(threshold) {
+    const src = threshold && typeof threshold === "object" ? threshold : {};
+    const sourceSceneId = normalizeId(src.sourceSceneId || src.source || src.fromSceneId || src.from);
+    const requiredCount = Number.parseInt(String(src.requiredCount || src.required || src.count || "1"), 10);
+    if (!sourceSceneId) return null;
+    return {
+      sourceSceneId,
+      requiredCount: Number.isInteger(requiredCount) && requiredCount > 0 ? requiredCount : 1,
+    };
+  }
+
+  function normalizeThresholds(thresholds) {
+    const bySource = new Map();
+    (Array.isArray(thresholds) ? thresholds : []).forEach((rawThreshold) => {
+      const threshold = normalizeThreshold(rawThreshold);
+      if (!threshold) return;
+      bySource.set(threshold.sourceSceneId, threshold);
+    });
+    return Array.from(bySource.values()).sort((a, b) => a.sourceSceneId - b.sourceSceneId);
+  }
+
+  function normalizeCrossingThreshold(threshold) {
+    const src = threshold && typeof threshold === "object" ? threshold : {};
+    const sceneId = normalizeId(src.sceneId || src.targetSceneId || src.toSceneId || src.scene);
+    const requiredCount = Number.parseInt(String(src.requiredCount || src.required || src.count || "1"), 10);
+    if (!sceneId) return null;
+    return {
+      sceneId,
+      requiredCount: Number.isInteger(requiredCount) && requiredCount > 0 ? requiredCount : 1,
+    };
+  }
+
+  function normalizeCrossingThresholds(thresholds) {
+    const byScene = new Map();
+    (Array.isArray(thresholds) ? thresholds : []).forEach((rawThreshold) => {
+      const threshold = normalizeCrossingThreshold(rawThreshold);
+      if (!threshold) return;
+      byScene.set(threshold.sceneId, threshold);
+    });
+    return Array.from(byScene.values()).sort((a, b) => a.sceneId - b.sceneId);
   }
 
   function edgeKey(edge) {
@@ -58,6 +105,95 @@
       normalized.push(edge);
     });
     return normalized;
+  }
+
+  function outgoingTargetsBySource(sceneIds, edges) {
+    const ids = normalizeIdList(sceneIds);
+    const map = new Map(ids.map((id) => [id, []]));
+    normalizeEdges(edges, ids).forEach((edge) => {
+      if (isOptionalEdge(edge)) return;
+      const targets = map.get(edge.fromSceneId);
+      if (!targets || targets.includes(edge.toSceneId)) return;
+      targets.push(edge.toSceneId);
+    });
+    return map;
+  }
+
+  function normalizeThresholdsForEdges(thresholds, sceneIds, edges) {
+    const outgoing = outgoingTargetsBySource(sceneIds, edges);
+    return normalizeThresholds(thresholds)
+      .map((threshold) => {
+        const outgoingCount = outgoing.get(threshold.sourceSceneId)
+          ? outgoing.get(threshold.sourceSceneId).length
+          : 0;
+        if (outgoingCount <= 1) return null;
+        const parsedRequired = Number.parseInt(String(threshold.requiredCount || "1"), 10);
+        const requiredCount = Math.min(outgoingCount, Math.max(1, Number.isInteger(parsedRequired) ? parsedRequired : 1));
+        if (requiredCount >= outgoingCount) return null;
+        return {
+          sourceSceneId: threshold.sourceSceneId,
+          requiredCount,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function thresholdMapForPath(path, options = {}) {
+    const sceneIds = getPathSceneIds(path);
+    const edges = getRenderableEdges(path, options);
+    return new Map(normalizeThresholdsForEdges(path && path.thresholds, sceneIds, edges)
+      .map((threshold) => [threshold.sourceSceneId, threshold.requiredCount]));
+  }
+
+  function crossingIncomingRoutesForPaths(paths = [], sceneId = 0) {
+    const targetSceneId = normalizeId(sceneId);
+    if (!targetSceneId) return [];
+    const routes = [];
+    const seen = new Set();
+    (Array.isArray(paths) ? paths : []).forEach((path) => {
+      if (!path || path.isActive === false || path.archivedAt) return;
+      const pathId = normalizeId(path.id);
+      if (!pathId) return;
+      const sceneIds = getPathSceneIds(path);
+      if (!sceneIds.includes(targetSceneId)) return;
+      const sceneIdSet = new Set(sceneIds);
+      getRenderableEdges(path, { fallback: true }).forEach((edge) => {
+        if (isOptionalEdge(edge) || edge.toSceneId !== targetSceneId) return;
+        if (!sceneIdSet.has(edge.fromSceneId) || !sceneIdSet.has(edge.toSceneId)) return;
+        const key = `${pathId}:${edge.fromSceneId}:${edge.toSceneId}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        routes.push({
+          pathId,
+          pathName: path.name || `Pad ${pathId}`,
+          color: path.color || "",
+          fromSceneId: edge.fromSceneId,
+          toSceneId: edge.toSceneId,
+        });
+      });
+    });
+    return routes;
+  }
+
+  function normalizeCrossingThresholdsForPaths(thresholds, paths = []) {
+    return normalizeCrossingThresholds(thresholds)
+      .map((threshold) => {
+        const incomingCount = crossingIncomingRoutesForPaths(paths, threshold.sceneId).length;
+        if (incomingCount <= 1) return null;
+        const parsedRequired = Number.parseInt(String(threshold.requiredCount || "1"), 10);
+        const requiredCount = Math.min(incomingCount, Math.max(1, Number.isInteger(parsedRequired) ? parsedRequired : 1));
+        if (requiredCount >= incomingCount) return null;
+        return {
+          sceneId: threshold.sceneId,
+          requiredCount,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function crossingThresholdMapForPaths(thresholds, paths = []) {
+    return new Map(normalizeCrossingThresholdsForPaths(thresholds, paths)
+      .map((threshold) => [threshold.sceneId, threshold.requiredCount]));
   }
 
   function fallbackEdgesFromSceneIds(sceneIds) {
@@ -97,7 +233,8 @@
   function computeRanks(sceneIds, edges) {
     const ids = normalizeIdList(sceneIds);
     const order = new Map(ids.map((id, index) => [id, index]));
-    const { incoming, outgoing } = buildAdjacency(ids, edges);
+    const normalizedEdges = normalizeEdges(edges, ids);
+    const { incoming } = buildAdjacency(ids, normalizedEdges);
     const remainingIncoming = new Map(ids.map((id) => [id, (incoming.get(id) || []).length]));
     const ranks = new Map(ids.map((id) => [id, 0]));
     const visited = new Set();
@@ -109,12 +246,15 @@
       const id = queue.shift();
       if (!id || visited.has(id)) continue;
       visited.add(id);
-      const nextRank = (ranks.get(id) || 0) + 1;
-      (outgoing.get(id) || []).forEach((toId) => {
-        ranks.set(toId, Math.max(ranks.get(toId) || 0, nextRank));
-        remainingIncoming.set(toId, Math.max(0, (remainingIncoming.get(toId) || 0) - 1));
-        if ((remainingIncoming.get(toId) || 0) === 0) queue.push(toId);
-      });
+      normalizedEdges
+        .filter((edge) => edge.fromSceneId === id)
+        .forEach((edge) => {
+          const toId = edge.toSceneId;
+          const nextRank = (ranks.get(id) || 0) + (isOptionalEdge(edge) ? 0 : 1);
+          ranks.set(toId, Math.max(ranks.get(toId) || 0, nextRank));
+          remainingIncoming.set(toId, Math.max(0, (remainingIncoming.get(toId) || 0) - 1));
+          if ((remainingIncoming.get(toId) || 0) === 0) queue.push(toId);
+        });
     }
 
     let tailRank = ids.reduce((max, id) => Math.max(max, ranks.get(id) || 0), 0);
@@ -194,11 +334,12 @@
     const sceneIds = getPathSceneIds(path);
     const edges = getRenderableEdges(path, options);
     const incoming = new Set(edges.map((edge) => edge.toSceneId));
-    const outgoing = new Set(edges.map((edge) => edge.fromSceneId));
+    const requiredOutgoing = new Set(edges.filter((edge) => !isOptionalEdge(edge)).map((edge) => edge.fromSceneId));
+    const sideIncoming = new Set(edges.filter(isOptionalEdge).map((edge) => edge.toSceneId));
     const connectedOnly = !!options.connectedOnly;
     return {
-      starts: sceneIds.filter((id) => !incoming.has(id) && (!connectedOnly || outgoing.has(id))),
-      ends: sceneIds.filter((id) => !outgoing.has(id) && (!connectedOnly || incoming.has(id))),
+      starts: sceneIds.filter((id) => !incoming.has(id) && (!connectedOnly || requiredOutgoing.has(id))),
+      ends: sceneIds.filter((id) => !requiredOutgoing.has(id) && !sideIncoming.has(id) && (!connectedOnly || incoming.has(id))),
     };
   }
 
@@ -209,6 +350,33 @@
       connected.add(edge.toSceneId);
     });
     return normalizeIdList(sceneIds).filter((id) => connected.has(id));
+  }
+
+  function connectedComponentCount(sceneIds, edges) {
+    const ids = connectedSceneIds(sceneIds, edges);
+    if (!ids.length) return 0;
+    const adjacency = new Map(ids.map((id) => [id, []]));
+    normalizeEdges(edges, sceneIds).forEach((edge) => {
+      if (!adjacency.has(edge.fromSceneId) || !adjacency.has(edge.toSceneId)) return;
+      adjacency.get(edge.fromSceneId).push(edge.toSceneId);
+      adjacency.get(edge.toSceneId).push(edge.fromSceneId);
+    });
+    const seen = new Set();
+    let count = 0;
+    ids.forEach((id) => {
+      if (seen.has(id)) return;
+      count += 1;
+      const stack = [id];
+      while (stack.length) {
+        const current = stack.pop();
+        if (!current || seen.has(current)) continue;
+        seen.add(current);
+        (adjacency.get(current) || []).forEach((nextId) => {
+          if (!seen.has(nextId)) stack.push(nextId);
+        });
+      }
+    });
+    return count;
   }
 
   function canReachScene(startId, targetId, edges, sceneIds) {
@@ -241,14 +409,9 @@
     const key = `${fromId}:${toId}`;
     if (edges.some((edge) => edgeKey(edge) === key)) return `path_edge_duplicate:${key}`;
     const candidateEdges = [...edges, { fromSceneId: fromId, toSceneId: toId }];
-    if (edges.some((edge) => edge.toSceneId === toId)) return `path_edge_multiple_incoming:${toId}`;
     if (canReachScene(toId, fromId, edges, sceneIds)) return `path_cycle:${fromId}`;
-    const candidateEndpoints = pathEndpoints({
-      sceneIds,
-      edges: candidateEdges,
-      edgeMode: "manual",
-    }, { connectedOnly: true });
-    if (candidateEndpoints.starts.length > 1) return `path_single_start_required:${candidateEndpoints.starts.length}`;
+    const componentCount = connectedComponentCount(sceneIds, candidateEdges);
+    if (componentCount > 1) return `path_disconnected_components:${componentCount}`;
     return "";
   }
 
@@ -324,7 +487,18 @@
     normalizeId,
     normalizeIdList,
     normalizeEdge,
+    isOptionalEdge,
+    normalizeThreshold,
+    normalizeThresholds,
+    normalizeCrossingThreshold,
+    normalizeCrossingThresholds,
     normalizeEdges,
+    normalizeThresholdsForEdges,
+    normalizeCrossingThresholdsForPaths,
+    outgoingTargetsBySource,
+    thresholdMapForPath,
+    crossingIncomingRoutesForPaths,
+    crossingThresholdMapForPaths,
     edgeKey,
     fallbackEdgesFromSceneIds,
     getPathSceneIds,
@@ -335,6 +509,7 @@
     analyzePathMembership,
     pathEndpoints,
     connectedSceneIds,
+    connectedComponentCount,
     canReachScene,
     edgeCandidateIssue,
     selectGhostNeighbors,
