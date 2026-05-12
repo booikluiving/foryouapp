@@ -26,7 +26,7 @@ Belangrijke onderdelen:
   - Toegang is sessiegebonden: bij een nieuwe sessie is opnieuw scannen/joinen vereist.
 - Stage output pagina (`/stage`) voor OBS/Electron/TouchDesigner browser output met toggles en live styling (QR/chat/emoji, schaal, positie, achtergrond transparant/zwart).
 - Algoritme-pagina (`/algoritme`) voor vaste speelbare situaties, personage- en omgevingsbeschrijvingen, calibratie, live score en OSC-output naar TouchDesigner.
-- Catalogus-saves op `/algoritme` spiegelen direct naar Dropbox en de lokale `database.md` mirror; API-playground/OpenAI tooling blijft lokaal en wordt niet naar de Mac Studio gedeployed.
+- Catalogus-saves op `/algoritme` spiegelen direct naar Dropbox en de lokale `database.md` mirror; API-playground/OpenAI tooling is deploybaar, maar secrets blijven per machine lokaal.
 - Open tabs (`/`, `/admin`, `/stage`) verversen automatisch na een server-restart op basis van server-instance detectie.
 
 ## Tech stack
@@ -110,6 +110,7 @@ SMOKE_JOIN_TOKEN="token-uit-admin-qr" npm run smoke -- --url http://127.0.0.1:30
   - zet een sessie-access cookie voor alleen de actuele sessie
 - `GET /admin` admin console
 - `GET /algoritme` algoritme-regietafel
+- `GET /paden` visuele padeneditor voor algoritme-situaties
 - `GET /stage` stage output (portrait 1080x1920)
 - `GET /health` healthcheck
 - `GET /debug-log` uitlezen debugregels (alleen admin-token, en alleen als `DEBUG_LOG_ENABLED=1`)
@@ -161,6 +162,7 @@ Admin API endpoints (subset):
 - `public/index.html` client UI
 - `public/admin.html` admin console UI
 - `public/algoritme.html` algoritme-regietafel
+- `public/paden.html`, `public/paden-editor.js`, `public/paden-graph.js` visuele padeneditor
 - `scripts/simulate-chatters.js` standalone botsimulator
 - `moderation/bad-words.txt` tekstwoorden voor filtering
 - `moderation/blocked-words.json` extra/gestructureerde blocked words
@@ -183,8 +185,15 @@ Configuratie:
 
 Zie `docs/DROPBOX_CATALOG_SYNC.md` voor de volledige structuur en conflictregels.
 
-## Lokale API playground
-De API playground en OpenAI/vector-store tooling zijn bewust local-only. `public/api-playground.html`, `lib/openai-catalog-sync.js`, `api/` en `api-playground/` staan in `.gitignore` en worden niet naar de Mac Studio gedeployed.
+## Padeneditor
+De inhoudelijke padstructuur wordt centraal opgeslagen in de SQLite database van de runtime (`data/live.sqlite`) via de bestaande algorithm path API. Dat geldt voor paden, geselecteerde situaties, pijlen, naam/kleur/beschrijving, deactiveren en verwijderen.
+
+De handmatige canvas-layout en nodeposities worden op dit moment per browser in `localStorage` bewaard. Meerdere editors delen dus dezelfde inhoudelijke padstructuur, maar niet automatisch elkaars handmatig verschoven canvasposities. Dit is bewust gedaan zonder database-migratie. Bij gelijktijdig bewerken van hetzelfde pad geldt voorlopig: laatste save wint.
+
+## API playground
+De API playground is deploybaar naar de Mac Studio. Secrets blijven per machine lokaal in `.env.local` en staan niet in Git.
+
+Via `/api-playground` kun je als admin de instellingen openen en waarden voor `OPENAI_API_KEY` en `ANTHROPIC_API_KEY` opslaan. De server schrijft die naar `.env.local` met beperkte bestandsrechten en stuurt de waarden nooit terug naar de browser.
 
 ## Moderatie en botstijl aanpassen
 - Voeg woorden toe in `moderation/bad-words.txt` voor blokkeren.

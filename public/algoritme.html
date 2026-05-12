@@ -300,6 +300,45 @@
         min-width: 0;
       }
 
+      .pathManager {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fffaf0;
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .pathEditorGrid {
+        display: grid;
+        grid-template-columns: minmax(240px, 0.85fr) minmax(280px, 1fr);
+        gap: 10px;
+        align-items: start;
+      }
+
+      .pathEdgeList {
+        display: grid;
+        gap: 7px;
+      }
+
+      .pathEdgeRow {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: end;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px;
+      }
+
+      .pathArrow {
+        color: var(--muted);
+        font-weight: 900;
+        padding-bottom: 10px;
+      }
+
       .catalogWindow {
         border: 1px solid var(--line);
         border-radius: 10px;
@@ -966,6 +1005,15 @@
           grid-template-columns: 1fr;
         }
 
+        .pathEditorGrid,
+        .pathEdgeRow {
+          grid-template-columns: 1fr;
+        }
+
+        .pathArrow {
+          padding-bottom: 0;
+        }
+
         .three {
           grid-template-columns: 1fr;
         }
@@ -1116,6 +1164,43 @@
             </div>
           </details>
           </div>
+
+          <details class="pathManager" data-ui-state-key="catalog.paths" open>
+            <summary class="catalogWindowSummary"><h2>Paden</h2><span class="badge">Volgorde / splits / merges</span></summary>
+            <div class="stack">
+              <div class="actions"><button id="newPathBtn" type="button">Voeg pad toe</button></div>
+              <div id="pathForm" class="stack hidden">
+                <div class="pathEditorGrid">
+                  <div class="stack">
+                    <label>Naam<input id="pathName" maxlength="140" /></label>
+                    <label>Kleur<input id="pathColor" maxlength="40" placeholder="#f97316" /></label>
+                    <label>Beschrijving<textarea id="pathDescription"></textarea></label>
+                    <div class="stack">
+                      <span class="fieldLabel">Situaties in dit pad</span>
+                      <div id="pathScenes" class="checkGrid"></div>
+                    </div>
+                  </div>
+                  <div class="stack">
+                    <div class="row">
+                      <span class="fieldLabel">Pijlen</span>
+                      <button id="addPathEdgeBtn" type="button">Voeg pijl toe</button>
+                    </div>
+                    <div id="pathEdges" class="pathEdgeList"></div>
+                    <div id="pathValidationHint" class="small"></div>
+                  </div>
+                </div>
+                <div class="actions">
+                  <button id="savePathBtn" class="primary" type="button">Opslaan</button>
+                  <button id="cancelPathBtn" type="button">Annuleer</button>
+                </div>
+              </div>
+              <div id="pathsList" class="list"></div>
+              <details class="inactiveBlock" data-ui-state-key="catalog.paths.inactive">
+                <summary>Non-actieve paden</summary>
+                <div id="pathsInactiveList" class="list" style="margin-top:8px;"></div>
+              </details>
+            </div>
+          </details>
 
           <div id="catalogMsg" class="msg"></div>
           </div>
@@ -1409,8 +1494,8 @@
         };
         let token = "";
         let state = null;
-        let edit = { performer: 0, label: 0, character: 0, environment: 0, scene: 0 };
-        let expanded = { performer: 0, label: 0, character: 0, environment: 0, scene: 0 };
+        let edit = { performer: 0, label: 0, character: 0, environment: 0, scene: 0, path: 0 };
+        let expanded = { performer: 0, label: 0, character: 0, environment: 0, scene: 0, path: 0 };
         let sceneDraft = {
           open: false,
           id: 0,
@@ -1422,6 +1507,15 @@
           environmentValue: "random",
           contextEnabled: false,
           contextSceneId: 0,
+        };
+        let pathDraft = {
+          open: false,
+          id: 0,
+          name: "",
+          description: "",
+          color: "",
+          sceneIds: [],
+          edges: [],
         };
         let refreshTimer = null;
         let orderBaseSortable = null;
@@ -1488,7 +1582,7 @@
         }
 
         function normalizeExpanded(raw = {}) {
-          const next = { performer: 0, label: 0, character: 0, environment: 0, scene: 0 };
+          const next = { performer: 0, label: 0, character: 0, environment: 0, scene: 0, path: 0 };
           Object.keys(next).forEach((kind) => {
             const id = Number(raw && raw[kind] || 0);
             next[kind] = Number.isInteger(id) && id > 0 ? id : 0;
@@ -1653,6 +1747,7 @@
             situation: "situations",
             environment: "environments",
             scene: "scenes",
+            path: "paths",
           }[kind] || kind;
         }
 
@@ -2392,6 +2487,160 @@
           }
         }
 
+        function resetPathDraft() {
+          pathDraft = {
+            open: false,
+            id: 0,
+            name: "",
+            description: "",
+            color: "",
+            sceneIds: [],
+            edges: [],
+          };
+        }
+
+        function pathDraftFromItem(item = null) {
+          return {
+            open: true,
+            id: Number(item && item.id || 0),
+            name: item ? item.name || "" : "",
+            description: item ? item.description || "" : "",
+            color: item ? item.color || "" : "",
+            sceneIds: Array.isArray(item && item.sceneIds) ? item.sceneIds.map(Number).filter((id) => id > 0) : [],
+            edges: Array.isArray(item && item.edges) ? item.edges.map((edge) => ({
+              fromSceneId: Number(edge && edge.fromSceneId || 0),
+              toSceneId: Number(edge && edge.toSceneId || 0),
+            })).filter((edge) => edge.fromSceneId && edge.toSceneId) : [],
+          };
+        }
+
+        function isPathFormOpen() {
+          return pathDraft.open && !$("pathForm").classList.contains("hidden");
+        }
+
+        function setPathFormVisible(visible) {
+          $("pathForm").classList.toggle("hidden", !visible);
+          if (!visible) {
+            edit.path = 0;
+            $("pathName").value = "";
+            $("pathDescription").value = "";
+            $("pathColor").value = "";
+            resetPathDraft();
+          }
+        }
+
+        function syncPathDraftFromDom() {
+          if (!isPathFormOpen()) return;
+          pathDraft.name = $("pathName").value;
+          pathDraft.description = $("pathDescription").value;
+          pathDraft.color = $("pathColor").value;
+          pathDraft.sceneIds = checkedIds("pathScenes");
+          pathDraft.edges = Array.from($("pathEdges").querySelectorAll("[data-path-edge-row]")).map((row) => ({
+            fromSceneId: Number(row.querySelector("[data-path-edge-from]").value || 0),
+            toSceneId: Number(row.querySelector("[data-path-edge-to]").value || 0),
+          })).filter((edge) => edge.fromSceneId && edge.toSceneId);
+        }
+
+        function pathSceneTitle(id) {
+          const scene = itemById("scenes", id);
+          return scene ? scene.title || `Situatie ${id}` : `Situatie ${id}`;
+        }
+
+        function renderPathSceneChecks(selectedIds = []) {
+          renderChecks("pathScenes", alphabeticCatalogItems("scenes", activeItemsWithSelected("scenes", selectedIds)), selectedIds);
+        }
+
+        function renderPathEdgeRows() {
+          const selectedSet = new Set((pathDraft.sceneIds || []).map(Number).filter((id) => id > 0));
+          pathDraft.edges = (pathDraft.edges || []).filter((edge) => (
+            selectedSet.has(Number(edge.fromSceneId || 0))
+            && selectedSet.has(Number(edge.toSceneId || 0))
+            && Number(edge.fromSceneId || 0) !== Number(edge.toSceneId || 0)
+          ));
+          const scenes = alphabeticCatalogItems("scenes", (pathDraft.sceneIds || [])
+            .map((id) => itemById("scenes", id))
+            .filter(Boolean));
+          const optionHtml = (selectedId) => '<option value="0">Kies situatie</option>' + scenes.map((scene) => (
+            `<option value="${scene.id}" ${Number(scene.id) === Number(selectedId) ? "selected" : ""}>${esc(scene.title || "Naamloze situatie")}</option>`
+          )).join("");
+          $("pathEdges").innerHTML = pathDraft.edges.length ? pathDraft.edges.map((edge, index) => `
+            <div class="pathEdgeRow" data-path-edge-row="${index}">
+              <label>Van<select data-path-edge-from>${optionHtml(edge.fromSceneId)}</select></label>
+              <span class="pathArrow">-&gt;</span>
+              <label>Naar<select data-path-edge-to>${optionHtml(edge.toSceneId)}</select></label>
+              <button class="danger" type="button" data-path-edge-remove="${index}">Verwijder</button>
+            </div>
+          `).join("") : '<div class="small">Nog geen pijlen. Een situatie zonder voorganger is een startpunt.</div>';
+          renderPathValidationHint();
+        }
+
+        function pathStats(path) {
+          const incoming = new Map();
+          const outgoing = new Map();
+          (path.sceneIds || []).forEach((id) => {
+            incoming.set(Number(id), []);
+            outgoing.set(Number(id), []);
+          });
+          (path.edges || []).forEach((edge) => {
+            const from = Number(edge.fromSceneId || 0);
+            const to = Number(edge.toSceneId || 0);
+            if (!incoming.has(to) || !outgoing.has(from)) return;
+            incoming.get(to).push(from);
+            outgoing.get(from).push(to);
+          });
+          const starts = Array.from(incoming.entries()).filter(([, ids]) => ids.length === 0).map(([id]) => id);
+          const ends = Array.from(outgoing.entries()).filter(([, ids]) => ids.length === 0).map(([id]) => id);
+          const splits = Array.from(outgoing.values()).filter((ids) => ids.length > 1).length;
+          const merges = Array.from(incoming.values()).filter((ids) => ids.length > 1).length;
+          return { starts, ends, splits, merges };
+        }
+
+        function renderPathValidationHint() {
+          const stats = pathStats(pathDraft);
+          const parts = [];
+          if (stats.starts.length) parts.push(`Start: ${stats.starts.map(pathSceneTitle).join(", ")}`);
+          if (stats.ends.length) parts.push(`Eind: ${stats.ends.map(pathSceneTitle).join(", ")}`);
+          if (stats.splits) parts.push(`${stats.splits} split${stats.splits === 1 ? "" : "s"}`);
+          if (stats.merges) parts.push(`${stats.merges} merge${stats.merges === 1 ? "" : "s"}: alle directe voorgangers zijn verplicht`);
+          $("pathValidationHint").textContent = parts.join(" · ") || "Selecteer situaties en voeg pijlen toe om volgorde te maken.";
+        }
+
+        function applyPathDraftToFields() {
+          $("pathName").value = pathDraft.name || "";
+          $("pathDescription").value = pathDraft.description || "";
+          $("pathColor").value = pathDraft.color || "";
+          renderPathSceneChecks(pathDraft.sceneIds);
+          renderPathEdgeRows();
+        }
+
+        function fillPath(item = null) {
+          edit.path = Number(item && item.id || 0);
+          setExpanded("path", edit.path);
+          pathDraft = pathDraftFromItem(item);
+          setPathFormVisible(true);
+          applyPathDraftToFields();
+          renderCatalog();
+        }
+
+        function describePath(path) {
+          const stats = pathStats(path);
+          return [
+            path.description || "",
+            `${(path.sceneIds || []).length} situaties, ${(path.edges || []).length} pijlen`,
+            stats.starts.length ? `Start: ${stats.starts.map(pathSceneTitle).join(", ")}` : "",
+            stats.ends.length ? `Eind: ${stats.ends.map(pathSceneTitle).join(", ")}` : "",
+            stats.merges ? `Merges: ${stats.merges} (alle voorgangers verplicht)` : "",
+          ].filter(Boolean).join("\n");
+        }
+
+        function pathBadges(path) {
+          const stats = pathStats(path);
+          const badges = [];
+          if (stats.splits) badges.push({ label: `${stats.splits} split${stats.splits === 1 ? "" : "s"}` });
+          if (stats.merges) badges.push({ label: `${stats.merges} merge${stats.merges === 1 ? "" : "s"}`, className: "warning" });
+          return badges;
+        }
+
         function describeScene(scene) {
           const characterNames = normalizeSceneSlotsByPerformerRoles(sceneSlotsFromItem(scene)).map((id, index) => {
             const roleLabel = index + 1;
@@ -2620,6 +2869,18 @@
           if (entry && entry.lockedNext) badges.push({ label: "klaar voor Touch" });
           if (entry && entry.lockedFuture) badges.push({ label: "gepland" });
           if (entry && entry.calibration) badges.push({ label: "calibratie" });
+          if (entry && entry.pathStatus) {
+            const pathStatus = entry.pathStatus;
+            if (pathStatus.isPathStart) badges.push({ label: "Pad start" });
+            if (pathStatus.ready && !pathStatus.isPathStart) badges.push({ label: "Pad vrij", className: "good" });
+            if (!pathStatus.ready) badges.push({ label: "Wacht op voorgangers", className: "warning" });
+            if (pathStatus.isMerge) {
+              badges.push({
+                label: `Merge: ${Number((pathStatus.completedPredecessorIds || []).length)}/${Number((pathStatus.predecessorIds || []).length)} voltooid`,
+                className: pathStatus.ready ? "good" : "warning",
+              });
+            }
+          }
           if (entry && entry.played) badges.push({ label: "gespeeld" });
           if (entry && entry.invalid) badges.push({ label: "waarschuwing", className: "warning" });
           if (entry && entry.hidden) badges.push({ label: "verborgen" });
@@ -2828,6 +3089,8 @@
             const scene = orderEntryScene(entry);
             const contextId = Number(entry && entry.contextSceneId || scene && scene.contextSceneId || 0);
             const contextBadge = contextId ? `<span class="badge">context: ${esc(contextSceneTitle(contextId))}</span>` : "";
+            const pathNames = entry && entry.pathStatus && Array.isArray(entry.pathStatus.pathNames) ? entry.pathStatus.pathNames : [];
+            const pathBadge = pathNames.length ? `<span class="badge">pad: ${esc(pathNames.slice(0, 2).join(", ") + (pathNames.length > 2 ? " +" + (pathNames.length - 2) : ""))}</span>` : "";
             return `
               <div class="${rowClasses.join(" ")}" data-id="${sceneId}">
                 <span class="orderNumber">${displayNumber}</span>
@@ -2839,6 +3102,7 @@
                   <span class="orderMeta">
                     <span class="badge scoreBadge">${esc(formatOrderPoints(entry, scores))}</span>
                     ${contextBadge}
+                    ${pathBadge}
                     ${issues}
                   </span>
                   ${renderOrderCast(entry)}
@@ -2971,8 +3235,10 @@
 
         function renderCatalog() {
           const sceneFormOpen = isSceneFormOpen();
+          const pathFormOpen = isPathFormOpen();
           const characterFormOpen = !$("characterForm").classList.contains("hidden");
           if (sceneFormOpen) syncSceneDraftFromDom();
+          if (pathFormOpen) syncPathDraftFromDom();
           renderPerformerSlotOverview();
           renderPerformersList("performersList", activeItems("performers"), false);
           renderPerformersList("performersInactiveList", inactiveItems("performers"), true);
@@ -3015,6 +3281,23 @@
             badgesFn: (item) => sceneHasLinkWarnings(item) ? [{ label: "waarschuwing", className: "warning" }] : [],
             emptyText: "Geen non-actieve situaties.",
           });
+          renderCatalogList("pathsList", alphabeticCatalogItems("paths", activeItems("paths")), {
+            kind: "path",
+            selectedId: edit.path,
+            labelFn: (item) => item.name || "Naamloos pad",
+            detailFn: describePath,
+            badgesFn: pathBadges,
+            emptyText: "Nog geen paden.",
+          });
+          renderCatalogList("pathsInactiveList", alphabeticCatalogItems("paths", inactiveItems("paths")), {
+            kind: "path",
+            selectedId: edit.path,
+            inactive: true,
+            labelFn: (item) => item.name || "Naamloos pad",
+            detailFn: describePath,
+            badgesFn: pathBadges,
+            emptyText: "Geen non-actieve paden.",
+          });
 
           if (!sceneFormOpen) {
             const selectedScene = itemById("scenes", edit.scene) || {};
@@ -3026,6 +3309,10 @@
             sceneDraft.contextEnabled = Number(selectedScene.contextSceneId || 0) > 0;
             sceneDraft.contextSceneId = Number(selectedScene.contextSceneId || 0);
             renderSceneContextControls();
+          }
+          if (!pathFormOpen) {
+            renderPathSceneChecks(pathDraft.sceneIds || []);
+            renderPathEdgeRows();
           }
 
         }
@@ -3636,6 +3923,7 @@
             situation: "/admin/algorithm/situations/upsert",
             environment: "/admin/algorithm/environments/upsert",
             scene: "/admin/algorithm/scenes/upsert",
+            path: "/admin/algorithm/paths/upsert",
           }[kind] || "";
         }
 
@@ -3680,6 +3968,18 @@
               isActive,
             };
           }
+          if (kind === "path") {
+            return {
+              id: item.id,
+              name: item.name,
+              description: item.description,
+              color: item.color || "",
+              sortOrder: item.sortOrder || 0,
+              sceneIds: item.sceneIds || [],
+              edges: item.edges || [],
+              isActive,
+            };
+          }
           return null;
         }
 
@@ -3689,6 +3989,7 @@
           if (kind === "character") fillCharacter(item);
           if (kind === "environment") fillEnvironment(item);
           if (kind === "scene") fillScene(item);
+          if (kind === "path") fillPath(item);
         }
 
         function clearEditForKind(kind) {
@@ -3706,6 +4007,7 @@
           }
           if (kind === "environment") setEnvironmentFormVisible(false);
           if (kind === "scene") setSceneFormVisible(false);
+          if (kind === "path") setPathFormVisible(false);
         }
 
         async function handleCatalogAction(event) {
@@ -3723,6 +4025,7 @@
             if (kind === "character") setCharacterFormVisible(false);
             if (kind === "environment") setEnvironmentFormVisible(false);
             if (kind === "scene") setSceneFormVisible(false);
+            if (kind === "path") setPathFormVisible(false);
             renderCatalog();
             return;
           }
@@ -3765,6 +4068,8 @@
             "environmentsInactiveList",
             "scenesList",
             "scenesInactiveList",
+            "pathsList",
+            "pathsInactiveList",
           ].forEach((id) => {
             $(id).addEventListener("click", handleCatalogAction);
           });
@@ -3786,12 +4091,17 @@
           });
           $("newEnvironmentBtn").addEventListener("click", () => fillEnvironment(null));
           $("newSceneBtn").addEventListener("click", () => fillScene(null));
+          $("newPathBtn").addEventListener("click", () => fillPath(null));
           $("cancelEnvironmentBtn").addEventListener("click", () => {
             setEnvironmentFormVisible(false);
             renderCatalog();
           });
           $("cancelSceneBtn").addEventListener("click", () => {
             setSceneFormVisible(false);
+            renderCatalog();
+          });
+          $("cancelPathBtn").addEventListener("click", () => {
+            setPathFormVisible(false);
             renderCatalog();
           });
           $("sceneTitle").addEventListener("input", () => {
@@ -3832,6 +4142,38 @@
           });
           $("sceneLabels").addEventListener("change", () => {
             sceneDraft.labelIds = checkedIds("sceneLabels");
+          });
+          $("pathName").addEventListener("input", () => {
+            pathDraft.name = $("pathName").value;
+          });
+          $("pathDescription").addEventListener("input", () => {
+            pathDraft.description = $("pathDescription").value;
+          });
+          $("pathColor").addEventListener("input", () => {
+            pathDraft.color = $("pathColor").value;
+          });
+          $("pathScenes").addEventListener("change", () => {
+            pathDraft.sceneIds = checkedIds("pathScenes");
+            renderPathEdgeRows();
+          });
+          $("addPathEdgeBtn").addEventListener("click", () => {
+            syncPathDraftFromDom();
+            const first = Number(pathDraft.sceneIds[0] || 0);
+            const second = Number(pathDraft.sceneIds.find((id) => Number(id) !== first) || 0);
+            pathDraft.edges.push({ fromSceneId: first || 0, toSceneId: second || 0 });
+            renderPathEdgeRows();
+          });
+          $("pathEdges").addEventListener("change", () => {
+            syncPathDraftFromDom();
+            renderPathValidationHint();
+          });
+          $("pathEdges").addEventListener("click", (event) => {
+            const btn = event.target.closest("button[data-path-edge-remove]");
+            if (!btn) return;
+            syncPathDraftFromDom();
+            const index = Number(btn.getAttribute("data-path-edge-remove") || -1);
+            if (index >= 0) pathDraft.edges.splice(index, 1);
+            renderPathEdgeRows();
           });
 
           $("savePerformerBtn").addEventListener("click", async () => {
@@ -3920,6 +4262,32 @@
               });
               setExpanded("scene", Number(result.scene && result.scene.id || 0));
               setSceneFormVisible(false);
+              renderCatalog();
+            } catch (err) { setMsg("catalogMsg", formatError(err), true); }
+          });
+
+          $("savePathBtn").addEventListener("click", async () => {
+            try {
+              syncPathDraftFromDom();
+              if (!pathDraft.name.trim()) {
+                setMsg("catalogMsg", "Naam is verplicht.", true);
+                return;
+              }
+              if (!pathDraft.sceneIds.length) {
+                setMsg("catalogMsg", "Kies minstens een situatie voor dit pad.", true);
+                return;
+              }
+              const result = await post("/admin/algorithm/paths/upsert", {
+                id: edit.path || undefined,
+                name: pathDraft.name,
+                description: pathDraft.description,
+                color: pathDraft.color,
+                sceneIds: pathDraft.sceneIds,
+                edges: pathDraft.edges,
+                isActive: editedIsActive("path", edit.path),
+              });
+              setExpanded("path", Number(result.path && result.path.id || 0));
+              setPathFormVisible(false);
               renderCatalog();
             } catch (err) { setMsg("catalogMsg", formatError(err), true); }
           });
@@ -4154,6 +4522,9 @@
             item_must_be_inactive: "Zet dit item eerst non-actief.",
             scene_links_invalid: "Situatie-koppelingen kloppen nog niet.",
             scene_context_unmet: "Deze situatie heeft eerst een contextsituatie nodig.",
+            scene_path_unmet: "Deze situatie wacht nog op voorgangers in een pad.",
+            path_invalid: "Pad klopt nog niet.",
+            path_not_found: "Pad niet gevonden.",
             previous_run_unavailable: "Er is nog geen vorige situatie om naar terug te gaan.",
             prepared_next_mismatch: "De voorbereide volgende situatie is veranderd. Refresh en probeer opnieuw.",
             algorithm_action_in_progress: "Er wordt al een run-actie verwerkt. Wacht heel even.",

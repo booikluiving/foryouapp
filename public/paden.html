@@ -1,0 +1,1085 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paden - editor</title>
+    <link rel="icon" type="image/svg+xml" href="/favicons/paden.svg" />
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #fbf9f4;
+        --paper-2: #f2efe8;
+        --ink: #1f1d1a;
+        --ink-2: #38342f;
+        --muted: #746d63;
+        --line: #2a2724;
+        --line-soft: #d3cbbd;
+        --surface: #ffffff;
+        --surface-soft: #f7f3eb;
+        --active: #14b8a6;
+        --danger: #b91c1c;
+        --warn: #d97706;
+        --ok: #15803d;
+        --focus: #facc15;
+        --shadow: 0 10px 26px rgba(31, 29, 26, 0.08);
+        --node-w: 170px;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; }
+      body {
+        overflow: hidden;
+        background: var(--paper-2);
+        color: var(--ink);
+      }
+
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        appearance: none;
+        border: 1.5px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--ink);
+        padding: 6px 11px;
+        font-size: 12px;
+        font-weight: 650;
+        line-height: 1.2;
+        cursor: pointer;
+      }
+
+      button:hover { background: #fffdf8; }
+      button:disabled { opacity: 0.48; cursor: not-allowed; }
+      button.primary { background: var(--ink); color: var(--paper); }
+      button.ghost { background: transparent; border-color: transparent; }
+      button.ghost:hover { background: rgba(31, 29, 26, 0.06); border-color: var(--line-soft); }
+      button.danger { color: var(--danger); border-color: #f1aaaa; background: #fff7f7; }
+      button.iconBtn {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        display: inline-grid;
+        place-items: center;
+      }
+
+      input,
+      textarea {
+        width: 100%;
+        border: 1.5px solid var(--line-soft);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--ink);
+        padding: 8px 10px;
+        outline: none;
+      }
+
+      input:focus,
+      textarea:focus {
+        border-color: var(--line);
+        box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.45);
+      }
+
+      .app {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        min-width: 920px;
+      }
+
+      .topbar {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 10px 16px;
+        border-bottom: 1.5px solid var(--line);
+        background: var(--paper-2);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .brandMark {
+        width: 24px;
+        height: 24px;
+        border-radius: 5px;
+        background: var(--ink);
+        color: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .brandText {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.05;
+      }
+
+      .brandText strong { font-size: 15px; }
+      .brandText span { font-size: 11px; color: var(--muted); font-weight: 650; }
+
+      .topActions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .jumpWrap {
+        width: min(360px, 28vw);
+        position: relative;
+      }
+
+      .jumpWrap input {
+        height: 32px;
+        padding-left: 30px;
+        border-color: var(--line);
+      }
+
+      .jumpWrap::before {
+        content: "";
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        width: 10px;
+        height: 10px;
+        border: 1.6px solid var(--ink);
+        border-radius: 50%;
+        transform: translateY(-55%);
+      }
+
+      .jumpWrap::after {
+        content: "";
+        position: absolute;
+        left: 20px;
+        top: 20px;
+        width: 7px;
+        height: 1.6px;
+        background: var(--ink);
+        transform: rotate(45deg);
+        border-radius: 2px;
+      }
+
+      .saveState {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 750;
+        min-width: 118px;
+      }
+
+      .saveState .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+
+      .saveState.saved .dot { background: var(--ok); }
+      .saveState.dirty .dot { background: var(--warn); }
+      .saveState.saving .dot { background: var(--active); animation: pulse 1s infinite; }
+      @keyframes pulse { 50% { opacity: 0.35; } }
+
+      .work {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+      }
+
+      .leftPane {
+        width: 250px;
+        flex: 0 0 250px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        border-right: 1.5px solid var(--line);
+        background: var(--paper);
+      }
+
+      .leftHead {
+        flex: 0 0 auto;
+        padding: 12px;
+        border-bottom: 1px dashed var(--line-soft);
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .sceneSearch { height: 32px; }
+
+      .sceneList {
+        flex: 1;
+        overflow: auto;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .sceneRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 32px;
+        padding: 7px 9px;
+        border: 1.5px solid transparent;
+        border-radius: 5px;
+        background: transparent;
+        font-size: 12.5px;
+        line-height: 1.2;
+        cursor: grab;
+        user-select: none;
+      }
+
+      .sceneRow:hover { background: rgba(20, 184, 166, 0.07); }
+      .sceneRow.inActive {
+        background: #eafaf7;
+        border-color: rgba(20, 184, 166, 0.42);
+      }
+      .sceneRow .grip {
+        flex: 0 0 auto;
+        display: grid;
+        gap: 2px;
+        color: var(--muted);
+      }
+      .sceneRow .grip i {
+        width: 2px;
+        height: 2px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .sceneRow .name {
+        min-width: 0;
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .scenePathDots {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+      .scenePathDots span {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--muted);
+        box-shadow: 0 0 0 1px rgba(42, 39, 36, 0.35);
+      }
+
+      .mainPane {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--paper-2);
+      }
+
+      .chipbar {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 10px 16px;
+        border-bottom: 1.5px solid var(--line);
+        background: var(--paper);
+      }
+
+      .barLabel {
+        color: var(--muted);
+        font-size: 10.5px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        max-width: 220px;
+        padding: 4px 9px 4px 6px;
+        border: 1.5px solid var(--line-soft);
+        border-radius: 7px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 11.5px;
+        font-weight: 650;
+      }
+
+      .chip.selected,
+      .chip.active {
+        border-color: var(--line);
+        background: var(--surface);
+        color: var(--ink);
+      }
+
+      .chip.target {
+        border-color: var(--ink);
+        box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.6), inset 0 0 0 1px var(--ink);
+      }
+
+      .chip.dirty::after {
+        content: "";
+        flex: 0 0 auto;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--warn);
+      }
+
+      .pathToggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        cursor: pointer;
+      }
+
+      .pathToggle input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+        width: 1px;
+        height: 1px;
+      }
+
+      .pathToggle span {
+        width: 14px;
+        height: 14px;
+        border: 1.5px solid var(--line);
+        border-radius: 3px;
+        background: var(--surface);
+        position: relative;
+      }
+
+      .pathToggle input:checked + span {
+        background: var(--ink);
+      }
+
+      .pathToggle input:checked + span::after {
+        content: "";
+        position: absolute;
+        left: 3px;
+        top: 1px;
+        width: 5px;
+        height: 8px;
+        border: solid var(--paper);
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+      }
+
+      .chip button {
+        all: unset;
+        display: inline-flex;
+        align-items: center;
+        min-width: 0;
+        gap: 6px;
+        cursor: pointer;
+      }
+
+      .chip .dot {
+        width: 9px;
+        height: 9px;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        background: currentColor;
+        box-shadow: 0 0 0 1.5px var(--line);
+      }
+
+      .chip .txt {
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .barHint {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 650;
+      }
+
+      .chipbar .divider {
+        width: 1px;
+        height: 18px;
+        background: var(--line-soft);
+        margin: 0 4px;
+      }
+
+      .switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 10px 5px 8px;
+        border: 1.5px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        font-size: 12px;
+        font-weight: 650;
+        cursor: pointer;
+      }
+
+      .switch input { display: none; }
+      .switch .track {
+        width: 28px;
+        height: 16px;
+        border-radius: 999px;
+        background: var(--line-soft);
+        position: relative;
+      }
+      .switch .track::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--surface);
+        transition: transform 0.15s;
+      }
+      .switch input:checked + .track { background: var(--ink); }
+      .switch input:checked + .track::after { transform: translateX(12px); }
+
+      .canvasRow {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+      }
+
+      .canvasPane {
+        flex: 1;
+        min-width: 0;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        background: var(--paper-2);
+      }
+
+      .columns {
+        flex: 0 0 40px;
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        align-items: center;
+        padding: 0 30px;
+        border-bottom: 1px dashed var(--line-soft);
+        background: var(--paper);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .columns span:nth-child(2) { text-align: center; }
+      .columns span:nth-child(3) { text-align: right; }
+
+      .canvasControls {
+        position: absolute;
+        top: 48px;
+        right: 12px;
+        z-index: 5;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .zoomGroup {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        padding: 3px;
+        border: 1.5px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        box-shadow: 0 1px 5px rgba(31, 29, 26, 0.08);
+      }
+
+      .zoomGroup button {
+        border-color: transparent;
+        box-shadow: none;
+      }
+
+      .zoomLevel {
+        width: 48px;
+        height: 28px;
+        padding: 0;
+        font-size: 11px;
+      }
+
+      .canvasOuter {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        position: relative;
+      }
+
+      .canvasSizer {
+        position: relative;
+        min-width: 820px;
+        min-height: 760px;
+      }
+
+      .canvasInner {
+        position: relative;
+        min-width: 820px;
+        min-height: 760px;
+        transform-origin: 0 0;
+        background:
+          linear-gradient(rgba(42, 39, 36, 0.055) 1px, transparent 1px) 0 0 / 24px 24px,
+          linear-gradient(90deg, rgba(42, 39, 36, 0.055) 1px, transparent 1px) 0 0 / 24px 24px,
+          var(--paper-2);
+      }
+
+      .canvasInner.dropActive::before {
+        content: "";
+        position: absolute;
+        inset: 16px;
+        border: 2px dashed var(--active);
+        border-radius: 10px;
+        background: rgba(20, 184, 166, 0.07);
+        z-index: 4;
+        pointer-events: none;
+      }
+
+      .dropHint {
+        position: absolute;
+        top: 18px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 6px 12px;
+        border: 1.5px dashed var(--line-soft);
+        border-radius: 999px;
+        background: var(--paper);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 650;
+        pointer-events: none;
+        z-index: 2;
+      }
+
+      .canvasInner.hasNodes .dropHint { display: none; }
+
+      .selectionMarquee {
+        position: absolute;
+        border: 1.5px solid var(--active);
+        background: rgba(20, 184, 166, 0.12);
+        border-radius: 4px;
+        pointer-events: none;
+        z-index: 8;
+      }
+
+      .edgesLayer {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+      }
+
+      .edgesLayer path.edgeHit {
+        fill: none;
+        pointer-events: stroke;
+        stroke: transparent;
+        stroke-width: 16;
+        cursor: pointer;
+      }
+
+      .pathNode,
+      .ghostNode {
+        position: absolute;
+        width: var(--node-w);
+        min-height: 46px;
+        border: 1.5px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        box-shadow: 0 1px 3px rgba(31, 29, 26, 0.12);
+        font-size: 12px;
+        font-weight: 750;
+        line-height: 1.18;
+        z-index: 2;
+      }
+
+      .pathNode {
+        cursor: grab;
+        padding: 8px 10px 8px 14px;
+        user-select: none;
+      }
+
+      .pathNode:active { cursor: grabbing; }
+      .pathNode.selected {
+        box-shadow: 0 0 0 2px var(--focus), 0 4px 14px rgba(31, 29, 26, 0.16);
+      }
+
+      .pathNode.draftNode {
+        border-style: dashed;
+        border-color: #aaa197;
+        background: rgba(255, 255, 255, 0.72);
+        color: #746d64;
+        box-shadow: 0 1px 2px rgba(31, 29, 26, 0.08);
+      }
+
+      .pathNode.draftNode.selected {
+        box-shadow: 0 0 0 2px rgba(170, 161, 151, 0.9), 0 4px 12px rgba(31, 29, 26, 0.12);
+      }
+
+      .pathNode.sharedNode {
+        border-width: 2px;
+      }
+
+      .pathNode .stripe,
+      .ghostNode .stripe {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 5px;
+        border-radius: 7px 0 0 7px;
+        background: var(--active);
+      }
+
+      .pathNode .title,
+      .ghostNode .title {
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .pathNode .sub,
+      .ghostNode .sub {
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 650;
+      }
+
+      .pathNode .port {
+        position: absolute;
+        left: 50%;
+        width: 17px;
+        height: 17px;
+        border: 1.5px solid var(--line);
+        border-radius: 50%;
+        background: var(--surface);
+        transform: translateX(-50%);
+        opacity: 0;
+        transition: opacity 0.12s, background 0.12s;
+        z-index: 4;
+        cursor: crosshair;
+      }
+
+      .pathNode .port.out { bottom: -9px; }
+      .pathNode:hover .port,
+      .pathNode.selected .port { opacity: 1; }
+      .pathNode .port:hover { background: var(--active); }
+
+      .nodeHandle {
+        position: absolute;
+        top: 50%;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        transform: translateY(-50%);
+        background: var(--surface);
+        border: 1.5px solid var(--line);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 1px 3px rgba(31, 29, 26, 0.12);
+        z-index: 5;
+        font-size: 13px;
+        font-weight: 850;
+      }
+
+      .pathNode.selected.targetMember .nodeHandle { display: flex; }
+      .nodeHandle.remove { right: -12px; color: var(--danger); cursor: pointer; }
+
+      .ghostNode {
+        padding: 8px 10px 8px 14px;
+        border-style: dashed;
+        opacity: 0.62;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      .edgeDelete {
+        position: absolute;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 1.5px solid var(--surface);
+        background: var(--danger);
+        color: #fff;
+        padding: 0;
+        display: grid;
+        place-items: center;
+        font-size: 13px;
+        font-weight: 850;
+        line-height: 1;
+        text-align: center;
+        transform: translate(-50%, -50%);
+        cursor: pointer;
+        z-index: 6;
+        box-shadow: 0 2px 8px rgba(31, 29, 26, 0.22);
+      }
+
+      .emptyState {
+        position: absolute;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 10px;
+        color: var(--muted);
+        text-align: center;
+        pointer-events: none;
+        z-index: 3;
+      }
+
+      .emptyState strong { color: var(--ink); font-size: 16px; }
+
+      .miniPane {
+        width: 92px;
+        flex: 0 0 92px;
+        border-left: 1.5px solid var(--line);
+        background: var(--paper);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+
+      .miniTitle,
+      .miniFoot {
+        flex: 0 0 auto;
+        padding: 10px 7px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 800;
+        text-align: center;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        border-bottom: 1px dashed var(--line-soft);
+      }
+
+      .miniFoot {
+        border-top: 1px dashed var(--line-soft);
+        border-bottom: 0;
+        letter-spacing: 0;
+        text-transform: none;
+        line-height: 1.35;
+      }
+
+      .miniBody {
+        flex: 1;
+        min-height: 0;
+        position: relative;
+        padding: 12px 0;
+      }
+
+      .miniTrack {
+        position: absolute;
+        top: 12px;
+        bottom: 12px;
+        left: 50%;
+        width: 66px;
+        transform: translateX(-50%);
+        border: 1.5px solid var(--line);
+        border-radius: 6px;
+        background: var(--paper-2);
+        overflow: hidden;
+      }
+
+      .miniTrack svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .miniViewport {
+        position: absolute;
+        left: -3px;
+        right: -3px;
+        top: 20%;
+        height: 18%;
+        border: 1.5px solid var(--line);
+        border-radius: 3px;
+        background: rgba(31, 29, 26, 0.07);
+        pointer-events: none;
+      }
+
+      .modalBackdrop,
+      .login {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(31, 29, 26, 0.44);
+      }
+
+      .modalBackdrop.open,
+      .login.open { display: flex; }
+
+      .dialog,
+      .loginCard {
+        width: min(460px, 92vw);
+        border: 1.5px solid var(--line);
+        border-radius: 10px;
+        background: var(--paper);
+        box-shadow: var(--shadow);
+        padding: 18px;
+      }
+
+      .dialog h2,
+      .loginCard h1 {
+        margin: 0 0 14px;
+        font-size: 18px;
+      }
+
+      .dialog label,
+      .loginCard label {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        margin-bottom: 11px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .dialog textarea {
+        min-height: 72px;
+        resize: vertical;
+      }
+
+      .colorGrid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+      }
+
+      .colorBtn {
+        width: 28px;
+        height: 28px;
+        border: 2px solid var(--surface);
+        border-radius: 50%;
+        box-shadow: 0 0 0 1.5px var(--line-soft);
+        cursor: pointer;
+      }
+
+      .colorBtn.selected { box-shadow: 0 0 0 2.5px var(--line); }
+
+      .dialogActions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 14px;
+      }
+
+      .dialogActions .grow { flex: 1; }
+
+      .loginCard p {
+        margin: -6px 0 14px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .remember {
+        flex-direction: row !important;
+        align-items: center;
+        justify-content: flex-start;
+        text-transform: none !important;
+        letter-spacing: 0 !important;
+        font-size: 13px !important;
+        color: var(--ink) !important;
+      }
+
+      .remember input {
+        width: auto;
+      }
+
+      .toast {
+        position: fixed;
+        left: 50%;
+        bottom: 18px;
+        z-index: 100;
+        transform: translate(-50%, 8px);
+        opacity: 0;
+        transition: opacity 0.18s, transform 0.18s;
+        border-radius: 999px;
+        background: var(--ink);
+        color: var(--paper);
+        padding: 8px 14px;
+        font-size: 13px;
+        font-weight: 700;
+        pointer-events: none;
+      }
+
+      .toast.show {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+
+      .toast.error { background: var(--danger); }
+    </style>
+  </head>
+  <body>
+    <section id="login" class="login">
+      <form id="loginForm" class="loginCard">
+        <h1>Paden</h1>
+        <p>Log in met dezelfde admin-toegang als de algoritme-regietafel.</p>
+        <label>Admin wachtwoord
+          <input id="password" type="password" autocomplete="current-password" />
+        </label>
+        <label class="remember">
+          <input id="rememberDevice" type="checkbox" checked />
+          Onthoud dit apparaat
+        </label>
+        <div class="dialogActions">
+          <button class="primary" type="submit">Login</button>
+        </div>
+        <p id="loginMsg" style="margin:12px 0 0;color:#b91c1c;"></p>
+      </form>
+    </section>
+
+    <section id="app" class="app" style="display:none;">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brandMark">P</div>
+          <div class="brandText">
+            <strong>Paden</strong>
+            <span id="topMeta">Graph-editor</span>
+          </div>
+        </div>
+        <div class="topActions">
+          <div class="jumpWrap">
+            <input id="jumpSearch" type="search" placeholder="Springen naar situatie..." autocomplete="off" />
+          </div>
+          <button id="pathInfoBtn" type="button">Pad info</button>
+          <button id="newPathBtn" type="button" class="primary">+ Nieuw pad</button>
+          <span id="saveState" class="saveState saved"><span class="dot"></span><span class="txt">Opgeslagen</span></span>
+          <button id="refreshBtn" class="iconBtn ghost" type="button" title="Vernieuwen">↻</button>
+          <button id="saveBtn" type="button" class="primary">Opslaan</button>
+        </div>
+      </header>
+
+      <div class="work">
+        <aside class="leftPane">
+          <div class="leftHead">
+            <p class="eyebrow"><span>Situaties <span id="sceneCount">0</span></span></p>
+            <input id="sceneSearch" class="sceneSearch" type="search" placeholder="Zoek situatie..." autocomplete="off" />
+          </div>
+          <div id="sceneList" class="sceneList"></div>
+        </aside>
+
+        <main class="mainPane">
+          <div id="chipbar" class="chipbar"></div>
+          <div class="canvasRow">
+            <section class="canvasPane">
+              <div class="columns">
+                <span>Bron</span>
+                <span>Splits</span>
+                <span>Doel</span>
+              </div>
+              <div class="canvasControls">
+                <div class="zoomGroup" aria-label="Zoom">
+                  <button id="zoomOutBtn" class="iconBtn" type="button" title="Zoom uit">-</button>
+                  <button id="zoomResetBtn" class="zoomLevel" type="button" title="Zoom resetten">100%</button>
+                  <button id="zoomInBtn" class="iconBtn" type="button" title="Zoom in">+</button>
+                </div>
+                <button id="fitBtn" type="button">Fit</button>
+                <button id="autoLayoutBtn" type="button">Auto layout</button>
+              </div>
+              <div id="canvasOuter" class="canvasOuter">
+                <div id="canvasSizer" class="canvasSizer">
+                  <div id="canvasInner" class="canvasInner">
+                    <svg id="edgesLayer" class="edgesLayer"></svg>
+                    <div class="dropHint">Sleep situaties hierheen en verbind ze met de poorten</div>
+                    <div id="emptyState" class="emptyState">
+                      <strong>Nog geen pad geselecteerd</strong>
+                      <span>Maak of kies een pad om de graph te bewerken.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <aside class="miniPane">
+              <div id="miniTitle" class="miniTitle">Map</div>
+              <div class="miniBody">
+                <div class="miniTrack">
+                  <svg id="miniSvg" viewBox="0 0 66 760" preserveAspectRatio="none"></svg>
+                  <div id="miniViewport" class="miniViewport"></div>
+                </div>
+              </div>
+              <div id="miniFoot" class="miniFoot">0 situaties<br/>0 splits</div>
+            </aside>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <div id="pathModal" class="modalBackdrop" role="dialog" aria-modal="true">
+      <div class="dialog">
+        <h2 id="pathModalTitle">Pad info</h2>
+        <label>Naam
+          <input id="pathName" type="text" maxlength="140" />
+        </label>
+        <label>Beschrijving
+          <textarea id="pathDescription" maxlength="1800"></textarea>
+        </label>
+        <label>Kleur
+          <div id="pathColors" class="colorGrid"></div>
+        </label>
+        <div class="dialogActions">
+          <button id="archivePathBtn" class="danger" type="button">Deactiveer pad</button>
+          <button id="deletePathBtn" class="danger" type="button">Verwijder pad</button>
+          <span class="grow"></span>
+          <button id="cancelPathBtn" class="ghost" type="button">Annuleren</button>
+          <button id="savePathInfoBtn" class="primary" type="button">Bewaar info</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="/paden-graph.js"></script>
+    <script src="/paden-editor.js"></script>
+  </body>
+</html>

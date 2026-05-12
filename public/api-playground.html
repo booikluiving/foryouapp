@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>For You - API Playground</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f3ea;
+        --panel: #fffdf8;
+        --line: #d8d3c7;
+        --text: #1f2933;
+        --muted: #667085;
+        --ink: #111827;
+        --accent: #0f766e;
+        --bad: #991b1b;
+        --good: #166534;
+        --warn: #92400e;
+        --shadow: 0 16px 42px rgba(28, 25, 23, 0.11);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      button, input, textarea {
+        font: inherit;
+      }
+      button {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+        border-radius: 8px;
+        padding: 9px 12px;
+        cursor: pointer;
+      }
+      button:hover { border-color: #9ca3af; }
+      button.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+        font-weight: 800;
+      }
+      button.danger {
+        border-color: #fecaca;
+        background: #fff5f5;
+        color: var(--bad);
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      input, textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 9px 10px;
+        background: #fff;
+        color: var(--text);
+      }
+      label {
+        display: grid;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 800;
+        color: var(--muted);
+      }
+      h1, h2, h3 {
+        margin: 0;
+        color: var(--ink);
+        letter-spacing: 0;
+      }
+      h1 { font-size: 24px; }
+      h2 { font-size: 17px; }
+      h3 { font-size: 14px; }
+      a { color: var(--accent); font-weight: 800; }
+      .login {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .loginCard {
+        width: min(420px, 100%);
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        padding: 20px;
+        display: grid;
+        gap: 14px;
+      }
+      .app {
+        display: none;
+        min-height: 100vh;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        border-bottom: 1px solid var(--line);
+        background: rgba(247, 243, 234, 0.94);
+        backdrop-filter: blur(14px);
+      }
+      .bar {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 14px 18px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+      main {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 18px;
+        display: grid;
+        grid-template-columns: minmax(320px, 0.8fr) minmax(460px, 1.2fr);
+        gap: 16px;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        min-width: 0;
+      }
+      .stack {
+        display: grid;
+        gap: 10px;
+      }
+      .row, .actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .actions button {
+        flex: 0 0 auto;
+      }
+      .two {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 12px;
+      }
+      .small {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .msg {
+        min-height: 18px;
+        font-size: 13px;
+        color: var(--good);
+      }
+      .msg.error { color: var(--bad); }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 8px;
+        background: #fff;
+        font-size: 12px;
+        font-weight: 900;
+      }
+      .badge.good { color: var(--good); border-color: #bbf7d0; background: #f0fdf4; }
+      .badge.warn { color: var(--warn); border-color: #fde68a; background: #fffbeb; }
+      .badge.bad { color: var(--bad); border-color: #fecaca; background: #fff5f5; }
+      .commandList {
+        display: grid;
+        gap: 6px;
+        max-height: 260px;
+        overflow: auto;
+      }
+      .commandRow {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 7px 8px;
+        display: grid;
+        gap: 2px;
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 12px;
+      }
+      .terminalLog {
+        min-height: 300px;
+        max-height: 520px;
+        overflow: auto;
+        border: 1px solid #111827;
+        border-radius: 8px;
+        background: #111827;
+        color: #e5e7eb;
+        padding: 10px;
+        display: grid;
+        align-content: start;
+        gap: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .terminalLine {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .terminalLine .role {
+        color: #5eead4;
+        font-weight: 900;
+      }
+      .terminalLine.error .role { color: #fca5a5; }
+      .terminalForm {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+      }
+      .toggleLine {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .toggleLine input {
+        width: auto;
+      }
+      @media (max-width: 900px) {
+        main, .two { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <section id="login" class="login">
+      <form id="loginForm" class="loginCard">
+        <div>
+          <h1>API Playground</h1>
+          <div class="small">Lokale admin login. API-keys blijven server-side.</div>
+        </div>
+        <label>Admin wachtwoord<input id="password" type="password" autocomplete="current-password" /></label>
+        <label class="toggleLine"><input id="rememberDevice" type="checkbox" checked /> Onthoud dit apparaat</label>
+        <button class="primary" type="submit">Login</button>
+        <div id="loginMsg" class="msg error"></div>
+      </form>
+    </section>
+
+    <section id="app" class="app">
+      <header>
+        <div class="bar">
+          <div>
+            <h1>For You API Playground</h1>
+            <div class="small">Lokale API-, Dropbox-, database.md- en vector-store sync. Showpagina blijft schoon.</div>
+          </div>
+          <div class="actions">
+            <span id="buildBadge" class="badge"></span>
+            <a href="/algoritme">Algoritme</a>
+            <a href="/admin">Admin</a>
+            <button id="refreshBtn" type="button">Refresh</button>
+            <button id="logoutBtn" type="button">Logout</button>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <section class="panel">
+          <div class="row">
+            <h2>Sync</h2>
+            <span id="syncBadge" class="badge"></span>
+          </div>
+          <div id="syncStatusText" class="small"></div>
+          <label>Mac Studio / peer URL<input id="syncPeerUrl" maxlength="300" placeholder="http://192.168.1.49:3310" /></label>
+          <label class="toggleLine"><input id="syncPaused" type="checkbox" /> Peer sync pauzeren</label>
+          <div class="actions">
+            <button id="saveSyncSettingsBtn" class="primary" type="button">Bewaar peer sync</button>
+            <button id="peerSyncNowBtn" type="button">Peer sync nu</button>
+          </div>
+          <div id="syncPeersList" class="commandList"></div>
+          <div id="syncMsg" class="msg"></div>
+        </section>
+
+        <section class="panel">
+          <div class="row">
+            <h2>Catalogus Mirrors</h2>
+            <span id="dropboxBadge" class="badge"></span>
+          </div>
+          <div id="dropboxStatusText" class="small"></div>
+          <div id="databaseMdList" class="commandList"></div>
+          <div class="actions">
+            <button id="dropboxSyncNowBtn" type="button">Dropbox sync</button>
+            <button id="databaseMdSyncNowBtn" type="button">Rebuild database.md</button>
+            <button id="syncAllBtn" class="primary" type="button">Sync alles lokaal</button>
+          </div>
+          <div id="mirrorMsg" class="msg"></div>
+        </section>
+
+        <section class="panel" style="grid-column: 1 / -1;">
+          <div class="row">
+            <h2>Instellingen</h2>
+            <span id="secretsBadge" class="badge"></span>
+          </div>
+          <div id="secretsStatusText" class="small"></div>
+          <div class="two">
+            <label>OpenAI API key<input id="openAiApiKeyInput" type="password" autocomplete="off" placeholder="Laat leeg om niet te wijzigen" /></label>
+            <label>Anthropic API key<input id="anthropicApiKeyInput" type="password" autocomplete="off" placeholder="Laat leeg om niet te wijzigen" /></label>
+          </div>
+          <div class="two">
+            <label>OpenAI vector store ID<input id="envOpenAiVectorStoreId" maxlength="160" placeholder="vs_... optioneel" /></label>
+            <label class="toggleLine"><input id="openAiCatalogEnabled" type="checkbox" /> OpenAI catalogus actief</label>
+          </div>
+          <div class="actions">
+            <button id="saveSecretsBtn" class="primary" type="button">Bewaar instellingen</button>
+          </div>
+          <div id="secretsMsg" class="msg"></div>
+        </section>
+
+        <section class="panel" style="grid-column: 1 / -1;">
+          <div class="row">
+            <h2>OpenAI Catalogus</h2>
+            <span id="openAiBadge" class="badge"></span>
+          </div>
+          <div id="openAiStatusText" class="small"></div>
+          <div class="two">
+            <label>OpenAI vector store ID<input id="openAiVectorStoreId" maxlength="160" placeholder="vs_..." /></label>
+            <div class="stack">
+              <div class="actions">
+                <button id="openAiStoresBtn" type="button">Stores</button>
+                <button id="openAiAuditBtn" type="button">Audit</button>
+                <button id="openAiPlanBtn" type="button">Maak sync-plan</button>
+                <button id="openAiApplyBtn" class="danger" type="button">Voer full sync uit</button>
+              </div>
+              <div id="openAiMsg" class="msg"></div>
+            </div>
+          </div>
+          <div id="openAiSyncPlan" class="commandList"></div>
+          <div id="openAiTerminalLog" class="terminalLog" aria-live="polite"></div>
+          <form id="openAiTerminalForm" class="terminalForm">
+            <input id="openAiTerminalInput" maxlength="1200" placeholder="/status, /stores, /audit, /sync, /search Peter, of typ je vraag" autocomplete="off" />
+            <button id="openAiTerminalSendBtn" type="submit">Stuur</button>
+          </form>
+        </section>
+      </main>
+    </section>
+
+    <script>
+      (() => {
+        const TOKEN_KEY = "api_playground_admin_token_v1";
+        const OPENAI_VECTOR_STORE_KEY = "api_playground_openai_vector_store_id_v1";
+        let token = "";
+        let state = null;
+        let syncDraftDirty = false;
+        let openAiTerminalEntries = [];
+        let openAiLastPlan = null;
+
+        const $ = (id) => document.getElementById(id);
+        const loginEl = $("login");
+        const appEl = $("app");
+
+        function esc(value) {
+          return String(value || "").replace(/[&<>"']/g, (ch) => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            "\"": "&quot;",
+            "'": "&#39;",
+          }[ch]));
+        }
+
+        function setToken(next) {
+          token = String(next || "");
+          try {
+            if (token) localStorage.setItem(TOKEN_KEY, token);
+            else localStorage.removeItem(TOKEN_KEY);
+          } catch {}
+        }
+
+        function loadToken() {
+          try { token = String(localStorage.getItem(TOKEN_KEY) || ""); }
+          catch { token = ""; }
+        }
+
+        async function api(path, options = {}) {
+          const headers = Object.assign({}, options.headers || {});
+          if (token) headers["x-admin-token"] = token;
+          const res = await fetch(path, Object.assign({}, options, { headers }));
+          const raw = await res.text().catch(() => "");
+          let body = {};
+          try { body = raw ? JSON.parse(raw) : {}; } catch { body = {}; }
+          if (!res.ok) {
+            if (res.status === 401) showLogin("Login opnieuw nodig.");
+            const err = new Error(body && body.error ? body.error : "request_failed");
+            err.status = res.status;
+            err.body = body;
+            err.path = path;
+            throw err;
+          }
+          return body;
+        }
+
+        function showLogin(message = "") {
+          appEl.style.display = "none";
+          loginEl.style.display = "grid";
+          $("loginMsg").textContent = message;
+        }
+
+        function showApp() {
+          loginEl.style.display = "none";
+          appEl.style.display = "block";
+        }
+
+        function formatError(err) {
+          const code = String(err && err.message || "request_failed");
+          return {
+            unauthorized: "Niet ingelogd.",
+            openai_catalog_disabled: "OpenAI catalogus staat uit. Zet FORYOU_OPENAI_CATALOG_ENABLED=1 in je lokale .env.",
+            openai_api_key_missing: "OPENAI_API_KEY mist in je lokale .env.",
+            openai_vector_store_id_missing: "Vul een OpenAI vector store ID in.",
+            confirmation_required: "Bevestiging ontbreekt.",
+            api_playground_env_update_failed: "Instellingen konden niet worden opgeslagen.",
+          }[code] || code;
+        }
+
+        function setMsg(id, text, isError = false) {
+          const el = $(id);
+          if (!el) return;
+          el.textContent = text || "";
+          el.classList.toggle("error", !!isError);
+        }
+
+        function formatTime(value) {
+          if (!value) return "-";
+          const d = new Date(value);
+          if (Number.isNaN(d.getTime())) return String(value);
+          return d.toLocaleString("nl-NL", { dateStyle: "short", timeStyle: "medium" });
+        }
+
+        function renderBadge(id, text, kind = "") {
+          const el = $(id);
+          el.textContent = text;
+          el.className = `badge ${kind}`;
+        }
+
+        function renderSync() {
+          const sync = state && state.sync ? state.sync : {};
+          const peers = Array.isArray(sync.peers) ? sync.peers : [];
+          const onlineCount = peers.filter((peer) => peer.online).length;
+          const paused = !!sync.paused;
+          renderBadge("syncBadge", paused ? "gepauzeerd" : onlineCount ? "online" : peers.length ? "offline" : "geen peer", !paused && onlineCount ? "good" : paused ? "warn" : "bad");
+          $("syncStatusText").textContent = `Dit apparaat: ${sync.deviceName || "onbekend"} · ${sync.deviceId || ""}` +
+            (sync.lastRunAt ? ` · laatste poging ${formatTime(sync.lastRunAt)}` : " · nog geen syncpoging");
+          if (!syncDraftDirty && document.activeElement !== $("syncPeerUrl")) {
+            $("syncPeerUrl").value = peers[0] ? peers[0].url || "" : "";
+            $("syncPaused").checked = paused;
+          }
+          $("syncPeersList").innerHTML = peers.map((peer) => {
+            const status = peer.online ? "online" : peer.lastError ? "fout" : "offline";
+            const detail = peer.lastError
+              ? `${peer.lastError}${peer.lastErrorAt ? " om " + formatTime(peer.lastErrorAt) : ""}`
+              : peer.lastOkAt
+                ? `laatst ok ${formatTime(peer.lastOkAt)}${peer.lastSeenBuild ? " · " + peer.lastSeenBuild : ""}`
+                : "nog niet bereikt";
+            return `<div class="commandRow"><span class="mono">${esc(peer.url || "")}</span><span class="small">${esc(status)} · ${esc(detail)}</span></div>`;
+          }).join("") || '<div class="small">Geen sync-peer ingesteld.</div>';
+        }
+
+        function renderMirrors() {
+          const dropbox = state && state.dropboxCatalog ? state.dropboxCatalog : {};
+          const dbFiles = Array.isArray(state && state.databaseMd) ? state.databaseMd : [];
+          const dropboxRoot = dropbox.rootDir ? ` · ${dropbox.rootDir}` : "";
+          const dropboxLast = dropbox.lastSyncAt ? ` · laatst ${formatTime(dropbox.lastSyncAt)}` : "";
+          const dropboxError = dropbox.lastError ? ` · fout: ${dropbox.lastError}` : "";
+          renderBadge("dropboxBadge", dropbox.enabled ? dropbox.running ? "actief" : "beschikbaar" : "uit", dropbox.enabled ? "good" : "warn");
+          $("dropboxStatusText").textContent = dropbox.enabled
+            ? `Dropbox catalogus: ${dropbox.running ? "actief" : "beschikbaar"}${dropboxLast}${dropboxError}${dropboxRoot}`
+            : `Dropbox catalogus: uit${dropboxRoot}`;
+          $("databaseMdList").innerHTML = dbFiles.map((file) => `
+            <div class="commandRow">
+              <span class="mono">${esc(file.filePath || "")}</span>
+              <span class="small">${file.exists ? `${Number(file.bytes || 0).toLocaleString()} bytes · ${formatTime(file.updatedAt)}` : "niet gevonden"}</span>
+            </div>
+          `).join("") || '<div class="small">Geen database.md output geconfigureerd.</div>';
+        }
+
+        function selectedOpenAiVectorStoreId() {
+          return String($("openAiVectorStoreId").value || "").trim();
+        }
+
+        function saveOpenAiVectorStoreId(value) {
+          try {
+            const safe = String(value || "").trim();
+            if (safe) localStorage.setItem(OPENAI_VECTOR_STORE_KEY, safe);
+            else localStorage.removeItem(OPENAI_VECTOR_STORE_KEY);
+          } catch {}
+        }
+
+        function loadOpenAiVectorStoreIdFallback() {
+          try { return String(localStorage.getItem(OPENAI_VECTOR_STORE_KEY) || ""); }
+          catch { return ""; }
+        }
+
+        function secretEntry(key) {
+          const secrets = state && state.secrets && Array.isArray(state.secrets.keys) ? state.secrets.keys : [];
+          return secrets.find((entry) => entry.key === key) || {};
+        }
+
+        function renderSecrets() {
+          const openAiKey = secretEntry("OPENAI_API_KEY");
+          const anthropicKey = secretEntry("ANTHROPIC_API_KEY");
+          const enabled = secretEntry("FORYOU_OPENAI_CATALOG_ENABLED");
+          const envStore = secretEntry("FORYOU_OPENAI_VECTOR_STORE_ID");
+          const openAiConfigured = !!openAiKey.configured;
+          const anthropicConfigured = !!anthropicKey.configured;
+          renderBadge("secretsBadge", openAiConfigured || anthropicConfigured ? "ingesteld" : "ontbreekt", openAiConfigured || anthropicConfigured ? "good" : "warn");
+          $("secretsStatusText").textContent =
+            `OpenAI: ${openAiConfigured ? "ingesteld" : "ontbreekt"} · ` +
+            `Anthropic: ${anthropicConfigured ? "ingesteld" : "ontbreekt"} · ` +
+            `.env.local: ${state && state.secrets && state.secrets.envLocalExists ? "aanwezig" : "nog niet aangemaakt"}`;
+          if (document.activeElement !== $("openAiCatalogEnabled")) {
+            $("openAiCatalogEnabled").checked = String(enabled.value || "") === "1";
+          }
+          if (document.activeElement !== $("envOpenAiVectorStoreId")) {
+            $("envOpenAiVectorStoreId").value = envStore.value || "";
+          }
+        }
+
+        function renderOpenAi() {
+          const info = state && state.openAiCatalog ? state.openAiCatalog : {};
+          const savedVectorStore = loadOpenAiVectorStoreIdFallback();
+          if (document.activeElement !== $("openAiVectorStoreId")) {
+            $("openAiVectorStoreId").value = savedVectorStore || info.vectorStoreId || "";
+          }
+          renderBadge("openAiBadge", info.enabled ? info.ready ? "klaar" : "niet compleet" : "uit", info.enabled && info.ready ? "good" : info.enabled ? "warn" : "bad");
+          const key = info.apiKeyConfigured ? "key ok" : "geen API-key";
+          const store = selectedOpenAiVectorStoreId() || info.vectorStoreId || "geen vector store";
+          const root = info.rootDir ? ` · ${info.rootDir}` : "";
+          $("openAiStatusText").textContent = info.enabled
+            ? `OpenAI catalogus: ${info.ready ? "klaar" : "niet compleet"} · ${key} · ${store} · model ${info.model || "-"}${root}`
+            : `OpenAI catalogus: uit · ${key}${root}`;
+          renderOpenAiPlan(openAiLastPlan);
+          renderOpenAiTerminal();
+        }
+
+        function render() {
+          if (!state) return;
+          $("buildBadge").textContent = state.runtime && state.runtime.buildLabel ? state.runtime.buildLabel : "build onbekend";
+          renderSync();
+          renderMirrors();
+          renderSecrets();
+          renderOpenAi();
+        }
+
+        async function loadStatus() {
+          state = await api("/admin/api-playground/status");
+          showApp();
+          render();
+        }
+
+        async function login() {
+          $("loginMsg").textContent = "";
+          try {
+            const body = await api("/admin/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                password: $("password").value,
+                rememberDevice: $("rememberDevice").checked,
+                deviceLabel: navigator.userAgent || "",
+              }),
+            });
+            setToken(body.token);
+            $("password").value = "";
+            await loadStatus();
+          } catch (err) {
+            $("loginMsg").textContent = formatError(err);
+          }
+        }
+
+        async function saveSyncSettings(successText = "Peer sync-instellingen opgeslagen.") {
+          try {
+            const peerUrl = String($("syncPeerUrl").value || "").trim();
+            const result = await api("/admin/sync/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                peers: peerUrl ? [peerUrl] : [],
+                paused: !!$("syncPaused").checked,
+              }),
+            });
+            state.sync = result.status || state.sync;
+            syncDraftDirty = false;
+            await loadStatus();
+            setMsg("syncMsg", successText);
+            return true;
+          } catch (err) {
+            setMsg("syncMsg", formatError(err), true);
+            return false;
+          }
+        }
+
+        async function peerSyncNow() {
+          try {
+            if (syncDraftDirty) {
+              const saved = await saveSyncSettings("Peer sync-instellingen opgeslagen. Nu synchroniseren...");
+              if (!saved) return;
+            }
+            const result = await api("/admin/sync/run", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            });
+            await loadStatus();
+            const peers = result.result && Array.isArray(result.result.peers) ? result.result.peers : [];
+            const failed = peers.filter((peer) => !peer.ok);
+            setMsg("syncMsg", failed.length ? "Peer sync geprobeerd. Offline peers blijven lokaal bewaard." : "Peer sync klaar.");
+          } catch (err) {
+            setMsg("syncMsg", formatError(err), true);
+          }
+        }
+
+        async function dropboxSyncNow() {
+          try {
+            const result = await api("/admin/dropbox-catalog/sync-now", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            });
+            await loadStatus();
+            setMsg("mirrorMsg", result.ok ? "Dropbox sync klaar." : result.error || "Dropbox sync mislukt.", !result.ok);
+          } catch (err) {
+            setMsg("mirrorMsg", formatError(err), true);
+          }
+        }
+
+        async function databaseMdSyncNow() {
+          try {
+            const result = await api("/admin/api-playground/database-md/sync-now", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            });
+            await loadStatus();
+            const changed = (result.result && result.result.outputs || []).filter((item) => item.changed).length;
+            setMsg("mirrorMsg", `database.md bijgewerkt (${changed} bestand(en) gewijzigd).`);
+          } catch (err) {
+            setMsg("mirrorMsg", formatError(err), true);
+          }
+        }
+
+        function mirrorSummary(mirrorSync) {
+          if (!mirrorSync) return "";
+          const parts = [];
+          if (mirrorSync.dropbox) parts.push(mirrorSync.dropbox.ok === false ? "Dropbox fout" : mirrorSync.dropbox.enabled === false ? "Dropbox uit" : "Dropbox ok");
+          if (mirrorSync.databaseMd) parts.push(mirrorSync.databaseMd.ok === false ? "database.md fout" : "database.md ok");
+          if (mirrorSync.openAi) parts.push(mirrorSync.openAi.skipped ? `OpenAI ${mirrorSync.openAi.reason || "overgeslagen"}` : mirrorSync.openAi.ok === false ? "OpenAI fout" : "OpenAI ok");
+          return parts.join(" · ");
+        }
+
+        async function syncAll() {
+          const ok = window.confirm("Sync alles lokaal uitvoeren?\n\nDit kan OpenAI API-calls doen als de catalogus-mirror aan staat.");
+          if (!ok) return;
+          try {
+            const result = await api("/admin/api-playground/sync-all", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            });
+            await loadStatus();
+            setMsg("mirrorMsg", mirrorSummary(result.mirrorSync) || "Sync alles klaar.", result.mirrorSync && result.mirrorSync.openAi && result.mirrorSync.openAi.ok === false);
+          } catch (err) {
+            setMsg("mirrorMsg", formatError(err), true);
+          }
+        }
+
+        async function saveSecrets() {
+          const openAiApiKey = String($("openAiApiKeyInput").value || "").trim();
+          const anthropicApiKey = String($("anthropicApiKeyInput").value || "").trim();
+          const openAiVectorStoreId = String($("envOpenAiVectorStoreId").value || "").trim();
+          try {
+            const result = await api("/admin/api-playground/secrets", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                openAiApiKey,
+                anthropicApiKey,
+                openAiCatalogEnabled: $("openAiCatalogEnabled").checked,
+                openAiVectorStoreId,
+              }),
+            });
+            $("openAiApiKeyInput").value = "";
+            $("anthropicApiKeyInput").value = "";
+            state.secrets = result.secrets || state.secrets;
+            state.openAiCatalog = result.openAiCatalog || state.openAiCatalog;
+            if (openAiVectorStoreId) {
+              $("openAiVectorStoreId").value = openAiVectorStoreId;
+              saveOpenAiVectorStoreId(openAiVectorStoreId);
+            }
+            await loadStatus();
+            const changed = Array.isArray(result.changedKeys) ? result.changedKeys.length : 0;
+            setMsg("secretsMsg", changed ? `Instellingen opgeslagen (${changed}).` : "Geen nieuwe waarden ingevuld.");
+          } catch (err) {
+            setMsg("secretsMsg", formatError(err), true);
+          }
+        }
+
+        function openAiRequestBody(extra = {}) {
+          return { vectorStoreId: selectedOpenAiVectorStoreId(), ...extra };
+        }
+
+        function appendOpenAiTerminal(role, text, isError = false) {
+          openAiTerminalEntries.push({ role: String(role || "sys"), text: String(text || ""), isError: !!isError });
+          if (openAiTerminalEntries.length > 100) openAiTerminalEntries = openAiTerminalEntries.slice(openAiTerminalEntries.length - 100);
+          renderOpenAiTerminal();
+        }
+
+        function renderOpenAiTerminal() {
+          const log = $("openAiTerminalLog");
+          if (!openAiTerminalEntries.length) {
+            log.innerHTML = '<div class="terminalLine"><span class="role">sys</span> OpenAI Catalog Terminal klaar. Probeer /status, /stores, /audit, /sync of /search Peter.</div>';
+            return;
+          }
+          log.innerHTML = openAiTerminalEntries.map((entry) => `
+            <div class="terminalLine ${entry.isError ? "error" : ""}"><span class="role">${esc(entry.role)}</span> ${esc(entry.text)}</div>
+          `).join("");
+          log.scrollTop = log.scrollHeight;
+        }
+
+        function openAiPlanSummary(plan) {
+          const summary = plan && plan.summary ? plan.summary : {};
+          return `upload ${summary.upload || 0}, replace ${summary.replace || 0}, delete ${summary.delete || 0}, adopt ${summary.adopt || 0}, skip ${summary.skip || 0}`;
+        }
+
+        function renderOpenAiPlan(plan) {
+          const target = $("openAiSyncPlan");
+          if (!plan) {
+            target.innerHTML = '<div class="small">Nog geen OpenAI sync-plan.</div>';
+            return;
+          }
+          const actions = Array.isArray(plan.actions) ? plan.actions : [];
+          const visibleActions = actions.filter((action) => action.type !== "skip");
+          const rows = visibleActions.slice(0, 14).map((action) => `
+            <div class="commandRow">
+              <span class="mono">${esc(action.type)} ${esc(action.relPath || "(zonder pad)")}</span>
+              <span class="small">${esc(action.reason || "")}</span>
+            </div>
+          `).join("");
+          const more = visibleActions.length - Math.min(14, visibleActions.length);
+          target.innerHTML = `
+            <div class="commandRow">
+              <span class="mono">${esc(openAiPlanSummary(plan))}</span>
+              <span class="small">${Number(plan.localFileCount || 0)} lokaal · ${Number(plan.remoteFileCount || 0)} remote · ${Number(plan.ignoredRemoteFileCount || 0)} ongemoeid</span>
+            </div>
+            ${rows}
+            ${more > 0 ? `<div class="small">Nog ${more} acties niet getoond.</div>` : ""}
+          `;
+        }
+
+        async function openAiAudit() {
+          try {
+            appendOpenAiTerminal("you", "/audit");
+            const result = await api("/admin/openai-catalog/audit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(openAiRequestBody()),
+            });
+            openAiLastPlan = result;
+            renderOpenAi();
+            appendOpenAiTerminal("audit", openAiPlanSummary(result));
+            setMsg("openAiMsg", "Audit klaar.");
+            return result;
+          } catch (err) {
+            const message = formatError(err);
+            appendOpenAiTerminal("error", message, true);
+            setMsg("openAiMsg", message, true);
+            return null;
+          }
+        }
+
+        async function openAiSyncPlan() {
+          try {
+            appendOpenAiTerminal("you", "/sync-plan");
+            const result = await api("/admin/openai-catalog/sync-plan", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(openAiRequestBody()),
+            });
+            openAiLastPlan = result;
+            renderOpenAi();
+            appendOpenAiTerminal("plan", openAiPlanSummary(result));
+            setMsg("openAiMsg", "Sync-plan gemaakt.");
+            return result;
+          } catch (err) {
+            const message = formatError(err);
+            appendOpenAiTerminal("error", message, true);
+            setMsg("openAiMsg", message, true);
+            return null;
+          }
+        }
+
+        async function openAiApplySync() {
+          const plan = openAiLastPlan || await openAiSyncPlan();
+          if (!plan) return;
+          const summary = plan.summary || {};
+          const destructive = Number(summary.delete || 0) + Number(summary.replace || 0);
+          const ok = window.confirm(`OpenAI full sync uitvoeren?\n\n${openAiPlanSummary(plan)}\n\n${destructive} remote acties vervangen of verwijderen managed For You-bestanden.`);
+          if (!ok) return;
+          try {
+            appendOpenAiTerminal("you", "/sync");
+            const result = await api("/admin/openai-catalog/sync-apply", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(openAiRequestBody({ confirm: "FULL_SYNC" })),
+            });
+            openAiLastPlan = result.plan || null;
+            await loadStatus();
+            appendOpenAiTerminal(result.ok ? "sync" : "sync", `${result.ok ? "klaar" : "klaar met fouten"} · applied ${(result.applied || []).length} · errors ${(result.errors || []).length}`);
+            if (Array.isArray(result.errors) && result.errors.length) {
+              appendOpenAiTerminal("error", result.errors.map((item) => `${item.type} ${item.relPath}: ${item.error}`).join("\n"), true);
+            }
+            setMsg("openAiMsg", result.ok ? "OpenAI full sync klaar." : "OpenAI sync klaar met fouten.", !result.ok);
+          } catch (err) {
+            const message = formatError(err);
+            appendOpenAiTerminal("error", message, true);
+            setMsg("openAiMsg", message, true);
+          }
+        }
+
+        async function openAiListStores() {
+          try {
+            appendOpenAiTerminal("you", "/stores");
+            const result = await api("/admin/openai-catalog/vector-stores");
+            const rows = (result.vectorStores || []).map((store) => `${store.id} · ${store.name || "(geen naam)"} · ${store.status || "-"} · ${store.fileCounts && store.fileCounts.total || 0} files`);
+            appendOpenAiTerminal("stores", rows.join("\n") || "Geen vector stores gevonden.");
+          } catch (err) {
+            appendOpenAiTerminal("error", formatError(err), true);
+          }
+        }
+
+        async function openAiChat(message, role = "you") {
+          const text = String(message || "").trim();
+          if (!text) return;
+          try {
+            appendOpenAiTerminal(role, text);
+            const result = await api("/admin/openai-catalog/chat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(openAiRequestBody({ message: text })),
+            });
+            const citations = (result.citations || []).map((item) => item.filename || item.fileId).filter(Boolean);
+            appendOpenAiTerminal("ai", `${result.text || "(geen tekst)"}${citations.length ? "\n\nBronnen: " + citations.slice(0, 8).join(", ") : ""}`);
+            setMsg("openAiMsg", "OpenAI antwoord ontvangen.");
+          } catch (err) {
+            const messageText = formatError(err);
+            appendOpenAiTerminal("error", messageText, true);
+            setMsg("openAiMsg", messageText, true);
+          }
+        }
+
+        async function handleOpenAiCommand(raw) {
+          const command = String(raw || "").trim();
+          if (!command) return;
+          $("openAiTerminalInput").value = "";
+          if (command === "/status") {
+            appendOpenAiTerminal("you", command);
+            const info = state && state.openAiCatalog ? state.openAiCatalog : {};
+            appendOpenAiTerminal("status", `enabled ${!!info.enabled} · ready ${!!info.ready} · key ${info.apiKeyConfigured ? "ok" : "mist"} · store ${selectedOpenAiVectorStoreId() || info.vectorStoreId || "-"}`);
+            return;
+          }
+          if (command === "/stores") return openAiListStores();
+          if (command.startsWith("/use ")) {
+            const id = command.slice(5).trim();
+            $("openAiVectorStoreId").value = id;
+            saveOpenAiVectorStoreId(id);
+            appendOpenAiTerminal("you", command);
+            appendOpenAiTerminal("sys", `Vector store gezet op ${id || "(leeg)"}.`);
+            renderOpenAi();
+            return;
+          }
+          if (command === "/audit") return openAiAudit();
+          if (command === "/sync-plan" || command === "/plan") return openAiSyncPlan();
+          if (command === "/sync") return openAiApplySync();
+          if (command.startsWith("/search ")) return openAiChat(`Zoek in de For You catalogus naar: ${command.slice(8).trim()}`, "search");
+          return openAiChat(command);
+        }
+
+        function bindEvents() {
+          $("loginForm").addEventListener("submit", (event) => {
+            event.preventDefault();
+            login();
+          });
+          $("refreshBtn").addEventListener("click", () => loadStatus().catch((err) => setMsg("mirrorMsg", formatError(err), true)));
+          $("logoutBtn").addEventListener("click", () => {
+            setToken("");
+            showLogin("");
+          });
+          $("syncPeerUrl").addEventListener("input", () => { syncDraftDirty = true; });
+          $("syncPeerUrl").addEventListener("change", () => { syncDraftDirty = true; });
+          $("syncPaused").addEventListener("change", () => { syncDraftDirty = true; });
+          $("saveSyncSettingsBtn").addEventListener("click", () => saveSyncSettings());
+          $("peerSyncNowBtn").addEventListener("click", peerSyncNow);
+          $("dropboxSyncNowBtn").addEventListener("click", dropboxSyncNow);
+          $("databaseMdSyncNowBtn").addEventListener("click", databaseMdSyncNow);
+          $("syncAllBtn").addEventListener("click", syncAll);
+          $("saveSecretsBtn").addEventListener("click", saveSecrets);
+          $("openAiVectorStoreId").addEventListener("change", () => {
+            saveOpenAiVectorStoreId(selectedOpenAiVectorStoreId());
+            renderOpenAi();
+          });
+          $("openAiVectorStoreId").addEventListener("input", () => saveOpenAiVectorStoreId(selectedOpenAiVectorStoreId()));
+          $("openAiStoresBtn").addEventListener("click", openAiListStores);
+          $("openAiAuditBtn").addEventListener("click", openAiAudit);
+          $("openAiPlanBtn").addEventListener("click", openAiSyncPlan);
+          $("openAiApplyBtn").addEventListener("click", openAiApplySync);
+          $("openAiTerminalForm").addEventListener("submit", (event) => {
+            event.preventDefault();
+            handleOpenAiCommand($("openAiTerminalInput").value);
+          });
+        }
+
+        bindEvents();
+        loadToken();
+        if (token) {
+          loadStatus().catch(() => showLogin("Login opnieuw nodig."));
+        } else {
+          showLogin("");
+        }
+      })();
+    </script>
+  </body>
+</html>

@@ -10,6 +10,7 @@
   const ENVIRONMENT_TYPE = "environment";
   const APPEARS_IN_EDGE = "appears_in";
   const HAPPENS_IN_EDGE = "happens_in";
+  const PATH_ORDER_EDGE = "path_order";
 
   function normalizeId(value) {
     const id = Number.parseInt(String(value || ""), 10);
@@ -59,11 +60,14 @@
     const characters = visibleItems(catalog.characters, includeInactive);
     const scenes = visibleItems(catalog.scenes, includeInactive);
     const environments = visibleItems(catalog.environments, includeInactive);
+    const paths = visibleItems(catalog.paths, includeInactive);
     const characterById = new Map(characters.map((item) => [normalizeId(item.id), item]));
     const environmentById = new Map(environments.map((item) => [normalizeId(item.id), item]));
+    const sceneById = new Map(scenes.map((item) => [normalizeId(item.id), item]));
     const characterSceneCounts = new Map();
     const environmentSceneCounts = new Map();
     const sceneCharacterCounts = new Map();
+    const pathDetailsBySceneId = new Map();
     const edges = [];
     const seenEdges = new Set();
 
@@ -111,6 +115,52 @@
       }
     }
 
+    for (const pathItem of paths) {
+      const pathId = normalizeId(pathItem.id);
+      const pathName = normalizeText(pathItem.name) || `Pad ${pathId}`;
+      const pathColor = normalizeText(pathItem.color);
+      const sceneIds = uniqueIds(pathItem.sceneIds).filter((sceneId) => sceneById.has(sceneId));
+      const sceneIdSet = new Set(sceneIds);
+      for (const sceneId of sceneIds) {
+        const details = pathDetailsBySceneId.get(sceneId) || {
+          pathIds: [],
+          pathNames: [],
+          predecessorIds: [],
+          successorIds: [],
+        };
+        details.pathIds.push(pathId);
+        details.pathNames.push(pathName);
+        pathDetailsBySceneId.set(sceneId, details);
+      }
+      for (const edge of Array.isArray(pathItem.edges) ? pathItem.edges : []) {
+        const fromSceneId = normalizeId(edge && edge.fromSceneId);
+        const toSceneId = normalizeId(edge && edge.toSceneId);
+        if (!fromSceneId || !toSceneId || fromSceneId === toSceneId) continue;
+        if (!sceneIdSet.has(fromSceneId) || !sceneIdSet.has(toSceneId)) continue;
+        const fromDetails = pathDetailsBySceneId.get(fromSceneId) || { pathIds: [], pathNames: [], predecessorIds: [], successorIds: [] };
+        const toDetails = pathDetailsBySceneId.get(toSceneId) || { pathIds: [], pathNames: [], predecessorIds: [], successorIds: [] };
+        if (!fromDetails.successorIds.includes(toSceneId)) fromDetails.successorIds.push(toSceneId);
+        if (!toDetails.predecessorIds.includes(fromSceneId)) toDetails.predecessorIds.push(fromSceneId);
+        pathDetailsBySceneId.set(fromSceneId, fromDetails);
+        pathDetailsBySceneId.set(toSceneId, toDetails);
+        pushEdge({
+          data: {
+            id: `path-${pathId}-scene-${fromSceneId}-to-${toSceneId}`,
+            source: `scene:${fromSceneId}`,
+            target: `scene:${toSceneId}`,
+            type: PATH_ORDER_EDGE,
+            label: pathName,
+            pathId,
+            pathName,
+            pathColor,
+            fromSceneId,
+            toSceneId,
+          },
+          classes: PATH_ORDER_EDGE,
+        });
+      }
+    }
+
     const nodes = [];
     for (const character of characters) {
       const id = normalizeId(character.id);
@@ -136,6 +186,7 @@
       const id = normalizeId(scene.id);
       const characterCount = Number(sceneCharacterCounts.get(id) || 0);
       const environmentId = scene.environmentMode === "random" ? 0 : normalizeId(scene.environmentId);
+      const pathDetails = pathDetailsBySceneId.get(id) || { pathIds: [], pathNames: [], predecessorIds: [], successorIds: [] };
       nodes.push({
         data: {
           id: `scene:${id}`,
@@ -149,6 +200,10 @@
           characterCount,
           environmentId,
           environmentMode: normalizeText(scene.environmentMode || "selected"),
+          pathIds: uniqueIds(pathDetails.pathIds),
+          pathNames: Array.from(new Set(pathDetails.pathNames || [])),
+          predecessorIds: uniqueIds(pathDetails.predecessorIds),
+          successorIds: uniqueIds(pathDetails.successorIds),
           weight: characterCount,
           important: true,
         },
@@ -182,19 +237,22 @@
       elements: nodes.concat(edges),
       metadata: {
         nodeTypes: [CHARACTER_TYPE, SCENE_TYPE, ENVIRONMENT_TYPE],
-        edgeTypes: [APPEARS_IN_EDGE, HAPPENS_IN_EDGE],
+        edgeTypes: [APPEARS_IN_EDGE, HAPPENS_IN_EDGE, PATH_ORDER_EDGE],
         counts: {
           characters: characters.length,
           scenes: scenes.length,
           environments: environments.length,
           characterSceneEdges: edges.filter((edge) => edge.data.type === APPEARS_IN_EDGE).length,
           sceneEnvironmentEdges: edges.filter((edge) => edge.data.type === HAPPENS_IN_EDGE).length,
+          pathOrderEdges: edges.filter((edge) => edge.data.type === PATH_ORDER_EDGE).length,
+          paths: paths.length,
         },
       },
       indexes: {
         charactersById: new Map(characters.map((item) => [normalizeId(item.id), item])),
         scenesById: new Map(scenes.map((item) => [normalizeId(item.id), item])),
         environmentsById: new Map(environments.map((item) => [normalizeId(item.id), item])),
+        pathsById: new Map(paths.map((item) => [normalizeId(item.id), item])),
       },
     };
   }
@@ -205,6 +263,7 @@
     ENVIRONMENT_TYPE,
     APPEARS_IN_EDGE,
     HAPPENS_IN_EDGE,
+    PATH_ORDER_EDGE,
     buildNarrativeGraphData,
   };
 });

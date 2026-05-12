@@ -35,6 +35,7 @@ const {
   normalizeIdList,
   normalizeLabel,
   normalizeLockedQueue,
+  normalizePath,
   normalizePerformer,
   normalizeRun,
   normalizeScene,
@@ -43,6 +44,7 @@ const {
   pickRecommendation,
   resolveRandomCharacterSlotsForPerformerRoles,
   resolveRandomEnvironmentForScene,
+  validateAlgorithmPath,
   validateSceneLinks,
 } = require("./lib/show-algorithm");
 const {
@@ -149,6 +151,9 @@ const BUILD_VERSION_INPUT_FILES = [
   path.join(__dirname, "public", "index.html"),
   path.join(__dirname, "public", "admin.html"),
   path.join(__dirname, "public", "algoritme.html"),
+  path.join(__dirname, "public", "paden.html"),
+  path.join(__dirname, "public", "paden-editor.js"),
+  path.join(__dirname, "public", "paden-graph.js"),
   path.join(__dirname, "public", "verhaalvisualisatie.html"),
   path.join(__dirname, "public", "verhaalvisualisatie", "index.html"),
   path.join(__dirname, "public", "narrative-graph.js"),
@@ -1468,6 +1473,148 @@ function loadLocalDotEnv(rootDir) {
   }
 }
 
+const API_PLAYGROUND_ENV_KEYS = [
+  {
+    key: "OPENAI_API_KEY",
+    label: "OpenAI API key",
+    secret: true,
+  },
+  {
+    key: "ANTHROPIC_API_KEY",
+    label: "Anthropic API key",
+    secret: true,
+  },
+  {
+    key: "FORYOU_OPENAI_CATALOG_ENABLED",
+    label: "OpenAI catalogus actief",
+    secret: false,
+  },
+  {
+    key: "FORYOU_OPENAI_VECTOR_STORE_ID",
+    label: "OpenAI vector store ID",
+    secret: false,
+  },
+];
+
+const API_PLAYGROUND_ENV_KEY_SET = new Set(API_PLAYGROUND_ENV_KEYS.map((entry) => entry.key));
+
+function localEnvPath() {
+  return path.join(__dirname, ".env.local");
+}
+
+function encodeDotEnvValue(value) {
+  return JSON.stringify(String(value || "").replace(/\r/g, ""));
+}
+
+function readDotEnvFile(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function readDotEnvAssignments(filePath) {
+  const result = {};
+  const text = readDotEnvFile(filePath);
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const normalized = line.startsWith("export ") ? line.slice(7).trim() : line;
+    const eq = normalized.indexOf("=");
+    if (eq <= 0) continue;
+    const key = normalized.slice(0, eq).trim();
+    if (!API_PLAYGROUND_ENV_KEY_SET.has(key)) continue;
+    result[key] = parseDotEnvValue(normalized.slice(eq + 1));
+  }
+  return result;
+}
+
+function apiPlaygroundSecretStatus() {
+  const envPath = localEnvPath();
+  const assignments = readDotEnvAssignments(envPath);
+  return {
+    ok: true,
+    envLocalExists: fs.existsSync(envPath),
+    envLocalPath: ".env.local",
+    keys: API_PLAYGROUND_ENV_KEYS.map((entry) => {
+      const current = process.env[entry.key] !== undefined ? process.env[entry.key] : assignments[entry.key];
+      const configured = String(current || "").trim() !== "";
+      return {
+        key: entry.key,
+        label: entry.label,
+        secret: !!entry.secret,
+        configured,
+        value: entry.secret ? undefined : configured ? String(current) : "",
+      };
+    }),
+  };
+}
+
+function saveApiPlaygroundEnv(updates) {
+  const allowedUpdates = {};
+  for (const entry of API_PLAYGROUND_ENV_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(updates, entry.key)) continue;
+    const value = String(updates[entry.key] ?? "").trim();
+    if (!value) continue;
+    allowedUpdates[entry.key] = value;
+  }
+
+  if (!Object.keys(allowedUpdates).length) {
+    return { changedKeys: [] };
+  }
+
+  const envPath = localEnvPath();
+  const existing = readDotEnvFile(envPath);
+  const lines = existing ? existing.split(/\r?\n/) : [];
+  const changedKeys = [];
+  const seen = new Set();
+  const nextLines = lines.map((line) => {
+    const normalized = line.trim().startsWith("export ") ? line.trim().slice(7).trim() : line.trim();
+    const eq = normalized.indexOf("=");
+    if (eq <= 0) return line;
+    const key = normalized.slice(0, eq).trim();
+    if (!Object.prototype.hasOwnProperty.call(allowedUpdates, key)) return line;
+    seen.add(key);
+    changedKeys.push(key);
+    return `${key}=${encodeDotEnvValue(allowedUpdates[key])}`;
+  });
+
+  for (const [key, value] of Object.entries(allowedUpdates)) {
+    if (seen.has(key)) continue;
+    if (nextLines.length && nextLines[nextLines.length - 1] !== "") nextLines.push("");
+    nextLines.push(`${key}=${encodeDotEnvValue(value)}`);
+    changedKeys.push(key);
+  }
+
+  const tempPath = `${envPath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tempPath, `${nextLines.join("\n").replace(/\n*$/, "")}\n`, { mode: 0o600 });
+  fs.renameSync(tempPath, envPath);
+  try {
+    fs.chmodSync(envPath, 0o600);
+  } catch {}
+
+  for (const key of changedKeys) {
+    process.env[key] = allowedUpdates[key];
+  }
+
+  return { changedKeys };
+}
+
+function refreshOpenAiCatalogSync() {
+  if (!createOpenAiCatalogSync || !fs.existsSync(LOCAL_API_PLAYGROUND_HTML_PATH)) {
+    openAiCatalogSync = null;
+    return { ok: true, enabled: false, ready: false, apiKeyConfigured: false };
+  }
+  openAiCatalogSync = createOpenAiCatalogSync({
+    rootDir: dropboxCatalogSync ? dropboxCatalogSync.rootDir : undefined,
+    logger(event, meta) {
+      writeDebug(`openai_catalog_${event}`, meta);
+    },
+  });
+  return openAiCatalogSync.getStatus();
+}
+
 function safeJsonStringify(value, fallback = "{}") {
   try {
     return JSON.stringify(value);
@@ -2646,6 +2793,55 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_algorithm_scenes_active
     ON algorithm_scenes(is_active, archived_at, sort_order, id);
 
+  CREATE TABLE IF NOT EXISTS algorithm_paths (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    color TEXT,
+    edge_mode TEXT NOT NULL DEFAULT 'legacy',
+    is_active INTEGER NOT NULL DEFAULT 1,
+    archived_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_algorithm_paths_active
+    ON algorithm_paths(is_active, archived_at, sort_order, id);
+
+  CREATE TABLE IF NOT EXISTS algorithm_path_scenes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path_id INTEGER NOT NULL,
+    scene_id INTEGER NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(path_id, scene_id),
+    FOREIGN KEY(path_id) REFERENCES algorithm_paths(id) ON DELETE CASCADE,
+    FOREIGN KEY(scene_id) REFERENCES algorithm_scenes(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_algorithm_path_scenes_path
+    ON algorithm_path_scenes(path_id, sort_order, id);
+  CREATE INDEX IF NOT EXISTS idx_algorithm_path_scenes_scene
+    ON algorithm_path_scenes(scene_id, path_id);
+
+  CREATE TABLE IF NOT EXISTS algorithm_path_edges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path_id INTEGER NOT NULL,
+    from_scene_id INTEGER NOT NULL,
+    to_scene_id INTEGER NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(path_id, from_scene_id, to_scene_id),
+    FOREIGN KEY(path_id) REFERENCES algorithm_paths(id) ON DELETE CASCADE,
+    FOREIGN KEY(from_scene_id) REFERENCES algorithm_scenes(id),
+    FOREIGN KEY(to_scene_id) REFERENCES algorithm_scenes(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_algorithm_path_edges_path
+    ON algorithm_path_edges(path_id, sort_order, id);
+  CREATE INDEX IF NOT EXISTS idx_algorithm_path_edges_to_scene
+    ON algorithm_path_edges(to_scene_id, path_id);
+
   CREATE TABLE IF NOT EXISTS algorithm_scene_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL,
@@ -2819,6 +3015,10 @@ if (!algorithmSceneColumns.some((column) => String(column.name || "") === "label
 }
 if (!algorithmSceneColumns.some((column) => String(column.name || "") === "context_scene_id")) {
   db.exec("ALTER TABLE algorithm_scenes ADD COLUMN context_scene_id INTEGER");
+}
+const algorithmPathColumns = db.prepare("PRAGMA table_info(algorithm_paths)").all();
+if (!algorithmPathColumns.some((column) => String(column.name || "") === "edge_mode")) {
+  db.exec("ALTER TABLE algorithm_paths ADD COLUMN edge_mode TEXT NOT NULL DEFAULT 'legacy'");
 }
 const algorithmRunColumns = db.prepare("PRAGMA table_info(algorithm_scene_runs)").all();
 if (!algorithmRunColumns.some((column) => String(column.name || "") === "updated_at")) {
@@ -3182,6 +3382,80 @@ const sql = {
   deleteAlgorithmScene: db.prepare(
     `DELETE FROM algorithm_scenes
      WHERE id = ? AND is_active = 0`
+  ),
+  getAlgorithmPaths: db.prepare(
+    `SELECT id, name, description, sort_order AS sortOrder, color, edge_mode AS edgeMode,
+      is_active AS isActive, archived_at AS archivedAt,
+      created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_paths
+     ORDER BY archived_at IS NOT NULL ASC, is_active DESC, sort_order ASC, name COLLATE NOCASE ASC, id ASC`
+  ),
+  getAlgorithmPathById: db.prepare(
+    `SELECT id, name, description, sort_order AS sortOrder, color, edge_mode AS edgeMode,
+      is_active AS isActive, archived_at AS archivedAt,
+      created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_paths
+     WHERE id = ?`
+  ),
+  getAlgorithmPathScenes: db.prepare(
+    `SELECT id, path_id AS pathId, scene_id AS sceneId, sort_order AS sortOrder,
+      created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_path_scenes
+     ORDER BY path_id ASC, sort_order ASC, id ASC`
+  ),
+  getAlgorithmPathScenesByPath: db.prepare(
+    `SELECT id, path_id AS pathId, scene_id AS sceneId, sort_order AS sortOrder,
+      created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_path_scenes
+     WHERE path_id = ?
+     ORDER BY sort_order ASC, id ASC`
+  ),
+  getAlgorithmPathEdges: db.prepare(
+    `SELECT id, path_id AS pathId, from_scene_id AS fromSceneId, to_scene_id AS toSceneId,
+      sort_order AS sortOrder, created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_path_edges
+     ORDER BY path_id ASC, sort_order ASC, id ASC`
+  ),
+  getAlgorithmPathEdgesByPath: db.prepare(
+    `SELECT id, path_id AS pathId, from_scene_id AS fromSceneId, to_scene_id AS toSceneId,
+      sort_order AS sortOrder, created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_path_edges
+     WHERE path_id = ?
+     ORDER BY sort_order ASC, id ASC`
+  ),
+  insertAlgorithmPath: db.prepare(
+    `INSERT INTO algorithm_paths (name, description, sort_order, color, edge_mode, is_active, archived_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`
+  ),
+  updateAlgorithmPath: db.prepare(
+    `UPDATE algorithm_paths
+     SET name = ?, description = ?, sort_order = ?, color = ?, edge_mode = ?, is_active = ?, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  archiveAlgorithmPath: db.prepare(
+    `UPDATE algorithm_paths
+     SET is_active = 0, archived_at = ?, updated_at = ?
+     WHERE id = ?`
+  ),
+  deleteAlgorithmPath: db.prepare(
+    `DELETE FROM algorithm_paths
+     WHERE id = ? AND is_active = 0`
+  ),
+  insertAlgorithmPathScene: db.prepare(
+    `INSERT INTO algorithm_path_scenes (path_id, scene_id, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ),
+  deleteAlgorithmPathScenesByPath: db.prepare(
+    `DELETE FROM algorithm_path_scenes
+     WHERE path_id = ?`
+  ),
+  insertAlgorithmPathEdge: db.prepare(
+    `INSERT INTO algorithm_path_edges (path_id, from_scene_id, to_scene_id, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ),
+  deleteAlgorithmPathEdgesByPath: db.prepare(
+    `DELETE FROM algorithm_path_edges
+     WHERE path_id = ?`
   ),
   countAlgorithmRunsByScene: db.prepare(
     `SELECT COUNT(1) AS n
@@ -3658,6 +3932,21 @@ const SYNC_TABLE_DEFS = Object.freeze([
     updatedAtColumn: "updated_at",
   },
   {
+    name: "algorithm_paths",
+    columns: ["id", "name", "description", "sort_order", "color", "edge_mode", "is_active", "archived_at", "created_at", "updated_at"],
+    updatedAtColumn: "updated_at",
+  },
+  {
+    name: "algorithm_path_scenes",
+    columns: ["id", "path_id", "scene_id", "sort_order", "created_at", "updated_at"],
+    updatedAtColumn: "updated_at",
+  },
+  {
+    name: "algorithm_path_edges",
+    columns: ["id", "path_id", "from_scene_id", "to_scene_id", "sort_order", "created_at", "updated_at"],
+    updatedAtColumn: "updated_at",
+  },
+  {
     name: "algorithm_scene_runs",
     columns: ["id", "session_id", "scene_id", "run_order", "selection_source", "started_at", "ended_at", "heart_count", "bored_count", "comment_count", "score", "prompt_snapshot", "reason", "updated_at"],
     updatedAtColumn: "updated_at",
@@ -3712,6 +4001,7 @@ function normalizeSyncRowForTable(def, row = {}) {
     out[column] = Object.prototype.hasOwnProperty.call(row, column) ? row[column] : null;
   }
   out.id = id;
+  if (def.name === "algorithm_paths" && !out.edge_mode) out.edge_mode = "legacy";
   if (def.updatedAtColumn && !out[def.updatedAtColumn]) out[def.updatedAtColumn] = nowIso();
   return out;
 }
@@ -3840,7 +4130,7 @@ function applyIncomingSyncPayload(payload = {}, options = {}) {
       }
     }
     const tombstones = Array.isArray(incoming.tombstones) ? incoming.tombstones : [];
-    const tombstoneOrder = ["algorithm_character_votes", "algorithm_scene_runs", "algorithm_scenes", "algorithm_characters", "algorithm_situations", "algorithm_labels", "algorithm_environments", "algorithm_performers", "sessions"];
+    const tombstoneOrder = ["algorithm_character_votes", "algorithm_scene_runs", "algorithm_path_edges", "algorithm_path_scenes", "algorithm_paths", "algorithm_scenes", "algorithm_characters", "algorithm_situations", "algorithm_labels", "algorithm_environments", "algorithm_performers", "sessions"];
     tombstones
       .slice()
       .sort((a, b) => tombstoneOrder.indexOf(String(a.entity || "")) - tombstoneOrder.indexOf(String(b.entity || "")))
@@ -4633,6 +4923,27 @@ function parseAlgorithmSceneRow(row) {
   });
 }
 
+function parseAlgorithmPathRow(row, sceneRows = [], edgeRows = []) {
+  if (!row) return null;
+  return normalizePath({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    sortOrder: row.sortOrder,
+    color: row.color,
+    edgeMode: row.edgeMode,
+    sceneIds: (Array.isArray(sceneRows) ? sceneRows : [])
+      .map((item) => Number(item && item.sceneId || 0))
+      .filter((id) => id > 0),
+    edges: (Array.isArray(edgeRows) ? edgeRows : []).map((item) => ({
+      fromSceneId: item && item.fromSceneId,
+      toSceneId: item && item.toSceneId,
+    })),
+    isActive: Number(row.isActive || 0) > 0,
+    archivedAt: row.archivedAt || "",
+  });
+}
+
 function parseAlgorithmRunRow(row) {
   if (!row) return null;
   const run = normalizeRun({
@@ -4696,6 +5007,20 @@ function saveAlgorithmSettings(patch = {}) {
 }
 
 function getAlgorithmCatalog() {
+  const pathSceneRows = sql.getAlgorithmPathScenes.all();
+  const pathEdgeRows = sql.getAlgorithmPathEdges.all();
+  const pathScenesByPathId = new Map();
+  const pathEdgesByPathId = new Map();
+  for (const row of pathSceneRows) {
+    const pathId = Number(row && row.pathId || 0);
+    if (!pathScenesByPathId.has(pathId)) pathScenesByPathId.set(pathId, []);
+    pathScenesByPathId.get(pathId).push(row);
+  }
+  for (const row of pathEdgeRows) {
+    const pathId = Number(row && row.pathId || 0);
+    if (!pathEdgesByPathId.has(pathId)) pathEdgesByPathId.set(pathId, []);
+    pathEdgesByPathId.get(pathId).push(row);
+  }
   return {
     performers: sql.getAlgorithmPerformers.all().map(parseAlgorithmPerformerRow).filter(Boolean),
     characters: sql.getAlgorithmCharacters.all().map(parseAlgorithmCharacterRow).filter(Boolean),
@@ -4703,6 +5028,9 @@ function getAlgorithmCatalog() {
     labels: sql.getAlgorithmLabels.all().map(parseAlgorithmLabelRow).filter(Boolean),
     environments: sql.getAlgorithmEnvironments.all().map(parseAlgorithmEnvironmentRow).filter(Boolean),
     scenes: sql.getAlgorithmScenes.all().map(parseAlgorithmSceneRow).filter(Boolean),
+    paths: sql.getAlgorithmPaths.all()
+      .map((row) => parseAlgorithmPathRow(row, pathScenesByPathId.get(Number(row && row.id || 0)) || [], pathEdgesByPathId.get(Number(row && row.id || 0)) || []))
+      .filter(Boolean),
   };
 }
 
@@ -5244,6 +5572,12 @@ function assertAlgorithmSceneReady(scene, catalog = getAlgorithmCatalog(), runs 
   if (blocked) {
     const err = new Error("scene_context_unmet");
     err.issues = blocked.issues || [];
+    throw err;
+  }
+  const pathBlocked = (order.blockedPath || []).find((entry) => Number(entry.sceneId || 0) === Number(scene.id || 0));
+  if (pathBlocked) {
+    const err = new Error("scene_path_unmet");
+    err.issues = pathBlocked.issues || [];
     throw err;
   }
 }
@@ -5954,6 +6288,103 @@ function upsertAlgorithmSceneFromBody(body = {}) {
   return parseAlgorithmSceneRow(sql.getAlgorithmSceneById.get(insert.lastInsertRowid));
 }
 
+function replaceAlgorithmPathLinks(pathId, sceneIds = [], edges = [], now = nowIso()) {
+  const safePathId = Number.parseInt(String(pathId || ""), 10);
+  if (!Number.isInteger(safePathId) || safePathId < 1) throw new Error("path_not_found");
+  const existingScenes = sql.getAlgorithmPathScenesByPath.all(safePathId);
+  const existingEdges = sql.getAlgorithmPathEdgesByPath.all(safePathId);
+  for (const row of existingScenes) markSyncTombstone("algorithm_path_scenes", row.id, now);
+  for (const row of existingEdges) markSyncTombstone("algorithm_path_edges", row.id, now);
+  sql.deleteAlgorithmPathEdgesByPath.run(safePathId);
+  sql.deleteAlgorithmPathScenesByPath.run(safePathId);
+  normalizeIdList(sceneIds).forEach((sceneId, index) => {
+    sql.insertAlgorithmPathScene.run(safePathId, sceneId, (index + 1) * 10, now, now);
+  });
+  (Array.isArray(edges) ? edges : []).forEach((edge, index) => {
+    const fromSceneId = Number(edge && edge.fromSceneId || 0);
+    const toSceneId = Number(edge && edge.toSceneId || 0);
+    if (!fromSceneId || !toSceneId || fromSceneId === toSceneId) return;
+    sql.insertAlgorithmPathEdge.run(safePathId, fromSceneId, toSceneId, (index + 1) * 10, now, now);
+  });
+}
+
+function upsertAlgorithmPathFromBody(body = {}) {
+  const now = nowIso();
+  const safeBody = body && typeof body === "object" ? body : {};
+  const incomingId = Number.parseInt(String(safeBody.id || ""), 10);
+  const existing = Number.isInteger(incomingId) && incomingId > 0
+    ? parseAlgorithmPathRow(
+        sql.getAlgorithmPathById.get(incomingId),
+        sql.getAlgorithmPathScenesByPath.all(incomingId),
+        sql.getAlgorithmPathEdgesByPath.all(incomingId)
+      )
+    : null;
+  if (incomingId && !existing) throw new Error("path_not_found");
+  const currentPaths = sql.getAlgorithmPaths.all().map((row) => parseAlgorithmPathRow(row)).filter(Boolean);
+  const hasSortOrder = Object.prototype.hasOwnProperty.call(safeBody, "sortOrder")
+    && String(safeBody.sortOrder || "").trim() !== "";
+  const item = normalizePath({
+    id: safeBody.id,
+    name: sanitizeAlgorithmText(safeBody.name, 140),
+    description: sanitizeAlgorithmText(safeBody.description, 1800),
+    sortOrder: hasSortOrder
+      ? safeBody.sortOrder
+      : existing ? existing.sortOrder : currentPaths.reduce((max, pathItem) => Math.max(max, Number(pathItem.sortOrder || 0)), 0) + 10,
+    color: sanitizeAlgorithmText(safeBody.color, 40),
+    edgeMode: sanitizeAlgorithmText(safeBody.edgeMode, 20),
+    sceneIds: Array.isArray(safeBody.sceneIds) ? safeBody.sceneIds : [],
+    edges: Array.isArray(safeBody.edges) ? safeBody.edges : [],
+    isActive: safeBody.isActive,
+    archivedAt: safeBody.archivedAt,
+  });
+  const validation = validateAlgorithmPath(item, getAlgorithmCatalog());
+  if (!validation.ok) {
+    const err = new Error("path_invalid");
+    err.issues = validation.issues;
+    throw err;
+  }
+  let pathId = item.id;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    if (item.id) {
+      const archivedAt = item.isActive ? "" : (existing.archivedAt || "");
+      sql.updateAlgorithmPath.run(
+        item.name,
+        item.description,
+        item.sortOrder,
+        item.color || null,
+        item.edgeMode || "legacy",
+        item.isActive ? 1 : 0,
+        archivedAt || null,
+        now,
+        item.id
+      );
+    } else {
+      const insert = sql.insertAlgorithmPath.run(
+        item.name,
+        item.description,
+        item.sortOrder,
+        item.color || null,
+        item.edgeMode || "manual",
+        item.isActive ? 1 : 0,
+        now,
+        now
+      );
+      pathId = Number(insert.lastInsertRowid || 0);
+    }
+    replaceAlgorithmPathLinks(pathId, item.sceneIds, item.edges, now);
+    db.exec("COMMIT");
+  } catch (err) {
+    try { db.exec("ROLLBACK"); } catch {}
+    throw err;
+  }
+  return parseAlgorithmPathRow(
+    sql.getAlgorithmPathById.get(pathId),
+    sql.getAlgorithmPathScenesByPath.all(pathId),
+    sql.getAlgorithmPathEdgesByPath.all(pathId)
+  );
+}
+
 function reorderAlgorithmScenes(sceneIds = []) {
   const ids = normalizeIdList(Array.isArray(sceneIds) ? sceneIds : []);
   if (!ids.length) throw new Error("scene_ids_required");
@@ -5997,6 +6428,10 @@ function archiveAlgorithmItem(kind, id) {
     sql.archiveAlgorithmScene.run(now, now, safeId);
     return { kind, id: safeId };
   }
+  if (kind === "path") {
+    sql.archiveAlgorithmPath.run(now, now, safeId);
+    return { kind, id: safeId };
+  }
   throw new Error("kind_invalid");
 }
 
@@ -6010,7 +6445,14 @@ function isAlgorithmEntityReferenced(kind, id) {
   if (kind === "scene") {
     const row = sql.countAlgorithmRunsByScene.get(safeId);
     if (Number(row && row.n || 0) > 0) return true;
-    return (catalog.scenes || []).some((scene) => Number(scene.contextSceneId || 0) === safeId);
+    if ((catalog.scenes || []).some((scene) => Number(scene.contextSceneId || 0) === safeId)) return true;
+    return (catalog.paths || []).some((pathItem) => {
+      if ((pathItem.sceneIds || []).includes(safeId)) return true;
+      return (pathItem.edges || []).some((edge) => Number(edge.fromSceneId || 0) === safeId || Number(edge.toSceneId || 0) === safeId);
+    });
+  }
+  if (kind === "path") {
+    return false;
   }
   for (const scene of catalog.scenes || []) {
     if (kind === "character" && scene.characterIds.includes(safeId)) return true;
@@ -6032,6 +6474,7 @@ function deleteInactiveAlgorithmItem(kind, id) {
     label: "algorithm_labels",
     environment: "algorithm_environments",
     scene: "algorithm_scenes",
+    path: "algorithm_paths",
   }[kind] || "";
   const deletedAt = nowIso();
   if (kind === "performer") {
@@ -6074,6 +6517,24 @@ function deleteInactiveAlgorithmItem(kind, id) {
     if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
     markSyncTombstone(tombstoneTable, safeId, deletedAt);
     sql.deleteAlgorithmScene.run(safeId);
+    return { kind, id: safeId };
+  }
+  if (kind === "path") {
+    const item = parseAlgorithmPathRow(sql.getAlgorithmPathById.get(safeId));
+    if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      for (const row of sql.getAlgorithmPathScenesByPath.all(safeId)) markSyncTombstone("algorithm_path_scenes", row.id, deletedAt);
+      for (const row of sql.getAlgorithmPathEdgesByPath.all(safeId)) markSyncTombstone("algorithm_path_edges", row.id, deletedAt);
+      sql.deleteAlgorithmPathEdgesByPath.run(safeId);
+      sql.deleteAlgorithmPathScenesByPath.run(safeId);
+      markSyncTombstone(tombstoneTable, safeId, deletedAt);
+      sql.deleteAlgorithmPath.run(safeId);
+      db.exec("COMMIT");
+    } catch (err) {
+      try { db.exec("ROLLBACK"); } catch {}
+      throw err;
+    }
     return { kind, id: safeId };
   }
   throw new Error("kind_invalid");
@@ -6334,7 +6795,7 @@ function sendAlgorithmApiError(res, err) {
   const code = String(err && err.message ? err.message : "algorithm_error");
   const status = code.includes("not_found") ? 404
     : code.includes("invalid") || code.includes("required") || code.includes("in_use") || code.includes("must") ? 400
-      : code === "session_inactive" || code === "scene_context_unmet" || code === "previous_run_unavailable" || code === "prepared_next_mismatch" || code === "algorithm_action_in_progress" || code === "stale_algorithm_state" ? 409
+      : code === "session_inactive" || code === "scene_context_unmet" || code === "scene_path_unmet" || code === "previous_run_unavailable" || code === "prepared_next_mismatch" || code === "algorithm_action_in_progress" || code === "stale_algorithm_state" ? 409
         : 500;
   const payload = {
     ok: false,
@@ -11416,6 +11877,10 @@ app.get("/algoritme", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "algoritme.html"));
 });
 
+app.get("/paden", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "paden.html"));
+});
+
 if (fs.existsSync(LOCAL_API_PLAYGROUND_HTML_PATH)) {
   app.get(["/api-playground", "/api"], (req, res) => {
     res.sendFile(LOCAL_API_PLAYGROUND_HTML_PATH);
@@ -11704,12 +12169,49 @@ app.get("/admin/api-playground/status", requireAdmin, (req, res) => {
     openAiCatalog: openAiCatalogSync
       ? openAiCatalogSync.getStatus()
       : { ok: true, enabled: false, ready: false, apiKeyConfigured: false },
+    secrets: apiPlaygroundSecretStatus(),
     databaseMd: databaseMdStatus(),
     runtime: {
       buildLabel: BUILD_LABEL,
       port: PORT,
     },
   });
+});
+
+app.post("/admin/api-playground/secrets", requireAdmin, (req, res) => {
+  try {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const updates = {};
+    if (typeof body.openAiApiKey === "string" && body.openAiApiKey.trim()) {
+      updates.OPENAI_API_KEY = body.openAiApiKey;
+    }
+    if (typeof body.anthropicApiKey === "string" && body.anthropicApiKey.trim()) {
+      updates.ANTHROPIC_API_KEY = body.anthropicApiKey;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "openAiCatalogEnabled")) {
+      updates.FORYOU_OPENAI_CATALOG_ENABLED = isTruthy(body.openAiCatalogEnabled) ? "1" : "0";
+    }
+    if (typeof body.openAiVectorStoreId === "string" && body.openAiVectorStoreId.trim()) {
+      updates.FORYOU_OPENAI_VECTOR_STORE_ID = body.openAiVectorStoreId;
+    }
+
+    const saved = saveApiPlaygroundEnv(updates);
+    const openAiStatus = refreshOpenAiCatalogSync();
+    writeDebug("api_playground_env_updated", {
+      keys: saved.changedKeys,
+    });
+    res.json({
+      ok: true,
+      changedKeys: saved.changedKeys,
+      secrets: apiPlaygroundSecretStatus(),
+      openAiCatalog: openAiStatus,
+    });
+  } catch (err) {
+    writeDebug("api_playground_env_update_failed", {
+      message: err && err.message ? err.message : "unknown",
+    });
+    res.status(500).json({ ok: false, error: "api_playground_env_update_failed" });
+  }
 });
 
 app.post("/admin/api-playground/database-md/sync-now", requireAdmin, (req, res) => {
@@ -11891,6 +12393,19 @@ app.post("/admin/algorithm/scenes/upsert", requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/admin/algorithm/paths/upsert", requireAdmin, async (req, res) => {
+  try {
+    const pathItem = upsertAlgorithmPathFromBody(req.body || {});
+    const mirrorSync = await syncCatalogMirrorsAfterSave("path_save");
+    syncAllPeers("path_save").catch((err) => {
+      writeDebug("sync_path_save_failed", { message: err && err.message ? err.message : "unknown" });
+    });
+    res.json({ ok: true, path: pathItem, mirrorSync, state: getAlgorithmState(req) });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
 app.post("/admin/algorithm/scenes/reorder", requireAdmin, (req, res) => {
   try {
     const scenes = reorderAlgorithmScenes(req.body && req.body.sceneIds);
@@ -11900,10 +12415,18 @@ app.post("/admin/algorithm/scenes/reorder", requireAdmin, (req, res) => {
   }
 });
 
-app.post("/admin/algorithm/archive", requireAdmin, (req, res) => {
+app.post("/admin/algorithm/archive", requireAdmin, async (req, res) => {
   try {
-    const result = archiveAlgorithmItem(String(req.body && req.body.kind || ""), req.body && req.body.id);
-    res.json({ ok: true, archived: result, state: getAlgorithmState(req) });
+    const kind = String(req.body && req.body.kind || "");
+    const result = archiveAlgorithmItem(kind, req.body && req.body.id);
+    let mirrorSync = null;
+    if (kind === "path") {
+      mirrorSync = await syncCatalogMirrorsAfterSave("path_archive");
+      syncAllPeers("path_archive").catch((err) => {
+        writeDebug("sync_path_archive_failed", { message: err && err.message ? err.message : "unknown" });
+      });
+    }
+    res.json({ ok: true, archived: result, mirrorSync, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -12851,13 +13374,7 @@ if (dropboxCatalogStart && dropboxCatalogStart.enabled) {
 }
 
 if (createOpenAiCatalogSync && fs.existsSync(LOCAL_API_PLAYGROUND_HTML_PATH)) {
-  openAiCatalogSync = createOpenAiCatalogSync({
-    rootDir: dropboxCatalogSync ? dropboxCatalogSync.rootDir : undefined,
-    logger(event, meta) {
-      writeDebug(`openai_catalog_${event}`, meta);
-    },
-  });
-  const openAiCatalogStatus = openAiCatalogSync.getStatus();
+  const openAiCatalogStatus = refreshOpenAiCatalogSync();
   if (openAiCatalogStatus.enabled) {
     console.log(`OpenAI catalog sync ${openAiCatalogStatus.ready ? "ready" : "configured"}: ${openAiCatalogStatus.rootDir}`);
   }

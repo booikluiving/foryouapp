@@ -12,12 +12,14 @@ const {
   computeEntityScores,
   normalizeAlgorithmSettings,
   normalizePerformer,
+  normalizePath,
   normalizeScene,
   normalizeSceneCharacterSlotsForPerformerRoles,
   normalizeSceneForPerformerRoles,
   pickRecommendation,
   resolveRandomCharacterSlotsForPerformerRoles,
   resolveRandomEnvironmentForScene,
+  validateAlgorithmPath,
   validateSceneLinks,
 } = require("../lib/show-algorithm");
 const {
@@ -1370,6 +1372,209 @@ function testOscProfilesAreDeviceScoped() {
   assert.strictEqual(normalizeOscProfile({ sendEnabled: true, sendHost: "", sendPort: 8002 }).sendEnabled, false);
 }
 
+function pathTestScenes() {
+  return [
+    { id: 1, title: "Start", sortOrder: 1, isActive: true },
+    { id: 2, title: "Tak A", sortOrder: 2, isActive: true },
+    { id: 3, title: "Tak B", sortOrder: 3, isActive: true },
+    { id: 4, title: "Merge", sortOrder: 4, isActive: true },
+    { id: 5, title: "Random los", sortOrder: 5, isActive: true },
+  ];
+}
+
+function testPathValidation() {
+  const scenes = pathTestScenes();
+  const valid = validateAlgorithmPath({
+    id: 1,
+    name: "Penelope",
+    sceneIds: [1, 2, 3],
+    edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 1, toSceneId: 3 }],
+    isActive: true,
+  }, { scenes });
+  assert.strictEqual(valid.ok, true);
+  assert.deepStrictEqual(normalizePath(valid.path).sceneIds, [1, 2, 3]);
+
+  const disconnected = validateAlgorithmPath({
+    id: 6,
+    name: "Los",
+    sceneIds: [1, 2],
+    edges: [],
+    edgeMode: "manual",
+    isActive: true,
+  }, { scenes });
+  assert.strictEqual(disconnected.ok, true);
+
+  const pathWithDraftNode = validateAlgorithmPath({
+    id: 9,
+    name: "Met klad",
+    sceneIds: [1, 2, 3],
+    edges: [{ fromSceneId: 1, toSceneId: 2 }],
+    edgeMode: "manual",
+    isActive: true,
+  }, { scenes });
+  assert.strictEqual(pathWithDraftNode.ok, true);
+
+  const twoConnectedStarts = validateAlgorithmPath({
+    id: 10,
+    name: "Twee starts",
+    sceneIds: [1, 2, 3, 4],
+    edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 3, toSceneId: 4 }],
+    edgeMode: "manual",
+    isActive: true,
+  }, { scenes });
+  assert.strictEqual(twoConnectedStarts.ok, false);
+  assert(twoConnectedStarts.issues.includes("path_single_start_required:2"));
+
+  const legacyLinear = validateAlgorithmPath({
+    id: 7,
+    name: "Legacy lijn",
+    sceneIds: [1, 2],
+    edges: [],
+    isActive: true,
+  }, { scenes });
+  assert.strictEqual(legacyLinear.ok, true);
+
+  const merge = validateAlgorithmPath({
+    id: 8,
+    name: "Merge",
+    sceneIds: [1, 2, 3, 4],
+    edges: [
+      { fromSceneId: 1, toSceneId: 2 },
+      { fromSceneId: 1, toSceneId: 3 },
+      { fromSceneId: 2, toSceneId: 4 },
+      { fromSceneId: 3, toSceneId: 4 },
+    ],
+    isActive: true,
+  }, { scenes });
+  assert.strictEqual(merge.ok, false);
+  assert(merge.issues.includes("path_edge_multiple_incoming:4"));
+
+  const cycle = validateAlgorithmPath({
+    id: 2,
+    name: "Cirkel",
+    sceneIds: [1, 2],
+    edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 2, toSceneId: 1 }],
+    isActive: true,
+  }, { scenes });
+  assert.strictEqual(cycle.ok, false);
+  assert(cycle.issues.some((issue) => issue.startsWith("path_cycle:")));
+
+  const missing = validateAlgorithmPath({
+    id: 3,
+    name: "Mist",
+    sceneIds: [1],
+    edges: [{ fromSceneId: 1, toSceneId: 2 }],
+    isActive: true,
+  }, { scenes });
+  assert.strictEqual(missing.ok, false);
+  assert(missing.issues.includes("path_edge_scene_missing:2"));
+}
+
+function testPathStartAndSuccessorGate() {
+  const scenes = pathTestScenes();
+  const catalog = {
+    scenes,
+    paths: [{
+      id: 1,
+      name: "Lijn",
+      sceneIds: [1, 2],
+      edges: [{ fromSceneId: 1, toSceneId: 2 }],
+      isActive: true,
+    }],
+  };
+  const start = buildAlgorithmOrder({ scenes, catalog, runs: [], settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 } });
+  assert.strictEqual(start.rows.find((entry) => entry.sceneId === 1).blocked, false);
+  assert.strictEqual(start.rows.find((entry) => entry.sceneId === 2).blocked, true);
+  assert(start.blockedPath.some((entry) => entry.sceneId === 2));
+
+  const afterStart = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" }],
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
+  });
+  assert.strictEqual(afterStart.rows.find((entry) => entry.sceneId === 2).blocked, false);
+}
+
+function testPathSplitUnlocksBoth() {
+  const scenes = pathTestScenes();
+  const catalog = {
+    scenes,
+    paths: [{
+      id: 1,
+      name: "Split",
+      sceneIds: [1, 2, 3],
+      edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 1, toSceneId: 3 }],
+      isActive: true,
+    }],
+  };
+  const order = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" }],
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
+  });
+  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 2).blocked, false);
+  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 3).blocked, false);
+  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 1).pathStatus.isSplit, true);
+}
+
+function testPathMergeIsRejected() {
+  const scenes = pathTestScenes();
+  const catalog = {
+    scenes,
+    paths: [{
+      id: 1,
+      name: "Merge",
+      sceneIds: [1, 2, 3, 4],
+      edges: [
+        { fromSceneId: 1, toSceneId: 2 },
+        { fromSceneId: 1, toSceneId: 3 },
+        { fromSceneId: 2, toSceneId: 4 },
+        { fromSceneId: 3, toSceneId: 4 },
+      ],
+      isActive: true,
+    }],
+  };
+  const validation = validateAlgorithmPath(catalog.paths[0], { scenes });
+  assert.strictEqual(validation.ok, false);
+  assert(validation.issues.includes("path_edge_multiple_incoming:4"));
+
+  const order = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [
+      { id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 2, sceneId: 2, runOrder: 2, endedAt: "2026-01-01T00:01:00.000Z" },
+    ],
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
+  });
+  const mergeEntry = order.rows.find((entry) => entry.sceneId === 4);
+  assert.strictEqual(mergeEntry.blocked, false);
+  assert.strictEqual(mergeEntry.pathStatus, null);
+}
+
+function testRandomScenesRemainAvailableBesidePaths() {
+  const scenes = pathTestScenes();
+  const catalog = {
+    scenes,
+    paths: [{
+      id: 1,
+      name: "Lijn",
+      sceneIds: [1, 2],
+      edges: [{ fromSceneId: 1, toSceneId: 2 }],
+      isActive: true,
+    }],
+  };
+  const order = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [],
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
+  });
+  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 5).blocked, false);
+}
+
 testScoreFormula();
 testScoreWeightsAffectRuns();
 testTimeNormalizedScoreBlend();
@@ -1434,6 +1639,11 @@ testPromptCompositionWithResolvedRandomEnvironmentHasNoRandomPlaceholder();
 testPromptComposition();
 testPromptCompositionWithRandomSlots();
 testPromptCompositionSkipsEmptySlots();
+testPathValidation();
+testPathStartAndSuccessorGate();
+testPathSplitUnlocksBoth();
+testPathMergeIsRejected();
+testRandomScenesRemainAvailableBesidePaths();
 testSyncLastWriteWins();
 testSyncSettingsFilterSecrets();
 testSyncPeerNormalization();
