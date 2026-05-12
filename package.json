@@ -9,6 +9,7 @@
     "test:sim": "node scripts/test-crowd-engine.js",
     "test:algorithm": "node scripts/test-show-algorithm.js",
     "test:narrative-graph": "node scripts/test-narrative-graph.js",
+    "test:paden-graph": "node scripts/test-paden-graph.js",
     "test:dropbox-catalog": "node scripts/test-dropbox-catalog-sync.js",
     "sync:dropbox-catalog": "node scripts/run-dropbox-catalog-sync.js",
     "unifi:status": "node scripts/unifi-status.js"

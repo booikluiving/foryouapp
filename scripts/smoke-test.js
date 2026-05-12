@@ -502,6 +502,7 @@ async function main() {
   await runCheck(results, "public page", () => checkHttpRoute(baseUrl, "/"));
   await runCheck(results, "admin page", () => checkHttpRoute(baseUrl, "/admin"));
   await runCheck(results, "algorithm page", () => checkHttpRoute(baseUrl, "/algoritme"));
+  await runCheck(results, "paths page", () => checkHttpRoute(baseUrl, "/paden"));
   await runCheck(results, "stage page", () => checkHttpRoute(baseUrl, "/stage"));
   await runCheck(results, "stage WebSocket", () => checkStageWs(baseUrl, options.timeoutMs));
   await runCheck(results, "chat access guard", () => checkUnauthenticatedChatWs(baseUrl, options.timeoutMs));

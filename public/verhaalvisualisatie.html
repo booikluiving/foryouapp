@@ -18,10 +18,12 @@
       --character: #48a5ff;
       --scene: #ff3b5f;
       --environment: #92df3e;
+      --path: #f7b84b;
       --graph-bg: #252525;
       --graph-line: rgba(255, 255, 255, 0.1);
       --edge-a: rgba(72, 165, 255, 0.5);
       --edge-b: rgba(146, 223, 62, 0.48);
+      --edge-path: rgba(247, 184, 75, 0.64);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
@@ -205,7 +207,7 @@
 
     .filter-grid {
       display: grid;
-      grid-template-columns: repeat(5, minmax(150px, 1fr));
+      grid-template-columns: repeat(6, minmax(140px, 1fr));
       gap: 8px;
     }
 
@@ -303,7 +305,7 @@
     }
 
     body.graph-viewport-open .filter-grid {
-      grid-template-columns: repeat(5, minmax(112px, 1fr));
+      grid-template-columns: repeat(6, minmax(104px, 1fr));
       gap: 8px;
     }
 
@@ -486,6 +488,10 @@
       background: var(--edge-b);
     }
 
+    .line-dot.path {
+      background: var(--edge-path);
+    }
+
     @media (max-width: 1080px) {
       .toolbar-row {
         grid-template-columns: 1fr 1fr;
@@ -578,13 +584,14 @@
           <button type="button" id="largeViewButton">Grote kaart</button>
         </div>
 
-        <div class="filter-grid" aria-label="Filters">
-          <label class="check-line"><input type="checkbox" id="toggleCharacters" checked /> Personages</label>
-          <label class="check-line"><input type="checkbox" id="toggleScenes" checked /> Situaties/scènes</label>
-          <label class="check-line"><input type="checkbox" id="toggleEnvironments" checked /> Omgevingen</label>
-          <label class="check-line"><input type="checkbox" id="toggleAppearsEdges" checked /> Personage - situatie</label>
-          <label class="check-line"><input type="checkbox" id="toggleHappensEdges" checked /> Situatie - omgeving</label>
-        </div>
+      <div class="filter-grid" aria-label="Filters">
+        <label class="check-line"><input type="checkbox" id="toggleCharacters" checked /> Personages</label>
+        <label class="check-line"><input type="checkbox" id="toggleScenes" checked /> Situaties/scènes</label>
+        <label class="check-line"><input type="checkbox" id="toggleEnvironments" checked /> Omgevingen</label>
+        <label class="check-line"><input type="checkbox" id="toggleAppearsEdges" checked /> Personage - situatie</label>
+        <label class="check-line"><input type="checkbox" id="toggleHappensEdges" checked /> Situatie - omgeving</label>
+        <label class="check-line"><input type="checkbox" id="togglePathEdges" checked /> Paden</label>
+      </div>
 
         <div class="stats" id="statsLine" aria-live="polite">
           <span class="stat-pill">0 nodes zichtbaar</span>
@@ -611,6 +618,7 @@
         <span class="legend-item"><span class="node-dot environment"></span>Omgeving</span>
         <span class="legend-item"><span class="line-dot appears"></span>komt voor in</span>
         <span class="legend-item"><span class="line-dot happens"></span>speelt zich af in</span>
+        <span class="legend-item"><span class="line-dot path"></span>padvolgorde</span>
       </section>
     </main>
   </section>
@@ -654,6 +662,7 @@
         toggleEnvironments: document.getElementById("toggleEnvironments"),
         toggleAppearsEdges: document.getElementById("toggleAppearsEdges"),
         toggleHappensEdges: document.getElementById("toggleHappensEdges"),
+        togglePathEdges: document.getElementById("togglePathEdges"),
         statsLine: document.getElementById("statsLine"),
         detailsPanel: document.getElementById("detailsPanel"),
         graphWrap: document.getElementById("graphWrap"),
@@ -837,6 +846,17 @@
             },
           },
           {
+            selector: "edge[type = 'path_order']",
+            style: {
+              width: 1.15,
+              "line-color": (ele) => /^#[0-9a-f]{6}$/i.test(String(ele.data("pathColor") || "")) ? ele.data("pathColor") : "rgba(247, 184, 75, 0.68)",
+              "target-arrow-shape": "triangle",
+              "target-arrow-color": (ele) => /^#[0-9a-f]{6}$/i.test(String(ele.data("pathColor") || "")) ? ele.data("pathColor") : "rgba(247, 184, 75, 0.82)",
+              "curve-style": "bezier",
+              opacity: 0.58,
+            },
+          },
+          {
             selector: ".searchDim",
             style: {
               opacity: 0.08,
@@ -904,6 +924,14 @@
               "line-color": "rgba(183, 245, 101, 0.9)",
             },
           },
+          {
+            selector: "edge.selectedNeighborhood[type = 'path_order']",
+            style: {
+              width: 2.2,
+              "line-color": "rgba(255, 213, 114, 0.96)",
+              "target-arrow-color": "rgba(255, 213, 114, 0.96)",
+            },
+          },
         ];
       }
 
@@ -947,6 +975,7 @@
           environment: els.toggleEnvironments.checked,
           appears_in: els.toggleAppearsEdges.checked,
           happens_in: els.toggleHappensEdges.checked,
+          path_order: els.togglePathEdges.checked,
         };
       }
 
@@ -999,6 +1028,7 @@
             node.data("label"),
             node.data("description"),
             node.data("typeLabel"),
+            Array.isArray(node.data("pathNames")) ? node.data("pathNames").join(" ") : "",
           ];
           return values.some((value) => String(value || "").toLowerCase().includes(query));
         });
@@ -1090,7 +1120,7 @@
       function updateMeta() {
         if (!state.graph) return;
         const meta = state.graph.metadata;
-        els.topMeta.textContent = `${meta.counts.characters} personages, ${meta.counts.scenes} situaties/scènes, ${meta.counts.environments} omgevingen`;
+        els.topMeta.textContent = `${meta.counts.characters} personages, ${meta.counts.scenes} situaties/scènes, ${meta.counts.environments} omgevingen, ${meta.counts.paths || 0} paden`;
       }
 
       function showGraphMessage(message) {
@@ -1171,6 +1201,9 @@
         if (!scene) return;
         const characterNames = getCharactersForScene(id).map((character) => character.name || `Personage ${character.id}`);
         const environment = getEnvironmentForScene(id);
+        const pathNames = getPathsForScene(id).map((pathItem) => pathItem.name || `Pad ${pathItem.id}`);
+        const predecessorNames = getPredecessorScenesForScene(id).map((sceneItem) => sceneItem.title || `Situatie ${sceneItem.id}`);
+        const successorNames = getSuccessorScenesForScene(id).map((sceneItem) => sceneItem.title || `Situatie ${sceneItem.id}`);
         els.detailsPanel.innerHTML = `
           <span class="type-tag scene">Situatie/scène</span>
           <h2>${escapeHtml(scene.title || `Situatie ${id}`)}</h2>
@@ -1179,6 +1212,12 @@
           ${listHtml(characterNames, "Geen gekoppelde personages.")}
           <h3>Gekoppelde omgeving</h3>
           ${environment ? listHtml([environment.name || `Omgeving ${environment.id}`], "Geen gekoppelde omgeving.") : "<p class=\"subtle\">Geen gekoppelde omgeving.</p>"}
+          <h3>Paden</h3>
+          ${listHtml(pathNames, "Niet gekoppeld aan een pad.")}
+          <h3>Directe voorgangers</h3>
+          ${listHtml(predecessorNames, "Geen voorgangers; dit kan een startpunt zijn.")}
+          <h3>Directe opvolgers</h3>
+          ${listHtml(successorNames, "Geen opvolgers; dit kan een eindpunt zijn.")}
           <div class="detail-actions">
             <button type="button" data-clear-focus="1">Toon alles</button>
             <a class="button-link" href="/algoritme">Open in algoritme</a>
@@ -1228,6 +1267,31 @@
         return state.graph.edges
           .filter((edge) => edge.data.type === "happens_in" && edge.data.environmentId === environmentId)
           .map((edge) => state.graph.indexes.scenesById.get(edge.data.sceneId))
+          .filter(Boolean)
+          .sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "nl"));
+      }
+
+      function getPathsForScene(sceneId) {
+        const node = state.cy ? state.cy.getElementById(`scene:${sceneId}`) : null;
+        const pathIds = node && node.length ? node.data("pathIds") || [] : [];
+        return pathIds
+          .map((id) => state.graph.indexes.pathsById.get(Number(id || 0)))
+          .filter(Boolean)
+          .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "nl"));
+      }
+
+      function getPredecessorScenesForScene(sceneId) {
+        return state.graph.edges
+          .filter((edge) => edge.data.type === "path_order" && edge.data.toSceneId === sceneId)
+          .map((edge) => state.graph.indexes.scenesById.get(edge.data.fromSceneId))
+          .filter(Boolean)
+          .sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "nl"));
+      }
+
+      function getSuccessorScenesForScene(sceneId) {
+        return state.graph.edges
+          .filter((edge) => edge.data.type === "path_order" && edge.data.fromSceneId === sceneId)
+          .map((edge) => state.graph.indexes.scenesById.get(edge.data.toSceneId))
           .filter(Boolean)
           .sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "nl"));
       }
@@ -1309,6 +1373,7 @@
         els.toggleEnvironments,
         els.toggleAppearsEdges,
         els.toggleHappensEdges,
+        els.togglePathEdges,
       ].forEach((checkbox) => {
         checkbox.addEventListener("change", () => {
           applyFilters();

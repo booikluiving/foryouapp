@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const {
   APPEARS_IN_EDGE,
   HAPPENS_IN_EDGE,
+  PATH_ORDER_EDGE,
   buildNarrativeGraphData,
 } = require("../public/narrative-graph");
 
@@ -60,6 +61,16 @@ const catalog = {
       isActive: false,
     },
   ],
+  paths: [
+    {
+      id: 200,
+      name: "Bonuskaart pad",
+      color: "#f97316",
+      sceneIds: [100, 101],
+      edges: [{ fromSceneId: 100, toSceneId: 101 }],
+      isActive: true,
+    },
+  ],
 };
 
 const graph = buildNarrativeGraphData(catalog);
@@ -69,18 +80,23 @@ assert.equal(graph.metadata.counts.scenes, 3);
 assert.equal(graph.metadata.counts.environments, 2);
 assert.equal(graph.metadata.counts.characterSceneEdges, 4);
 assert.equal(graph.metadata.counts.sceneEnvironmentEdges, 2);
+assert.equal(graph.metadata.counts.pathOrderEdges, 1);
+assert.equal(graph.metadata.counts.paths, 1);
 
 const nodeById = new Map(graph.nodes.map((node) => [node.data.id, node]));
 assert.equal(nodeById.get("character:1").data.sceneCount, 2);
 assert.equal(nodeById.get("character:1").data.important, true);
 assert.equal(nodeById.get("character:2").data.sceneCount, 2);
 assert.equal(nodeById.get("scene:100").data.characterCount, 2);
+assert.deepEqual(nodeById.get("scene:100").data.pathNames, ["Bonuskaart pad"]);
+assert.deepEqual(nodeById.get("scene:101").data.predecessorIds, [100]);
 assert.equal(nodeById.get("environment:10").data.sceneCount, 1);
 assert.equal(nodeById.has("character:3"), false);
 assert.equal(nodeById.has("environment:12"), false);
 
 const appearsEdges = graph.edges.filter((edge) => edge.data.type === APPEARS_IN_EDGE);
 const happensEdges = graph.edges.filter((edge) => edge.data.type === HAPPENS_IN_EDGE);
+const pathEdges = graph.edges.filter((edge) => edge.data.type === PATH_ORDER_EDGE);
 assert.deepEqual(
   appearsEdges.map((edge) => [edge.data.characterId, edge.data.sceneId]).sort(),
   [[1, 100], [1, 101], [2, 100], [2, 102]]
@@ -89,6 +105,8 @@ assert.deepEqual(
   happensEdges.map((edge) => [edge.data.sceneId, edge.data.environmentId]).sort(),
   [[100, 10], [101, 11]]
 );
+assert.deepEqual(pathEdges.map((edge) => [edge.data.fromSceneId, edge.data.toSceneId]), [[100, 101]]);
+assert.equal(graph.indexes.pathsById.get(200).name, "Bonuskaart pad");
 assert.equal(graph.indexes.scenesById.get(100).title, "Ruzie om bonuskaart");
 
 console.log("PASS narrative graph data builder");
