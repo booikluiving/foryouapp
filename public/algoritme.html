@@ -606,6 +606,12 @@
         background: #dbeafe;
       }
 
+      .orderItem.optionalPath:not(.next):not(.active) {
+        border-style: dashed;
+        background: #fafaf8;
+        opacity: 0.72;
+      }
+
       .orderItem.next .orderNumber {
         background: #dbeafe;
         border-color: #93c5fd;
@@ -2497,6 +2503,7 @@
             color: "",
             sceneIds: [],
             edges: [],
+            thresholds: [],
           };
         }
 
@@ -2511,7 +2518,12 @@
             edges: Array.isArray(item && item.edges) ? item.edges.map((edge) => ({
               fromSceneId: Number(edge && edge.fromSceneId || 0),
               toSceneId: Number(edge && edge.toSceneId || 0),
+              edgeType: String(edge && edge.edgeType || "") === "optional" ? "optional" : "",
             })).filter((edge) => edge.fromSceneId && edge.toSceneId) : [],
+            thresholds: Array.isArray(item && item.thresholds) ? item.thresholds.map((threshold) => ({
+              sourceSceneId: Number(threshold && threshold.sourceSceneId || 0),
+              requiredCount: Number(threshold && threshold.requiredCount || 0),
+            })).filter((threshold) => threshold.sourceSceneId && threshold.requiredCount) : [],
           };
         }
 
@@ -2539,6 +2551,7 @@
           pathDraft.edges = Array.from($("pathEdges").querySelectorAll("[data-path-edge-row]")).map((row) => ({
             fromSceneId: Number(row.querySelector("[data-path-edge-from]").value || 0),
             toSceneId: Number(row.querySelector("[data-path-edge-to]").value || 0),
+            edgeType: String(row.getAttribute("data-path-edge-type") || "") === "optional" ? "optional" : "",
           })).filter((edge) => edge.fromSceneId && edge.toSceneId);
         }
 
@@ -2565,7 +2578,7 @@
             `<option value="${scene.id}" ${Number(scene.id) === Number(selectedId) ? "selected" : ""}>${esc(scene.title || "Naamloze situatie")}</option>`
           )).join("");
           $("pathEdges").innerHTML = pathDraft.edges.length ? pathDraft.edges.map((edge, index) => `
-            <div class="pathEdgeRow" data-path-edge-row="${index}">
+            <div class="pathEdgeRow" data-path-edge-row="${index}" data-path-edge-type="${esc(edge.edgeType || "")}">
               <label>Van<select data-path-edge-from>${optionHtml(edge.fromSceneId)}</select></label>
               <span class="pathArrow">-&gt;</span>
               <label>Naar<select data-path-edge-to>${optionHtml(edge.toSceneId)}</select></label>
@@ -2875,6 +2888,20 @@
             if (pathStatus.isPathStart) badges.push({ label: "Pad start" });
             if (pathStatus.ready && !pathStatus.isPathStart) badges.push({ label: "Pad vrij", className: "good" });
             if (!pathStatus.ready) badges.push({ label: "Wacht op voorgangers", className: "warning" });
+            if (pathStatus.optional) badges.push({ label: "optioneel" });
+            if (pathStatus.expiredOptional) badges.push({ label: "zijtak voorbij", className: "warning" });
+            (pathStatus.thresholdGroups || []).slice(0, 1).forEach((group) => {
+              badges.push({
+                label: `Keuze: ${Number(group.completedCount || 0)}/${Number(group.requiredCount || 0)} van ${Number(group.outgoingCount || 0)}`,
+                className: group.satisfied ? "good" : "warning",
+              });
+            });
+            if (pathStatus.crossingThreshold) {
+              badges.push({
+                label: `Kruising: ${Number(pathStatus.crossingThreshold.completedCount || 0)}/${Number(pathStatus.crossingThreshold.requiredCount || 0)} van ${Number(pathStatus.crossingThreshold.incomingCount || 0)}`,
+                className: pathStatus.crossingThreshold.satisfied ? "good" : "warning",
+              });
+            }
             if (pathStatus.isMerge) {
               badges.push({
                 label: `Merge: ${Number((pathStatus.completedPredecessorIds || []).length)}/${Number((pathStatus.predecessorIds || []).length)} voltooid`,
@@ -3071,6 +3098,7 @@
             const isActive = !editing && !!(entry && entry.active);
             if (isNext) rowClasses.push("next");
             if (isActive) rowClasses.push("active");
+            if (entry && entry.pathStatus && entry.pathStatus.optional) rowClasses.push("optionalPath");
             const issueCount = entry && Array.isArray(entry.issues) ? entry.issues.length : 0;
             const warningCount = entry && Array.isArray(entry.warnings) ? entry.warnings.length : 0;
             const noticeMessages = []
@@ -3983,10 +4011,11 @@
               description: item.description,
               color: item.color || "",
               sortOrder: item.sortOrder || 0,
-              sceneIds: item.sceneIds || [],
-              edges: item.edges || [],
-              isActive,
-            };
+            sceneIds: item.sceneIds || [],
+            edges: item.edges || [],
+            thresholds: item.thresholds || [],
+            isActive,
+          };
           }
           return null;
         }
@@ -4292,6 +4321,7 @@
                 color: pathDraft.color,
                 sceneIds: pathDraft.sceneIds,
                 edges: pathDraft.edges,
+                thresholds: pathDraft.thresholds || [],
                 isActive: editedIsActive("path", edit.path),
               });
               setExpanded("path", Number(result.path && result.path.id || 0));

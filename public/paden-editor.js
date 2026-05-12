@@ -14,20 +14,23 @@
   const DEFAULT_COLOR = COLORS[0];
   const ARROW_LEN = 18;
   const ARROW_HALF = 10;
+  const ARROW_GAP = 9;
   const ZOOM_MIN = 0.55;
   const ZOOM_MAX = 2;
   const ZOOM_STEP = 0.1;
   const MAX_SELECTED_PATHS = 3;
 
   let token = "";
-  let state = { scenes: [], paths: [] };
+  let state = { scenes: [], paths: [], crossingThresholds: [] };
   let sceneById = new Map();
   let activePathId = "";
   let selectedPathIds = new Set();
   let selectedNodeId = 0;
   let selectedNodeIds = new Set();
+  let expandedNodeIds = new Set();
   let selectedEdgeKey = "";
   let dirtyPathIds = new Set();
+  let dirtyCrossingSceneIds = new Set();
   let saving = false;
   let searchQ = "";
   let jumpQ = "";
@@ -99,6 +102,7 @@
 
   function clearNodeSelection() {
     selectedNodeIds.clear();
+    expandedNodeIds.clear();
     selectedNodeId = 0;
   }
 
@@ -121,6 +125,7 @@
     selectedEdgeKey = "";
     if (selectedNodeIds.has(id)) {
       selectedNodeIds.delete(id);
+      expandedNodeIds.delete(id);
       selectedNodeId = selectedNodeIds.size ? Array.from(selectedNodeIds).at(-1) : 0;
       return;
     }
@@ -131,12 +136,22 @@
   function setNodeSelection(sceneIds = []) {
     const ids = Graph.normalizeIdList(sceneIds);
     selectedNodeIds = new Set(ids);
+    expandedNodeIds = new Set(Array.from(expandedNodeIds).filter((id) => selectedNodeIds.has(Number(id))));
     selectedNodeId = ids.length ? ids[ids.length - 1] : 0;
     selectedEdgeKey = "";
   }
 
   function isNodeSelected(sceneId) {
     return selectedNodeIds.has(Number(sceneId || 0));
+  }
+
+  function toggleNodeExpanded(sceneId) {
+    const id = Number(sceneId || 0);
+    if (!id) return;
+    if (!isNodeSelected(id)) setSingleNodeSelection(id);
+    if (expandedNodeIds.has(id)) expandedNodeIds.delete(id);
+    else expandedNodeIds.add(id);
+    renderCanvas();
   }
 
   async function api(path, options = {}) {
@@ -173,7 +188,7 @@
     const el = $("saveState");
     el.classList.remove("saved", "dirty", "saving");
     el.classList.add(kind);
-    const dirtyCount = dirtyPathIds.size;
+    const dirtyCount = dirtyPathIds.size + dirtyCrossingSceneIds.size;
     el.querySelector(".txt").textContent =
       kind === "saving" ? "Opslaan..." :
       kind === "dirty" ? `${dirtyCount || 1} niet opgeslagen` :
@@ -183,14 +198,21 @@
   function markDirty(pathOrKey = activePath()) {
     const key = typeof pathOrKey === "string" ? pathOrKey : pathKey(pathOrKey);
     if (key) dirtyPathIds.add(key);
-    setSaveState(dirtyPathIds.size ? "dirty" : "saved");
+    setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
     if ($("chipbar")) renderChips();
+  }
+
+  function markCrossingDirty(sceneId) {
+    const id = Number(sceneId || 0);
+    if (!id) return;
+    dirtyCrossingSceneIds.add(id);
+    setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
   }
 
   function markClean(pathOrKey) {
     const key = typeof pathOrKey === "string" ? pathOrKey : pathKey(pathOrKey);
     if (key) dirtyPathIds.delete(key);
-    setSaveState(dirtyPathIds.size ? "dirty" : "saved");
+    setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
     if ($("chipbar")) renderChips();
   }
 
@@ -215,6 +237,7 @@
     return {
       scenes: Array.isArray(catalog.scenes) ? catalog.scenes : [],
       paths: Array.isArray(catalog.paths) ? catalog.paths : [],
+      crossingThresholds: Array.isArray(catalog.crossingThresholds) ? catalog.crossingThresholds : [],
     };
   }
 
@@ -228,13 +251,7 @@
   }
 
   function selectedPaths() {
-    const target = activePath();
-    const paths = activePaths().filter((path) => selectedPathIds.has(pathKey(path)));
-    if (!target) return paths;
-    return [
-      target,
-      ...paths.filter((path) => pathKey(path) !== activeKey()),
-    ];
+    return activePaths().filter((path) => selectedPathIds.has(pathKey(path)));
   }
 
   function selectedSceneIds() {
@@ -272,7 +289,13 @@
     if (!activePath()) activePathId = selectedPathIds.size ? Array.from(selectedPathIds)[0] : validKeys[0];
     selectedPathIds.add(activeKey());
     const ordered = validKeys.filter((key) => selectedPathIds.has(key));
-    const keep = [activeKey(), ...ordered.filter((key) => key !== activeKey())].filter(Boolean).slice(0, MAX_SELECTED_PATHS);
+    let keep = ordered.includes(activeKey()) ? ordered : [activeKey(), ...ordered].filter(Boolean);
+    if (keep.length > MAX_SELECTED_PATHS) {
+      const activeIndex = keep.indexOf(activeKey());
+      keep = activeIndex >= MAX_SELECTED_PATHS
+        ? [...keep.slice(0, MAX_SELECTED_PATHS - 1), activeKey()]
+        : keep.slice(0, MAX_SELECTED_PATHS);
+    }
     selectedPathIds = new Set(keep);
     savePrefs();
   }
@@ -284,6 +307,7 @@
       rebuildIndexes();
       ensureSelection();
       dirtyPathIds.clear();
+      dirtyCrossingSceneIds.clear();
       setSaveState("saved");
       showApp();
       renderAll();
@@ -824,7 +848,7 @@
     const model = buildUnifiedCanvasModel();
     const inner = $("canvasInner");
     const empty = $("emptyState");
-    inner.querySelectorAll(".pathNode,.ghostNode,.edgeDelete").forEach((node) => node.remove());
+    inner.querySelectorAll(".pathNode,.ghostNode,.edgeDelete,.edgeTypeToggle,.thresholdBadge").forEach((node) => node.remove());
 
     if (!targetPath || !model.paths.length) {
       empty.style.display = "flex";
@@ -858,6 +882,8 @@
       { activeSceneIds: model.nodes.map((node) => node.sceneId), excludePathIds: selectedPathIds }
     ) : [];
     renderEdges(svg, model, ghosts);
+    renderThresholdBadges(model);
+    renderCrossingThresholdBadges(model);
 
     model.nodes.forEach((nodeModel) => {
       inner.appendChild(createNode(nodeModel, membership.get(Number(nodeModel.sceneId)) || [], model));
@@ -886,7 +912,8 @@
     const mid = Math.max(28, Math.abs(y2 - y1) / 2);
     const c1 = { x: x1, y: y1 + mid };
     const c2 = { x: x2, y: y2 - mid };
-    const tip = { x: x2, y: y2 };
+    const target = { x: x2, y: y2 };
+    const tip = { x: x2, y: y2 - ARROW_GAP };
     let dx = tip.x - c2.x;
     let dy = tip.y - c2.y;
     let len = Math.hypot(dx, dy);
@@ -916,9 +943,168 @@
     };
     return {
       linePath: `M ${num(x1)} ${num(y1)} C ${num(c1.x)} ${num(c1.y)}, ${num(lineC2.x)} ${num(lineC2.y)}, ${num(base.x)} ${num(base.y)}`,
-      hitPath: `M ${num(x1)} ${num(y1)} C ${num(c1.x)} ${num(c1.y)}, ${num(c2.x)} ${num(c2.y)}, ${num(tip.x)} ${num(tip.y)}`,
+      hitPath: `M ${num(x1)} ${num(y1)} C ${num(c1.x)} ${num(c1.y)}, ${num(c2.x)} ${num(c2.y)}, ${num(target.x)} ${num(target.y)}`,
       arrowPoints: `${num(tip.x)},${num(tip.y)} ${num(left.x)},${num(left.y)} ${num(right.x)},${num(right.y)}`,
     };
+  }
+
+  function optionalEdgeGeometry(posA, posB) {
+    const toRight = (posB.x + NODE_W / 2) >= (posA.x + NODE_W / 2);
+    const x1 = toRight ? posA.x + NODE_W : posA.x;
+    const y1 = posA.y + NODE_H / 2;
+    const x2 = toRight ? posB.x : posB.x + NODE_W;
+    const y2 = posB.y + NODE_H / 2;
+    const ux = toRight ? 1 : -1;
+    const target = { x: x2, y: y2 };
+    const tip = { x: x2 - ux * ARROW_GAP, y: y2 };
+    return {
+      linePath: `M ${num(x1)} ${num(y1)} L ${num(tip.x)} ${num(tip.y)}`,
+      hitPath: `M ${num(x1)} ${num(y1)} L ${num(target.x)} ${num(target.y)}`,
+    };
+  }
+
+  function thresholdRequiredForSource(path, sourceSceneId, outgoingCount, edges = null) {
+    const sceneIds = Graph.getPathSceneIds(path);
+    const renderedEdges = edges || Graph.getRenderableEdges(path, { fallback: true });
+    const map = Graph.thresholdMapForPath({ ...path, edges: renderedEdges, edgeMode: "manual" }, { fallback: false });
+    return Math.min(outgoingCount, Math.max(1, Number(map.get(Number(sourceSceneId)) || outgoingCount)));
+  }
+
+  function setPathThreshold(path, sourceSceneId, requiredCount) {
+    if (!path || !sourceSceneId) return;
+    const sceneIds = Graph.getPathSceneIds(path);
+    const edges = edgesForSave(path);
+    const outgoing = Graph.outgoingTargetsBySource(sceneIds, edges);
+    const outgoingCount = outgoing.get(Number(sourceSceneId))
+      ? outgoing.get(Number(sourceSceneId)).length
+      : 0;
+    if (outgoingCount <= 1) return;
+    const nextRequired = Math.min(outgoingCount, Math.max(1, Number.parseInt(String(requiredCount || "1"), 10) || 1));
+    const others = (Array.isArray(path.thresholds) ? path.thresholds : [])
+      .filter((threshold) => Number(threshold && threshold.sourceSceneId || 0) !== Number(sourceSceneId));
+    path.thresholds = Graph.normalizeThresholdsForEdges([
+      ...others,
+      { sourceSceneId: Number(sourceSceneId), requiredCount: nextRequired },
+    ], sceneIds, edges);
+    markDirty(path);
+    renderCanvas();
+  }
+
+  function thresholdGroupHasSelection(path, sourceSceneId, targetIds = []) {
+    const sourceId = Number(sourceSceneId || 0);
+    const targets = Graph.normalizeIdList(targetIds);
+    if (selectedNodeIds.has(sourceId)) return true;
+    if (targets.some((targetId) => selectedNodeIds.has(Number(targetId)))) return true;
+    if (!selectedEdgeKey) return false;
+    const parsed = parsePathEdgeSelectionKey(selectedEdgeKey);
+    if (String(parsed.pathId || "") !== pathKey(path)) return false;
+    return targets.some((targetId) => parsed.edgeKey === `${sourceId}:${targetId}`);
+  }
+
+  function renderThresholdBadges(model) {
+    const inner = $("canvasInner");
+    (model.paths || []).forEach((path, pathIndex) => {
+      const key = pathKey(path);
+      const positions = model.pathPositions.get(key) || {};
+      const edges = model.pathEdges.get(key) || [];
+      const outgoing = Graph.outgoingTargetsBySource(Graph.getPathSceneIds(path), edges);
+      outgoing.forEach((targetIds, sourceSceneId) => {
+        if (!Array.isArray(targetIds) || targetIds.length <= 1) return;
+        if (!thresholdGroupHasSelection(path, sourceSceneId, targetIds)) return;
+        const sourcePos = positions[sourceSceneId] || model.layout.positions[sourceSceneId];
+        const targetPositions = targetIds
+          .map((targetId) => positions[targetId] || model.layout.positions[targetId])
+          .filter(Boolean);
+        if (!sourcePos || targetPositions.length !== targetIds.length) return;
+        const outgoingCount = targetIds.length;
+        const required = thresholdRequiredForSource(path, sourceSceneId, outgoingCount, edges);
+        const choiceGroup = required < outgoingCount;
+        const targetCenterX = targetPositions.reduce((sum, pos) => sum + Number(pos.x || 0) + NODE_W / 2, 0) / targetPositions.length;
+        const minTargetY = Math.min(...targetPositions.map((pos) => Number(pos.y || 0)));
+        const sourceBottom = Number(sourcePos.y || 0) + NODE_H;
+        const badge = document.createElement("label");
+        badge.className = `thresholdBadge${choiceGroup ? " choiceGroup" : ""}${key === activeKey() ? " active" : ""}`;
+        badge.style.left = `${targetCenterX + pathIndex * 12}px`;
+        badge.style.top = `${Math.max(sourceBottom + 8, sourceBottom + (minTargetY - sourceBottom) * 0.35)}px`;
+        badge.style.borderColor = colorValue(path.color);
+        badge.style.color = colorValue(path.color);
+        badge.title = `${path.name || "Naamloos pad"}: ${required} van ${outgoingCount}`;
+        badge.innerHTML = `
+          <input type="number" min="1" max="${outgoingCount}" value="${required}" aria-label="Keuzedrempel" />
+          <span>/${outgoingCount}</span>
+        `;
+        const input = badge.querySelector("input");
+        ["mousedown", "click", "dblclick"].forEach((eventName) => {
+          badge.addEventListener(eventName, (event) => event.stopPropagation());
+        });
+        input.addEventListener("change", () => setPathThreshold(path, sourceSceneId, input.value));
+        input.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          input.blur();
+          setPathThreshold(path, sourceSceneId, input.value);
+        });
+        inner.appendChild(badge);
+      });
+    });
+  }
+
+  function crossingRequiredForScene(sceneId, incomingCount) {
+    const id = Number(sceneId || 0);
+    const map = Graph.crossingThresholdMapForPaths(state.crossingThresholds || [], activePaths());
+    return Math.min(incomingCount, Math.max(1, Number(map.get(id) || incomingCount)));
+  }
+
+  function setCrossingThreshold(sceneId, requiredCount) {
+    const id = Number(sceneId || 0);
+    if (!id) return;
+    const incomingCount = Graph.crossingIncomingRoutesForPaths(activePaths(), id).length;
+    if (incomingCount <= 1) return;
+    const nextRequired = Math.min(incomingCount, Math.max(1, Number.parseInt(String(requiredCount || "1"), 10) || 1));
+    const others = (Array.isArray(state.crossingThresholds) ? state.crossingThresholds : [])
+      .filter((threshold) => Number(threshold && threshold.sceneId || 0) !== id);
+    state.crossingThresholds = Graph.normalizeCrossingThresholdsForPaths([
+      ...others,
+      { sceneId: id, requiredCount: nextRequired },
+    ], activePaths());
+    markCrossingDirty(id);
+    renderCanvas();
+  }
+
+  function renderCrossingThresholdBadges(model) {
+    const inner = $("canvasInner");
+    (model.nodes || []).forEach((nodeModel) => {
+      const sceneId = Number(nodeModel && nodeModel.sceneId || 0);
+      if (!sceneId || !isNodeSelected(sceneId)) return;
+      const routes = Graph.crossingIncomingRoutesForPaths(activePaths(), sceneId);
+      if (routes.length <= 1) return;
+      const pos = nodeModel.position || model.layout.positions[sceneId];
+      if (!pos) return;
+      const incomingCount = routes.length;
+      const required = crossingRequiredForScene(sceneId, incomingCount);
+      const choiceGroup = required < incomingCount;
+      const badge = document.createElement("label");
+      badge.className = `thresholdBadge crossingThresholdBadge${choiceGroup ? " choiceGroup" : ""}`;
+      badge.style.left = `${Number(pos.x || 0) + NODE_W + 12}px`;
+      badge.style.top = `${Number(pos.y || 0) - 10}px`;
+      badge.title = `Kruising: ${required} van ${incomingCount} paden`;
+      badge.innerHTML = `
+        <input type="number" min="1" max="${incomingCount}" value="${required}" aria-label="Kruisingdrempel" />
+        <span>/${incomingCount}</span>
+      `;
+      const input = badge.querySelector("input");
+      ["mousedown", "click", "dblclick"].forEach((eventName) => {
+        badge.addEventListener(eventName, (event) => event.stopPropagation());
+      });
+      input.addEventListener("change", () => setCrossingThreshold(sceneId, input.value));
+      input.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        input.blur();
+        setCrossingThreshold(sceneId, input.value);
+      });
+      inner.appendChild(badge);
+    });
   }
 
   function renderEdges(svg, model, ghosts) {
@@ -929,15 +1115,25 @@
       const color = colorValue(path.color);
       const positions = model.pathPositions.get(key) || {};
       const edges = model.pathEdges.get(key) || [];
+      const thresholdSources = new Set(Graph.normalizeThresholdsForEdges(path.thresholds, Graph.getPathSceneIds(path), edges)
+        .map((threshold) => threshold.sourceSceneId));
       edges.forEach((edge) => {
         const from = positions[edge.fromSceneId] || model.layout.positions[edge.fromSceneId];
         const to = positions[edge.toSceneId] || model.layout.positions[edge.toSceneId];
         if (!from || !to) return;
         const selectionKey = pathEdgeSelectionKey(path, edge);
         const selected = selectionKey === selectedEdgeKey;
-        const geometry = edgeGeometry(from, to);
-        body.push(`<path d="${geometry.linePath}" fill="none" stroke="${color}" stroke-width="${selected ? 4 : 2.8}" opacity="${key === activeKey() ? "1" : "0.82"}" />`);
-        body.push(`<polygon points="${geometry.arrowPoints}" fill="${color}" opacity="${key === activeKey() ? "1" : "0.82"}" />`);
+        const sideEdge = Graph.isOptionalEdge(edge);
+        const geometry = sideEdge ? optionalEdgeGeometry(from, to) : edgeGeometry(from, to);
+        const choiceGroup = thresholdSources.has(Number(edge.fromSceneId));
+        const baseOpacity = key === activeKey() ? 1 : 0.82;
+        const opacity = sideEdge ? (key === activeKey() ? 0.72 : 0.5) : choiceGroup ? (key === activeKey() ? 0.64 : 0.46) : baseOpacity;
+        const strokeWidth = sideEdge ? (selected ? 3.2 : 2.1) : choiceGroup ? (selected ? 3.2 : 2) : (selected ? 4 : 2.8);
+        const dash = sideEdge ? ' stroke-dasharray="5 4"' : "";
+        body.push(`<path d="${geometry.linePath}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" opacity="${opacity}"${dash} />`);
+        if (geometry.arrowPoints) {
+          body.push(`<polygon points="${geometry.arrowPoints}" fill="${color}" opacity="${opacity}" />`);
+        }
         body.push(`<path class="edgeHit" d="${geometry.hitPath}" fill="none" stroke="transparent" data-edge-key="${esc(selectionKey)}" />`);
       });
     });
@@ -980,14 +1176,24 @@
     });
   }
 
+  function uniquePathColors(members, fallbackColor) {
+    const colors = [];
+    (members || []).forEach((item) => {
+      const color = (
+        typeof item === "string" ? colorValue(item, fallbackColor) : colorValue(item.color, fallbackColor)
+      );
+      if (!color || colors.some((existing) => existing.toLowerCase() === color.toLowerCase())) return;
+      colors.push(color);
+    });
+    return colors.slice(0, 6);
+  }
+
   function stripeBackground(members, fallbackColor) {
-    const colors = (members || []).map((item) => (
-      typeof item === "string" ? colorValue(item, fallbackColor) : colorValue(item.color, fallbackColor)
-    )).slice(0, 4);
+    const colors = uniquePathColors(members, fallbackColor).slice(0, 4);
     if (!colors.length) return fallbackColor;
     if (colors.length === 1) return colors[0];
     const step = 100 / colors.length;
-    return `linear-gradient(${colors.map((color, index) => `${color} ${index * step}% ${(index + 1) * step}%`).join(", ")})`;
+    return `linear-gradient(to bottom, ${colors.map((color, index) => `${color} ${index * step}% ${(index + 1) * step}%`).join(", ")})`;
   }
 
   function createNode(nodeModel, members, model) {
@@ -999,7 +1205,14 @@
     const connected = nodePaths.some((path) => connectedSceneIdSet(path).has(Number(sceneId)));
     const inTarget = nodeModel.pathIds.includes(activeKey());
     const isDraft = !connected;
-    node.className = `pathNode${isDraft ? " draftNode" : ""}${nodeModel.isShared ? " sharedNode" : ""}${inTarget ? " targetMember" : ""}${isNodeSelected(sceneId) ? " selected" : ""}`;
+    const selected = isNodeSelected(sceneId);
+    const expanded = selected && expandedNodeIds.has(Number(sceneId));
+    const fallbackColor = colorValue(nodePaths[0] && nodePaths[0].color || (activePath() && activePath().color));
+    const membership = Array.isArray(members) && members.length ? members : nodeModel.colors;
+    const pathColors = isDraft ? ["#c8c1b8"] : uniquePathColors(membership, fallbackColor);
+    const sharedCount = Math.max(nodeModel.pathIds.length, Array.isArray(members) ? members.length : 0);
+    const sharedNode = nodeModel.isShared || sharedCount > 1;
+    node.className = `pathNode${isDraft ? " draftNode" : ""}${sharedNode ? " sharedNode multiColorNode" : ""}${inTarget ? " targetMember" : ""}${selected ? " selected" : ""}${expanded ? " expanded" : ""}`;
     node.dataset.sceneId = String(sceneId);
     node.dataset.pathIds = nodeModel.pathIds.join(",");
     node.style.left = `${pos.x}px`;
@@ -1010,12 +1223,17 @@
     const isStart = firstEndpoints.starts.includes(Number(sceneId));
     const isEnd = firstEndpoints.ends.includes(Number(sceneId));
     const sub = isDraft ? ""
-      : nodeModel.isShared ? `kruispunt · ${nodeModel.pathIds.length} paden`
+      : sharedNode ? `kruispunt · ${sharedCount} paden`
         : [isStart ? "start" : "", isEnd ? "einde" : ""].filter(Boolean).join(" · ");
+    const colorDots = pathColors.length > 1
+      ? `<span class="nodePathColors">${pathColors.slice(0, 6).map((color) => `<i style="background:${color}"></i>`).join("")}</span>`
+      : "";
 
     node.innerHTML = `
-      <span class="stripe" style="background:${isDraft ? "#c8c1b8" : stripeBackground(nodeModel.colors, colorValue(firstPath && firstPath.color))}"></span>
+      <span class="stripe" style="background:${isDraft ? "#c8c1b8" : stripeBackground(membership, fallbackColor)}"></span>
+      ${colorDots}
       <div class="title">${esc(scene && scene.title || `Situatie #${sceneId}`)}</div>
+      <div class="nodeFullTitle">${esc(scene && scene.title || `Situatie #${sceneId}`)}</div>
       ${sub ? `<div class="sub">${esc(sub)}</div>` : ""}
       <button class="port out" type="button" data-port="out" title="Pijl vanaf hier"></button>
       <button class="nodeHandle remove" type="button" title="Verwijder uit pad">×</button>
@@ -1112,6 +1330,12 @@
       document.addEventListener("mousemove", move);
       document.addEventListener("mouseup", up);
     });
+    node.addEventListener("dblclick", (event) => {
+      if (event.target.closest("button")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      toggleNodeExpanded(sceneId);
+    });
 
     node.querySelector(".remove").addEventListener("click", (event) => {
       event.stopPropagation();
@@ -1196,14 +1420,14 @@
 
   function edgeIssueMessage(issue) {
     const code = String(issue || "");
-    if (code.startsWith("path_edge_multiple_incoming:")) {
-      return "Deze node zit al in het pad. Je kunt niet terugprikken in een eerdere of middelste node.";
-    }
     if (code.startsWith("path_cycle:")) {
       return "Deze verbinding zou een loop maken. Paden kunnen alleen vooruit lopen.";
     }
     if (code.startsWith("path_single_start_required:")) {
       return "Er is al een start in dit pad. Verbind nieuwe nodes vanuit het bestaande pad.";
+    }
+    if (code.startsWith("path_disconnected_components:")) {
+      return "Dit zou een los paddeel maken. Meerdere starts mogen alleen als ze naar dezelfde kruising lopen.";
     }
     if (code.startsWith("path_edge_duplicate:")) return "Deze verbinding bestaat al.";
     if (code.startsWith("path_edge_self:")) return "Een node kan niet naar zichzelf wijzen.";
@@ -1272,6 +1496,20 @@
       removeEdge(selectedEdgeKey);
     });
     $("canvasInner").appendChild(btn);
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "edgeTypeToggle";
+    toggle.title = Graph.isOptionalEdge(edge) ? "Maak verplichte pijl" : "Maak zijtak";
+    toggle.textContent = Graph.isOptionalEdge(edge) ? "↓" : "↔";
+    toggle.style.left = `${(from.x + to.x + NODE_W) / 2 + 28}px`;
+    toggle.style.top = `${(from.y + to.y + NODE_H) / 2}px`;
+    toggle.style.background = colorValue(path && path.color, "#1f2937");
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleEdgeType(selectedEdgeKey);
+    });
+    $("canvasInner").appendChild(toggle);
   }
 
   function addSceneToPath(sceneId, x, y) {
@@ -1314,6 +1552,7 @@
     ids.forEach((id) => {
       delete manual[id];
       selectedNodeIds.delete(Number(id));
+      expandedNodeIds.delete(Number(id));
     });
     saveLayouts();
     if (ids.has(Number(selectedNodeId))) selectedNodeId = selectedNodeIds.size ? Array.from(selectedNodeIds).at(-1) : 0;
@@ -1333,6 +1572,24 @@
     materializeLegacyEdges(path);
     path.edges = (path.edges || []).filter((edge) => Graph.edgeKey(edge) !== edgeKey);
     selectedEdgeKey = "";
+    markDirty(path);
+    renderCanvas();
+  }
+
+  function toggleEdgeType(key) {
+    const parsed = parsePathEdgeSelectionKey(key);
+    const path = pathById(parsed.pathId) || activePath();
+    const edgeKey = parsed.edgeKey || key;
+    if (!path || !edgeKey) return;
+    materializeLegacyEdges(path);
+    path.edges = (path.edges || []).map((edge) => {
+      if (Graph.edgeKey(edge) !== edgeKey) return edge;
+      const next = { fromSceneId: edge.fromSceneId, toSceneId: edge.toSceneId };
+      if (!Graph.isOptionalEdge(edge)) next.edgeType = "optional";
+      return next;
+    });
+    const sceneIds = Graph.getPathSceneIds(path);
+    path.thresholds = Graph.normalizeThresholdsForEdges(path.thresholds || [], sceneIds, path.edges || []);
     markDirty(path);
     renderCanvas();
   }
@@ -1370,7 +1627,7 @@
     });
 
     const path = activePath();
-    const splitCount = Graph.getRenderableEdges(path, { fallback: true }).reduce((map, edge) => {
+    const splitCount = Graph.getRenderableEdges(path, { fallback: true }).filter((edge) => !Graph.isOptionalEdge(edge)).reduce((map, edge) => {
       map.set(edge.fromSceneId, (map.get(edge.fromSceneId) || 0) + 1);
       return map;
     }, new Map());
@@ -1410,6 +1667,7 @@
   function pathSaveBody(path) {
     const sceneIds = Graph.getPathSceneIds(path);
     const edges = edgesForSave(path);
+    const thresholds = Graph.normalizeThresholdsForEdges(path.thresholds || [], sceneIds, edges);
     const body = {
       name: path.name || "Naamloos pad",
       description: path.description || "",
@@ -1417,17 +1675,30 @@
       edgeMode: "manual",
       sceneIds,
       edges,
+      thresholds,
       isActive: path.isActive !== false,
     };
     if (!isDraftPath(path)) body.id = path.id;
     return { body, sceneIds, edges };
   }
 
+  function crossingSaveBody(sceneId) {
+    const id = Number(sceneId || 0);
+    const incomingCount = Graph.crossingIncomingRoutesForPaths(activePaths(), id).length;
+    return {
+      body: {
+        sceneId: id,
+        requiredCount: incomingCount > 1 ? crossingRequiredForScene(id, incomingCount) : incomingCount,
+      },
+      sceneId: id,
+    };
+  }
+
   function validatePathForSave(path) {
     const { sceneIds, edges } = pathSaveBody(path);
     if (!sceneIds.length) return "Kies minstens een situatie voor dit pad.";
-    const starts = startIdsFor(sceneIds, edges);
-    if (edges.length && starts.length !== 1) return "Het verbonden pad mag precies één start hebben.";
+    const componentCount = Graph.connectedComponentCount(sceneIds, edges);
+    if (edges.length && componentCount > 1) return "Losse paddelen zijn niet toegestaan. Meerdere starts mogen alleen als ze naar dezelfde kruising lopen.";
     return "";
   }
 
@@ -1457,12 +1728,15 @@
   async function saveDirtyPaths() {
     if (saving) return;
     const dirtyKeys = Array.from(dirtyPathIds);
+    const dirtyCrossingIds = Array.from(dirtyCrossingSceneIds).map(Number).filter(Boolean);
     const payloads = dirtyKeys
       .map((key) => pathById(key))
       .filter(Boolean)
       .map((path) => ({ path, previousKey: pathKey(path), ...pathSaveBody(path) }));
     dirtyPathIds = new Set(dirtyKeys.filter((key) => pathById(key)));
-    if (!payloads.length) {
+    const crossingPayloads = dirtyCrossingIds.map(crossingSaveBody).filter((payload) => payload.sceneId);
+    dirtyCrossingSceneIds = new Set(dirtyCrossingIds);
+    if (!payloads.length && !crossingPayloads.length) {
       setSaveState("saved");
       return;
     }
@@ -1478,6 +1752,7 @@
     saving = true;
     setSaveState("saving");
     const savedKeys = new Set();
+    const savedCrossingIds = new Set();
     let lastServerState = null;
     try {
       for (const payload of payloads) {
@@ -1490,18 +1765,26 @@
         savedKeys.add(nextKey);
         if (result && result.state) lastServerState = result.state;
       }
+      for (const payload of crossingPayloads) {
+        const result = await api("/admin/algorithm/crossing-thresholds/upsert", { method: "POST", body: payload.body });
+        savedCrossingIds.add(payload.sceneId);
+        if (result && result.state) lastServerState = result.state;
+      }
       if (lastServerState) state = normalizeEditorState(lastServerState);
       rebuildIndexes();
       ensureSelection();
       savedKeys.forEach((key) => dirtyPathIds.delete(key));
-      setSaveState(dirtyPathIds.size ? "dirty" : "saved");
+      savedCrossingIds.forEach((sceneId) => dirtyCrossingSceneIds.delete(sceneId));
+      setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
       renderAll();
-      toast(payloads.length === 1 ? "Pad opgeslagen" : `${payloads.length} paden opgeslagen`);
+      const savedCount = payloads.length + crossingPayloads.length;
+      toast(savedCount === 1 ? "Opgeslagen" : `${savedCount} wijzigingen opgeslagen`);
     } catch (err) {
       savedKeys.forEach((key) => dirtyPathIds.delete(key));
+      savedCrossingIds.forEach((sceneId) => dirtyCrossingSceneIds.delete(sceneId));
       rebuildIndexes();
       ensureSelection();
-      setSaveState(dirtyPathIds.size ? "dirty" : "saved");
+      setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
       renderAll();
       const issues = err.body && Array.isArray(err.body.issues) ? ` (${err.body.issues.join(", ")})` : "";
       toast(`Opslaan mislukt: ${err.message}${issues}`, true);
@@ -1614,7 +1897,7 @@
       if (activeKey() === pathKey(path)) activePathId = "";
       rebuildIndexes();
       ensureSelection();
-      setSaveState(dirtyPathIds.size ? "dirty" : "saved");
+      setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
       closePathModal();
       renderAll();
       toast("Pad gedeactiveerd");
@@ -1653,7 +1936,7 @@
       forgetPathLocally(path);
       rebuildIndexes();
       ensureSelection();
-      setSaveState(dirtyPathIds.size ? "dirty" : "saved");
+      setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
       closePathModal();
       renderAll();
       toast("Pad verwijderd");
@@ -1747,7 +2030,7 @@
       pinchGesture = null;
     });
     $("canvasOuter").addEventListener("mousedown", (event) => {
-      if (event.target && event.target.closest && event.target.closest(".pathNode,.edgeDelete,.edgeHit,button,input,textarea,select,a")) return;
+      if (event.target && event.target.closest && event.target.closest(".pathNode,.edgeDelete,.edgeTypeToggle,.edgeHit,button,input,textarea,select,a")) return;
       startMarqueeSelect(event);
     });
 
