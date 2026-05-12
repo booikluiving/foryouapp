@@ -79,7 +79,7 @@ echo ""
 
 echo "branch previews:"
 preview_found=0
-for pid_file in "$LOG_DIR"/preview-*.pid; do
+for pid_file in "$LOG_DIR"/preview-*.pid(N); do
   [[ -e "$pid_file" ]] || continue
   preview_found=1
   name="$(basename "$pid_file" .pid)"
