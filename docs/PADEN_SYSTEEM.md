@@ -36,7 +36,11 @@ Een node kan in meerdere paden zitten. Dat is een kruising.
 
 Wanneer een kruising-node in een pad bereikt wordt en al `Played` is, telt hij als gespeeld voor dat pad en kan dat pad doorlopen.
 
-Een funnel ontstaat wanneer meerdere inkomende verbindingen naar een node gaan. Alleen funnels kunnen een minimum aantal gespeelde inkomende routes vereisen voordat de target-node `Available` wordt. Kruisingen zijn informatief en hebben geen eigen drempel.
+Een kruising met inkomende verbindingen uit meerdere paden telt als een globale funnel. De inkomende routes uit alle actieve paden tellen mee voor de drempel.
+
+Een node is alleen een startnode wanneer hij in geen enkel actief pad een inkomende verplichte route heeft. Begint een pad op een kruising waar een ander pad naartoe leidt, dan is die node dus geen echte startnode maar een vervolg vanaf de kruising.
+
+Een funnel ontstaat wanneer meerdere inkomende verbindingen naar een node gaan. Funnels kunnen een minimum aantal gespeelde inkomende routes vereisen voordat de target-node `Available` wordt. Zonder ingestelde drempel zijn alle inkomende routes verplicht.
 
 ## Eenmalig spelen
 

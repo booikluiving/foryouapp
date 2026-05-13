@@ -43,6 +43,7 @@
   let expandedNodeIds = new Set();
   let selectedEdgeKey = "";
   let dirtyPathIds = new Set();
+  let dirtyCrossingThresholdSceneIds = new Set();
   let saving = false;
   let searchQ = "";
   let jumpQ = "";
@@ -245,7 +246,7 @@
     const el = $("saveState");
     el.classList.remove("saved", "dirty", "saving");
     el.classList.add(kind);
-    const dirtyCount = dirtyPathIds.size;
+    const dirtyCount = dirtyPathIds.size + dirtyCrossingThresholdSceneIds.size;
     el.querySelector(".txt").textContent =
       kind === "saving" ? "Opslaan..." :
       kind === "dirty" ? `${dirtyCount || 1} niet opgeslagen` :
@@ -255,14 +256,14 @@
   function markDirty(pathOrKey = activePath()) {
     const key = typeof pathOrKey === "string" ? pathOrKey : pathKey(pathOrKey);
     if (key) dirtyPathIds.add(key);
-    setSaveState(dirtyPathIds.size ? "dirty" : "saved");
+    setSaveState(dirtyPathIds.size || dirtyCrossingThresholdSceneIds.size ? "dirty" : "saved");
     if ($("chipbar")) renderChips();
   }
 
   function markClean(pathOrKey) {
     const key = typeof pathOrKey === "string" ? pathOrKey : pathKey(pathOrKey);
     if (key) dirtyPathIds.delete(key);
-    setSaveState(dirtyPathIds.size ? "dirty" : "saved");
+    setSaveState(dirtyPathIds.size || dirtyCrossingThresholdSceneIds.size ? "dirty" : "saved");
     if ($("chipbar")) renderChips();
   }
 
@@ -320,7 +321,7 @@
       paths: simPaths,
       scenes: activeScenes(),
       playedSceneIds: testPlayedSceneIds,
-      crossingThresholds: [],
+      crossingThresholds: state.crossingThresholds || [],
     });
     const playedSet = new Set(Graph.normalizeIdList(testPlayedSceneIds));
     testResultCache = { statuses, playedSet, pathIdByKey };
@@ -340,7 +341,7 @@
       characters: Array.isArray(catalog.characters) ? catalog.characters : [],
       situations: Array.isArray(catalog.situations) ? catalog.situations : [],
       environments: Array.isArray(catalog.environments) ? catalog.environments : [],
-      crossingThresholds: [],
+      crossingThresholds: Graph.normalizeCrossingThresholdsForPaths(catalog.crossingThresholds || [], catalog.paths || []),
     };
   }
 
@@ -413,6 +414,7 @@
       rebuildIndexes();
       ensureSelection();
       dirtyPathIds.clear();
+      dirtyCrossingThresholdSceneIds.clear();
       setSaveState("saved");
       showApp();
       renderAll();
@@ -1026,6 +1028,12 @@
       return `Geblokkeerd door ${sceneTitle(source)}.`;
     }
     const threshold = (status.blockingThresholds || []).find((group) => !group.satisfied) || null;
+    const crossingThreshold = status.blockingCrossingThreshold && !status.blockingCrossingThreshold.satisfied
+      ? status.blockingCrossingThreshold
+      : null;
+    if (crossingThreshold) {
+      return `Kruising wacht op ${crossingThreshold.requiredCount} van ${crossingThreshold.incomingCount} inkomende routes; ${crossingThreshold.completedCount} gespeeld.`;
+    }
     if (threshold) {
       return `Funnel wacht op ${threshold.requiredCount} van ${threshold.outgoingCount} inkomende routes; ${threshold.completedCount} gespeeld.`;
     }
@@ -1314,6 +1322,33 @@
     return Math.min(incomingCount, Math.max(1, Number(map.get(Number(sceneId)) || incomingCount)));
   }
 
+  function crossingRoutesForScene(sceneId) {
+    return Graph.crossingIncomingRoutesForPaths(activePaths(), Number(sceneId || 0));
+  }
+
+  function crossingThresholdRequiredForScene(sceneId, incomingCount) {
+    const map = Graph.crossingThresholdMapForPaths(state.crossingThresholds || [], activePaths());
+    return Math.min(incomingCount, Math.max(1, Number(map.get(Number(sceneId)) || incomingCount)));
+  }
+
+  function setCrossingThreshold(sceneId, requiredCount) {
+    const id = Number(sceneId || 0);
+    if (!id) return;
+    const incomingCount = crossingRoutesForScene(id).length;
+    if (incomingCount <= 1) return;
+    const nextRequired = Math.min(incomingCount, Math.max(1, Number.parseInt(String(requiredCount || "1"), 10) || 1));
+    const others = Graph.normalizeCrossingThresholds(state.crossingThresholds || [])
+      .filter((threshold) => Number(threshold.sceneId || 0) !== id);
+    state.crossingThresholds = Graph.normalizeCrossingThresholdsForPaths([
+      ...others,
+      { sceneId: id, requiredCount: nextRequired },
+    ], activePaths());
+    dirtyCrossingThresholdSceneIds.add(id);
+    setSaveState("dirty");
+    invalidateTestResult();
+    renderCanvas();
+  }
+
   function setPathThreshold(path, sceneId, requiredCount) {
     if (!path || !sceneId) return;
     const sceneIds = Graph.getPathSceneIds(path);
@@ -1322,6 +1357,11 @@
     const incomingCount = incoming.get(Number(sceneId))
       ? incoming.get(Number(sceneId)).length
       : 0;
+    const crossingIncomingCount = crossingRoutesForScene(sceneId).length;
+    if (crossingIncomingCount > incomingCount && crossingIncomingCount > 1) {
+      setCrossingThreshold(sceneId, requiredCount);
+      return;
+    }
     if (incomingCount <= 1) return;
     const nextRequired = Math.min(incomingCount, Math.max(1, Number.parseInt(String(requiredCount || "1"), 10) || 1));
     const others = (Array.isArray(path.thresholds) ? path.thresholds : [])
@@ -1344,6 +1384,16 @@
       ? model.pathEdges.get(key)
       : edgesForSave(path);
     const sources = Graph.incomingSourcesByTarget(sceneIds, edges).get(id) || [];
+    const crossingRoutes = crossingRoutesForScene(id);
+    if (crossingRoutes.length > sources.length && crossingRoutes.length > 1) {
+      return {
+        sceneId: id,
+        sourceIds: Graph.normalizeIdList(crossingRoutes.map((route) => route.fromSceneId)),
+        count: crossingRoutes.length,
+        required: crossingThresholdRequiredForScene(id, crossingRoutes.length),
+        crossing: true,
+      };
+    }
     if (sources.length <= 1) return null;
     return {
       sceneId: id,
@@ -1363,7 +1413,9 @@
       const endpoints = model && model.pathEndpoints
         ? model.pathEndpoints.get(activeKey()) || { starts: [], ends: [] }
         : { starts: [], ends: [] };
-      if ((endpoints.starts || []).includes(id)) markers.push({ label: "Start", className: "start" });
+      if ((endpoints.starts || []).includes(id) && !crossingRoutesForScene(id).length) {
+        markers.push({ label: "Start", className: "start" });
+      }
       if (isEndNodeForPath(path, id)) markers.push({ label: "Einde", className: "end" });
       if (blockRuleForSource(path, id)) markers.push({ label: "Blokkade", className: "block" });
       const funnel = funnelInfoForPath(path, id, model);
@@ -2454,12 +2506,13 @@
   async function saveDirtyPaths() {
     if (saving) return;
     const dirtyKeys = Array.from(dirtyPathIds);
+    const dirtyCrossingSceneIds = Array.from(dirtyCrossingThresholdSceneIds);
     const payloads = dirtyKeys
       .map((key) => pathById(key))
       .filter(Boolean)
       .map((path) => ({ path, previousKey: pathKey(path), ...pathSaveBody(path) }));
     dirtyPathIds = new Set(dirtyKeys.filter((key) => pathById(key)));
-    if (!payloads.length) {
+    if (!payloads.length && !dirtyCrossingSceneIds.length) {
       setSaveState("saved");
       return;
     }
@@ -2475,6 +2528,7 @@
     saving = true;
     setSaveState("saving");
     const savedKeys = new Set();
+    const savedCrossingSceneIds = new Set();
     let lastServerState = null;
     try {
       for (const payload of payloads) {
@@ -2487,19 +2541,33 @@
         savedKeys.add(nextKey);
         if (result && result.state) lastServerState = result.state;
       }
+      for (const sceneId of dirtyCrossingSceneIds) {
+        const incomingCount = crossingRoutesForScene(sceneId).length;
+        const result = await api("/admin/algorithm/crossing-thresholds/upsert", {
+          method: "POST",
+          body: {
+            sceneId,
+            requiredCount: crossingThresholdRequiredForScene(sceneId, incomingCount || 1),
+          },
+        });
+        savedCrossingSceneIds.add(Number(sceneId));
+        if (result && result.state) lastServerState = result.state;
+      }
       if (lastServerState) state = normalizeEditorState(lastServerState);
       rebuildIndexes();
       ensureSelection();
       savedKeys.forEach((key) => dirtyPathIds.delete(key));
-      setSaveState(dirtyPathIds.size ? "dirty" : "saved");
+      savedCrossingSceneIds.forEach((sceneId) => dirtyCrossingThresholdSceneIds.delete(sceneId));
+      setSaveState(dirtyPathIds.size || dirtyCrossingThresholdSceneIds.size ? "dirty" : "saved");
       renderAll();
-      const savedCount = payloads.length;
+      const savedCount = payloads.length + savedCrossingSceneIds.size;
       toast(savedCount === 1 ? "Opgeslagen" : `${savedCount} wijzigingen opgeslagen`);
     } catch (err) {
       savedKeys.forEach((key) => dirtyPathIds.delete(key));
+      savedCrossingSceneIds.forEach((sceneId) => dirtyCrossingThresholdSceneIds.delete(sceneId));
       rebuildIndexes();
       ensureSelection();
-      setSaveState(dirtyPathIds.size ? "dirty" : "saved");
+      setSaveState(dirtyPathIds.size || dirtyCrossingThresholdSceneIds.size ? "dirty" : "saved");
       renderAll();
       const issues = err.body && Array.isArray(err.body.issues) ? ` (${err.body.issues.join(", ")})` : "";
       toast(`Opslaan mislukt: ${err.message}${issues}`, true);
@@ -2669,7 +2737,7 @@
       if (activeKey() === pathKey(path)) activePathId = "";
       rebuildIndexes();
       ensureSelection();
-      setSaveState(dirtyPathIds.size ? "dirty" : "saved");
+      setSaveState(dirtyPathIds.size || dirtyCrossingThresholdSceneIds.size ? "dirty" : "saved");
       closePathModal();
       renderAll();
       toast("Pad gedeactiveerd");
@@ -2708,7 +2776,7 @@
       forgetPathLocally(path);
       rebuildIndexes();
       ensureSelection();
-      setSaveState(dirtyPathIds.size ? "dirty" : "saved");
+      setSaveState(dirtyPathIds.size || dirtyCrossingThresholdSceneIds.size ? "dirty" : "saved");
       closePathModal();
       renderAll();
       toast("Pad verwijderd");
@@ -2873,7 +2941,7 @@
     });
 
     window.addEventListener("beforeunload", (event) => {
-      if (!dirtyPathIds.size) return;
+      if (!dirtyPathIds.size && !dirtyCrossingThresholdSceneIds.size) return;
       event.preventDefault();
       event.returnValue = "";
     });
