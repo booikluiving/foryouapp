@@ -30,6 +30,18 @@ Wanneer een node binnen de huidige run gespeeld is:
 
 Een gedeelde node opent een ander pad dus pas wanneer dat andere pad de gedeelde node daadwerkelijk bereikt heeft.
 
+## Terugkoppelingen
+
+Een terugkoppeling is een apart type pijl (`edgeType: "loop"`). Hij is bedoeld voor een lijn terug naar een eerder punt in hetzelfde pad, of naar een gedeelde node in een andere padcontext.
+
+Een terugkoppeling telt functioneel als verplichte inkomende route. Binnen hetzelfde pad kan hij dus ook meetellen voor een funnel en, zonder lagere drempel, als verplichte voorganger werken.
+
+Een terugkoppeling mag niet naar een startnode wijzen. De target-node moet al een normale inkomende route hebben; anders ontstaat een gesloten loop zonder logisch startpunt.
+
+Voor automatische layout telt een terugkoppeling niet mee in de rang-berekening. Hij mag dus unlock-logica beinvloeden, maar moet de visuele volgorde niet omlaag of omhoog duwen.
+
+Terugkoppelingen betekenen geen replay. Als de target-node al gespeeld is, blijft hij gespeeld en wordt hij niet opnieuw startbaar binnen dezelfde run.
+
 ## Kruisingen en funnels
 
 Een node kan in meerdere paden zitten. Dat is een kruising.

@@ -2527,6 +2527,13 @@
           return Array.from(bySource.values()).sort((a, b) => a.sourceSceneId - b.sourceSceneId);
         }
 
+        function normalizePathEdgeType(value) {
+          const key = String(value || "").trim().toLowerCase();
+          if (key === "optional") return "optional";
+          if (["loop", "terug", "terugkoppeling", "feedback", "back"].includes(key)) return "loop";
+          return "";
+        }
+
         function pathDraftFromItem(item = null) {
           return {
             open: true,
@@ -2538,7 +2545,7 @@
             edges: Array.isArray(item && item.edges) ? item.edges.map((edge) => ({
               fromSceneId: Number(edge && edge.fromSceneId || 0),
               toSceneId: Number(edge && edge.toSceneId || 0),
-              edgeType: String(edge && edge.edgeType || "") === "optional" ? "optional" : "",
+              edgeType: normalizePathEdgeType(edge && edge.edgeType),
             })).filter((edge) => edge.fromSceneId && edge.toSceneId) : [],
             thresholds: Array.isArray(item && item.thresholds) ? item.thresholds.map((threshold) => ({
               sourceSceneId: Number(threshold && threshold.sourceSceneId || 0),
@@ -2575,7 +2582,7 @@
           pathDraft.edges = Array.from($("pathEdges").querySelectorAll("[data-path-edge-row]")).map((row) => ({
             fromSceneId: Number(row.querySelector("[data-path-edge-from]").value || 0),
             toSceneId: Number(row.querySelector("[data-path-edge-to]").value || 0),
-            edgeType: String(row.getAttribute("data-path-edge-type") || "") === "optional" ? "optional" : "",
+            edgeType: normalizePathEdgeType(row.getAttribute("data-path-edge-type") || ""),
           })).filter((edge) => edge.fromSceneId && edge.toSceneId);
           pathDraft.endSceneIds = (pathDraft.endSceneIds || []).filter((id) => pathDraft.sceneIds.includes(Number(id)));
           pathDraft.blockRules = normalizePathBlockRules(pathDraft.blockRules || [], pathDraft.sceneIds);

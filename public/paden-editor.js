@@ -1315,6 +1315,48 @@
     };
   }
 
+  function loopEdgeGeometry(posA, posB) {
+    const centerA = posA.x + NODE_W / 2;
+    const centerB = posB.x + NODE_W / 2;
+    const side = centerA <= centerB ? -1 : 1;
+    const x1 = side > 0 ? posA.x + NODE_W : posA.x;
+    const y1 = posA.y + NODE_H / 2;
+    const x2 = side > 0 ? posB.x + NODE_W : posB.x;
+    const y2 = posB.y + NODE_H / 2;
+    const offset = side * Math.max(90, Math.abs(y2 - y1) * 0.22 + Math.abs(x2 - x1) * 0.25);
+    const c1 = { x: x1 + offset, y: y1 };
+    const c2 = { x: x2 + offset, y: y2 };
+    const target = { x: x2, y: y2 };
+    const tip = { x: x2 + side * ARROW_GAP, y: y2 };
+    let dx = tip.x - c2.x;
+    let dy = tip.y - c2.y;
+    let len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    const base = {
+      x: tip.x - ux * ARROW_LEN,
+      y: tip.y - uy * ARROW_LEN,
+    };
+    const lineC2 = {
+      x: c2.x - ux * ARROW_LEN,
+      y: c2.y - uy * ARROW_LEN,
+    };
+    const perp = { x: -uy, y: ux };
+    const left = {
+      x: base.x + perp.x * ARROW_HALF,
+      y: base.y + perp.y * ARROW_HALF,
+    };
+    const right = {
+      x: base.x - perp.x * ARROW_HALF,
+      y: base.y - perp.y * ARROW_HALF,
+    };
+    return {
+      linePath: `M ${num(x1)} ${num(y1)} C ${num(c1.x)} ${num(c1.y)}, ${num(lineC2.x)} ${num(lineC2.y)}, ${num(base.x)} ${num(base.y)}`,
+      hitPath: `M ${num(x1)} ${num(y1)} C ${num(c1.x)} ${num(c1.y)}, ${num(c2.x)} ${num(c2.y)}, ${num(target.x)} ${num(target.y)}`,
+      arrowPoints: `${num(tip.x)},${num(tip.y)} ${num(left.x)},${num(left.y)} ${num(right.x)},${num(right.y)}`,
+    };
+  }
+
   function thresholdRequiredForScene(path, sceneId, incomingCount, edges = null) {
     const sceneIds = Graph.getPathSceneIds(path);
     const renderedEdges = edges || Graph.getRenderableEdges(path, { fallback: true });
@@ -1326,16 +1368,38 @@
     return Graph.crossingIncomingRoutesForPaths(activePaths(), Number(sceneId || 0));
   }
 
-  function crossingThresholdRequiredForScene(sceneId, incomingCount) {
+  function crossingThresholdRequiredForScene(sceneId, incomingCount, routes = null) {
     const map = Graph.crossingThresholdMapForPaths(state.crossingThresholds || [], activePaths());
-    return Math.min(incomingCount, Math.max(1, Number(map.get(Number(sceneId)) || incomingCount)));
+    const id = Number(sceneId || 0);
+    const globalRequired = Number(map.get(id) || 0);
+    if (globalRequired) return Math.min(incomingCount, Math.max(1, globalRequired));
+
+    const incomingRoutes = Array.isArray(routes) ? routes : crossingRoutesForScene(id);
+    const routePathIds = Graph.normalizeIdList(incomingRoutes.map((route) => route.pathId));
+    if (routePathIds.length === 1) {
+      const sourcePath = pathById(routePathIds[0]);
+      if (sourcePath) {
+        return thresholdRequiredForScene(sourcePath, id, incomingCount, edgesForSave(sourcePath));
+      }
+    }
+
+    return Math.min(incomingCount, Math.max(1, incomingCount));
   }
 
   function setCrossingThreshold(sceneId, requiredCount) {
     const id = Number(sceneId || 0);
     if (!id) return;
-    const incomingCount = crossingRoutesForScene(id).length;
+    const incomingRoutes = crossingRoutesForScene(id);
+    const incomingCount = incomingRoutes.length;
     if (incomingCount <= 1) return;
+    const routePathIds = Graph.normalizeIdList(incomingRoutes.map((route) => route.pathId));
+    if (routePathIds.length === 1) {
+      const sourcePath = pathById(routePathIds[0]);
+      if (sourcePath) {
+        setPathThreshold(sourcePath, id, requiredCount);
+      }
+      return;
+    }
     const nextRequired = Math.min(incomingCount, Math.max(1, Number.parseInt(String(requiredCount || "1"), 10) || 1));
     const others = Graph.normalizeCrossingThresholds(state.crossingThresholds || [])
       .filter((threshold) => Number(threshold.sceneId || 0) !== id);
@@ -1390,7 +1454,7 @@
         sceneId: id,
         sourceIds: Graph.normalizeIdList(crossingRoutes.map((route) => route.fromSceneId)),
         count: crossingRoutes.length,
-        required: crossingThresholdRequiredForScene(id, crossingRoutes.length),
+        required: crossingThresholdRequiredForScene(id, crossingRoutes.length, crossingRoutes),
         crossing: true,
       };
     }
@@ -1557,6 +1621,8 @@
       return;
     }
     const optional = Graph.isOptionalEdge(edge);
+    const loop = Graph.isLoopEdge(edge);
+    const typeLabel = loop ? "Terugkoppeling" : optional ? "Zijtak" : "Verplicht";
     setInspectorHeader("Pijl", `${sceneTitle(edge.fromSceneId)} -> ${sceneTitle(edge.toSceneId)}`);
     pane.innerHTML = `
       <div class="inspectorBox">
@@ -1564,18 +1630,21 @@
         <div class="inspectorSection">
           <h3>Type</h3>
           <div class="inspectorBadges">
-            <span class="inspectorBadge">${optional ? "Zijtak" : "Verplicht"}</span>
+            <span class="inspectorBadge">${typeLabel}</span>
           </div>
           <div class="inspectorActions">
-            <button type="button" data-inspector-edge-toggle>${optional ? "Maak verplicht" : "Maak zijtak"}</button>
+            ${loop ? "" : `<button type="button" data-inspector-edge-toggle>${optional ? "Maak verplicht" : "Maak zijtak"}</button>`}
+            ${loop ? "" : '<button type="button" data-inspector-edge-loop>Maak terugkoppeling</button>'}
             <button type="button" class="danger" data-inspector-edge-delete>Verwijder pijl</button>
           </div>
         </div>
       </div>
     `;
     const toggle = pane.querySelector("[data-inspector-edge-toggle]");
+    const loopButton = pane.querySelector("[data-inspector-edge-loop]");
     const remove = pane.querySelector("[data-inspector-edge-delete]");
     if (toggle) toggle.addEventListener("click", () => toggleEdgeType(selectedEdgeKey));
+    if (loopButton) loopButton.addEventListener("click", () => setEdgeType(selectedEdgeKey, "loop"));
     if (remove) remove.addEventListener("click", () => removeEdge(selectedEdgeKey));
   }
 
@@ -1731,25 +1800,28 @@
         const selectionKey = pathEdgeSelectionKey(path, edge);
         const selected = selectionKey === selectedEdgeKey;
         const sideEdge = Graph.isOptionalEdge(edge);
-        const geometry = sideEdge ? optionalEdgeGeometry(from, to) : edgeGeometry(from, to);
+        const loopEdge = Graph.isLoopEdge(edge);
+        const geometry = loopEdge ? loopEdgeGeometry(from, to) : sideEdge ? optionalEdgeGeometry(from, to) : edgeGeometry(from, to);
         const choiceGroup = thresholdTargets.has(Number(edge.toSceneId));
         const baseOpacity = isActivePath ? 1 : 0.5;
         const statusState = edgeTestState(path, edge, testResult);
         const opacity = testResult && !statusState ? 0.22
           : statusState === "locked" ? 0.34
             : statusState === "blocked" ? 0.52
-              : sideEdge ? (isActivePath ? 0.72 : 0.42)
-                : choiceGroup ? (isActivePath ? 0.64 : 0.4)
-                  : baseOpacity;
+              : loopEdge ? (isActivePath ? 0.66 : 0.38)
+                : sideEdge ? (isActivePath ? 0.72 : 0.42)
+                  : choiceGroup ? (isActivePath ? 0.64 : 0.4)
+                    : baseOpacity;
         const strokeWidth = statusState === "played" ? 4
           : statusState === "available" ? 3.4
-            : sideEdge ? (selected ? 3.2 : 2.1)
-              : choiceGroup ? (selected ? 3.2 : 2)
-                : isActivePath ? (selected ? 4 : 2.8) : (selected ? 3.2 : 2.2);
+            : loopEdge ? (selected ? 3.2 : 2)
+              : sideEdge ? (selected ? 3.2 : 2.1)
+                : choiceGroup ? (selected ? 3.2 : 2)
+                  : isActivePath ? (selected ? 4 : 2.8) : (selected ? 3.2 : 2.2);
         const stroke = statusState === "blocked" ? "#b91c1c" : statusState === "locked" ? "#9a9288" : color;
         const dash = !isActivePath
-          ? (sideEdge ? ' stroke-dasharray="3 5"' : ' stroke-dasharray="8 7"')
-          : (sideEdge ? ' stroke-dasharray="5 4"' : "");
+          ? (loopEdge ? ' stroke-dasharray="2 7"' : sideEdge ? ' stroke-dasharray="3 5"' : ' stroke-dasharray="8 7"')
+          : (loopEdge ? ' stroke-dasharray="2 6"' : sideEdge ? ' stroke-dasharray="5 4"' : "");
         body.push(`<path d="${geometry.linePath}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}"${dash} />`);
         if (geometry.arrowPoints) {
           body.push(`<polygon points="${geometry.arrowPoints}" fill="${stroke}" opacity="${opacity}" />`);
@@ -2025,9 +2097,9 @@
       if (!selectedIds.length) selectedIds.push(sceneId);
       const dragItems = selectedIds.map((id) => {
         const nodeModel = nodeById.get(Number(id));
-        const dragPath = editablePathForNode(Number(id), nodeModel && nodeModel.pathIds);
+        const dragPaths = editablePathsForNode(Number(id), nodeModel && nodeModel.pathIds);
         const current = model.layout.positions[Number(id)];
-        return dragPath && current ? { id: Number(id), path: dragPath, current } : null;
+        return dragPaths.length && current ? { id: Number(id), paths: dragPaths, current } : null;
       }).filter(Boolean);
       const startX = event.clientX;
       const startY = event.clientY;
@@ -2043,8 +2115,10 @@
             x: Number(item.current.x || 0) + dx,
             y: Number(item.current.y || 0) + dy,
           };
-          const manual = ensureManualLayout(pathKey(item.path));
-          manual[item.id] = canvasToPathLocalPosition(model, item.path, nextPosition);
+          item.paths.forEach((path) => {
+            const manual = ensureManualLayout(pathKey(path));
+            manual[item.id] = canvasToPathLocalPosition(model, path, nextPosition);
+          });
         });
         if (dragItems.length) {
           saveLayouts();
@@ -2091,17 +2165,28 @@
   }
 
   function editablePathForNode(sceneId, nodePathIds = []) {
+    const paths = editablePathsForNode(sceneId, nodePathIds);
+    return paths[0] || null;
+  }
+
+  function editablePathsForNode(sceneId, nodePathIds = []) {
     const id = Number(sceneId || 0);
     const target = activePath();
-    if (target && Graph.getPathSceneIds(target).includes(id)) return target;
     const ids = Array.isArray(nodePathIds) ? nodePathIds.map(String).filter(Boolean) : [];
-    if (ids.length === 1) return pathById(ids[0]);
-    return null;
+    const paths = ids
+      .map((pathId) => pathById(pathId))
+      .filter((path) => path && Graph.getPathSceneIds(path).includes(id));
+    if (paths.length) return paths;
+    if (target && Graph.getPathSceneIds(target).includes(id)) return [target];
+    return [];
   }
 
   function edgePathIdForSource(pathIds = []) {
-    void pathIds;
-    return activeKey();
+    const ids = Array.isArray(pathIds) ? pathIds.map(String).filter(Boolean) : [];
+    const active = activeKey();
+    if (ids.length === 1) return ids[0];
+    if (active && ids.includes(active)) return active;
+    return "";
   }
 
   function startEdgeDrag(fromSceneId, event, options = {}) {
@@ -2158,7 +2243,13 @@
   function edgeIssueMessage(issue) {
     const code = String(issue || "");
     if (code.startsWith("path_cycle:")) {
-      return "Deze verbinding zou een loop maken. Paden kunnen alleen vooruit lopen.";
+      return "Deze gewone pijl zou een loop maken. Gebruik een terugkoppeling voor terug-lijnen.";
+    }
+    if (code.startsWith("path_loop_start_target:")) {
+      return "Een terugkoppeling naar een startnode kan niet.";
+    }
+    if (code.startsWith("path_loop_direction:")) {
+      return "Een terugkoppeling moet terugwijzen naar iets dat al voor deze node ligt.";
     }
     if (code.startsWith("path_single_start_required:")) {
       return "Er is al een start in dit pad. Verbind nieuwe nodes vanuit het bestaande pad.";
@@ -2187,14 +2278,23 @@
     const hasTo = sceneIds.includes(targetSceneId);
     materializeLegacyEdges(path);
     const nextSceneIds = Graph.normalizeIdList([...Graph.getPathSceneIds(path), fromSceneId, targetSceneId]);
-    const edge = { fromSceneId, toSceneId: targetSceneId };
+    let edge = { fromSceneId, toSceneId: targetSceneId };
     const candidatePath = {
       ...path,
       sceneIds: nextSceneIds,
       edges: path.edges || [],
       edgeMode: "manual",
     };
-    const issue = Graph.edgeCandidateIssue(candidatePath, edge.fromSceneId, edge.toSceneId, { fallback: true });
+    let issue = Graph.edgeCandidateIssue(candidatePath, edge.fromSceneId, edge.toSceneId, { fallback: true });
+    if (String(issue || "").startsWith("path_cycle:")) {
+      const loopIssue = Graph.edgeCandidateIssue(candidatePath, edge.fromSceneId, edge.toSceneId, { fallback: true, edgeType: "loop" });
+      if (!loopIssue) {
+        edge = { ...edge, edgeType: "loop" };
+        issue = "";
+      } else {
+        issue = loopIssue;
+      }
+    }
     if (issue) {
       toast(edgeIssueMessage(issue), true);
       return;
@@ -2325,22 +2425,48 @@
     renderCanvas();
   }
 
-  function toggleEdgeType(key) {
+  function edgeWithType(edge, edgeType = "") {
+    const next = { fromSceneId: edge.fromSceneId, toSceneId: edge.toSceneId };
+    const normalizedType = Graph.normalizeEdgeType(edgeType);
+    if (normalizedType) next.edgeType = normalizedType;
+    return next;
+  }
+
+  function setEdgeType(key, edgeType = "") {
     const parsed = parsePathEdgeSelectionKey(key);
     const path = pathById(parsed.pathId) || activePath();
     const edgeKey = parsed.edgeKey || key;
     if (!path || !edgeKey) return;
     materializeLegacyEdges(path);
+    const current = (path.edges || []).find((edge) => Graph.edgeKey(edge) === edgeKey);
+    if (!current) return;
+    const normalizedType = Graph.normalizeEdgeType(edgeType);
+    const issue = Graph.edgeCandidateIssue(path, current.fromSceneId, current.toSceneId, {
+      fallback: false,
+      edgeType: normalizedType,
+      ignoreEdgeKey: edgeKey,
+    });
+    if (issue) {
+      toast(edgeIssueMessage(issue), true);
+      return;
+    }
     path.edges = (path.edges || []).map((edge) => {
       if (Graph.edgeKey(edge) !== edgeKey) return edge;
-      const next = { fromSceneId: edge.fromSceneId, toSceneId: edge.toSceneId };
-      if (!Graph.isOptionalEdge(edge)) next.edgeType = "optional";
-      return next;
+      return edgeWithType(edge, normalizedType);
     });
     const sceneIds = Graph.getPathSceneIds(path);
     path.thresholds = Graph.normalizeThresholdsForEdges(path.thresholds || [], sceneIds, path.edges || []);
     markDirty(path);
     renderCanvas();
+  }
+
+  function toggleEdgeType(key) {
+    const parsed = parsePathEdgeSelectionKey(key);
+    const path = pathById(parsed.pathId) || activePath();
+    const edgeKey = parsed.edgeKey || key;
+    const current = path && (path.edges || []).find((edge) => Graph.edgeKey(edge) === edgeKey);
+    if (!current || Graph.isLoopEdge(current)) return;
+    setEdgeType(key, Graph.isOptionalEdge(current) ? "" : "optional");
   }
 
   function renderMiniMap(model, ghosts = []) {
