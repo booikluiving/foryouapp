@@ -13,6 +13,7 @@ const {
   normalizeAlgorithmSettings,
   normalizePerformer,
   normalizePath,
+  normalizePathEdgeType,
   normalizePathBlockRules,
   normalizeCrossingThresholdsForPaths,
   normalizePathThresholdsForEdges,
@@ -1479,6 +1480,37 @@ function testPathValidation() {
   assert.strictEqual(cycle.ok, false);
   assert(cycle.issues.some((issue) => issue.startsWith("path_cycle:")));
 
+  assert.strictEqual(normalizePathEdgeType("terugkoppeling"), "loop");
+  const loop = validateAlgorithmPath({
+    id: 12,
+    name: "Terugkoppeling",
+    sceneIds: [1, 2, 3],
+    edges: [
+      { fromSceneId: 1, toSceneId: 2 },
+      { fromSceneId: 2, toSceneId: 3 },
+      { fromSceneId: 3, toSceneId: 2, edgeType: "loop" },
+    ],
+    edgeMode: "manual",
+    isActive: true,
+  }, { scenes });
+  assert.strictEqual(loop.ok, true);
+  assert.deepStrictEqual(normalizePath(loop.path).edges[2], { fromSceneId: 3, toSceneId: 2, edgeType: "loop" });
+
+  const loopToStart = validateAlgorithmPath({
+    id: 13,
+    name: "Loop naar start",
+    sceneIds: [1, 2, 3],
+    edges: [
+      { fromSceneId: 1, toSceneId: 2 },
+      { fromSceneId: 2, toSceneId: 3 },
+      { fromSceneId: 3, toSceneId: 1, edgeType: "loop" },
+    ],
+    edgeMode: "manual",
+    isActive: true,
+  }, { scenes });
+  assert.strictEqual(loopToStart.ok, false);
+  assert(loopToStart.issues.includes("path_loop_start_target:1"));
+
   const missing = validateAlgorithmPath({
     id: 3,
     name: "Mist",
@@ -1638,6 +1670,44 @@ function testPathMergeWaitsForAllPredecessors() {
     settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
   });
   assert.strictEqual(afterBothBranches.rows.find((entry) => entry.sceneId === 4).blocked, false);
+}
+
+function testLoopEdgeCountsAsRequiredPredecessor() {
+  const scenes = pathTestScenes();
+  const catalog = {
+    scenes,
+    paths: [{
+      id: 1,
+      name: "Terugkoppeling",
+      sceneIds: [1, 2, 3, 4],
+      edges: [
+        { fromSceneId: 1, toSceneId: 2 },
+        { fromSceneId: 1, toSceneId: 3 },
+        { fromSceneId: 2, toSceneId: 4 },
+        { fromSceneId: 3, toSceneId: 4 },
+        { fromSceneId: 4, toSceneId: 2, edgeType: "loop" },
+      ],
+      thresholds: [{ sourceSceneId: 4, requiredCount: 1 }],
+      isActive: true,
+    }],
+  };
+  const validation = validateAlgorithmPath(catalog.paths[0], { scenes });
+  assert.strictEqual(validation.ok, true);
+
+  const order = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [
+      { id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 2, sceneId: 3, runOrder: 2, endedAt: "2026-01-01T00:01:00.000Z" },
+      { id: 3, sceneId: 4, runOrder: 3, endedAt: "2026-01-01T00:02:00.000Z" },
+    ],
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
+  });
+  const loopTarget = order.rows.find((entry) => entry.sceneId === 2);
+  assert.strictEqual(loopTarget.blocked, false);
+  assert.strictEqual(loopTarget.nodeStatus, "Available");
+  assert.deepStrictEqual(loopTarget.pathStatus.requiredPredecessorIds, [1, 4]);
 }
 
 function testPathThresholdNormalization() {
@@ -2181,6 +2251,7 @@ testEndNodesAreExplicitOnly();
 testPathStartAndSuccessorGate();
 testPathSplitUnlocksBoth();
 testPathMergeWaitsForAllPredecessors();
+testLoopEdgeCountsAsRequiredPredecessor();
 testPathThresholdNormalization();
 testCrossingThresholdNormalization();
 testCrossingThresholdsGateCrossingFunnels();

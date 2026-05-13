@@ -36,6 +36,7 @@ const {
   normalizeLabel,
   normalizeLockedQueue,
   normalizePath,
+  normalizePathEdgeType,
   normalizePathBlockRules,
   normalizeIgnoreCrossingBlockSceneIds,
   normalizeCrossingThresholdsForPaths,
@@ -6583,7 +6584,7 @@ function replaceAlgorithmPathLinks(pathId, sceneIds = [], edges = [], thresholds
   (Array.isArray(edges) ? edges : []).forEach((edge, index) => {
     const fromSceneId = Number(edge && edge.fromSceneId || 0);
     const toSceneId = Number(edge && edge.toSceneId || 0);
-    const edgeType = String(edge && edge.edgeType || "").trim().toLowerCase() === "optional" ? "optional" : "required";
+    const edgeType = normalizePathEdgeType(edge && edge.edgeType) || "required";
     if (!fromSceneId || !toSceneId || fromSceneId === toSceneId) return;
     sql.insertAlgorithmPathEdge.run(safePathId, fromSceneId, toSceneId, edgeType, (index + 1) * 10, now, now);
   });

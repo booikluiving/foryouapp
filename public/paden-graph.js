@@ -37,12 +37,23 @@
     const fromSceneId = normalizeId(src.fromSceneId || src.from || src.sourceSceneId || src.source);
     const toSceneId = normalizeId(src.toSceneId || src.to || src.targetSceneId || src.target);
     if (!fromSceneId || !toSceneId || fromSceneId === toSceneId) return null;
-    const edgeType = String(src.edgeType || src.type || "").trim().toLowerCase() === "optional" ? "optional" : "";
+    const edgeType = normalizeEdgeType(src.edgeType || src.type);
     return edgeType ? { fromSceneId, toSceneId, edgeType } : { fromSceneId, toSceneId };
+  }
+
+  function normalizeEdgeType(value) {
+    const key = String(value || "").trim().toLowerCase();
+    if (key === "optional") return "optional";
+    if (["loop", "terug", "terugkoppeling", "feedback", "back"].includes(key)) return "loop";
+    return "";
   }
 
   function isOptionalEdge(edge) {
     return String(edge && edge.edgeType || "").trim().toLowerCase() === "optional";
+  }
+
+  function isLoopEdge(edge) {
+    return normalizeEdgeType(edge && edge.edgeType) === "loop";
   }
 
   function normalizeThreshold(threshold) {
@@ -298,7 +309,8 @@
     const ids = normalizeIdList(sceneIds);
     const order = new Map(ids.map((id, index) => [id, index]));
     const normalizedEdges = normalizeEdges(edges, ids);
-    const { incoming } = buildAdjacency(ids, normalizedEdges);
+    const rankEdges = normalizedEdges.filter((edge) => !isLoopEdge(edge));
+    const { incoming } = buildAdjacency(ids, rankEdges);
     const remainingIncoming = new Map(ids.map((id) => [id, (incoming.get(id) || []).length]));
     const ranks = new Map(ids.map((id) => [id, 0]));
     const visited = new Set();
@@ -310,7 +322,7 @@
       const id = queue.shift();
       if (!id || visited.has(id)) continue;
       visited.add(id);
-      normalizedEdges
+      rankEdges
         .filter((edge) => edge.fromSceneId === id)
         .forEach((edge) => {
           const toId = edge.toSceneId;
@@ -466,14 +478,28 @@
     const sceneIds = getPathSceneIds(path);
     const fromId = normalizeId(fromSceneId);
     const toId = normalizeId(toSceneId);
+    const candidateType = normalizeEdgeType(options.edgeType);
+    const ignoreEdgeKey = String(options.ignoreEdgeKey || "");
     if (!fromId || !toId || fromId === toId) return `path_edge_self:${fromId || toId || 0}`;
     if (!sceneIds.includes(fromId)) return `path_edge_scene_missing:${fromId}`;
     if (!sceneIds.includes(toId)) return `path_edge_scene_missing:${toId}`;
-    const edges = getRenderableEdges(path, options);
+    const edges = getRenderableEdges(path, options)
+      .filter((edge) => !ignoreEdgeKey || edgeKey(edge) !== ignoreEdgeKey);
     const key = `${fromId}:${toId}`;
     if (edges.some((edge) => edgeKey(edge) === key)) return `path_edge_duplicate:${key}`;
-    const candidateEdges = [...edges, { fromSceneId: fromId, toSceneId: toId }];
-    if (canReachScene(toId, fromId, edges, sceneIds)) return `path_cycle:${fromId}`;
+    const candidateEdge = candidateType
+      ? { fromSceneId: fromId, toSceneId: toId, edgeType: candidateType }
+      : { fromSceneId: fromId, toSceneId: toId };
+    const nonLoopEdges = edges.filter((edge) => !isLoopEdge(edge));
+    const createsLoop = canReachScene(toId, fromId, nonLoopEdges, sceneIds);
+    if (candidateType === "loop") {
+      if (!createsLoop) return `path_loop_direction:${fromId}`;
+      const incomingBefore = (buildAdjacency(sceneIds, nonLoopEdges).incoming.get(toId) || []);
+      if (!incomingBefore.length) return `path_loop_start_target:${toId}`;
+    } else if (createsLoop) {
+      return `path_cycle:${fromId}`;
+    }
+    const candidateEdges = [...edges, candidateEdge];
     const componentCount = connectedComponentCount(sceneIds, candidateEdges);
     if (componentCount > 1) return `path_disconnected_components:${componentCount}`;
     return "";
@@ -1069,7 +1095,9 @@
     normalizeId,
     normalizeIdList,
     normalizeEdge,
+    normalizeEdgeType,
     isOptionalEdge,
+    isLoopEdge,
     normalizeThreshold,
     normalizeThresholds,
     normalizeCrossingThreshold,

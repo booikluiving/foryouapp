@@ -56,6 +56,12 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  Graph.normalizeEdges([{ fromSceneId: 3, toSceneId: 2, edgeType: "terugkoppeling" }], [2, 3]),
+  [{ fromSceneId: 3, toSceneId: 2, edgeType: "loop" }]
+);
+assert.equal(Graph.isLoopEdge({ fromSceneId: 3, toSceneId: 2, edgeType: "loop" }), true);
+
+assert.deepEqual(
   Graph.getRenderableEdges({ sceneIds: [7, 8, 9], edges: [] }),
   [
     { fromSceneId: 7, toSceneId: 8 },
@@ -177,6 +183,32 @@ assert.equal(
   }, 3, 1),
   "path_cycle:3"
 );
+
+assert.equal(
+  Graph.edgeCandidateIssue({
+    sceneIds: [1, 2, 3],
+    edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 2, toSceneId: 3 }],
+    edgeMode: "manual",
+  }, 3, 2, { edgeType: "loop" }),
+  ""
+);
+
+assert.equal(
+  Graph.edgeCandidateIssue({
+    sceneIds: [1, 2, 3],
+    edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 2, toSceneId: 3 }],
+    edgeMode: "manual",
+  }, 3, 1, { edgeType: "loop" }),
+  "path_loop_start_target:1"
+);
+
+const loopRanks = Graph.computeRanks(
+  [1, 2, 3],
+  [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 2, toSceneId: 3 }, { fromSceneId: 3, toSceneId: 2, edgeType: "loop" }]
+);
+assert.equal(loopRanks.get(1), 0);
+assert.equal(loopRanks.get(2), 1);
+assert.equal(loopRanks.get(3), 2);
 
 assert.equal(
   Graph.edgeCandidateIssue({
@@ -483,6 +515,27 @@ statuses = Graph.buildPathSceneStatuses({
   playedSceneIds: [1, 2],
 });
 assert.equal(statuses.get(3).nodeStatus, "Blocked");
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [{
+    id: 1,
+    name: "Terugkoppeling",
+    sceneIds: [1, 2, 3, 4],
+    edges: [
+      { fromSceneId: 1, toSceneId: 2 },
+      { fromSceneId: 1, toSceneId: 3 },
+      { fromSceneId: 2, toSceneId: 4 },
+      { fromSceneId: 3, toSceneId: 4 },
+      { fromSceneId: 4, toSceneId: 2, edgeType: "loop" },
+    ],
+    thresholds: [{ sourceSceneId: 4, requiredCount: 1 }],
+    isActive: true,
+  }],
+  playedSceneIds: [1, 3, 4],
+});
+assert.equal(statuses.get(2).nodeStatus, "Available");
+assert.deepEqual(statuses.get(2).requiredPredecessorIds, [1, 4]);
 
 statuses = Graph.buildPathSceneStatuses({
   scenes: testScenes,
