@@ -26,7 +26,6 @@
   const ZOOM_MIN = 0.55;
   const ZOOM_MAX = 2;
   const ZOOM_STEP = 0.1;
-  const MAX_SELECTED_PATHS = 3;
   const WORLD_PAD_X = 2400;
   const WORLD_PAD_Y = 520;
 
@@ -396,13 +395,7 @@
     if (!activePath()) activePathId = selectedPathIds.size ? Array.from(selectedPathIds)[0] : validKeys[0];
     selectedPathIds.add(activeKey());
     const ordered = validKeys.filter((key) => selectedPathIds.has(key));
-    let keep = ordered.includes(activeKey()) ? ordered : [activeKey(), ...ordered].filter(Boolean);
-    if (keep.length > MAX_SELECTED_PATHS) {
-      const activeIndex = keep.indexOf(activeKey());
-      keep = activeIndex >= MAX_SELECTED_PATHS
-        ? [...keep.slice(0, MAX_SELECTED_PATHS - 1), activeKey()]
-        : keep.slice(0, MAX_SELECTED_PATHS);
-    }
+    const keep = ordered.includes(activeKey()) ? ordered : [activeKey(), ...ordered].filter(Boolean);
     selectedPathIds = new Set(keep);
     savePrefs();
   }
@@ -643,7 +636,7 @@
       }
       pathPositions.set(key, worldPositions);
       pathEdges.set(key, Graph.getRenderableEdges(path, { fallback: true }));
-      pathEndpoints.set(key, Graph.pathEndpoints(path, { fallback: true, connectedOnly: true }));
+      pathEndpoints.set(key, Graph.pathEndpoints(path, { fallback: true }));
     });
 
     const worldNodes = Array.from(composed.values());
@@ -717,6 +710,7 @@
     const bar = $("chipbar");
     const paths = activePaths();
     const selectedCount = paths.filter((path) => selectedPathIds.has(pathKey(path))).length;
+    const allSelected = !!paths.length && selectedCount === paths.length;
     const chips = paths.map((path) => {
       const key = pathKey(path);
       const isSelected = selectedPathIds.has(key);
@@ -737,8 +731,9 @@
     bar.innerHTML = `
       <span class="barLabel">Paden</span>
       <button type="button" class="chipAction primary" data-new-path>+ Nieuw pad</button>
+      <button type="button" class="chipAction" data-select-all-paths ${allSelected ? "disabled" : ""}>Alles aan</button>
       ${chips || '<span class="chip">Nog geen paden</span>'}
-      <span class="barHint">${selectedCount}/${MAX_SELECTED_PATHS} geselecteerd</span>
+      <span class="barHint">${selectedCount}/${paths.length} zichtbaar</span>
       <span style="flex:1"></span>
       <label class="switch">
         <input id="showNeighborsToggle" type="checkbox" ${showNeighbors ? "checked" : ""} />
@@ -749,6 +744,8 @@
 
     const newPathBtn = bar.querySelector("[data-new-path]");
     if (newPathBtn) newPathBtn.addEventListener("click", () => openPathModal("new"));
+    const selectAllPathsBtn = bar.querySelector("[data-select-all-paths]");
+    if (selectAllPathsBtn) selectAllPathsBtn.addEventListener("click", selectAllPaths);
     bar.querySelectorAll("[data-path-check]").forEach((button) => {
       button.addEventListener("click", () => {
         setPathSelected(button.dataset.pathCheck, button.dataset.selected !== "true");
@@ -784,6 +781,15 @@
     return true;
   }
 
+  function selectAllPaths() {
+    const keys = activePaths().map(pathKey).filter(Boolean);
+    if (!keys.length) return;
+    selectedPathIds = new Set(keys);
+    if (!activePath()) activePathId = keys[0];
+    savePrefs();
+    renderAll();
+  }
+
   function setPathSelected(nextId, selected) {
     const key = String(nextId || "");
     if (!key) return;
@@ -808,11 +814,6 @@
       return;
     }
     if (isSelected) {
-      renderChips();
-      return;
-    }
-    if (selectedPathIds.size >= MAX_SELECTED_PATHS) {
-      toast(`Je kunt maximaal ${MAX_SELECTED_PATHS} paden tegelijk selecteren.`, true);
       renderChips();
       return;
     }
