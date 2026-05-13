@@ -70,7 +70,7 @@ assert.deepEqual(
 
 assert.deepEqual(
   Graph.effectiveEndSceneIds({ sceneIds: [7, 8, 9], edges: [] }),
-  [9]
+  []
 );
 
 assert.deepEqual(
@@ -85,6 +85,11 @@ assert.deepEqual(
     edgeMode: "manual",
   }),
   []
+);
+
+assert.deepEqual(
+  Graph.effectiveEndSceneIds({ sceneIds: [7, 8, 9], edges: [], endSceneIds: [9] }),
+  [9]
 );
 
 assert.deepEqual(
