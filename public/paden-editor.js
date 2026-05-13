@@ -7,11 +7,19 @@
   const PREF_KEY = "paden_editor_prefs_v1";
   const NODE_W = Graph.DEFAULT_NODE_W;
   const NODE_H = Graph.DEFAULT_NODE_H;
-  const COLORS = [
-    "#14b8a6", "#f97316", "#8b5cf6", "#3b82f6", "#ec4899", "#84cc16",
-    "#f59e0b", "#06b6d4", "#ef4444", "#10b981", "#a855f7", "#0ea5e9",
+  const PATH_COLOR_ROWS = [
+    ["#111111", "#2f2f2f", "#545454", "#737373", "#969696", "#b7b7b7", "#d0d0d0", "#e0e0e0", "#ececec", "#f5f5f5"],
+    ["#b80000", "#e53935", "#fb8c00", "#fdd835", "#43a047", "#00acc1", "#039be5", "#1e88e5", "#8e24aa", "#d81b60"],
+    ["#f4cccc", "#fce5cd", "#fff2cc", "#d9ead3", "#d0e0e3", "#cfe2f3", "#c9daf8", "#d9d2e9", "#ead1dc", "#f8d3e0"],
+    ["#ea9999", "#f9cb9c", "#ffe599", "#b6d7a8", "#a2c4c9", "#9fc5e8", "#6fa8dc", "#b4a7d6", "#d5a6bd", "#e89bbd"],
+    ["#cc4125", "#e69138", "#f1c232", "#6aa84f", "#45818e", "#3d85c6", "#1155cc", "#674ea7", "#a64d79", "#c27ba0"],
+    ["#a61c00", "#b45f06", "#bf9000", "#38761d", "#134f5c", "#0b5394", "#1c4587", "#351c75", "#741b47", "#4c1130"],
+    ["#7f1d1d", "#7f2f00", "#7f6000", "#274e13", "#0c343d", "#073763", "#1f3a63", "#20124d", "#4a0f40", "#660033"],
+    ["#ff6f61", "#f4b183", "#ffe066", "#76d64b", "#4dd0c8", "#5bc0eb", "#5e8ee7", "#7e57c2", "#ba68c8", "#f06292"],
   ];
-  const DEFAULT_COLOR = COLORS[0];
+  const COLORS = PATH_COLOR_ROWS.flat();
+  const AUTO_COLOR_ORDER = PATH_COLOR_ROWS.slice(1).flat().concat(PATH_COLOR_ROWS[0]);
+  const DEFAULT_COLOR = AUTO_COLOR_ORDER[0];
   const ARROW_LEN = 18;
   const ARROW_HALF = 10;
   const ARROW_GAP = 9;
@@ -19,10 +27,15 @@
   const ZOOM_MAX = 2;
   const ZOOM_STEP = 0.1;
   const MAX_SELECTED_PATHS = 3;
+  const WORLD_PAD_X = 2400;
+  const WORLD_PAD_Y = 520;
 
   let token = "";
-  let state = { scenes: [], paths: [], crossingThresholds: [] };
+  let state = { scenes: [], paths: [], crossingThresholds: [], characters: [], situations: [], environments: [] };
   let sceneById = new Map();
+  let characterById = new Map();
+  let situationById = new Map();
+  let environmentById = new Map();
   let activePathId = "";
   let selectedPathIds = new Set();
   let selectedNodeId = 0;
@@ -30,17 +43,23 @@
   let expandedNodeIds = new Set();
   let selectedEdgeKey = "";
   let dirtyPathIds = new Set();
-  let dirtyCrossingSceneIds = new Set();
   let saving = false;
   let searchQ = "";
   let jumpQ = "";
   let layouts = {};
   let showNeighbors = true;
   let canvasZoom = 1;
+  let scenePaneCollapsed = false;
+  let inspectorCollapsed = false;
   let dragEdge = null;
   let marquee = null;
   let pinchGesture = null;
   let modalMode = "edit";
+  let testMode = false;
+  let testPlayedSceneIds = [];
+  let testResultCache = null;
+  let compositionTransformCache = {};
+  let miniMapBounds = null;
 
   const $ = (id) => document.getElementById(id);
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
@@ -56,6 +75,8 @@
     const clean = String(value || "").replace(/[^#(),.%a-zA-Z0-9 -]/g, "").trim();
     return clean || fallback;
   };
+  const colorKey = (value) => colorValue(value).toLowerCase();
+  const rawColorKey = (value) => colorValue(value, "").toLowerCase();
   const clampZoom = (value) => {
     const parsed = Number(value);
     const safe = Number.isFinite(parsed) ? parsed : 1;
@@ -71,9 +92,13 @@
       selectedPathIds = new Set((prefs.selectedPathIds || prefs.visiblePathIds || []).map(String));
       activePathId = String(prefs.activePathId || "");
       canvasZoom = clampZoom(prefs.canvasZoom || 1);
+      scenePaneCollapsed = !!prefs.scenePaneCollapsed;
+      inspectorCollapsed = !!prefs.inspectorCollapsed;
     } catch {
       selectedPathIds = new Set();
       canvasZoom = 1;
+      scenePaneCollapsed = false;
+      inspectorCollapsed = false;
     }
   }
 
@@ -96,8 +121,40 @@
         selectedPathIds: Array.from(selectedPathIds),
         showNeighbors,
         canvasZoom,
+        scenePaneCollapsed,
+        inspectorCollapsed,
       }));
     } catch {}
+  }
+
+  function applyPanelState() {
+    const leftPane = $("leftPane");
+    if (leftPane) leftPane.classList.toggle("collapsed", !!scenePaneCollapsed);
+    const sceneCollapse = $("scenePaneCollapseBtn");
+    if (sceneCollapse) {
+      sceneCollapse.textContent = scenePaneCollapsed ? ">" : "<";
+      sceneCollapse.title = scenePaneCollapsed ? "Situaties uitklappen" : "Situaties inklappen";
+    }
+    const inspector = $("inspectorPane");
+    if (inspector) inspector.classList.toggle("collapsed", !!inspectorCollapsed);
+    const inspectorToggle = $("inspectorToggleBtn");
+    if (inspectorToggle) {
+      inspectorToggle.textContent = inspectorCollapsed ? "+" : "-";
+      inspectorToggle.title = inspectorCollapsed ? "Node info uitklappen" : "Node info inklappen";
+    }
+  }
+
+  function setScenePaneCollapsed(nextCollapsed) {
+    scenePaneCollapsed = !!nextCollapsed;
+    applyPanelState();
+    savePrefs();
+    renderCanvas();
+  }
+
+  function setInspectorCollapsed(nextCollapsed) {
+    inspectorCollapsed = !!nextCollapsed;
+    applyPanelState();
+    savePrefs();
   }
 
   function clearNodeSelection() {
@@ -188,7 +245,7 @@
     const el = $("saveState");
     el.classList.remove("saved", "dirty", "saving");
     el.classList.add(kind);
-    const dirtyCount = dirtyPathIds.size + dirtyCrossingSceneIds.size;
+    const dirtyCount = dirtyPathIds.size;
     el.querySelector(".txt").textContent =
       kind === "saving" ? "Opslaan..." :
       kind === "dirty" ? `${dirtyCount || 1} niet opgeslagen` :
@@ -198,21 +255,14 @@
   function markDirty(pathOrKey = activePath()) {
     const key = typeof pathOrKey === "string" ? pathOrKey : pathKey(pathOrKey);
     if (key) dirtyPathIds.add(key);
-    setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
+    setSaveState(dirtyPathIds.size ? "dirty" : "saved");
     if ($("chipbar")) renderChips();
-  }
-
-  function markCrossingDirty(sceneId) {
-    const id = Number(sceneId || 0);
-    if (!id) return;
-    dirtyCrossingSceneIds.add(id);
-    setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
   }
 
   function markClean(pathOrKey) {
     const key = typeof pathOrKey === "string" ? pathOrKey : pathKey(pathOrKey);
     if (key) dirtyPathIds.delete(key);
-    setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
+    setSaveState(dirtyPathIds.size ? "dirty" : "saved");
     if ($("chipbar")) renderChips();
   }
 
@@ -231,13 +281,66 @@
     return (state.paths || []).filter((path) => path && path.isActive !== false && !path.archivedAt);
   }
 
+  function activeScenes() {
+    return (state.scenes || []).filter((scene) => scene && scene.isActive !== false && !scene.archivedAt);
+  }
+
+  function testPathNumericId(path, index = 0) {
+    const numeric = Number.parseInt(String(path && path.id || ""), 10);
+    return Number.isInteger(numeric) && numeric > 0 ? numeric : 100000 + index;
+  }
+
+  function testSimulationPaths() {
+    return activePaths().map((path, index) => {
+      const sceneIds = Graph.getPathSceneIds(path);
+      const edges = edgesForSave(path);
+      return {
+        id: testPathNumericId(path, index),
+        name: path.name || "Naamloos pad",
+        color: path.color || DEFAULT_COLOR,
+        edgeMode: "manual",
+        sceneIds,
+        edges,
+        thresholds: Graph.normalizeThresholdsForEdges(path.thresholds || [], sceneIds, edges),
+        endSceneIds: Graph.normalizeIdList(path.endSceneIds || []).filter((id) => sceneIds.includes(Number(id))),
+        blockRules: Graph.normalizeBlockRules(path.blockRules || [], sceneIds),
+        ignoreCrossingBlockSceneIds: Graph.normalizeIgnoreCrossingBlockSceneIds(path, sceneIds),
+        isActive: path.isActive !== false,
+        archivedAt: path.archivedAt || "",
+      };
+    });
+  }
+
+  function getTestResult() {
+    if (!testMode) return null;
+    if (testResultCache) return testResultCache;
+    const simPaths = testSimulationPaths();
+    const pathIdByKey = new Map(activePaths().map((path, index) => [pathKey(path), testPathNumericId(path, index)]));
+    const statuses = Graph.buildPathSceneStatuses({
+      paths: simPaths,
+      scenes: activeScenes(),
+      playedSceneIds: testPlayedSceneIds,
+      crossingThresholds: [],
+    });
+    const playedSet = new Set(Graph.normalizeIdList(testPlayedSceneIds));
+    testResultCache = { statuses, playedSet, pathIdByKey };
+    return testResultCache;
+  }
+
+  function invalidateTestResult() {
+    testResultCache = null;
+  }
+
   function normalizeEditorState(data) {
     const src = data && typeof data === "object" ? data : {};
     const catalog = src.catalog && typeof src.catalog === "object" ? src.catalog : src;
     return {
       scenes: Array.isArray(catalog.scenes) ? catalog.scenes : [],
       paths: Array.isArray(catalog.paths) ? catalog.paths : [],
-      crossingThresholds: Array.isArray(catalog.crossingThresholds) ? catalog.crossingThresholds : [],
+      characters: Array.isArray(catalog.characters) ? catalog.characters : [],
+      situations: Array.isArray(catalog.situations) ? catalog.situations : [],
+      environments: Array.isArray(catalog.environments) ? catalog.environments : [],
+      crossingThresholds: [],
     };
   }
 
@@ -274,6 +377,9 @@
 
   function rebuildIndexes() {
     sceneById = new Map((state.scenes || []).map((scene) => [Number(scene.id || 0), scene]));
+    characterById = new Map((state.characters || []).map((character) => [Number(character.id || 0), character]));
+    situationById = new Map((state.situations || []).map((situation) => [Number(situation.id || 0), situation]));
+    environmentById = new Map((state.environments || []).map((environment) => [Number(environment.id || 0), environment]));
   }
 
   function ensureSelection() {
@@ -307,10 +413,10 @@
       rebuildIndexes();
       ensureSelection();
       dirtyPathIds.clear();
-      dirtyCrossingSceneIds.clear();
       setSaveState("saved");
       showApp();
       renderAll();
+      focusPathInView(activeKey(), { behavior: "auto" });
     } catch (err) {
       if (err.status === 401 || show) showLogin(err.status === 401 ? "" : "Kon de paden niet laden.");
       else toast(`Laden mislukt: ${err.message}`, true);
@@ -368,8 +474,8 @@
       const id = Number(sceneId);
       if (!Graph.getPathSceneIds(path).includes(id)) return;
       base.positions[id] = {
-        x: Math.max(20, Number(manual[sceneId].x || 0)),
-        y: Math.max(20, Number(manual[sceneId].y || 0)),
+        x: Number(manual[sceneId].x || 0),
+        y: Number(manual[sceneId].y || 0),
       };
     });
     const values = Object.values(base.positions);
@@ -386,8 +492,8 @@
     Graph.getPathSceneIds(path).forEach((sceneId) => {
       if (manual[sceneId] || !layout.positions[sceneId]) return;
       manual[sceneId] = {
-        x: Math.max(0, Number(layout.positions[sceneId].x || 0)),
-        y: Math.max(0, Number(layout.positions[sceneId].y || 0)),
+        x: Number(layout.positions[sceneId].x || 0),
+        y: Number(layout.positions[sceneId].y || 0),
       };
     });
     return { manual, positions: layout.positions || {} };
@@ -396,8 +502,8 @@
   function viewportNodePosition() {
     const outer = $("canvasOuter");
     return {
-      x: Math.max(20, (outer.scrollLeft + outer.clientWidth / 2) / canvasZoom - NODE_W / 2),
-      y: Math.max(20, (outer.scrollTop + outer.clientHeight / 2) / canvasZoom - NODE_H / 2),
+      x: (outer.scrollLeft + outer.clientWidth / 2) / canvasZoom - NODE_W / 2,
+      y: (outer.scrollTop + outer.clientHeight / 2) / canvasZoom - NODE_H / 2,
     };
   }
 
@@ -405,8 +511,8 @@
     const gapY = NODE_H + 36;
     const gapX = NODE_W + 34;
     const origin = {
-      x: Math.max(20, Number(seed && seed.x || 20)),
-      y: Math.max(20, Number(seed && seed.y || 20)),
+      x: Number(seed && seed.x || 20),
+      y: Number(seed && seed.y || 20),
     };
     const collides = (pos) => occupied.some((other) => (
       Math.abs(Number(other.x || 0) - pos.x) < NODE_W + 16
@@ -422,7 +528,22 @@
     return candidate;
   }
 
-  function addedScenePosition(existingIds = [], currentPositions = {}) {
+  function transformForPath(model, pathOrKey) {
+    const key = typeof pathOrKey === "string" ? pathOrKey : pathKey(pathOrKey);
+    return model && model.pathTransforms && model.pathTransforms.get(key)
+      ? model.pathTransforms.get(key)
+      : { dx: 0, dy: 0 };
+  }
+
+  function canvasToPathLocalPosition(model, pathOrKey, position = {}) {
+    const transform = transformForPath(model, pathOrKey);
+    return {
+      x: Number(position.x || 0) - Number(transform.dx || 0),
+      y: Number(position.y || 0) - Number(transform.dy || 0),
+    };
+  }
+
+  function addedScenePosition(existingIds = [], currentPositions = {}, fallbackSeed = null) {
     const occupied = existingIds
       .map((id) => currentPositions[id])
       .filter(Boolean);
@@ -432,7 +553,7 @@
     const ref = refId ? currentPositions[refId] : null;
     const seed = ref
       ? { x: Number(ref.x || 20), y: Number(ref.y || 20) + NODE_H + 86 }
-      : viewportNodePosition();
+      : (fallbackSeed || viewportNodePosition());
     return openNodePosition(seed, occupied);
   }
 
@@ -455,7 +576,8 @@
     const pathPositions = new Map();
     const pathEndpoints = new Map();
     const pathEdges = new Map();
-    const pathTransforms = new Map();
+    const worldTransforms = new Map();
+    const renderTransforms = new Map();
     let nextX = 380;
 
     paths.forEach((path, index) => {
@@ -466,13 +588,16 @@
       const anchorId = index > 0
         ? sceneIds.find((sceneId) => composed.has(Number(sceneId)) && sourcePositions[sceneId])
         : 0;
-      let dx = 0;
-      let dy = 0;
+      const cachedTransform = compositionTransformCache[key] || null;
+      let dx = Number(cachedTransform && cachedTransform.dx || 0);
+      let dy = Number(cachedTransform && cachedTransform.dy || 0);
 
-      if (anchorId) {
+      if (cachedTransform) {
+        // Stable world transform: selecting another target path should move the camera, not the field.
+      } else if (anchorId) {
         const anchor = composed.get(Number(anchorId));
-        dx = Number(anchor.position.x || 0) - Number(sourcePositions[anchorId].x || 0);
-        dy = Number(anchor.position.y || 0) - Number(sourcePositions[anchorId].y || 0);
+        dx = Number(anchor.worldPosition.x || 0) - Number(sourcePositions[anchorId].x || 0);
+        dy = Number(anchor.worldPosition.y || 0) - Number(sourcePositions[anchorId].y || 0);
       } else if (index > 0) {
         const values = Object.values(sourcePositions);
         const minX = values.length ? Math.min(...values.map((pos) => pos.x)) : 0;
@@ -481,13 +606,14 @@
         dy = 72 + index * 36 - minY;
       }
 
-      const positions = {};
-      pathTransforms.set(key, { dx, dy });
+      const worldPositions = {};
+      if (!cachedTransform) compositionTransformCache[key] = { dx, dy };
+      worldTransforms.set(key, { dx, dy });
       sceneIds.forEach((sceneId) => {
         const id = Number(sceneId);
         const existing = composed.get(id);
         if (existing) {
-          positions[id] = existing.position;
+          worldPositions[id] = existing.worldPosition;
           existing.pathIds.add(key);
           existing.paths.push(path);
           existing.colors.push(colorValue(path.color));
@@ -495,45 +621,85 @@
         }
         const source = sourcePositions[id];
         if (!source) return;
-        const position = {
-          x: Math.max(20, Number(source.x || 0) + dx),
-          y: Math.max(20, Number(source.y || 0) + dy),
+        const worldPosition = {
+          x: Number(source.x || 0) + dx,
+          y: Number(source.y || 0) + dy,
         };
-        positions[id] = position;
+        worldPositions[id] = worldPosition;
         composed.set(id, {
           sceneId: id,
           pathIds: new Set([key]),
           paths: [path],
           colors: [colorValue(path.color)],
-          position,
+          worldPosition,
         });
       });
 
-      const renderedPositions = Object.values(positions);
-      if (renderedPositions.length) {
-        nextX = Math.max(nextX, ...renderedPositions.map((pos) => pos.x + NODE_W + 130));
+      const pathWorldValues = Object.values(worldPositions);
+      if (pathWorldValues.length) {
+        nextX = Math.max(nextX, ...pathWorldValues.map((pos) => pos.x + NODE_W + 130));
       }
-      pathPositions.set(key, positions);
+      pathPositions.set(key, worldPositions);
       pathEdges.set(key, Graph.getRenderableEdges(path, { fallback: true }));
       pathEndpoints.set(key, Graph.pathEndpoints(path, { fallback: true, connectedOnly: true }));
     });
 
-    const nodes = Array.from(composed.values()).map((node) => ({
+    const worldNodes = Array.from(composed.values());
+    const worldPositions = worldNodes.map((node) => node.worldPosition).filter(Boolean);
+    const minWorldX = worldPositions.length ? Math.min(...worldPositions.map((pos) => Number(pos.x || 0))) : 0;
+    const minWorldY = worldPositions.length ? Math.min(...worldPositions.map((pos) => Number(pos.y || 0))) : 0;
+    const offsetX = minWorldX + WORLD_PAD_X < 80 ? 80 - minWorldX : WORLD_PAD_X;
+    const offsetY = minWorldY + WORLD_PAD_Y < 80 ? 80 - minWorldY : WORLD_PAD_Y;
+
+    const nodes = worldNodes.map((node) => ({
       ...node,
       pathIds: Array.from(node.pathIds),
       isShared: node.pathIds.size > 1,
+      position: {
+        x: Number(node.worldPosition.x || 0) + offsetX,
+        y: Number(node.worldPosition.y || 0) + offsetY,
+      },
     }));
+
+    const renderPathPositions = new Map();
+    pathPositions.forEach((positions, key) => {
+      const rendered = {};
+      Object.entries(positions).forEach(([sceneId, pos]) => {
+        rendered[sceneId] = {
+          x: Number(pos.x || 0) + offsetX,
+          y: Number(pos.y || 0) + offsetY,
+        };
+      });
+      renderPathPositions.set(key, rendered);
+    });
+    worldTransforms.forEach((transform, key) => {
+      renderTransforms.set(key, {
+        dx: Number(transform.dx || 0) + offsetX,
+        dy: Number(transform.dy || 0) + offsetY,
+      });
+    });
+
     const allPositions = nodes.map((node) => node.position).filter(Boolean);
     const layout = viewportSizedLayout({
       positions: Object.fromEntries(nodes.map((node) => [node.sceneId, node.position])),
-      width: allPositions.length ? Math.max(820, ...allPositions.map((pos) => pos.x + NODE_W + 90)) : 820,
-      height: allPositions.length ? Math.max(760, ...allPositions.map((pos) => pos.y + NODE_H + 120)) : 760,
+      width: allPositions.length ? Math.max(820, ...allPositions.map((pos) => pos.x + NODE_W + WORLD_PAD_X)) : 820,
+      height: allPositions.length ? Math.max(760, ...allPositions.map((pos) => pos.y + NODE_H + WORLD_PAD_Y)) : 760,
     });
 
-    return { paths, nodes, pathPositions, pathEdges, pathEndpoints, pathTransforms, layout };
+    return {
+      paths,
+      nodes,
+      pathPositions: renderPathPositions,
+      pathEdges,
+      pathEndpoints,
+      pathTransforms: renderTransforms,
+      worldOffset: { x: offsetX, y: offsetY },
+      layout,
+    };
   }
 
   function renderAll() {
+    applyPanelState();
     renderTopMeta();
     renderChips();
     renderSceneList();
@@ -555,19 +721,20 @@
       const isTarget = key === activeKey();
       const isDirty = dirtyPathIds.has(key);
       return `<span class="chip ${isSelected ? "selected" : ""} ${isTarget ? "target" : ""} ${isDirty ? "dirty" : ""}">
-        <label class="pathToggle" title="${isSelected ? "Verberg pad" : "Toon pad"}">
-          <input type="checkbox" data-path-check="${esc(key)}" ${isSelected ? "checked" : ""} />
-          <span></span>
-        </label>
-        <button type="button" data-path-target="${esc(key)}" title="${esc(path.name || "")}">
+        <button type="button" data-path-target="${esc(key)}" title="Klik om te bewerken, dubbelklik voor pad info">
           <span class="dot" style="background:${colorValue(path.color)}"></span>
           <span class="txt">${esc(path.name || "Naamloos pad")}</span>
+          ${isTarget ? '<span class="targetBadge">doel</span>' : ""}
+        </button>
+        <button type="button" class="pathVisibilityToggle ${isSelected ? "isOn" : "isOff"}" data-path-check="${esc(key)}" data-selected="${isSelected ? "true" : "false"}" title="${isSelected ? "Verberg pad" : "Toon pad"}" aria-label="${isSelected ? "Verberg pad" : "Toon pad"}">
+          <span class="visibilityIcon"></span>
         </button>
       </span>`;
     }).join("");
 
     bar.innerHTML = `
       <span class="barLabel">Paden</span>
+      <button type="button" class="chipAction primary" data-new-path>+ Nieuw pad</button>
       ${chips || '<span class="chip">Nog geen paden</span>'}
       <span class="barHint">${selectedCount}/${MAX_SELECTED_PATHS} geselecteerd</span>
       <span style="flex:1"></span>
@@ -578,11 +745,18 @@
       </label>
     `;
 
-    bar.querySelectorAll("[data-path-check]").forEach((input) => {
-      input.addEventListener("change", () => setPathSelected(input.dataset.pathCheck, input.checked));
+    const newPathBtn = bar.querySelector("[data-new-path]");
+    if (newPathBtn) newPathBtn.addEventListener("click", () => openPathModal("new"));
+    bar.querySelectorAll("[data-path-check]").forEach((button) => {
+      button.addEventListener("click", () => {
+        setPathSelected(button.dataset.pathCheck, button.dataset.selected !== "true");
+      });
     });
     bar.querySelectorAll("[data-path-target]").forEach((button) => {
       button.addEventListener("click", () => activatePath(button.dataset.pathTarget));
+      button.addEventListener("dblclick", () => {
+        if (activatePath(button.dataset.pathTarget)) openPathModal("edit");
+      });
     });
     $("showNeighborsToggle").addEventListener("change", (event) => {
       showNeighbors = !!event.target.checked;
@@ -593,13 +767,18 @@
 
   function activatePath(nextId) {
     const key = String(nextId || "");
-    if (!key || key === activeKey()) return true;
+    if (!key) return false;
+    if (key === activeKey()) {
+      focusPathInView(key);
+      return true;
+    }
     if (!pathById(key)) return false;
     activePathId = key;
     clearSelection();
     selectedPathIds.add(key);
     ensureSelection();
     renderAll();
+    focusPathInView(key);
     return true;
   }
 
@@ -618,10 +797,12 @@
         return;
       }
       selectedPathIds.delete(key);
+      const wasActive = key === activeKey();
       if (key === activeKey()) activePathId = Array.from(selectedPathIds)[0] || "";
       clearSelection();
       ensureSelection();
       renderAll();
+      if (wasActive) focusPathInView(activeKey());
       return;
     }
     if (isSelected) {
@@ -642,6 +823,7 @@
     const list = $("sceneList");
     const q = searchQ.toLowerCase();
     const activeSet = new Set(activeSceneIds());
+    const targetSet = new Set(Graph.getPathSceneIds(activePath() || {}));
     const membership = Graph.analyzePathMembership(activePaths());
     const scenes = (state.scenes || [])
       .filter((scene) => scene && scene.isActive !== false && !scene.archivedAt)
@@ -649,12 +831,14 @@
       .sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
 
     $("sceneCount").textContent = scenes.length ? `· ${scenes.length}` : "0";
+    const railCount = $("sceneRailCount");
+    if (railCount) railCount.textContent = String(scenes.length || 0);
     list.innerHTML = scenes.map((scene) => {
       const id = Number(scene.id || 0);
       const dots = (membership.get(id) || []).slice(0, 3).map((item) => (
         `<span title="${esc(item.name)}" style="background:${colorValue(item.color)}"></span>`
       )).join("");
-      return `<div class="sceneRow ${activeSet.has(id) ? "inActive" : ""}" draggable="true" data-scene-id="${id}" title="${esc(scene.title || "")}">
+      return `<div class="sceneRow ${activeSet.has(id) ? "inActive" : ""} ${targetSet.has(id) ? "inTargetPath" : ""}" draggable="true" data-scene-id="${id}" title="${esc(scene.title || "")}">
         <span class="grip"><i></i><i></i><i></i></span>
         <span class="name">${esc(scene.title || `Situatie #${id}`)}</span>
         <span class="scenePathDots">${dots}</span>
@@ -805,6 +989,156 @@
       .map((node) => Number(node.sceneId));
   }
 
+  function sceneTitle(sceneId) {
+    const scene = sceneById.get(Number(sceneId || 0));
+    return scene && scene.title ? scene.title : `Situatie #${Number(sceneId || 0)}`;
+  }
+
+  function testStatusFor(sceneId, testResult = getTestResult()) {
+    return testResult && testResult.statuses ? testResult.statuses.get(Number(sceneId || 0)) || null : null;
+  }
+
+  function testStatusLabel(status) {
+    const value = String(status && status.nodeStatus || "Locked");
+    if (value === "Played") return "Gespeeld";
+    if (value === "Available") return status && status.optional ? "Optioneel" : "Vrij";
+    if (value === "Blocked") return "Geblokkeerd";
+    return "Wacht";
+  }
+
+  function testStatusClass(status) {
+    const value = String(status && status.nodeStatus || "Locked").toLowerCase();
+    return value === "played" || value === "available" || value === "blocked" ? value : "locked";
+  }
+
+  function testReasonForStatus(status) {
+    if (!status) return "Niet in een actief pad.";
+    if (status.nodeStatus === "Played") return "Al gespeeld in deze test.";
+    if (status.nodeStatus === "Available") {
+      if (status.optional) return "Vrij als optionele tak.";
+      if (status.isPathStart) return "Vrij als startnode.";
+      return "Vrijgegeven door de gespeelde voorgangers.";
+    }
+    if (status.expiredOptional) return "Zijtak voorbij: de verplichte route is al verder gegaan.";
+    if (status.pathClosed) return "Pad gesloten door een eindnode.";
+    if (status.blockingRules && status.blockingRules.length) {
+      const source = status.blockingRules[0].sourceSceneId;
+      return `Geblokkeerd door ${sceneTitle(source)}.`;
+    }
+    const threshold = (status.blockingThresholds || []).find((group) => !group.satisfied) || null;
+    if (threshold) {
+      return `Funnel wacht op ${threshold.requiredCount} van ${threshold.outgoingCount} inkomende routes; ${threshold.completedCount} gespeeld.`;
+    }
+    const missing = Graph.normalizeIdList(status.missingPredecessorIds || []);
+    if (missing.length) return `Wacht op ${missing.map(sceneTitle).join(", ")}.`;
+    if (status.isMerge) return "Wacht op inkomende routes.";
+    return "Nog niet vrijgegeven in deze test.";
+  }
+
+  function setTestMode(enabled) {
+    testMode = !!enabled;
+    testPlayedSceneIds = [];
+    invalidateTestResult();
+    clearSelection();
+    renderAll();
+  }
+
+  function resetTest() {
+    testPlayedSceneIds = [];
+    invalidateTestResult();
+    renderCanvas();
+  }
+
+  function undoTestStep() {
+    testPlayedSceneIds.pop();
+    invalidateTestResult();
+    renderCanvas();
+  }
+
+  function playTestScene(sceneId) {
+    const id = Number(sceneId || 0);
+    if (!testMode || !id) return;
+    const status = testStatusFor(id);
+    if (!status) {
+      toast("Deze node zit niet in de testcontext.", true);
+      return;
+    }
+    if (status.nodeStatus === "Played") {
+      toast("Deze node is al gespeeld in deze test.", true);
+      return;
+    }
+    if (status.nodeStatus !== "Available") {
+      toast(testReasonForStatus(status), true);
+      return;
+    }
+    testPlayedSceneIds.push(id);
+    selectedNodeId = id;
+    invalidateTestResult();
+    renderCanvas();
+  }
+
+  function nextAvailableTestNode(model = buildUnifiedCanvasModel()) {
+    const result = getTestResult();
+    if (!result) return null;
+    return (model.nodes || [])
+      .map((node) => {
+        const status = testStatusFor(node.sceneId, result);
+        return { node, status };
+      })
+      .filter((item) => item.status && item.status.nodeStatus === "Available")
+      .sort((a, b) => {
+        const ay = Number(a.node.position && a.node.position.y || 0);
+        const by = Number(b.node.position && b.node.position.y || 0);
+        if (ay !== by) return ay - by;
+        return Number(a.node.position && a.node.position.x || 0) - Number(b.node.position && b.node.position.x || 0);
+      })[0] || null;
+  }
+
+  function playNextTestNode() {
+    const next = nextAvailableTestNode();
+    if (!next) {
+      toast("Geen vrije node in de zichtbare paden.", true);
+      return;
+    }
+    playTestScene(next.node.sceneId);
+  }
+
+  function renderTestPanel(model, testResult) {
+    const panel = $("testPanel");
+    const button = $("testModeBtn");
+    if (!panel || !button) return;
+    button.classList.toggle("primary", !testMode);
+    button.classList.toggle("active", testMode);
+    button.textContent = testMode ? "Stop test" : "Test pad";
+    if (!testMode || !testResult) {
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+    const visibleIds = (model.nodes || []).map((node) => Number(node.sceneId || 0));
+    const visibleStatuses = visibleIds.map((id) => testStatusFor(id, testResult)).filter(Boolean);
+    const counts = visibleStatuses.reduce((acc, status) => {
+      acc[testStatusClass(status)] = Number(acc[testStatusClass(status)] || 0) + 1;
+      return acc;
+    }, {});
+    $("testStats").textContent = `${counts.played || 0} gespeeld · ${counts.available || 0} vrij · ${counts.locked || 0} wacht · ${counts.blocked || 0} geblokkeerd`;
+    $("testUndoBtn").disabled = !testPlayedSceneIds.length;
+    $("testNextBtn").disabled = !nextAvailableTestNode(model);
+    const available = visibleIds
+      .map((id) => ({ id, status: testStatusFor(id, testResult), pos: model.layout.positions[id] || {} }))
+      .filter((item) => item.status && item.status.nodeStatus === "Available")
+      .sort((a, b) => (Number(a.pos.y || 0) - Number(b.pos.y || 0)) || (Number(a.pos.x || 0) - Number(b.pos.x || 0)));
+    $("testAvailable").innerHTML = available.length
+      ? available.slice(0, 8).map((item) => `<button type="button" data-test-play="${item.id}">${esc(sceneTitle(item.id))}</button>`).join("")
+      : '<span class="testMuted">Geen vrije nodes</span>';
+    $("testAvailable").querySelectorAll("[data-test-play]").forEach((btn) => {
+      btn.addEventListener("click", () => playTestScene(btn.dataset.testPlay));
+    });
+    $("testTimeline").innerHTML = testPlayedSceneIds.length
+      ? testPlayedSceneIds.map((id, index) => `<span><b>${index + 1}</b>${esc(sceneTitle(id))}</span>`).join("")
+      : '<span class="testMuted">Nog niets gespeeld</span>';
+  }
+
   function startMarqueeSelect(event) {
     if (event.button !== 0) return;
     const startPoint = canvasPoint(event);
@@ -844,11 +1178,22 @@
   }
 
   function renderCanvas() {
+    invalidateTestResult();
     const targetPath = activePath();
     const model = buildUnifiedCanvasModel();
+    const testResult = getTestResult();
     const inner = $("canvasInner");
     const empty = $("emptyState");
-    inner.querySelectorAll(".pathNode,.ghostNode,.edgeDelete,.edgeTypeToggle,.thresholdBadge").forEach((node) => node.remove());
+    const dropHint = $("dropHint");
+    inner.classList.toggle("testMode", !!testMode);
+    inner.querySelectorAll(".pathNode,.ghostNode").forEach((node) => node.remove());
+    if (dropHint) {
+      dropHint.textContent = testMode
+        ? "Testmodus actief"
+        : targetPath
+          ? `Sleep situaties hierheen voor ${targetPath.name || "Naamloos pad"}`
+          : "Sleep situaties hierheen";
+    }
 
     if (!targetPath || !model.paths.length) {
       empty.style.display = "flex";
@@ -859,6 +1204,8 @@
       applyCanvasZoom(blankLayout);
       $("edgesLayer").innerHTML = "";
       renderMiniMap(null, null, []);
+      renderTestPanel(model, testResult);
+      renderInspector(model, testResult);
       return;
     }
 
@@ -876,28 +1223,25 @@
     svg.setAttribute("viewBox", `0 0 ${layout.width} ${layout.height}`);
 
     const membership = Graph.analyzePathMembership(activePaths());
-    const ghosts = showNeighbors ? Graph.selectGhostNeighbors(
+    const ghosts = showNeighbors ? placeGhostNeighbors(Graph.selectGhostNeighbors(
       { id: "__selected__", sceneIds: model.nodes.map((node) => node.sceneId), edges: [], isActive: true },
       activePaths(),
       { activeSceneIds: model.nodes.map((node) => node.sceneId), excludePathIds: selectedPathIds }
-    ) : [];
-    renderEdges(svg, model, ghosts);
-    renderThresholdBadges(model);
-    renderCrossingThresholdBadges(model);
+    ), model) : [];
+    renderEdges(svg, model, ghosts, testResult);
 
     model.nodes.forEach((nodeModel) => {
-      inner.appendChild(createNode(nodeModel, membership.get(Number(nodeModel.sceneId)) || [], model));
+      inner.appendChild(createNode(nodeModel, membership.get(Number(nodeModel.sceneId)) || [], model, testResult));
     });
 
-    ghosts.forEach((ghost, index) => {
-      const fromPos = layout.positions[ghost.fromSceneId];
-      if (!fromPos) return;
-      const ghostPos = ghostPosition(fromPos, ghost, index);
-      inner.appendChild(createGhostNode(ghost, ghostPos));
+    ghosts.forEach((ghost) => {
+      if (!ghost.position) return;
+      inner.appendChild(createGhostNode(ghost, ghost.position));
     });
 
-    if (selectedEdgeKey) renderEdgeDelete(model);
     renderMiniMap(model, ghosts);
+    renderTestPanel(model, testResult);
+    renderInspector(model, testResult);
   }
 
   function num(value) {
@@ -963,159 +1307,370 @@
     };
   }
 
-  function thresholdRequiredForSource(path, sourceSceneId, outgoingCount, edges = null) {
+  function thresholdRequiredForScene(path, sceneId, incomingCount, edges = null) {
     const sceneIds = Graph.getPathSceneIds(path);
     const renderedEdges = edges || Graph.getRenderableEdges(path, { fallback: true });
     const map = Graph.thresholdMapForPath({ ...path, edges: renderedEdges, edgeMode: "manual" }, { fallback: false });
-    return Math.min(outgoingCount, Math.max(1, Number(map.get(Number(sourceSceneId)) || outgoingCount)));
+    return Math.min(incomingCount, Math.max(1, Number(map.get(Number(sceneId)) || incomingCount)));
   }
 
-  function setPathThreshold(path, sourceSceneId, requiredCount) {
-    if (!path || !sourceSceneId) return;
+  function setPathThreshold(path, sceneId, requiredCount) {
+    if (!path || !sceneId) return;
     const sceneIds = Graph.getPathSceneIds(path);
     const edges = edgesForSave(path);
-    const outgoing = Graph.outgoingTargetsBySource(sceneIds, edges);
-    const outgoingCount = outgoing.get(Number(sourceSceneId))
-      ? outgoing.get(Number(sourceSceneId)).length
+    const incoming = Graph.incomingSourcesByTarget(sceneIds, edges);
+    const incomingCount = incoming.get(Number(sceneId))
+      ? incoming.get(Number(sceneId)).length
       : 0;
-    if (outgoingCount <= 1) return;
-    const nextRequired = Math.min(outgoingCount, Math.max(1, Number.parseInt(String(requiredCount || "1"), 10) || 1));
+    if (incomingCount <= 1) return;
+    const nextRequired = Math.min(incomingCount, Math.max(1, Number.parseInt(String(requiredCount || "1"), 10) || 1));
     const others = (Array.isArray(path.thresholds) ? path.thresholds : [])
-      .filter((threshold) => Number(threshold && threshold.sourceSceneId || 0) !== Number(sourceSceneId));
+      .filter((threshold) => Number(threshold && threshold.sourceSceneId || 0) !== Number(sceneId));
     path.thresholds = Graph.normalizeThresholdsForEdges([
       ...others,
-      { sourceSceneId: Number(sourceSceneId), requiredCount: nextRequired },
+      { sourceSceneId: Number(sceneId), requiredCount: nextRequired },
     ], sceneIds, edges);
     markDirty(path);
     renderCanvas();
   }
 
-  function thresholdGroupHasSelection(path, sourceSceneId, targetIds = []) {
-    const sourceId = Number(sourceSceneId || 0);
-    const targets = Graph.normalizeIdList(targetIds);
-    if (selectedNodeIds.has(sourceId)) return true;
-    if (targets.some((targetId) => selectedNodeIds.has(Number(targetId)))) return true;
-    if (!selectedEdgeKey) return false;
-    const parsed = parsePathEdgeSelectionKey(selectedEdgeKey);
-    if (String(parsed.pathId || "") !== pathKey(path)) return false;
-    return targets.some((targetId) => parsed.edgeKey === `${sourceId}:${targetId}`);
+  function funnelInfoForPath(path, sceneId, model = null) {
+    const id = Number(sceneId || 0);
+    if (!path || !id) return null;
+    const sceneIds = Graph.getPathSceneIds(path);
+    if (!sceneIds.includes(id)) return null;
+    const key = pathKey(path);
+    const edges = model && model.pathEdges && model.pathEdges.get(key)
+      ? model.pathEdges.get(key)
+      : edgesForSave(path);
+    const sources = Graph.incomingSourcesByTarget(sceneIds, edges).get(id) || [];
+    if (sources.length <= 1) return null;
+    return {
+      sceneId: id,
+      sourceIds: sources,
+      count: sources.length,
+      required: thresholdRequiredForScene(path, id, sources.length, edges),
+    };
   }
 
-  function renderThresholdBadges(model) {
-    const inner = $("canvasInner");
-    (model.paths || []).forEach((path, pathIndex) => {
-      const key = pathKey(path);
-      const positions = model.pathPositions.get(key) || {};
-      const edges = model.pathEdges.get(key) || [];
-      const outgoing = Graph.outgoingTargetsBySource(Graph.getPathSceneIds(path), edges);
-      outgoing.forEach((targetIds, sourceSceneId) => {
-        if (!Array.isArray(targetIds) || targetIds.length <= 1) return;
-        if (!thresholdGroupHasSelection(path, sourceSceneId, targetIds)) return;
-        const sourcePos = positions[sourceSceneId] || model.layout.positions[sourceSceneId];
-        const targetPositions = targetIds
-          .map((targetId) => positions[targetId] || model.layout.positions[targetId])
-          .filter(Boolean);
-        if (!sourcePos || targetPositions.length !== targetIds.length) return;
-        const outgoingCount = targetIds.length;
-        const required = thresholdRequiredForSource(path, sourceSceneId, outgoingCount, edges);
-        const choiceGroup = required < outgoingCount;
-        const targetCenterX = targetPositions.reduce((sum, pos) => sum + Number(pos.x || 0) + NODE_W / 2, 0) / targetPositions.length;
-        const minTargetY = Math.min(...targetPositions.map((pos) => Number(pos.y || 0)));
-        const sourceBottom = Number(sourcePos.y || 0) + NODE_H;
-        const badge = document.createElement("label");
-        badge.className = `thresholdBadge${choiceGroup ? " choiceGroup" : ""}${key === activeKey() ? " active" : ""}`;
-        badge.style.left = `${targetCenterX + pathIndex * 12}px`;
-        badge.style.top = `${Math.max(sourceBottom + 8, sourceBottom + (minTargetY - sourceBottom) * 0.35)}px`;
-        badge.style.borderColor = colorValue(path.color);
-        badge.style.color = colorValue(path.color);
-        badge.title = `${path.name || "Naamloos pad"}: ${required} van ${outgoingCount}`;
-        badge.innerHTML = `
-          <input type="number" min="1" max="${outgoingCount}" value="${required}" aria-label="Keuzedrempel" />
-          <span>/${outgoingCount}</span>
-        `;
-        const input = badge.querySelector("input");
-        ["mousedown", "click", "dblclick"].forEach((eventName) => {
-          badge.addEventListener(eventName, (event) => event.stopPropagation());
-        });
-        input.addEventListener("change", () => setPathThreshold(path, sourceSceneId, input.value));
-        input.addEventListener("keydown", (event) => {
-          if (event.key !== "Enter") return;
-          event.preventDefault();
-          input.blur();
-          setPathThreshold(path, sourceSceneId, input.value);
-        });
-        inner.appendChild(badge);
+  function nodeMarkerItems(sceneId, nodeModel, members = [], model = null) {
+    const id = Number(sceneId || 0);
+    const path = activePath();
+    const markers = [];
+    const activeIds = path ? Graph.getPathSceneIds(path) : [];
+    const inActivePath = !!(path && activeIds.includes(id));
+    if (inActivePath) {
+      const endpoints = model && model.pathEndpoints
+        ? model.pathEndpoints.get(activeKey()) || { starts: [], ends: [] }
+        : { starts: [], ends: [] };
+      if ((endpoints.starts || []).includes(id)) markers.push({ label: "Start", className: "start" });
+      if (isEndNodeForPath(path, id)) markers.push({ label: "Einde", className: "end" });
+      if (blockRuleForSource(path, id)) markers.push({ label: "Blokkade", className: "block" });
+      const funnel = funnelInfoForPath(path, id, model);
+      if (funnel) markers.push({ label: `Funnel ${funnel.required}/${funnel.count}`, className: "funnel" });
+    }
+    const sharedCount = Math.max(
+      nodeModel && Array.isArray(nodeModel.pathIds) ? nodeModel.pathIds.length : 0,
+      Array.isArray(members) ? members.length : 0
+    );
+    if (sharedCount > 1) markers.push({ label: `Kruising · ${sharedCount} paden`, className: "crossing" });
+    return markers;
+  }
+
+  function inspectorBadgesMarkup(markers = []) {
+    return markers.length
+      ? `<div class="inspectorBadges">${markers.map((item) => (
+        `<span class="inspectorBadge ${esc(item.className || "")}">${esc(item.label)}</span>`
+      )).join("")}</div>`
+      : "";
+  }
+
+  function compactText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function inspectorTextBlock(label, text) {
+    const body = compactText(text);
+    if (!body) return "";
+    return `
+      <div class="sceneInfoBlock">
+        <strong>${esc(label)}</strong>
+        <p>${esc(body)}</p>
+      </div>
+    `;
+  }
+
+  function sceneCharacterItems(scene = {}) {
+    const slots = Array.isArray(scene.characterSlots) && scene.characterSlots.length
+      ? scene.characterSlots
+      : Graph.normalizeIdList(scene.characterIds || []);
+    const items = [];
+    slots.forEach((rawId, index) => {
+      const id = Number(rawId || 0);
+      if (!id) return;
+      if (id === -1) {
+        items.push({ name: `Rol ${index + 1}: Random`, description: "" });
+        return;
+      }
+      const character = characterById.get(id);
+      items.push({
+        name: character && character.name ? character.name : `Personage #${id}`,
+        description: "",
       });
+    });
+    if (items.length) return items;
+    return Graph.normalizeIdList(scene.characterIds || []).map((id) => {
+      const character = characterById.get(id);
+      return {
+        name: character && character.name ? character.name : `Personage #${id}`,
+        description: "",
+      };
     });
   }
 
-  function crossingRequiredForScene(sceneId, incomingCount) {
-    const id = Number(sceneId || 0);
-    const map = Graph.crossingThresholdMapForPaths(state.crossingThresholds || [], activePaths());
-    return Math.min(incomingCount, Math.max(1, Number(map.get(id) || incomingCount)));
+  function sceneInfoList(label, items = [], options = {}) {
+    const cleanItems = items
+      .map((item) => ({
+        name: compactText(item && item.name),
+        description: compactText(item && item.description),
+      }))
+      .filter((item) => item.name || item.description);
+    if (!cleanItems.length) return "";
+    return `
+      <div class="sceneInfoBlock">
+        <strong>${esc(label)}</strong>
+        <div class="sceneInfoList ${options.compact ? "compact" : ""}">
+          ${cleanItems.map((item) => `
+            <div class="sceneInfoItem">
+              ${item.name ? `<b>${esc(item.name)}</b>` : ""}
+              ${item.description ? `<span>${esc(item.description)}</span>` : ""}
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
   }
 
-  function setCrossingThreshold(sceneId, requiredCount) {
-    const id = Number(sceneId || 0);
-    if (!id) return;
-    const incomingCount = Graph.crossingIncomingRoutesForPaths(activePaths(), id).length;
-    if (incomingCount <= 1) return;
-    const nextRequired = Math.min(incomingCount, Math.max(1, Number.parseInt(String(requiredCount || "1"), 10) || 1));
-    const others = (Array.isArray(state.crossingThresholds) ? state.crossingThresholds : [])
-      .filter((threshold) => Number(threshold && threshold.sceneId || 0) !== id);
-    state.crossingThresholds = Graph.normalizeCrossingThresholdsForPaths([
-      ...others,
-      { sceneId: id, requiredCount: nextRequired },
-    ], activePaths());
-    markCrossingDirty(id);
-    renderCanvas();
+  function sceneContentMarkup(scene = {}) {
+    const situations = Graph.normalizeIdList(scene.situationIds || []).map((id) => {
+      const situation = situationById.get(id);
+      return {
+        name: situation && situation.name ? situation.name : `Situatie #${id}`,
+        description: situation && situation.description ? situation.description : "",
+      };
+    });
+    const characters = sceneCharacterItems(scene);
+    const environment = String(scene.environmentMode || "").toLowerCase() === "random"
+      ? { name: "Random omgeving", description: "" }
+      : environmentById.get(Number(scene.environmentId || 0));
+    const blocks = [
+      inspectorTextBlock("Scene", scene.promptOverride),
+      sceneInfoList("Situatie", situations),
+      sceneInfoList("Karakters", characters, { compact: true }),
+      environment ? sceneInfoList("Omgeving", [{
+        name: environment.name || "Omgeving",
+        description: environment.description || "",
+      }]) : "",
+    ].filter(Boolean);
+    return blocks.length
+      ? `<div class="sceneInfo">${blocks.join("")}</div>`
+      : `<div class="inspectorHint">Geen inhoud gekoppeld aan deze scene.</div>`;
   }
 
-  function renderCrossingThresholdBadges(model) {
-    const inner = $("canvasInner");
-    (model.nodes || []).forEach((nodeModel) => {
-      const sceneId = Number(nodeModel && nodeModel.sceneId || 0);
-      if (!sceneId || !isNodeSelected(sceneId)) return;
-      const routes = Graph.crossingIncomingRoutesForPaths(activePaths(), sceneId);
-      if (routes.length <= 1) return;
-      const pos = nodeModel.position || model.layout.positions[sceneId];
-      if (!pos) return;
-      const incomingCount = routes.length;
-      const required = crossingRequiredForScene(sceneId, incomingCount);
-      const choiceGroup = required < incomingCount;
-      const badge = document.createElement("label");
-      badge.className = `thresholdBadge crossingThresholdBadge${choiceGroup ? " choiceGroup" : ""}`;
-      badge.style.left = `${Number(pos.x || 0) + NODE_W + 12}px`;
-      badge.style.top = `${Number(pos.y || 0) - 10}px`;
-      badge.title = `Kruising: ${required} van ${incomingCount} paden`;
-      badge.innerHTML = `
-        <input type="number" min="1" max="${incomingCount}" value="${required}" aria-label="Kruisingdrempel" />
-        <span>/${incomingCount}</span>
+  function setInspectorHeader(kicker = "Node info", title = "Geen selectie") {
+    const kickerEl = $("inspectorPanelKicker");
+    const titleEl = $("inspectorPanelTitle");
+    if (kickerEl) kickerEl.textContent = kicker;
+    if (titleEl) titleEl.textContent = title;
+  }
+
+  function inspectorContentPane() {
+    return $("inspectorContent") || $("inspectorPane");
+  }
+
+  function renderInspectorEmpty(message = "Selecteer een node of pijl om padregels te bewerken.") {
+    setInspectorHeader("Node info", "Geen selectie");
+    const pane = inspectorContentPane();
+    if (!pane) return;
+    pane.innerHTML = `<div class="inspectorEmpty"><span>${esc(message)}</span></div>`;
+  }
+
+  function renderEdgeInspector(model) {
+    const pane = inspectorContentPane();
+    const parsed = parsePathEdgeSelectionKey(selectedEdgeKey);
+    const path = pathById(parsed.pathId);
+    const edge = path && (model.pathEdges.get(parsed.pathId) || []).find((item) => Graph.edgeKey(item) === parsed.edgeKey);
+    if (!pane || !path || !edge) {
+      renderInspectorEmpty();
+      return;
+    }
+    const optional = Graph.isOptionalEdge(edge);
+    setInspectorHeader("Pijl", `${sceneTitle(edge.fromSceneId)} -> ${sceneTitle(edge.toSceneId)}`);
+    pane.innerHTML = `
+      <div class="inspectorBox">
+        <div class="inspectorMeta">Geldt voor pad: ${esc(path.name || "Naamloos pad")}</div>
+        <div class="inspectorSection">
+          <h3>Type</h3>
+          <div class="inspectorBadges">
+            <span class="inspectorBadge">${optional ? "Zijtak" : "Verplicht"}</span>
+          </div>
+          <div class="inspectorActions">
+            <button type="button" data-inspector-edge-toggle>${optional ? "Maak verplicht" : "Maak zijtak"}</button>
+            <button type="button" class="danger" data-inspector-edge-delete>Verwijder pijl</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const toggle = pane.querySelector("[data-inspector-edge-toggle]");
+    const remove = pane.querySelector("[data-inspector-edge-delete]");
+    if (toggle) toggle.addEventListener("click", () => toggleEdgeType(selectedEdgeKey));
+    if (remove) remove.addEventListener("click", () => removeEdge(selectedEdgeKey));
+  }
+
+  function renderNodeInspector(model, testResult) {
+    const pane = inspectorContentPane();
+    const selectedIds = Array.from(selectedNodeIds).map(Number).filter(Boolean);
+    if (!pane || !selectedIds.length) {
+      renderInspectorEmpty();
+      return;
+    }
+    if (selectedIds.length > 1) {
+      setInspectorHeader("Selectie", `${selectedIds.length} nodes`);
+      pane.innerHTML = `
+        <div class="inspectorBox">
+          <div class="inspectorMeta">Sleep om ze te verplaatsen of gebruik Delete om ze uit het actieve pad te halen.</div>
+        </div>
       `;
-      const input = badge.querySelector("input");
-      ["mousedown", "click", "dblclick"].forEach((eventName) => {
-        badge.addEventListener(eventName, (event) => event.stopPropagation());
+      return;
+    }
+    const sceneId = selectedIds[0];
+    const nodeModel = (model.nodes || []).find((item) => Number(item.sceneId || 0) === sceneId);
+    const scene = sceneById.get(sceneId) || {};
+    if (!nodeModel) {
+      renderInspectorEmpty("Deze node is niet zichtbaar in de huidige selectie.");
+      return;
+    }
+    const path = activePath();
+    const activeIds = path ? Graph.getPathSceneIds(path) : [];
+    const inActivePath = !!(path && activeIds.includes(sceneId));
+    const members = Graph.analyzePathMembership(activePaths()).get(sceneId) || [];
+    const markers = nodeMarkerItems(sceneId, nodeModel, members, model);
+    const rule = inActivePath ? blockRuleForSource(path, sceneId) : null;
+    const funnel = inActivePath ? funnelInfoForPath(path, sceneId, model) : null;
+    const ignoresCrossingBlock = inActivePath && Graph.normalizeIgnoreCrossingBlockSceneIds(path, activeIds).includes(sceneId);
+    const testStatus = testStatusFor(sceneId, testResult);
+    const disabled = inActivePath ? "" : "disabled";
+    setInspectorHeader("Node info", sceneTitle(sceneId));
+    pane.innerHTML = `
+      <div class="inspectorBox">
+        <div class="inspectorMeta">${inActivePath ? `Geldt voor actief pad: ${esc(path.name || "Naamloos pad")}` : "Deze node zit niet in het actieve pad."}</div>
+        ${inspectorBadgesMarkup(markers)}
+        ${testStatus ? `
+          <div class="inspectorSection">
+            <h3>Teststatus</h3>
+            <div class="inspectorBadges"><span class="inspectorBadge ${esc(testStatusClass(testStatus))}">${esc(testStatusLabel(testStatus))}</span></div>
+            <div class="inspectorHint">${esc(testReasonForStatus(testStatus))}</div>
+          </div>
+        ` : ""}
+        <div class="inspectorSection">
+          <h3>Padregels</h3>
+          <label class="inspectorToggle"><span>Eindnode</span><input type="checkbox" data-inspector-end ${inActivePath && isEndNodeForPath(path, sceneId) ? "checked" : ""} ${disabled} /></label>
+          <label class="inspectorToggle"><span>Blokkade-node</span><input type="checkbox" data-inspector-block ${rule ? "checked" : ""} ${disabled} /></label>
+          ${members.length > 1 ? `
+            <label class="inspectorToggle"><span>Blokkades uit andere paden negeren</span><input type="checkbox" data-inspector-ignore-crossing-block ${ignoresCrossingBlock ? "checked" : ""} ${disabled} /></label>
+            <div class="inspectorHint">Alleen bij kruisingen. Uit betekent dat blokkades uit andere paden deze node ook blokkeren.</div>
+          ` : ""}
+          ${funnel ? `
+            <div class="inspectorStepper">
+              <span>Funnel drempel</span>
+              <div class="funnelStepperControl">
+                <button type="button" data-inspector-funnel-step="-1" title="Drempel omlaag">-</button>
+                <input type="number" min="1" max="${funnel.count}" value="${funnel.required}" inputmode="numeric" aria-label="Funnel drempel" data-inspector-funnel />
+                <span class="stepperTotal">/ ${funnel.count}</span>
+                <button type="button" data-inspector-funnel-step="1" title="Drempel omhoog">+</button>
+              </div>
+            </div>
+          ` : ""}
+        </div>
+        <div class="inspectorSection">
+          <h3>Inhoud</h3>
+          ${sceneContentMarkup(scene)}
+        </div>
+      </div>
+    `;
+    const endInput = pane.querySelector("[data-inspector-end]");
+    if (endInput) endInput.addEventListener("change", () => setEndNodeForActivePath(sceneId, endInput.checked));
+    const blockInput = pane.querySelector("[data-inspector-block]");
+    if (blockInput) {
+      blockInput.addEventListener("change", () => {
+        setBlockRuleForActivePath(sceneId, blockInput.checked);
       });
-      input.addEventListener("change", () => setCrossingThreshold(sceneId, input.value));
-      input.addEventListener("keydown", (event) => {
+    }
+    const ignoreCrossingBlockInput = pane.querySelector("[data-inspector-ignore-crossing-block]");
+    if (ignoreCrossingBlockInput) {
+      ignoreCrossingBlockInput.addEventListener("change", () => {
+        setIgnoreCrossingBlockForActivePath(sceneId, ignoreCrossingBlockInput.checked);
+      });
+    }
+    const funnelInput = pane.querySelector("[data-inspector-funnel]");
+    if (funnelInput) {
+      funnelInput.addEventListener("change", () => setPathThreshold(path, sceneId, funnelInput.value));
+      funnelInput.addEventListener("keydown", (event) => {
         if (event.key !== "Enter") return;
         event.preventDefault();
-        input.blur();
-        setCrossingThreshold(sceneId, input.value);
+        funnelInput.blur();
+        setPathThreshold(path, sceneId, funnelInput.value);
       });
-      inner.appendChild(badge);
-    });
+      pane.querySelectorAll("[data-inspector-funnel-step]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const step = Number.parseInt(String(button.dataset.inspectorFunnelStep || "0"), 10) || 0;
+          const min = Number.parseInt(String(funnelInput.min || "1"), 10) || 1;
+          const max = Number.parseInt(String(funnelInput.max || funnel.count || "1"), 10) || 1;
+          const current = Number.parseInt(String(funnelInput.value || min), 10) || min;
+          const next = Math.min(max, Math.max(min, current + step));
+          funnelInput.value = String(next);
+          setPathThreshold(path, sceneId, next);
+        });
+      });
+    }
   }
 
-  function renderEdges(svg, model, ghosts) {
+  function renderInspector(model, testResult) {
+    if (selectedEdgeKey) {
+      renderEdgeInspector(model);
+      return;
+    }
+    renderNodeInspector(model, testResult);
+  }
+
+  function edgeTestState(path, edge, testResult) {
+    if (!testResult) return "";
+    const simPathId = testResult.pathIdByKey.get(pathKey(path));
+    const toStatus = testStatusFor(edge.toSceneId, testResult);
+    const fromPlayed = testResult.playedSet.has(Number(edge.fromSceneId || 0));
+    const toPlayed = testResult.playedSet.has(Number(edge.toSceneId || 0));
+    const detail = toStatus && simPathId
+      ? (toStatus.pathDetails || []).find((item) => Number(item.pathId || 0) === Number(simPathId))
+      : null;
+    if (fromPlayed && toPlayed) return "played";
+    if (detail && detail.blocked) return "blocked";
+    if (toStatus && toStatus.nodeStatus === "Blocked") return "blocked";
+    if (fromPlayed && toStatus && toStatus.nodeStatus === "Available") return "available";
+    if (detail && detail.reached && !detail.ready) return "locked";
+    if (toStatus && toStatus.nodeStatus === "Locked") return "locked";
+    return "";
+  }
+
+  function renderEdges(svg, model, ghosts, testResult = null) {
     const body = [];
 
     (model.paths || []).forEach((path) => {
       const key = pathKey(path);
+      const isActivePath = key === activeKey();
       const color = colorValue(path.color);
       const positions = model.pathPositions.get(key) || {};
       const edges = model.pathEdges.get(key) || [];
-      const thresholdSources = new Set(Graph.normalizeThresholdsForEdges(path.thresholds, Graph.getPathSceneIds(path), edges)
+      const thresholdTargets = new Set(Graph.normalizeThresholdsForEdges(path.thresholds, Graph.getPathSceneIds(path), edges)
         .map((threshold) => threshold.sourceSceneId));
       edges.forEach((edge) => {
         const from = positions[edge.fromSceneId] || model.layout.positions[edge.fromSceneId];
@@ -1125,23 +1680,36 @@
         const selected = selectionKey === selectedEdgeKey;
         const sideEdge = Graph.isOptionalEdge(edge);
         const geometry = sideEdge ? optionalEdgeGeometry(from, to) : edgeGeometry(from, to);
-        const choiceGroup = thresholdSources.has(Number(edge.fromSceneId));
-        const baseOpacity = key === activeKey() ? 1 : 0.82;
-        const opacity = sideEdge ? (key === activeKey() ? 0.72 : 0.5) : choiceGroup ? (key === activeKey() ? 0.64 : 0.46) : baseOpacity;
-        const strokeWidth = sideEdge ? (selected ? 3.2 : 2.1) : choiceGroup ? (selected ? 3.2 : 2) : (selected ? 4 : 2.8);
-        const dash = sideEdge ? ' stroke-dasharray="5 4"' : "";
-        body.push(`<path d="${geometry.linePath}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" opacity="${opacity}"${dash} />`);
+        const choiceGroup = thresholdTargets.has(Number(edge.toSceneId));
+        const baseOpacity = isActivePath ? 1 : 0.5;
+        const statusState = edgeTestState(path, edge, testResult);
+        const opacity = testResult && !statusState ? 0.22
+          : statusState === "locked" ? 0.34
+            : statusState === "blocked" ? 0.52
+              : sideEdge ? (isActivePath ? 0.72 : 0.42)
+                : choiceGroup ? (isActivePath ? 0.64 : 0.4)
+                  : baseOpacity;
+        const strokeWidth = statusState === "played" ? 4
+          : statusState === "available" ? 3.4
+            : sideEdge ? (selected ? 3.2 : 2.1)
+              : choiceGroup ? (selected ? 3.2 : 2)
+                : isActivePath ? (selected ? 4 : 2.8) : (selected ? 3.2 : 2.2);
+        const stroke = statusState === "blocked" ? "#b91c1c" : statusState === "locked" ? "#9a9288" : color;
+        const dash = !isActivePath
+          ? (sideEdge ? ' stroke-dasharray="3 5"' : ' stroke-dasharray="8 7"')
+          : (sideEdge ? ' stroke-dasharray="5 4"' : "");
+        body.push(`<path d="${geometry.linePath}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${opacity}"${dash} />`);
         if (geometry.arrowPoints) {
-          body.push(`<polygon points="${geometry.arrowPoints}" fill="${color}" opacity="${opacity}" />`);
+          body.push(`<polygon points="${geometry.arrowPoints}" fill="${stroke}" opacity="${opacity}" />`);
         }
-        body.push(`<path class="edgeHit" d="${geometry.hitPath}" fill="none" stroke="transparent" data-edge-key="${esc(selectionKey)}" />`);
+        if (!testResult) body.push(`<path class="edgeHit" d="${geometry.hitPath}" fill="none" stroke="transparent" data-edge-key="${esc(selectionKey)}" />`);
       });
     });
 
     ghosts.forEach((ghost, index) => {
       const from = model.layout.positions[ghost.fromSceneId];
       if (!from) return;
-      const to = ghostPosition(from, ghost, index);
+      const to = ghost.position || ghostPosition(from, ghost, index);
       const ghostColor = colorValue(ghost.color, "#f97316");
       const x1 = from.x + NODE_W;
       const y1 = from.y + NODE_H / 2;
@@ -1196,11 +1764,26 @@
     return `linear-gradient(to bottom, ${colors.map((color, index) => `${color} ${index * step}% ${(index + 1) * step}%`).join(", ")})`;
   }
 
-  function createNode(nodeModel, members, model) {
+  function isEndNodeForPath(path, sceneId) {
+    return Graph.effectiveEndSceneIds(path).includes(Number(sceneId || 0));
+  }
+
+  function blockRulesForSource(path, sceneId) {
+    return Graph.normalizeBlockRules(path && path.blockRules || [], Graph.getPathSceneIds(path))
+      .filter((rule) => Number(rule.sourceSceneId || 0) === Number(sceneId || 0));
+  }
+
+  function blockRuleForSource(path, sceneId) {
+    return blockRulesForSource(path, sceneId)[0] || null;
+  }
+
+  function createNode(nodeModel, members, model, testResult = null) {
     const sceneId = Number(nodeModel.sceneId || 0);
     const pos = nodeModel.position;
     const scene = sceneById.get(Number(sceneId));
     const node = document.createElement("div");
+    const testStatus = testStatusFor(sceneId, testResult);
+    const testClass = testResult ? ` test-${testStatusClass(testStatus)}` : "";
     const nodePaths = nodeModel.paths || [];
     const connected = nodePaths.some((path) => connectedSceneIdSet(path).has(Number(sceneId)));
     const inTarget = nodeModel.pathIds.includes(activeKey());
@@ -1209,29 +1792,23 @@
     const expanded = selected && expandedNodeIds.has(Number(sceneId));
     const fallbackColor = colorValue(nodePaths[0] && nodePaths[0].color || (activePath() && activePath().color));
     const membership = Array.isArray(members) && members.length ? members : nodeModel.colors;
-    const pathColors = isDraft ? ["#c8c1b8"] : uniquePathColors(membership, fallbackColor);
     const sharedCount = Math.max(nodeModel.pathIds.length, Array.isArray(members) ? members.length : 0);
     const sharedNode = nodeModel.isShared || sharedCount > 1;
-    node.className = `pathNode${isDraft ? " draftNode" : ""}${sharedNode ? " sharedNode multiColorNode" : ""}${inTarget ? " targetMember" : ""}${selected ? " selected" : ""}${expanded ? " expanded" : ""}`;
+    node.className = `pathNode${isDraft ? " draftNode" : ""}${sharedNode ? " sharedNode multiColorNode" : ""}${inTarget ? " targetMember" : ""}${selected ? " selected" : ""}${expanded ? " expanded" : ""}${testClass}`;
     node.dataset.sceneId = String(sceneId);
     node.dataset.pathIds = nodeModel.pathIds.join(",");
     node.style.left = `${pos.x}px`;
     node.style.top = `${pos.y}px`;
+    if (testStatus) node.title = testReasonForStatus(testStatus);
 
-    const firstPath = nodePaths[0] || activePath();
-    const firstEndpoints = firstPath ? model.pathEndpoints.get(pathKey(firstPath)) || { starts: [], ends: [] } : { starts: [], ends: [] };
-    const isStart = firstEndpoints.starts.includes(Number(sceneId));
-    const isEnd = firstEndpoints.ends.includes(Number(sceneId));
-    const sub = isDraft ? ""
-      : sharedNode ? `kruispunt · ${sharedCount} paden`
-        : [isStart ? "start" : "", isEnd ? "einde" : ""].filter(Boolean).join(" · ");
-    const colorDots = pathColors.length > 1
-      ? `<span class="nodePathColors">${pathColors.slice(0, 6).map((color) => `<i style="background:${color}"></i>`).join("")}</span>`
-      : "";
+    const markers = nodeMarkerItems(sceneId, nodeModel, membership, model);
+    const structureSub = isDraft ? "los" : markers.map((item) => item.label).join(" · ");
+    const testSub = testStatus ? testStatusLabel(testStatus) : "";
+    const sub = [structureSub, testSub].filter(Boolean).join(" · ");
 
     node.innerHTML = `
-      <span class="stripe" style="background:${isDraft ? "#c8c1b8" : stripeBackground(membership, fallbackColor)}"></span>
-      ${colorDots}
+      <span class="stripe" style="background:${stripeBackground(membership, fallbackColor)}"></span>
+      ${testStatus ? `<span class="statusPill ${testStatusClass(testStatus)}">${esc(testStatusLabel(testStatus))}</span>` : ""}
       <div class="title">${esc(scene && scene.title || `Situatie #${sceneId}`)}</div>
       <div class="nodeFullTitle">${esc(scene && scene.title || `Situatie #${sceneId}`)}</div>
       ${sub ? `<div class="sub">${esc(sub)}</div>` : ""}
@@ -1241,6 +1818,102 @@
 
     wireNode(node, Number(sceneId));
     return node;
+  }
+
+  function nodeRect(pos, padding = 0) {
+    return {
+      left: Number(pos.x || 0) - padding,
+      top: Number(pos.y || 0) - padding,
+      right: Number(pos.x || 0) + NODE_W + padding,
+      bottom: Number(pos.y || 0) + NODE_H + padding,
+    };
+  }
+
+  function rectsOverlap(a, b) {
+    return !!(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
+  }
+
+  function ghostPositionFromPath(ghost, model) {
+    const path = pathById(ghost && ghost.pathId);
+    if (!path || !model || !model.layout || !model.layout.positions) return null;
+    const key = pathKey(path);
+    const pathLayout = getLayout(path);
+    const sourcePositions = pathLayout.positions || {};
+    const source = sourcePositions[Number(ghost.sceneId || 0)];
+    const anchorSource = sourcePositions[Number(ghost.fromSceneId || 0)];
+    const anchorRendered = model.layout.positions[Number(ghost.fromSceneId || 0)];
+    if (!source || !anchorSource || !anchorRendered) return null;
+
+    const cached = compositionTransformCache[key];
+    if (cached) {
+      return {
+        x: Number(source.x || 0) + Number(cached.dx || 0) + Number(model.worldOffset && model.worldOffset.x || 0),
+        y: Number(source.y || 0) + Number(cached.dy || 0) + Number(model.worldOffset && model.worldOffset.y || 0),
+      };
+    }
+
+    const renderDx = Number(anchorRendered.x || 0) - Number(anchorSource.x || 0);
+    const renderDy = Number(anchorRendered.y || 0) - Number(anchorSource.y || 0);
+    compositionTransformCache[key] = {
+      dx: renderDx - Number(model.worldOffset && model.worldOffset.x || 0),
+      dy: renderDy - Number(model.worldOffset && model.worldOffset.y || 0),
+    };
+    return {
+      x: Number(source.x || 0) + renderDx,
+      y: Number(source.y || 0) + renderDy,
+    };
+  }
+
+  function resolveGhostCollision(basePos, ghost, fromPos, occupiedRects = []) {
+    const collides = (pos) => occupiedRects.some((rect) => rectsOverlap(nodeRect(pos, 12), rect));
+    if (!basePos || !collides(basePos)) return basePos;
+    const preferredX = Number(basePos.x || 0) < Number(fromPos && fromPos.x || 0) ? -1 : 1;
+    const preferredY = ghost && ghost.direction === "prev" ? -1 : 1;
+    const stepX = NODE_W + 42;
+    const stepY = NODE_H + 34;
+    const offsets = [
+      { x: preferredX * 48, y: 0 },
+      { x: preferredX * stepX, y: 0 },
+      { x: 0, y: preferredY * stepY },
+      { x: preferredX * 64, y: preferredY * stepY },
+      { x: -preferredX * 64, y: preferredY * stepY },
+      { x: preferredX * stepX, y: preferredY * stepY },
+      { x: -preferredX * stepX, y: preferredY * stepY },
+      { x: 0, y: preferredY * stepY * 2 },
+      { x: preferredX * stepX * 1.35, y: 0 },
+      { x: -preferredX * stepX * 1.35, y: 0 },
+    ];
+    for (const offset of offsets) {
+      const candidate = {
+        x: Number(basePos.x || 0) + offset.x,
+        y: Number(basePos.y || 0) + offset.y,
+      };
+      if (!collides(candidate)) return candidate;
+    }
+    return {
+      x: Number(basePos.x || 0) + preferredX * stepX * 1.8,
+      y: Number(basePos.y || 0) + preferredY * stepY * 1.8,
+    };
+  }
+
+  function placeGhostNeighbors(ghosts = [], model = null) {
+    if (!model || !model.layout || !model.layout.positions) return [];
+    const occupiedRects = (model.nodes || [])
+      .map((node) => node && node.position ? nodeRect(node.position, 12) : null)
+      .filter(Boolean);
+    return (Array.isArray(ghosts) ? ghosts : []).map((ghost, index) => {
+      const fromPos = model.layout.positions[Number(ghost && ghost.fromSceneId || 0)];
+      if (!fromPos) return null;
+      const base = ghostPositionFromPath(ghost, model) || ghostPosition(fromPos, ghost, index);
+      const position = resolveGhostCollision(base, ghost, fromPos, occupiedRects);
+      if (!position) return null;
+      occupiedRects.push(nodeRect(position, 12));
+      return {
+        ...ghost,
+        position,
+        basePosition: base,
+      };
+    }).filter(Boolean);
   }
 
   function ghostPosition(fromPos, ghost, index) {
@@ -1270,7 +1943,12 @@
 
   function wireNode(node, sceneId) {
     node.addEventListener("mousedown", (event) => {
-      if (event.target.closest("button")) return;
+      if (event.target.closest("button,input,select,label")) return;
+      if (testMode) {
+        event.preventDefault();
+        playTestScene(sceneId);
+        return;
+      }
       event.preventDefault();
       if (event.shiftKey || event.metaKey || event.ctrlKey) {
         toggleNodeSelection(sceneId);
@@ -1289,13 +1967,16 @@
         }
       }
       const model = buildUnifiedCanvasModel();
+      const nodeById = new Map(model.nodes.map((item) => [Number(item.sceneId), item]));
       const renderedIds = new Set(model.nodes.map((item) => Number(item.sceneId)));
       const selectedIds = Array.from(selectedNodeIds).filter((id) => renderedIds.has(Number(id)));
       if (!selectedIds.length) selectedIds.push(sceneId);
-      const currentById = new Map(selectedIds.map((id) => [
-        Number(id),
-        model.layout.positions[Number(id)] || { x: 0, y: 0 },
-      ]));
+      const dragItems = selectedIds.map((id) => {
+        const nodeModel = nodeById.get(Number(id));
+        const dragPath = editablePathForNode(Number(id), nodeModel && nodeModel.pathIds);
+        const current = model.layout.positions[Number(id)];
+        return dragPath && current ? { id: Number(id), path: dragPath, current } : null;
+      }).filter(Boolean);
       const startX = event.clientX;
       const startY = event.clientY;
       let didMove = false;
@@ -1305,22 +1986,18 @@
         didMove = true;
         const dx = (moveEvent.clientX - startX) / canvasZoom;
         const dy = (moveEvent.clientY - startY) / canvasZoom;
-        currentById.forEach((current, id) => {
+        dragItems.forEach((item) => {
           const nextPosition = {
-            x: Math.max(0, current.x + dx),
-            y: Math.max(0, current.y + dy),
+            x: Number(item.current.x || 0) + dx,
+            y: Number(item.current.y || 0) + dy,
           };
-          pathsContainingScene(id, model.paths).forEach((path) => {
-            const transform = model.pathTransforms.get(pathKey(path)) || { dx: 0, dy: 0 };
-            const manual = ensureManualLayout(pathKey(path));
-            manual[id] = {
-              x: Math.max(0, nextPosition.x - Number(transform.dx || 0)),
-              y: Math.max(0, nextPosition.y - Number(transform.dy || 0)),
-            };
-          });
+          const manual = ensureManualLayout(pathKey(item.path));
+          manual[item.id] = canvasToPathLocalPosition(model, item.path, nextPosition);
         });
-        saveLayouts();
-        renderCanvas();
+        if (dragItems.length) {
+          saveLayouts();
+          renderCanvas();
+        }
       };
       if (selectionChanged) renderCanvas();
       const up = () => {
@@ -1361,9 +2038,17 @@
       .filter(Boolean);
   }
 
+  function editablePathForNode(sceneId, nodePathIds = []) {
+    const id = Number(sceneId || 0);
+    const target = activePath();
+    if (target && Graph.getPathSceneIds(target).includes(id)) return target;
+    const ids = Array.isArray(nodePathIds) ? nodePathIds.map(String).filter(Boolean) : [];
+    if (ids.length === 1) return pathById(ids[0]);
+    return null;
+  }
+
   function edgePathIdForSource(pathIds = []) {
-    const selectedIds = pathIds.filter((key) => selectedPathIds.has(key));
-    if (selectedIds.length === 1) return selectedIds[0];
+    void pathIds;
     return activeKey();
   }
 
@@ -1463,53 +2148,16 @@
       return;
     }
     const { manual } = freezeCurrentLayout(path);
+    const model = buildUnifiedCanvasModel();
     path.sceneIds = nextSceneIds;
-    if (!hasFrom && dragEdge.fromPosition) manual[fromSceneId] = dragEdge.fromPosition;
-    if (!hasTo && options.toPosition) manual[targetSceneId] = options.toPosition;
+    if (!hasFrom && dragEdge.fromPosition) manual[fromSceneId] = canvasToPathLocalPosition(model, path, dragEdge.fromPosition);
+    if (!hasTo && options.toPosition) manual[targetSceneId] = canvasToPathLocalPosition(model, path, options.toPosition);
     if ((!hasFrom && dragEdge.fromPosition) || (!hasTo && options.toPosition)) saveLayouts();
     path.edges = [...(path.edges || []), edge];
     path.edgeMode = "manual";
     clearNodeSelection();
     selectedEdgeKey = pathEdgeSelectionKey(path, edge);
     markDirty(path);
-  }
-
-  function renderEdgeDelete(model) {
-    const parsed = parsePathEdgeSelectionKey(selectedEdgeKey);
-    const path = pathById(parsed.pathId);
-    const positions = model.pathPositions.get(parsed.pathId) || {};
-    const edge = (model.pathEdges.get(parsed.pathId) || []).find((item) => Graph.edgeKey(item) === parsed.edgeKey);
-    if (!edge) return;
-    const from = positions[edge.fromSceneId] || model.layout.positions[edge.fromSceneId];
-    const to = positions[edge.toSceneId] || model.layout.positions[edge.toSceneId];
-    if (!from || !to) return;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "edgeDelete";
-    btn.title = "Verwijder pijl";
-    btn.textContent = "×";
-    btn.style.left = `${(from.x + to.x + NODE_W) / 2}px`;
-    btn.style.top = `${(from.y + to.y + NODE_H) / 2}px`;
-    btn.style.background = colorValue(path && path.color, "#b91c1c");
-    btn.addEventListener("click", (event) => {
-      event.stopPropagation();
-      removeEdge(selectedEdgeKey);
-    });
-    $("canvasInner").appendChild(btn);
-
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "edgeTypeToggle";
-    toggle.title = Graph.isOptionalEdge(edge) ? "Maak verplichte pijl" : "Maak zijtak";
-    toggle.textContent = Graph.isOptionalEdge(edge) ? "↓" : "↔";
-    toggle.style.left = `${(from.x + to.x + NODE_W) / 2 + 28}px`;
-    toggle.style.top = `${(from.y + to.y + NODE_H) / 2}px`;
-    toggle.style.background = colorValue(path && path.color, "#1f2937");
-    toggle.addEventListener("click", (event) => {
-      event.stopPropagation();
-      toggleEdgeType(selectedEdgeKey);
-    });
-    $("canvasInner").appendChild(toggle);
   }
 
   function addSceneToPath(sceneId, x, y) {
@@ -1519,6 +2167,7 @@
     const safeSceneId = Number(sceneId);
     const alreadyInPath = path.sceneIds.includes(safeSceneId);
     const existingIds = path.sceneIds.slice();
+    const model = buildUnifiedCanvasModel();
     const { manual, positions } = freezeCurrentLayout(path);
     if (!alreadyInPath) {
       path.sceneIds.push(safeSceneId);
@@ -1526,18 +2175,61 @@
       markDirty();
     }
     if (typeof x === "number" && typeof y === "number") {
-      manual[safeSceneId] = {
-        x: Math.max(0, x - NODE_W / 2),
-        y: Math.max(0, y - NODE_H / 2),
-      };
+      manual[safeSceneId] = canvasToPathLocalPosition(model, path, {
+        x: x - NODE_W / 2,
+        y: y - NODE_H / 2,
+      });
       saveLayouts();
     } else if (!alreadyInPath && !manual[safeSceneId]) {
-      manual[safeSceneId] = addedScenePosition(existingIds, positions);
+      manual[safeSceneId] = addedScenePosition(
+        existingIds,
+        positions,
+        canvasToPathLocalPosition(model, path, viewportNodePosition())
+      );
       saveLayouts();
     }
     setSingleNodeSelection(safeSceneId);
     renderAll();
     if (typeof x !== "number" || typeof y !== "number") scrollNodeIntoView(safeSceneId);
+  }
+
+  function setEndNodeForActivePath(sceneId, enabled) {
+    const path = activePath();
+    const id = Number(sceneId || 0);
+    if (!path || !id || !Graph.getPathSceneIds(path).includes(id)) return;
+    const current = new Set(Graph.normalizeIdList(path.endSceneIds || []));
+    if (enabled) current.add(id);
+    else current.delete(id);
+    path.endSceneIds = Graph.normalizeIdList(Array.from(current));
+    markDirty(path);
+    renderCanvas();
+  }
+
+  function setBlockRuleForActivePath(sourceSceneId, enabled) {
+    const path = activePath();
+    const sourceId = Number(sourceSceneId || 0);
+    const sceneIds = Graph.getPathSceneIds(path);
+    if (!path || !sourceId || !sceneIds.includes(sourceId)) return;
+    const existing = Graph.normalizeBlockRules(path.blockRules || [], sceneIds)
+      .filter((rule) => Number(rule.sourceSceneId) !== sourceId);
+    path.blockRules = enabled
+      ? Graph.normalizeBlockRules([...existing, { sourceSceneId: sourceId, includeCrossingPaths: true }], sceneIds)
+      : existing;
+    markDirty(path);
+    renderCanvas();
+  }
+
+  function setIgnoreCrossingBlockForActivePath(sceneId, enabled) {
+    const path = activePath();
+    const id = Number(sceneId || 0);
+    const sceneIds = Graph.getPathSceneIds(path);
+    if (!path || !id || !sceneIds.includes(id)) return;
+    const current = new Set(Graph.normalizeIgnoreCrossingBlockSceneIds(path, sceneIds));
+    if (enabled) current.add(id);
+    else current.delete(id);
+    path.ignoreCrossingBlockSceneIds = Graph.normalizeIgnoreCrossingBlockSceneIds(Array.from(current), sceneIds);
+    markDirty(path);
+    renderCanvas();
   }
 
   function removeScenesFromPath(sceneIds = []) {
@@ -1548,6 +2240,11 @@
     if (!ids.size) return;
     path.sceneIds = (path.sceneIds || []).filter((id) => !ids.has(Number(id)));
     path.edges = (path.edges || []).filter((edge) => !ids.has(Number(edge.fromSceneId)) && !ids.has(Number(edge.toSceneId)));
+    path.endSceneIds = Graph.normalizeIdList(path.endSceneIds || []).filter((id) => !ids.has(Number(id)));
+    path.blockRules = Graph.normalizeBlockRules(path.blockRules || [], path.sceneIds)
+      .filter((rule) => !ids.has(Number(rule.sourceSceneId)));
+    path.ignoreCrossingBlockSceneIds = Graph.normalizeIgnoreCrossingBlockSceneIds(path, path.sceneIds)
+      .filter((id) => !ids.has(Number(id)));
     const manual = ensureManualLayout(pathKey(path));
     ids.forEach((id) => {
       delete manual[id];
@@ -1598,53 +2295,88 @@
     const svg = $("miniSvg");
     if (!model || !model.paths || !model.paths.length) {
       svg.innerHTML = "";
-      $("miniFoot").innerHTML = "0 situaties<br/>0 splits";
+      $("miniFoot").innerHTML = "0 situaties<br/>0 funnels";
+      miniMapBounds = null;
+      updateMiniViewport();
       return;
     }
     const visible = model.paths;
     const laneCount = Math.max(visible.length, 1);
     const laneStep = 48 / Math.max(laneCount - 1, 1);
+    const pathPointSets = visible.map((pathItem, index) => {
+      const positions = model.pathPositions.get(pathKey(pathItem)) || {};
+      const ids = Graph.getPathSceneIds(pathItem);
+      const x = laneCount === 1 ? 33 : 10 + index * laneStep;
+      return {
+        pathItem,
+        points: ids.map((sceneId) => {
+          const pos = positions[sceneId];
+          if (!pos) return null;
+          return {
+            sceneId,
+            x,
+            y: Number(pos.y || 0) + NODE_H / 2,
+          };
+        }).filter(Boolean),
+      };
+    });
+    const allY = pathPointSets.flatMap((set) => set.points.map((point) => point.y));
+    const minY = allY.length ? Math.min(...allY) : 0;
+    const maxY = allY.length ? Math.max(...allY) : 1;
+    const contentPad = 90;
+    miniMapBounds = {
+      top: minY - contentPad,
+      bottom: maxY + contentPad,
+    };
+    const miniTop = 24;
+    const miniHeight = 704;
+    const miniSpan = Math.max(1, miniMapBounds.bottom - miniMapBounds.top);
+    const miniY = (y) => miniTop + ((Number(y || 0) - miniMapBounds.top) / miniSpan) * miniHeight;
     let html = "";
 
-    visible.forEach((pathItem, index) => {
-      const pathLayout = { positions: model.pathPositions.get(pathKey(pathItem)) || {} };
-      const ids = Graph.getPathSceneIds(pathItem);
-      const maxY = Math.max(...Object.values(pathLayout.positions || {}).map((pos) => pos.y), 1);
-      const x = laneCount === 1 ? 33 : 10 + index * laneStep;
+    pathPointSets.forEach(({ pathItem, points }) => {
       const color = colorValue(pathItem.color);
       const dash = pathKey(pathItem) === activeKey() ? "" : ' stroke-dasharray="4 4" opacity="0.78"';
-      const points = ids.map((sceneId) => {
-        const pos = pathLayout.positions[sceneId];
-        if (!pos) return null;
-        return { x, y: 24 + (pos.y / Math.max(maxY, 1)) * 704 };
-      }).filter(Boolean);
+      const miniPoints = points.map((point) => ({ ...point, y: miniY(point.y) }));
       for (let i = 0; i < points.length - 1; i += 1) {
-        html += `<line x1="${points[i].x}" y1="${points[i].y}" x2="${points[i + 1].x}" y2="${points[i + 1].y}" stroke="${color}" stroke-width="2.1"${dash}/>`;
+        html += `<line x1="${miniPoints[i].x}" y1="${miniPoints[i].y}" x2="${miniPoints[i + 1].x}" y2="${miniPoints[i + 1].y}" stroke="${color}" stroke-width="2.1"${dash}/>`;
       }
-      points.forEach((point) => {
+      miniPoints.forEach((point) => {
         html += `<circle cx="${point.x}" cy="${point.y}" r="${pathKey(pathItem) === activeKey() ? 2.7 : 2.1}" fill="${color}"/>`;
       });
     });
 
     const path = activePath();
-    const splitCount = Graph.getRenderableEdges(path, { fallback: true }).filter((edge) => !Graph.isOptionalEdge(edge)).reduce((map, edge) => {
-      map.set(edge.fromSceneId, (map.get(edge.fromSceneId) || 0) + 1);
+    const funnelCount = Graph.getRenderableEdges(path, { fallback: true }).filter((edge) => !Graph.isOptionalEdge(edge)).reduce((map, edge) => {
+      map.set(edge.toSceneId, (map.get(edge.toSceneId) || 0) + 1);
       return map;
     }, new Map());
-    const splits = Array.from(splitCount.values()).filter((count) => count > 1).length;
+    const funnels = Array.from(funnelCount.values()).filter((count) => count > 1).length;
     svg.innerHTML = html;
     $("miniTitle").textContent = visible.length > 1 ? `Map · ${visible.length}` : "Map";
-    $("miniFoot").innerHTML = `${Graph.getPathSceneIds(path).length} situaties<br/>${splits} splits · ${ghosts.length} buren`;
+    $("miniFoot").innerHTML = `${Graph.getPathSceneIds(path).length} situaties<br/>${funnels} funnels · ${ghosts.length} buren`;
     updateMiniViewport();
   }
 
   function updateMiniViewport() {
     const outer = $("canvasOuter");
-    const sizer = $("canvasSizer");
     const vp = $("miniViewport");
-    const height = Math.max(1, sizer.scrollHeight);
-    vp.style.top = `${Math.max(0, Math.min(100, outer.scrollTop / height * 100))}%`;
-    vp.style.height = `${Math.max(8, Math.min(100, outer.clientHeight / height * 100))}%`;
+    if (!outer || !vp || !miniMapBounds) {
+      if (vp) {
+        vp.style.top = "0%";
+        vp.style.height = "100%";
+      }
+      return;
+    }
+    const logicalTop = outer.scrollTop / canvasZoom;
+    const logicalBottom = (outer.scrollTop + outer.clientHeight) / canvasZoom;
+    const span = Math.max(1, Number(miniMapBounds.bottom || 0) - Number(miniMapBounds.top || 0));
+    const topPct = ((logicalTop - miniMapBounds.top) / span) * 100;
+    const bottomPct = ((logicalBottom - miniMapBounds.top) / span) * 100;
+    const clampedTop = Math.max(0, Math.min(100, topPct));
+    const clampedBottom = Math.max(clampedTop, Math.min(100, bottomPct));
+    vp.style.top = `${clampedTop}%`;
+    vp.style.height = `${Math.max(8, clampedBottom - clampedTop)}%`;
   }
 
   function edgesForSave(path) {
@@ -1668,6 +2400,9 @@
     const sceneIds = Graph.getPathSceneIds(path);
     const edges = edgesForSave(path);
     const thresholds = Graph.normalizeThresholdsForEdges(path.thresholds || [], sceneIds, edges);
+    const endSceneIds = Graph.normalizeIdList(path.endSceneIds || []).filter((id) => sceneIds.includes(Number(id)));
+    const blockRules = Graph.normalizeBlockRules(path.blockRules || [], sceneIds);
+    const ignoreCrossingBlockSceneIds = Graph.normalizeIgnoreCrossingBlockSceneIds(path, sceneIds);
     const body = {
       name: path.name || "Naamloos pad",
       description: path.description || "",
@@ -1676,22 +2411,13 @@
       sceneIds,
       edges,
       thresholds,
+      endSceneIds,
+      blockRules,
+      ignoreCrossingBlockSceneIds,
       isActive: path.isActive !== false,
     };
     if (!isDraftPath(path)) body.id = path.id;
     return { body, sceneIds, edges };
-  }
-
-  function crossingSaveBody(sceneId) {
-    const id = Number(sceneId || 0);
-    const incomingCount = Graph.crossingIncomingRoutesForPaths(activePaths(), id).length;
-    return {
-      body: {
-        sceneId: id,
-        requiredCount: incomingCount > 1 ? crossingRequiredForScene(id, incomingCount) : incomingCount,
-      },
-      sceneId: id,
-    };
   }
 
   function validatePathForSave(path) {
@@ -1728,15 +2454,12 @@
   async function saveDirtyPaths() {
     if (saving) return;
     const dirtyKeys = Array.from(dirtyPathIds);
-    const dirtyCrossingIds = Array.from(dirtyCrossingSceneIds).map(Number).filter(Boolean);
     const payloads = dirtyKeys
       .map((key) => pathById(key))
       .filter(Boolean)
       .map((path) => ({ path, previousKey: pathKey(path), ...pathSaveBody(path) }));
     dirtyPathIds = new Set(dirtyKeys.filter((key) => pathById(key)));
-    const crossingPayloads = dirtyCrossingIds.map(crossingSaveBody).filter((payload) => payload.sceneId);
-    dirtyCrossingSceneIds = new Set(dirtyCrossingIds);
-    if (!payloads.length && !crossingPayloads.length) {
+    if (!payloads.length) {
       setSaveState("saved");
       return;
     }
@@ -1752,7 +2475,6 @@
     saving = true;
     setSaveState("saving");
     const savedKeys = new Set();
-    const savedCrossingIds = new Set();
     let lastServerState = null;
     try {
       for (const payload of payloads) {
@@ -1765,26 +2487,19 @@
         savedKeys.add(nextKey);
         if (result && result.state) lastServerState = result.state;
       }
-      for (const payload of crossingPayloads) {
-        const result = await api("/admin/algorithm/crossing-thresholds/upsert", { method: "POST", body: payload.body });
-        savedCrossingIds.add(payload.sceneId);
-        if (result && result.state) lastServerState = result.state;
-      }
       if (lastServerState) state = normalizeEditorState(lastServerState);
       rebuildIndexes();
       ensureSelection();
       savedKeys.forEach((key) => dirtyPathIds.delete(key));
-      savedCrossingIds.forEach((sceneId) => dirtyCrossingSceneIds.delete(sceneId));
-      setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
+      setSaveState(dirtyPathIds.size ? "dirty" : "saved");
       renderAll();
-      const savedCount = payloads.length + crossingPayloads.length;
+      const savedCount = payloads.length;
       toast(savedCount === 1 ? "Opgeslagen" : `${savedCount} wijzigingen opgeslagen`);
     } catch (err) {
       savedKeys.forEach((key) => dirtyPathIds.delete(key));
-      savedCrossingIds.forEach((sceneId) => dirtyCrossingSceneIds.delete(sceneId));
       rebuildIndexes();
       ensureSelection();
-      setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
+      setSaveState(dirtyPathIds.size ? "dirty" : "saved");
       renderAll();
       const issues = err.body && Array.isArray(err.body.issues) ? ` (${err.body.issues.join(", ")})` : "";
       toast(`Opslaan mislukt: ${err.message}${issues}`, true);
@@ -1796,10 +2511,11 @@
   function openPathModal(mode) {
     modalMode = mode || "edit";
     const path = modalMode === "new" ? null : activePath();
+    const exceptKey = path ? pathKey(path) : "";
     $("pathModalTitle").textContent = modalMode === "new" ? "Nieuw pad" : "Pad info";
     $("pathName").value = path ? path.name || "" : "";
     $("pathDescription").value = path ? path.description || "" : "";
-    renderColorGrid(path ? path.color || DEFAULT_COLOR : nextColor());
+    renderColorGrid(path ? path.color || DEFAULT_COLOR : nextColor(exceptKey) || DEFAULT_COLOR, exceptKey);
     $("archivePathBtn").style.display = path && !isDraftPath(path) ? "" : "none";
     $("archivePathBtn").textContent = "Deactiveer pad";
     $("deletePathBtn").style.display = path ? "" : "none";
@@ -1812,20 +2528,63 @@
     $("pathModal").classList.remove("open");
   }
 
-  function nextColor() {
-    const used = new Set(activePaths().map((path) => colorValue(path.color).toLowerCase()));
-    return COLORS.find((color) => !used.has(color.toLowerCase())) || DEFAULT_COLOR;
+  function usedPathColors(exceptKey = "") {
+    const skip = String(exceptKey || "");
+    return new Set(activePaths()
+      .filter((path) => pathKey(path) !== skip)
+      .map((path) => colorKey(path.color)));
   }
 
-  function renderColorGrid(selected) {
+  function nextColor(exceptKey = "") {
+    const used = usedPathColors(exceptKey);
+    return AUTO_COLOR_ORDER.find((color) => !used.has(color.toLowerCase())) || "";
+  }
+
+  function renderColorGrid(selected, exceptKey = "") {
     const row = $("pathColors");
-    row.innerHTML = COLORS.map((color) => (
-      `<span class="colorBtn ${color.toLowerCase() === colorValue(selected).toLowerCase() ? "selected" : ""}" data-color="${color}" style="background:${color}"></span>`
+    const used = usedPathColors(exceptKey);
+    const paletteByKey = new Map(COLORS.map((color) => [rawColorKey(color), color]));
+    const requestedKey = rawColorKey(selected || "");
+    const selectedColor = paletteByKey.get(requestedKey) || nextColor(exceptKey) || DEFAULT_COLOR;
+    const selectedKey = selectedColor ? colorKey(selectedColor) : "";
+    row.innerHTML = PATH_COLOR_ROWS.map((colors) => (
+      colors.map((color) => {
+      const key = colorKey(color);
+      const usedByOther = used.has(key);
+      const selectedClass = key === selectedKey ? "selected" : "";
+      const usedClass = usedByOther ? "used" : "";
+      const label = usedByOther ? `${color} al in gebruik` : color;
+      return `<button type="button" class="colorBtn ${selectedClass} ${usedClass}" data-color="${color}" style="background:${color}" ${usedByOther ? "disabled" : ""} title="${esc(label)}" aria-label="${esc(label)}" aria-pressed="${selectedClass ? "true" : "false"}"></button>`;
+      }).join("")
     )).join("");
-    row.dataset.value = colorValue(selected);
+    row.dataset.value = selectedColor;
     row.querySelectorAll(".colorBtn").forEach((button) => {
-      button.addEventListener("click", () => renderColorGrid(button.dataset.color));
+      const isSelected = rawColorKey(button.dataset.color) === rawColorKey(selectedColor);
+      button.classList.toggle("selected", isSelected);
+      button.setAttribute("aria-pressed", isSelected ? "true" : "false");
     });
+    row.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const button = event.target && event.target.closest ? event.target.closest(".colorBtn") : null;
+      if (!button || !row.contains(button) || button.disabled) return;
+      const nextColorValue = String(button.dataset.color || "");
+      if (!nextColorValue) return;
+      row.dataset.value = nextColorValue;
+      row.querySelectorAll(".colorBtn").forEach((item) => {
+        const isSelected = item === button;
+        item.classList.toggle("selected", isSelected);
+        item.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      });
+    };
+  }
+
+  function selectedModalColor(exceptKey = "") {
+    const selectedColor = colorValue($("pathColors").dataset.value || "", "");
+    const used = usedPathColors(exceptKey);
+    const paletteKeys = new Set(COLORS.map((color) => rawColorKey(color)));
+    if (selectedColor && paletteKeys.has(rawColorKey(selectedColor)) && !used.has(colorKey(selectedColor))) return selectedColor;
+    return "";
   }
 
   function savePathInfo() {
@@ -1835,14 +2594,22 @@
       return;
     }
     if (modalMode === "new") {
+      const color = selectedModalColor("");
+      if (!color) {
+        toast("Kies een vrije kleur.", true);
+        return;
+      }
       const draft = {
         id: `draft-${Date.now()}`,
         name,
         description: $("pathDescription").value,
-        color: $("pathColors").dataset.value || nextColor(),
+        color,
         edgeMode: "manual",
         sceneIds: [],
         edges: [],
+        endSceneIds: [],
+        blockRules: [],
+        ignoreCrossingBlockSceneIds: [],
         isActive: true,
       };
       state.paths = [draft, ...(state.paths || [])];
@@ -1852,9 +2619,14 @@
     } else {
       const path = activePath();
       if (!path) return;
+      const color = selectedModalColor(pathKey(path));
+      if (!color) {
+        toast("Kies een vrije kleur.", true);
+        return;
+      }
       path.name = name;
       path.description = $("pathDescription").value;
-      path.color = $("pathColors").dataset.value || path.color || DEFAULT_COLOR;
+      path.color = color;
       markDirty();
     }
     closePathModal();
@@ -1897,7 +2669,7 @@
       if (activeKey() === pathKey(path)) activePathId = "";
       rebuildIndexes();
       ensureSelection();
-      setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
+      setSaveState(dirtyPathIds.size ? "dirty" : "saved");
       closePathModal();
       renderAll();
       toast("Pad gedeactiveerd");
@@ -1936,7 +2708,7 @@
       forgetPathLocally(path);
       rebuildIndexes();
       ensureSelection();
-      setSaveState(dirtyPathIds.size || dirtyCrossingSceneIds.size ? "dirty" : "saved");
+      setSaveState(dirtyPathIds.size ? "dirty" : "saved");
       closePathModal();
       renderAll();
       toast("Pad verwijderd");
@@ -1954,7 +2726,30 @@
   }
 
   function fitCanvas() {
-    $("canvasOuter").scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    focusPathInView(activeKey(), { behavior: "smooth" });
+  }
+
+  function focusPathInView(pathOrKey = activeKey(), options = {}) {
+    const key = typeof pathOrKey === "string" ? pathOrKey : pathKey(pathOrKey);
+    if (!key) return;
+    const outer = $("canvasOuter");
+    if (!outer) return;
+    const model = buildUnifiedCanvasModel();
+    const positions = model.pathPositions && model.pathPositions.get(key)
+      ? Object.values(model.pathPositions.get(key)).filter(Boolean)
+      : [];
+    if (!positions.length) return;
+    const minX = Math.min(...positions.map((pos) => Number(pos.x || 0)));
+    const maxX = Math.max(...positions.map((pos) => Number(pos.x || 0) + NODE_W));
+    const minY = Math.min(...positions.map((pos) => Number(pos.y || 0)));
+    const maxY = Math.max(...positions.map((pos) => Number(pos.y || 0) + NODE_H));
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    outer.scrollTo({
+      left: Math.max(0, centerX * canvasZoom - outer.clientWidth / 2),
+      top: Math.max(0, centerY * canvasZoom - outer.clientHeight / 2),
+      behavior: options.behavior || "smooth",
+    });
   }
 
   function scrollNodeIntoView(sceneId) {
@@ -1992,12 +2787,17 @@
       jumpQ = event.target.value;
       jumpToSearch();
     });
-    $("newPathBtn").addEventListener("click", () => openPathModal("new"));
-    $("pathInfoBtn").addEventListener("click", () => openPathModal("edit"));
     $("saveBtn").addEventListener("click", saveDirtyPaths);
     $("refreshBtn").addEventListener("click", () => loadState({ show: true }));
     $("autoLayoutBtn").addEventListener("click", autoLayout);
     $("fitBtn").addEventListener("click", fitCanvas);
+    $("testModeBtn").addEventListener("click", () => setTestMode(!testMode));
+    $("testResetBtn").addEventListener("click", resetTest);
+    $("testUndoBtn").addEventListener("click", undoTestStep);
+    $("testNextBtn").addEventListener("click", playNextTestNode);
+    $("scenePaneCollapseBtn").addEventListener("click", () => setScenePaneCollapsed(true));
+    $("scenePaneExpandBtn").addEventListener("click", () => setScenePaneCollapsed(false));
+    $("inspectorToggleBtn").addEventListener("click", () => setInspectorCollapsed(!inspectorCollapsed));
     $("zoomOutBtn").addEventListener("click", () => setCanvasZoom(canvasZoom - ZOOM_STEP));
     $("zoomInBtn").addEventListener("click", () => setCanvasZoom(canvasZoom + ZOOM_STEP));
     $("zoomResetBtn").addEventListener("click", () => setCanvasZoom(1));
@@ -2030,11 +2830,12 @@
       pinchGesture = null;
     });
     $("canvasOuter").addEventListener("mousedown", (event) => {
-      if (event.target && event.target.closest && event.target.closest(".pathNode,.edgeDelete,.edgeTypeToggle,.edgeHit,button,input,textarea,select,a")) return;
+      if (event.target && event.target.closest && event.target.closest(".pathNode,.edgeHit,button,input,textarea,select,a")) return;
       startMarqueeSelect(event);
     });
 
     const allowDrop = (event) => {
+      if (testMode) return;
       if (!event.dataTransfer || !Array.from(event.dataTransfer.types || []).includes("application/x-scene-id")) return;
       event.preventDefault();
       $("canvasInner").classList.add("dropActive");
@@ -2045,6 +2846,7 @@
       if (event.target === $("canvasOuter") || event.target === $("canvasInner")) $("canvasInner").classList.remove("dropActive");
     });
     $("canvasOuter").addEventListener("drop", (event) => {
+      if (testMode) return;
       const sceneId = Number(event.dataTransfer.getData("application/x-scene-id") || 0);
       if (!sceneId) return;
       event.preventDefault();
@@ -2075,6 +2877,7 @@
       event.preventDefault();
       event.returnValue = "";
     });
+    applyPanelState();
   }
 
   (async function init() {

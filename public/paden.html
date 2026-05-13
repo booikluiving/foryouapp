@@ -57,6 +57,7 @@
       button:hover { background: #fffdf8; }
       button:disabled { opacity: 0.48; cursor: not-allowed; }
       button.primary { background: var(--ink); color: var(--paper); }
+      button.active { background: var(--focus); color: var(--ink); }
       button.ghost { background: transparent; border-color: transparent; }
       button.ghost:hover { background: rgba(31, 29, 26, 0.06); border-color: var(--line-soft); }
       button.danger { color: var(--danger); border-color: #f1aaaa; background: #fff7f7; }
@@ -211,6 +212,45 @@
         background: var(--paper);
       }
 
+      .leftPane.collapsed {
+        width: 42px;
+        flex-basis: 42px;
+      }
+
+      .leftPane.collapsed .leftHead,
+      .leftPane.collapsed .sceneList {
+        display: none;
+      }
+
+      .paneRail {
+        display: none;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        border-radius: 0;
+        background: var(--paper);
+        color: var(--muted);
+        padding: 10px 0;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 10px;
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 10px;
+        font-weight: 850;
+      }
+
+      .leftPane.collapsed .paneRail {
+        display: flex;
+      }
+
+      .paneRail strong {
+        color: var(--ink);
+        font-size: 11px;
+      }
+
       .leftHead {
         flex: 0 0 auto;
         padding: 12px;
@@ -230,6 +270,12 @@
         text-transform: uppercase;
       }
 
+      .eyebrow .iconBtn {
+        width: 22px;
+        height: 22px;
+        font-size: 11px;
+      }
+
       .sceneSearch { height: 32px; }
 
       .sceneList {
@@ -238,20 +284,22 @@
         padding: 8px;
         display: flex;
         flex-direction: column;
-        gap: 3px;
+        gap: 7px;
       }
 
       .sceneRow {
-        display: flex;
-        align-items: flex-start;
-        gap: 8px;
-        min-height: 32px;
-        padding: 7px 9px;
+        display: grid;
+        grid-template-columns: 10px minmax(0, 1fr) 14px;
+        align-items: start;
+        column-gap: 8px;
+        min-height: 38px;
+        padding: 8px 9px 9px;
         border: 1.5px solid transparent;
         border-radius: 5px;
         background: transparent;
+        box-sizing: border-box;
         font-size: 12.5px;
-        line-height: 1.2;
+        line-height: 1.26;
         cursor: grab;
         user-select: none;
       }
@@ -260,6 +308,10 @@
       .sceneRow.inActive {
         background: #eafaf7;
         border-color: rgba(20, 184, 166, 0.42);
+      }
+      .sceneRow.inTargetPath {
+        border-color: rgba(250, 204, 21, 0.82);
+        box-shadow: inset 3px 0 0 var(--focus);
       }
       .sceneRow .grip {
         flex: 0 0 auto;
@@ -276,17 +328,19 @@
       }
       .sceneRow .name {
         min-width: 0;
-        flex: 1;
+        display: block;
         white-space: normal;
-        overflow: visible;
+        overflow: hidden;
         overflow-wrap: anywhere;
+        line-break: anywhere;
       }
       .scenePathDots {
-        flex: 0 0 auto;
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 2px;
-        padding-top: 4px;
+        min-width: 12px;
+        padding-top: 5px;
       }
       .scenePathDots span {
         width: 7px;
@@ -324,6 +378,13 @@
         text-transform: uppercase;
       }
 
+      .chipAction {
+        flex: 0 0 auto;
+        height: 30px;
+        padding: 5px 10px;
+        white-space: nowrap;
+      }
+
       .chip {
         display: inline-flex;
         align-items: center;
@@ -359,49 +420,6 @@
         background: var(--warn);
       }
 
-      .pathToggle {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 16px;
-        height: 16px;
-        flex: 0 0 auto;
-        cursor: pointer;
-      }
-
-      .pathToggle input {
-        position: absolute;
-        opacity: 0;
-        pointer-events: none;
-        width: 1px;
-        height: 1px;
-      }
-
-      .pathToggle span {
-        width: 14px;
-        height: 14px;
-        border: 1.5px solid var(--line);
-        border-radius: 3px;
-        background: var(--surface);
-        position: relative;
-      }
-
-      .pathToggle input:checked + span {
-        background: var(--ink);
-      }
-
-      .pathToggle input:checked + span::after {
-        content: "";
-        position: absolute;
-        left: 3px;
-        top: 1px;
-        width: 5px;
-        height: 8px;
-        border: solid var(--paper);
-        border-width: 0 2px 2px 0;
-        transform: rotate(45deg);
-      }
-
       .chip button {
         all: unset;
         display: inline-flex;
@@ -409,6 +427,59 @@
         min-width: 0;
         gap: 6px;
         cursor: pointer;
+      }
+
+      .pathVisibilityToggle {
+        flex: 0 0 auto;
+        width: 24px;
+        height: 22px;
+        justify-content: center;
+        border-radius: 999px;
+        color: var(--muted);
+      }
+
+      .pathVisibilityToggle:hover {
+        background: rgba(31, 29, 26, 0.07);
+      }
+
+      .visibilityIcon {
+        position: relative;
+        width: 16px;
+        height: 10px;
+        border: 1.5px solid currentColor;
+        border-radius: 999px;
+        opacity: 0.62;
+      }
+
+      .visibilityIcon::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: currentColor;
+        transform: translate(-50%, -50%);
+      }
+
+      .pathVisibilityToggle.isOn {
+        color: var(--ink);
+      }
+
+      .pathVisibilityToggle.isOn .visibilityIcon {
+        opacity: 1;
+      }
+
+      .pathVisibilityToggle.isOff .visibilityIcon::before {
+        content: "";
+        position: absolute;
+        left: 1px;
+        right: 1px;
+        top: 50%;
+        height: 1.5px;
+        background: currentColor;
+        transform: rotate(-28deg);
       }
 
       .chip .dot {
@@ -425,6 +496,17 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+
+      .targetBadge {
+        flex: 0 0 auto;
+        padding: 1px 5px;
+        border-radius: 999px;
+        background: var(--focus);
+        color: var(--ink);
+        font-size: 9.5px;
+        font-weight: 850;
+        line-height: 1.15;
       }
 
       .barHint {
@@ -490,32 +572,410 @@
         background: var(--paper-2);
       }
 
-      .columns {
-        flex: 0 0 40px;
-        display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
-        align-items: center;
-        padding: 0 30px;
-        border-bottom: 1px dashed var(--line-soft);
-        background: var(--paper);
-        color: var(--muted);
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-
-      .columns span:nth-child(2) { text-align: center; }
-      .columns span:nth-child(3) { text-align: right; }
-
       .canvasControls {
         position: absolute;
-        top: 48px;
+        top: 12px;
         right: 12px;
         z-index: 5;
         display: flex;
         align-items: center;
         gap: 6px;
+      }
+
+      .floatingPanel {
+        position: absolute;
+        z-index: 7;
+        border: 1.5px solid var(--line);
+        border-radius: 8px;
+        background: rgba(251, 249, 244, 0.97);
+        box-shadow: var(--shadow);
+      }
+
+      .floatingPanelHead {
+        min-height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 10px;
+        border-bottom: 1px dashed var(--line-soft);
+      }
+
+      .floatingPanelTitle {
+        min-width: 0;
+        display: grid;
+        gap: 1px;
+      }
+
+      .floatingPanelTitle span {
+        color: var(--muted);
+        font-size: 9.5px;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .floatingPanelTitle strong {
+        min-width: 0;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 850;
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .floatingPanelHead .iconBtn {
+        flex: 0 0 auto;
+        width: 24px;
+        height: 24px;
+      }
+
+      .inspectorPane {
+        top: 58px;
+        right: 12px;
+        width: min(300px, calc(100% - 24px));
+        max-height: min(520px, calc(100% - 82px));
+        color: var(--ink);
+      }
+
+      .inspectorPane.collapsed {
+        width: 156px;
+        max-height: 42px;
+        overflow: hidden;
+      }
+
+      .inspectorPane.collapsed .floatingPanelHead {
+        border-bottom: 0;
+      }
+
+      .inspectorPane.collapsed .inspectorContent {
+        display: none;
+      }
+
+      .inspectorContent {
+        max-height: min(440px, calc(100vh - 220px));
+        overflow: auto;
+        padding: 10px;
+      }
+
+      .inspectorEmpty,
+      .inspectorBox {
+        display: grid;
+        gap: 10px;
+      }
+
+      .inspectorEmpty {
+        min-height: 76px;
+        align-content: center;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .inspectorHead {
+        display: grid;
+        gap: 4px;
+        padding-bottom: 10px;
+        border-bottom: 1px dashed var(--line-soft);
+      }
+
+      .inspectorKicker {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .inspectorTitle {
+        font-size: 14px;
+        font-weight: 850;
+        line-height: 1.22;
+        overflow-wrap: anywhere;
+      }
+
+      .inspectorMeta,
+      .inspectorHint {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1.35;
+      }
+
+      .inspectorSection {
+        display: grid;
+        gap: 8px;
+        padding: 10px 0;
+        border-bottom: 1px dashed var(--line-soft);
+      }
+
+      .inspectorSection:last-child { border-bottom: 0; }
+
+      .inspectorSection h3 {
+        margin: 0;
+        color: var(--ink);
+        font-size: 11px;
+        font-weight: 850;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .inspectorToggle,
+      .inspectorStepper {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-height: 32px;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 760;
+      }
+
+      .inspectorToggle input {
+        width: auto;
+      }
+
+      .inspectorToggle input:disabled + span,
+      .inspectorStepper input:disabled {
+        opacity: 0.48;
+      }
+
+      .inspectorStepper input {
+        width: 54px;
+        height: 30px;
+        padding: 0 6px;
+        text-align: right;
+      }
+
+      .funnelStepperControl {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        flex: 0 0 auto;
+      }
+
+      .funnelStepperControl button {
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border-radius: 7px;
+        font-size: 17px;
+        font-weight: 850;
+        line-height: 1;
+      }
+
+      .funnelStepperControl input {
+        width: 42px;
+        height: 34px;
+        padding: 0 5px;
+        text-align: center;
+        font-size: 15px;
+        font-weight: 850;
+      }
+
+      .funnelStepperControl input::-webkit-outer-spin-button,
+      .funnelStepperControl input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+
+      .funnelStepperControl input[type="number"] {
+        appearance: textfield;
+        -moz-appearance: textfield;
+      }
+
+      .stepperTotal {
+        color: var(--ink);
+        font-size: 15px;
+        font-weight: 850;
+      }
+
+      .inspectorActions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .inspectorBadges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+
+      .inspectorBadge {
+        max-width: 100%;
+        padding: 3px 7px;
+        border: 1px solid var(--line-soft);
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 850;
+        line-height: 1.15;
+        white-space: nowrap;
+      }
+
+      .inspectorBadge.funnel,
+      .inspectorBadge.crossing {
+        border-color: rgba(20, 184, 166, 0.36);
+        color: var(--active);
+      }
+
+      .inspectorBadge.block {
+        border-color: rgba(185, 28, 28, 0.3);
+        color: var(--danger);
+      }
+
+      .sceneInfo {
+        display: grid;
+        gap: 10px;
+      }
+
+      .sceneInfoBlock {
+        display: grid;
+        gap: 4px;
+      }
+
+      .sceneInfoBlock > strong {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 850;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .sceneInfoBlock p {
+        margin: 0;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 650;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+      }
+
+      .sceneInfoList {
+        display: grid;
+        gap: 6px;
+      }
+
+      .sceneInfoList.compact {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+
+      .sceneInfoItem {
+        display: grid;
+        gap: 1px;
+        color: var(--ink);
+        font-size: 12px;
+        line-height: 1.32;
+        overflow-wrap: anywhere;
+      }
+
+      .sceneInfoList.compact .sceneInfoItem {
+        display: inline-flex;
+        max-width: 100%;
+        padding: 3px 7px;
+        border: 1px solid var(--line-soft);
+        border-radius: 999px;
+        background: var(--surface);
+        font-size: 11px;
+        line-height: 1.15;
+      }
+
+      .sceneInfoItem b {
+        font-weight: 820;
+      }
+
+      .sceneInfoItem span {
+        color: var(--muted);
+        font-weight: 650;
+      }
+
+      .testPanel {
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        width: min(390px, calc(100% - 24px));
+        max-height: min(360px, calc(100% - 24px));
+        z-index: 6;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 10px;
+        border: 1.5px solid var(--line);
+        border-radius: 8px;
+        background: rgba(251, 249, 244, 0.96);
+        box-shadow: var(--shadow);
+        overflow: auto;
+      }
+
+      .testPanel[hidden] { display: none; }
+
+      .testHead,
+      .testActions,
+      .testAvailable,
+      .testTimeline {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .testHead {
+        justify-content: space-between;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .testHead span {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .testActions,
+      .testAvailable,
+      .testTimeline {
+        flex-wrap: wrap;
+      }
+
+      .testAvailable button,
+      .testTimeline span {
+        max-width: 190px;
+        min-height: 25px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .testTimeline span,
+      .testMuted {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 8px;
+        border: 1.5px solid var(--line-soft);
+        border-radius: 7px;
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 750;
+      }
+
+      .testTimeline b {
+        display: inline-grid;
+        place-items: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--ink);
+        color: var(--paper);
+        font-size: 10px;
       }
 
       .zoomGroup {
@@ -644,6 +1104,37 @@
         box-shadow: 0 0 0 2px var(--focus), 0 4px 14px rgba(31, 29, 26, 0.16);
       }
 
+      .canvasInner.testMode .pathNode {
+        cursor: pointer;
+      }
+
+      .canvasInner.testMode .pathNode.test-locked {
+        opacity: 0.64;
+        background: #f5f0e7;
+      }
+
+      .canvasInner.testMode .pathNode.test-available {
+        border-color: #15803d;
+        background: #f0fdf4;
+        box-shadow: 0 0 0 2px rgba(21, 128, 61, 0.12), 0 2px 8px rgba(31, 29, 26, 0.14);
+      }
+
+      .canvasInner.testMode .pathNode.test-played {
+        border-color: var(--ink);
+        background: #e8f7f3;
+      }
+
+      .canvasInner.testMode .pathNode.test-blocked {
+        border-color: var(--danger);
+        background: #fff1f2;
+        opacity: 0.72;
+      }
+
+      .canvasInner.testMode .pathNode .port,
+      .canvasInner.testMode .pathNode .nodeHandle {
+        display: none !important;
+      }
+
       .pathNode.expanded {
         z-index: 8;
       }
@@ -679,27 +1170,6 @@
         background: var(--active);
       }
 
-      .nodePathColors {
-        position: absolute;
-        top: -8px;
-        right: 10px;
-        display: flex;
-        align-items: center;
-        gap: 3px;
-        padding: 2px 4px;
-        border: 1px solid rgba(42, 39, 36, 0.32);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.94);
-        box-shadow: 0 2px 6px rgba(31, 29, 26, 0.14);
-      }
-
-      .nodePathColors i {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        box-shadow: 0 0 0 1px rgba(42, 39, 36, 0.24);
-      }
-
       .pathNode .title,
       .ghostNode .title {
         min-width: 0;
@@ -733,12 +1203,49 @@
         display: block;
       }
 
+      .statusPill {
+        position: absolute;
+        top: -9px;
+        left: 11px;
+        max-width: 92px;
+        padding: 2px 6px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 9.5px;
+        font-weight: 850;
+        line-height: 1.1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        box-shadow: 0 1px 4px rgba(31, 29, 26, 0.12);
+      }
+
+      .statusPill.available {
+        border-color: #15803d;
+        color: #15803d;
+      }
+
+      .statusPill.played {
+        border-color: var(--ink);
+        color: var(--ink);
+      }
+
+      .statusPill.blocked {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+
       .pathNode .sub,
       .ghostNode .sub {
         margin-top: 2px;
         color: var(--muted);
         font-size: 10px;
         font-weight: 650;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .pathNode .port {
@@ -788,77 +1295,6 @@
         opacity: 0.62;
         z-index: 2;
         pointer-events: none;
-      }
-
-      .edgeDelete,
-      .edgeTypeToggle {
-        position: absolute;
-        width: 22px;
-        height: 22px;
-        border-radius: 50%;
-        border: 1.5px solid var(--surface);
-        background: var(--danger);
-        color: #fff;
-        padding: 0;
-        display: grid;
-        place-items: center;
-        font-size: 13px;
-        font-weight: 850;
-        line-height: 1;
-        text-align: center;
-        transform: translate(-50%, -50%);
-        cursor: pointer;
-        z-index: 6;
-        box-shadow: 0 2px 8px rgba(31, 29, 26, 0.22);
-      }
-
-      .edgeTypeToggle {
-        font-size: 12px;
-      }
-
-      .thresholdBadge {
-        position: absolute;
-        display: inline-flex;
-        align-items: center;
-        gap: 1px;
-        height: 25px;
-        padding: 2px 7px;
-        border: 1.5px solid var(--line);
-        border-radius: 7px;
-        background: rgba(255, 255, 255, 0.94);
-        box-shadow: 0 2px 8px rgba(31, 29, 26, 0.14);
-        transform: translate(-50%, -50%);
-        z-index: 5;
-        font-size: 11px;
-        font-weight: 850;
-        line-height: 1;
-      }
-
-      .thresholdBadge.choiceGroup {
-        background: #fff9df;
-        border-style: dashed;
-      }
-
-      .crossingThresholdBadge {
-        transform: translate(0, -50%);
-        z-index: 9;
-      }
-
-      .thresholdBadge input {
-        width: 28px;
-        height: 19px;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: inherit;
-        font: inherit;
-        text-align: right;
-        -moz-appearance: textfield;
-      }
-
-      .thresholdBadge input::-webkit-inner-spin-button,
-      .thresholdBadge input::-webkit-outer-spin-button {
-        opacity: 1;
       }
 
       .emptyState {
@@ -995,21 +1431,49 @@
       }
 
       .colorGrid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 7px;
+        display: grid;
+        grid-template-columns: repeat(10, 28px);
+        gap: 6px;
+        width: max-content;
+        max-width: 100%;
+        padding: 2px 0;
       }
 
       .colorBtn {
+        position: relative;
         width: 28px;
         height: 28px;
-        border: 2px solid var(--surface);
+        padding: 0;
+        border: 1.5px solid rgba(42, 39, 36, 0.18);
         border-radius: 50%;
-        box-shadow: 0 0 0 1.5px var(--line-soft);
+        box-shadow: inset 0 0 0 2px var(--surface), 0 0 0 1px var(--line-soft);
         cursor: pointer;
       }
 
-      .colorBtn.selected { box-shadow: 0 0 0 2.5px var(--line); }
+      .colorBtn:hover:not(:disabled) {
+        box-shadow: inset 0 0 0 2px var(--surface), 0 0 0 2px var(--line-soft);
+      }
+
+      .colorBtn.selected {
+        box-shadow: inset 0 0 0 2px var(--surface), 0 0 0 3px var(--line);
+      }
+
+      .colorBtn.used {
+        cursor: not-allowed;
+        opacity: 0.34;
+      }
+
+      .colorBtn.used::after {
+        content: "";
+        position: absolute;
+        left: 5px;
+        right: 5px;
+        top: 50%;
+        height: 2px;
+        border-radius: 999px;
+        background: var(--line);
+        transform: rotate(-35deg);
+      }
 
       .dialogActions {
         display: flex;
@@ -1097,8 +1561,6 @@
           <div class="jumpWrap">
             <input id="jumpSearch" type="search" placeholder="Springen naar situatie..." autocomplete="off" />
           </div>
-          <button id="pathInfoBtn" type="button">Pad info</button>
-          <button id="newPathBtn" type="button" class="primary">+ Nieuw pad</button>
           <span id="saveState" class="saveState saved"><span class="dot"></span><span class="txt">Opgeslagen</span></span>
           <button id="refreshBtn" class="iconBtn ghost" type="button" title="Vernieuwen">↻</button>
           <button id="saveBtn" type="button" class="primary">Opslaan</button>
@@ -1106,9 +1568,16 @@
       </header>
 
       <div class="work">
-        <aside class="leftPane">
+        <aside id="leftPane" class="leftPane">
+          <button id="scenePaneExpandBtn" class="paneRail" type="button" title="Situaties openen">
+            <span>Situaties</span>
+            <strong id="sceneRailCount">0</strong>
+          </button>
           <div class="leftHead">
-            <p class="eyebrow"><span>Situaties <span id="sceneCount">0</span></span></p>
+            <p class="eyebrow">
+              <span>Situaties <span id="sceneCount">0</span></span>
+              <button id="scenePaneCollapseBtn" class="iconBtn ghost" type="button" title="Situaties inklappen">&lt;</button>
+            </p>
             <input id="sceneSearch" class="sceneSearch" type="search" placeholder="Zoek situatie..." autocomplete="off" />
           </div>
           <div id="sceneList" class="sceneList"></div>
@@ -1118,25 +1587,48 @@
           <div id="chipbar" class="chipbar"></div>
           <div class="canvasRow">
             <section class="canvasPane">
-              <div class="columns">
-                <span>Bron</span>
-                <span>Splits</span>
-                <span>Doel</span>
-              </div>
               <div class="canvasControls">
                 <div class="zoomGroup" aria-label="Zoom">
                   <button id="zoomOutBtn" class="iconBtn" type="button" title="Zoom uit">-</button>
                   <button id="zoomResetBtn" class="zoomLevel" type="button" title="Zoom resetten">100%</button>
                   <button id="zoomInBtn" class="iconBtn" type="button" title="Zoom in">+</button>
                 </div>
+                <button id="testModeBtn" type="button">Test pad</button>
                 <button id="fitBtn" type="button">Fit</button>
                 <button id="autoLayoutBtn" type="button">Auto layout</button>
               </div>
+              <div id="testPanel" class="testPanel" hidden>
+                <div class="testHead">
+                  <strong>Testverloop</strong>
+                  <span id="testStats">0 gespeeld · 0 vrij · 0 wacht · 0 geblokkeerd</span>
+                </div>
+                <div class="testActions">
+                  <button id="testNextBtn" type="button" class="primary">Volgende</button>
+                  <button id="testUndoBtn" type="button">Terug</button>
+                  <button id="testResetBtn" type="button">Reset</button>
+                </div>
+                <div id="testAvailable" class="testAvailable"></div>
+                <div id="testTimeline" class="testTimeline"></div>
+              </div>
+              <aside id="inspectorPane" class="floatingPanel inspectorPane">
+                <div class="floatingPanelHead">
+                  <div class="floatingPanelTitle">
+                    <span id="inspectorPanelKicker">Node info</span>
+                    <strong id="inspectorPanelTitle">Geen selectie</strong>
+                  </div>
+                  <button id="inspectorToggleBtn" class="iconBtn ghost" type="button" title="Node info inklappen">-</button>
+                </div>
+                <div id="inspectorContent" class="inspectorContent">
+                  <div class="inspectorEmpty">
+                    <span>Selecteer een node of pijl om padregels te bewerken.</span>
+                  </div>
+                </div>
+              </aside>
               <div id="canvasOuter" class="canvasOuter">
                 <div id="canvasSizer" class="canvasSizer">
                   <div id="canvasInner" class="canvasInner">
                     <svg id="edgesLayer" class="edgesLayer"></svg>
-                    <div class="dropHint">Sleep situaties hierheen en verbind ze met de poorten</div>
+                    <div id="dropHint" class="dropHint">Sleep situaties hierheen</div>
                     <div id="emptyState" class="emptyState">
                       <strong>Nog geen pad geselecteerd</strong>
                       <span>Maak of kies een pad om de graph te bewerken.</span>
@@ -1154,7 +1646,7 @@
                   <div id="miniViewport" class="miniViewport"></div>
                 </div>
               </div>
-              <div id="miniFoot" class="miniFoot">0 situaties<br/>0 splits</div>
+              <div id="miniFoot" class="miniFoot">0 situaties<br/>0 funnels</div>
             </aside>
           </div>
         </main>

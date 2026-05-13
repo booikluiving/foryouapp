@@ -47,7 +47,7 @@
 
   function normalizeThreshold(threshold) {
     const src = threshold && typeof threshold === "object" ? threshold : {};
-    const sourceSceneId = normalizeId(src.sourceSceneId || src.source || src.fromSceneId || src.from);
+    const sourceSceneId = normalizeId(src.sourceSceneId || src.sceneId || src.targetSceneId || src.toSceneId || src.target || src.source || src.fromSceneId || src.from);
     const requiredCount = Number.parseInt(String(src.requiredCount || src.required || src.count || "1"), 10);
     if (!sourceSceneId) return null;
     return {
@@ -87,6 +87,49 @@
     return Array.from(byScene.values()).sort((a, b) => a.sceneId - b.sceneId);
   }
 
+  function normalizeBlockRule(rule) {
+    const src = rule && typeof rule === "object" ? rule : {};
+    const sourceSceneId = normalizeId(src.sourceSceneId || src.source || src.fromSceneId || src.from);
+    if (!sourceSceneId) return null;
+    return {
+      sourceSceneId,
+      includeCrossingPaths: true,
+    };
+  }
+
+  function normalizeBlockRules(rules, sceneIds = null) {
+    const sceneSet = sceneIds ? new Set(normalizeIdList(sceneIds)) : null;
+    const byKey = new Map();
+    (Array.isArray(rules) ? rules : []).forEach((rawRule) => {
+      const rule = normalizeBlockRule(rawRule);
+      if (!rule) return;
+      if (sceneSet && !sceneSet.has(rule.sourceSceneId)) return;
+      byKey.set(String(rule.sourceSceneId), rule);
+    });
+    return Array.from(byKey.values()).sort((a, b) => a.sourceSceneId - b.sourceSceneId);
+  }
+
+  function normalizeIgnoreCrossingBlockSceneIds(pathOrIds = [], sceneIds = null) {
+    const source = Array.isArray(pathOrIds)
+      ? pathOrIds
+      : (
+        pathOrIds && (
+          pathOrIds.ignoreCrossingBlockSceneIds
+          || pathOrIds.crossingBlockIgnoreSceneIds
+          || pathOrIds.blockIgnoreSceneIds
+          || pathOrIds.ignoreBlockSceneIds
+        )
+      );
+    const sceneSet = sceneIds ? new Set(normalizeIdList(sceneIds)) : null;
+    return normalizeIdList(Array.isArray(source) ? source : [])
+      .filter((sceneId) => !sceneSet || sceneSet.has(sceneId));
+  }
+
+  function activeGraphPaths(paths = []) {
+    return (Array.isArray(paths) ? paths : [])
+      .filter((path) => path && path.isActive !== false && !path.archivedAt);
+  }
+
   function edgeKey(edge) {
     return `${normalizeId(edge && edge.fromSceneId)}:${normalizeId(edge && edge.toSceneId)}`;
   }
@@ -119,17 +162,29 @@
     return map;
   }
 
+  function incomingSourcesByTarget(sceneIds, edges) {
+    const ids = normalizeIdList(sceneIds);
+    const map = new Map(ids.map((id) => [id, []]));
+    normalizeEdges(edges, ids).forEach((edge) => {
+      if (isOptionalEdge(edge)) return;
+      const sources = map.get(edge.toSceneId);
+      if (!sources || sources.includes(edge.fromSceneId)) return;
+      sources.push(edge.fromSceneId);
+    });
+    return map;
+  }
+
   function normalizeThresholdsForEdges(thresholds, sceneIds, edges) {
-    const outgoing = outgoingTargetsBySource(sceneIds, edges);
+    const incoming = incomingSourcesByTarget(sceneIds, edges);
     return normalizeThresholds(thresholds)
       .map((threshold) => {
-        const outgoingCount = outgoing.get(threshold.sourceSceneId)
-          ? outgoing.get(threshold.sourceSceneId).length
+        const incomingCount = incoming.get(threshold.sourceSceneId)
+          ? incoming.get(threshold.sourceSceneId).length
           : 0;
-        if (outgoingCount <= 1) return null;
+        if (incomingCount <= 1) return null;
         const parsedRequired = Number.parseInt(String(threshold.requiredCount || "1"), 10);
-        const requiredCount = Math.min(outgoingCount, Math.max(1, Number.isInteger(parsedRequired) ? parsedRequired : 1));
-        if (requiredCount >= outgoingCount) return null;
+        const requiredCount = Math.min(incomingCount, Math.max(1, Number.isInteger(parsedRequired) ? parsedRequired : 1));
+        if (requiredCount >= incomingCount) return null;
         return {
           sourceSceneId: threshold.sourceSceneId,
           requiredCount,
@@ -176,24 +231,11 @@
   }
 
   function normalizeCrossingThresholdsForPaths(thresholds, paths = []) {
-    return normalizeCrossingThresholds(thresholds)
-      .map((threshold) => {
-        const incomingCount = crossingIncomingRoutesForPaths(paths, threshold.sceneId).length;
-        if (incomingCount <= 1) return null;
-        const parsedRequired = Number.parseInt(String(threshold.requiredCount || "1"), 10);
-        const requiredCount = Math.min(incomingCount, Math.max(1, Number.isInteger(parsedRequired) ? parsedRequired : 1));
-        if (requiredCount >= incomingCount) return null;
-        return {
-          sceneId: threshold.sceneId,
-          requiredCount,
-        };
-      })
-      .filter(Boolean);
+    return [];
   }
 
   function crossingThresholdMapForPaths(thresholds, paths = []) {
-    return new Map(normalizeCrossingThresholdsForPaths(thresholds, paths)
-      .map((threshold) => [threshold.sceneId, threshold.requiredCount]));
+    return new Map();
   }
 
   function fallbackEdgesFromSceneIds(sceneIds) {
@@ -215,6 +257,23 @@
     const fallback = options.fallback !== false && String(path && path.edgeMode || "legacy") !== "manual";
     if (edges.length || !fallback) return edges;
     return fallbackEdgesFromSceneIds(sceneIds);
+  }
+
+  function effectiveEndSceneIds(path, sceneIds = null, edges = null) {
+    const ids = normalizeIdList(Array.isArray(sceneIds) ? sceneIds : getPathSceneIds(path));
+    const sceneSet = new Set(ids);
+    const explicit = normalizeIdList(path && path.endSceneIds || []).filter((sceneId) => sceneSet.has(sceneId));
+    if (explicit.length) return explicit;
+    const pathEdges = Array.isArray(edges)
+      ? normalizeEdges(edges, ids)
+      : getRenderableEdges(path, { fallback: true });
+    if (!pathEdges.length) return [];
+    const outgoing = new Set();
+    pathEdges.forEach((edge) => {
+      if (!sceneSet.has(edge.fromSceneId) || !sceneSet.has(edge.toSceneId)) return;
+      outgoing.add(edge.fromSceneId);
+    });
+    return ids.filter((sceneId) => !outgoing.has(sceneId));
   }
 
   function buildAdjacency(sceneIds, edges) {
@@ -478,7 +537,424 @@
       });
     });
 
-    return ghosts;
+    const directionRank = (value) => String(value || "") === "prev" ? 0 : String(value || "") === "next" ? 1 : 2;
+    return ghosts.sort((a, b) => (
+      String(a.pathId || "").localeCompare(String(b.pathId || ""))
+      || Number(a.fromSceneId || 0) - Number(b.fromSceneId || 0)
+      || directionRank(a.direction) - directionRank(b.direction)
+      || Number(a.sceneId || 0) - Number(b.sceneId || 0)
+    ));
+  }
+
+  function uniqueIds(values = []) {
+    return normalizeIdList(Array.from(values || []));
+  }
+
+  function uniqueThresholdGroups(groups = []) {
+    const byKey = new Map();
+    (Array.isArray(groups) ? groups : []).forEach((rawGroup) => {
+      const group = rawGroup && typeof rawGroup === "object" ? rawGroup : {};
+      const pathId = normalizeId(group.pathId);
+      const sourceSceneId = normalizeId(group.sourceSceneId);
+      if (!pathId || !sourceSceneId) return;
+      const targetSceneIds = normalizeIdList(group.targetSceneIds || []);
+      const outgoingCount = Math.max(targetSceneIds.length, Number.parseInt(String(group.outgoingCount || "0"), 10) || targetSceneIds.length);
+      const requiredCount = Math.min(Math.max(1, Number.parseInt(String(group.requiredCount || outgoingCount || "1"), 10) || 1), Math.max(outgoingCount, 1));
+      const completedCount = Math.min(Math.max(0, Number.parseInt(String(group.completedCount || "0"), 10) || 0), Math.max(outgoingCount, 0));
+      byKey.set(`${pathId}:${sourceSceneId}`, {
+        pathId,
+        pathName: String(group.pathName || `Pad ${pathId}`),
+        color: String(group.color || ""),
+        sourceSceneId,
+        targetSceneIds,
+        outgoingCount,
+        requiredCount,
+        completedCount,
+        satisfied: !!group.satisfied || completedCount >= requiredCount,
+        optionalSceneIds: normalizeIdList(group.optionalSceneIds || []),
+      });
+    });
+    return Array.from(byKey.values()).sort((a, b) => (a.pathId - b.pathId) || (a.sourceSceneId - b.sourceSceneId));
+  }
+
+  function defaultPathStatus(sceneId) {
+    return {
+      sceneId,
+      pathIds: [],
+      pathNames: [],
+      predecessorIds: [],
+      requiredPredecessorIds: [],
+      successorIds: [],
+      missingPredecessorIds: [],
+      requiredMissingPredecessorIds: [],
+      completedPredecessorIds: [],
+      optionalPredecessorIds: [],
+      crossingOptionalPredecessorIds: [],
+      optionalSceneIds: [],
+      optionalSourceSceneIds: [],
+      sideSceneIds: [],
+      sideSourceSceneIds: [],
+      expiredSideSceneIds: [],
+      expiredSideSourceSceneIds: [],
+      missingSideSourceSceneIds: [],
+      activeSideSourceSceneIds: [],
+      reachedPathIds: [],
+      availablePathIds: [],
+      blockedPathIds: [],
+      closedPathIds: [],
+      endPathIds: [],
+      blockingRules: [],
+      reached: false,
+      available: false,
+      blocked: false,
+      pathClosed: false,
+      endNode: false,
+      nodeStatus: "Locked",
+      thresholdGroups: [],
+      blockingThresholds: [],
+      crossingThreshold: null,
+      blockingCrossingThreshold: null,
+      crossingIncomingCount: 0,
+      crossingRequiredCount: 0,
+      crossingCompletedCount: 0,
+      crossingSatisfied: false,
+      requiredCount: 0,
+      completedCount: 0,
+      satisfied: false,
+      optional: false,
+      expiredOptional: false,
+      pathDetails: [],
+      isPathStart: false,
+      isPathEnd: false,
+      isSplit: false,
+      isMerge: false,
+      ready: true,
+    };
+  }
+
+  function buildPathSceneStatuses({ paths = [], scenes = [], playedSceneIds = [], crossingThresholds = [] } = {}) {
+    const active = activeGraphPaths(paths).filter((path) => normalizeId(path && path.id));
+    const sceneById = new Map((Array.isArray(scenes) ? scenes : [])
+      .filter((scene) => scene && scene.isActive !== false && !scene.archivedAt)
+      .map((scene) => [normalizeId(scene.id), scene])
+      .filter(([id]) => !!id));
+    const playedSet = new Set(normalizeIdList(playedSceneIds));
+    const statusBySceneId = new Map();
+    const ensureStatus = (sceneId) => {
+      const id = normalizeId(sceneId);
+      if (!id) return null;
+      if (!statusBySceneId.has(id)) statusBySceneId.set(id, defaultPathStatus(id));
+      return statusBySceneId.get(id);
+    };
+    const analyses = [];
+    const globalBlockedSceneIds = new Set();
+
+    active.forEach((path) => {
+      const pathId = normalizeId(path.id);
+      const sceneIds = getPathSceneIds(path).filter((sceneId) => !sceneById.size || sceneById.has(sceneId));
+      if (!pathId || !sceneIds.length) return;
+      const sceneIdSet = new Set(sceneIds);
+      const incomingBySceneId = new Map(sceneIds.map((sceneId) => [sceneId, []]));
+      const outgoingBySceneId = new Map(sceneIds.map((sceneId) => [sceneId, []]));
+      const requiredIncomingBySceneId = new Map(sceneIds.map((sceneId) => [sceneId, []]));
+      const requiredOutgoingBySceneId = new Map(sceneIds.map((sceneId) => [sceneId, []]));
+      const sideIncomingBySceneId = new Map(sceneIds.map((sceneId) => [sceneId, []]));
+      const sideOutgoingBySceneId = new Map(sceneIds.map((sceneId) => [sceneId, []]));
+      const pathEdges = getRenderableEdges(path, { fallback: true });
+      pathEdges.forEach((edge) => {
+        if (!sceneIdSet.has(edge.fromSceneId) || !sceneIdSet.has(edge.toSceneId)) return;
+        incomingBySceneId.get(edge.toSceneId).push(edge.fromSceneId);
+        outgoingBySceneId.get(edge.fromSceneId).push(edge.toSceneId);
+        if (isOptionalEdge(edge)) {
+          sideIncomingBySceneId.get(edge.toSceneId).push(edge.fromSceneId);
+          sideOutgoingBySceneId.get(edge.fromSceneId).push(edge.toSceneId);
+        } else {
+          requiredIncomingBySceneId.get(edge.toSceneId).push(edge.fromSceneId);
+          requiredOutgoingBySceneId.get(edge.fromSceneId).push(edge.toSceneId);
+        }
+      });
+      const endSceneIds = new Set(effectiveEndSceneIds(path, sceneIds, pathEdges));
+      const reached = new Set();
+      const queue = sceneIds.filter((sceneId) => (incomingBySceneId.get(sceneId) || []).length === 0);
+      if (!queue.length && sceneIds.length) queue.push(sceneIds[0]);
+      while (queue.length) {
+        const sceneId = queue.shift();
+        if (!sceneId || reached.has(sceneId) || !sceneIdSet.has(sceneId)) continue;
+        reached.add(sceneId);
+        if (!playedSet.has(sceneId)) continue;
+        if (endSceneIds.has(sceneId)) continue;
+        const requiredTargets = Array.from(new Set(requiredOutgoingBySceneId.get(sceneId) || []));
+        const sideTargets = Array.from(new Set(sideOutgoingBySceneId.get(sceneId) || []));
+        const requiredTargetPlayed = requiredTargets.some((targetId) => playedSet.has(targetId));
+        requiredTargets.forEach((targetId) => {
+          if (!reached.has(targetId)) queue.push(targetId);
+        });
+        if (!requiredTargetPlayed) {
+          sideTargets.forEach((targetId) => {
+            if (!reached.has(targetId)) queue.push(targetId);
+          });
+        }
+      }
+
+      const localBlockedSceneIds = new Set();
+      const triggeredRules = [];
+      const ancestorSceneIdsFor = (sourceSceneId) => {
+        const ancestors = new Set();
+        const stack = Array.from(new Set(incomingBySceneId.get(sourceSceneId) || []));
+        while (stack.length) {
+          const candidateId = stack.pop();
+          if (!candidateId || ancestors.has(candidateId) || candidateId === sourceSceneId) continue;
+          ancestors.add(candidateId);
+          (incomingBySceneId.get(candidateId) || []).forEach((predecessorId) => {
+            if (!ancestors.has(predecessorId)) stack.push(predecessorId);
+          });
+        }
+        return Array.from(ancestors).filter((sceneId) => sceneIdSet.has(sceneId)).sort((a, b) => a - b);
+      };
+      normalizeBlockRules(path.blockRules || [], sceneIds).forEach((rule) => {
+        if (!reached.has(rule.sourceSceneId) || !playedSet.has(rule.sourceSceneId)) return;
+        const targetSceneIds = ancestorSceneIdsFor(rule.sourceSceneId);
+        if (!targetSceneIds.length) return;
+        targetSceneIds.forEach((targetSceneId) => localBlockedSceneIds.add(targetSceneId));
+        triggeredRules.push({
+          pathId,
+          pathName: path.name || `Pad ${pathId}`,
+          color: path.color || "",
+          sourceSceneId: rule.sourceSceneId,
+          targetSceneIds,
+          includeCrossingPaths: !!rule.includeCrossingPaths,
+        });
+        if (rule.includeCrossingPaths) {
+          targetSceneIds.forEach((targetSceneId) => globalBlockedSceneIds.add(targetSceneId));
+        }
+      });
+      const reachedEndSceneIds = Array.from(endSceneIds).filter((sceneId) => reached.has(sceneId) && playedSet.has(sceneId));
+      analyses.push({
+        path,
+        pathId,
+        sceneIds,
+        incomingBySceneId,
+        outgoingBySceneId,
+        requiredIncomingBySceneId,
+        requiredOutgoingBySceneId,
+        sideIncomingBySceneId,
+        sideOutgoingBySceneId,
+        endSceneIds,
+        reached,
+        localBlockedSceneIds,
+        triggeredRules,
+        pathClosed: reachedEndSceneIds.length > 0,
+        ignoreCrossingBlockSceneIds: new Set(normalizeIgnoreCrossingBlockSceneIds(path, sceneIds)),
+      });
+    });
+
+    analyses.forEach((analysis) => {
+      const {
+        path,
+        pathId,
+        sceneIds,
+        incomingBySceneId,
+        outgoingBySceneId,
+        requiredIncomingBySceneId,
+        requiredOutgoingBySceneId,
+        sideIncomingBySceneId,
+        sideOutgoingBySceneId,
+        endSceneIds,
+        reached,
+        localBlockedSceneIds,
+        triggeredRules,
+        pathClosed,
+        ignoreCrossingBlockSceneIds,
+      } = analysis;
+      const thresholdByTargetSceneId = new Map(normalizeThresholdsForEdges(path.thresholds || [], sceneIds, getRenderableEdges(path, { fallback: true }))
+        .map((threshold) => [threshold.sourceSceneId, threshold]));
+      const thresholdGroups = [];
+      requiredIncomingBySceneId.forEach((sourceIds, targetSceneId) => {
+        const targetSceneIds = uniqueIds(sourceIds);
+        const threshold = thresholdByTargetSceneId.get(targetSceneId);
+        if (!threshold || targetSceneIds.length <= 1) return;
+        if (!reached.has(targetSceneId) && !targetSceneIds.some((sourceSceneId) => reached.has(sourceSceneId) && playedSet.has(sourceSceneId))) return;
+        const completedSceneIds = targetSceneIds.filter((sourceSceneId) => reached.has(sourceSceneId) && playedSet.has(sourceSceneId));
+        const requiredCount = Math.min(targetSceneIds.length, Math.max(1, Number(threshold.requiredCount || targetSceneIds.length)));
+        thresholdGroups.push({
+          pathId,
+          pathName: path.name || `Pad ${pathId}`,
+          color: path.color || "",
+          sourceSceneId: targetSceneId,
+          targetSceneIds,
+          outgoingCount: targetSceneIds.length,
+          requiredCount,
+          completedCount: completedSceneIds.length,
+          satisfied: completedSceneIds.length >= requiredCount,
+          optionalSceneIds: completedSceneIds.length >= requiredCount ? targetSceneIds.filter((sourceSceneId) => !playedSet.has(sourceSceneId)) : [],
+        });
+      });
+      const thresholdGroupsBySource = new Map();
+      const optionalGroupsByTarget = new Map();
+      thresholdGroups.forEach((group) => {
+        if (!thresholdGroupsBySource.has(group.sourceSceneId)) thresholdGroupsBySource.set(group.sourceSceneId, []);
+        thresholdGroupsBySource.get(group.sourceSceneId).push(group);
+        group.optionalSceneIds.forEach((optionalSceneId) => {
+          if (!optionalGroupsByTarget.has(optionalSceneId)) optionalGroupsByTarget.set(optionalSceneId, []);
+          optionalGroupsByTarget.get(optionalSceneId).push(group);
+        });
+      });
+
+      sceneIds.forEach((sceneId) => {
+        const status = ensureStatus(sceneId);
+        if (!status) return;
+        const incoming = uniqueIds(incomingBySceneId.get(sceneId) || []);
+        const outgoing = uniqueIds(outgoingBySceneId.get(sceneId) || []);
+        const requiredIncoming = uniqueIds(requiredIncomingBySceneId.get(sceneId) || []);
+        const sideIncoming = uniqueIds(sideIncomingBySceneId.get(sceneId) || []);
+        const sideOutgoing = uniqueIds(sideOutgoingBySceneId.get(sceneId) || []);
+        const isReached = reached.has(sceneId);
+        const isPlayed = playedSet.has(sceneId);
+        const activeSideSourceIds = sideIncoming.filter((sourceSceneId) => reached.has(sourceSceneId) && playedSet.has(sourceSceneId));
+        const expiredSideSourceIds = sideIncoming.filter((sourceSceneId) => (
+          reached.has(sourceSceneId)
+          && playedSet.has(sourceSceneId)
+          && (requiredOutgoingBySceneId.get(sourceSceneId) || []).some((targetId) => reached.has(targetId) && playedSet.has(targetId))
+        ));
+        const missingSideSourceIds = sideIncoming.filter((sourceSceneId) => !reached.has(sourceSceneId) || !playedSet.has(sourceSceneId));
+        const optionalPredecessorIds = requiredIncoming.filter((predecessorId) => (
+          (!reached.has(predecessorId) || !playedSet.has(predecessorId)) && optionalGroupsByTarget.has(predecessorId)
+        ));
+        const requiredMissingPredecessorIds = requiredIncoming.filter((predecessorId) => (
+          (!reached.has(predecessorId) || !playedSet.has(predecessorId)) && !optionalGroupsByTarget.has(predecessorId)
+        ));
+        const missingPredecessorIds = requiredMissingPredecessorIds
+          .concat(expiredSideSourceIds.length ? expiredSideSourceIds : missingSideSourceIds);
+        const completedPredecessorIds = incoming.filter((predecessorId) => (
+          reached.has(predecessorId) && playedSet.has(predecessorId) && !expiredSideSourceIds.includes(predecessorId)
+        ));
+        const sourceThresholdGroups = thresholdGroupsBySource.get(sceneId) || [];
+        const incomingBlockingThresholds = thresholdGroups.filter((group) => (
+          !group.satisfied && Number(group.sourceSceneId || 0) === Number(sceneId || 0)
+        ));
+        const optionalSceneGroups = optionalGroupsByTarget.get(sceneId) || [];
+        const ignoresCrossingBlock = ignoreCrossingBlockSceneIds.has(sceneId);
+        const crossingRuleBlocked = globalBlockedSceneIds.has(sceneId) && !ignoresCrossingBlock;
+        const ruleBlocked = !isPlayed && (localBlockedSceneIds.has(sceneId) || crossingRuleBlocked);
+        const closedBlocked = !isPlayed && pathClosed;
+        const expiredOptional = expiredSideSourceIds.length > 0 && !isPlayed;
+        const detailBlocked = ruleBlocked || closedBlocked || expiredOptional;
+        const detailReady = isReached
+          && !detailBlocked
+          && missingPredecessorIds.length === 0
+          && incomingBlockingThresholds.length === 0;
+        status.pathIds.push(pathId);
+        status.pathNames.push(path.name || `Pad ${pathId}`);
+        status.pathDetails.push({
+          pathId,
+          pathName: path.name || `Pad ${pathId}`,
+          color: path.color || "",
+          predecessorIds: incoming,
+          requiredPredecessorIds: requiredIncoming,
+          successorIds: outgoing,
+          missingPredecessorIds,
+          requiredMissingPredecessorIds,
+          completedPredecessorIds,
+          optionalPredecessorIds,
+          optionalSourceSceneIds: uniqueIds(optionalSceneGroups.map((group) => group.sourceSceneId)),
+          optionalSceneIds: uniqueIds(sourceThresholdGroups.flatMap((group) => group.optionalSceneIds)),
+          sideSourceSceneIds: sideIncoming,
+          sideSceneIds: sideOutgoing,
+          expiredSideSourceSceneIds: uniqueIds(expiredSideSourceIds),
+          expiredSideSceneIds: uniqueIds(sideOutgoing.filter((targetId) => (
+            playedSet.has(sceneId)
+            && (requiredOutgoingBySceneId.get(sceneId) || []).some((nextId) => playedSet.has(nextId))
+            && !playedSet.has(targetId)
+          ))),
+          missingSideSourceSceneIds: uniqueIds(missingSideSourceIds),
+          activeSideSourceSceneIds: uniqueIds(activeSideSourceIds),
+          reached: isReached,
+          available: !isPlayed && detailReady,
+          blocked: detailBlocked,
+          ruleBlocked,
+          crossingRuleBlocked,
+          ignoresCrossingBlock,
+          closedBlocked,
+          pathClosed,
+          endNode: endSceneIds.has(sceneId),
+          blockingRules: triggeredRules.filter((rule) => normalizeIdList(rule.targetSceneIds || []).includes(sceneId)),
+          thresholdGroups: sourceThresholdGroups,
+          blockingThresholds: incomingBlockingThresholds,
+          optional: (optionalSceneGroups.length > 0 || activeSideSourceIds.length > 0) && !expiredSideSourceIds.length && !isPlayed,
+          expiredOptional,
+          ready: detailReady,
+          isStart: incoming.length === 0,
+          isEnd: endSceneIds.has(sceneId),
+          isSplit: outgoing.length > 1,
+          isMerge: incoming.length > 1,
+        });
+        incoming.forEach((predecessorId) => {
+          if (!status.predecessorIds.includes(predecessorId)) status.predecessorIds.push(predecessorId);
+        });
+        outgoing.forEach((successorId) => {
+          if (!status.successorIds.includes(successorId)) status.successorIds.push(successorId);
+        });
+      });
+    });
+
+    statusBySceneId.forEach((status) => {
+      status.predecessorIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.predecessorIds || []));
+      status.requiredPredecessorIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.requiredPredecessorIds || []));
+      status.successorIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.successorIds || []));
+      status.completedPredecessorIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.completedPredecessorIds || []));
+      status.missingPredecessorIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.missingPredecessorIds || []));
+      status.requiredMissingPredecessorIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.requiredMissingPredecessorIds || []));
+      status.optionalPredecessorIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.optionalPredecessorIds || []));
+      status.optionalSceneIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.optionalSceneIds || []));
+      status.optionalSourceSceneIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.optionalSourceSceneIds || []));
+      status.sideSceneIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.sideSceneIds || []));
+      status.sideSourceSceneIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.sideSourceSceneIds || []));
+      status.expiredSideSceneIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.expiredSideSceneIds || []));
+      status.expiredSideSourceSceneIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.expiredSideSourceSceneIds || []));
+      status.missingSideSourceSceneIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.missingSideSourceSceneIds || []));
+      status.activeSideSourceSceneIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.activeSideSourceSceneIds || []));
+      status.reachedPathIds = uniqueIds(status.pathDetails.filter((detail) => detail.reached).map((detail) => detail.pathId));
+      status.availablePathIds = uniqueIds(status.pathDetails.filter((detail) => detail.available).map((detail) => detail.pathId));
+      status.blockedPathIds = uniqueIds(status.pathDetails.filter((detail) => detail.blocked).map((detail) => detail.pathId));
+      status.closedPathIds = uniqueIds(status.pathDetails.filter((detail) => detail.pathClosed).map((detail) => detail.pathId));
+      status.endPathIds = uniqueIds(status.pathDetails.filter((detail) => detail.endNode).map((detail) => detail.pathId));
+      status.blockingRules = status.pathDetails.flatMap((detail) => Array.isArray(detail.blockingRules) ? detail.blockingRules : []);
+      status.reached = status.reachedPathIds.length > 0;
+      status.available = status.availablePathIds.length > 0;
+      status.pathClosed = status.closedPathIds.length > 0;
+      status.endNode = status.endPathIds.length > 0;
+      status.thresholdGroups = uniqueThresholdGroups(status.pathDetails.flatMap((detail) => detail.thresholdGroups || []));
+      status.blockingThresholds = uniqueThresholdGroups(status.pathDetails
+        .filter((detail) => detail.reached && !detail.blocked && !detail.ready)
+        .flatMap((detail) => detail.blockingThresholds || []));
+      const primaryThreshold = status.thresholdGroups[0] || null;
+      status.requiredCount = primaryThreshold ? primaryThreshold.requiredCount : 0;
+      status.completedCount = primaryThreshold ? primaryThreshold.completedCount : 0;
+      status.satisfied = !!(status.thresholdGroups.length && status.thresholdGroups.every((group) => group.satisfied));
+      status.expiredOptional = status.expiredSideSourceSceneIds.length > 0 && !playedSet.has(status.sceneId);
+      status.optional = !status.expiredOptional
+        && (status.optionalSourceSceneIds.length > 0 || status.activeSideSourceSceneIds.length > 0)
+        && !playedSet.has(status.sceneId);
+      status.isPathStart = status.pathDetails.some((detail) => detail.isStart);
+      status.isPathEnd = status.pathDetails.some((detail) => detail.isEnd);
+      status.isSplit = status.successorIds.length > 1 || status.pathDetails.some((detail) => detail.isSplit);
+      status.isMerge = status.predecessorIds.length > 1 || status.pathDetails.some((detail) => detail.isMerge);
+
+      status.blocked = !playedSet.has(status.sceneId)
+        && !status.available
+        && status.pathDetails.some((detail) => detail.blocked);
+      status.ready = playedSet.has(status.sceneId)
+        || (!!status.available && !status.blocked);
+      status.nodeStatus = playedSet.has(status.sceneId)
+        ? "Played"
+        : status.blocked
+          ? "Blocked"
+          : status.ready
+            ? "Available"
+            : "Locked";
+    });
+
+    return statusBySceneId;
   }
 
   return {
@@ -492,10 +968,14 @@
     normalizeThresholds,
     normalizeCrossingThreshold,
     normalizeCrossingThresholds,
+    normalizeBlockRule,
+    normalizeBlockRules,
+    normalizeIgnoreCrossingBlockSceneIds,
     normalizeEdges,
     normalizeThresholdsForEdges,
     normalizeCrossingThresholdsForPaths,
     outgoingTargetsBySource,
+    incomingSourcesByTarget,
     thresholdMapForPath,
     crossingIncomingRoutesForPaths,
     crossingThresholdMapForPaths,
@@ -503,6 +983,7 @@
     fallbackEdgesFromSceneIds,
     getPathSceneIds,
     getRenderableEdges,
+    effectiveEndSceneIds,
     buildAdjacency,
     computeRanks,
     computePathLayout,
@@ -513,5 +994,6 @@
     canReachScene,
     edgeCandidateIssue,
     selectGhostNeighbors,
+    buildPathSceneStatuses,
   };
 });

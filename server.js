@@ -36,6 +36,8 @@ const {
   normalizeLabel,
   normalizeLockedQueue,
   normalizePath,
+  normalizePathBlockRules,
+  normalizeIgnoreCrossingBlockSceneIds,
   normalizeCrossingThresholdsForPaths,
   normalizePathThresholdsForEdges,
   normalizePerformer,
@@ -2822,6 +2824,8 @@ db.exec(`
     path_id INTEGER NOT NULL,
     scene_id INTEGER NOT NULL,
     sort_order INTEGER NOT NULL DEFAULT 0,
+    is_end_node INTEGER NOT NULL DEFAULT 0,
+    ignore_crossing_blocks INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE(path_id, scene_id),
@@ -2867,6 +2871,20 @@ db.exec(`
     ON algorithm_path_thresholds(path_id, source_scene_id, id);
   CREATE INDEX IF NOT EXISTS idx_algorithm_path_thresholds_source_scene
     ON algorithm_path_thresholds(source_scene_id, path_id);
+
+  CREATE TABLE IF NOT EXISTS algorithm_path_node_blocks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path_id INTEGER NOT NULL,
+    source_scene_id INTEGER NOT NULL,
+    include_crossing_paths INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(path_id, source_scene_id),
+    FOREIGN KEY(path_id) REFERENCES algorithm_paths(id) ON DELETE CASCADE,
+    FOREIGN KEY(source_scene_id) REFERENCES algorithm_scenes(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_algorithm_path_node_blocks_path
+    ON algorithm_path_node_blocks(path_id, source_scene_id, id);
 
   CREATE TABLE IF NOT EXISTS algorithm_crossing_thresholds (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3058,9 +3076,48 @@ const algorithmPathColumns = db.prepare("PRAGMA table_info(algorithm_paths)").al
 if (!algorithmPathColumns.some((column) => String(column.name || "") === "edge_mode")) {
   db.exec("ALTER TABLE algorithm_paths ADD COLUMN edge_mode TEXT NOT NULL DEFAULT 'legacy'");
 }
+const algorithmPathSceneColumns = db.prepare("PRAGMA table_info(algorithm_path_scenes)").all();
+if (!algorithmPathSceneColumns.some((column) => String(column.name || "") === "is_end_node")) {
+  db.exec("ALTER TABLE algorithm_path_scenes ADD COLUMN is_end_node INTEGER NOT NULL DEFAULT 0");
+}
+if (!algorithmPathSceneColumns.some((column) => String(column.name || "") === "ignore_crossing_blocks")) {
+  db.exec("ALTER TABLE algorithm_path_scenes ADD COLUMN ignore_crossing_blocks INTEGER NOT NULL DEFAULT 0");
+}
 const algorithmPathEdgeColumns = db.prepare("PRAGMA table_info(algorithm_path_edges)").all();
 if (!algorithmPathEdgeColumns.some((column) => String(column.name || "") === "edge_type")) {
   db.exec("ALTER TABLE algorithm_path_edges ADD COLUMN edge_type TEXT NOT NULL DEFAULT 'required'");
+}
+const algorithmPathNodeBlockColumns = db.prepare("PRAGMA table_info(algorithm_path_node_blocks)").all();
+if (algorithmPathNodeBlockColumns.some((column) => String(column.name || "") === "target_scene_id")) {
+  db.exec(`
+    DROP INDEX IF EXISTS idx_algorithm_path_node_blocks_path;
+    DROP INDEX IF EXISTS idx_algorithm_path_node_blocks_target_scene;
+    CREATE TABLE IF NOT EXISTS algorithm_path_node_blocks_next (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      path_id INTEGER NOT NULL,
+      source_scene_id INTEGER NOT NULL,
+      include_crossing_paths INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(path_id, source_scene_id),
+      FOREIGN KEY(path_id) REFERENCES algorithm_paths(id) ON DELETE CASCADE,
+      FOREIGN KEY(source_scene_id) REFERENCES algorithm_scenes(id)
+    );
+    INSERT OR IGNORE INTO algorithm_path_node_blocks_next
+      (path_id, source_scene_id, include_crossing_paths, created_at, updated_at)
+    SELECT
+      path_id,
+      source_scene_id,
+      MAX(COALESCE(include_crossing_paths, 0)),
+      MIN(COALESCE(created_at, datetime('now'))),
+      MAX(COALESCE(updated_at, created_at, datetime('now')))
+    FROM algorithm_path_node_blocks
+    GROUP BY path_id, source_scene_id;
+    DROP TABLE algorithm_path_node_blocks;
+    ALTER TABLE algorithm_path_node_blocks_next RENAME TO algorithm_path_node_blocks;
+    CREATE INDEX IF NOT EXISTS idx_algorithm_path_node_blocks_path
+      ON algorithm_path_node_blocks(path_id, source_scene_id, id);
+  `);
 }
 const algorithmRunColumns = db.prepare("PRAGMA table_info(algorithm_scene_runs)").all();
 if (!algorithmRunColumns.some((column) => String(column.name || "") === "updated_at")) {
@@ -3440,13 +3497,15 @@ const sql = {
      WHERE id = ?`
   ),
   getAlgorithmPathScenes: db.prepare(
-    `SELECT id, path_id AS pathId, scene_id AS sceneId, sort_order AS sortOrder,
+    `SELECT id, path_id AS pathId, scene_id AS sceneId, sort_order AS sortOrder, is_end_node AS isEndNode,
+      ignore_crossing_blocks AS ignoreCrossingBlocks,
       created_at AS createdAt, updated_at AS updatedAt
      FROM algorithm_path_scenes
      ORDER BY path_id ASC, sort_order ASC, id ASC`
   ),
   getAlgorithmPathScenesByPath: db.prepare(
-    `SELECT id, path_id AS pathId, scene_id AS sceneId, sort_order AS sortOrder,
+    `SELECT id, path_id AS pathId, scene_id AS sceneId, sort_order AS sortOrder, is_end_node AS isEndNode,
+      ignore_crossing_blocks AS ignoreCrossingBlocks,
       created_at AS createdAt, updated_at AS updatedAt
      FROM algorithm_path_scenes
      WHERE path_id = ?
@@ -3475,6 +3534,19 @@ const sql = {
     `SELECT id, path_id AS pathId, source_scene_id AS sourceSceneId, required_count AS requiredCount,
       created_at AS createdAt, updated_at AS updatedAt
      FROM algorithm_path_thresholds
+     WHERE path_id = ?
+     ORDER BY source_scene_id ASC, id ASC`
+  ),
+  getAlgorithmPathNodeBlocks: db.prepare(
+    `SELECT id, path_id AS pathId, source_scene_id AS sourceSceneId,
+      include_crossing_paths AS includeCrossingPaths, created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_path_node_blocks
+     ORDER BY path_id ASC, source_scene_id ASC, id ASC`
+  ),
+  getAlgorithmPathNodeBlocksByPath: db.prepare(
+    `SELECT id, path_id AS pathId, source_scene_id AS sourceSceneId,
+      include_crossing_paths AS includeCrossingPaths, created_at AS createdAt, updated_at AS updatedAt
+     FROM algorithm_path_node_blocks
      WHERE path_id = ?
      ORDER BY source_scene_id ASC, id ASC`
   ),
@@ -3509,8 +3581,8 @@ const sql = {
      WHERE id = ? AND is_active = 0`
   ),
   insertAlgorithmPathScene: db.prepare(
-    `INSERT INTO algorithm_path_scenes (path_id, scene_id, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO algorithm_path_scenes (path_id, scene_id, sort_order, is_end_node, ignore_crossing_blocks, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   ),
   deleteAlgorithmPathScenesByPath: db.prepare(
     `DELETE FROM algorithm_path_scenes
@@ -3530,6 +3602,14 @@ const sql = {
   ),
   deleteAlgorithmPathThresholdsByPath: db.prepare(
     `DELETE FROM algorithm_path_thresholds
+     WHERE path_id = ?`
+  ),
+  insertAlgorithmPathNodeBlock: db.prepare(
+    `INSERT INTO algorithm_path_node_blocks (path_id, source_scene_id, include_crossing_paths, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ),
+  deleteAlgorithmPathNodeBlocksByPath: db.prepare(
+    `DELETE FROM algorithm_path_node_blocks
      WHERE path_id = ?`
   ),
   upsertAlgorithmCrossingThreshold: db.prepare(
@@ -4026,7 +4106,7 @@ const SYNC_TABLE_DEFS = Object.freeze([
   },
   {
     name: "algorithm_path_scenes",
-    columns: ["id", "path_id", "scene_id", "sort_order", "created_at", "updated_at"],
+    columns: ["id", "path_id", "scene_id", "sort_order", "is_end_node", "ignore_crossing_blocks", "created_at", "updated_at"],
     updatedAtColumn: "updated_at",
   },
   {
@@ -4037,6 +4117,11 @@ const SYNC_TABLE_DEFS = Object.freeze([
   {
     name: "algorithm_path_thresholds",
     columns: ["id", "path_id", "source_scene_id", "required_count", "created_at", "updated_at"],
+    updatedAtColumn: "updated_at",
+  },
+  {
+    name: "algorithm_path_node_blocks",
+    columns: ["id", "path_id", "source_scene_id", "include_crossing_paths", "created_at", "updated_at"],
     updatedAtColumn: "updated_at",
   },
   {
@@ -4100,7 +4185,10 @@ function normalizeSyncRowForTable(def, row = {}) {
   }
   out.id = id;
   if (def.name === "algorithm_paths" && !out.edge_mode) out.edge_mode = "legacy";
+  if (def.name === "algorithm_path_scenes" && out.is_end_node === null) out.is_end_node = 0;
+  if (def.name === "algorithm_path_scenes" && out.ignore_crossing_blocks === null) out.ignore_crossing_blocks = 0;
   if (def.name === "algorithm_path_edges" && !out.edge_type) out.edge_type = "required";
+  if (def.name === "algorithm_path_node_blocks" && out.include_crossing_paths === null) out.include_crossing_paths = 0;
   if (def.updatedAtColumn && !out[def.updatedAtColumn]) out[def.updatedAtColumn] = nowIso();
   return out;
 }
@@ -4229,7 +4317,7 @@ function applyIncomingSyncPayload(payload = {}, options = {}) {
       }
     }
     const tombstones = Array.isArray(incoming.tombstones) ? incoming.tombstones : [];
-    const tombstoneOrder = ["algorithm_character_votes", "algorithm_scene_runs", "algorithm_crossing_thresholds", "algorithm_path_thresholds", "algorithm_path_edges", "algorithm_path_scenes", "algorithm_paths", "algorithm_scenes", "algorithm_characters", "algorithm_situations", "algorithm_labels", "algorithm_environments", "algorithm_performers", "sessions"];
+    const tombstoneOrder = ["algorithm_character_votes", "algorithm_scene_runs", "algorithm_crossing_thresholds", "algorithm_path_node_blocks", "algorithm_path_thresholds", "algorithm_path_edges", "algorithm_path_scenes", "algorithm_paths", "algorithm_scenes", "algorithm_characters", "algorithm_situations", "algorithm_labels", "algorithm_environments", "algorithm_performers", "sessions"];
     tombstones
       .slice()
       .sort((a, b) => tombstoneOrder.indexOf(String(a.entity || "")) - tombstoneOrder.indexOf(String(b.entity || "")))
@@ -5029,8 +5117,9 @@ function parseAlgorithmSceneRow(row) {
   });
 }
 
-function parseAlgorithmPathRow(row, sceneRows = [], edgeRows = [], thresholdRows = []) {
+function parseAlgorithmPathRow(row, sceneRows = [], edgeRows = [], thresholdRows = [], blockRows = []) {
   if (!row) return null;
+  const safeSceneRows = Array.isArray(sceneRows) ? sceneRows : [];
   const item = normalizePath({
     id: row.id,
     name: row.name,
@@ -5038,7 +5127,15 @@ function parseAlgorithmPathRow(row, sceneRows = [], edgeRows = [], thresholdRows
     sortOrder: row.sortOrder,
     color: row.color,
     edgeMode: row.edgeMode,
-    sceneIds: (Array.isArray(sceneRows) ? sceneRows : [])
+    sceneIds: safeSceneRows
+      .map((item) => Number(item && item.sceneId || 0))
+      .filter((id) => id > 0),
+    endSceneIds: safeSceneRows
+      .filter((item) => Number(item && item.isEndNode || 0) > 0)
+      .map((item) => Number(item && item.sceneId || 0))
+      .filter((id) => id > 0),
+    ignoreCrossingBlockSceneIds: safeSceneRows
+      .filter((item) => Number(item && item.ignoreCrossingBlocks || 0) > 0)
       .map((item) => Number(item && item.sceneId || 0))
       .filter((id) => id > 0),
     edges: (Array.isArray(edgeRows) ? edgeRows : []).map((item) => ({
@@ -5049,6 +5146,10 @@ function parseAlgorithmPathRow(row, sceneRows = [], edgeRows = [], thresholdRows
     thresholds: (Array.isArray(thresholdRows) ? thresholdRows : []).map((item) => ({
       sourceSceneId: item && item.sourceSceneId,
       requiredCount: item && item.requiredCount,
+    })),
+    blockRules: (Array.isArray(blockRows) ? blockRows : []).map((item) => ({
+      sourceSceneId: item && item.sourceSceneId,
+      includeCrossingPaths: Number(item && item.includeCrossingPaths || 0) > 0,
     })),
     isActive: Number(row.isActive || 0) > 0,
     archivedAt: row.archivedAt || "",
@@ -5136,10 +5237,12 @@ function getAlgorithmCatalog() {
   const pathSceneRows = sql.getAlgorithmPathScenes.all();
   const pathEdgeRows = sql.getAlgorithmPathEdges.all();
   const pathThresholdRows = sql.getAlgorithmPathThresholds.all();
+  const pathBlockRows = sql.getAlgorithmPathNodeBlocks.all();
   const crossingThresholdRows = sql.getAlgorithmCrossingThresholds.all();
   const pathScenesByPathId = new Map();
   const pathEdgesByPathId = new Map();
   const pathThresholdsByPathId = new Map();
+  const pathBlocksByPathId = new Map();
   for (const row of pathSceneRows) {
     const pathId = Number(row && row.pathId || 0);
     if (!pathScenesByPathId.has(pathId)) pathScenesByPathId.set(pathId, []);
@@ -5155,12 +5258,18 @@ function getAlgorithmCatalog() {
     if (!pathThresholdsByPathId.has(pathId)) pathThresholdsByPathId.set(pathId, []);
     pathThresholdsByPathId.get(pathId).push(row);
   }
+  for (const row of pathBlockRows) {
+    const pathId = Number(row && row.pathId || 0);
+    if (!pathBlocksByPathId.has(pathId)) pathBlocksByPathId.set(pathId, []);
+    pathBlocksByPathId.get(pathId).push(row);
+  }
   const paths = sql.getAlgorithmPaths.all()
     .map((row) => parseAlgorithmPathRow(
       row,
       pathScenesByPathId.get(Number(row && row.id || 0)) || [],
       pathEdgesByPathId.get(Number(row && row.id || 0)) || [],
-      pathThresholdsByPathId.get(Number(row && row.id || 0)) || []
+      pathThresholdsByPathId.get(Number(row && row.id || 0)) || [],
+      pathBlocksByPathId.get(Number(row && row.id || 0)) || []
     ))
     .filter(Boolean);
   return {
@@ -5699,6 +5808,15 @@ function assertAlgorithmSceneReady(scene, catalog = getAlgorithmCatalog(), runs 
     const err = new Error("scene_links_invalid");
     err.issues = validation.issues;
     throw err;
+  }
+  const normalizedRuns = (Array.isArray(runs) ? runs : []).map(normalizeRun);
+  const activeForScene = normalizedRuns.find((run) => Number(run.sceneId || 0) === Number(scene.id || 0) && !run.endedAt);
+  if (activeForScene) {
+    throw new Error("scene_active");
+  }
+  const playedForScene = normalizedRuns.find((run) => Number(run.sceneId || 0) === Number(scene.id || 0) && run.endedAt);
+  if (playedForScene) {
+    throw new Error("scene_already_played");
   }
   const order = buildAlgorithmOrder({
     scenes: catalog.scenes,
@@ -6434,20 +6552,33 @@ function upsertAlgorithmSceneFromBody(body = {}) {
   return parseAlgorithmSceneRow(sql.getAlgorithmSceneById.get(insert.lastInsertRowid));
 }
 
-function replaceAlgorithmPathLinks(pathId, sceneIds = [], edges = [], thresholds = [], now = nowIso()) {
+function replaceAlgorithmPathLinks(pathId, sceneIds = [], edges = [], thresholds = [], endSceneIds = [], blockRules = [], ignoreCrossingBlockSceneIds = [], now = nowIso()) {
   const safePathId = Number.parseInt(String(pathId || ""), 10);
   if (!Number.isInteger(safePathId) || safePathId < 1) throw new Error("path_not_found");
   const existingScenes = sql.getAlgorithmPathScenesByPath.all(safePathId);
   const existingEdges = sql.getAlgorithmPathEdgesByPath.all(safePathId);
   const existingThresholds = sql.getAlgorithmPathThresholdsByPath.all(safePathId);
+  const existingBlocks = sql.getAlgorithmPathNodeBlocksByPath.all(safePathId);
   for (const row of existingScenes) markSyncTombstone("algorithm_path_scenes", row.id, now);
   for (const row of existingEdges) markSyncTombstone("algorithm_path_edges", row.id, now);
   for (const row of existingThresholds) markSyncTombstone("algorithm_path_thresholds", row.id, now);
+  for (const row of existingBlocks) markSyncTombstone("algorithm_path_node_blocks", row.id, now);
+  sql.deleteAlgorithmPathNodeBlocksByPath.run(safePathId);
   sql.deleteAlgorithmPathThresholdsByPath.run(safePathId);
   sql.deleteAlgorithmPathEdgesByPath.run(safePathId);
   sql.deleteAlgorithmPathScenesByPath.run(safePathId);
+  const endSceneIdSet = new Set(normalizeIdList(endSceneIds));
+  const ignoreCrossingBlockSceneIdSet = new Set(normalizeIgnoreCrossingBlockSceneIds(ignoreCrossingBlockSceneIds, sceneIds));
   normalizeIdList(sceneIds).forEach((sceneId, index) => {
-    sql.insertAlgorithmPathScene.run(safePathId, sceneId, (index + 1) * 10, now, now);
+    sql.insertAlgorithmPathScene.run(
+      safePathId,
+      sceneId,
+      (index + 1) * 10,
+      endSceneIdSet.has(sceneId) ? 1 : 0,
+      ignoreCrossingBlockSceneIdSet.has(sceneId) ? 1 : 0,
+      now,
+      now
+    );
   });
   (Array.isArray(edges) ? edges : []).forEach((edge, index) => {
     const fromSceneId = Number(edge && edge.fromSceneId || 0);
@@ -6458,6 +6589,15 @@ function replaceAlgorithmPathLinks(pathId, sceneIds = [], edges = [], thresholds
   });
   normalizePathThresholdsForEdges(thresholds, sceneIds, edges).forEach((threshold) => {
     sql.insertAlgorithmPathThreshold.run(safePathId, threshold.sourceSceneId, threshold.requiredCount, now, now);
+  });
+  normalizePathBlockRules(blockRules).forEach((rule) => {
+    sql.insertAlgorithmPathNodeBlock.run(
+      safePathId,
+      rule.sourceSceneId,
+      rule.includeCrossingPaths ? 1 : 0,
+      now,
+      now
+    );
   });
 }
 
@@ -6470,7 +6610,8 @@ function upsertAlgorithmPathFromBody(body = {}) {
         sql.getAlgorithmPathById.get(incomingId),
         sql.getAlgorithmPathScenesByPath.all(incomingId),
         sql.getAlgorithmPathEdgesByPath.all(incomingId),
-        sql.getAlgorithmPathThresholdsByPath.all(incomingId)
+        sql.getAlgorithmPathThresholdsByPath.all(incomingId),
+        sql.getAlgorithmPathNodeBlocksByPath.all(incomingId)
       )
     : null;
   if (incomingId && !existing) throw new Error("path_not_found");
@@ -6489,6 +6630,9 @@ function upsertAlgorithmPathFromBody(body = {}) {
     sceneIds: Array.isArray(safeBody.sceneIds) ? safeBody.sceneIds : [],
     edges: Array.isArray(safeBody.edges) ? safeBody.edges : [],
     thresholds: Array.isArray(safeBody.thresholds) ? safeBody.thresholds : existing ? existing.thresholds : [],
+    endSceneIds: Array.isArray(safeBody.endSceneIds) ? safeBody.endSceneIds : existing ? existing.endSceneIds : [],
+    blockRules: Array.isArray(safeBody.blockRules) ? safeBody.blockRules : existing ? existing.blockRules : [],
+    ignoreCrossingBlockSceneIds: Array.isArray(safeBody.ignoreCrossingBlockSceneIds) ? safeBody.ignoreCrossingBlockSceneIds : existing ? existing.ignoreCrossingBlockSceneIds : [],
     isActive: safeBody.isActive,
     archivedAt: safeBody.archivedAt,
   });
@@ -6528,7 +6672,7 @@ function upsertAlgorithmPathFromBody(body = {}) {
       );
       pathId = Number(insert.lastInsertRowid || 0);
     }
-    replaceAlgorithmPathLinks(pathId, item.sceneIds, item.edges, item.thresholds, now);
+    replaceAlgorithmPathLinks(pathId, item.sceneIds, item.edges, item.thresholds, item.endSceneIds, item.blockRules, item.ignoreCrossingBlockSceneIds, now);
     db.exec("COMMIT");
   } catch (err) {
     try { db.exec("ROLLBACK"); } catch {}
@@ -6538,7 +6682,8 @@ function upsertAlgorithmPathFromBody(body = {}) {
     sql.getAlgorithmPathById.get(pathId),
     sql.getAlgorithmPathScenesByPath.all(pathId),
     sql.getAlgorithmPathEdgesByPath.all(pathId),
-    sql.getAlgorithmPathThresholdsByPath.all(pathId)
+    sql.getAlgorithmPathThresholdsByPath.all(pathId),
+    sql.getAlgorithmPathNodeBlocksByPath.all(pathId)
   );
 }
 
@@ -6717,7 +6862,8 @@ function deleteInactiveAlgorithmItem(kind, id) {
       sql.getAlgorithmPathById.get(safeId),
       sql.getAlgorithmPathScenesByPath.all(safeId),
       sql.getAlgorithmPathEdgesByPath.all(safeId),
-      sql.getAlgorithmPathThresholdsByPath.all(safeId)
+      sql.getAlgorithmPathThresholdsByPath.all(safeId),
+      sql.getAlgorithmPathNodeBlocksByPath.all(safeId)
     );
     if (!item || (item.isActive && !item.archivedAt)) throw new Error("item_must_be_inactive");
     db.exec("BEGIN IMMEDIATE");
@@ -6725,6 +6871,8 @@ function deleteInactiveAlgorithmItem(kind, id) {
       for (const row of sql.getAlgorithmPathScenesByPath.all(safeId)) markSyncTombstone("algorithm_path_scenes", row.id, deletedAt);
       for (const row of sql.getAlgorithmPathEdgesByPath.all(safeId)) markSyncTombstone("algorithm_path_edges", row.id, deletedAt);
       for (const row of sql.getAlgorithmPathThresholdsByPath.all(safeId)) markSyncTombstone("algorithm_path_thresholds", row.id, deletedAt);
+      for (const row of sql.getAlgorithmPathNodeBlocksByPath.all(safeId)) markSyncTombstone("algorithm_path_node_blocks", row.id, deletedAt);
+      sql.deleteAlgorithmPathNodeBlocksByPath.run(safeId);
       sql.deleteAlgorithmPathThresholdsByPath.run(safeId);
       sql.deleteAlgorithmPathEdgesByPath.run(safeId);
       sql.deleteAlgorithmPathScenesByPath.run(safeId);
@@ -6757,6 +6905,7 @@ function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
   const catalog = getAlgorithmCatalog();
   activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
   if (activeAlgorithmRun && !activeAlgorithmRun.endedAt) {
+    if (Number(activeAlgorithmRun.sceneId || 0) === Number(scene.id || 0)) throw new Error("scene_active");
     endActiveAlgorithmSceneRun("auto_ended_by_new_scene");
   }
   const runs = getAlgorithmRunsForCurrentSession();
@@ -6995,7 +7144,7 @@ function sendAlgorithmApiError(res, err) {
   const code = String(err && err.message ? err.message : "algorithm_error");
   const status = code.includes("not_found") ? 404
     : code.includes("invalid") || code.includes("required") || code.includes("in_use") || code.includes("must") ? 400
-      : code === "session_inactive" || code === "scene_context_unmet" || code === "scene_path_unmet" || code === "previous_run_unavailable" || code === "prepared_next_mismatch" || code === "algorithm_action_in_progress" || code === "stale_algorithm_state" ? 409
+      : code === "session_inactive" || code === "scene_context_unmet" || code === "scene_path_unmet" || code === "scene_active" || code === "scene_already_played" || code === "previous_run_unavailable" || code === "prepared_next_mismatch" || code === "algorithm_action_in_progress" || code === "stale_algorithm_state" ? 409
         : 500;
   const payload = {
     ok: false,

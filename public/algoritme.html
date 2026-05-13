@@ -1523,6 +1523,8 @@
           color: "",
           sceneIds: [],
           edges: [],
+          endSceneIds: [],
+          blockRules: [],
         };
         let refreshTimer = null;
         let orderBaseSortable = null;
@@ -2504,7 +2506,25 @@
             sceneIds: [],
             edges: [],
             thresholds: [],
+            endSceneIds: [],
+            blockRules: [],
           };
+        }
+
+        function normalizePathBlockRules(rules = [], sceneIds = null) {
+          const sceneSet = Array.isArray(sceneIds)
+            ? new Set(sceneIds.map(Number).filter((id) => id > 0))
+            : null;
+          const bySource = new Map();
+          (Array.isArray(rules) ? rules : []).forEach((rule) => {
+            const sourceSceneId = Number(rule && (rule.sourceSceneId || rule.source || rule.fromSceneId || rule.from) || 0);
+            if (!sourceSceneId || (sceneSet && !sceneSet.has(sourceSceneId))) return;
+            bySource.set(sourceSceneId, {
+              sourceSceneId,
+              includeCrossingPaths: !!(rule && (rule.includeCrossingPaths || rule.crossing || rule.propagateCrossing)),
+            });
+          });
+          return Array.from(bySource.values()).sort((a, b) => a.sourceSceneId - b.sourceSceneId);
         }
 
         function pathDraftFromItem(item = null) {
@@ -2524,6 +2544,10 @@
               sourceSceneId: Number(threshold && threshold.sourceSceneId || 0),
               requiredCount: Number(threshold && threshold.requiredCount || 0),
             })).filter((threshold) => threshold.sourceSceneId && threshold.requiredCount) : [],
+            endSceneIds: Array.isArray(item && item.endSceneIds)
+              ? item.endSceneIds.map(Number).filter((id) => id > 0)
+              : [],
+            blockRules: normalizePathBlockRules(item && item.blockRules || [], item && item.sceneIds || []),
           };
         }
 
@@ -2553,6 +2577,8 @@
             toSceneId: Number(row.querySelector("[data-path-edge-to]").value || 0),
             edgeType: String(row.getAttribute("data-path-edge-type") || "") === "optional" ? "optional" : "",
           })).filter((edge) => edge.fromSceneId && edge.toSceneId);
+          pathDraft.endSceneIds = (pathDraft.endSceneIds || []).filter((id) => pathDraft.sceneIds.includes(Number(id)));
+          pathDraft.blockRules = normalizePathBlockRules(pathDraft.blockRules || [], pathDraft.sceneIds);
         }
 
         function pathSceneTitle(id) {
@@ -2613,7 +2639,7 @@
           const stats = pathStats(pathDraft);
           const parts = [];
           if (stats.starts.length) parts.push(`Start: ${stats.starts.map(pathSceneTitle).join(", ")}`);
-          if (stats.ends.length) parts.push(`Eind: ${stats.ends.map(pathSceneTitle).join(", ")}`);
+          if (stats.ends.length) parts.push(`Laatste zonder pijl: ${stats.ends.map(pathSceneTitle).join(", ")}`);
           if (stats.splits) parts.push(`${stats.splits} split${stats.splits === 1 ? "" : "s"}`);
           if (stats.merges) parts.push(`${stats.merges} merge${stats.merges === 1 ? "" : "s"}: alle directe voorgangers zijn verplicht`);
           $("pathValidationHint").textContent = parts.join(" · ") || "Selecteer situaties en voeg pijlen toe om volgorde te maken.";
@@ -2642,7 +2668,9 @@
             path.description || "",
             `${(path.sceneIds || []).length} situaties, ${(path.edges || []).length} pijlen`,
             stats.starts.length ? `Start: ${stats.starts.map(pathSceneTitle).join(", ")}` : "",
-            stats.ends.length ? `Eind: ${stats.ends.map(pathSceneTitle).join(", ")}` : "",
+            stats.ends.length ? `Laatste zonder pijl: ${stats.ends.map(pathSceneTitle).join(", ")}` : "",
+            path.endSceneIds && path.endSceneIds.length ? `Eindnode: ${path.endSceneIds.map(pathSceneTitle).join(", ")}` : "",
+            path.blockRules && path.blockRules.length ? `Blokkade-nodes: ${path.blockRules.map((rule) => pathSceneTitle(rule.sourceSceneId)).join(", ")}` : "",
             stats.merges ? `Merges: ${stats.merges} (alle voorgangers verplicht)` : "",
           ].filter(Boolean).join("\n");
         }
@@ -2652,6 +2680,8 @@
           const badges = [];
           if (stats.splits) badges.push({ label: `${stats.splits} split${stats.splits === 1 ? "" : "s"}` });
           if (stats.merges) badges.push({ label: `${stats.merges} merge${stats.merges === 1 ? "" : "s"}`, className: "warning" });
+          if (path.endSceneIds && path.endSceneIds.length) badges.push({ label: `${path.endSceneIds.length} eindnode${path.endSceneIds.length === 1 ? "" : "s"}` });
+          if (path.blockRules && path.blockRules.length) badges.push({ label: `${path.blockRules.length} blokkade${path.blockRules.length === 1 ? "" : "s"}`, className: "warning" });
           return badges;
         }
 
@@ -2878,7 +2908,13 @@
           const badges = [];
           const nextId = Number(options.nextSceneId || 0);
           const sceneId = Number(entry && entry.sceneId || 0);
+          const nodeStatus = String(entry && entry.nodeStatus || "");
           if (entry && entry.active) badges.push({ label: "nu", className: "good" });
+          if (nodeStatus === "Active") badges.push({ label: "wordt gespeeld", className: "good" });
+          else if (nodeStatus === "Played") badges.push({ label: "Played" });
+          else if (nodeStatus === "Blocked") badges.push({ label: "Blocked", className: "warning" });
+          else if (nodeStatus === "Available") badges.push({ label: "Available", className: "good" });
+          else if (nodeStatus === "Locked") badges.push({ label: "Locked", className: "warning" });
           if (nextId && sceneId === nextId) badges.push({ label: "volgende", className: "good" });
           if (entry && entry.lockedNext) badges.push({ label: "klaar voor Touch" });
           if (entry && entry.lockedFuture) badges.push({ label: "gepland" });
@@ -2886,8 +2922,11 @@
           if (entry && entry.pathStatus) {
             const pathStatus = entry.pathStatus;
             if (pathStatus.isPathStart) badges.push({ label: "Pad start" });
-            if (pathStatus.ready && !pathStatus.isPathStart) badges.push({ label: "Pad vrij", className: "good" });
-            if (!pathStatus.ready) badges.push({ label: "Wacht op voorgangers", className: "warning" });
+            if (pathStatus.endNode) badges.push({ label: "Eindnode" });
+            if (pathStatus.pathClosed && !entry.played) badges.push({ label: "Pad gesloten", className: "warning" });
+            if (pathStatus.ready && !pathStatus.isPathStart && nodeStatus !== "Played") badges.push({ label: "Pad vrij", className: "good" });
+            if (!pathStatus.ready && !pathStatus.blocked) badges.push({ label: "Wacht op voorgangers", className: "warning" });
+            if (pathStatus.blocked && nodeStatus !== "Played") badges.push({ label: "Pad geblokkeerd", className: "warning" });
             if (pathStatus.optional) badges.push({ label: "optioneel" });
             if (pathStatus.expiredOptional) badges.push({ label: "zijtak voorbij", className: "warning" });
             (pathStatus.thresholdGroups || []).slice(0, 1).forEach((group) => {
@@ -2909,7 +2948,7 @@
               });
             }
           }
-          if (entry && entry.played) badges.push({ label: "gespeeld" });
+          if (entry && entry.played && nodeStatus !== "Played") badges.push({ label: "gespeeld" });
           if (entry && entry.invalid) badges.push({ label: "waarschuwing", className: "warning" });
           if (entry && entry.hidden) badges.push({ label: "verborgen" });
           return badges.map((badge) => {
@@ -4191,6 +4230,8 @@
           });
           $("pathScenes").addEventListener("change", () => {
             pathDraft.sceneIds = checkedIds("pathScenes");
+            pathDraft.endSceneIds = (pathDraft.endSceneIds || []).filter((id) => pathDraft.sceneIds.includes(Number(id)));
+            pathDraft.blockRules = normalizePathBlockRules(pathDraft.blockRules || [], pathDraft.sceneIds);
             renderPathEdgeRows();
           });
           $("addPathEdgeBtn").addEventListener("click", () => {
@@ -4322,6 +4363,8 @@
                 sceneIds: pathDraft.sceneIds,
                 edges: pathDraft.edges,
                 thresholds: pathDraft.thresholds || [],
+                endSceneIds: pathDraft.endSceneIds || [],
+                blockRules: normalizePathBlockRules(pathDraft.blockRules || [], pathDraft.sceneIds),
                 isActive: editedIsActive("path", edit.path),
               });
               setExpanded("path", Number(result.path && result.path.id || 0));
@@ -4561,6 +4604,8 @@
             scene_links_invalid: "Situatie-koppelingen kloppen nog niet.",
             scene_context_unmet: "Deze situatie heeft eerst een contextsituatie nodig.",
             scene_path_unmet: "Deze situatie wacht nog op voorgangers in een pad.",
+            scene_active: "Deze situatie wordt al gespeeld.",
+            scene_already_played: "Deze situatie is al gespeeld binnen deze run.",
             path_invalid: "Pad klopt nog niet.",
             path_not_found: "Pad niet gevonden.",
             previous_run_unavailable: "Er is nog geen vorige situatie om naar terug te gaan.",

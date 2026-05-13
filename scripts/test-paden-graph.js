@@ -69,6 +69,16 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  Graph.effectiveEndSceneIds({ sceneIds: [7, 8, 9], edges: [] }),
+  [9]
+);
+
+assert.deepEqual(
+  Graph.effectiveEndSceneIds({ sceneIds: [7, 8, 9], edges: [], edgeMode: "manual" }),
+  []
+);
+
+assert.deepEqual(
   Graph.pathEndpoints({ sceneIds: [7, 8], edges: [], edgeMode: "manual" }),
   { starts: [7, 8], ends: [7, 8] }
 );
@@ -179,30 +189,43 @@ assert.deepEqual(
 assert.deepEqual(
   Graph.normalizeThresholdsForEdges(
     [
-      { sourceSceneId: 1, requiredCount: 2 },
+      { sourceSceneId: 4, requiredCount: 2 },
       { sourceSceneId: 2, requiredCount: 1 },
       { sourceSceneId: 3, requiredCount: 9 },
     ],
     [1, 2, 3, 4],
     [
-      { fromSceneId: 1, toSceneId: 2 },
-      { fromSceneId: 1, toSceneId: 3 },
       { fromSceneId: 1, toSceneId: 4 },
-      { fromSceneId: 3, toSceneId: 2 },
+      { fromSceneId: 2, toSceneId: 4 },
       { fromSceneId: 3, toSceneId: 4 },
+      { fromSceneId: 3, toSceneId: 2 },
     ]
   ),
-  [{ sourceSceneId: 1, requiredCount: 2 }]
+  [{ sourceSceneId: 4, requiredCount: 2 }]
 );
 
 assert.equal(
   Graph.thresholdMapForPath({
     sceneIds: [1, 2, 3],
-    edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 1, toSceneId: 3 }],
+    edges: [{ fromSceneId: 1, toSceneId: 3 }, { fromSceneId: 2, toSceneId: 3 }],
     edgeMode: "manual",
-    thresholds: [{ sourceSceneId: 1, requiredCount: 1 }],
-  }).get(1),
+    thresholds: [{ sourceSceneId: 3, requiredCount: 1 }],
+  }).get(3),
   1
+);
+
+assert.deepEqual(
+  Graph.normalizeBlockRules([
+    { sourceSceneId: 2, targetSceneId: 1 },
+    { fromSceneId: 2, includeCrossingPaths: true },
+    { sourceSceneId: 99, includeCrossingPaths: true },
+  ], [1, 2, 3]),
+  [{ sourceSceneId: 2, includeCrossingPaths: true }]
+);
+
+assert.deepEqual(
+  Graph.normalizeIgnoreCrossingBlockSceneIds({ ignoreCrossingBlockSceneIds: [2, 99, 2] }, [1, 2, 3]),
+  [2]
 );
 
 const crossingPaths = [
@@ -216,7 +239,7 @@ assert.deepEqual(
 );
 assert.deepEqual(
   Graph.normalizeCrossingThresholdsForPaths([{ sceneId: 4, requiredCount: 1 }], crossingPaths),
-  [{ sceneId: 4, requiredCount: 1 }]
+  []
 );
 
 const membership = Graph.analyzePathMembership([
@@ -271,5 +294,179 @@ assert.deepEqual(
     .sort((a, b) => a[1] - b[1]),
   [[3, 4, 20, "prev"], [3, 41, 20, "next"]]
 );
+
+const testScenes = Array.from({ length: 8 }, (_, index) => ({
+  id: index + 1,
+  title: `Scene ${index + 1}`,
+  isActive: true,
+}));
+
+let statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [{ id: 1, name: "Line", sceneIds: [1, 2], edges: [{ fromSceneId: 1, toSceneId: 2 }], isActive: true }],
+  playedSceneIds: [],
+});
+assert.equal(statuses.get(1).nodeStatus, "Available");
+assert.equal(statuses.get(2).nodeStatus, "Locked");
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [{ id: 1, name: "Line", sceneIds: [1, 2], edges: [{ fromSceneId: 1, toSceneId: 2 }], isActive: true }],
+  playedSceneIds: [1],
+});
+assert.equal(statuses.get(2).nodeStatus, "Available");
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [
+    { id: 1, name: "A", sceneIds: [1, 2, 3], edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 2, toSceneId: 3 }], isActive: true },
+    { id: 2, name: "B", sceneIds: [4, 2, 5], edges: [{ fromSceneId: 4, toSceneId: 2 }, { fromSceneId: 2, toSceneId: 5 }], isActive: true },
+  ],
+  playedSceneIds: [1, 2],
+});
+assert.equal(statuses.get(3).nodeStatus, "Available");
+assert.equal(statuses.get(5).nodeStatus, "Locked");
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [
+    { id: 1, name: "A", sceneIds: [1, 2, 3], edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 2, toSceneId: 3 }], isActive: true },
+    { id: 2, name: "B", sceneIds: [4, 2, 5], edges: [{ fromSceneId: 4, toSceneId: 2 }, { fromSceneId: 2, toSceneId: 5 }], isActive: true },
+  ],
+  playedSceneIds: [1, 2, 4],
+});
+assert.equal(statuses.get(5).nodeStatus, "Available");
+assert.deepEqual(statuses.get(5).availablePathIds, [2]);
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [
+    { id: 1, name: "A", sceneIds: [1, 6], edges: [{ fromSceneId: 1, toSceneId: 6 }], isActive: true },
+    { id: 2, name: "B", sceneIds: [2, 6], edges: [{ fromSceneId: 2, toSceneId: 6 }], isActive: true },
+    { id: 3, name: "C", sceneIds: [3, 6], edges: [{ fromSceneId: 3, toSceneId: 6 }], isActive: true },
+  ],
+  playedSceneIds: [1],
+  crossingThresholds: [{ sceneId: 6, requiredCount: 2 }],
+});
+assert.equal(statuses.get(6).nodeStatus, "Available");
+assert.equal(statuses.get(6).blockingCrossingThreshold, null);
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [
+    { id: 1, name: "A", sceneIds: [1, 6], edges: [{ fromSceneId: 1, toSceneId: 6 }], isActive: true },
+    { id: 2, name: "B", sceneIds: [2, 6], edges: [{ fromSceneId: 2, toSceneId: 6 }], isActive: true },
+    { id: 3, name: "C", sceneIds: [3, 6], edges: [{ fromSceneId: 3, toSceneId: 6 }], isActive: true },
+  ],
+  playedSceneIds: [1, 2],
+  crossingThresholds: [{ sceneId: 6, requiredCount: 2 }],
+});
+assert.equal(statuses.get(6).nodeStatus, "Available");
+assert.deepEqual(statuses.get(6).crossingOptionalPredecessorIds, []);
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [{
+    id: 1,
+    name: "Funnel",
+    sceneIds: [1, 2, 3, 4],
+    edges: [
+      { fromSceneId: 1, toSceneId: 4 },
+      { fromSceneId: 2, toSceneId: 4 },
+      { fromSceneId: 3, toSceneId: 4 },
+    ],
+    thresholds: [{ sourceSceneId: 4, requiredCount: 2 }],
+    isActive: true,
+  }],
+  playedSceneIds: [1],
+});
+assert.equal(statuses.get(4).nodeStatus, "Locked");
+assert.equal(statuses.get(4).blockingThresholds[0].completedCount, 1);
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [{
+    id: 1,
+    name: "Funnel",
+    sceneIds: [1, 2, 3, 4],
+    edges: [
+      { fromSceneId: 1, toSceneId: 4 },
+      { fromSceneId: 2, toSceneId: 4 },
+      { fromSceneId: 3, toSceneId: 4 },
+    ],
+    thresholds: [{ sourceSceneId: 4, requiredCount: 2 }],
+    isActive: true,
+  }],
+  playedSceneIds: [1, 2],
+});
+assert.equal(statuses.get(4).nodeStatus, "Available");
+assert.deepEqual(statuses.get(4).optionalPredecessorIds, [3]);
+assert.deepEqual(statuses.get(4).optionalSceneIds, [3]);
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [{
+    id: 1,
+    name: "Closed",
+    sceneIds: [1, 2, 3],
+    edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 2, toSceneId: 3 }],
+    endSceneIds: [2],
+    isActive: true,
+  }],
+  playedSceneIds: [1, 2],
+});
+assert.equal(statuses.get(3).nodeStatus, "Blocked");
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [{
+    id: 1,
+    name: "Blocker",
+    sceneIds: [1, 2, 3, 4],
+    edges: [
+      { fromSceneId: 1, toSceneId: 2 },
+      { fromSceneId: 1, toSceneId: 3 },
+      { fromSceneId: 2, toSceneId: 4 },
+      { fromSceneId: 3, toSceneId: 4 },
+    ],
+    thresholds: [{ sourceSceneId: 4, requiredCount: 1 }],
+    blockRules: [{ sourceSceneId: 4 }],
+    isActive: true,
+  }],
+  playedSceneIds: [1, 2, 4],
+});
+assert.equal(statuses.get(3).nodeStatus, "Blocked");
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [
+    {
+      id: 1,
+      name: "A",
+      sceneIds: [1, 2, 3, 4, 5],
+      edges: [
+        { fromSceneId: 1, toSceneId: 2 },
+        { fromSceneId: 1, toSceneId: 3 },
+        { fromSceneId: 2, toSceneId: 4 },
+        { fromSceneId: 3, toSceneId: 4 },
+        { fromSceneId: 4, toSceneId: 5 },
+      ],
+      thresholds: [{ sourceSceneId: 4, requiredCount: 1 }],
+      blockRules: [{ sourceSceneId: 4, includeCrossingPaths: true }],
+      isActive: true,
+    },
+    {
+      id: 2,
+      name: "B",
+      sceneIds: [6, 3, 7],
+      edges: [{ fromSceneId: 6, toSceneId: 3 }, { fromSceneId: 3, toSceneId: 7 }],
+      ignoreCrossingBlockSceneIds: [3],
+      isActive: true,
+    },
+  ],
+  playedSceneIds: [1, 2, 4, 6],
+});
+assert.equal(statuses.get(3).nodeStatus, "Available");
+assert.deepEqual(statuses.get(3).availablePathIds, [2]);
 
 console.log("PASS paden graph helpers");
