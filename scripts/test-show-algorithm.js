@@ -13,8 +13,10 @@ const {
   normalizeAlgorithmSettings,
   normalizePerformer,
   normalizePath,
+  normalizePathBlockRules,
   normalizeCrossingThresholdsForPaths,
   normalizePathThresholdsForEdges,
+  effectiveEndSceneIds,
   normalizeScene,
   normalizeSceneCharacterSlotsForPerformerRoles,
   normalizeSceneForPerformerRoles,
@@ -309,7 +311,7 @@ function testExplorationBonusRewardsUnderTestedScenes() {
   assert(order.next.scoreBreakdown.explorationBonus > order.rows.find((entry) => entry.sceneId === 1).scoreBreakdown.explorationBonus);
 }
 
-function testRetryBonusIsSoft() {
+function testRetryBonusDoesNotReplayPlayedScenes() {
   const scenes = [
     { id: 1, title: "Slecht gevallen", sortOrder: 1, characterIds: [1], isActive: true },
     { id: 2, title: "Nog steeds sterker", sortOrder: 2, characterIds: [2], isActive: true },
@@ -326,11 +328,12 @@ function testRetryBonusIsSoft() {
     settings: { calibrationCount: 0, diversityWeight: 0, retryWeight: 0.35, sceneRepeatPenalty: 1 },
   });
   const low = order.rows.find((entry) => entry.sceneId === 1);
-  assert(low.scoreBreakdown.retryBonus > 0);
-  assert.strictEqual(order.next.sceneId, 2);
+  assert.strictEqual(low.nodeStatus, "Played");
+  assert.strictEqual(low.scoreBreakdown, null);
+  assert.strictEqual(order.next, null);
 }
 
-function testSceneRepeatPenaltyAfterCycle() {
+function testPlayedScenesDoNotRepeatAfterCycleComplete() {
   const scenes = [
     { id: 1, title: "Een", sortOrder: 1, characterIds: [1], isActive: true },
     { id: 2, title: "Twee", sortOrder: 2, characterIds: [2], isActive: true },
@@ -347,7 +350,8 @@ function testSceneRepeatPenaltyAfterCycle() {
     settings: { calibrationCount: 0, sceneRepeatPenalty: 2 },
   });
   assert.strictEqual(order.cycleComplete, true);
-  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 1).scoreBreakdown.sceneRepeatPenalty, 2);
+  assert.strictEqual(order.next, null);
+  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 1).scoreBreakdown, null);
 }
 
 function testFinalScoreTieBreaksDeterministically() {
@@ -388,7 +392,7 @@ function testRecommendationSkipsLastScene() {
   ];
   const result = pickRecommendation({ scenes, runs, settings: { calibrationCount: 1 } });
   assert.strictEqual(result.calibration.active, false);
-  assert.notStrictEqual(result.scene.id, 2);
+  assert.strictEqual(result.scene, null);
 }
 
 function testCurrentOrderKeepsCalibrationFixed() {
@@ -824,8 +828,8 @@ function testCurrentOrderSkipsLastWhenEverythingPlayed() {
     settings: { calibrationCount: 1 },
   });
   assert.strictEqual(order.cycleComplete, true);
-  assert(order.upcoming.length > 0);
-  assert.notStrictEqual(order.upcoming[0].sceneId, 3);
+  assert.strictEqual(order.next, null);
+  assert.deepStrictEqual(order.upcoming, []);
   assert.deepStrictEqual(order.hiddenPlayed, []);
 }
 
@@ -1484,6 +1488,45 @@ function testPathValidation() {
   }, { scenes });
   assert.strictEqual(missing.ok, false);
   assert(missing.issues.includes("path_edge_scene_missing:2"));
+
+  const blocker = validateAlgorithmPath({
+    id: 4,
+    name: "Blokkade",
+    sceneIds: [1, 2, 3],
+    edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 2, toSceneId: 3 }],
+    blockRules: [{ sourceSceneId: 3, targetSceneId: 1, includeCrossingPaths: true }],
+    isActive: true,
+  }, { scenes });
+  assert.strictEqual(blocker.ok, true);
+  assert.deepStrictEqual(normalizePathBlockRules(blocker.path.blockRules), [
+    { sourceSceneId: 3, includeCrossingPaths: true },
+  ]);
+  assert.deepStrictEqual(normalizePath({
+    sceneIds: [1, 2, 3],
+    ignoreCrossingBlockSceneIds: [2, 99, 2],
+  }).ignoreCrossingBlockSceneIds, [2]);
+}
+
+function testLegacyPathEndNodesFallBackToTerminalScenes() {
+  assert.deepStrictEqual(effectiveEndSceneIds({
+    sceneIds: [1, 2, 3],
+    edges: [],
+  }), [3]);
+
+  assert.deepStrictEqual(effectiveEndSceneIds({
+    sceneIds: [1, 2, 3],
+    edges: [],
+    edgeMode: "manual",
+  }), []);
+
+  assert.deepStrictEqual(effectiveEndSceneIds({
+    sceneIds: [1, 2, 3, 4],
+    edges: [
+      { fromSceneId: 1, toSceneId: 2 },
+      { fromSceneId: 1, toSceneId: 3 },
+      { fromSceneId: 2, toSceneId: 4 },
+    ],
+  }), [3, 4]);
 }
 
 function testPathStartAndSuccessorGate() {
@@ -1585,22 +1628,21 @@ function testPathMergeWaitsForAllPredecessors() {
 function testPathThresholdNormalization() {
   const thresholds = normalizePathThresholdsForEdges(
     [
-      { sourceSceneId: 1, requiredCount: 3 },
+      { sourceSceneId: 5, requiredCount: 3 },
       { sourceSceneId: 2, requiredCount: 1 },
       { sourceSceneId: 3, requiredCount: 9 },
     ],
     [1, 2, 3, 4, 5],
     [
-      { fromSceneId: 1, toSceneId: 2 },
-      { fromSceneId: 1, toSceneId: 3 },
-      { fromSceneId: 1, toSceneId: 4 },
       { fromSceneId: 1, toSceneId: 5 },
-      { fromSceneId: 3, toSceneId: 4 },
+      { fromSceneId: 2, toSceneId: 5 },
       { fromSceneId: 3, toSceneId: 5 },
+      { fromSceneId: 4, toSceneId: 5 },
+      { fromSceneId: 3, toSceneId: 4 },
     ]
   );
   assert.deepStrictEqual(thresholds, [
-    { sourceSceneId: 1, requiredCount: 3 },
+    { sourceSceneId: 5, requiredCount: 3 },
   ]);
 }
 
@@ -1615,11 +1657,11 @@ function testCrossingThresholdNormalization() {
       { sceneId: 4, requiredCount: 2 },
       { sceneId: 7, requiredCount: 1 },
     ], paths),
-    [{ sceneId: 4, requiredCount: 2 }]
+    []
   );
 }
 
-function testCrossingThresholdUnlocksAfterRequiredPaths() {
+function testCrossingThresholdsAreIgnored() {
   const scenes = pathTestScenes();
   const catalog = {
     scenes,
@@ -1638,10 +1680,9 @@ function testCrossingThresholdUnlocksAfterRequiredPaths() {
     settings,
   });
   const blockedCrossing = afterOnePath.rows.find((entry) => entry.sceneId === 4);
-  assert.strictEqual(blockedCrossing.blocked, true);
-  assert.strictEqual(blockedCrossing.pathStatus.blockingCrossingThreshold.requiredCount, 2);
-  assert.strictEqual(blockedCrossing.pathStatus.blockingCrossingThreshold.completedCount, 1);
-  assert.match(blockedCrossing.reason, /Wacht op 2 van 3 paden naar deze kruising/);
+  assert.strictEqual(blockedCrossing.blocked, false);
+  assert.strictEqual(blockedCrossing.nodeStatus, "Available");
+  assert.strictEqual(blockedCrossing.pathStatus.blockingCrossingThreshold, null);
 
   const afterTwoPaths = buildAlgorithmOrder({
     scenes,
@@ -1654,11 +1695,11 @@ function testCrossingThresholdUnlocksAfterRequiredPaths() {
   });
   const openCrossing = afterTwoPaths.rows.find((entry) => entry.sceneId === 4);
   assert.strictEqual(openCrossing.blocked, false);
-  assert.strictEqual(openCrossing.pathStatus.crossingThreshold.satisfied, true);
-  assert.deepStrictEqual(openCrossing.pathStatus.crossingOptionalPredecessorIds, [3]);
+  assert.strictEqual(openCrossing.pathStatus.crossingThreshold, null);
+  assert.deepStrictEqual(openCrossing.pathStatus.crossingOptionalPredecessorIds, []);
 }
 
-function testSinglePathCrossingAllowsMultipleStarts() {
+function testSinglePathFunnelAllowsMultipleStarts() {
   const scenes = pathTestScenes();
   const catalog = {
     scenes,
@@ -1667,9 +1708,9 @@ function testSinglePathCrossingAllowsMultipleStarts() {
       name: "Kruising",
       sceneIds: [1, 2, 4],
       edges: [{ fromSceneId: 1, toSceneId: 4 }, { fromSceneId: 2, toSceneId: 4 }],
+      thresholds: [{ sourceSceneId: 4, requiredCount: 1 }],
       isActive: true,
     }],
-    crossingThresholds: [{ sceneId: 4, requiredCount: 1 }],
   };
   const settings = { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 };
   const order = buildAlgorithmOrder({
@@ -1679,7 +1720,8 @@ function testSinglePathCrossingAllowsMultipleStarts() {
     settings,
   });
   assert.strictEqual(order.rows.find((entry) => entry.sceneId === 4).blocked, false);
-  assert.deepStrictEqual(order.rows.find((entry) => entry.sceneId === 4).pathStatus.crossingOptionalPredecessorIds, [2]);
+  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 4).nodeStatus, "Available");
+  assert.deepStrictEqual(order.rows.find((entry) => entry.sceneId === 4).pathStatus.optionalPredecessorIds, [2]);
 }
 
 function testPathThresholdUnlocksMergeAfterRequiredBranches() {
@@ -1700,7 +1742,7 @@ function testPathThresholdUnlocksMergeAfterRequiredBranches() {
       { fromSceneId: 5, toSceneId: 7 },
       { fromSceneId: 6, toSceneId: 7 },
     ],
-    thresholds: [{ sourceSceneId: 1, requiredCount: 3 }],
+    thresholds: [{ sourceSceneId: 7, requiredCount: 3 }],
     isActive: true,
   };
   const catalog = { scenes, paths: [path] };
@@ -1719,7 +1761,7 @@ function testPathThresholdUnlocksMergeAfterRequiredBranches() {
   assert.strictEqual(blockedMerge.blocked, true);
   assert.strictEqual(blockedMerge.pathStatus.blockingThresholds[0].requiredCount, 3);
   assert.strictEqual(blockedMerge.pathStatus.blockingThresholds[0].completedCount, 2);
-  assert.match(blockedMerge.reason, /Wacht op 3 van 5 situaties/);
+  assert.match(blockedMerge.reason, /Wacht op 3 van 5 routes naar deze funnel/);
 
   const afterThreeBranches = buildAlgorithmOrder({
     scenes,
@@ -1739,7 +1781,7 @@ function testPathThresholdUnlocksMergeAfterRequiredBranches() {
   assert.deepStrictEqual(mergeEntry.pathStatus.optionalPredecessorIds, [5, 6]);
   assert.strictEqual(afterThreeBranches.rows.find((entry) => entry.sceneId === 5).blocked, false);
   assert.strictEqual(afterThreeBranches.rows.find((entry) => entry.sceneId === 5).pathStatus.optional, true);
-  assert.deepStrictEqual(afterThreeBranches.rows.find((entry) => entry.sceneId === 1).pathStatus.optionalSceneIds, [5, 6]);
+  assert.deepStrictEqual(afterThreeBranches.rows.find((entry) => entry.sceneId === 7).pathStatus.optionalSceneIds, [5, 6]);
 }
 
 function testOptionalSideEdgeExpiresAfterNextRow() {
@@ -1790,6 +1832,249 @@ function testOptionalSideEdgeExpiresAfterNextRow() {
   assert.strictEqual(afterNextRow.cycleComplete, true);
 }
 
+function testRunResetClearsPathProgress() {
+  const scenes = pathTestScenes().slice(0, 2);
+  const catalog = {
+    scenes,
+    paths: [{
+      id: 1,
+      name: "Run reset",
+      sceneIds: [1, 2],
+      edges: [{ fromSceneId: 1, toSceneId: 2 }],
+      isActive: true,
+    }],
+  };
+  const settings = { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 };
+  const progressed = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" }],
+    settings,
+  });
+  assert.strictEqual(progressed.rows.find((entry) => entry.sceneId === 2).nodeStatus, "Available");
+
+  const reset = buildAlgorithmOrder({ scenes, catalog, runs: [], settings });
+  assert.strictEqual(reset.rows.find((entry) => entry.sceneId === 1).nodeStatus, "Available");
+  assert.strictEqual(reset.rows.find((entry) => entry.sceneId === 2).nodeStatus, "Locked");
+}
+
+function testPlayedAndActiveNodesAreRunScopedNotStartable() {
+  const scenes = pathTestScenes().slice(0, 3);
+  const settings = { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 };
+  const activeOrder = buildAlgorithmOrder({
+    scenes,
+    runs: [{ id: 1, sceneId: 1, runOrder: 1, startedAt: "2026-01-01T00:00:00.000Z" }],
+    settings,
+  });
+  assert.strictEqual(activeOrder.rows.find((entry) => entry.sceneId === 1).nodeStatus, "Active");
+  assert(!activeOrder.upcoming.some((entry) => entry.sceneId === 1));
+
+  const playedOrder = buildAlgorithmOrder({
+    scenes,
+    runs: [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" }],
+    settings,
+  });
+  assert.strictEqual(playedOrder.rows.find((entry) => entry.sceneId === 1).nodeStatus, "Played");
+  assert(!playedOrder.upcoming.some((entry) => entry.sceneId === 1));
+}
+
+function testSharedPlayedNodeOnlyAdvancesPathAfterThatPathReachesIt() {
+  const scenes = pathTestScenes().slice(0, 5);
+  const catalog = {
+    scenes,
+    paths: [
+      { id: 1, name: "A", sceneIds: [1, 2, 3], edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 2, toSceneId: 3 }], isActive: true },
+      { id: 2, name: "B", sceneIds: [4, 2, 5], edges: [{ fromSceneId: 4, toSceneId: 2 }, { fromSceneId: 2, toSceneId: 5 }], isActive: true },
+    ],
+  };
+  const settings = { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 };
+  const beforePathBReachesCrossing = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [
+      { id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 2, sceneId: 2, runOrder: 2, endedAt: "2026-01-01T00:01:00.000Z" },
+    ],
+    settings,
+  });
+  assert.strictEqual(beforePathBReachesCrossing.rows.find((entry) => entry.sceneId === 3).nodeStatus, "Available");
+  assert.strictEqual(beforePathBReachesCrossing.rows.find((entry) => entry.sceneId === 5).nodeStatus, "Locked");
+
+  const afterPathBReachesCrossing = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [
+      { id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 2, sceneId: 2, runOrder: 2, endedAt: "2026-01-01T00:01:00.000Z" },
+      { id: 3, sceneId: 4, runOrder: 3, endedAt: "2026-01-01T00:02:00.000Z" },
+    ],
+    settings,
+  });
+  const row = afterPathBReachesCrossing.rows.find((entry) => entry.sceneId === 5);
+  assert.strictEqual(row.nodeStatus, "Available");
+  assert.deepStrictEqual(row.pathStatus.availablePathIds, [2]);
+}
+
+function testBlockingNodeBlocksPreviousNodesNotNextNodes() {
+  const scenes = pathTestScenes();
+  const catalog = {
+    scenes,
+    paths: [{
+      id: 1,
+      name: "Keuze sluit terug",
+      sceneIds: [1, 2, 3, 4, 5],
+      edges: [
+        { fromSceneId: 1, toSceneId: 2 },
+        { fromSceneId: 1, toSceneId: 3 },
+        { fromSceneId: 2, toSceneId: 4 },
+        { fromSceneId: 3, toSceneId: 4 },
+        { fromSceneId: 4, toSceneId: 5 },
+      ],
+      thresholds: [{ sourceSceneId: 4, requiredCount: 1 }],
+      blockRules: [{ sourceSceneId: 4 }],
+      isActive: true,
+    }],
+  };
+  const order = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [
+      { id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 2, sceneId: 2, runOrder: 2, endedAt: "2026-01-01T00:01:00.000Z" },
+      { id: 3, sceneId: 4, runOrder: 3, endedAt: "2026-01-01T00:02:00.000Z" },
+    ],
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
+  });
+  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 3).nodeStatus, "Blocked");
+  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 5).nodeStatus, "Available");
+}
+
+function testBlockingNodeCanPropagatePreviousNodeViaCrossing() {
+  const scenes = pathTestScenes();
+  const catalog = {
+    scenes,
+    paths: [
+      {
+        id: 1,
+        name: "A",
+        sceneIds: [1, 2, 3, 4, 5],
+        edges: [
+          { fromSceneId: 1, toSceneId: 2 },
+          { fromSceneId: 1, toSceneId: 3 },
+          { fromSceneId: 2, toSceneId: 4 },
+          { fromSceneId: 3, toSceneId: 4 },
+          { fromSceneId: 4, toSceneId: 5 },
+        ],
+        thresholds: [{ sourceSceneId: 4, requiredCount: 1 }],
+        blockRules: [{ sourceSceneId: 4, includeCrossingPaths: true }],
+        isActive: true,
+      },
+      {
+        id: 2,
+        name: "B",
+        sceneIds: [6, 3, 7],
+        edges: [{ fromSceneId: 6, toSceneId: 3 }, { fromSceneId: 3, toSceneId: 7 }],
+        isActive: true,
+      },
+    ],
+  };
+  const order = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [
+      { id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 2, sceneId: 2, runOrder: 2, endedAt: "2026-01-01T00:01:00.000Z" },
+      { id: 3, sceneId: 4, runOrder: 3, endedAt: "2026-01-01T00:02:00.000Z" },
+      { id: 4, sceneId: 6, runOrder: 4, endedAt: "2026-01-01T00:03:00.000Z" },
+    ],
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
+  });
+  const blockedCrossing = order.rows.find((entry) => entry.sceneId === 3);
+  assert.strictEqual(blockedCrossing.nodeStatus, "Blocked");
+  assert(blockedCrossing.pathStatus.blockingRules.some((rule) => rule.includeCrossingPaths));
+}
+
+function testCrossingNodeCanIgnorePropagatedBlock() {
+  const scenes = pathTestScenes();
+  const catalog = {
+    scenes,
+    paths: [
+      {
+        id: 1,
+        name: "A",
+        sceneIds: [1, 2, 3, 4, 5],
+        edges: [
+          { fromSceneId: 1, toSceneId: 2 },
+          { fromSceneId: 1, toSceneId: 3 },
+          { fromSceneId: 2, toSceneId: 4 },
+          { fromSceneId: 3, toSceneId: 4 },
+          { fromSceneId: 4, toSceneId: 5 },
+        ],
+        thresholds: [{ sourceSceneId: 4, requiredCount: 1 }],
+        blockRules: [{ sourceSceneId: 4, includeCrossingPaths: true }],
+        isActive: true,
+      },
+      {
+        id: 2,
+        name: "B",
+        sceneIds: [6, 3, 7],
+        edges: [{ fromSceneId: 6, toSceneId: 3 }, { fromSceneId: 3, toSceneId: 7 }],
+        ignoreCrossingBlockSceneIds: [3],
+        isActive: true,
+      },
+    ],
+  };
+  const order = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [
+      { id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 2, sceneId: 2, runOrder: 2, endedAt: "2026-01-01T00:01:00.000Z" },
+      { id: 3, sceneId: 4, runOrder: 3, endedAt: "2026-01-01T00:02:00.000Z" },
+      { id: 4, sceneId: 6, runOrder: 4, endedAt: "2026-01-01T00:03:00.000Z" },
+    ],
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
+  });
+  const crossing = order.rows.find((entry) => entry.sceneId === 3);
+  assert.strictEqual(crossing.nodeStatus, "Available");
+  assert.deepStrictEqual(crossing.pathStatus.availablePathIds, [2]);
+}
+
+function testEndNodeClosesOnlyItsPath() {
+  const scenes = pathTestScenes().slice(0, 5);
+  const catalog = {
+    scenes,
+    paths: [
+      {
+        id: 1,
+        name: "A",
+        sceneIds: [1, 2, 3],
+        edges: [{ fromSceneId: 1, toSceneId: 2 }, { fromSceneId: 2, toSceneId: 3 }],
+        endSceneIds: [2],
+        isActive: true,
+      },
+      {
+        id: 2,
+        name: "B",
+        sceneIds: [4, 5],
+        edges: [{ fromSceneId: 4, toSceneId: 5 }],
+        isActive: true,
+      },
+    ],
+  };
+  const order = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [
+      { id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 2, sceneId: 2, runOrder: 2, endedAt: "2026-01-01T00:01:00.000Z" },
+    ],
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
+  });
+  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 3).nodeStatus, "Blocked");
+  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 4).nodeStatus, "Available");
+}
+
 function testRandomScenesRemainAvailableBesidePaths() {
   const scenes = pathTestScenes();
   const catalog = {
@@ -1825,8 +2110,8 @@ testVariationSettingsAcceptWideWeights();
 testHighDiversityWeightCanOverrulePopularity();
 testActiveSceneCountsForDiversityPenalty();
 testExplorationBonusRewardsUnderTestedScenes();
-testRetryBonusIsSoft();
-testSceneRepeatPenaltyAfterCycle();
+testRetryBonusDoesNotReplayPlayedScenes();
+testPlayedScenesDoNotRepeatAfterCycleComplete();
 testFinalScoreTieBreaksDeterministically();
 testCalibrationFixedOrder();
 testRecommendationSkipsLastScene();
@@ -1876,15 +2161,23 @@ testPromptComposition();
 testPromptCompositionWithRandomSlots();
 testPromptCompositionSkipsEmptySlots();
 testPathValidation();
+testLegacyPathEndNodesFallBackToTerminalScenes();
 testPathStartAndSuccessorGate();
 testPathSplitUnlocksBoth();
 testPathMergeWaitsForAllPredecessors();
 testPathThresholdNormalization();
 testCrossingThresholdNormalization();
-testCrossingThresholdUnlocksAfterRequiredPaths();
-testSinglePathCrossingAllowsMultipleStarts();
+testCrossingThresholdsAreIgnored();
+testSinglePathFunnelAllowsMultipleStarts();
 testPathThresholdUnlocksMergeAfterRequiredBranches();
 testOptionalSideEdgeExpiresAfterNextRow();
+testRunResetClearsPathProgress();
+testPlayedAndActiveNodesAreRunScopedNotStartable();
+testSharedPlayedNodeOnlyAdvancesPathAfterThatPathReachesIt();
+testBlockingNodeBlocksPreviousNodesNotNextNodes();
+testBlockingNodeCanPropagatePreviousNodeViaCrossing();
+testCrossingNodeCanIgnorePropagatedBlock();
+testEndNodeClosesOnlyItsPath();
 testRandomScenesRemainAvailableBesidePaths();
 testSyncLastWriteWins();
 testSyncSettingsFilterSecrets();
