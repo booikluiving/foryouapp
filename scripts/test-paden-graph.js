@@ -429,6 +429,19 @@ assert.equal(statuses.get(2).isPathStart, false);
 statuses = Graph.buildPathSceneStatuses({
   scenes: testScenes,
   paths: [
+    { id: 1, name: "A", sceneIds: [1, 2], edges: [{ fromSceneId: 1, toSceneId: 2 }], edgeMode: "manual", isActive: true },
+    { id: 2, name: "B", sceneIds: [1], edges: [], edgeMode: "manual", isActive: true },
+    { id: 3, name: "C", sceneIds: [1], edges: [], edgeMode: "manual", isActive: true },
+  ],
+  playedSceneIds: [],
+});
+assert.equal(statuses.get(1).nodeStatus, "Available");
+assert.equal(statuses.get(1).isPathStart, true);
+assert.deepEqual(statuses.get(1).availablePathIds, [1, 2, 3]);
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [
     { id: 1, name: "A", sceneIds: [1, 2], edges: [{ fromSceneId: 1, toSceneId: 2 }], isActive: true },
     { id: 2, name: "B", sceneIds: [2, 3], edges: [{ fromSceneId: 2, toSceneId: 3 }], isActive: true },
   ],
