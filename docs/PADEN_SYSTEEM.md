@@ -62,4 +62,4 @@ Een eindnode is expliciet ingesteld per pad.
 
 Wanneer een eindnode binnen een pad gespeeld wordt, sluit dat pad voor de rest van de huidige run. Andere nodes binnen dat pad kunnen dan niet meer gespeeld worden via dat pad.
 
-Bij nieuwe/manual paden is een node zonder uitgaande verbindingen niet automatisch een eindnode. Voor oude legacy-paden zonder expliciete eindnodes interpreteert de app terminale nodes wel als eindnode, zodat bestaande paden blijven werken zonder dat de data direct gemigreerd hoeft te worden.
+Een node zonder uitgaande verbindingen is niet automatisch een eindnode. De default is altijd: geen eindnode, tenzij de node expliciet zo is aangevinkt.

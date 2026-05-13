@@ -262,19 +262,7 @@
   function effectiveEndSceneIds(path, sceneIds = null, edges = null) {
     const ids = normalizeIdList(Array.isArray(sceneIds) ? sceneIds : getPathSceneIds(path));
     const sceneSet = new Set(ids);
-    const explicit = normalizeIdList(path && path.endSceneIds || []).filter((sceneId) => sceneSet.has(sceneId));
-    if (explicit.length) return explicit;
-    if (String(path && path.edgeMode || "legacy") === "manual") return [];
-    const pathEdges = Array.isArray(edges)
-      ? normalizeEdges(edges, ids)
-      : getRenderableEdges(path, { fallback: true });
-    if (!pathEdges.length) return [];
-    const outgoing = new Set();
-    pathEdges.forEach((edge) => {
-      if (!sceneSet.has(edge.fromSceneId) || !sceneSet.has(edge.toSceneId)) return;
-      outgoing.add(edge.fromSceneId);
-    });
-    return ids.filter((sceneId) => !outgoing.has(sceneId));
+    return normalizeIdList(path && path.endSceneIds || []).filter((sceneId) => sceneSet.has(sceneId));
   }
 
   function buildAdjacency(sceneIds, edges) {

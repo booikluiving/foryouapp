@@ -1507,11 +1507,11 @@ function testPathValidation() {
   }).ignoreCrossingBlockSceneIds, [2]);
 }
 
-function testLegacyPathEndNodesFallBackToTerminalScenes() {
+function testEndNodesAreExplicitOnly() {
   assert.deepStrictEqual(effectiveEndSceneIds({
     sceneIds: [1, 2, 3],
     edges: [],
-  }), [3]);
+  }), []);
 
   assert.deepStrictEqual(effectiveEndSceneIds({
     sceneIds: [1, 2, 3],
@@ -1535,7 +1535,13 @@ function testLegacyPathEndNodesFallBackToTerminalScenes() {
       { fromSceneId: 1, toSceneId: 3 },
       { fromSceneId: 2, toSceneId: 4 },
     ],
-  }), [3, 4]);
+  }), []);
+
+  assert.deepStrictEqual(effectiveEndSceneIds({
+    sceneIds: [1, 2, 3, 4],
+    edges: [],
+    endSceneIds: [3, 99, 3],
+  }), [3]);
 }
 
 function testPathStartAndSuccessorGate() {
@@ -2170,7 +2176,7 @@ testPromptComposition();
 testPromptCompositionWithRandomSlots();
 testPromptCompositionSkipsEmptySlots();
 testPathValidation();
-testLegacyPathEndNodesFallBackToTerminalScenes();
+testEndNodesAreExplicitOnly();
 testPathStartAndSuccessorGate();
 testPathSplitUnlocksBoth();
 testPathMergeWaitsForAllPredecessors();
