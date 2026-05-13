@@ -264,6 +264,7 @@
     const sceneSet = new Set(ids);
     const explicit = normalizeIdList(path && path.endSceneIds || []).filter((sceneId) => sceneSet.has(sceneId));
     if (explicit.length) return explicit;
+    if (String(path && path.edgeMode || "legacy") === "manual") return [];
     const pathEdges = Array.isArray(edges)
       ? normalizeEdges(edges, ids)
       : getRenderableEdges(path, { fallback: true });

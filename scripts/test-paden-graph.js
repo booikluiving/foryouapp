@@ -79,6 +79,15 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  Graph.effectiveEndSceneIds({
+    sceneIds: [7, 8, 9],
+    edges: [{ fromSceneId: 7, toSceneId: 8 }, { fromSceneId: 8, toSceneId: 9 }],
+    edgeMode: "manual",
+  }),
+  []
+);
+
+assert.deepEqual(
   Graph.pathEndpoints({ sceneIds: [7, 8], edges: [], edgeMode: "manual" }),
   { starts: [7, 8], ends: [7, 8] }
 );

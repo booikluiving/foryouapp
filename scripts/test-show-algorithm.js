@@ -1520,6 +1520,15 @@ function testLegacyPathEndNodesFallBackToTerminalScenes() {
   }), []);
 
   assert.deepStrictEqual(effectiveEndSceneIds({
+    sceneIds: [1, 2, 3],
+    edges: [
+      { fromSceneId: 1, toSceneId: 2 },
+      { fromSceneId: 2, toSceneId: 3 },
+    ],
+    edgeMode: "manual",
+  }), []);
+
+  assert.deepStrictEqual(effectiveEndSceneIds({
     sceneIds: [1, 2, 3, 4],
     edges: [
       { fromSceneId: 1, toSceneId: 2 },
