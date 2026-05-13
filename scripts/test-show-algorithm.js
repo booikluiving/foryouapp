@@ -1672,11 +1672,11 @@ function testCrossingThresholdNormalization() {
       { sceneId: 4, requiredCount: 2 },
       { sceneId: 7, requiredCount: 1 },
     ], paths),
-    []
+    [{ sceneId: 4, requiredCount: 2 }]
   );
 }
 
-function testCrossingThresholdsAreIgnored() {
+function testCrossingThresholdsGateCrossingFunnels() {
   const scenes = pathTestScenes();
   const catalog = {
     scenes,
@@ -1695,9 +1695,10 @@ function testCrossingThresholdsAreIgnored() {
     settings,
   });
   const blockedCrossing = afterOnePath.rows.find((entry) => entry.sceneId === 4);
-  assert.strictEqual(blockedCrossing.blocked, false);
-  assert.strictEqual(blockedCrossing.nodeStatus, "Available");
-  assert.strictEqual(blockedCrossing.pathStatus.blockingCrossingThreshold, null);
+  assert.strictEqual(blockedCrossing.blocked, true);
+  assert.strictEqual(blockedCrossing.nodeStatus, "Locked");
+  assert.strictEqual(blockedCrossing.pathStatus.blockingCrossingThreshold.requiredCount, 2);
+  assert.strictEqual(blockedCrossing.pathStatus.blockingCrossingThreshold.completedCount, 1);
 
   const afterTwoPaths = buildAlgorithmOrder({
     scenes,
@@ -1710,8 +1711,8 @@ function testCrossingThresholdsAreIgnored() {
   });
   const openCrossing = afterTwoPaths.rows.find((entry) => entry.sceneId === 4);
   assert.strictEqual(openCrossing.blocked, false);
-  assert.strictEqual(openCrossing.pathStatus.crossingThreshold, null);
-  assert.deepStrictEqual(openCrossing.pathStatus.crossingOptionalPredecessorIds, []);
+  assert.strictEqual(openCrossing.pathStatus.crossingThreshold.satisfied, true);
+  assert.deepStrictEqual(openCrossing.pathStatus.crossingOptionalPredecessorIds, [3]);
 }
 
 function testSinglePathFunnelAllowsMultipleStarts() {
@@ -2182,7 +2183,7 @@ testPathSplitUnlocksBoth();
 testPathMergeWaitsForAllPredecessors();
 testPathThresholdNormalization();
 testCrossingThresholdNormalization();
-testCrossingThresholdsAreIgnored();
+testCrossingThresholdsGateCrossingFunnels();
 testSinglePathFunnelAllowsMultipleStarts();
 testPathThresholdUnlocksMergeAfterRequiredBranches();
 testOptionalSideEdgeExpiresAfterNextRow();

@@ -253,7 +253,11 @@ assert.deepEqual(
 );
 assert.deepEqual(
   Graph.normalizeCrossingThresholdsForPaths([{ sceneId: 4, requiredCount: 1 }], crossingPaths),
-  []
+  [{ sceneId: 4, requiredCount: 1 }]
+);
+assert.equal(
+  Graph.crossingThresholdMapForPaths([{ sceneId: 4, requiredCount: 1 }], crossingPaths).get(4),
+  1
 );
 
 const membership = Graph.analyzePathMembership([
@@ -362,8 +366,9 @@ statuses = Graph.buildPathSceneStatuses({
   playedSceneIds: [1],
   crossingThresholds: [{ sceneId: 6, requiredCount: 2 }],
 });
-assert.equal(statuses.get(6).nodeStatus, "Available");
-assert.equal(statuses.get(6).blockingCrossingThreshold, null);
+assert.equal(statuses.get(6).nodeStatus, "Locked");
+assert.equal(statuses.get(6).crossingThreshold.completedCount, 1);
+assert.equal(statuses.get(6).blockingCrossingThreshold.requiredCount, 2);
 
 statuses = Graph.buildPathSceneStatuses({
   scenes: testScenes,
@@ -376,7 +381,55 @@ statuses = Graph.buildPathSceneStatuses({
   crossingThresholds: [{ sceneId: 6, requiredCount: 2 }],
 });
 assert.equal(statuses.get(6).nodeStatus, "Available");
-assert.deepEqual(statuses.get(6).crossingOptionalPredecessorIds, []);
+assert.deepEqual(statuses.get(6).crossingOptionalPredecessorIds, [3]);
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [
+    { id: 1, name: "A", sceneIds: [1, 2], edges: [{ fromSceneId: 1, toSceneId: 2 }], isActive: true },
+    { id: 2, name: "B", sceneIds: [2, 3], edges: [{ fromSceneId: 2, toSceneId: 3 }], isActive: true },
+  ],
+  playedSceneIds: [],
+});
+assert.equal(statuses.get(2).nodeStatus, "Locked");
+assert.equal(statuses.get(2).isPathStart, false);
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: testScenes,
+  paths: [
+    { id: 1, name: "A", sceneIds: [1, 2], edges: [{ fromSceneId: 1, toSceneId: 2 }], isActive: true },
+    { id: 2, name: "B", sceneIds: [2, 3], edges: [{ fromSceneId: 2, toSceneId: 3 }], isActive: true },
+  ],
+  playedSceneIds: [1, 2],
+});
+assert.equal(statuses.get(3).nodeStatus, "Available");
+
+statuses = Graph.buildPathSceneStatuses({
+  scenes: Array.from({ length: 9 }, (_, index) => ({
+    id: index + 1,
+    title: `Scene ${index + 1}`,
+    isActive: true,
+  })),
+  paths: [
+    {
+      id: 1,
+      name: "A",
+      sceneIds: [1, 2, 3, 4, 9],
+      edges: [
+        { fromSceneId: 1, toSceneId: 9 },
+        { fromSceneId: 2, toSceneId: 9 },
+        { fromSceneId: 3, toSceneId: 9 },
+        { fromSceneId: 4, toSceneId: 9 },
+      ],
+      isActive: true,
+    },
+    { id: 2, name: "B", sceneIds: [5, 9], edges: [{ fromSceneId: 5, toSceneId: 9 }], isActive: true },
+  ],
+  playedSceneIds: [1, 2, 3, 4],
+});
+assert.equal(statuses.get(9).nodeStatus, "Locked");
+assert.equal(statuses.get(9).crossingThreshold.incomingCount, 5);
+assert.equal(statuses.get(9).crossingThreshold.completedCount, 4);
 
 statuses = Graph.buildPathSceneStatuses({
   scenes: testScenes,

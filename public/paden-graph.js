@@ -231,11 +231,27 @@
   }
 
   function normalizeCrossingThresholdsForPaths(thresholds, paths = []) {
-    return [];
+    const byScene = new Map();
+    normalizeCrossingThresholds(thresholds).forEach((threshold) => {
+      const routes = crossingIncomingRoutesForPaths(paths, threshold.sceneId);
+      const incomingCount = routes.length;
+      const incomingPathCount = new Set(routes.map((route) => normalizeId(route.pathId))).size;
+      if (incomingPathCount <= 1) return;
+      if (incomingCount <= 1) return;
+      const parsedRequired = Number.parseInt(String(threshold.requiredCount || "1"), 10);
+      const requiredCount = Math.min(incomingCount, Math.max(1, Number.isInteger(parsedRequired) ? parsedRequired : 1));
+      if (requiredCount >= incomingCount) return;
+      byScene.set(threshold.sceneId, {
+        sceneId: threshold.sceneId,
+        requiredCount,
+      });
+    });
+    return Array.from(byScene.values()).sort((a, b) => a.sceneId - b.sceneId);
   }
 
   function crossingThresholdMapForPaths(thresholds, paths = []) {
-    return new Map();
+    return new Map(normalizeCrossingThresholdsForPaths(thresholds, paths)
+      .map((threshold) => [threshold.sceneId, threshold.requiredCount]));
   }
 
   function fallbackEdgesFromSceneIds(sceneIds) {
@@ -637,6 +653,37 @@
     };
     const analyses = [];
     const globalBlockedSceneIds = new Set();
+    const globalRequiredIncomingRoutesBySceneId = new Map();
+    const crossingThresholdBySceneId = crossingThresholdMapForPaths(crossingThresholds, active);
+    const addGlobalRequiredIncomingRoute = (route) => {
+      const targetSceneId = normalizeId(route && route.toSceneId);
+      if (!targetSceneId) return;
+      if (!globalRequiredIncomingRoutesBySceneId.has(targetSceneId)) {
+        globalRequiredIncomingRoutesBySceneId.set(targetSceneId, []);
+      }
+      const routes = globalRequiredIncomingRoutesBySceneId.get(targetSceneId);
+      const key = `${normalizeId(route.pathId)}:${normalizeId(route.fromSceneId)}:${targetSceneId}`;
+      if (routes.some((item) => item.key === key)) return;
+      routes.push({ ...route, key });
+    };
+
+    active.forEach((path) => {
+      const pathId = normalizeId(path && path.id);
+      const sceneIds = getPathSceneIds(path).filter((sceneId) => !sceneById.size || sceneById.has(sceneId));
+      if (!pathId || !sceneIds.length) return;
+      const sceneIdSet = new Set(sceneIds);
+      getRenderableEdges(path, { fallback: true }).forEach((edge) => {
+        if (isOptionalEdge(edge)) return;
+        if (!sceneIdSet.has(edge.fromSceneId) || !sceneIdSet.has(edge.toSceneId)) return;
+        addGlobalRequiredIncomingRoute({
+          pathId,
+          pathName: path.name || `Pad ${pathId}`,
+          color: path.color || "",
+          fromSceneId: edge.fromSceneId,
+          toSceneId: edge.toSceneId,
+        });
+      });
+    });
 
     active.forEach((path) => {
       const pathId = normalizeId(path.id);
@@ -664,8 +711,12 @@
       });
       const endSceneIds = new Set(effectiveEndSceneIds(path, sceneIds, pathEdges));
       const reached = new Set();
-      const queue = sceneIds.filter((sceneId) => (incomingBySceneId.get(sceneId) || []).length === 0);
-      if (!queue.length && sceneIds.length) queue.push(sceneIds[0]);
+      const localStartSceneIds = sceneIds.filter((sceneId) => (incomingBySceneId.get(sceneId) || []).length === 0);
+      const queue = localStartSceneIds.filter((sceneId) => {
+        const globalIncomingRoutes = globalRequiredIncomingRoutesBySceneId.get(sceneId) || [];
+        return !globalIncomingRoutes.length || playedSet.has(sceneId);
+      });
+      if (!queue.length && !localStartSceneIds.length && sceneIds.length) queue.push(sceneIds[0]);
       while (queue.length) {
         const sceneId = queue.shift();
         if (!sceneId || reached.has(sceneId) || !sceneIdSet.has(sceneId)) continue;
@@ -886,6 +937,13 @@
       });
     });
 
+    const analysisByPathId = new Map(analyses.map((analysis) => [analysis.pathId, analysis]));
+    const routeCompleted = (route) => {
+      const analysis = analysisByPathId.get(normalizeId(route && route.pathId));
+      const fromSceneId = normalizeId(route && route.fromSceneId);
+      return !!(analysis && fromSceneId && analysis.reached.has(fromSceneId) && playedSet.has(fromSceneId));
+    };
+
     statusBySceneId.forEach((status) => {
       status.predecessorIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.predecessorIds || []));
       status.requiredPredecessorIds = uniqueIds(status.pathDetails.flatMap((detail) => detail.requiredPredecessorIds || []));
@@ -912,6 +970,64 @@
       status.available = status.availablePathIds.length > 0;
       status.pathClosed = status.closedPathIds.length > 0;
       status.endNode = status.endPathIds.length > 0;
+      const crossingRoutes = globalRequiredIncomingRoutesBySceneId.get(status.sceneId) || [];
+      const crossingRoutePathCount = new Set(crossingRoutes.map((route) => normalizeId(route.pathId))).size;
+      if (crossingRoutes.length > 1 && crossingRoutePathCount > 1) {
+        const completedRoutes = crossingRoutes.filter(routeCompleted);
+        const completedRouteKeys = new Set(completedRoutes.map((route) => route.key));
+        const requiredCount = Math.min(
+          crossingRoutes.length,
+          Math.max(1, Number(crossingThresholdBySceneId.get(status.sceneId) || crossingRoutes.length))
+        );
+        const crossingSatisfied = completedRoutes.length >= requiredCount || playedSet.has(status.sceneId);
+        const missingRouteSourceIds = uniqueIds(crossingRoutes
+          .filter((route) => !completedRouteKeys.has(route.key))
+          .map((route) => route.fromSceneId));
+        const crossingThreshold = {
+          sceneId: status.sceneId,
+          incomingCount: crossingRoutes.length,
+          requiredCount,
+          completedCount: completedRoutes.length,
+          satisfied: crossingSatisfied,
+          routes: crossingRoutes.map((route) => ({
+            pathId: route.pathId,
+            pathName: route.pathName,
+            color: route.color,
+            fromSceneId: route.fromSceneId,
+            toSceneId: route.toSceneId,
+            completed: completedRouteKeys.has(route.key),
+          })),
+          optionalPredecessorIds: crossingSatisfied ? missingRouteSourceIds : [],
+        };
+        status.crossingThreshold = crossingThreshold;
+        status.blockingCrossingThreshold = !crossingSatisfied && !playedSet.has(status.sceneId) ? crossingThreshold : null;
+        status.crossingIncomingCount = crossingThreshold.incomingCount;
+        status.crossingRequiredCount = crossingThreshold.requiredCount;
+        status.crossingCompletedCount = crossingThreshold.completedCount;
+        status.crossingSatisfied = crossingSatisfied;
+        status.crossingOptionalPredecessorIds = crossingSatisfied ? missingRouteSourceIds : [];
+        status.predecessorIds = uniqueIds(status.predecessorIds.concat(crossingRoutes.map((route) => route.fromSceneId)));
+        status.requiredPredecessorIds = uniqueIds(status.requiredPredecessorIds.concat(crossingRoutes.map((route) => route.fromSceneId)));
+        status.completedPredecessorIds = uniqueIds(status.completedPredecessorIds.concat(completedRoutes.map((route) => route.fromSceneId)));
+        if (!crossingSatisfied && !playedSet.has(status.sceneId)) {
+          status.missingPredecessorIds = uniqueIds(status.missingPredecessorIds.concat(missingRouteSourceIds));
+          status.requiredMissingPredecessorIds = uniqueIds(status.requiredMissingPredecessorIds.concat(missingRouteSourceIds));
+          status.pathDetails.forEach((detail) => {
+            detail.ready = false;
+            detail.available = false;
+            detail.blockingCrossingThreshold = crossingThreshold;
+          });
+        }
+      }
+      status.reachedPathIds = uniqueIds(status.pathDetails.filter((detail) => detail.reached).map((detail) => detail.pathId));
+      status.availablePathIds = uniqueIds(status.pathDetails.filter((detail) => detail.available).map((detail) => detail.pathId));
+      status.blockedPathIds = uniqueIds(status.pathDetails.filter((detail) => detail.blocked).map((detail) => detail.pathId));
+      status.closedPathIds = uniqueIds(status.pathDetails.filter((detail) => detail.pathClosed).map((detail) => detail.pathId));
+      status.endPathIds = uniqueIds(status.pathDetails.filter((detail) => detail.endNode).map((detail) => detail.pathId));
+      status.reached = status.reachedPathIds.length > 0;
+      status.available = status.availablePathIds.length > 0;
+      status.pathClosed = status.closedPathIds.length > 0;
+      status.endNode = status.endPathIds.length > 0;
       status.thresholdGroups = uniqueThresholdGroups(status.pathDetails.flatMap((detail) => detail.thresholdGroups || []));
       status.blockingThresholds = uniqueThresholdGroups(status.pathDetails
         .filter((detail) => detail.reached && !detail.blocked && !detail.ready)
@@ -924,7 +1040,8 @@
       status.optional = !status.expiredOptional
         && (status.optionalSourceSceneIds.length > 0 || status.activeSideSourceSceneIds.length > 0)
         && !playedSet.has(status.sceneId);
-      status.isPathStart = status.pathDetails.some((detail) => detail.isStart);
+      status.isPathStart = status.pathDetails.some((detail) => detail.isStart)
+        && !(globalRequiredIncomingRoutesBySceneId.get(status.sceneId) || []).length;
       status.isPathEnd = status.pathDetails.some((detail) => detail.isEnd);
       status.isSplit = status.successorIds.length > 1 || status.pathDetails.some((detail) => detail.isSplit);
       status.isMerge = status.predecessorIds.length > 1 || status.pathDetails.some((detail) => detail.isMerge);
