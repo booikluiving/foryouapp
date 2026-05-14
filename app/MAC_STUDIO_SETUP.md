@@ -33,7 +33,7 @@ Tijdelijk_2026!
 Na een push vanaf je MacBook run je op de Mac Studio:
 
 ```bash
-cd "$HOME/ForYou/App"
+cd "$HOME/ForYou/main/app"
 ./scripts/mac-studio-update.command
 ```
 
@@ -51,7 +51,7 @@ Dat doet:
 Branches mogen vrij gebruikt worden voor ontwikkeling en review. Start ze op een aparte poort:
 
 ```bash
-cd "$HOME/ForYou/App"
+cd "$HOME/ForYou/main/app"
 ./scripts/mac-studio-preview.command codex/mijn-branch
 ```
 
@@ -78,7 +78,7 @@ Pas na review merge je de branch naar `main` en run je weer `./scripts/mac-studi
 ## Status checken op de Mac Studio
 
 ```bash
-cd "$HOME/ForYou/App"
+cd "$HOME/ForYou/main/app"
 ./scripts/mac-studio-status.command
 ```
 
@@ -124,7 +124,7 @@ git push origin main
 Op de Mac Studio:
 
 ```bash
-cd "$HOME/ForYou/App"
+cd "$HOME/ForYou/main/app"
 ./scripts/mac-studio-update.command
 ```
 

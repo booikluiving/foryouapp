@@ -9,7 +9,7 @@ const {
   CrowdEngine,
   normalizeBotLabelMode,
   normalizeCrowdMode,
-} = require("../lib/crowd-engine");
+} = require("../../crowd-system");
 
 const DEFAULTS = {
   url: "ws://127.0.0.1:3010",

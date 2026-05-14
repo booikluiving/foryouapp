@@ -1,0 +1,14 @@
+{
+  "name": "crowd-system",
+  "version": "1.0.0",
+  "description": "Standalone crowd generation engine for For You — bot simulation, mood modeling, and chat generation.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node scripts/test-crowd-engine.js",
+    "simulate": "node scripts/simulate-chatters.js"
+  },
+  "dependencies": {
+    "ws": "^8.19.0"
+  }
+}
