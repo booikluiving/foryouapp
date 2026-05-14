@@ -291,25 +291,9 @@ function extractMotifs(text) {
     .split(" ")
     .filter((token) => token.length >= 4 && token.length <= 18);
   const stop = new Set([
-    "maar",
-    "niet",
-    "voor",
-    "hier",
-    "deze",
-    "dit",
-    "dat",
-    "waar",
-    "waarom",
-    "echt",
-    "gewoon",
-    "even",
-    "alleen",
-    "omdat",
-    "heeft",
-    "wordt",
-    "zijn",
-    "naar",
-    "alsof",
+    "maar", "niet", "voor", "hier", "deze", "dit", "dat",
+    "waar", "waarom", "echt", "gewoon", "even", "alleen",
+    "omdat", "heeft", "wordt", "zijn", "naar", "alsof",
   ]);
   return Array.from(new Set(tokens.filter((token) => !stop.has(token)))).slice(0, 4);
 }
@@ -337,19 +321,12 @@ class CrowdEngine {
     this.reset();
   }
 
-  random() {
-    return this.rng();
-  }
-
-  randomRange(min, max) {
-    return min + this.random() * (max - min);
-  }
-
+  random() { return this.rng(); }
+  randomRange(min, max) { return min + this.random() * (max - min); }
   randomInt(min, max) {
     if (max <= min) return min;
     return min + Math.floor(this.random() * (max - min + 1));
   }
-
   sample(list, fallback = "") {
     if (!Array.isArray(list) || !list.length) return fallback;
     return list[this.randomInt(0, list.length - 1)] || fallback;
@@ -357,13 +334,8 @@ class CrowdEngine {
 
   reset() {
     this.mood = {
-      attention: 0.42,
-      hype: 0.32,
-      confusion: 0.24,
-      skepticism: 0.34,
-      warmth: 0.44,
-      boredom: 0.18,
-      insideJoke: 0.08,
+      attention: 0.42, hype: 0.32, confusion: 0.24,
+      skepticism: 0.34, warmth: 0.44, boredom: 0.18, insideJoke: 0.08,
     };
     this.memory = [];
     this.motifs = [];
@@ -543,9 +515,7 @@ class CrowdEngine {
     const typingMin = Array.isArray(role.typingCps) ? Number(role.typingCps[0] || 7) : 7;
     const typingMax = Array.isArray(role.typingCps) ? Number(role.typingCps[1] || 14) : 14;
     return {
-      roleId: role.id,
-      roleLabel: role.label,
-      role,
+      roleId: role.id, roleLabel: role.label, role,
       commentMultiplier: Number(role.commentMultiplier || 1),
       reactionMultiplier: Number(role.reactionMultiplier || 1),
       emojiMultiplier: Number(role.emojiMultiplier || 1),
@@ -618,9 +588,7 @@ class CrowdEngine {
     const modeBoost = Number(mode.activity || 1);
     const chance = clampNumber(
       baseChance * roleMultiplier * attentionBoost * boredomDrag * waveBoost * intensityBoost * modeBoost,
-      0,
-      0.88,
-      baseChance
+      0, 0.88, baseChance
     );
     if (this.random() > chance) return null;
 
@@ -628,8 +596,7 @@ class CrowdEngine {
     const intent = String(selected && selected.intent || "agree");
     const reference = selected && selected.reference ? selected.reference : (
       intent === "callback" || intent === "misread" || this.random() < this.config.callbackRate * 0.28
-        ? this.pickRecentHumanMemory(now)
-        : null
+        ? this.pickRecentHumanMemory(now) : null
     );
     const motif = this.pickMotif();
     const chars = clampNumber(options.estimatedChars, 4, 120, intent === "emoji_wave" ? 5 : 32);
@@ -639,21 +606,14 @@ class CrowdEngine {
     const typingDelayMs = Math.round(clampNumber(realismDelay * intentDelay + this.randomRange(-180, 420), 120, 5600, 900));
     const abandonChance = clampNumber(
       Number(profile.abandonChance || 0.1) * (0.5 + this.config.realism * 0.9) * (intent === "room_observation" ? 1.25 : 1),
-      0,
-      0.55,
-      0.1
+      0, 0.55, 0.1
     );
     const abandon = this.random() < abandonChance;
     this.intentCounts.set(intent, (this.intentCounts.get(intent) || 0) + 1);
     return {
-      kind: "comment",
-      botId,
-      intent,
+      kind: "comment", botId, intent,
       cue: selected && selected.cue ? selected.cue : this.activeCue,
-      reference,
-      motif,
-      typingDelayMs,
-      abandon,
+      reference, motif, typingDelayMs, abandon,
       mood: { ...this.mood },
     };
   }
@@ -667,9 +627,7 @@ class CrowdEngine {
     const roleMultiplier = clampNumber(profile.reactionMultiplier || 1, 0.15, 4, 1);
     const chance = clampNumber(
       baseRate * seconds * roleMultiplier * Number(mode.reaction || 1) * (0.36 + this.config.intensity * 0.86),
-      0,
-      0.98,
-      0.1
+      0, 0.98, 0.1
     );
     if (this.random() > chance) return null;
     const mood = this.mood;
@@ -678,11 +636,7 @@ class CrowdEngine {
       { reaction: "bored", weight: 0.4 + mood.boredom * 7 + mood.skepticism * 2 },
     ];
     const picked = pickWeighted(choices, this.rng) || choices[0];
-    return {
-      kind: "reaction",
-      reaction: picked.reaction,
-      mood: { ...this.mood },
-    };
+    return { kind: "reaction", reaction: picked.reaction, mood: { ...this.mood } };
   }
 
   getSnapshot() {
@@ -698,10 +652,7 @@ class CrowdEngine {
       topMotifs: this.motifs.slice(0, 5).map((item) => item.key),
       pendingIntents: this.pendingIntents.length,
       intentCounts: Object.fromEntries(this.intentCounts.entries()),
-      aiDirector: {
-        mode: "off",
-        readyForLocalModel: true,
-      },
+      aiDirector: { mode: "off", readyForLocalModel: true },
     };
   }
 }

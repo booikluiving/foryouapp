@@ -99,7 +99,7 @@ Ontwikkelen op branches mag. De afspraak is alleen: live deploy naar poort `3310
 Voor branch-werk op de Mac Studio:
 
 ```bash
-cd "$HOME/ForYou/App"
+cd "$HOME/ForYou/main/app"
 ./scripts/mac-studio-preview.command codex/mijn-branch
 ```
 

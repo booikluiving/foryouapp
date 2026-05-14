@@ -17,7 +17,7 @@ const {
   normalizeBotLabelMode,
   normalizeCrowdCue,
   normalizeCrowdMode,
-} = require("./lib/crowd-engine");
+} = require("../crowd-system");
 const {
   ALGORITHM_ACTOR_SLOT_COUNT,
   ALGORITHM_RANDOM_SLOT_VALUE,

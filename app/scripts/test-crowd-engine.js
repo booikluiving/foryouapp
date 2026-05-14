@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const {
   CrowdEngine,
   createSeededRng,
-} = require("../lib/crowd-engine");
+} = require("../../crowd-system");
 
 function transcriptFor(seed) {
   const engine = new CrowdEngine({
