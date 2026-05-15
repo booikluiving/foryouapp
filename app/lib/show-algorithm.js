@@ -29,7 +29,7 @@ const DEFAULT_ALGORITHM_PROMPT_TEMPLATE = [
 ].join("\n");
 
 const DEFAULT_ALGORITHM_SETTINGS = Object.freeze({
-  calibrationCount: 5,
+  calibrationCount: 0,
   globalPrompt: DEFAULT_ALGORITHM_GLOBAL_PROMPT,
   promptTemplate: DEFAULT_ALGORITHM_PROMPT_TEMPLATE,
   heartWeight: 1,
@@ -2338,66 +2338,55 @@ function buildAlgorithmOrder({ scenes = [], runs = [], settings = {}, catalog = 
     .filter((scene) => !!pathBlockForScene(scene))
     .map((scene) => buildBlockedPathEntry(scene));
 
-  if (calibration.active) {
-    const nextCalibrationScene = calibrationScenes.find((scene) => (
-      !completedCalibrationIds.has(scene.id) && scene.id !== activeSceneId
-    )) || null;
-    if (nextCalibrationScene) {
-      const contextScene = contextBlockForScene(nextCalibrationScene)
-        ? findFirstReadyContextScene(nextCalibrationScene)
-        : null;
-      const pathScene = !contextScene && pathBlockForScene(nextCalibrationScene)
-        ? findFirstReadyPathPredecessor(nextCalibrationScene)
-        : null;
-      next = contextScene ? buildEntry(contextScene, {
-        score: 0,
-        reason: `Context nodig voor ${nextCalibrationScene.title}.`,
-        played: played.has(contextScene.id),
-      }) : pathScene ? buildEntry(pathScene, {
-        score: 0,
-        reason: `Pad nodig voor ${nextCalibrationScene.title}.`,
-        played: played.has(pathScene.id),
-      }) : buildEntry(nextCalibrationScene, {
-        score: 0,
-        blocked: !!pathBlockForScene(nextCalibrationScene),
-        reason: pathBlockForScene(nextCalibrationScene)
-          ? pathBlockForScene(nextCalibrationScene).reason
-          : `Calibratie ${calibration.completed}/${calibration.total}: vaste situatievolgorde.`,
-        calibration: true,
-        played: false,
-      });
-    }
-    upcoming = playableScenes
-      .filter((scene) => !calibrationIds.has(scene.id))
-      .filter((scene) => scene.id !== activeSceneId)
-      .filter((scene) => !played.has(scene.id))
-      .map((scene) => {
-        const block = contextBlockForScene(scene);
-        const pathBlock = pathBlockForScene(scene);
-        return block ? buildBlockedContextEntry(scene, { score: 0 })
-          : pathBlock ? buildBlockedPathEntry(scene, { score: 0 })
-          : buildEntry(scene, {
-          score: 0,
-          reason: "Na calibratie beschikbaar.",
-          played: false,
-        });
-      });
-    upcoming = enforceContextOrder(upcoming);
-    if (next && next.sceneId && !calibrationIds.has(next.sceneId) && !upcoming.some((entry) => entry.sceneId === next.sceneId)) {
-      upcoming.unshift(next);
-    }
-  } else {
-    const pool = playableScenes.filter((scene) => scene.id !== lastSceneId && scene.id !== activeSceneId);
-    const unplayed = pool.filter((scene) => !played.has(scene.id));
-    const candidatesFrom = unplayed;
+  // ── Nieuwe selectielogica (geen calibratie) ──
+  const charById = new Map((Array.isArray(validationCatalog && validationCatalog.characters) ? validationCatalog.characters : [])
+    .map((c) => [Number(c.id || 0), c]));
+  const sitById = new Map((Array.isArray(validationCatalog && validationCatalog.situations) ? validationCatalog.situations : [])
+    .map((s) => [Number(s.id || 0), s]));
+  const envById = new Map((Array.isArray(validationCatalog && validationCatalog.environments) ? validationCatalog.environments : [])
+    .map((e) => [Number(e.id || 0), e]));
 
-    // ── Label-based matching ──
-    const charById = new Map((Array.isArray(validationCatalog && validationCatalog.characters) ? validationCatalog.characters : [])
-      .map((c) => [Number(c.id || 0), c]));
-    const sitById = new Map((Array.isArray(validationCatalog && validationCatalog.situations) ? validationCatalog.situations : [])
-      .map((s) => [Number(s.id || 0), s]));
-    const envById = new Map((Array.isArray(validationCatalog && validationCatalog.environments) ? validationCatalog.environments : [])
-      .map((e) => [Number(e.id || 0), e]));
+  const pool = playableScenes.filter((scene) => scene.id !== lastSceneId && scene.id !== activeSceneId);
+  const unplayed = pool.filter((scene) => !played.has(scene.id));
+  const playedCount = completed.length;
+  const lastPlayedPathIds = lastSceneId
+    ? (pathStatusForScene(playableById.get(lastSceneId))?.pathIds || [])
+    : [];
+
+  // Recent character weights voor diversity penalty
+  const recentCharacterWeights = buildRecentCharacterWeights({ scenes: playableScenes, runs: normalizedRuns, settings: safeSettings });
+
+  let candidatesFrom;
+  let selectionReason = "";
+
+  if (playedCount === 0) {
+    // Eerste scene: kies willekeurige startnode
+    const startNodes = unplayed.filter((scene) => {
+      const status = pathStatusForScene(scene);
+      return status && status.isPathStart && isSceneReady(scene);
+    });
+    candidatesFrom = startNodes.length ? startNodes : unplayed.filter((scene) => isSceneReady(scene));
+    selectionReason = startNodes.length ? "Willekeurige startnode" : "Eerste beschikbare scene";
+    if (candidatesFrom.length > 1) {
+      // Shuffle voor willekeur
+      candidatesFrom = candidatesFrom.slice().sort(() => Math.random() - 0.5);
+    }
+    upcoming = candidatesFrom.map((scene) => buildEntry(scene, {
+      score: 0,
+      reason: selectionReason,
+      played: false,
+    }));
+    next = upcoming.find((entry) => !entry.blocked) || null;
+  } else if (playedCount < 3) {
+    // Eerste 3 scenes: kies uit ander pad dan vorige
+    const diffPathScenes = unplayed.filter((scene) => {
+      if (!isSceneReady(scene)) return false;
+      const status = pathStatusForScene(scene);
+      const scenePathIds = status ? status.pathIds : [];
+      return !scenePathIds.some((pid) => lastPlayedPathIds.includes(pid));
+    });
+    candidatesFrom = diffPathScenes.length ? diffPathScenes : unplayed.filter((scene) => isSceneReady(scene));
+    selectionReason = diffPathScenes.length ? "Ander pad (eerste 3 scenes)" : "Geen ander pad beschikbaar";
 
     const audienceProfile = computeAudienceLabelProfile({
       scenes: playableScenes, runs: completed, settings: safeSettings,
@@ -2405,9 +2394,39 @@ function buildAlgorithmOrder({ scenes = [], runs = [], settings = {}, catalog = 
     });
     const audienceNormalized = normalizeAudienceProfile(audienceProfile, safeSettings.labelScaleMode);
 
-    // Recent character weights voor diversity penalty
-    const recentCharacterWeights = buildRecentCharacterWeights({ scenes: playableScenes, runs: normalizedRuns, settings: safeSettings });
-    const { characterRunCounts } = buildRunCountStats({ scenes: playableScenes, runs: completed });
+    const labelRanked = candidatesFrom.map((scene) => {
+      const { profile: rawProfile, elementCount } = computeSceneLabelProfile(scene, { characters: charById, situations: sitById, environments: envById });
+      const sceneProfile = normalizeSceneLabelProfile(rawProfile, elementCount, safeSettings.labelScaleMode);
+      const matchDistance = computeSceneMatchDistance(sceneProfile, audienceNormalized);
+      const characterIds = sceneConcreteCharacterIds(scene);
+      const recencyOverlap = characterIds.reduce((sum, id) => sum + Number(recentCharacterWeights.get(id) || 0), 0);
+      const recencyPenalty = recencyOverlap * safeSettings.diversityWeight;
+      const repeatPenalty = played.has(scene.id) ? safeSettings.sceneRepeatPenalty : 0;
+      const score = Number((matchDistance + recencyPenalty + repeatPenalty).toFixed(2));
+      return { scene, score: -score, matchDistance, recencyPenalty, repeatPenalty,
+        reason: `Labelmatch: ${matchDistance} · ${selectionReason}`, played: played.has(scene.id) };
+    }).sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+
+    upcoming = labelRanked.map((entry) => {
+      const block = contextBlockForScene(entry.scene);
+      const pathBlock = pathBlockForScene(entry.scene);
+      const baseScore = optionalPathScore(entry.scene, entry.score);
+      return block ? buildBlockedContextEntry(entry.scene, { score: baseScore, matchDistance: entry.matchDistance, reason: block.reason })
+        : pathBlock ? buildBlockedPathEntry(entry.scene, { score: baseScore, matchDistance: entry.matchDistance, reason: pathBlock.reason })
+        : buildEntry(entry.scene, { score: baseScore, matchDistance: entry.matchDistance,
+            scoreBreakdown: { matchDistance: entry.matchDistance, recencyPenalty: entry.recencyPenalty, repeatPenalty: entry.repeatPenalty, finalScore: entry.score },
+            reason: optionalPathReason(entry.scene, entry.reason), played: entry.played });
+    }).sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+    next = upcoming.find((entry) => !entry.blocked) || null;
+  } else {
+    // Na 3 scenes: volledig humorprofiel
+    candidatesFrom = unplayed;
+
+    const audienceProfile = computeAudienceLabelProfile({
+      scenes: playableScenes, runs: completed, settings: safeSettings,
+      characters: charById, situations: sitById, environments: envById,
+    });
+    const audienceNormalized = normalizeAudienceProfile(audienceProfile, safeSettings.labelScaleMode);
 
     const labelRanked = candidatesFrom.map((scene) => {
       const { profile: rawProfile, elementCount } = computeSceneLabelProfile(scene, { characters: charById, situations: sitById, environments: envById });
