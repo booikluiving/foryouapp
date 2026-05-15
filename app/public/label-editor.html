@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Label-editor · For You</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #fbf9f4; --paper-2: #f2efe8; --ink: #1f1d1a; --muted: #746d63;
+      --line: #2a2724; --line-soft: #d3cbbd; --surface: #ffffff;
+      --active: #14b8a6; --danger: #b91c1c; --ok: #15803d; --focus: #facc15;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body { background: var(--paper-2); color: var(--ink); overflow: hidden; display: flex; flex-direction: column; }
+    button, input { font: inherit; }
+    button {
+      appearance: none; border: 1.5px solid var(--line); border-radius: 6px;
+      background: var(--surface); color: var(--ink); padding: 8px 16px;
+      font-size: 13px; font-weight: 650; cursor: pointer;
+    }
+    button:hover { background: #fffdf8; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.primary { background: var(--ink); color: var(--paper); }
+    button.ghost { background: transparent; border-color: transparent; }
+
+    .topbar {
+      flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+      padding: 10px 16px; border-bottom: 1.5px solid var(--line); background: var(--paper-2);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brandMark { width: 24px; height: 24px; border-radius: 5px; background: var(--ink); color: var(--paper); display: grid; place-items: center; font-size: 12px; font-weight: 800; }
+    .brandText strong { font-size: 15px; }
+    .brandText span { font-size: 11px; color: var(--muted); font-weight: 650; display: block; }
+
+    .tabbar { display: flex; gap: 0; flex: 1; }
+    .tabbar button {
+      border-radius: 6px 6px 0 0; border-bottom: none; padding: 8px 16px;
+      background: var(--paper-2); color: var(--muted); border-color: transparent; font-size: 12px;
+    }
+    .tabbar button.active { background: var(--surface); color: var(--ink); border-color: var(--line); font-weight: 700; }
+
+    .work { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; }
+
+    .quickCard {
+      margin-top: 40px; width: 480px; background: var(--surface); border: 1.5px solid var(--line);
+      border-radius: 12px; padding: 32px; text-align: center;
+      box-shadow: 0 10px 26px rgba(31,29,26,0.06);
+    }
+    .quickTitle { font-size: 15px; font-weight: 700; margin: 0 0 4px; }
+    .quickSub { font-size: 12px; color: var(--muted); margin: 0 0 24px; }
+    .quickProgress { font-size: 11px; color: var(--muted); margin-bottom: 20px; }
+
+    .labelRow { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; text-align: left; }
+    .labelRowName { width: 100px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+    .radioGroup { display: flex; gap: 6px; }
+    .radioBtn {
+      padding: 6px 14px; border: 1.5px solid var(--line-soft); border-radius: 6px;
+      background: var(--surface-soft); font-size: 12px; font-weight: 650; cursor: pointer; user-select: none;
+      transition: all 0.1s;
+    }
+    .radioBtn:hover { border-color: var(--ink); }
+    .radioBtn.sel0 { opacity: 0.45; }
+    .radioBtn.sel50 { border-color: var(--active); background: #f0fdfa; color: var(--active); font-weight: 700; }
+    .radioBtn.sel100 { border-color: var(--ink); background: var(--focus); font-weight: 700; }
+
+    .quickNav { display: flex; gap: 10px; justify-content: center; margin-top: 28px; }
+    .quickDone {
+      margin-top: 24px; padding: 20px; background: #f0fdfa; border: 1.5px solid var(--active);
+      border-radius: 10px; text-align: center;
+    }
+    .quickDone strong { color: var(--active); }
+
+    .overviewGrid { width: 100%; max-width: 900px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .overviewCard {
+      background: var(--surface); border: 1.5px solid var(--line-soft); border-radius: 8px;
+      padding: 12px 16px; display: flex; align-items: center; gap: 16px;
+    }
+    .overviewCard:hover { border-color: var(--line); }
+    .ovName { min-width: 140px; font-weight: 650; font-size: 13px; }
+    .ovLabels { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+    .ovLabel {
+      font-size: 10px; padding: 3px 8px; border-radius: 4px;
+      border: 1px solid var(--line-soft); cursor: pointer; user-select: none;
+    }
+    .ovLabel.val0 { opacity: 0.4; }
+    .ovLabel.val50 { border-color: var(--active); background: #f0fdfa; }
+    .ovLabel.val100 { border-color: var(--ink); background: var(--focus); font-weight: 700; }
+
+    .modeSwitch { display: flex; gap: 6px; }
+    .modeSwitch button { font-size: 11px; padding: 5px 10px; border-radius: 999px; }
+    .modeSwitch button.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+    .loginBox { max-width: 360px; margin: 80px auto; padding: 32px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 8px; text-align: center; }
+    .loginBox h2 { margin: 0 0 16px; }
+    .loginBox input { width: 100%; padding: 8px 10px; border: 1.5px solid var(--line-soft); border-radius: 6px; margin-bottom: 12px; }
+    .loginBox .msg { color: var(--danger); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="loginScreen" class="loginBox">
+    <h2>Label-editor</h2>
+    <p style="color:var(--muted);font-size:13px">Log in met admin-toegang</p>
+    <input id="password" type="password" placeholder="Admin wachtwoord" />
+    <div id="loginMsg" class="msg"></div>
+    <button id="loginBtn">Login</button>
+  </div>
+
+  <div id="app" style="display:none;flex:1;flex-direction:column">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brandMark">L</div>
+        <div class="brandText">
+          <strong>Label-editor</strong>
+          <span id="modeLabel">Quick-label</span>
+        </div>
+      </div>
+      <div class="tabbar">
+        <button data-tab="characters" class="active">Personages</button>
+        <button data-tab="situations">Situaties</button>
+        <button data-tab="environments">Locaties</button>
+      </div>
+      <div class="modeSwitch">
+        <button data-mode="quick" class="active">Snel labelen</button>
+        <button data-mode="overview">Overzicht</button>
+      </div>
+    </div>
+    <div class="work" id="workArea"></div>
+  </div>
+
+  <script src="/label-editor.js"></script>
+</body>
+</html>
