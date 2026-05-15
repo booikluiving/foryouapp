@@ -387,16 +387,14 @@
     if (!paths.length) {
       activePathId = "";
       selectedPathIds.clear();
+      savePrefs();
       return;
     }
     const validKeys = paths.map(pathKey).filter(Boolean);
     const validSet = new Set(validKeys);
     selectedPathIds = new Set(Array.from(selectedPathIds).filter((key) => validSet.has(key)));
-    if (!activePath()) activePathId = selectedPathIds.size ? Array.from(selectedPathIds)[0] : validKeys[0];
-    selectedPathIds.add(activeKey());
-    const ordered = validKeys.filter((key) => selectedPathIds.has(key));
-    const keep = ordered.includes(activeKey()) ? ordered : [activeKey(), ...ordered].filter(Boolean);
-    selectedPathIds = new Set(keep);
+    if (activePath() && !selectedPathIds.has(activeKey())) activePathId = "";
+    if (!activePath() && selectedPathIds.size) activePathId = Array.from(selectedPathIds)[0];
     savePrefs();
   }
 
@@ -711,6 +709,7 @@
     const paths = activePaths();
     const selectedCount = paths.filter((path) => selectedPathIds.has(pathKey(path))).length;
     const allSelected = !!paths.length && selectedCount === paths.length;
+    const noneSelected = selectedCount === 0;
     const chips = paths.map((path) => {
       const key = pathKey(path);
       const isSelected = selectedPathIds.has(key);
@@ -732,6 +731,7 @@
       <span class="barLabel">Paden</span>
       <button type="button" class="chipAction primary" data-new-path>+ Nieuw pad</button>
       <button type="button" class="chipAction" data-select-all-paths ${allSelected ? "disabled" : ""}>Alles aan</button>
+      <button type="button" class="chipAction" data-deselect-all-paths ${noneSelected ? "disabled" : ""}>Alles uit</button>
       ${chips || '<span class="chip">Nog geen paden</span>'}
       <span class="barHint">${selectedCount}/${paths.length} zichtbaar</span>
       <span style="flex:1"></span>
@@ -746,6 +746,8 @@
     if (newPathBtn) newPathBtn.addEventListener("click", () => openPathModal("new"));
     const selectAllPathsBtn = bar.querySelector("[data-select-all-paths]");
     if (selectAllPathsBtn) selectAllPathsBtn.addEventListener("click", selectAllPaths);
+    const deselectAllPathsBtn = bar.querySelector("[data-deselect-all-paths]");
+    if (deselectAllPathsBtn) deselectAllPathsBtn.addEventListener("click", deselectAllPaths);
     bar.querySelectorAll("[data-path-check]").forEach((button) => {
       button.addEventListener("click", () => {
         setPathSelected(button.dataset.pathCheck, button.dataset.selected !== "true");
@@ -790,6 +792,15 @@
     renderAll();
   }
 
+  function deselectAllPaths() {
+    if (!selectedPathIds.size) return;
+    selectedPathIds.clear();
+    activePathId = "";
+    clearSelection();
+    savePrefs();
+    renderAll();
+  }
+
   function setPathSelected(nextId, selected) {
     const key = String(nextId || "");
     if (!key) return;
@@ -799,18 +810,13 @@
         renderChips();
         return;
       }
-      if (selectedPathIds.size <= 1) {
-        toast("Minstens één pad blijft geselecteerd.", true);
-        renderChips();
-        return;
-      }
       selectedPathIds.delete(key);
       const wasActive = key === activeKey();
       if (key === activeKey()) activePathId = Array.from(selectedPathIds)[0] || "";
       clearSelection();
       ensureSelection();
       renderAll();
-      if (wasActive) focusPathInView(activeKey());
+      if (wasActive && activeKey()) focusPathInView(activeKey());
       return;
     }
     if (isSelected) {
