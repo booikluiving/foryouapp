@@ -43,7 +43,7 @@
     situations = (catalog.situations || []).filter((s) => s.isActive && !s.archivedAt);
     environments = (catalog.environments || []).filter((e) => e.isActive && !e.archivedAt);
     $("loginScreen").style.display = "none";
-    $("app").style.display = "flex";
+    $("app").classList.add("active");
     quickIndex = 0;
     renderAll();
   }
