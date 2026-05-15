@@ -26,6 +26,9 @@
     button.primary { background: var(--ink); color: var(--paper); }
     button.ghost { background: transparent; border-color: transparent; }
 
+    #app { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    #app.active { display: flex; }
+
     .topbar {
       flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
       padding: 10px 16px; border-bottom: 1.5px solid var(--line); background: var(--paper-2);
@@ -42,7 +45,7 @@
     }
     .tabbar button.active { background: var(--surface); color: var(--ink); border-color: var(--line); font-weight: 700; }
 
-    .work { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; }
+    .work { flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: center; min-height: 0; }
 
     .quickCard {
       margin-top: 40px; width: 480px; background: var(--surface); border: 1.5px solid var(--line);
@@ -108,7 +111,7 @@
     <button id="loginBtn">Login</button>
   </div>
 
-  <div id="app" style="display:none;flex:1;flex-direction:column">
+  <div id="app">
     <div class="topbar">
       <div class="brand">
         <div class="brandMark">L</div>
