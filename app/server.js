@@ -5308,7 +5308,7 @@ function getAlgorithmCatalog() {
       pathBlocksByPathId.get(Number(row && row.id || 0)) || []
     ))
     .filter(Boolean);
-  return {
+  return decorateCatalogWithLabelProfiles({
     performers: sql.getAlgorithmPerformers.all().map(parseAlgorithmPerformerRow).filter(Boolean),
     characters: sql.getAlgorithmCharacters.all().map(parseAlgorithmCharacterRow).filter(Boolean),
     situations: sql.getAlgorithmSituations.all().map(parseAlgorithmSituationRow).filter(Boolean),
@@ -5320,7 +5320,26 @@ function getAlgorithmCatalog() {
       crossingThresholdRows.map(parseAlgorithmCrossingThresholdRow).filter(Boolean),
       paths
     ),
-  };
+  });
+}
+
+function decorateCatalogWithLabelProfiles(catalog) {
+  if (!catalog) return catalog;
+  const characterById = new Map((catalog.characters || []).map((c) => [Number(c.id), c]));
+  const situationById = new Map((catalog.situations || []).map((s) => [Number(s.id), s]));
+  const environmentById = new Map((catalog.environments || []).map((e) => [Number(e.id), e]));
+  catalog.scenes = (catalog.scenes || []).map((scene) => {
+    const { profile, elementCount } = computeSceneLabelProfile(scene, {
+      characters: characterById,
+      situations: situationById,
+      environments: environmentById,
+    });
+    const labelProfile = normalizeSceneLabelProfile(profile, elementCount, "rising");
+    const labelProfileObj = {};
+    labelProfile.forEach((val, key) => { labelProfileObj[String(key)] = val; });
+    return { ...scene, labelProfile: labelProfileObj };
+  });
+  return catalog;
 }
 
 function getAlgorithmRunsForCurrentSession() {
@@ -5428,6 +5447,18 @@ function expandAlgorithmScene(scene, catalog) {
     .concat(Array.isArray(scene.characterSlots) ? scene.characterSlots : [])
     .map((id) => Number(id || 0))
     .filter((id) => id > 0)));
+
+  // Bereken label-profiel uit elementen
+  const { profile: rawProfile, elementCount } = computeSceneLabelProfile(scene, {
+    characters: characterById,
+    situations: situationById,
+    environments: environmentById,
+  });
+  const labelProfile = normalizeSceneLabelProfile(rawProfile, elementCount, "rising");
+  // Converteer Map naar plain object voor JSON
+  const labelProfileObj = {};
+  labelProfile.forEach((val, key) => { labelProfileObj[String(key)] = val; });
+
   return {
     ...scene,
     characters: characterIds.map((id) => characterById.get(Number(id))).filter(Boolean),
@@ -5436,6 +5467,7 @@ function expandAlgorithmScene(scene, catalog) {
     environment: scene.environmentId ? (environmentById.get(Number(scene.environmentId)) || null) : null,
     contextScene: scene.contextSceneId ? (getAlgorithmSceneById(scene.contextSceneId) || null) : null,
     castWarnings: buildSceneWarnings(scene, catalog),
+    labelProfile: labelProfileObj,
   };
 }
 

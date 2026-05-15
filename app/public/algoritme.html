@@ -2310,12 +2310,15 @@
           return label ? label.name || `Label ${id}` : `Label ${id}`;
         }
 
-        function sceneLabelBadges(labelIds = []) {
-          const ids = Array.isArray(labelIds) ? labelIds.map(Number).filter((id) => id > 0) : [];
-          return ids.map((id) => {
+        function sceneLabelBadges(scene = {}) {
+          const labelIds = Array.isArray(scene.labelIds) ? scene.labelIds.map(Number).filter((id) => id > 0) : [];
+          const profile = scene.labelProfile && typeof scene.labelProfile === "object" ? scene.labelProfile : {};
+          return labelIds.map((id) => {
             const label = itemById("labels", id);
+            const pct = profile[String(id)] !== undefined ? profile[String(id)] : null;
             const suffix = label && !isActiveItem(label) ? " (non-actief)" : "";
-            return `<span class="badge">${esc((label ? label.name : "Label " + id) + suffix)}</span>`;
+            const pctText = pct !== null ? ` ${pct}%` : "";
+            return `<span class="badge">${esc((label ? label.name : "Label " + id) + suffix + pctText)}</span>`;
           }).join("");
         }
 
@@ -2724,7 +2727,7 @@
           const environmentLabel = scene.environmentMode === "random"
             ? "Random"
             : environment ? `${environment.name}${isActiveItem(environment) ? "" : " (non-actief)"}` : "Geen omgeving";
-          const labels = sceneLabelBadges(scene.labelIds || []);
+          const labels = sceneLabelBadges(scene);
           const labelLine = labels
             ? `<div class="sceneRoleRow">${labels}</div>`
             : "";
@@ -2887,7 +2890,7 @@
         function renderOrderLabels(entry) {
           const scene = orderEntryScene(entry);
           if (!scene || !Array.isArray(scene.labelIds) || !scene.labelIds.length) return "";
-          return `<span class="orderCast">${sceneLabelBadges(scene.labelIds)}</span>`;
+          return `<span class="orderCast">${sceneLabelBadges(scene)}</span>`;
         }
 
         function orderEnvironmentBadge(entry) {

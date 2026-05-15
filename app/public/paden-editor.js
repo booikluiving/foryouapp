@@ -1586,6 +1586,16 @@
     const environment = String(scene.environmentMode || "").toLowerCase() === "random"
       ? { name: "Random omgeving", description: "" }
       : environmentById.get(Number(scene.environmentId || 0));
+
+    // Label-profiel
+    const labelItems = (scene.labels || []).map((label) => {
+      const id = String(label.id || "");
+      const pct = scene.labelProfile && scene.labelProfile[id] !== undefined
+        ? ` ${scene.labelProfile[id]}%`
+        : "";
+      return { name: `${label.name || 'Label'}${pct}`, description: "" };
+    });
+
     const blocks = [
       inspectorTextBlock("Scene", scene.promptOverride),
       sceneInfoList("Situatie", situations),
@@ -1594,6 +1604,7 @@
         name: environment.name || "Omgeving",
         description: environment.description || "",
       }]) : "",
+      labelItems.length ? sceneInfoList("Humorlabels", labelItems) : "",
     ].filter(Boolean);
     return blocks.length
       ? `<div class="sceneInfo">${blocks.join("")}</div>`

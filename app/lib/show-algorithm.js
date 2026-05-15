@@ -859,9 +859,14 @@ function computeSceneLabelProfile(scene, { characters = new Map(), situations = 
   // Characters
   for (const charId of (scene.characterIds || [])) {
     const character = charById.get(Number(charId));
-    if (!character || !(character.labelScores instanceof Map)) continue;
-    character.labelScores.forEach((value, labelId) => {
-      profile.set(labelId, (profile.get(labelId) || 0) + value);
+    if (!character || !character.labelScores || typeof character.labelScores !== "object") continue;
+    const scores = character.labelScores;
+    const entries = scores instanceof Map ? Array.from(scores.entries()) : Object.entries(scores);
+    entries.forEach(([labelId, value]) => {
+      const lid = Number(labelId);
+      const val = Number(value);
+      if (!lid || !val) return;
+      profile.set(lid, (profile.get(lid) || 0) + val);
     });
     elementCount += 1;
   }
@@ -869,9 +874,14 @@ function computeSceneLabelProfile(scene, { characters = new Map(), situations = 
   // Situations
   for (const sitId of (scene.situationIds || [])) {
     const situation = sitById.get(Number(sitId));
-    if (!situation || !(situation.labelScores instanceof Map)) continue;
-    situation.labelScores.forEach((value, labelId) => {
-      profile.set(labelId, (profile.get(labelId) || 0) + value);
+    if (!situation || !situation.labelScores || typeof situation.labelScores !== "object") continue;
+    const scores = situation.labelScores;
+    const entries = scores instanceof Map ? Array.from(scores.entries()) : Object.entries(scores);
+    entries.forEach(([labelId, value]) => {
+      const lid = Number(labelId);
+      const val = Number(value);
+      if (!lid || !val) return;
+      profile.set(lid, (profile.get(lid) || 0) + val);
     });
     elementCount += 1;
   }
@@ -880,9 +890,14 @@ function computeSceneLabelProfile(scene, { characters = new Map(), situations = 
   const envId = Number(scene.environmentId || 0);
   if (envId) {
     const env = envById.get(envId);
-    if (env && env.labelScores instanceof Map) {
-      env.labelScores.forEach((value, labelId) => {
-        profile.set(labelId, (profile.get(labelId) || 0) + value);
+    if (env && env.labelScores && typeof env.labelScores === "object") {
+      const scores = env.labelScores;
+      const entries = scores instanceof Map ? Array.from(scores.entries()) : Object.entries(scores);
+      entries.forEach(([labelId, value]) => {
+        const lid = Number(labelId);
+        const val = Number(value);
+        if (!lid || !val) return;
+        profile.set(lid, (profile.get(lid) || 0) + val);
       });
       elementCount += 1;
     }
