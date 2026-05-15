@@ -37,10 +37,11 @@
 
   async function loadState() {
     const state = await api("/admin/algorithm/state");
-    labels = (state.labels || []).filter((l) => l.isActive && !l.archivedAt);
-    characters = (state.characters || []).filter((c) => c.isActive && !c.archivedAt);
-    situations = (state.situations || []).filter((s) => s.isActive && !s.archivedAt);
-    environments = (state.environments || []).filter((e) => e.isActive && !e.archivedAt);
+    const catalog = state.catalog || state;
+    labels = (catalog.labels || []).filter((l) => l.isActive && !l.archivedAt);
+    characters = (catalog.characters || []).filter((c) => c.isActive && !c.archivedAt);
+    situations = (catalog.situations || []).filter((s) => s.isActive && !s.archivedAt);
+    environments = (catalog.environments || []).filter((e) => e.isActive && !e.archivedAt);
     $("loginScreen").style.display = "none";
     $("app").style.display = "flex";
     quickIndex = 0;
