@@ -778,6 +778,13 @@
         align-items: center;
       }
 
+      .labelBars { display: flex; flex-direction: column; gap: 3px; margin: 6px 0; }
+      .labelBar { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+      .labelBarName { width: 90px; text-align: right; color: var(--muted); font-weight: 650; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; }
+      .labelBarTrack { flex: 1; height: 10px; background: var(--paper-2); border-radius: 5px; overflow: hidden; }
+      .labelBarFill { display: block; height: 100%; border-radius: 5px; min-width: 2px; transition: width 0.3s; }
+      .labelBarPct { width: 32px; font-weight: 700; font-size: 10px; text-align: right; }
+
       .sceneMetaLine,
       .sceneDescriptionBlock {
         display: grid;
@@ -2310,16 +2317,27 @@
           return label ? label.name || `Label ${id}` : `Label ${id}`;
         }
 
-        function sceneLabelBadges(scene = {}) {
-          const labelIds = Array.isArray(scene.labelIds) ? scene.labelIds.map(Number).filter((id) => id > 0) : [];
+        const LABEL_COLORS = ["#3B82F6", "#8B5CF6", "#F97316", "#22C55E", "#EF4444"];
+        function labelColor(index) { return LABEL_COLORS[index % LABEL_COLORS.length]; }
+
+        function sceneLabelBars(scene = {}) {
           const profile = scene.labelProfile && typeof scene.labelProfile === "object" ? scene.labelProfile : {};
-          return labelIds.map((id) => {
-            const label = itemById("labels", id);
-            const pct = profile[String(id)] !== undefined ? profile[String(id)] : null;
-            const suffix = label && !isActiveItem(label) ? " (non-actief)" : "";
-            const pctText = pct !== null ? ` ${pct}%` : "";
-            return `<span class="badge">${esc((label ? label.name : "Label " + id) + suffix + pctText)}</span>`;
-          }).join("");
+          const entries = Object.entries(profile);
+          if (!entries.length) return "";
+          // Sorteer op label-sortOrder
+          const sorted = entries.map(([id, pct]) => {
+            const label = itemById("labels", Number(id));
+            return { id, name: label ? label.name : "L" + id, pct: Number(pct) || 0, order: label ? label.sortOrder : 999 };
+          }).sort((a, b) => a.order - b.order);
+
+          return `<div class="labelBars">${sorted.map((item, i) => {
+            const w = Math.max(2, Math.round(item.pct * 0.8));
+            return `<div class="labelBar">
+              <span class="labelBarName">${esc(item.name)}</span>
+              <span class="labelBarTrack"><span class="labelBarFill" style="width:${w}%;background:${labelColor(i)}"></span></span>
+              <span class="labelBarPct">${item.pct}%</span>
+            </div>`;
+          }).join("")}</div>`;
         }
 
         function updateSceneCharacterSlotOptions() {
@@ -2727,7 +2745,7 @@
           const environmentLabel = scene.environmentMode === "random"
             ? "Random"
             : environment ? `${environment.name}${isActiveItem(environment) ? "" : " (non-actief)"}` : "Geen omgeving";
-          const labels = sceneLabelBadges(scene);
+          const labels = sceneLabelBars(scene);
           const labelLine = labels
             ? `<div class="sceneRoleRow">${labels}</div>`
             : "";
@@ -2890,7 +2908,7 @@
         function renderOrderLabels(entry) {
           const scene = orderEntryScene(entry);
           if (!scene || !Array.isArray(scene.labelIds) || !scene.labelIds.length) return "";
-          return `<span class="orderCast">${sceneLabelBadges(scene)}</span>`;
+          return `<span class="orderCast">${sceneLabelBars(scene)}</span>`;
         }
 
         function orderEnvironmentBadge(entry) {
