@@ -6019,6 +6019,18 @@ function getAlgorithmState() {
         source: "up_next",
       });
   const entityScores = currentOrder.entityScores || computeEntityScores({ scenes: catalog.scenes, runs, settings });
+  const audienceProfile = computeAudienceLabelProfile({
+    scenes: catalog.scenes, runs, settings,
+    characters: new Map((catalog.characters || []).map((c) => [Number(c.id), c])),
+    situations: new Map((catalog.situations || []).map((s) => [Number(s.id), s])),
+    environments: new Map((catalog.environments || []).map((e) => [Number(e.id), e])),
+  });
+  const audienceProfileObj = {};
+  (catalog.labels || []).forEach((label) => {
+    const entry = audienceProfile.get(Number(label.id));
+    const eff = entry && entry.weight > 0 ? Math.round((entry.total / entry.weight) * 100) / 100 : 0;
+    audienceProfileObj[String(label.id)] = eff;
+  });
   const activeScene = activeRun
     ? expandAlgorithmScene(getAlgorithmSceneById(activeRun.sceneId), catalog)
     : null;
@@ -6042,6 +6054,7 @@ function getAlgorithmState() {
     },
     entityScores,
     recommendation,
+    audienceProfile: audienceProfileObj,
     currentOrder,
     osc: {
       ...getOscControlState(),
