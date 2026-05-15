@@ -34,6 +34,10 @@ const {
   normalizeEnvironment,
   normalizeIdList,
   normalizeLabel,
+  normalizeLabelScores,
+  labelScoresToJSON,
+  computeSceneLabelProfile,
+  normalizeSceneLabelProfile,
   normalizeLockedQueue,
   normalizePath,
   normalizePathEdgeType,
@@ -2736,6 +2740,7 @@ db.exec(`
     description TEXT,
     prompt_text TEXT,
     performer_id INTEGER,
+    label_scores_json TEXT NOT NULL DEFAULT '{}',
     is_active INTEGER NOT NULL DEFAULT 1,
     archived_at TEXT,
     created_at TEXT NOT NULL,
@@ -2751,6 +2756,7 @@ db.exec(`
     prompt_text TEXT,
     required_character_ids_json TEXT NOT NULL DEFAULT '[]',
     allowed_character_ids_json TEXT NOT NULL DEFAULT '[]',
+    label_scores_json TEXT NOT NULL DEFAULT '{}',
     is_active INTEGER NOT NULL DEFAULT 1,
     archived_at TEXT,
     created_at TEXT NOT NULL,
@@ -2776,6 +2782,7 @@ db.exec(`
     name TEXT NOT NULL,
     description TEXT,
     prompt_text TEXT,
+    label_scores_json TEXT NOT NULL DEFAULT '{}',
     is_active INTEGER NOT NULL DEFAULT 1,
     archived_at TEXT,
     created_at TEXT NOT NULL,
@@ -3043,6 +3050,17 @@ const algorithmCharacterColumns = db.prepare("PRAGMA table_info(algorithm_charac
 if (!algorithmCharacterColumns.some((column) => String(column.name || "") === "performer_id")) {
   db.exec("ALTER TABLE algorithm_characters ADD COLUMN performer_id INTEGER");
 }
+if (!algorithmCharacterColumns.some((column) => String(column.name || "") === "label_scores_json")) {
+  db.exec("ALTER TABLE algorithm_characters ADD COLUMN label_scores_json TEXT NOT NULL DEFAULT '{}'");
+}
+const algorithmSituationColumns = db.prepare("PRAGMA table_info(algorithm_situations)").all();
+if (!algorithmSituationColumns.some((column) => String(column.name || "") === "label_scores_json")) {
+  db.exec("ALTER TABLE algorithm_situations ADD COLUMN label_scores_json TEXT NOT NULL DEFAULT '{}'");
+}
+const algorithmEnvironmentColumns = db.prepare("PRAGMA table_info(algorithm_environments)").all();
+if (!algorithmEnvironmentColumns.some((column) => String(column.name || "") === "label_scores_json")) {
+  db.exec("ALTER TABLE algorithm_environments ADD COLUMN label_scores_json TEXT NOT NULL DEFAULT '{}'");
+}
 const algorithmPerformerColumns = db.prepare("PRAGMA table_info(algorithm_performers)").all();
 const algorithmPerformerHadRoleSlot = algorithmPerformerColumns.some((column) => String(column.name || "") === "role_slot");
 if (!algorithmPerformerHadRoleSlot) {
@@ -3298,6 +3316,7 @@ const sql = {
   ),
   getAlgorithmCharacters: db.prepare(
     `SELECT id, name, description, performer_id AS performerId,
+      label_scores_json AS labelScoresJson,
       is_active AS isActive, archived_at AS archivedAt,
       created_at AS createdAt, updated_at AS updatedAt
      FROM algorithm_characters
@@ -3305,19 +3324,20 @@ const sql = {
   ),
   getAlgorithmCharacterById: db.prepare(
     `SELECT id, name, description, performer_id AS performerId,
+      label_scores_json AS labelScoresJson,
       is_active AS isActive, archived_at AS archivedAt,
       created_at AS createdAt, updated_at AS updatedAt
      FROM algorithm_characters
      WHERE id = ?`
   ),
   insertAlgorithmCharacter: db.prepare(
-    `INSERT INTO algorithm_characters (name, description, prompt_text, performer_id, is_active, archived_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`
+    `INSERT INTO algorithm_characters (name, description, prompt_text, performer_id, label_scores_json, is_active, archived_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`
   ),
   updateAlgorithmCharacter: db.prepare(
     `UPDATE algorithm_characters
      SET name = ?, description = ?, prompt_text = ?, performer_id = ?,
-      is_active = ?, archived_at = ?, updated_at = ?
+      label_scores_json = ?, is_active = ?, archived_at = ?, updated_at = ?
      WHERE id = ?`
   ),
   archiveAlgorithmCharacter: db.prepare(
@@ -3333,6 +3353,7 @@ const sql = {
     `SELECT id, name, description,
       required_character_ids_json AS requiredCharacterIdsJson,
       allowed_character_ids_json AS allowedCharacterIdsJson,
+      label_scores_json AS labelScoresJson,
       is_active AS isActive, archived_at AS archivedAt, created_at AS createdAt, updated_at AS updatedAt
      FROM algorithm_situations
      ORDER BY archived_at IS NOT NULL ASC, is_active DESC, name COLLATE NOCASE ASC, id ASC`
@@ -3341,6 +3362,7 @@ const sql = {
     `SELECT id, name, description,
       required_character_ids_json AS requiredCharacterIdsJson,
       allowed_character_ids_json AS allowedCharacterIdsJson,
+      label_scores_json AS labelScoresJson,
       is_active AS isActive, archived_at AS archivedAt, created_at AS createdAt, updated_at AS updatedAt
      FROM algorithm_situations
      WHERE id = ?`
@@ -3348,13 +3370,13 @@ const sql = {
   insertAlgorithmSituation: db.prepare(
     `INSERT INTO algorithm_situations (
       name, description, prompt_text, required_character_ids_json, allowed_character_ids_json,
-      is_active, archived_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`
+      label_scores_json, is_active, archived_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`
   ),
   updateAlgorithmSituation: db.prepare(
     `UPDATE algorithm_situations
      SET name = ?, description = ?, prompt_text = ?, required_character_ids_json = ?,
-      allowed_character_ids_json = ?, is_active = ?, archived_at = ?, updated_at = ?
+      allowed_character_ids_json = ?, label_scores_json = ?, is_active = ?, archived_at = ?, updated_at = ?
      WHERE id = ?`
   ),
   archiveAlgorithmSituation: db.prepare(
@@ -3397,24 +3419,28 @@ const sql = {
      WHERE id = ? AND is_active = 0`
   ),
   getAlgorithmEnvironments: db.prepare(
-    `SELECT id, name, description, is_active AS isActive, archived_at AS archivedAt,
+    `SELECT id, name, description,
+      label_scores_json AS labelScoresJson,
+      is_active AS isActive, archived_at AS archivedAt,
       created_at AS createdAt, updated_at AS updatedAt
      FROM algorithm_environments
      ORDER BY archived_at IS NOT NULL ASC, is_active DESC, name COLLATE NOCASE ASC, id ASC`
   ),
   getAlgorithmEnvironmentById: db.prepare(
-    `SELECT id, name, description, is_active AS isActive, archived_at AS archivedAt,
+    `SELECT id, name, description,
+      label_scores_json AS labelScoresJson,
+      is_active AS isActive, archived_at AS archivedAt,
       created_at AS createdAt, updated_at AS updatedAt
      FROM algorithm_environments
      WHERE id = ?`
   ),
   insertAlgorithmEnvironment: db.prepare(
-    `INSERT INTO algorithm_environments (name, description, prompt_text, is_active, archived_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, NULL, ?, ?)`
+    `INSERT INTO algorithm_environments (name, description, prompt_text, label_scores_json, is_active, archived_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`
   ),
   updateAlgorithmEnvironment: db.prepare(
     `UPDATE algorithm_environments
-     SET name = ?, description = ?, prompt_text = ?, is_active = ?, archived_at = ?, updated_at = ?
+     SET name = ?, description = ?, prompt_text = ?, label_scores_json = ?, is_active = ?, archived_at = ?, updated_at = ?
      WHERE id = ?`
   ),
   archiveAlgorithmEnvironment: db.prepare(
@@ -5039,6 +5065,12 @@ function parseAlgorithmSlotJson(value) {
     });
 }
 
+function parseAlgorithmLabelScoresJson(value) {
+  const parsed = safeJsonParse(value || "{}", {});
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  return parsed;
+}
+
 function parseAlgorithmCharacterRow(row) {
   if (!row) return null;
   return normalizeCharacter({
@@ -5046,6 +5078,7 @@ function parseAlgorithmCharacterRow(row) {
     name: row.name,
     description: row.description,
     performerId: row.performerId,
+    labelScores: parseAlgorithmLabelScoresJson(row.labelScoresJson),
     isActive: Number(row.isActive || 0) > 0,
     archivedAt: row.archivedAt || "",
   });
@@ -5071,6 +5104,7 @@ function parseAlgorithmSituationRow(row) {
     description: row.description,
     requiredCharacterIds: parseAlgorithmIdJson(row.requiredCharacterIdsJson),
     allowedCharacterIds: parseAlgorithmIdJson(row.allowedCharacterIdsJson),
+    labelScores: parseAlgorithmLabelScoresJson(row.labelScoresJson),
     isActive: Number(row.isActive || 0) > 0,
     archivedAt: row.archivedAt || "",
   });
@@ -5093,6 +5127,7 @@ function parseAlgorithmEnvironmentRow(row) {
     id: row.id,
     name: row.name,
     description: row.description,
+    labelScores: parseAlgorithmLabelScoresJson(row.labelScoresJson),
     isActive: Number(row.isActive || 0) > 0,
     archivedAt: row.archivedAt || "",
   });
@@ -6319,11 +6354,13 @@ function upsertAlgorithmCharacterFromBody(body = {}) {
     name: sanitizeAlgorithmText(body.name, 120),
     description: sanitizeAlgorithmText(body.description, 1600),
     performerId: body.performerId,
+    labelScores: body.labelScores,
     isActive: body.isActive,
     archivedAt: body.archivedAt,
   });
   if (!item.name) throw new Error("name_required");
   if (item.performerId && !getAlgorithmPerformerById(item.performerId)) throw new Error("performer_not_found");
+  const labelScoresJson = labelScoresToJSON(item.labelScores);
   if (item.id) {
     const existing = parseAlgorithmCharacterRow(sql.getAlgorithmCharacterById.get(item.id));
     if (!existing) throw new Error("character_not_found");
@@ -6333,6 +6370,7 @@ function upsertAlgorithmCharacterFromBody(body = {}) {
       item.description,
       "",
       item.performerId || null,
+      labelScoresJson,
       item.isActive ? 1 : 0,
       archivedAt || null,
       now,
@@ -6345,6 +6383,7 @@ function upsertAlgorithmCharacterFromBody(body = {}) {
     item.description,
     "",
     item.performerId || null,
+    labelScoresJson,
     item.isActive ? 1 : 0,
     now,
     now
@@ -6360,12 +6399,14 @@ function upsertAlgorithmSituationFromBody(body = {}) {
     description: sanitizeAlgorithmText(body.description, 1800),
     requiredCharacterIds: Array.isArray(body.requiredCharacterIds) ? body.requiredCharacterIds : [],
     allowedCharacterIds: Array.isArray(body.allowedCharacterIds) ? body.allowedCharacterIds : [],
+    labelScores: body.labelScores,
     isActive: body.isActive,
     archivedAt: body.archivedAt,
   });
   if (!item.name) throw new Error("name_required");
   const requiredJson = safeJsonStringify(item.requiredCharacterIds, "[]");
   const allowedJson = safeJsonStringify(item.allowedCharacterIds, "[]");
+  const labelScoresJson = labelScoresToJSON(item.labelScores);
   if (item.id) {
     const existing = parseAlgorithmSituationRow(sql.getAlgorithmSituationById.get(item.id));
     if (!existing) throw new Error("situation_not_found");
@@ -6376,6 +6417,7 @@ function upsertAlgorithmSituationFromBody(body = {}) {
       "",
       requiredJson,
       allowedJson,
+      labelScoresJson,
       item.isActive ? 1 : 0,
       archivedAt || null,
       now,
@@ -6389,6 +6431,7 @@ function upsertAlgorithmSituationFromBody(body = {}) {
     "",
     requiredJson,
     allowedJson,
+    labelScoresJson,
     item.isActive ? 1 : 0,
     now,
     now
@@ -6440,10 +6483,12 @@ function upsertAlgorithmEnvironmentFromBody(body = {}) {
     id: body.id,
     name: sanitizeAlgorithmText(body.name, 140),
     description: sanitizeAlgorithmText(body.description, 1800),
+    labelScores: body.labelScores,
     isActive: body.isActive,
     archivedAt: body.archivedAt,
   });
   if (!item.name) throw new Error("name_required");
+  const labelScoresJson = labelScoresToJSON(item.labelScores);
   if (item.id) {
     const existing = parseAlgorithmEnvironmentRow(sql.getAlgorithmEnvironmentById.get(item.id));
     if (!existing) throw new Error("environment_not_found");
@@ -6452,6 +6497,7 @@ function upsertAlgorithmEnvironmentFromBody(body = {}) {
       item.name,
       item.description,
       "",
+      labelScoresJson,
       item.isActive ? 1 : 0,
       archivedAt || null,
       now,
@@ -6459,7 +6505,7 @@ function upsertAlgorithmEnvironmentFromBody(body = {}) {
     );
     return parseAlgorithmEnvironmentRow(sql.getAlgorithmEnvironmentById.get(item.id));
   }
-  const insert = sql.insertAlgorithmEnvironment.run(item.name, item.description, "", item.isActive ? 1 : 0, now, now);
+  const insert = sql.insertAlgorithmEnvironment.run(item.name, item.description, "", labelScoresJson, item.isActive ? 1 : 0, now, now);
   return parseAlgorithmEnvironmentRow(sql.getAlgorithmEnvironmentById.get(insert.lastInsertRowid));
 }
 
@@ -12385,6 +12431,10 @@ app.get("/algoritme", (req, res) => {
 
 app.get("/paden", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "paden.html"));
+});
+
+app.get("/label-editor", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "label-editor.html"));
 });
 
 if (fs.existsSync(LOCAL_API_PLAYGROUND_HTML_PATH)) {

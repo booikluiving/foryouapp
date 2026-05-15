@@ -41,6 +41,7 @@ const DEFAULT_ALGORITHM_SETTINGS = Object.freeze({
   explorationWeight: 0.5,
   retryWeight: 0.35,
   sceneRepeatPenalty: 1,
+  labelScaleMode: "rising",  // "rising" | "normalized"
 });
 const ALGORITHM_ACTOR_SLOT_COUNT = 3;
 const ALGORITHM_RANDOM_SLOT_VALUE = -1;
@@ -129,6 +130,7 @@ function normalizeAlgorithmSettings(input = {}) {
     explorationWeight: Number(clampFloat(src.explorationWeight, 0, 20, DEFAULT_ALGORITHM_SETTINGS.explorationWeight).toFixed(2)),
     retryWeight: Number(clampFloat(src.retryWeight, 0, 10, DEFAULT_ALGORITHM_SETTINGS.retryWeight).toFixed(2)),
     sceneRepeatPenalty: Number(clampFloat(src.sceneRepeatPenalty, 0, 50, DEFAULT_ALGORITHM_SETTINGS.sceneRepeatPenalty).toFixed(2)),
+    labelScaleMode: String(src.labelScaleMode || "").trim().toLowerCase() === "normalized" ? "normalized" : "rising",
   };
 }
 
@@ -180,6 +182,7 @@ function normalizeCharacter(input = {}) {
     name: normalizeText(src.name, 120),
     description: normalizeText(src.description, 1600),
     performerId: normalizeId(src.performerId),
+    labelScores: normalizeLabelScores(src.labelScores),
     isActive: normalizeBoolean(src.isActive, true),
     archivedAt: normalizeText(src.archivedAt, 80),
   };
@@ -206,6 +209,39 @@ function normalizeLabel(input = {}) {
     isActive: normalizeBoolean(src.isActive, true),
     archivedAt: normalizeText(src.archivedAt, 80),
   };
+}
+
+function normalizeLabelScores(input = {}, validLabelIds = null) {
+  // Converteert { labelId: "50" } of { "1": 100 } naar plain object { labelId: 0|50|100 }
+  const src = input && typeof input === "object" ? input : {};
+  const scores = {};
+  const validSet = validLabelIds ? new Set(normalizeIdList(validLabelIds)) : null;
+  Object.keys(src).forEach((key) => {
+    const labelId = normalizeId(key);
+    if (!labelId) return;
+    if (validSet && !validSet.has(labelId)) return;
+    const raw = Number(src[key]);
+    if (raw === 0 || raw === 50 || raw === 100) {
+      scores[String(labelId)] = raw;
+    } else if (raw === 1) {
+      scores[String(labelId)] = 100;
+    }
+  });
+  return scores;
+}
+
+function labelScoresToJSON(scores) {
+  if (!scores || typeof scores !== "object") return "{}";
+  const obj = {};
+  if (scores instanceof Map) {
+    scores.forEach((value, key) => { obj[String(key)] = value; });
+  } else {
+    Object.keys(scores).forEach((key) => {
+      const val = Number(scores[key]);
+      if (val === 0 || val === 50 || val === 100) obj[String(key)] = val;
+    });
+  }
+  return JSON.stringify(obj);
 }
 
 function normalizePathEdge(input = {}) {
@@ -670,6 +706,7 @@ function normalizeSituation(input = {}) {
     description: normalizeText(src.description, 1800),
     requiredCharacterIds: normalizeIdList(src.requiredCharacterIds),
     allowedCharacterIds: normalizeIdList(src.allowedCharacterIds),
+    labelScores: normalizeLabelScores(src.labelScores),
     isActive: normalizeBoolean(src.isActive, true),
     archivedAt: normalizeText(src.archivedAt, 80),
   };
@@ -681,6 +718,7 @@ function normalizeEnvironment(input = {}) {
     id: normalizeId(src.id),
     name: normalizeText(src.name, 140),
     description: normalizeText(src.description, 1800),
+    labelScores: normalizeLabelScores(src.labelScores),
     isActive: normalizeBoolean(src.isActive, true),
     archivedAt: normalizeText(src.archivedAt, 80),
   };
@@ -805,6 +843,173 @@ function pushScore(map, id, score) {
   prev.count += 1;
   prev.average = prev.total / prev.count;
   map.set(safeId, prev);
+}
+
+function computeSceneLabelProfile(scene, { characters = new Map(), situations = new Map(), environments = new Map() } = {}) {
+  // Aggregeert labelScores van alle elementen in de scene
+  // Bij rising scale: som van percentages → later te normaliseren
+  // Bij normalized scale: gemiddelde van percentages
+  const profile = new Map();
+  const charById = characters instanceof Map ? characters : new Map();
+  const sitById = situations instanceof Map ? situations : new Map();
+  const envById = environments instanceof Map ? environments : new Map();
+
+  let elementCount = 0;
+
+  // Characters
+  for (const charId of (scene.characterIds || [])) {
+    const character = charById.get(Number(charId));
+    if (!character || !(character.labelScores instanceof Map)) continue;
+    character.labelScores.forEach((value, labelId) => {
+      profile.set(labelId, (profile.get(labelId) || 0) + value);
+    });
+    elementCount += 1;
+  }
+
+  // Situations
+  for (const sitId of (scene.situationIds || [])) {
+    const situation = sitById.get(Number(sitId));
+    if (!situation || !(situation.labelScores instanceof Map)) continue;
+    situation.labelScores.forEach((value, labelId) => {
+      profile.set(labelId, (profile.get(labelId) || 0) + value);
+    });
+    elementCount += 1;
+  }
+
+  // Environment
+  const envId = Number(scene.environmentId || 0);
+  if (envId) {
+    const env = envById.get(envId);
+    if (env && env.labelScores instanceof Map) {
+      env.labelScores.forEach((value, labelId) => {
+        profile.set(labelId, (profile.get(labelId) || 0) + value);
+      });
+      elementCount += 1;
+    }
+  }
+
+  return { profile, elementCount };
+}
+
+function normalizeSceneLabelProfile(profile, elementCount, mode = "rising") {
+  // Converteert ruwe som naar profiel afhankelijk van schaalmodus
+  const normalized = new Map();
+  if (elementCount <= 0 || profile.size === 0) return normalized;
+
+  if (mode === "normalized") {
+    // Gemiddelde per label, dan normaliseren naar 100% totaal
+    let total = 0;
+    profile.forEach((sum, labelId) => {
+      const avg = sum / elementCount;
+      normalized.set(labelId, avg);
+      total += avg;
+    });
+    if (total > 0) {
+      normalized.forEach((val, key) => normalized.set(key, Math.round((val / total) * 100)));
+    }
+  } else {
+    // Rising: elk label behoudt zijn relatieve sterkte (0-100 schaal)
+    let maxVal = 0;
+    profile.forEach((sum) => { if (sum > maxVal) maxVal = sum; });
+    if (maxVal > 0) {
+      profile.forEach((sum, labelId) => {
+        normalized.set(labelId, Math.round((sum / maxVal) * 100));
+      });
+    } else {
+      profile.forEach((sum, labelId) => normalized.set(labelId, sum));
+    }
+  }
+
+  return normalized;
+}
+
+function computeAudienceLabelProfile({ scenes = [], runs = [], settings = {}, characters = new Map(), situations = new Map(), environments = new Map() } = {}) {
+  // Bouwt een publieks-labelprofiel op uit voltooide scene-runs
+  // Returns: Map(labelId → { total: number, weight: number })
+  const safeSettings = normalizeAlgorithmSettings(settings);
+  const mode = safeSettings.labelScaleMode;
+  const sceneById = new Map((Array.isArray(scenes) ? scenes : []).map((s) => [Number(s.id || 0), s]));
+  const profile = new Map();
+
+  for (const rawRun of Array.isArray(runs) ? runs : []) {
+    const run = normalizeRun(rawRun);
+    if (!run.endedAt) continue;
+    const scene = sceneById.get(run.sceneId);
+    if (!scene) continue;
+
+    const voteScore = calculateRunScore(run, safeSettings);
+    if (voteScore === 0) continue;
+
+    const { profile: sceneProfile } = computeSceneLabelProfile(scene, { characters, situations, environments });
+    const normalized = normalizeSceneLabelProfile(sceneProfile, 1, mode); // elementCount=1 want sceneProfile al geaggregeerd
+
+    let totalLabelPresence = 0;
+    normalized.forEach((val) => { totalLabelPresence += val; });
+
+    if (totalLabelPresence <= 0) continue;
+
+    normalized.forEach((labelPercent, labelId) => {
+      const existing = profile.get(labelId) || { total: 0, weight: 0 };
+      // Verdeel vote over labels naar rato van aanwezigheid
+      const labelShare = labelPercent / totalLabelPresence;
+      existing.total += voteScore * labelShare;
+      existing.weight += Math.abs(voteScore) * labelShare;
+      profile.set(labelId, existing);
+    });
+  }
+
+  return profile;
+}
+
+function normalizeAudienceProfile(profile, mode = "rising") {
+  // Normaliseert publieksprofiel naar 0-100 schaal (zelfde als scenes)
+  const normalized = new Map();
+  if (profile.size === 0) return normalized;
+
+  if (mode === "normalized") {
+    let total = 0;
+    profile.forEach((entry) => { total += Math.max(0, entry.total); });
+    if (total > 0) {
+      profile.forEach((entry, labelId) => {
+        normalized.set(labelId, Math.round((Math.max(0, entry.total) / total) * 100));
+      });
+    }
+  } else {
+    // Rising: normaliseer naar max
+    let maxVal = 0;
+    profile.forEach((entry) => {
+      const eff = entry.weight > 0 ? entry.total / entry.weight : 0;
+      if (eff > maxVal) maxVal = eff;
+    });
+    if (maxVal > 0) {
+      profile.forEach((entry, labelId) => {
+        const eff = entry.weight > 0 ? entry.total / entry.weight : 0;
+        normalized.set(labelId, Math.round((eff / maxVal) * 100));
+      });
+    }
+  }
+
+  return normalized;
+}
+
+function computeSceneMatchDistance(sceneProfile, audienceProfile) {
+  // Weighted Manhattan distance: hoe kleiner, hoe beter de match
+  // sceneProfile: Map(labelId → 0-100)
+  // audienceProfile: Map(labelId → 0-100)
+  if (audienceProfile.size === 0) return 0;
+
+  let totalAudienceWeight = 0;
+  audienceProfile.forEach((val) => { totalAudienceWeight += val; });
+  if (totalAudienceWeight <= 0) return 0;
+
+  let distance = 0;
+  audienceProfile.forEach((audienceVal, labelId) => {
+    const sceneVal = sceneProfile.get(labelId) || 0;
+    const weight = audienceVal / totalAudienceWeight;
+    distance += Math.abs(sceneVal - audienceVal) * weight;
+  });
+
+  return Math.round(distance * 100) / 100;
 }
 
 function computeEntityScores({ scenes = [], runs = [], settings = {} } = {}) {
@@ -1748,8 +1953,10 @@ function buildOrderEntry(scene, options = {}) {
       explorationBonus: Number(Number(rawBreakdown.explorationBonus || 0).toFixed(2)),
       retryBonus: Number(Number(rawBreakdown.retryBonus || 0).toFixed(2)),
       sceneRepeatPenalty: Number(Number(rawBreakdown.sceneRepeatPenalty || 0).toFixed(2)),
+      matchDistance: Number.isFinite(Number(rawBreakdown.matchDistance)) ? Number(Number(rawBreakdown.matchDistance).toFixed(2)) : null,
       finalScore: Number(rawFinalScore.toFixed(2)),
     } : null,
+    matchDistance: Number.isFinite(Number(options.matchDistance)) ? Number(Number(options.matchDistance).toFixed(2)) : null,
   };
 }
 
@@ -2168,28 +2375,76 @@ function buildAlgorithmOrder({ scenes = [], runs = [], settings = {}, catalog = 
     const pool = playableScenes.filter((scene) => scene.id !== lastSceneId && scene.id !== activeSceneId);
     const unplayed = pool.filter((scene) => !played.has(scene.id));
     const candidatesFrom = unplayed;
-    const ranked = rankAlgorithmScenes({
-      candidateScenes: candidatesFrom,
-      playableScenes,
-      runs: normalizedRuns,
-      played,
-      settings: safeSettings,
+
+    // ── Label-based matching ──
+    const charById = new Map((Array.isArray(validationCatalog && validationCatalog.characters) ? validationCatalog.characters : [])
+      .map((c) => [Number(c.id || 0), c]));
+    const sitById = new Map((Array.isArray(validationCatalog && validationCatalog.situations) ? validationCatalog.situations : [])
+      .map((s) => [Number(s.id || 0), s]));
+    const envById = new Map((Array.isArray(validationCatalog && validationCatalog.environments) ? validationCatalog.environments : [])
+      .map((e) => [Number(e.id || 0), e]));
+
+    const audienceProfile = computeAudienceLabelProfile({
+      scenes: playableScenes, runs: completed, settings: safeSettings,
+      characters: charById, situations: sitById, environments: envById,
     });
-    const contextAwareEntries = ranked.entries.map((entry) => {
+    const audienceNormalized = normalizeAudienceProfile(audienceProfile, safeSettings.labelScaleMode);
+
+    // Recent character weights voor diversity penalty
+    const recentCharacterWeights = buildRecentCharacterWeights({ scenes: playableScenes, runs: normalizedRuns, settings: safeSettings });
+    const { characterRunCounts } = buildRunCountStats({ scenes: playableScenes, runs: completed });
+
+    const labelRanked = candidatesFrom.map((scene) => {
+      const { profile: rawProfile, elementCount } = computeSceneLabelProfile(scene, { characters: charById, situations: sitById, environments: envById });
+      const sceneProfile = normalizeSceneLabelProfile(rawProfile, elementCount, safeSettings.labelScaleMode);
+      const matchDistance = computeSceneMatchDistance(sceneProfile, audienceNormalized);
+
+      // Character diversity penalty (behouden uit oud systeem)
+      const characterIds = sceneConcreteCharacterIds(scene);
+      const recencyOverlap = characterIds.reduce((sum, id) => sum + Number(recentCharacterWeights.get(id) || 0), 0);
+      const recencyPenalty = recencyOverlap * safeSettings.diversityWeight;
+
+      // Repeat penalty
+      const repeatPenalty = played.has(scene.id) ? safeSettings.sceneRepeatPenalty : 0;
+
+      // Score: lagere afstand = beter. Penalty's verhogen de afstand.
+      const score = Number((matchDistance + recencyPenalty + repeatPenalty).toFixed(2));
+
+      return {
+        scene,
+        score: -score, // Negatief zodat sorteren op hoogste = beste match
+        matchDistance,
+        recencyPenalty,
+        repeatPenalty,
+        reason: matchDistance === 0 && audienceProfile.size === 0
+          ? "Geen publieksdata — eerste match."
+          : `Labelmatch afstand: ${matchDistance}`,
+        played: played.has(scene.id),
+      };
+    }).sort((a, b) => {
+      const byScore = Number(b.score || 0) - Number(a.score || 0);
+      if (byScore !== 0) return byScore;
+      return Number(a.scene.sortOrder || 0) - Number(b.scene.sortOrder || 0);
+    });
+
+    const contextAwareEntries = labelRanked.map((entry) => {
       const block = contextBlockForScene(entry.scene);
       const pathBlock = pathBlockForScene(entry.scene);
-      const score = optionalPathScore(entry.scene, entry.score);
+      const baseScore = optionalPathScore(entry.scene, entry.score);
       return block ? buildBlockedContextEntry(entry.scene, {
-        score,
-        scoreBreakdown: entry.scoreBreakdown,
+        score: baseScore,
+        matchDistance: entry.matchDistance,
+        scoreBreakdown: { matchDistance: entry.matchDistance, recencyPenalty: entry.recencyPenalty, repeatPenalty: entry.repeatPenalty, finalScore: entry.score },
         reason: block.reason,
       }) : pathBlock ? buildBlockedPathEntry(entry.scene, {
-        score,
-        scoreBreakdown: entry.scoreBreakdown,
+        score: baseScore,
+        matchDistance: entry.matchDistance,
+        scoreBreakdown: { matchDistance: entry.matchDistance, recencyPenalty: entry.recencyPenalty, repeatPenalty: entry.repeatPenalty, finalScore: entry.score },
         reason: pathBlock.reason,
       }) : buildEntry(entry.scene, {
-        score,
-        scoreBreakdown: entry.scoreBreakdown,
+        score: baseScore,
+        matchDistance: entry.matchDistance,
+        scoreBreakdown: { matchDistance: entry.matchDistance, recencyPenalty: entry.recencyPenalty, repeatPenalty: entry.repeatPenalty, finalScore: entry.score },
         reason: optionalPathReason(entry.scene, entry.reason),
         played: entry.played,
       });
@@ -2198,15 +2453,16 @@ function buildAlgorithmOrder({ scenes = [], runs = [], settings = {}, catalog = 
       if (byScore !== 0) return byScore;
       return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
     });
-    const firstBlockedEntry = ranked.entries.find((entry) => !isContextReady(entry.scene)) || null;
+    const firstBlockedEntry = labelRanked.find((entry) => !isContextReady(entry.scene)) || null;
     let contextEntry = null;
     if (firstBlockedEntry) {
       const contextScene = findFirstReadyContextScene(firstBlockedEntry.scene);
       if (contextScene) {
         contextEntry = buildEntry(contextScene, {
           score: firstBlockedEntry.score,
-          scoreBreakdown: firstBlockedEntry.scoreBreakdown,
-          reason: `Context nodig voor ${firstBlockedEntry.title}.`,
+          matchDistance: firstBlockedEntry.matchDistance,
+          scoreBreakdown: firstBlockedEntry.scoreBreakdown || { matchDistance: firstBlockedEntry.matchDistance },
+          reason: `Context nodig voor ${firstBlockedEntry.scene.title || 'onbekend'}.`,
           played: played.has(contextScene.id),
         });
       }
@@ -2215,7 +2471,7 @@ function buildAlgorithmOrder({ scenes = [], runs = [], settings = {}, catalog = 
     if (contextEntry && !upcoming.some((entry) => entry.sceneId === contextEntry.sceneId)) {
       upcoming.unshift(contextEntry);
     }
-    entityScores = ranked.entityScores;
+    entityScores = baseEntityScores;
     next = contextEntry || upcoming.find((entry) => !entry.blocked) || null;
   }
 
@@ -2555,6 +2811,7 @@ function pickRecommendation({ scenes = [], runs = [], settings = {}, catalog = n
   return {
     scene: recommendationEntry.scene || null,
     score: Number(recommendationEntry.score || 0),
+    matchDistance: recommendationEntry.matchDistance,
     reason: recommendationEntry.reason || "Volgende beschikbare situatie.",
     calibration: safeOrder.calibration,
     entityScores: safeOrder.entityScores,
@@ -2565,6 +2822,7 @@ function pickRecommendation({ scenes = [], runs = [], settings = {}, catalog = n
       sceneId: candidate.sceneId,
       title: candidate.title,
       score: candidate.score,
+      matchDistance: candidate.matchDistance,
       reason: candidate.reason,
     })),
   };
@@ -2828,6 +3086,13 @@ module.exports = {
   normalizeCharacter,
   normalizePerformer,
   normalizeLabel,
+  normalizeLabelScores,
+  labelScoresToJSON,
+  computeSceneLabelProfile,
+  normalizeSceneLabelProfile,
+  computeAudienceLabelProfile,
+  normalizeAudienceProfile,
+  computeSceneMatchDistance,
   normalizePath,
   normalizePathEdgeType,
   normalizePathBlockRules,
