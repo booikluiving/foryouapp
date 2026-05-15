@@ -5337,6 +5337,11 @@ function decorateCatalogWithLabelProfiles(catalog) {
     const labelProfile = normalizeSceneLabelProfile(profile, elementCount, "rising");
     const labelProfileObj = {};
     labelProfile.forEach((val, key) => { labelProfileObj[String(key)] = val; });
+    // Vul 0% in voor ontbrekende labels
+    (catalog.labels || []).forEach((label) => {
+      const lid = String(label.id);
+      if (!(lid in labelProfileObj)) labelProfileObj[lid] = 0;
+    });
     return { ...scene, labelProfile: labelProfileObj };
   });
   return catalog;
