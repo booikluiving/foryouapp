@@ -53,6 +53,7 @@ const {
   pickRecommendation,
   resolveRandomCharacterSlotsForPerformerRoles,
   resolveRandomEnvironmentForScene,
+  computeAudienceLabelProfile,
   validateAlgorithmPath,
   validateSceneLinks,
 } = require("./lib/show-algorithm");
