@@ -4501,7 +4501,7 @@
             try {
               scrollOrderSelectionOnNextRender = true;
               const result = await post("/admin/show/start", {}, "showControlMsg");
-              const sessionText = result.sessionStarted ? "Nieuwe sessie gestart." : "Bestaande sessie gebruikt.";
+              const sessionText = result.join && result.join.joinUrl ? "Nieuwe sessie gestart. QR klaar." : "Nieuwe sessie gestart.";
               const feedbackText = result.oscFeedbackSent ? " OSC-feedback verstuurd." : " OSC-feedback niet verstuurd.";
               setMsg("showControlMsg", `${sessionText} Run gereset en gestart.${feedbackText}`);
             } catch (err) {
