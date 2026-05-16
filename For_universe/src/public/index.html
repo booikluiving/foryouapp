@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>For universe</title>
+    <link rel="stylesheet" href="/universe/styles.css?v=app-integrated-1" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <h1>For_<em>universe</em></h1>
+          <small>Netwerkkaart</small>
+        </div>
+
+        <section class="topStats" aria-live="polite">
+          <div>
+            <span>Bron</span>
+            <strong id="sourceStatus">laden</strong>
+          </div>
+          <div>
+            <span>Paden</span>
+            <strong id="pathCount">0</strong>
+          </div>
+          <div>
+            <span>Scenes</span>
+            <strong id="sceneCount">0</strong>
+          </div>
+          <div>
+            <span>Los</span>
+            <strong id="looseCount">0</strong>
+          </div>
+        </section>
+
+        <div class="tweaks" aria-label="Weergave">
+          <button class="tw-btn" type="button" data-tweak="labels" aria-pressed="false">labels</button>
+          <button class="tw-btn on" type="button" data-tweak="lines" aria-pressed="true">lijnen</button>
+          <button class="tw-btn on" type="button" data-tweak="loose" aria-pressed="true">losse scenes</button>
+          <button class="tw-btn" type="button" data-tweak="debug" aria-pressed="false">debug</button>
+          <button class="tw-btn reset" type="button" id="resetView" data-view="bigbang" aria-pressed="false">Big Bang</button>
+          <button class="tw-btn on" type="button" data-view="network" aria-pressed="true">Netwerkkaart</button>
+          <a class="tw-btn stage-link" href="/universe/stage" target="_blank" rel="noreferrer">stage output</a>
+        </div>
+      </header>
+
+      <section class="stage" id="stage">
+        <div class="canvas" id="canvas">
+          <svg class="sky" id="sky" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Universe visualisatie van het padensysteem"></svg>
+
+          <section class="runtimePanel" aria-live="polite" hidden>
+            <div class="runtimeHeader">
+              <p>Volgorde</p>
+              <strong id="runtimeSession">geen sessie</strong>
+            </div>
+            <dl class="runtimeFacts">
+              <div>
+                <dt>Speelt nu</dt>
+                <dd id="runtimeCurrent">-</dd>
+              </div>
+              <div>
+                <dt>Actief pad</dt>
+                <dd id="runtimePath">-</dd>
+              </div>
+              <div>
+                <dt>Volgende</dt>
+                <dd id="runtimeNext">-</dd>
+              </div>
+            </dl>
+          </section>
+
+          <aside class="info-panel" id="infoPanel" aria-live="polite">
+            <button class="ip-close" id="ipClose" type="button" aria-label="Sluit">x</button>
+            <div class="ip-eyebrow" id="ipEyebrow">pad</div>
+            <h2 id="ipTitle">-</h2>
+            <div id="ipMeta"></div>
+            <div class="ip-section">scenes</div>
+            <ol id="ipStars"></ol>
+            <div class="ip-actions">
+              <button type="button" id="ipFocus">Focus</button>
+              <button type="button" id="ipReset">Big Bang</button>
+            </div>
+          </aside>
+
+          <div class="bb-thumbs" id="bbThumbs"></div>
+          <aside class="hover-panel" id="hoverPanel" aria-live="polite"></aside>
+          <aside class="debug-panel" id="debugPanel" aria-live="polite" hidden>
+            <div class="debug-title">Debug midden</div>
+            <dl>
+              <div>
+                <dt>canvas</dt>
+                <dd id="debugCanvasCenter">-</dd>
+              </div>
+              <div>
+                <dt>orbit-as</dt>
+                <dd id="debugOrbitCenter">-</dd>
+              </div>
+              <div>
+                <dt>start-centroid</dt>
+                <dd id="debugStartCenter">-</dd>
+              </div>
+              <div>
+                <dt>paden-bbox</dt>
+                <dd id="debugWorldCenter">-</dd>
+              </div>
+              <div>
+                <dt>max-radius</dt>
+                <dd id="debugRadius">-</dd>
+              </div>
+              <div>
+                <dt>visual-centroid</dt>
+                <dd id="debugVisualCenter">-</dd>
+              </div>
+              <div>
+                <dt>sector-balance</dt>
+                <dd id="debugSectorBalance">-</dd>
+              </div>
+              <div>
+                <dt>massa</dt>
+                <dd id="debugBreakdown">-</dd>
+              </div>
+              <div>
+                <dt>camera</dt>
+                <dd id="debugCamera">-</dd>
+              </div>
+            </dl>
+            <div class="motion-controls" id="motionControls" aria-label="Motion controls">
+              <div class="motion-title">Motion</div>
+              <label>
+                <span>afstand <output id="motionAmountValue">0px</output></span>
+                <input id="motionAmount" type="range" min="0" max="64" step="1" value="0" />
+              </label>
+              <label>
+                <span>snelheid <output id="motionSpeedValue">135%</output></span>
+                <input id="motionSpeed" type="range" min="0" max="200" step="5" value="135" />
+              </label>
+              <label>
+                <span>diepte <output id="motionDepthValue">62%</output></span>
+                <input id="motionDepth" type="range" min="0" max="100" step="1" value="62" />
+              </label>
+              <label>
+                <span>schaal <output id="motionScaleValue">3.2%</output></span>
+                <input id="motionScale" type="range" min="0" max="8" step="0.2" value="3.2" />
+              </label>
+              <label>
+                <span>orbit <output id="motionSpinValue">150%</output></span>
+                <input id="motionSpin" type="range" min="0" max="200" step="5" value="150" />
+              </label>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <script src="/universe/sky-layout.js"></script>
+    <script src="/universe/sky-data-adapter.js?v=app-integrated-1"></script>
+    <script src="/universe/sky-renderer.js?v=app-integrated-1"></script>
+    <script src="/universe/app.js?v=app-integrated-1"></script>
+  </body>
+</html>

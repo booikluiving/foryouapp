@@ -290,7 +290,7 @@ async function checkAdmin(baseUrl, password, timeoutMs) {
     })
   );
   const stateBody = await readJson(stateRes);
-  if (!stateRes.ok || !stateBody.ok || !stateBody.session || !stateBody.stage) {
+  if (!stateRes.ok || !stateBody.ok || !stateBody.session || !stateBody.stage || !stateBody.universe) {
     throw new Error(`Admin state failed: ${stateBody.error || stateRes.status}`);
   }
   return `session ${stateBody.session.id}`;
@@ -310,6 +310,43 @@ async function checkAlgorithmState(baseUrl, password, timeoutMs) {
     throw new Error(`Algorithm state failed: ${body.error || res.status}`);
   }
   return `calibration ${body.settings.calibrationCount}`;
+}
+
+async function checkUniverseApi(baseUrl, timeoutMs) {
+  const healthRes = await withTimeout("universe health", timeoutMs, httpRequest(baseUrl, "/api/universe/health"));
+  const health = await readJson(healthRes);
+  if (!healthRes.ok || !health.ok || !health.source || !health.source.databasePath) {
+    throw new Error(`Universe health failed: ${health.error || healthRes.status}`);
+  }
+  const databasePath = String(health.source.databasePath || "");
+  if (!databasePath.endsWith("/app/data/live.sqlite")) {
+    throw new Error(`Universe database is not app/data/live.sqlite: ${databasePath}`);
+  }
+  if (Object.prototype.hasOwnProperty.call(health.source, "runtimeDatabasePath")) {
+    throw new Error("Universe health still exposes a split runtimeDatabasePath");
+  }
+
+  const graphRes = await withTimeout("universe graph", timeoutMs, httpRequest(baseUrl, "/api/universe/graph"));
+  const graph = await readJson(graphRes);
+  const paths = graph && graph.graph && Array.isArray(graph.graph.paths) ? graph.graph.paths : [];
+  const edgeCount = graph && graph.graph && graph.graph.summary ? Number(graph.graph.summary.edgeCount || 0) : 0;
+  const network = graph && graph.graph ? graph.graph.networkMap : null;
+  const networkNodeCount = network && network.summary ? Number(network.summary.nodeCount || 0) : 0;
+  const networkEdgeCount = network && network.summary ? Number(network.summary.edgeCount || 0) : 0;
+  if (!graphRes.ok || !graph.ok || !paths.length || edgeCount < 1) {
+    throw new Error(`Universe graph failed: ${graph.error || graphRes.status}`);
+  }
+  if (!network || networkNodeCount < 1 || networkEdgeCount < 1) {
+    throw new Error("Universe network map is missing nodes or edges");
+  }
+
+  const runtimeRes = await withTimeout("universe runtime", timeoutMs, httpRequest(baseUrl, "/api/universe/runtime"));
+  const runtime = await readJson(runtimeRes);
+  if (!runtimeRes.ok || !runtime.ok || !runtime.runtime || !runtime.runtime.summary) {
+    throw new Error(`Universe runtime failed: ${runtime.error || runtimeRes.status}`);
+  }
+
+  return `${paths.length} paths, ${edgeCount} edges, ${networkNodeCount} network nodes`;
 }
 
 async function checkSyncSecretRequired(baseUrl, timeoutMs) {
@@ -540,6 +577,9 @@ async function main() {
   await runCheck(results, "algorithm page", () => checkHttpRoute(baseUrl, "/algoritme"));
   await runCheck(results, "paths page", () => checkHttpRoute(baseUrl, "/paden"));
   await runCheck(results, "stage page", () => checkHttpRoute(baseUrl, "/stage"));
+  await runCheck(results, "universe page", () => checkHttpRoute(baseUrl, "/universe"));
+  await runCheck(results, "universe stage page", () => checkHttpRoute(baseUrl, "/universe/stage"));
+  await runCheck(results, "universe API", () => checkUniverseApi(baseUrl, options.timeoutMs));
   await runCheck(results, "stage WebSocket", () => checkStageWs(baseUrl, options.timeoutMs));
   await runCheck(results, "chat access guard", () => checkUnauthenticatedChatWs(baseUrl, options.timeoutMs));
 
