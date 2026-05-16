@@ -87,6 +87,7 @@ function syncSettingIsAllowed(key) {
     "algorithm_variation_retry_weight",
     "algorithm_variation_scene_repeat_penalty",
     "stage_output_settings_json",
+    "wifi_qr_settings_json",
     "message_slowdown_ms",
     "engagement_comment_points",
     "poll_duration_seconds",

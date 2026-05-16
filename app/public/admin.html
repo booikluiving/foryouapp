@@ -1182,6 +1182,8 @@
       let stageState = null;
       let stageHydratingControls = false;
       let stageSettingsSaveTimer = null;
+      let wifiQrHydratingControls = false;
+      let wifiQrDraftDirty = false;
       let adminPasswordMinLength = 12;
       let detailsOpenState = {};
       let serverInstanceId = "";
@@ -2243,6 +2245,59 @@
         renderQrPreview(sessionQrPreviewEl, joinUrl, "Sessie join QR");
       }
 
+      function normalizeWifiQrState(raw) {
+        const src = raw && typeof raw === "object" ? raw : {};
+        const authRaw = String(src.auth || "WPA").trim();
+        const auth = authRaw === "WEP" || authRaw === "nopass" ? authRaw : "WPA";
+        return {
+          ssid: String(src.ssid || "").trim(),
+          password: auth === "nopass" ? "" : String(src.password || "").trim(),
+          auth,
+          hidden: !!src.hidden,
+          configured: !!String(src.ssid || "").trim(),
+          payload: String(src.payload || "").trim(),
+        };
+      }
+
+      function getWifiQrControlsPayload() {
+        return {
+          ssid: String(wifiSsidInputEl && wifiSsidInputEl.value || "").trim(),
+          password: String(wifiPasswordInputEl && wifiPasswordInputEl.value || "").trim(),
+          auth: String(wifiAuthSelectEl && wifiAuthSelectEl.value || "WPA").trim(),
+          hidden: !!(wifiHiddenInputEl && wifiHiddenInputEl.checked),
+        };
+      }
+
+      function renderWifiQrPreviewFromState(wifiQr) {
+        const state = normalizeWifiQrState(wifiQr);
+        if (!state.configured || !state.payload) {
+          wifiQrPreviewEl.classList.add("muted");
+          wifiQrPreviewEl.textContent = "(Nog geen WiFi QR)";
+          return;
+        }
+        renderQrPreview(wifiQrPreviewEl, state.payload, "WiFi QR");
+      }
+
+      function wifiQrControlsHaveFocus() {
+        return [wifiSsidInputEl, wifiPasswordInputEl, wifiAuthSelectEl, wifiHiddenInputEl].includes(document.activeElement);
+      }
+
+      function applyWifiQrControlsFromState(rawWifiQr, force = false) {
+        const wifiQr = normalizeWifiQrState(rawWifiQr);
+        if (!force && (wifiQrDraftDirty || wifiQrControlsHaveFocus())) return;
+        wifiQrHydratingControls = true;
+        try {
+          if (wifiSsidInputEl) wifiSsidInputEl.value = wifiQr.ssid;
+          if (wifiPasswordInputEl) wifiPasswordInputEl.value = wifiQr.password;
+          if (wifiAuthSelectEl) wifiAuthSelectEl.value = wifiQr.auth;
+          if (wifiHiddenInputEl) wifiHiddenInputEl.checked = !!wifiQr.hidden;
+          renderWifiQrPreviewFromState(wifiQr);
+          wifiQrDraftDirty = false;
+        } finally {
+          wifiQrHydratingControls = false;
+        }
+      }
+
       function normalizeStageSettingsState(rawSettings) {
         const src = rawSettings && typeof rawSettings === "object" ? rawSettings : stageState && stageState.settings ? stageState.settings : {};
         const clampFloat = (value, min, max, fallback) => {
@@ -2456,6 +2511,47 @@
         if (hidden) payload += "H:true;";
         payload += ";";
         return payload;
+      }
+
+      function updateWifiQrDraftPreview() {
+        const payload = buildWifiQrPayload();
+        if (!payload) {
+          wifiQrPreviewEl.classList.add("muted");
+          wifiQrPreviewEl.textContent = "Vul minimaal een SSID in.";
+          return;
+        }
+        renderQrPreview(wifiQrPreviewEl, payload, "WiFi QR");
+      }
+
+      function markWifiQrDraftDirty() {
+        if (wifiQrHydratingControls) return;
+        wifiQrDraftDirty = true;
+        updateWifiQrDraftPreview();
+      }
+
+      async function saveWifiQrFromControls() {
+        const payload = buildWifiQrPayload();
+        if (!payload) {
+          wifiQrPreviewEl.classList.add("muted");
+          wifiQrPreviewEl.textContent = "Vul minimaal een SSID in.";
+          return;
+        }
+        if (buildWifiQrBtn) buildWifiQrBtn.disabled = true;
+        try {
+          const body = await api("/admin/wifi-qr", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(getWifiQrControlsPayload()),
+          });
+          wifiQrDraftDirty = false;
+          if (lastState && body && body.wifiQr) lastState.wifiQr = body.wifiQr;
+          applyWifiQrControlsFromState(body && body.wifiQr ? body.wifiQr : null, true);
+          setActionMessage("WiFi QR opgeslagen en live bijgewerkt.");
+        } catch (err) {
+          setActionMessage("WiFi QR opslaan mislukt: " + (err && err.message ? err.message : "request_failed"));
+        } finally {
+          if (buildWifiQrBtn) buildWifiQrBtn.disabled = false;
+        }
       }
 
       function formatHistoryLine(message) {
@@ -3359,6 +3455,7 @@
         } else {
           setSessionJoinResult(null);
         }
+        applyWifiQrControlsFromState(data && data.wifiQr ? data.wifiQr : null);
         applyStageControlsFromState(data && data.stage ? data.stage : null);
         if (endSessionBtn) {
           endSessionBtn.disabled = !sessionIsActive;
@@ -3897,6 +3994,7 @@
       initPersistedDetails();
       rememberDeviceEl.checked = loadRememberDevicePreference();
       setSessionJoinResult(null);
+      applyWifiQrControlsFromState(null, true);
       applyStageControlsFromState(null);
       renderPasswordHint(`Gebruik minimaal ${adminPasswordMinLength} tekens met hoofdletter, kleine letter, cijfer en speciaal teken.`);
 
@@ -4064,15 +4162,12 @@
         slider.addEventListener("input", saveStageSettingsFromControls);
         slider.addEventListener("change", () => scheduleStageSettingsSave(0));
       }
-      buildWifiQrBtn.addEventListener("click", () => {
-        const payload = buildWifiQrPayload();
-        if (!payload) {
-          wifiQrPreviewEl.classList.add("muted");
-          wifiQrPreviewEl.textContent = "Vul minimaal een SSID in.";
-          return;
-        }
-        renderQrPreview(wifiQrPreviewEl, payload, "WiFi QR");
-      });
+      for (const control of [wifiSsidInputEl, wifiPasswordInputEl, wifiAuthSelectEl, wifiHiddenInputEl]) {
+        if (!control) continue;
+        control.addEventListener("input", markWifiQrDraftDirty);
+        control.addEventListener("change", markWifiQrDraftDirty);
+      }
+      buildWifiQrBtn.addEventListener("click", saveWifiQrFromControls);
 
       startPollBtn.addEventListener("click", () => {
         const question = pollQuestionEl.value.trim();

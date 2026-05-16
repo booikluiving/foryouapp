@@ -174,6 +174,9 @@ const BUILD_VERSION_INPUT_FILES = [
   path.join(__dirname, "public", "narrative-graph.js"),
   path.join(__dirname, "public", "vendor", "cytoscape.min.js"),
   path.join(__dirname, "public", "stage.html"),
+  path.join(__dirname, "public", "stage-session-qr.html"),
+  path.join(__dirname, "public", "stage-wifi-qr.html"),
+  path.join(__dirname, "public", "stage-qr-output.js"),
   path.join(__dirname, "package.json"),
 ];
 const BUILD_FINGERPRINT = computeBuildFingerprint(BUILD_VERSION_INPUT_FILES);
@@ -274,6 +277,7 @@ const SIM_DEFAULTS = {
 };
 const SIM_DEFAULTS_SETTING_KEY = "sim_defaults_json";
 const STAGE_OUTPUT_SETTINGS_KEY = "stage_output_settings_json";
+const WIFI_QR_SETTINGS_KEY = "wifi_qr_settings_json";
 const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   showQr: true,
   showChat: true,
@@ -300,6 +304,12 @@ const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   leaderboardX: 98,
   leaderboardY: 18,
   leaderboardFadeStart: 74,
+});
+const WIFI_QR_DEFAULTS = Object.freeze({
+  ssid: "",
+  password: "",
+  auth: "WPA",
+  hidden: false,
 });
 const STAGE_OUTPUT_WIDTH = 1080;
 const STAGE_OUTPUT_HEIGHT = 1920;
@@ -4369,8 +4379,10 @@ function applyIncomingSyncPayload(payload = {}, options = {}) {
     currentSession = ensureOpenSession();
     activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
     stageOutputSettings = saveStageOutputSettings(loadStageOutputSettingsFromSettings());
+    wifiQrSettings = saveWifiQrSettings(loadWifiQrSettingsFromSettings());
     applyCurrentOscProfileToRuntime();
     broadcastPublicAlgorithmState("sync_applied");
+    broadcastStageState(null, "sync_applied");
   }
   writeDebug("sync_payload_applied", {
     remoteDeviceId,
@@ -4924,6 +4936,88 @@ function saveStageOutputSettings(settings) {
 
 let stageOutputSettings = normalizeStageOutputSettings(STAGE_OUTPUT_DEFAULTS, STAGE_OUTPUT_DEFAULTS);
 
+function normalizeWifiAuth(input, fallback = WIFI_QR_DEFAULTS.auth) {
+  const raw = String(input || fallback || WIFI_QR_DEFAULTS.auth).trim();
+  if (raw === "WEP") return "WEP";
+  if (raw === "nopass") return "nopass";
+  return "WPA";
+}
+
+function escapeWifiQrValue(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/:/g, "\\:");
+}
+
+function buildWifiQrPayload(settings) {
+  const src = settings && typeof settings === "object" ? settings : {};
+  const ssid = String(src.ssid || "").trim();
+  const auth = normalizeWifiAuth(src.auth, WIFI_QR_DEFAULTS.auth);
+  const password = auth === "nopass" ? "" : String(src.password || "").trim();
+  const hidden = parseBooleanLike(src.hidden, false);
+  if (!ssid) return "";
+  let payload = `WIFI:T:${auth};S:${escapeWifiQrValue(ssid)};`;
+  if (auth !== "nopass") {
+    payload += `P:${escapeWifiQrValue(password)};`;
+  }
+  if (hidden) payload += "H:true;";
+  payload += ";";
+  return payload;
+}
+
+function normalizeWifiQrSettings(rawSettings = {}, baseSettings = WIFI_QR_DEFAULTS) {
+  const src = rawSettings && typeof rawSettings === "object" ? rawSettings : {};
+  const base = baseSettings && typeof baseSettings === "object" ? baseSettings : WIFI_QR_DEFAULTS;
+  const auth = normalizeWifiAuth(
+    src.auth !== undefined ? src.auth : src.encryption !== undefined ? src.encryption : base.auth,
+    base.auth
+  );
+  const ssid = String(
+    src.ssid !== undefined
+      ? src.ssid
+      : src.networkName !== undefined
+        ? src.networkName
+        : base.ssid
+  ).trim().slice(0, 120);
+  const password = auth === "nopass"
+    ? ""
+    : String(src.password !== undefined ? src.password : base.password).trim().slice(0, 200);
+  const hidden = parseBooleanLike(src.hidden !== undefined ? src.hidden : base.hidden, !!base.hidden);
+  return {
+    ssid,
+    password,
+    auth,
+    hidden,
+    configured: !!ssid,
+    payload: ssid ? buildWifiQrPayload({ ssid, password, auth, hidden }) : "",
+  };
+}
+
+function loadWifiQrSettingsFromSettings() {
+  const raw = getSetting(WIFI_QR_SETTINGS_KEY, "");
+  if (!raw) return normalizeWifiQrSettings(WIFI_QR_DEFAULTS, WIFI_QR_DEFAULTS);
+  const parsed = safeJsonParse(raw, null);
+  if (!parsed || typeof parsed !== "object") {
+    return normalizeWifiQrSettings(WIFI_QR_DEFAULTS, WIFI_QR_DEFAULTS);
+  }
+  return normalizeWifiQrSettings(parsed, WIFI_QR_DEFAULTS);
+}
+
+function saveWifiQrSettings(settings) {
+  const normalized = normalizeWifiQrSettings(settings, WIFI_QR_DEFAULTS);
+  setSetting(WIFI_QR_SETTINGS_KEY, safeJsonStringify({
+    ssid: normalized.ssid,
+    password: normalized.password,
+    auth: normalized.auth,
+    hidden: normalized.hidden,
+  }, "{}"));
+  return normalized;
+}
+
+let wifiQrSettings = normalizeWifiQrSettings(WIFI_QR_DEFAULTS, WIFI_QR_DEFAULTS);
+
 function loadSimulatorDefaultsFromSettings() {
   const raw = getSetting(SIM_DEFAULTS_SETTING_KEY, "");
   if (!raw) return normalizeSimulatorConfig(SIM_DEFAULTS, SIM_DEFAULTS);
@@ -5009,6 +5103,7 @@ if (adminPasswordSeededFromDefault && !ADMIN_AUTH_DISABLED) {
 }
 const SIM_RUNTIME_DEFAULTS = saveSimulatorDefaults(loadSimulatorDefaultsFromSettings());
 stageOutputSettings = saveStageOutputSettings(loadStageOutputSettingsFromSettings());
+wifiQrSettings = saveWifiQrSettings(loadWifiQrSettingsFromSettings());
 
 function ensureOpenSession() {
   const existing = sql.getOpenSession.get();
@@ -7667,6 +7762,11 @@ function buildStageUrl(req) {
   return `${buildJoinBaseUrl(req)}/stage`;
 }
 
+function buildStageOutputUrl(req, outputPath) {
+  const pathPart = String(outputPath || "").startsWith("/") ? String(outputPath) : `/${String(outputPath || "")}`;
+  return `${buildJoinBaseUrl(req)}${pathPart}`;
+}
+
 function pruneSessionJoinTokens() {
   sql.pruneSessionJoinTokens.run(nowIso());
 }
@@ -7733,6 +7833,10 @@ function getStageControlState(req) {
   return {
     path: "/stage",
     url: buildStageUrl(req),
+    sessionQrPath: "/stage/session-qr",
+    sessionQrUrl: buildStageOutputUrl(req, "/stage/session-qr"),
+    wifiQrPath: "/stage/wifi-qr",
+    wifiQrUrl: buildStageOutputUrl(req, "/stage/wifi-qr"),
     width: STAGE_OUTPUT_WIDTH,
     height: STAGE_OUTPUT_HEIGHT,
     settings: normalizeStageOutputSettings(stageOutputSettings, STAGE_OUTPUT_DEFAULTS),
@@ -7812,6 +7916,7 @@ function getStageSnapshot(req) {
       isActive: isCurrentSessionActive(),
     },
     sessionJoin: sessionJoin || null,
+    wifiQr: normalizeWifiQrSettings(wifiQrSettings, WIFI_QR_DEFAULTS),
     reactionCounts: reactionCountsSnapshot(reactionCounts),
     engagementLeaderboard,
     emojiLeaderboard: engagementLeaderboard,
@@ -8552,21 +8657,37 @@ function sendShowControlOscFeedback(action, status, message, data) {
   });
 }
 
-function startShowSequence(source = "admin") {
+function startShowSequence(source = "admin", req = null) {
   const safeSource = String(source || "admin").slice(0, 80);
-  let sessionStarted = false;
-  let closedClients = 0;
-  if (!isCurrentSessionActive()) {
-    const session = beginNewSession("", safeSource);
-    sessionStarted = true;
-    closedClients = disconnectAllClientsForNewSession();
-    broadcastStageState(null, "show_start_session_new");
-    writeDebug("show_session_started", {
+  const previousSessionActive = isCurrentSessionActive();
+  const session = beginNewSession("", safeSource);
+  const closedClients = disconnectAllClientsForNewSession();
+  let join = null;
+  try {
+    const tokenInfo = issueSessionJoinToken(session.id, {
+      ttlMinutes: SESSION_JOIN_TOKEN_TTL_MINUTES,
+      createdBy: safeSource,
+    });
+    join = buildSessionJoinPayload(req, tokenInfo);
+  } catch (err) {
+    writeDebug("show_session_join_token_error", {
       by: safeSource,
       sessionId: Number(session && session.id || 0),
-      closedClients,
+      message: err && err.message ? err.message : "unknown",
     });
+    const wrapped = new Error("join_token_failed");
+    wrapped.cause = err;
+    throw wrapped;
   }
+  broadcastStageState(req, "show_start_session_new_with_join");
+  writeDebug("show_session_started", {
+    by: safeSource,
+    sessionId: Number(session && session.id || 0),
+    sessionName: String(session && session.name || ""),
+    previousSessionActive,
+    closedClients,
+    joinTokenTail: join && join.token ? String(join.token).slice(-6) : "",
+  });
 
   const reset = resetAlgorithmRunsForCurrentSession();
   const runStart = beginAlgorithmRunWithUpNext(`show_start_${safeSource}`);
@@ -8574,9 +8695,18 @@ function startShowSequence(source = "admin") {
     action: "start",
     source: safeSource,
     sessionId: Number(currentSession && currentSession.id || 0),
-    sessionStarted,
+    sessionStarted: true,
     sessionEnded: false,
+    previousSessionActive,
     closedClients,
+    join,
+    session: {
+      id: Number(currentSession && currentSession.id || 0),
+      name: String(currentSession && currentSession.name || ""),
+      startedAt: String(currentSession && currentSession.startedAt || ""),
+      endedAt: null,
+      isActive: true,
+    },
     runReset: true,
     runsReset: Number(reset && reset.deletedRuns || 0),
     runStarted: !!(runStart && runStart.run && runStart.run.started),
@@ -8586,7 +8716,8 @@ function startShowSequence(source = "admin") {
   writeDebug("show_started", {
     by: safeSource,
     sessionId: result.sessionId,
-    sessionStarted,
+    sessionStarted: true,
+    previousSessionActive,
     closedClients,
     runsReset: result.runsReset,
     runStarted: result.runStarted,
@@ -10480,7 +10611,7 @@ function buildOscControlCommands() {
         return showControlFeedbackMessage("start", result);
       },
       execute(ctx) {
-        return runAlgorithmOscAction("show_start", ctx, () => startShowSequence("osc"));
+        return runAlgorithmOscAction("show_start", ctx, () => startShowSequence("osc", null));
       },
     },
     {
@@ -11959,6 +12090,7 @@ function getAdminState(req) {
     recentActions: sql.getRecentModerationActions.all(currentSession.id, 30),
     recentMessages,
     sessionJoin,
+    wifiQr: normalizeWifiQrSettings(wifiQrSettings, WIFI_QR_DEFAULTS),
     stage: stageControl,
     oscCommands: getOscControlCommandDocs(),
   };
@@ -12657,6 +12789,14 @@ app.get("/stage", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "stage.html"));
 });
 
+app.get("/stage/session-qr", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "stage-session-qr.html"));
+});
+
+app.get("/stage/wifi-qr", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "stage-wifi-qr.html"));
+});
+
 app.post("/admin/login", (req, res) => {
   const ip = normalizeIp(req.socket.remoteAddress || "unknown");
   if (ADMIN_AUTH_DISABLED) {
@@ -13340,7 +13480,7 @@ app.post("/admin/algorithm/runs/reset", requireAdmin, (req, res) => {
 
 app.post("/admin/show/start", requireAdmin, (req, res) => {
   try {
-    const result = withAlgorithmRunActionGuard("show_start", null, () => startShowSequence("admin"));
+    const result = withAlgorithmRunActionGuard("show_start", null, () => startShowSequence("admin", req));
     const message = showControlFeedbackMessage("start", result);
     const oscFeedbackSent = sendShowControlOscFeedback("start", "ok", message, result);
     res.json({ ok: true, ...result, oscFeedbackSent, state: getAlgorithmState(req) });
@@ -13510,6 +13650,25 @@ app.post("/admin/stage/settings", requireAdmin, (req, res) => {
   res.json({
     ok: true,
     stage,
+  });
+});
+
+app.post("/admin/wifi-qr", requireAdmin, (req, res) => {
+  const incoming = req.body && typeof req.body === "object"
+    ? (req.body.wifiQr && typeof req.body.wifiQr === "object" ? req.body.wifiQr : req.body)
+    : {};
+  wifiQrSettings = saveWifiQrSettings(incoming);
+  writeDebug("wifi_qr_settings_updated", {
+    by: "admin",
+    ssid: wifiQrSettings.ssid,
+    auth: wifiQrSettings.auth,
+    hidden: !!wifiQrSettings.hidden,
+    configured: !!wifiQrSettings.configured,
+  });
+  broadcastStageState(req, "wifi_qr_updated");
+  res.json({
+    ok: true,
+    wifiQr: normalizeWifiQrSettings(wifiQrSettings, WIFI_QR_DEFAULTS),
   });
 });
 
