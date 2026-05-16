@@ -2071,6 +2071,41 @@ function enforceContextOrder(entries = []) {
   return output;
 }
 
+function visibleQueueBucket(entry = {}) {
+  const nodeStatus = String(entry && entry.nodeStatus || "");
+  if (entry.played || entry.active || nodeStatus === "Played" || nodeStatus === "Active") return 0;
+  if (entry.next) return 1;
+  if (entry.invalid) return 4;
+  if (!entry.blocked && nodeStatus !== "Locked" && nodeStatus !== "Blocked") return 2;
+  return 3;
+}
+
+function sortVisibleQueueRows(queueRows = []) {
+  const decorated = (Array.isArray(queueRows) ? queueRows : [])
+    .filter((entry) => entry && Number(entry.sceneId || 0))
+    .map((entry, index) => ({
+      entry,
+      index,
+      bucket: visibleQueueBucket(entry),
+      playedPosition: Number(entry.playedPosition || 0),
+      score: Number(entry.score || 0),
+    }));
+
+  return decorated.sort((a, b) => {
+    if (a.bucket !== b.bucket) return a.bucket - b.bucket;
+    if (a.bucket === 0) {
+      const aPosition = a.playedPosition > 0 ? a.playedPosition : Number.MAX_SAFE_INTEGER;
+      const bPosition = b.playedPosition > 0 ? b.playedPosition : Number.MAX_SAFE_INTEGER;
+      if (aPosition !== bPosition) return aPosition - bPosition;
+    }
+    if (a.bucket === 2 || a.bucket === 3) {
+      const byScore = b.score - a.score;
+      if (byScore !== 0) return byScore;
+    }
+    return a.index - b.index;
+  }).map((item) => item.entry);
+}
+
 function buildAlgorithmOrder({ scenes = [], runs = [], settings = {}, catalog = null, preparedNext = null, lockedQueue = [] } = {}) {
   const safeSettings = normalizeAlgorithmSettings(settings);
   const requestedPreparedNext = normalizePreparedNext(preparedNext);
@@ -2797,7 +2832,8 @@ function buildAlgorithmOrder({ scenes = [], runs = [], settings = {}, catalog = 
     }
     for (const entry of rows) pushQueueRow(entry);
   }
-  const numberedQueueRows = queueRows.map((entry, index) => ({
+  const visibleQueueRows = sortVisibleQueueRows(queueRows);
+  const numberedQueueRows = visibleQueueRows.map((entry, index) => ({
     ...entry,
     queuePosition: index + 1,
   }));

@@ -5339,10 +5339,7 @@ function parseAlgorithmRunRow(row) {
 
 function getAlgorithmSettings() {
   return normalizeAlgorithmSettings({
-    calibrationCount: getSetting(
-      ALGORITHM_CALIBRATION_COUNT_SETTING_KEY,
-      String(DEFAULT_ALGORITHM_SETTINGS.calibrationCount)
-    ),
+    calibrationCount: 0,
     globalPrompt: getSetting(ALGORITHM_GLOBAL_PROMPT_SETTING_KEY, DEFAULT_ALGORITHM_SETTINGS.globalPrompt),
     promptTemplate: getSetting(ALGORITHM_PROMPT_TEMPLATE_SETTING_KEY, DEFAULT_ALGORITHM_SETTINGS.promptTemplate),
     heartWeight: getSetting(ALGORITHM_HEART_WEIGHT_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.heartWeight)),
@@ -5362,6 +5359,7 @@ function saveAlgorithmSettings(patch = {}) {
   const next = normalizeAlgorithmSettings({
     ...current,
     ...(patch && typeof patch === "object" ? patch : {}),
+    calibrationCount: 0,
   });
   setSetting(ALGORITHM_CALIBRATION_COUNT_SETTING_KEY, String(next.calibrationCount));
   setSetting(ALGORITHM_GLOBAL_PROMPT_SETTING_KEY, next.globalPrompt);
@@ -5769,25 +5767,17 @@ function fillAlgorithmLockedQueueForCurrentSession(source = "manual", targetLeng
   const playableCount = Number(initialOrder && initialOrder.playableCount || 0);
   const safeTargetLength = Math.min(Math.max(0, Number(targetLength || 0)), playableCount || Math.max(0, Number(targetLength || 0)));
   const lockedSceneIds = () => new Set(queue.map((entry) => Number(entry.sceneId || 0)).filter(Boolean));
-  const calibrationSceneIds = (initialOrder.calibrationScenes || []).map((entry) => Number(entry.sceneId || 0)).filter(Boolean);
 
   while (queue.length < safeTargetLength) {
     const nextPosition = queue.length + 1;
     let sceneId = 0;
-    if (nextPosition <= calibrationSceneIds.length) {
-      const reserved = lockedSceneIds();
-      sceneId = calibrationSceneIds.find((id) => !reserved.has(Number(id || 0))) || 0;
-    }
-    if (!sceneId) {
-      const rankingSettings = { ...settings, calibrationCount: 0 };
-      const rankingOrder = buildAlgorithmOrderForCurrentSession(catalog, runs, rankingSettings, { lockedQueue: queue });
-      const reserved = lockedSceneIds();
-      const candidate = (rankingOrder.upcoming || []).find((entry) => {
-        const candidateSceneId = Number(entry && entry.sceneId || 0);
-        return candidateSceneId && !reserved.has(candidateSceneId) && !entry.blocked && !entry.invalid && !entry.active && !entry.played;
-      }) || null;
-      sceneId = Number(candidate && candidate.sceneId || 0);
-    }
+    const rankingOrder = buildAlgorithmOrderForCurrentSession(catalog, runs, settings, { lockedQueue: queue });
+    const reserved = lockedSceneIds();
+    const candidate = (rankingOrder.upcoming || []).find((entry) => {
+      const candidateSceneId = Number(entry && entry.sceneId || 0);
+      return candidateSceneId && !reserved.has(candidateSceneId) && !entry.blocked && !entry.invalid && !entry.active && !entry.played;
+    }) || null;
+    sceneId = Number(candidate && candidate.sceneId || 0);
     if (!sceneId) break;
     queue.push(makeAlgorithmLockedQueueEntry(sceneId, nextPosition, source));
     queue = normalizeLockedQueue(queue);
@@ -5806,15 +5796,7 @@ function fillAlgorithmLockedQueueForCurrentSession(source = "manual", targetLeng
 
 function initializeAlgorithmLockedQueueForCurrentSession(source = "start_run") {
   clearAlgorithmLockedQueueForCurrentSession(source);
-  const catalog = getAlgorithmCatalog();
-  const runs = getAlgorithmRunsForCurrentSession();
-  const settings = getAlgorithmSettings();
-  const order = buildAlgorithmOrderForCurrentSession(catalog, runs, settings, { lockedQueue: [] });
-  const calibrationSceneIds = (order.calibrationScenes || []).map((entry) => Number(entry.sceneId || 0)).filter(Boolean);
-  let queue = calibrationSceneIds.map((sceneId, index) => makeAlgorithmLockedQueueEntry(sceneId, index + 1, source));
-  queue = setAlgorithmLockedQueueForCurrentSession(queue);
-  const targetLength = Math.max(queue.length, 1);
-  return fillAlgorithmLockedQueueForCurrentSession(source, targetLength, { queue });
+  return fillAlgorithmLockedQueueForCurrentSession(source, 1, { queue: [] });
 }
 
 function latestAlgorithmRunId(runs = []) {
