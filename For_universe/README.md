@@ -66,7 +66,7 @@ npm run test:runtime-filter
 npm run audit:data
 ```
 
-`audit:data` vergelijkt de canonieke app-database met de oude star-map-kopie en rapporteert verschillen. Het importeert of wijzigt niets.
+`audit:data` vergelijkt de canonieke app-database met de oude star-map-kopie wanneer die legacy database lokaal nog bestaat. Sinds Universe binnen de app draait is `star-map` geen runtimebron meer; als de legacy database ontbreekt rapporteert de audit een nette skip. Het importeert of wijzigt niets.
 
 ## Begrippen
 
