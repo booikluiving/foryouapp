@@ -8006,9 +8006,42 @@ function isUniverseAlgorithmAvailableRow(row) {
   );
 }
 
+function getUniverseReadOnlyAlgorithmState() {
+  const catalog = getAlgorithmCatalog();
+  const rawRuns = getAlgorithmRunsForCurrentSession();
+  const rawActiveRun = getActiveAlgorithmRunForCurrentSession();
+  const settings = getAlgorithmSettings();
+  const runs = decorateAlgorithmRunsWithScores(rawRuns, settings);
+  const activeRun = rawActiveRun ? decorateAlgorithmRunsWithScores([rawActiveRun], settings)[0] : null;
+  const rawCurrentOrder = buildAlgorithmOrderForCurrentSession(catalog, runs, settings);
+  const algorithmRunStarted = getAlgorithmRunStartedForCurrentSession(runs, activeRun);
+  const awaitingStart = !algorithmRunStarted && !activeRun && runs.length === 0;
+  const currentOrder = awaitingStart ? maskAlgorithmOrderUntilRunStart(rawCurrentOrder) : rawCurrentOrder;
+  const activeScene = activeRun
+    ? expandAlgorithmScene(getAlgorithmSceneById(activeRun.sceneId), catalog)
+    : null;
+
+  return {
+    session: currentSession ? {
+      id: Number(currentSession.id || 0),
+      name: String(currentSession.name || ""),
+      isActive: isCurrentSessionActive(),
+    } : null,
+    activeRun,
+    activeScene,
+    algorithmRun: currentSession ? {
+      sessionId: Number(currentSession.id || 0),
+      started: algorithmRunStarted,
+      hasHistory: runs.length > 0,
+      awaitingStart,
+    } : null,
+    currentOrder,
+  };
+}
+
 function getUniverseAlgorithmRuntimeOverlay() {
   try {
-    const state = getAlgorithmState();
+    const state = getUniverseReadOnlyAlgorithmState();
     const currentOrder = state && state.currentOrder ? state.currentOrder : {};
     const rows = Array.isArray(currentOrder.rows) ? currentOrder.rows : [];
     const availableScenes = rows

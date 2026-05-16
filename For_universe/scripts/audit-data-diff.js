@@ -2,7 +2,7 @@
 "use strict";
 
 const path = require("node:path");
-const { DatabaseSync } = require("node:sqlite");
+const fs = require("node:fs");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const appDbPath = path.join(repoRoot, "app", "data", "live.sqlite");
@@ -57,6 +57,27 @@ function diffTable(appDb, starDb, table) {
 
 function main() {
   const strict = process.argv.includes("--strict");
+  if (!fs.existsSync(appDbPath)) {
+    console.log(JSON.stringify({
+      ok: false,
+      canonicalDatabase: appDbPath,
+      error: "canonical_database_not_found",
+    }, null, 2));
+    process.exitCode = 1;
+    return;
+  }
+  if (!fs.existsSync(starMapDbPath)) {
+    console.log(JSON.stringify({
+      ok: true,
+      skipped: true,
+      reason: "legacy_comparison_database_not_found",
+      canonicalDatabase: appDbPath,
+      comparisonDatabase: starMapDbPath,
+      tables: [],
+    }, null, 2));
+    return;
+  }
+  const { DatabaseSync } = require("node:sqlite");
   const appDb = new DatabaseSync(appDbPath, { readOnly: true });
   const starDb = new DatabaseSync(starMapDbPath, { readOnly: true });
   try {
