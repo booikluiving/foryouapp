@@ -1058,7 +1058,7 @@
     </style>
   </head>
   <body>
-    <section id="login" class="login">
+    <section id="login" class="login" style="display:none;">
       <form id="loginForm" class="loginCard">
         <div class="stack">
           <h1>Algoritme</h1>
@@ -1474,6 +1474,17 @@
               </div>
             </div>
           </details>
+
+          <details class="settingsBlock" data-ui-state-key="settings.show" open>
+            <summary>Show control</summary>
+            <div class="settingsBlockBody">
+              <div class="actions">
+                <button id="startShowBtn" class="primary" type="button">Start show</button>
+                <button id="stopShowBtn" class="danger" type="button">Stop show</button>
+              </div>
+              <div id="showControlMsg" class="msg"></div>
+            </div>
+          </details>
         </section>
       </main>
     </section>
@@ -1544,6 +1555,7 @@
         let oscDraftDirty = false;
         let oscDraftHold = null;
         let runActionPending = false;
+        let showActionPending = false;
         let promptSettingsSavePending = false;
 
         const $ = (id) => document.getElementById(id);
@@ -3476,7 +3488,7 @@
           const hasPreparedScene = !!preparedSceneId();
           const runStarted = isAlgorithmRunStarted();
           const canStartAlgorithmRun = currentOrderRows().length > 0;
-          const runActionDisabled = !!runActionPending;
+          const runActionDisabled = !!runActionPending || !!showActionPending;
           topMetaEl.textContent = `Sessie ${state.session.id} - ${state.session.isActive ? "actief" : "gesloten"}`;
           buildBadgeEl.textContent = runtime.buildLabel || runtime.buildVersion || "build onbekend";
           $("heartStat").textContent = String(activeRun ? activeRun.heartCount || 0 : 0);
@@ -3498,6 +3510,10 @@
           $("sceneToggleBtn").classList.toggle("primary", !activeRun);
           $("previousSceneBtn").disabled = runActionDisabled || !runStarted || !(state.runs || []).some((run) => run && run.endedAt);
           $("resetRunsBtn").disabled = runActionDisabled;
+          $("startShowBtn").disabled = !!showActionPending;
+          $("stopShowBtn").disabled = !!showActionPending;
+          $("startShowBtn").textContent = showActionPending ? "Bezig..." : "Start show";
+          $("stopShowBtn").textContent = showActionPending ? "Bezig..." : "Stop show";
           if (document.activeElement !== $("calibrationCount")) $("calibrationCount").value = String(state.settings.calibrationCount || 5);
           if (document.activeElement !== $("globalPrompt")) $("globalPrompt").value = state.settings.globalPrompt || "";
           if (document.activeElement !== $("promptTemplate")) $("promptTemplate").value = state.settings.promptTemplate || "";
@@ -3881,6 +3897,18 @@
             return await work();
           } finally {
             runActionPending = false;
+            render();
+          }
+        }
+
+        async function withShowActionPending(work) {
+          if (showActionPending) return null;
+          showActionPending = true;
+          render();
+          try {
+            return await work();
+          } finally {
+            showActionPending = false;
             render();
           }
         }
@@ -4443,6 +4471,8 @@
           });
           $("testOscBtn").addEventListener("click", sendOscTest);
           $("sendUpNextBtn").addEventListener("click", () => sendTouchDesigner("next"));
+          $("startShowBtn").addEventListener("click", startShow);
+          $("stopShowBtn").addEventListener("click", stopShow);
 
           $("editOrderBtn").addEventListener("click", openOrderEditor);
           $("cancelOrderBtn").addEventListener("click", () => {
@@ -4463,6 +4493,39 @@
                 setMsg("liveMsg", "Algoritme-runs gereset. Klik Start run om bij rij 1 te beginnen.");
               } catch (err) { setMsg("liveMsg", formatError(err), true); }
             });
+          });
+        }
+
+        async function startShow() {
+          return withShowActionPending(async () => {
+            try {
+              scrollOrderSelectionOnNextRender = true;
+              const result = await post("/admin/show/start", {}, "showControlMsg");
+              const sessionText = result.sessionStarted ? "Nieuwe sessie gestart." : "Bestaande sessie gebruikt.";
+              const feedbackText = result.oscFeedbackSent ? " OSC-feedback verstuurd." : " OSC-feedback niet verstuurd.";
+              setMsg("showControlMsg", `${sessionText} Run gereset en gestart.${feedbackText}`);
+            } catch (err) {
+              setMsg("showControlMsg", formatError(err), true);
+            }
+          });
+        }
+
+        async function stopShow() {
+          if (!window.confirm("Run resetten en sessie beëindigen?")) return null;
+          return withShowActionPending(async () => {
+            try {
+              scrollOrderSelectionOnNextRender = true;
+              const result = await post("/admin/show/stop", {}, "showControlMsg");
+              const closed = Number(result && result.closedClients || 0);
+              const statusText = result.sessionEnded
+                ? "Show gestopt. Run gereset en sessie beëindigd."
+                : "Show stond al stil. Run is gereset.";
+              const closedText = closed > 0 ? ` ${closed} clients verbroken.` : "";
+              const feedbackText = result.oscFeedbackSent ? " OSC-feedback verstuurd." : " OSC-feedback niet verstuurd.";
+              setMsg("showControlMsg", `${statusText}${closedText}${feedbackText}`);
+            } catch (err) {
+              setMsg("showControlMsg", formatError(err), true);
+            }
           });
         }
 

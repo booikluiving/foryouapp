@@ -7008,6 +7008,14 @@ function beginAlgorithmRunForCurrentSession() {
   return { sessionId, started: true };
 }
 
+function beginAlgorithmRunWithUpNext(source = "start_run") {
+  const safeSource = String(source || "start_run").slice(0, 80);
+  const run = beginAlgorithmRunForCurrentSession();
+  initializeAlgorithmLockedQueueForCurrentSession(safeSource);
+  const oscSend = sendAlgorithmUpNextOsc(safeSource);
+  return { run, oscSend };
+}
+
 function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
   if (!isCurrentSessionActive()) throw new Error("session_inactive");
   renormalizeAlgorithmScenesForPerformerRoles();
@@ -8521,6 +8529,112 @@ function disconnectAllClientsForSessionEnd() {
     closeCode: 4011,
     closeReason: "session ended",
   });
+}
+
+function showControlCommandAddress(action) {
+  return String(action || "") === "stop" ? "/foryou/show/stop" : "/foryou/show/start";
+}
+
+function showControlFeedbackMessage(action, result = {}) {
+  if (String(action || "") === "stop") {
+    if (result.alreadyEnded) return "Show stond al stil";
+    return "Show gestopt";
+  }
+  return result.sessionStarted ? "Show gestart met nieuwe sessie" : "Show gestart";
+}
+
+function sendShowControlOscFeedback(action, status, message, data) {
+  return sendOscControlFeedback(null, {
+    status,
+    commandAddress: showControlCommandAddress(action),
+    message,
+    data,
+  });
+}
+
+function startShowSequence(source = "admin") {
+  const safeSource = String(source || "admin").slice(0, 80);
+  let sessionStarted = false;
+  let closedClients = 0;
+  if (!isCurrentSessionActive()) {
+    const session = beginNewSession("", safeSource);
+    sessionStarted = true;
+    closedClients = disconnectAllClientsForNewSession();
+    broadcastStageState(null, "show_start_session_new");
+    writeDebug("show_session_started", {
+      by: safeSource,
+      sessionId: Number(session && session.id || 0),
+      closedClients,
+    });
+  }
+
+  const reset = resetAlgorithmRunsForCurrentSession();
+  const runStart = beginAlgorithmRunWithUpNext(`show_start_${safeSource}`);
+  const result = {
+    action: "start",
+    source: safeSource,
+    sessionId: Number(currentSession && currentSession.id || 0),
+    sessionStarted,
+    sessionEnded: false,
+    closedClients,
+    runReset: true,
+    runsReset: Number(reset && reset.deletedRuns || 0),
+    runStarted: !!(runStart && runStart.run && runStart.run.started),
+    run: runStart.run,
+    oscSend: runStart.oscSend && runStart.oscSend.last ? runStart.oscSend.last : runStart.oscSend,
+  };
+  writeDebug("show_started", {
+    by: safeSource,
+    sessionId: result.sessionId,
+    sessionStarted,
+    closedClients,
+    runsReset: result.runsReset,
+    runStarted: result.runStarted,
+  });
+  return result;
+}
+
+function stopShowSequence(source = "admin") {
+  const safeSource = String(source || "admin").slice(0, 80);
+  const sessionId = Number(currentSession && currentSession.id || 0);
+  const wasActive = isCurrentSessionActive();
+  const reset = sessionId ? resetAlgorithmRunsForCurrentSession() : { deletedRuns: 0 };
+  let endedSession = currentSession;
+  let closedClients = 0;
+  if (wasActive) {
+    endedSession = endCurrentSession(safeSource);
+    closedClients = disconnectAllClientsForSessionEnd();
+    broadcastStageState(null, "show_stop_session_end");
+  }
+  const result = {
+    action: "stop",
+    source: safeSource,
+    sessionId: Number(endedSession && endedSession.id || sessionId || 0),
+    sessionStarted: false,
+    sessionEnded: !!wasActive,
+    alreadyEnded: !wasActive,
+    closedClients,
+    runReset: true,
+    runsReset: Number(reset && reset.deletedRuns || 0),
+    runStarted: false,
+    session: endedSession
+      ? {
+          id: Number(endedSession.id || 0),
+          name: String(endedSession.name || ""),
+          startedAt: String(endedSession.startedAt || ""),
+          endedAt: endedSession.endedAt ? String(endedSession.endedAt) : null,
+          isActive: false,
+        }
+      : null,
+  };
+  writeDebug("show_stopped", {
+    by: safeSource,
+    sessionId: result.sessionId,
+    alreadyEnded: result.alreadyEnded,
+    closedClients,
+    runsReset: result.runsReset,
+  });
+  return result;
 }
 
 function disconnectAllClients(config = {}) {
@@ -10358,6 +10472,30 @@ function buildOscControlCommands() {
       },
     },
     {
+      address: "/foryou/show/start",
+      args: "(geen)",
+      description: "Start show: sessie indien nodig, run resetten en run starten.",
+      feedback: true,
+      feedbackMessage(result) {
+        return showControlFeedbackMessage("start", result);
+      },
+      execute(ctx) {
+        return runAlgorithmOscAction("show_start", ctx, () => startShowSequence("osc"));
+      },
+    },
+    {
+      address: "/foryou/show/stop",
+      args: "(geen)",
+      description: "Stop show: run resetten en sessie beëindigen zonder herstart.",
+      feedback: true,
+      feedbackMessage(result) {
+        return showControlFeedbackMessage("stop", result);
+      },
+      execute(ctx) {
+        return runAlgorithmOscAction("show_stop", ctx, () => stopShowSequence("osc"));
+      },
+    },
+    {
       address: "/foryou/stage/show_qr",
       args: "0|1",
       description: "Zet QR op stage uit/aan.",
@@ -10544,9 +10682,7 @@ function buildOscControlCommands() {
       },
       execute(ctx) {
         return runAlgorithmOscAction("start_run", ctx, () => {
-          const run = beginAlgorithmRunForCurrentSession();
-          initializeAlgorithmLockedQueueForCurrentSession("osc_start_run");
-          const oscSend = sendAlgorithmUpNextOsc("osc_start_run");
+          const { run, oscSend } = beginAlgorithmRunWithUpNext("osc_start_run");
           return { run, upNext: oscSend.payload || null, oscSend: oscSend.last || oscSend };
         });
       },
@@ -13151,10 +13287,7 @@ app.post("/admin/algorithm/runs/start", requireAdmin, (req, res) => {
 app.post("/admin/algorithm/runs/begin", requireAdmin, (req, res) => {
   try {
     const result = withAlgorithmRunActionGuard("begin", req.body && req.body.expectedState, () => {
-      const run = beginAlgorithmRunForCurrentSession();
-      initializeAlgorithmLockedQueueForCurrentSession("start_run");
-      const oscSend = sendAlgorithmUpNextOsc("start_run");
-      return { run, oscSend };
+      return beginAlgorithmRunWithUpNext("start_run");
     });
     res.json({ ok: true, run: result.run, oscSend: result.oscSend.last || result.oscSend, state: getAlgorithmState(req) });
   } catch (err) {
@@ -13201,6 +13334,32 @@ app.post("/admin/algorithm/runs/reset", requireAdmin, (req, res) => {
     const reset = withAlgorithmRunActionGuard("reset", req.body && req.body.expectedState, () => resetAlgorithmRunsForCurrentSession());
     res.json({ ok: true, reset, state: getAlgorithmState(req) });
   } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/show/start", requireAdmin, (req, res) => {
+  try {
+    const result = withAlgorithmRunActionGuard("show_start", null, () => startShowSequence("admin"));
+    const message = showControlFeedbackMessage("start", result);
+    const oscFeedbackSent = sendShowControlOscFeedback("start", "ok", message, result);
+    res.json({ ok: true, ...result, oscFeedbackSent, state: getAlgorithmState(req) });
+  } catch (err) {
+    const message = err && err.message ? err.message : "show_start_failed";
+    sendShowControlOscFeedback("start", "error", message, { error: message });
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/show/stop", requireAdmin, (req, res) => {
+  try {
+    const result = withAlgorithmRunActionGuard("show_stop", null, () => stopShowSequence("admin"));
+    const message = showControlFeedbackMessage("stop", result);
+    const oscFeedbackSent = sendShowControlOscFeedback("stop", "ok", message, result);
+    res.json({ ok: true, ...result, oscFeedbackSent, state: getAlgorithmState(req) });
+  } catch (err) {
+    const message = err && err.message ? err.message : "show_stop_failed";
+    sendShowControlOscFeedback("stop", "error", message, { error: message });
     sendAlgorithmApiError(res, err);
   }
 });

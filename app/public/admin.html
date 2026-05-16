@@ -544,7 +544,7 @@
         </div>
       </div>
 
-      <div id="loginCard" class="card stack">
+      <div id="loginCard" class="card stack" style="display:none;">
         <h2>Login</h2>
         <div class="row">
           <input id="password" type="password" placeholder="Admin wachtwoord" autocomplete="current-password" />
@@ -3580,6 +3580,25 @@
         startRefreshTimer();
       }
 
+      async function tryAuthDisabledState() {
+        if (token) return false;
+        try {
+          const data = await api("/admin/state");
+          const security = data && data.security ? data.security : {};
+          if (!data || !data.ok || !security.adminAuthDisabled) return false;
+          setSkipDeviceAutologin(false);
+          setToken("admin-auth-disabled");
+          renderState(data);
+          showApp();
+          if (typeof window.ResizeObserver !== "function") queueSectionMasonryLayout(0);
+          loginErrorEl.textContent = "";
+          startRefreshTimer();
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
       async function tryDeviceLogin() {
         if (token) return true;
         if (shouldSkipDeviceAutologin()) return false;
@@ -4270,7 +4289,7 @@
 
       async function bootstrapAuth() {
         const resumed = await tryDeviceLogin();
-        if (!resumed) showLogin();
+        if (!resumed && !(await tryAuthDisabledState())) showLogin();
       }
       bootstrapAuth();
     </script>
