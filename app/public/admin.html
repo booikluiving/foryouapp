@@ -995,6 +995,7 @@
       const adminConfirmPasswordEl = document.getElementById("adminConfirmPassword");
       const adminUpdatePasswordBtn = document.getElementById("adminUpdatePasswordBtn");
       const adminPasswordHintEl = document.getElementById("adminPasswordHint");
+      const adminSecurityCardEl = adminCurrentPasswordEl ? adminCurrentPasswordEl.closest(".card") : null;
       const themeToggleBtn = document.getElementById("themeToggleBtn");
       const refreshBtn = document.getElementById("refreshBtn");
       const restartBtn = document.getElementById("restartBtn");
@@ -1129,6 +1130,7 @@
       const actionsLogEl = document.getElementById("actionsLog");
 
       let token = "";
+      let adminAuthDisabled = false;
       let refreshTimer = null;
       let lastState = null;
       let pollBadgeTimer = null;
@@ -2135,9 +2137,17 @@
       }
 
       function renderPasswordHint(text, isError = false) {
+        if (adminAuthDisabled) return;
         if (!adminPasswordHintEl) return;
         adminPasswordHintEl.textContent = text || "";
         adminPasswordHintEl.style.color = isError ? "var(--danger)" : "var(--muted)";
+      }
+
+      function applyAdminAuthMode(security = {}) {
+        adminAuthDisabled = !!(security && security.adminAuthDisabled);
+        if (adminSecurityCardEl) {
+          adminSecurityCardEl.style.display = adminAuthDisabled ? "none" : "";
+        }
       }
 
       function validatePasswordClientSide(password, confirmPassword) {
@@ -3317,6 +3327,7 @@
 
       function renderState(data) {
         lastState = data;
+        applyAdminAuthMode(data && data.security ? data.security : {});
         adminPasswordMinLength = Math.max(
           10,
           Number((data && data.security && data.security.adminPasswordMinLength) || adminPasswordMinLength || 12)
@@ -3612,6 +3623,10 @@
       }
 
       async function updateAdminPassword() {
+        if (adminAuthDisabled) {
+          renderPasswordHint("");
+          return;
+        }
         if (!token) {
           showLogin();
           loginErrorEl.textContent = "Log eerst in als admin.";
@@ -3927,10 +3942,15 @@
             body: JSON.stringify({ forgetDevice: false }),
           });
         } catch {}
-        setSkipDeviceAutologin(true);
         setToken("");
         stopRefreshTimer();
-        showLogin();
+        if (adminAuthDisabled) {
+          setSkipDeviceAutologin(false);
+          tryDeviceLogin();
+        } else {
+          setSkipDeviceAutologin(true);
+          showLogin();
+        }
       });
 
       if (endSessionBtn) endSessionBtn.addEventListener("click", endCurrentSessionOnly);

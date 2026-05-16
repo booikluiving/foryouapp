@@ -98,7 +98,12 @@ const SIM_TEXT_LINE_DEFAULT_HEADER = "# 1 regel = 1 item. Lege regels en regels 
 const DATA_DIR = path.join(__dirname, "data");
 const DB_PATH = path.join(DATA_DIR, "live.sqlite");
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
+const ADMIN_AUTH_DISABLED = parseBooleanLike(
+  process.env.ADMIN_AUTH_DISABLED === undefined ? "1" : process.env.ADMIN_AUTH_DISABLED,
+  true
+);
 const ADMIN_SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+const ADMIN_AUTH_DISABLED_TOKEN = "admin-auth-disabled";
 const ADMIN_PASSWORD_HASH_SETTING_KEY = "admin_password_hash_scrypt_v1";
 const ADMIN_PASSWORD_MIN_LENGTH = clampInt(process.env.ADMIN_PASSWORD_MIN_LENGTH || "12", 10, 128, 12);
 const ADMIN_PASSWORD_SCRYPT_KEYLEN = 32;
@@ -233,7 +238,10 @@ const SYNC_LAST_RUN_SETTING_KEY = "sync_last_run_at";
 const SYNC_DEFAULT_PEER_URLS = normalizePeerUrls(
   String(process.env.FORYOU_SYNC_PEERS || process.env.SYNC_PEERS || "").split(",")
 );
-const SYNC_SECRET = String(process.env.FORYOU_SYNC_SECRET || process.env.SYNC_SECRET || ADMIN_PASSWORD || "").trim();
+const EXPLICIT_SYNC_SECRET = String(process.env.FORYOU_SYNC_SECRET || process.env.SYNC_SECRET || "").trim();
+const SYNC_SECRET = ADMIN_AUTH_DISABLED
+  ? EXPLICIT_SYNC_SECRET
+  : String(EXPLICIT_SYNC_SECRET || ADMIN_PASSWORD || "").trim();
 const SYNC_HTTP_TIMEOUT_MS = clampInt(process.env.FORYOU_SYNC_HTTP_TIMEOUT_MS || "4500", 1000, 30000, 4500);
 const SYNC_AUTO_INTERVAL_MS = clampInt(process.env.FORYOU_SYNC_AUTO_INTERVAL_MS || "30000", 5000, 300000, 30000);
 const SYNC_STALE_AFTER_MS = clampInt(process.env.FORYOU_SYNC_STALE_AFTER_MS || String(2 * 60 * 1000), 30000, 3600000, 2 * 60 * 1000);
@@ -4991,8 +4999,13 @@ setSetting("algorithm_current_scene_osc_port", String(algorithmCurrentSceneOscPo
 setSetting("osc_send_enabled", oscControlSendEnabled ? "1" : "0");
 applyCurrentOscProfileToRuntime();
 initializeAdminPasswordHash();
-if (adminPasswordSeededFromDefault) {
+if (adminPasswordSeededFromDefault && !ADMIN_AUTH_DISABLED) {
   console.log("Warning: using default admin password. Wijzig dit direct via env of admin console.");
+} else if (ADMIN_AUTH_DISABLED) {
+  console.log("Admin auth disabled: admin pages and APIs are available without password.");
+  if (!SYNC_SECRET) {
+    console.log("Sync secret not configured: peer sync requires explicit FORYOU_SYNC_SECRET or SYNC_SECRET while admin auth is disabled.");
+  }
 }
 const SIM_RUNTIME_DEFAULTS = saveSimulatorDefaults(loadSimulatorDefaultsFromSettings());
 stageOutputSettings = saveStageOutputSettings(loadStageOutputSettingsFromSettings());
@@ -8261,6 +8274,11 @@ function readAdminToken(req) {
 }
 
 function requireAdmin(req, res, next) {
+  if (ADMIN_AUTH_DISABLED) {
+    req.adminToken = ADMIN_AUTH_DISABLED_TOKEN;
+    next();
+    return;
+  }
   const token = readAdminToken(req);
   if (!token) {
     res.status(401).json({ ok: false, error: "unauthorized" });
@@ -8289,6 +8307,10 @@ function requireAdminOrSyncPeer(req, res, next) {
   if (isValidSyncPeerRequest(req)) {
     req.syncPeer = true;
     next();
+    return;
+  }
+  if (ADMIN_AUTH_DISABLED) {
+    res.status(401).json({ ok: false, error: "sync_secret_required" });
     return;
   }
   requireAdmin(req, res, next);
@@ -11746,6 +11768,7 @@ function getAdminState(req) {
     },
     security: {
       debugLogEnabled: DEBUG_LOG_ENABLED,
+      adminAuthDisabled: ADMIN_AUTH_DISABLED,
       adminPasswordMinLength: ADMIN_PASSWORD_MIN_LENGTH,
     },
     networkAgent: unifiNetworkAgent.getConfigSummary(),
@@ -12500,6 +12523,19 @@ app.get("/stage", (req, res) => {
 
 app.post("/admin/login", (req, res) => {
   const ip = normalizeIp(req.socket.remoteAddress || "unknown");
+  if (ADMIN_AUTH_DISABLED) {
+    const token = issueAdminToken();
+    writeDebug("admin_login_bypass", { ip });
+    res.json({
+      ok: true,
+      token,
+      expiresInMs: ADMIN_SESSION_TTL_MS,
+      rememberedDevice: false,
+      authDisabled: true,
+    });
+    return;
+  }
+
   const blockedRemainingMs = getAdminLoginBlockRemainingMs(ip);
   if (blockedRemainingMs > 0) {
     res.status(429).json({
@@ -12538,6 +12574,19 @@ app.post("/admin/login", (req, res) => {
 
 app.post("/admin/login/device", (req, res) => {
   const ip = normalizeIp(req.socket.remoteAddress || "unknown");
+  if (ADMIN_AUTH_DISABLED) {
+    const token = issueAdminToken();
+    writeDebug("admin_login_device_bypass", { ip });
+    res.json({
+      ok: true,
+      token,
+      expiresInMs: ADMIN_SESSION_TTL_MS,
+      rememberedDevice: false,
+      authDisabled: true,
+    });
+    return;
+  }
+
   const trusted = getTrustedAdminDeviceFromRequest(req);
   if (!trusted) {
     clearTrustedAdminDeviceCookie(res, req);
@@ -12564,6 +12613,16 @@ app.post("/admin/logout", requireAdmin, (req, res) => {
 });
 
 app.post("/admin/password/update", requireAdmin, (req, res) => {
+  if (ADMIN_AUTH_DISABLED) {
+    res.json({
+      ok: true,
+      disabled: true,
+      authDisabled: true,
+      minLength: ADMIN_PASSWORD_MIN_LENGTH,
+    });
+    return;
+  }
+
   const ip = normalizeIp(req.socket.remoteAddress || "unknown");
   const currentPassword = normalizeAdminPasswordInput(req.body && req.body.currentPassword);
   const nextPassword = normalizeAdminPasswordInput(req.body && req.body.newPassword);

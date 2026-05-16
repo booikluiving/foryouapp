@@ -579,6 +579,24 @@
           }
         }
 
+        async function autoLogin() {
+          try {
+            const body = await api("/admin/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                rememberDevice: false,
+                deviceLabel: navigator.userAgent || "",
+              }),
+            });
+            setToken(body.token);
+            await loadStatus();
+            return true;
+          } catch {
+            return false;
+          }
+        }
+
         async function saveSyncSettings(successText = "Peer sync-instellingen opgeslagen.") {
           try {
             const peerUrl = String($("syncPeerUrl").value || "").trim();
@@ -894,7 +912,9 @@
           $("refreshBtn").addEventListener("click", () => loadStatus().catch((err) => setMsg("mirrorMsg", formatError(err), true)));
           $("logoutBtn").addEventListener("click", () => {
             setToken("");
-            showLogin("");
+            autoLogin().then((ok) => {
+              if (!ok) showLogin("");
+            });
           });
           $("syncPeerUrl").addEventListener("input", () => { syncDraftDirty = true; });
           $("syncPeerUrl").addEventListener("change", () => { syncDraftDirty = true; });
@@ -923,9 +943,14 @@
         bindEvents();
         loadToken();
         if (token) {
-          loadStatus().catch(() => showLogin("Login opnieuw nodig."));
+          loadStatus().catch(async () => {
+            setToken("");
+            if (!(await autoLogin())) showLogin("Login opnieuw nodig.");
+          });
         } else {
-          showLogin("");
+          autoLogin().then((ok) => {
+            if (!ok) showLogin("");
+          });
         }
       })();
     </script>
