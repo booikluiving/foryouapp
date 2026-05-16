@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>For universe stage</title>
+    <link rel="stylesheet" href="/universe/styles.css?v=app-integrated-1" />
+  </head>
+  <body class="stage-output">
+    <main class="stage-shell">
+      <section class="stage stage-fullscreen" id="stage">
+        <div class="canvas" id="canvas">
+          <svg class="sky" id="sky" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" role="img" aria-label="For universe stage output"></svg>
+          <aside class="hover-panel" id="hoverPanel" aria-live="polite"></aside>
+        </div>
+      </section>
+    </main>
+
+    <button class="stage-menu-toggle" id="stageMenuToggle" type="button" aria-controls="stageMenu" aria-expanded="false">menu</button>
+    <aside class="stage-menu" id="stageMenu" hidden>
+      <div class="stage-menu-head">
+        <p>Stage</p>
+        <button type="button" data-stage-action="close">x</button>
+      </div>
+      <div class="stage-menu-actions" aria-label="Stage views">
+        <button class="tw-btn reset" type="button" data-stage-view="bigbang" aria-pressed="false">Big Bang</button>
+        <button class="tw-btn on" type="button" data-stage-view="network" aria-pressed="true">Netwerkkaart</button>
+        <button class="tw-btn on" type="button" data-stage-tweak="lines" aria-pressed="true">lijnen</button>
+        <button class="tw-btn on" type="button" data-stage-tweak="loose" aria-pressed="true">losse scenes</button>
+        <button class="tw-btn" type="button" data-stage-tweak="labels" aria-pressed="false">labels</button>
+        <button class="tw-btn on" type="button" id="stageRuntime" aria-pressed="true">runtime live</button>
+      </div>
+      <div class="motion-controls stage-motion" aria-label="Stage motion controls">
+        <div class="motion-title">Animatie</div>
+        <label>
+          <span>afstand <output id="motionAmountValue">0px</output></span>
+          <input id="motionAmount" type="range" min="0" max="64" step="1" value="0" />
+        </label>
+        <label>
+          <span>snelheid <output id="motionSpeedValue">135%</output></span>
+          <input id="motionSpeed" type="range" min="0" max="200" step="5" value="135" />
+        </label>
+        <label>
+          <span>diepte <output id="motionDepthValue">62%</output></span>
+          <input id="motionDepth" type="range" min="0" max="100" step="1" value="62" />
+        </label>
+        <label>
+          <span>schaal <output id="motionScaleValue">3.2%</output></span>
+          <input id="motionScale" type="range" min="0" max="8" step="0.2" value="3.2" />
+        </label>
+        <label>
+          <span>orbit <output id="motionSpinValue">150%</output></span>
+          <input id="motionSpin" type="range" min="0" max="200" step="5" value="150" />
+        </label>
+      </div>
+      <a class="stage-menu-link" href="/universe" target="_blank" rel="noreferrer">For_universe interface</a>
+    </aside>
+
+    <script src="/universe/sky-layout.js"></script>
+    <script src="/universe/sky-data-adapter.js?v=app-integrated-1"></script>
+    <script src="/universe/sky-renderer.js?v=app-integrated-1"></script>
+    <script src="/universe/stage-app.js?v=app-integrated-1"></script>
+  </body>
+</html>

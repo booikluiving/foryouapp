@@ -5,6 +5,8 @@ const WebSocket = require("ws");
 const TOOL_PORT = Number(process.env.OSC_TOOL_PORT || 3099);
 const APP_HOST = process.env.FORYOU_APP_HOST || "127.0.0.1";
 const APP_PORT = Number(process.env.FORYOU_APP_PORT || 3010);
+const FOR_UNIVERSE_PATH = process.env.FOR_UNIVERSE_PATH || "/universe";
+const FOR_UNIVERSE_URL = process.env.FOR_UNIVERSE_URL || "";
 let appOscPort = Number(process.env.FORYOU_OSC_RECEIVE_PORT || 1234);
 let monitorPort = Number(process.env.FORYOU_OSC_MONITOR_PORT || 9002);
 
@@ -370,6 +372,8 @@ const page = `<!doctype html>
     button.danger { background: #b42318; border-color: #b42318; color: #fff; }
     button.small { padding: 7px 10px; font-size: 13px; }
     button:disabled { opacity: .55; cursor: wait; }
+    a.buttonLink { display: inline-flex; align-items: center; justify-content: center; border: 1px solid #bcc4d0; background: #fff; color: #15181f; border-radius: 7px; padding: 10px 13px; font-weight: 650; text-decoration: none; }
+    a.buttonLink.primary { background: #155eef; border-color: #155eef; color: #fff; }
     .bar { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; align-items: center; }
     .grid { display: grid; grid-template-columns: minmax(360px, 0.92fr) minmax(480px, 1.35fr); gap: 16px; align-items: start; }
     .panel { background: #fff; border: 1px solid #d9dee7; border-radius: 8px; padding: 16px; }
@@ -408,6 +412,7 @@ const page = `<!doctype html>
       <button id="configure" class="primary">Gebruik lokale feedback target</button>
       <button id="restore">Herstel originele OSC target</button>
       <button id="reloadCommands">Reload commands</button>
+      <a id="universeLink" class="buttonLink primary" href="${FOR_UNIVERSE_URL || "#"}" data-app-port="${APP_PORT}" data-universe-path="${FOR_UNIVERSE_PATH}" data-universe-url="${FOR_UNIVERSE_URL}" target="_blank" rel="noreferrer">Open For_universe</a>
       <button id="clear">Clear log</button>
     </div>
     <div class="grid">
@@ -416,6 +421,7 @@ const page = `<!doctype html>
         <div class="status">
           <div><span class="pill">App OSC receive: <b id="receive">127.0.0.1:${appOscPort}</b></span></div>
           <div><span class="pill">Monitor feedback: <b id="monitor">0.0.0.0:${monitorPort}</b></span></div>
+          <div><span class="pill">For_universe: <b id="universeUrl">wordt bepaald...</b></span></div>
           <div><span class="pill">App feedback target: <b id="target">onbekend</b></span></div>
           <div><span class="pill">Admin: <b id="admin">onbekend</b></span></div>
           <div id="connection" class="bad">Browser bridge: disconnected</div>
@@ -467,10 +473,27 @@ const page = `<!doctype html>
     const sendCommandsEl = document.getElementById("sendCommands");
     const commandCountEl = document.getElementById("commandCount");
     const filterEl = document.getElementById("filter");
+    const universeLinkEl = document.getElementById("universeLink");
+    const universeUrlEl = document.getElementById("universeUrl");
     const buttons = [...document.querySelectorAll("button")];
     let receiveCommands = [];
     let sendCommands = [];
     const commandLabels = ${JSON.stringify(COMMAND_LABELS)};
+
+    function resolveUniverseUrl() {
+      const explicit = String(universeLinkEl.dataset.universeUrl || "").trim();
+      if (explicit) return explicit;
+      const protocol = window.location.protocol || "http:";
+      const hostname = window.location.hostname || "127.0.0.1";
+      const appPort = String(universeLinkEl.dataset.appPort || "3010").trim();
+      const universePath = String(universeLinkEl.dataset.universePath || "/universe").trim() || "/universe";
+      return protocol + "//" + hostname + ":" + appPort + universePath;
+    }
+    function updateUniverseLink() {
+      const url = resolveUniverseUrl();
+      universeLinkEl.href = url;
+      universeUrlEl.textContent = url;
+    }
 
     function setBusy(busy) { buttons.forEach((btn) => btn.disabled = busy); }
     function setMessage(text, error) {
@@ -633,6 +656,7 @@ const page = `<!doctype html>
       }
       addLog(data.type, data);
     };
+    updateUniverseLink();
     loadCommands();
   </script>
 </body>

@@ -73,6 +73,7 @@ const { createDropboxCatalogSync } = require("./lib/dropbox-catalog-sync");
 const { writeCatalogDatabaseMarkdown } = require("./lib/catalog-database-md");
 const { createUnifiNetworkAgent } = require("./lib/unifi-network-agent");
 const { createOperatorAi } = require("./lib/operator-ai");
+const { mountUniverse } = require("../For_universe/src/integration/express-router");
 
 loadLocalDotEnv(__dirname);
 
@@ -1391,6 +1392,11 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: "6mb" }));
+mountUniverse(app, {
+  express,
+  databasePath: DB_PATH,
+  runtimeProvider: getUniverseAlgorithmRuntimeOverlay,
+});
 app.get("/verhaalvisualisatie", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "verhaalvisualisatie.html"));
 });
@@ -7871,6 +7877,10 @@ function buildStageUrl(req) {
   return `${buildJoinBaseUrl(req)}/stage`;
 }
 
+function buildUniverseUrl(req) {
+  return `${buildJoinBaseUrl(req)}/universe`;
+}
+
 function buildStageOutputUrl(req, outputPath) {
   const pathPart = String(outputPath || "").startsWith("/") ? String(outputPath) : `/${String(outputPath || "")}`;
   return `${buildJoinBaseUrl(req)}${pathPart}`;
@@ -7950,6 +7960,100 @@ function getStageControlState(req) {
     height: STAGE_OUTPUT_HEIGHT,
     settings: normalizeStageOutputSettings(stageOutputSettings, STAGE_OUTPUT_DEFAULTS),
   };
+}
+
+function getUniverseControlState(req) {
+  return {
+    path: "/universe",
+    url: buildUniverseUrl(req),
+    stagePath: "/universe/stage",
+    stageUrl: buildStageOutputUrl(req, "/universe/stage"),
+  };
+}
+
+function buildUniverseAlgorithmSceneProjection(row, source = "algorithm_order") {
+  const sceneId = Number(row && (row.sceneId || row.id) || 0);
+  if (!Number.isFinite(sceneId) || sceneId < 1) return null;
+  return {
+    sceneId,
+    title: String(row && (row.title || row.name) || `Scene ${sceneId}`),
+    source,
+    nodeStatus: String(row && row.nodeStatus || ""),
+    active: !!(row && row.active),
+    next: !!(row && row.next),
+    available: !!(row && row.available),
+    played: !!(row && row.played),
+    locked: !!(row && row.locked),
+    blocked: !!(row && row.blocked),
+    reason: String(row && row.reason || ""),
+    score: Number(row && row.score || 0),
+  };
+}
+
+function isUniverseAlgorithmAvailableRow(row) {
+  if (!row) return false;
+  const status = String(row.nodeStatus || "").trim().toLowerCase();
+  if (row.blocked) return false;
+  return !!(
+    row.active
+    || row.next
+    || row.available
+    || row.locked
+    || status === "active"
+    || status === "available"
+    || status === "ready"
+    || status === "next"
+  );
+}
+
+function getUniverseAlgorithmRuntimeOverlay() {
+  try {
+    const state = getAlgorithmState();
+    const currentOrder = state && state.currentOrder ? state.currentOrder : {};
+    const rows = Array.isArray(currentOrder.rows) ? currentOrder.rows : [];
+    const availableScenes = rows
+      .filter(isUniverseAlgorithmAvailableRow)
+      .map((row) => buildUniverseAlgorithmSceneProjection(row, "algorithm_current_order"))
+      .filter(Boolean);
+    const queueScenes = (Array.isArray(currentOrder.queueRows) ? currentOrder.queueRows : [])
+      .map((row) => buildUniverseAlgorithmSceneProjection(row, "algorithm_queue"))
+      .filter(Boolean);
+
+    return {
+      session: state && state.session ? {
+        id: Number(state.session.id || 0),
+        name: String(state.session.name || ""),
+        isActive: !!state.session.isActive,
+      } : null,
+      algorithmRun: state && state.algorithmRun ? {
+        sessionId: Number(state.algorithmRun.sessionId || 0),
+        started: !!state.algorithmRun.started,
+        hasHistory: !!state.algorithmRun.hasHistory,
+        awaitingStart: !!state.algorithmRun.awaitingStart,
+      } : null,
+      activeRun: state && state.activeRun ? {
+        id: Number(state.activeRun.id || 0),
+        sessionId: Number(state.activeRun.sessionId || 0),
+        runOrder: Number(state.activeRun.runOrder || 0),
+        sceneId: Number(state.activeRun.sceneId || 0),
+        selectionSource: String(state.activeRun.selectionSource || ""),
+        startedAt: String(state.activeRun.startedAt || ""),
+        endedAt: String(state.activeRun.endedAt || ""),
+        score: state.activeRun.score === null || state.activeRun.score === undefined ? null : Number(state.activeRun.score),
+        reason: String(state.activeRun.reason || ""),
+      } : null,
+      activeScene: state && state.activeScene ? buildUniverseAlgorithmSceneProjection(state.activeScene, "algorithm_active_scene") : null,
+      availableScenes,
+      queueScenes,
+      summary: {
+        availableCount: availableScenes.length,
+        queueCount: queueScenes.length,
+      },
+    };
+  } catch (err) {
+    console.warn(`Universe algorithm runtime overlay unavailable: ${err && err.message ? err.message : "unknown"}`);
+    return null;
+  }
 }
 
 function getStageRecentMessages(limit = 26, rankLookup = null) {
@@ -12813,6 +12917,7 @@ function getAdminState(req) {
     sessionJoin,
     wifiQr: normalizeWifiQrSettings(wifiQrSettings, WIFI_QR_DEFAULTS),
     stage: stageControl,
+    universe: getUniverseControlState(req),
     oscCommands: getOscControlCommandDocs(),
   };
 }

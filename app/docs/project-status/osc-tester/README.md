@@ -16,6 +16,13 @@ Open:
 http://127.0.0.1:3099
 ```
 
+The page also links to For_universe on the same For You app server. In the browser, the link uses the same hostname as the tester page and port `3010`, so it also works when you open the tester through a LAN IP:
+
+```text
+http://127.0.0.1:3010/universe
+http://<macbook-lan-ip>:3010/universe
+```
+
 ## Use
 
 1. Make sure the For You app is running on `http://127.0.0.1:3010`.
@@ -51,6 +58,7 @@ The tool also restores the original OSC target on `Ctrl+C` when it previously ch
 
 - Tool page: `127.0.0.1:3099`
 - App HTTP: `127.0.0.1:3010`
+- For_universe: same browser host on app port `3010`, path `/universe`
 - App OSC receive: `127.0.0.1:1234`
 - Local feedback monitor: `0.0.0.0:9002`
 
@@ -60,7 +68,10 @@ Override ports with environment variables:
 OSC_TOOL_PORT=3099 \
 FORYOU_APP_HOST=127.0.0.1 \
 FORYOU_APP_PORT=3010 \
+FOR_UNIVERSE_PATH=/universe \
 FORYOU_OSC_RECEIVE_PORT=1234 \
 FORYOU_OSC_MONITOR_PORT=9002 \
 node app/docs/project-status/osc-tester/server.js
 ```
+
+Use `FOR_UNIVERSE_URL` only when you explicitly want to override the generated link.
