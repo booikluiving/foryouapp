@@ -215,7 +215,7 @@ De handmatige canvas-layout en nodeposities worden op dit moment per browser in 
 ## API playground
 De API playground is deploybaar naar de Mac Studio. Secrets blijven per machine lokaal in `.env.local` en staan niet in Git.
 
-Via `/api-playground` kun je als admin de instellingen openen en waarden voor `OPENAI_API_KEY` en `ANTHROPIC_API_KEY` opslaan. De server schrijft die naar `.env.local` met beperkte bestandsrechten en stuurt de waarden nooit terug naar de browser.
+Via `/api-playground` kun je als admin de instellingen openen en waarden voor `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` en `DEEPSEEK_API_KEY` opslaan. De server schrijft die naar `.env.local` met beperkte bestandsrechten en stuurt de waarden nooit terug naar de browser.
 
 ## Moderatie en botstijl aanpassen
 - Voeg woorden toe in `moderation/bad-words.txt` voor blokkeren.

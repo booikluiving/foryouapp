@@ -3222,11 +3222,15 @@
             }
           };
           applyScroll(shouldAnimate ? "smooth" : "auto");
-          window.requestAnimationFrame(() => {
-            applyScroll("auto");
-            window.requestAnimationFrame(() => applyScroll("auto"));
-          });
-          window.setTimeout(() => applyScroll("auto"), 80);
+          if (shouldAnimate) {
+            window.setTimeout(() => {
+              const currentList = $("currentOrderList");
+              const currentTarget = currentList && targetSelector ? currentList.querySelector(targetSelector) : null;
+              if (!currentList || !currentTarget) return;
+              const targetTop = Math.max(0, currentTarget.getBoundingClientRect().top - currentList.getBoundingClientRect().top + currentList.scrollTop);
+              if (Math.abs(currentList.scrollTop - targetTop) > 3) applyScroll("auto");
+            }, 360);
+          }
           if (scrollOrderSelectionOnNextRender || key !== orderListAnchorKey) {
             orderListAnchorKey = key;
           }

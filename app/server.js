@@ -72,11 +72,14 @@ const {
 const { createDropboxCatalogSync } = require("./lib/dropbox-catalog-sync");
 const { writeCatalogDatabaseMarkdown } = require("./lib/catalog-database-md");
 const { createUnifiNetworkAgent } = require("./lib/unifi-network-agent");
+const { createOperatorAi } = require("./lib/operator-ai");
 
 loadLocalDotEnv(__dirname);
 
 const LOCAL_API_PLAYGROUND_HTML_PATH = path.join(__dirname, "public", "api-playground.html");
+const LOCAL_API_PLAYGROUND_STAGE_HTML_PATH = path.join(__dirname, "public", "api-playground-stage.html");
 const LOCAL_OPENAI_CATALOG_SYNC_PATH = path.join(__dirname, "lib", "openai-catalog-sync.js");
+const LOCAL_OPERATOR_STAGE_STYLE_PATH = path.join(__dirname, "config", "operator-stage-style.json");
 let createOpenAiCatalogSync = null;
 if (fs.existsSync(LOCAL_OPENAI_CATALOG_SYNC_PATH)) {
   try {
@@ -163,6 +166,7 @@ const BUILD_VERSION_INPUT_FILES = [
   path.join(__dirname, "lib", "unifi-network-agent.js"),
   path.join(__dirname, "lib", "dropbox-catalog-sync.js"),
   path.join(__dirname, "lib", "catalog-database-md.js"),
+  path.join(__dirname, "lib", "operator-ai.js"),
   path.join(__dirname, "public", "index.html"),
   path.join(__dirname, "public", "admin.html"),
   path.join(__dirname, "public", "algoritme.html"),
@@ -174,6 +178,7 @@ const BUILD_VERSION_INPUT_FILES = [
   path.join(__dirname, "public", "narrative-graph.js"),
   path.join(__dirname, "public", "vendor", "cytoscape.min.js"),
   path.join(__dirname, "public", "stage.html"),
+  path.join(__dirname, "public", "api-playground-stage.html"),
   path.join(__dirname, "public", "stage-session-qr.html"),
   path.join(__dirname, "public", "stage-wifi-qr.html"),
   path.join(__dirname, "public", "stage-qr-output.js"),
@@ -1283,6 +1288,23 @@ const OSC_CONTROL_FEEDBACK_DATA_MAX_CHARS = clampInt(
   4000,
   4000
 );
+const OPERATOR_OSC_ANSWER_ADDRESS = String(
+  process.env.FORYOU_OSC_ANSWER_ADDRESS || "/foryou/algorithm/answer"
+).trim() || "/foryou/algorithm/answer";
+const OPERATOR_OSC_ANSWER_MAX_PACKET_BYTES = 60_000;
+const OPERATOR_SCRIPT_OSC_ENABLED = parseBooleanLike(process.env.FORYOU_SCRIPT_OSC_ENABLED || "1", true);
+const DEFAULT_OPERATOR_SCRIPT_OSC_PORT = clampInt(
+  process.env.FORYOU_SCRIPT_OSC_PORT || "8003",
+  1,
+  65535,
+  8003
+);
+const OPERATOR_SCRIPT_OSC_CHUNK_CHARS = clampInt(
+  process.env.FORYOU_SCRIPT_OSC_CHUNK_CHARS || "1200",
+  100,
+  4000,
+  1200
+);
 let currentOscListenPort = DEFAULT_OSC_CONTROL_LISTEN_PORT;
 let oscControlUdpPort = null;
 let oscControlReady = false;
@@ -1487,7 +1509,14 @@ function parseDotEnvValue(value) {
 }
 
 function loadLocalDotEnv(rootDir) {
-  for (const filePath of [path.join(rootDir, ".env"), path.join(rootDir, ".env.local")]) {
+  const candidateFiles = [
+    path.join(path.dirname(rootDir), ".env"),
+    path.join(path.dirname(rootDir), ".env.local"),
+    path.join(rootDir, ".env"),
+    path.join(rootDir, ".env.local"),
+  ];
+  const fileValues = {};
+  for (const filePath of candidateFiles) {
     let text = "";
     try {
       text = fs.readFileSync(filePath, "utf8");
@@ -1502,9 +1531,21 @@ function loadLocalDotEnv(rootDir) {
       if (eq <= 0) continue;
       const key = normalized.slice(0, eq).trim();
       if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
-      if (process.env[key] !== undefined) continue;
-      process.env[key] = parseDotEnvValue(normalized.slice(eq + 1));
+      fileValues[key] = parseDotEnvValue(normalized.slice(eq + 1));
     }
+  }
+  for (const [key, value] of Object.entries(fileValues)) {
+    if (process.env[key] !== undefined) continue;
+    process.env[key] = value;
+  }
+  if (!process.env.ANTHROPIC_API_KEY && process.env.CLAUDE_API_KEY) {
+    process.env.ANTHROPIC_API_KEY = process.env.CLAUDE_API_KEY;
+  }
+  if (!process.env.FORYOU_OPENAI_VECTOR_STORE_ID && process.env.OPENAI_VECTOR_STORE_ID) {
+    process.env.FORYOU_OPENAI_VECTOR_STORE_ID = process.env.OPENAI_VECTOR_STORE_ID;
+  }
+  if (!process.env.DEEPSEEK_API_KEY && process.env.FORYOU_DEEPSEEK_API_KEY) {
+    process.env.DEEPSEEK_API_KEY = process.env.FORYOU_DEEPSEEK_API_KEY;
   }
 }
 
@@ -1518,6 +1559,13 @@ const API_PLAYGROUND_ENV_KEYS = [
     key: "ANTHROPIC_API_KEY",
     label: "Anthropic API key",
     secret: true,
+    aliases: ["CLAUDE_API_KEY"],
+  },
+  {
+    key: "DEEPSEEK_API_KEY",
+    label: "DeepSeek API key",
+    secret: true,
+    aliases: ["FORYOU_DEEPSEEK_API_KEY"],
   },
   {
     key: "FORYOU_OPENAI_CATALOG_ENABLED",
@@ -1531,7 +1579,7 @@ const API_PLAYGROUND_ENV_KEYS = [
   },
 ];
 
-const API_PLAYGROUND_ENV_KEY_SET = new Set(API_PLAYGROUND_ENV_KEYS.map((entry) => entry.key));
+const API_PLAYGROUND_ENV_KEY_SET = new Set(API_PLAYGROUND_ENV_KEYS.flatMap((entry) => [entry.key].concat(entry.aliases || [])));
 
 function localEnvPath() {
   return path.join(__dirname, ".env.local");
@@ -1573,7 +1621,10 @@ function apiPlaygroundSecretStatus() {
     envLocalExists: fs.existsSync(envPath),
     envLocalPath: ".env.local",
     keys: API_PLAYGROUND_ENV_KEYS.map((entry) => {
-      const current = process.env[entry.key] !== undefined ? process.env[entry.key] : assignments[entry.key];
+      const keys = [entry.key].concat(entry.aliases || []);
+      const current = keys
+        .map((key) => process.env[key] !== undefined ? process.env[key] : assignments[key])
+        .find((value) => value !== undefined);
       const configured = String(current || "").trim() !== "";
       return {
         key: entry.key,
@@ -7448,10 +7499,34 @@ async function syncCatalogMirrorsAfterSave(reason = "catalog_save", options = {}
   return result;
 }
 
+let operatorAi = null;
+
+function getOperatorAi() {
+  if (!operatorAi) {
+    operatorAi = createOperatorAi({
+      env: process.env,
+      getCatalog: getAlgorithmCatalog,
+      getSettings: getAlgorithmSettings,
+      getDatabaseMarkdownPaths: cloudApiDatabaseOutputPaths,
+      getOpenAiStatus: () => openAiCatalogSync
+        ? openAiCatalogSync.getStatus()
+        : { ok: true, enabled: false, ready: false, vectorStoreId: "" },
+      buildScenePrompt: (scene, catalog) => buildAlgorithmPromptForScene(scene, catalog, null, {
+        source: "api_playground_operator",
+      }),
+      getOscStatus: getOperatorOscStatus,
+      onOutput: sendOperatorOscOutput,
+      logger: (event, meta) => writeDebug(event, meta),
+    });
+  }
+  return operatorAi;
+}
+
 const adminTokens = new Map();
 const adminLoginAttempts = new Map();
 const connectedClients = new Map();
 const stageSubscribers = new Set();
+const operatorStageSubscribers = new Set();
 const socketIoCompatClients = new Set();
 const mutedUsers = new Map();
 const blockedUsers = new Map();
@@ -7465,6 +7540,58 @@ const engagementCommentScoreState = new Map();
 restorePersistedEngagementRowsForSession(currentSession.id);
 let activeAlgorithmRun = getActiveAlgorithmRunForCurrentSession();
 let pollAutoCloseTimer = null;
+const OPERATOR_STAGE_CHAT_LIMIT = 60;
+const OPERATOR_STAGE_DRAFT_MAX_CHARS = 12000;
+const OPERATOR_STAGE_STYLE_DEFAULT = Object.freeze({
+  font: "jetbrains",
+  cursor: "underscore",
+  fontSize: 30,
+});
+const OPERATOR_STAGE_FONT_CHOICES = new Set(["jetbrains", "ibm", "system", "courier"]);
+const OPERATOR_STAGE_CURSOR_CHOICES = new Set(["underscore", "bar", "block"]);
+function normalizeOperatorStageStyle(input = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  const font = String(source.font || source.fontFamily || OPERATOR_STAGE_STYLE_DEFAULT.font).trim().toLowerCase();
+  const cursor = String(source.cursor || OPERATOR_STAGE_STYLE_DEFAULT.cursor).trim().toLowerCase();
+  return {
+    font: OPERATOR_STAGE_FONT_CHOICES.has(font) ? font : OPERATOR_STAGE_STYLE_DEFAULT.font,
+    cursor: OPERATOR_STAGE_CURSOR_CHOICES.has(cursor) ? cursor : OPERATOR_STAGE_STYLE_DEFAULT.cursor,
+    fontSize: clampInt(source.fontSize || source.font_size, 24, 42, OPERATOR_STAGE_STYLE_DEFAULT.fontSize),
+  };
+}
+function loadOperatorStageStyleConfig() {
+  try {
+    if (!fs.existsSync(LOCAL_OPERATOR_STAGE_STYLE_PATH)) return { ...OPERATOR_STAGE_STYLE_DEFAULT };
+    const parsed = JSON.parse(fs.readFileSync(LOCAL_OPERATOR_STAGE_STYLE_PATH, "utf8"));
+    return normalizeOperatorStageStyle(parsed);
+  } catch (err) {
+    console.warn(`Operator stage style config unavailable: ${err && err.message ? err.message : "unknown"}`);
+    return { ...OPERATOR_STAGE_STYLE_DEFAULT };
+  }
+}
+function saveOperatorStageStyleConfig(style = {}) {
+  const normalized = normalizeOperatorStageStyle(style);
+  fs.mkdirSync(path.dirname(LOCAL_OPERATOR_STAGE_STYLE_PATH), { recursive: true });
+  fs.writeFileSync(
+    LOCAL_OPERATOR_STAGE_STYLE_PATH,
+    `${JSON.stringify(normalized, null, 2)}\n`,
+    "utf8"
+  );
+  return normalized;
+}
+const operatorStageState = {
+  draft: "",
+  revision: 0,
+  streaming: false,
+  sessionId: "show_default",
+  provider: "anthropic",
+  model: "",
+  vectorStoreId: "",
+  messages: [],
+  active: null,
+  style: loadOperatorStageStyleConfig(),
+  updatedAt: nowIso(),
+};
 
 function getPollEndsAtIso(poll) {
   if (!poll || !poll.startedAt) return null;
@@ -8788,6 +8915,11 @@ function isStageSubscriptionRequest(req) {
   return parsed.searchParams.get("stage") === "1";
 }
 
+function isOperatorStageSubscriptionRequest(req) {
+  const parsed = parseWsRequestUrl(req);
+  return parsed.searchParams.get("operatorStage") === "1";
+}
+
 function sendToStageSubscribers(message) {
   if (!stageSubscribers.size) return 0;
   const payload = safeJsonStringify(message, "{}");
@@ -8802,6 +8934,313 @@ function sendToStageSubscribers(message) {
   return sent;
 }
 
+function normalizeOperatorStageDraft(input) {
+  return String(input === undefined || input === null ? "" : input)
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .slice(0, OPERATOR_STAGE_DRAFT_MAX_CHARS);
+}
+
+function normalizeOperatorStageSessionId(input) {
+  const value = normalizeOperatorStageDraft(input || "show_default")
+    .trim()
+    .replace(/[^\w.-]+/g, "_")
+    .slice(0, 120);
+  return value || "show_default";
+}
+
+function normalizeOperatorStageProvider(input) {
+  const value = String(input || "").trim().toLowerCase();
+  if (value === "claude" || value === "anthropic") return "anthropic";
+  if (value === "openai" || value === "gpt") return "openai";
+  if (value === "deepseek" || value === "deepseeker") return "deepseek";
+  return operatorStageState.provider || "anthropic";
+}
+
+function normalizeOperatorStageModel(input) {
+  return String(input || "").trim().slice(0, 120);
+}
+
+function normalizeOperatorStageSourceId(input) {
+  return String(input || "")
+    .replace(/[^\w.-]+/g, "_")
+    .slice(0, 80) || "unknown";
+}
+
+function operatorStageMessageId(prefix = "msg") {
+  return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function trimOperatorStageMessages() {
+  if (operatorStageState.messages.length > OPERATOR_STAGE_CHAT_LIMIT) {
+    operatorStageState.messages = operatorStageState.messages.slice(-OPERATOR_STAGE_CHAT_LIMIT);
+  }
+}
+
+function operatorStageSnapshot() {
+  return {
+    ok: true,
+    serverInstanceId: SERVER_INSTANCE_ID,
+    buildVersion: BUILD_VERSION,
+    buildLabel: BUILD_LABEL,
+    draft: operatorStageState.draft,
+    revision: Number(operatorStageState.revision || 0),
+    streaming: !!operatorStageState.streaming,
+    sessionId: operatorStageState.sessionId,
+    provider: operatorStageState.provider,
+    model: operatorStageState.model,
+    vectorStoreId: operatorStageState.vectorStoreId,
+    active: operatorStageState.active ? { ...operatorStageState.active } : null,
+    style: normalizeOperatorStageStyle(operatorStageState.style),
+    messages: operatorStageState.messages.map((message) => ({ ...message })),
+    updatedAt: operatorStageState.updatedAt,
+  };
+}
+
+function sendOperatorStageMessage(ws, message) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  try {
+    ws.send(safeJsonStringify(message, "{}"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sendToOperatorStageSubscribers(message) {
+  if (!operatorStageSubscribers.size) return 0;
+  const payload = safeJsonStringify(message, "{}");
+  let sent = 0;
+  for (const socket of operatorStageSubscribers) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) continue;
+    try {
+      socket.send(payload);
+      sent += 1;
+    } catch {}
+  }
+  return sent;
+}
+
+function broadcastOperatorStage(message) {
+  return sendToOperatorStageSubscribers(message);
+}
+
+function broadcastOperatorStageState(reason = "state") {
+  return broadcastOperatorStage({
+    type: "operator_stage_state",
+    reason: String(reason || "state"),
+    stage: operatorStageSnapshot(),
+  });
+}
+
+function updateOperatorStageControl(message = {}) {
+  const previousSession = operatorStageState.sessionId;
+  operatorStageState.sessionId = normalizeOperatorStageSessionId(message.sessionId || message.sessie_id || operatorStageState.sessionId);
+  operatorStageState.provider = normalizeOperatorStageProvider(message.provider || operatorStageState.provider);
+  operatorStageState.model = normalizeOperatorStageModel(message.model || operatorStageState.model);
+  operatorStageState.vectorStoreId = String(message.vectorStoreId || message.vector_store_id || operatorStageState.vectorStoreId || "")
+    .trim()
+    .slice(0, 180);
+  operatorStageState.updatedAt = nowIso();
+  if (previousSession !== operatorStageState.sessionId && !operatorStageState.streaming) {
+    operatorStageState.draft = "";
+    operatorStageState.revision += 1;
+    operatorStageState.messages = [];
+    operatorStageState.active = null;
+  }
+}
+
+function updateOperatorStageStyle(message = {}, options = {}) {
+  const sourceId = normalizeOperatorStageSourceId(message.sourceId);
+  const nextStyle = normalizeOperatorStageStyle(message.style || message);
+  operatorStageState.style = options.persist ? saveOperatorStageStyleConfig(nextStyle) : nextStyle;
+  operatorStageState.updatedAt = nowIso();
+  broadcastOperatorStage({
+    type: "operator_stage_style",
+    sourceId,
+    persisted: !!options.persist,
+    style: normalizeOperatorStageStyle(operatorStageState.style),
+    stage: operatorStageSnapshot(),
+  });
+  return normalizeOperatorStageStyle(operatorStageState.style);
+}
+
+function updateOperatorStageDraft(message = {}) {
+  if (operatorStageState.streaming) return false;
+  const sourceId = normalizeOperatorStageSourceId(message.sourceId);
+  const nextDraft = normalizeOperatorStageDraft(message.text);
+  operatorStageState.draft = nextDraft;
+  operatorStageState.revision = Math.max(Number(operatorStageState.revision || 0) + 1, Number(message.revision || 0) || 0);
+  operatorStageState.updatedAt = nowIso();
+  broadcastOperatorStage({
+    type: "operator_stage_draft",
+    draft: operatorStageState.draft,
+    revision: operatorStageState.revision,
+    sourceId,
+    streaming: !!operatorStageState.streaming,
+    updatedAt: operatorStageState.updatedAt,
+  });
+  return true;
+}
+
+function clearOperatorStageDraft(message = {}) {
+  if (operatorStageState.streaming) return false;
+  const sourceId = normalizeOperatorStageSourceId(message.sourceId);
+  operatorStageState.draft = "";
+  operatorStageState.revision += 1;
+  operatorStageState.updatedAt = nowIso();
+  broadcastOperatorStage({
+    type: "operator_stage_draft",
+    draft: "",
+    revision: operatorStageState.revision,
+    sourceId,
+    streaming: false,
+    updatedAt: operatorStageState.updatedAt,
+  });
+  return true;
+}
+
+function appendOperatorStageMessage(message) {
+  operatorStageState.messages.push(message);
+  trimOperatorStageMessages();
+  return message;
+}
+
+async function submitOperatorStageDraft(message = {}) {
+  if (operatorStageState.streaming) {
+    broadcastOperatorStageState("submit_ignored_streaming");
+    return;
+  }
+  updateOperatorStageControl(message);
+  const sourceId = normalizeOperatorStageSourceId(message.sourceId);
+  const text = normalizeOperatorStageDraft(operatorStageState.draft).trim();
+  if (!text) {
+    broadcastOperatorStage({
+      type: "operator_stage_error",
+      message: "message_required",
+      sourceId,
+      streaming: false,
+    });
+    return;
+  }
+
+  const userMessage = appendOperatorStageMessage({
+    id: operatorStageMessageId("user"),
+    role: "user",
+    content: text,
+    sourceId,
+    at: nowIso(),
+  });
+  const assistantMessage = appendOperatorStageMessage({
+    id: operatorStageMessageId("assistant"),
+    role: "assistant",
+    content: "",
+    streaming: true,
+    provider: operatorStageState.provider,
+    model: operatorStageState.model,
+    at: nowIso(),
+  });
+  operatorStageState.draft = "";
+  operatorStageState.revision += 1;
+  operatorStageState.streaming = true;
+  operatorStageState.active = {
+    assistantId: assistantMessage.id,
+    sceneId: "",
+    startedAt: assistantMessage.at,
+    provider: operatorStageState.provider,
+    model: operatorStageState.model,
+    sourceId,
+  };
+  operatorStageState.updatedAt = nowIso();
+
+  broadcastOperatorStage({
+    type: "operator_stage_user",
+    message: userMessage,
+    draft: "",
+    revision: operatorStageState.revision,
+    sourceId,
+    stage: operatorStageSnapshot(),
+  });
+
+  const emit = (event = {}) => {
+    if (event.type === "start") {
+      assistantMessage.sceneId = String(event.scene_id || "");
+      assistantMessage.provider = String(event.provider || operatorStageState.provider || "");
+      assistantMessage.model = String(event.model || operatorStageState.model || "");
+      operatorStageState.active = {
+        ...operatorStageState.active,
+        sceneId: assistantMessage.sceneId,
+        provider: assistantMessage.provider,
+        model: assistantMessage.model,
+      };
+      operatorStageState.updatedAt = nowIso();
+      broadcastOperatorStage({
+        type: "operator_stage_start",
+        assistantId: assistantMessage.id,
+        scene_id: assistantMessage.sceneId,
+        provider: assistantMessage.provider,
+        model: assistantMessage.model,
+        stage: operatorStageSnapshot(),
+      });
+      return;
+    }
+    if (event.type === "delta") {
+      const delta = String(event.text || "");
+      if (!delta) return;
+      assistantMessage.content += delta;
+      operatorStageState.updatedAt = nowIso();
+      broadcastOperatorStage({
+        type: "operator_stage_delta",
+        assistantId: assistantMessage.id,
+        text: delta,
+        fullText: assistantMessage.content,
+        updatedAt: operatorStageState.updatedAt,
+      });
+      return;
+    }
+    if (event.type === "done") {
+      assistantMessage.streaming = false;
+      assistantMessage.meta = event;
+      assistantMessage.provider = String(event.provider || assistantMessage.provider || "");
+      assistantMessage.model = String(event.model || assistantMessage.model || "");
+      operatorStageState.streaming = false;
+      operatorStageState.active = null;
+      operatorStageState.updatedAt = nowIso();
+      broadcastOperatorStage({
+        type: "operator_stage_done",
+        assistantId: assistantMessage.id,
+        meta: event,
+        message: { ...assistantMessage },
+        stage: operatorStageSnapshot(),
+      });
+    }
+  };
+
+  try {
+    await getOperatorAi().streamChat({
+      sessie_id: operatorStageState.sessionId,
+      message: text,
+      provider: operatorStageState.provider,
+      model: operatorStageState.model,
+      vectorStoreId: operatorStageState.vectorStoreId,
+    }, emit);
+  } catch (err) {
+    const publicError = safePublicError(err, "operator_chat_stream_failed");
+    assistantMessage.streaming = false;
+    assistantMessage.error = publicError;
+    if (!assistantMessage.content) assistantMessage.content = `FOUT: ${publicError}`;
+    operatorStageState.streaming = false;
+    operatorStageState.active = null;
+    operatorStageState.updatedAt = nowIso();
+    broadcastOperatorStage({
+      type: "operator_stage_error",
+      assistantId: assistantMessage.id,
+      message: publicError,
+      stage: operatorStageSnapshot(),
+    });
+  }
+}
+
 function broadcastStageState(req, reason = "state") {
   sendToStageSubscribers({
     type: "stage_state",
@@ -8813,7 +9252,7 @@ function broadcastStageState(req, reason = "state") {
 function forEachChatClient(handler) {
   if (typeof handler !== "function") return;
   for (const client of wss.clients) {
-    if (!client || client.__isStageSubscriber) continue;
+    if (!client || client.__isStageSubscriber || client.__isOperatorStageSubscriber) continue;
     handler(client);
   }
   for (const client of socketIoCompatClients) {
@@ -11533,6 +11972,306 @@ function sendAlgorithmOscTest() {
   }
 }
 
+function operatorOscStringArg(value) {
+  return { type: "s", value: String(value === undefined || value === null ? "" : value) };
+}
+
+function operatorOscIntArg(value) {
+  return { type: "i", value: Math.floor(Number(value || 0)) };
+}
+
+function getOperatorScriptOscTarget() {
+  const envHost = String(process.env.FORYOU_SCRIPT_OSC_HOST || "").trim();
+  const host = normalizeOscControlFeedbackHost(envHost || oscControlFeedbackHost || DEFAULT_OSC_CONTROL_FEEDBACK_HOST);
+  return {
+    enabled: !!OPERATOR_SCRIPT_OSC_ENABLED,
+    host,
+    port: Number(DEFAULT_OPERATOR_SCRIPT_OSC_PORT || 8003),
+  };
+}
+
+function getOperatorAnswerOscTarget() {
+  const target = getOscControlFeedbackTarget(null);
+  return {
+    enabled: !!oscControlSendEnabled,
+    address: OPERATOR_OSC_ANSWER_ADDRESS,
+    host: target && target.address ? target.address : "",
+    port: target && target.port ? Number(target.port) : 0,
+    mode: target && target.mode ? String(target.mode) : "fixed_target_required",
+  };
+}
+
+function getOperatorOscCommandDocs() {
+  return [
+    {
+      address: OPERATOR_OSC_ANSWER_ADDRESS,
+      args: "answerText",
+      description: "Volledige operator-chat output als een string naar het bestaande algoritme-answer adres.",
+      source: "operator_chat_done",
+    },
+    {
+      address: "/foryou/script/clear",
+      args: "sceneId lineCount",
+      description: "Leeg de TouchDesigner Text DAT-flow voor een nieuwe operator-output.",
+      source: "operator_chat_done",
+    },
+    {
+      address: "/foryou/script/line",
+      args: "sceneId lineIndex lineText",
+      description: "Een genormaliseerde scriptregel voor prompter/Text DAT.",
+      source: "operator_chat_done",
+    },
+    {
+      address: "/foryou/script/end",
+      args: "sceneId lineCount charCount",
+      description: "Sluit de operator script-output af.",
+      source: "operator_chat_done",
+    },
+  ];
+}
+
+function getOperatorOscStatus() {
+  const answerTarget = getOperatorAnswerOscTarget();
+  const scriptTarget = getOperatorScriptOscTarget();
+  return {
+    ok: true,
+    sendReady: !!oscSendReady,
+    sendLastError: String(oscSendLastError || ""),
+    answer: answerTarget,
+    script: scriptTarget,
+    commands: getOperatorOscCommandDocs(),
+    appReceiveCommands: getOscControlCommandDocs(),
+  };
+}
+
+function operatorDialogueLines(line) {
+  const raw = String(line || "").trim();
+  if (!raw) return [];
+  const match = raw.match(/^\s*([A-ZÀ-ÖØ-Þa-zà-öø-ÿ0-9][^:\n]{0,80}):\s*(.+?)\s*$/);
+  if (!match) return [raw];
+  const character = String(match[1] || "").replace(/\s+/g, " ").trim();
+  const dialogue = String(match[2] || "").replace(/\s+/g, " ").trim();
+  if (!dialogue) return [`${character}:`];
+  const parts = dialogue
+    .split(/(?<=[.!?…])\s+(?=[A-ZÀ-ÖØ-Þ0-9"'“‘(])/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length ? parts.map((part) => `${character}: ${part}`) : [`${character}: ${dialogue}`];
+}
+
+function formatOperatorScriptForTouchDesigner(text) {
+  const lines = [];
+  for (const rawLine of String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")) {
+    lines.push(...operatorDialogueLines(rawLine));
+  }
+  return lines.join("\n");
+}
+
+function operatorScriptChunks(text) {
+  const chunkSize = Number(OPERATOR_SCRIPT_OSC_CHUNK_CHARS || 1200);
+  const value = String(text || "");
+  if (!value) return [];
+  const chunks = [];
+  for (let index = 0; index < value.length; index += chunkSize) {
+    chunks.push(value.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+function sendOperatorOscPackets(packets, target, source = "operator") {
+  const messages = buildAlgorithmOscPacketPreview(packets);
+  if (!oscSendUdpPort || !oscSendReady) {
+    return { sent: false, reason: "osc_send_not_ready", messages };
+  }
+  if (!target || !target.address || !target.port) {
+    return { sent: false, reason: "send_target_required", messages };
+  }
+  try {
+    for (const packet of packets) {
+      sendOscPacketToTarget(packet, target);
+    }
+    return {
+      sent: true,
+      source,
+      messageCount: packets.length,
+      targetHost: String(target.address || ""),
+      targetPort: Number(target.port || 0),
+      messages,
+    };
+  } catch (err) {
+    return {
+      sent: false,
+      source,
+      reason: err && err.message ? String(err.message) : "osc_send_failed",
+      targetHost: String(target.address || ""),
+      targetPort: Number(target.port || 0),
+      messages,
+    };
+  }
+}
+
+function sendOperatorAnswerOscBlock(text, meta = {}) {
+  const block = String(text || "").trim();
+  if (!block) return { sent: false, reason: "empty_answer", address: OPERATOR_OSC_ANSWER_ADDRESS };
+  if (!oscControlSendEnabled) {
+    return { sent: false, disabled: true, reason: "send_disabled", address: OPERATOR_OSC_ANSWER_ADDRESS };
+  }
+  const target = getOscControlFeedbackTarget(null);
+  if (!target) return { sent: false, reason: "send_target_required", address: OPERATOR_OSC_ANSWER_ADDRESS };
+  if (Buffer.byteLength(block, "utf8") > OPERATOR_OSC_ANSWER_MAX_PACKET_BYTES) {
+    return {
+      sent: false,
+      reason: "osc_packet_too_large",
+      address: OPERATOR_OSC_ANSWER_ADDRESS,
+      bytes: Buffer.byteLength(block, "utf8"),
+      maxBytes: OPERATOR_OSC_ANSWER_MAX_PACKET_BYTES,
+    };
+  }
+  const packet = {
+    address: OPERATOR_OSC_ANSWER_ADDRESS,
+    args: [operatorOscStringArg(block)],
+  };
+  const result = sendOperatorOscPackets([packet], target, String(meta.source || "operator_answer"));
+  return {
+    ...result,
+    address: OPERATOR_OSC_ANSWER_ADDRESS,
+  };
+}
+
+function sendOperatorScriptOscFinal(text, meta = {}) {
+  const target = getOperatorScriptOscTarget();
+  if (!target.enabled) return { sent: false, disabled: true, reason: "script_osc_disabled" };
+  if (!target.host || !target.port) return { sent: false, reason: "script_osc_target_missing" };
+  const sceneId = String(meta.scene_id || meta.sceneId || `operator_${Date.now().toString(36)}`);
+  const safeText = formatOperatorScriptForTouchDesigner(text);
+  const lines = safeText ? safeText.split("\n") : [];
+  const packets = [
+    {
+      address: "/foryou/script/clear",
+      args: [operatorOscStringArg(sceneId), operatorOscIntArg(lines.length)],
+    },
+    ...lines.map((line, index) => ({
+      address: "/foryou/script/line",
+      args: [operatorOscStringArg(sceneId), operatorOscIntArg(index), operatorOscStringArg(line)],
+    })),
+    {
+      address: "/foryou/script/end",
+      args: [operatorOscStringArg(sceneId), operatorOscIntArg(lines.length), operatorOscIntArg(safeText.length)],
+    },
+  ];
+  const result = sendOperatorOscPackets(packets, { address: target.host, port: target.port }, String(meta.source || "operator_script"));
+  return {
+    ...result,
+    sceneId,
+    lineCount: lines.length,
+    charCount: safeText.length,
+    chunkCount: operatorScriptChunks(safeText).length,
+  };
+}
+
+function sendOperatorOscOutput(payload = {}) {
+  const text = String(payload.text || "");
+  const meta = {
+    scene_id: payload.scene_id || payload.sceneId || "",
+    sessie_id: payload.sessie_id || payload.sessieId || "",
+    provider: payload.provider || "",
+    model: payload.model || "",
+    source: payload.source || "operator_chat",
+  };
+  const answer = sendOperatorAnswerOscBlock(text, meta);
+  const script = sendOperatorScriptOscFinal(text, meta);
+  writeDebug("operator_osc_output", {
+    sceneId: String(meta.scene_id || ""),
+    provider: String(meta.provider || ""),
+    model: String(meta.model || ""),
+    answerSent: !!answer.sent,
+    answerReason: String(answer.reason || ""),
+    scriptSent: !!script.sent,
+    scriptReason: String(script.reason || ""),
+    scriptLineCount: Number(script.lineCount || 0),
+  });
+  return {
+    ok: !!(answer.sent || script.sent),
+    answer,
+    script,
+    status: getOperatorOscStatus(),
+  };
+}
+
+function sendOperatorOscTest() {
+  const sceneId = `test_${Date.now().toString(36)}`;
+  const text = [
+    "# OSC test",
+    "Systeem: Dit is een testbericht vanuit de For You API Playground. Deze tweede zin hoort op een nieuwe regel.",
+    "TouchDesigner: Als je dit in je Text DAT ziet, werkt de operator chat OSC-route.",
+    `Scene id: ${sceneId}`,
+  ].join("\n");
+  return sendOperatorOscOutput({
+    text,
+    scene_id: sceneId,
+    provider: "test",
+    model: "operator-osc-test",
+    source: "operator_osc_test",
+  });
+}
+
+function getOperatorActiveAlgorithmScene() {
+  const activeRun = getCurrentActiveAlgorithmSceneRun();
+  if (!activeRun || activeRun.endedAt) {
+    return {
+      ok: true,
+      active: false,
+      session: {
+        id: Number(currentSession && currentSession.id || 0),
+        name: String(currentSession && currentSession.name || ""),
+      },
+    };
+  }
+  const payload = buildAlgorithmCurrentScenePayload("operator_active_scene");
+  const sceneId = Number(payload && payload.sceneId || activeRun.sceneId || 0);
+  const selectedSlots = (Array.isArray(payload.characterSlots) ? payload.characterSlots : [])
+    .filter((slot) => String(slot.mode || "") === "selected" && Number(slot.id || 0) > 0);
+  const characterIds = selectedSlots.length
+    ? selectedSlots.map((slot) => String(Number(slot.id || 0)))
+    : (Array.isArray(payload.characters) ? payload.characters : []).map((item) => String(Number(item.id || 0))).filter((id) => id !== "0");
+  const characterNames = selectedSlots.length
+    ? selectedSlots.map((slot) => String(slot.name || "")).filter(Boolean)
+    : (Array.isArray(payload.characters) ? payload.characters : []).map((item) => String(item.name || "")).filter(Boolean);
+  const environment = payload && payload.environment ? payload.environment : null;
+  return {
+    ok: true,
+    active: true,
+    session: {
+      id: Number(currentSession && currentSession.id || 0),
+      name: String(currentSession && currentSession.name || ""),
+    },
+    run: {
+      id: Number(activeRun.id || 0),
+      sceneId,
+      selectionSource: String(activeRun.selectionSource || ""),
+      startedAt: String(activeRun.startedAt || ""),
+      updatedAt: String(activeRun.updatedAt || activeRun.startedAt || ""),
+      promptSnapshot: String(activeRun.promptSnapshot || payload.prompt || ""),
+    },
+    scene: {
+      id: sceneId,
+      title: String(payload.title || ""),
+      promptOverride: String(payload.description || ""),
+      environmentId: environment ? Number(environment.id || 0) : 0,
+      updatedAt: String(activeRun.updatedAt || activeRun.startedAt || ""),
+    },
+    ui: {
+      situationSlug: sceneId ? String(sceneId) : "",
+      situationName: String(payload.title || ""),
+      characterSlugs: characterIds,
+      characterNames,
+      environmentSlug: environment ? String(Number(environment.id || 0)) : "",
+      environmentName: environment ? String(environment.name || "") : "",
+      situationSlugs: sceneId ? [String(sceneId)] : [],
+    },
+  };
+}
+
 function trimOscPromptFields(value, maxPromptChars) {
   if (!value || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map((item) => trimOscPromptFields(item, maxPromptChars));
@@ -12767,6 +13506,12 @@ if (fs.existsSync(LOCAL_API_PLAYGROUND_HTML_PATH)) {
   });
 }
 
+if (fs.existsSync(LOCAL_API_PLAYGROUND_STAGE_HTML_PATH)) {
+  app.get("/api-playground/stage", (req, res) => {
+    res.sendFile(LOCAL_API_PLAYGROUND_STAGE_HTML_PATH);
+  });
+}
+
 app.get("/stage", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "stage.html"));
 });
@@ -13102,6 +13847,126 @@ app.get("/admin/api-playground/status", requireAdmin, (req, res) => {
   });
 });
 
+app.get("/admin/operator/status", requireAdmin, (req, res) => {
+  try {
+    res.json(getOperatorAi().status());
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safePublicError(err, "operator_status_failed") });
+  }
+});
+
+app.get("/admin/operator/stage-style", requireAdmin, (req, res) => {
+  res.json({
+    ok: true,
+    style: normalizeOperatorStageStyle(operatorStageState.style),
+    path: path.relative(__dirname, LOCAL_OPERATOR_STAGE_STYLE_PATH),
+  });
+});
+
+app.post("/admin/operator/stage-style", requireAdmin, (req, res) => {
+  try {
+    const style = updateOperatorStageStyle({ sourceId: "api_save", style: req.body && req.body.style }, { persist: true });
+    res.json({
+      ok: true,
+      style,
+      path: path.relative(__dirname, LOCAL_OPERATOR_STAGE_STYLE_PATH),
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safePublicError(err, "operator_stage_style_save_failed") });
+  }
+});
+
+app.get("/admin/operator/database/index", requireAdmin, (req, res) => {
+  try {
+    res.json(getOperatorAi().catalogIndex());
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safePublicError(err, "operator_database_index_failed") });
+  }
+});
+
+app.get("/admin/operator/osc/status", requireAdmin, (req, res) => {
+  try {
+    res.json(getOperatorOscStatus());
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safePublicError(err, "operator_osc_status_failed") });
+  }
+});
+
+app.post("/admin/operator/osc/test", requireAdmin, (req, res) => {
+  try {
+    res.json(sendOperatorOscTest());
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safePublicError(err, "operator_osc_test_failed") });
+  }
+});
+
+app.get("/admin/operator/algorithm/active-scene", requireAdmin, (req, res) => {
+  try {
+    res.json(getOperatorActiveAlgorithmScene());
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safePublicError(err, "operator_active_scene_failed") });
+  }
+});
+
+app.get("/admin/operator/chat/:sessieId", requireAdmin, (req, res) => {
+  try {
+    res.json(getOperatorAi().chatHistory(req.params.sessieId));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safePublicError(err, "operator_chat_history_failed") });
+  }
+});
+
+app.post("/admin/operator/chat/:sessieId/undo", requireAdmin, (req, res) => {
+  try {
+    res.json(getOperatorAi().undo(req.params.sessieId));
+  } catch (err) {
+    res.status(404).json({ ok: false, error: safePublicError(err, "operator_chat_undo_failed") });
+  }
+});
+
+app.delete("/admin/operator/chat/:sessieId", requireAdmin, (req, res) => {
+  try {
+    res.json(getOperatorAi().clearChat(req.params.sessieId));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safePublicError(err, "operator_chat_clear_failed") });
+  }
+});
+
+app.get("/admin/operator/sessie/:sessieId", requireAdmin, (req, res) => {
+  try {
+    res.json(getOperatorAi().sessionInfo(req.params.sessieId));
+  } catch (err) {
+    res.status(404).json({ ok: false, error: safePublicError(err, "operator_session_not_found") });
+  }
+});
+
+app.delete("/admin/operator/sessie/:sessieId", requireAdmin, (req, res) => {
+  try {
+    res.json(getOperatorAi().resetSession(req.params.sessieId));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safePublicError(err, "operator_session_reset_failed") });
+  }
+});
+
+app.post("/admin/operator/chat/stream", requireAdmin, async (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  const send = (event) => {
+    res.write(`data: ${JSON.stringify(event || {})}\n\n`);
+  };
+  try {
+    await getOperatorAi().streamChat(req.body && typeof req.body === "object" ? req.body : {}, send);
+  } catch (err) {
+    send({ type: "error", message: safePublicError(err, "operator_chat_stream_failed") });
+  } finally {
+    res.end();
+  }
+});
+
 app.post("/admin/api-playground/secrets", requireAdmin, (req, res) => {
   try {
     const body = req.body && typeof req.body === "object" ? req.body : {};
@@ -13111,6 +13976,9 @@ app.post("/admin/api-playground/secrets", requireAdmin, (req, res) => {
     }
     if (typeof body.anthropicApiKey === "string" && body.anthropicApiKey.trim()) {
       updates.ANTHROPIC_API_KEY = body.anthropicApiKey;
+    }
+    if (typeof body.deepSeekApiKey === "string" && body.deepSeekApiKey.trim()) {
+      updates.DEEPSEEK_API_KEY = body.deepSeekApiKey;
     }
     if (Object.prototype.hasOwnProperty.call(body, "openAiCatalogEnabled")) {
       updates.FORYOU_OPENAI_CATALOG_ENABLED = isTruthy(body.openAiCatalogEnabled) ? "1" : "0";
@@ -14625,6 +15493,76 @@ function handleStageSubscriberConnection(ws, req) {
   });
 }
 
+function handleOperatorStageSubscriberConnection(ws, req) {
+  const ip = normalizeIp(req.socket.remoteAddress || "unknown");
+  const ua = req.headers["user-agent"] || "unknown";
+  ws.__isOperatorStageSubscriber = true;
+  operatorStageSubscribers.add(ws);
+  writeDebug("operator_stage_ws_connected", { ip, ua, viewers: operatorStageSubscribers.size });
+
+  sendOperatorStageMessage(ws, {
+    type: "operator_stage_hello",
+    stage: operatorStageSnapshot(),
+  });
+
+  ws.on("message", (data) => {
+    let msg;
+    try {
+      msg = JSON.parse(String(data || "{}"));
+    } catch {
+      return;
+    }
+
+    if (msg.type === "ping") {
+      sendOperatorStageMessage(ws, { type: "pong", t: Date.now() });
+      return;
+    }
+    if (msg.type === "operator_stage_refresh") {
+      sendOperatorStageMessage(ws, {
+        type: "operator_stage_state",
+        reason: "requested",
+        stage: operatorStageSnapshot(),
+      });
+      return;
+    }
+    if (msg.type === "operator_stage_control") {
+      updateOperatorStageControl(msg);
+      broadcastOperatorStageState("control_updated");
+      return;
+    }
+    if (msg.type === "operator_stage_style") {
+      updateOperatorStageStyle(msg);
+      return;
+    }
+    if (msg.type === "operator_stage_draft") {
+      updateOperatorStageDraft(msg);
+      return;
+    }
+    if (msg.type === "operator_stage_clear_draft") {
+      clearOperatorStageDraft(msg);
+      return;
+    }
+    if (msg.type === "operator_stage_submit") {
+      submitOperatorStageDraft(msg).catch((err) => {
+        broadcastOperatorStage({
+          type: "operator_stage_error",
+          message: safePublicError(err, "operator_stage_submit_failed"),
+          stage: operatorStageSnapshot(),
+        });
+      });
+    }
+  });
+
+  ws.on("close", (code) => {
+    operatorStageSubscribers.delete(ws);
+    writeDebug("operator_stage_ws_closed", { ip, code: Number(code || 0), viewers: operatorStageSubscribers.size });
+  });
+
+  ws.on("error", (err) => {
+    writeDebug("operator_stage_ws_error", { ip, message: err && err.message ? err.message : "unknown" });
+  });
+}
+
 io.on("connection", (socket) => {
   const req = buildSocketIoCompatRequest(socket);
   const compatClient = createSocketIoCompatClient(socket);
@@ -14641,6 +15579,10 @@ io.on("connection", (socket) => {
 wss.on("connection", (ws, req) => {
   if (isStageSubscriptionRequest(req)) {
     handleStageSubscriberConnection(ws, req);
+    return;
+  }
+  if (isOperatorStageSubscriptionRequest(req)) {
+    handleOperatorStageSubscriberConnection(ws, req);
     return;
   }
 
