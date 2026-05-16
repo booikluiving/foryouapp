@@ -594,6 +594,7 @@
       .orderItem {
         grid-template-columns: auto minmax(0, 1fr);
         align-items: start;
+        position: relative;
       }
 
       .orderItem.next {
@@ -784,6 +785,66 @@
       .labelBarTrack { flex: 1; height: 10px; background: var(--paper-2); border-radius: 5px; overflow: hidden; }
       .labelBarFill { display: block; height: 100%; border-radius: 5px; min-width: 2px; transition: width 0.3s; }
       .labelBarPct { width: 32px; font-weight: 700; font-size: 10px; text-align: right; }
+
+      .orderLiveStats {
+        position: absolute;
+        top: 52px;
+        right: 10px;
+        width: clamp(280px, 36%, 360px);
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 253, 248, 0.94);
+        padding: 6px 8px;
+        pointer-events: none;
+      }
+
+      .orderLiveStats .labelBars {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin: 0;
+        gap: 5px 8px;
+      }
+
+      .orderLiveStats .labelBar {
+        display: grid;
+        grid-template-columns: 20px minmax(20px, 1fr) 24px;
+        align-items: center;
+        gap: 4px;
+        min-height: 12px;
+      }
+
+      .orderLiveStats .labelBarName {
+        width: auto;
+        max-width: none;
+        color: #697386;
+        font-size: 9px;
+        line-height: 1;
+        text-align: right;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+
+      .orderLiveStats .labelBarTrack {
+        flex: none;
+        height: 7px;
+        border-radius: 4px;
+      }
+
+      .orderLiveStats .labelBarFill {
+        border-radius: 4px;
+      }
+
+      .orderLiveStats .labelBarPct {
+        width: auto;
+        font-size: 9px;
+        line-height: 1;
+        color: var(--ink);
+      }
+
+      #currentOrderList.editing .orderLiveStats {
+        display: none;
+      }
 
       .sceneMetaLine,
       .sceneDescriptionBlock {
@@ -1054,6 +1115,10 @@
           width: 100%;
           justify-content: flex-start;
         }
+
+        .orderLiveStats {
+          display: none;
+        }
       }
     </style>
   </head>
@@ -1231,10 +1296,7 @@
             <span id="orderInvalidBadge" class="badge warning"></span>
           </div>
           <div id="currentOrderList" class="list orderList"></div>
-          <div id="orderEditHint" class="small hidden">Sleep de situaties in deze lijst. De eerste calibratieposities blijven vast; daarna mag het algoritme de live volgorde bepalen.</div>
-          <div id="orderEditSettings" class="stack hidden">
-            <label>Calibratie situaties<input id="calibrationCount" type="number" min="0" max="50" step="1" /></label>
-          </div>
+          <div id="orderEditHint" class="small hidden">Sleep de situaties in deze lijst. Deze basisvolgorde blijft beschikbaar voor handmatige ordening en tie-breaks.</div>
           <div id="orderEditActions" class="actions orderEditActions">
             <button id="saveOrderBtn" class="primary" type="button">Bewaar volgorde</button>
             <button id="cancelOrderBtn" type="button">Annuleer</button>
@@ -2332,19 +2394,41 @@
         const LABEL_COLORS = ["#3B82F6", "#8B5CF6", "#F97316", "#22C55E", "#EF4444"];
         function labelColor(index) { return LABEL_COLORS[index % LABEL_COLORS.length]; }
 
-        function sceneLabelBars(scene = {}) {
+        function shortLabelName(name = "") {
+          const raw = String(name || "").trim();
+          const known = {
+            maatschappelijk: "MA",
+            absurd: "AB",
+            grof: "GR",
+            herkenbaar: "HE",
+            satirisch: "SA",
+            verwarring: "VE",
+          };
+          const normalized = raw.toLowerCase();
+          return known[normalized] || raw.slice(0, 2).toUpperCase() || "--";
+        }
+
+        function sceneLabelBars(scene = {}, options = {}) {
           const profile = scene.labelProfile && typeof scene.labelProfile === "object" ? scene.labelProfile : {};
           const entries = Object.entries(profile);
           if (!entries.length) return "";
+          const compact = !!(options && options.compact);
           // Sorteer op label-sortOrder
           const sorted = entries.map(([id, pct]) => {
             const label = itemById("labels", Number(id));
-            return { id, name: label ? label.name : "L" + id, pct: Number(pct) || 0, order: label ? label.sortOrder : 999 };
+            const name = label ? label.name : "L" + id;
+            return {
+              id,
+              name: compact ? shortLabelName(name) : name,
+              fullName: name,
+              pct: Number(pct) || 0,
+              order: label ? label.sortOrder : 999,
+            };
           }).sort((a, b) => a.order - b.order);
 
           return `<div class="labelBars">${sorted.map((item, i) => {
             const w = Math.max(2, Math.round(item.pct * 0.8));
-            return `<div class="labelBar">
+            return `<div class="labelBar" title="${esc(item.fullName)}">
               <span class="labelBarName">${esc(item.name)}</span>
               <span class="labelBarTrack"><span class="labelBarFill" style="width:${w}%;background:${labelColor(i)}"></span></span>
               <span class="labelBarPct">${item.pct}%</span>
@@ -2785,8 +2869,20 @@
         }
 
         function orderEntryScene(entry) {
-          if (entry && entry.scene) return entry.scene;
-          return itemById("scenes", entry && entry.sceneId) || null;
+          const entryScene = entry && entry.scene ? entry.scene : null;
+          const sceneId = Number(entry && entry.sceneId || entryScene && entryScene.id || 0);
+          const catalogScene = itemById("scenes", sceneId) || null;
+          if (entryScene && catalogScene) {
+            const entryProfile = entryScene.labelProfile && typeof entryScene.labelProfile === "object" && Object.keys(entryScene.labelProfile).length
+              ? entryScene.labelProfile
+              : null;
+            return {
+              ...catalogScene,
+              ...entryScene,
+              labelProfile: entryProfile || catalogScene.labelProfile,
+            };
+          }
+          return entryScene || catalogScene || null;
         }
 
         function orderEntryTitle(entry) {
@@ -2910,17 +3006,25 @@
           const environment = orderEnvironmentBadge(entry);
           if (!slots.length && !environment) return "";
           return `
-            <span class="orderCast">
+            <div class="orderCast">
               ${slots.map((slot) => `<span class="badge castBadge ${esc(slot.className)}">${esc(slot.label)}</span>`).join("")}
               ${environment ? `<span class="badge castBadge ${esc(environment.className)}">${esc(environment.label)}</span>` : ""}
-            </span>
+            </div>
           `;
         }
 
         function renderOrderLabels(entry) {
           const scene = orderEntryScene(entry);
           if (!scene || !Array.isArray(scene.labelIds) || !scene.labelIds.length) return "";
-          return `<span class="orderCast">${sceneLabelBars(scene)}</span>`;
+          return `<div class="orderCast">${sceneLabelBars(scene)}</div>`;
+        }
+
+        function renderOrderLiveStats(entry) {
+          const scene = orderEntryScene(entry);
+          if (!scene || !Array.isArray(scene.labelIds) || !scene.labelIds.length) return "";
+          const bars = sceneLabelBars(scene, { compact: true });
+          if (!bars) return "";
+          return `<div class="orderLiveStats">${bars}</div>`;
         }
 
         function orderEnvironmentBadge(entry) {
@@ -2958,7 +3062,6 @@
           if (nextId && sceneId === nextId) badges.push({ label: "volgende", className: "good" });
           if (entry && entry.lockedNext) badges.push({ label: "klaar voor Touch" });
           if (entry && entry.lockedFuture) badges.push({ label: "gepland" });
-          if (entry && entry.calibration) badges.push({ label: "calibratie" });
           if (entry && entry.pathStatus) {
             const pathStatus = entry.pathStatus;
             if (pathStatus.isPathStart) badges.push({ label: "Pad start" });
@@ -3132,7 +3235,6 @@
 
         function buildEditableOrderRows() {
           const ids = orderDraftIds.length ? orderDraftIds : activeItems("scenes").map((item) => Number(item.id || 0));
-          const calibrationCount = Number(state && state.settings && state.settings.calibrationCount || 5);
           const liveById = new Map(currentOrderRows().map((entry) => [Number(entry.sceneId || 0), entry]));
           return ids.map((id, index) => {
             const scene = itemById("scenes", id);
@@ -3143,7 +3245,6 @@
               scene,
               sceneId: Number(scene.id || 0),
               title: scene.title || "",
-              calibration: index < calibrationCount,
               invalid: sceneHasLinkWarnings(scene),
               issues: sceneLinkIssues(scene),
             };
@@ -3194,6 +3295,8 @@
             const scoreBreakdown = scoreBreakdownText
               ? `<span class="orderNotice">${esc(scoreBreakdownText)}</span>`
               : "";
+            const orderLabels = editing ? renderOrderLabels(entry) : "";
+            const liveStats = !editing ? renderOrderLiveStats(entry) : "";
             const scene = orderEntryScene(entry);
             const contextId = Number(entry && entry.contextSceneId || scene && scene.contextSceneId || 0);
             const contextBadge = contextId ? `<span class="badge">context: ${esc(contextSceneTitle(contextId))}</span>` : "";
@@ -3202,22 +3305,23 @@
             return `
               <div class="${rowClasses.join(" ")}" data-id="${sceneId}">
                 <span class="orderNumber">${displayNumber}</span>
-                <span class="orderBody">
-                  <span class="nameLine">
+                <div class="orderBody">
+                  <div class="nameLine">
                     <span class="orderTitle">${esc(orderEntryTitle(entry))}</span>
                     <span class="actions">${renderOrderBadges({ ...entry, next: isNext }, { nextSceneId: isNext ? sceneId : 0 })}</span>
-                  </span>
-                  <span class="orderMeta">
+                  </div>
+                  <div class="orderMeta">
                     <span class="badge scoreBadge">${esc(formatOrderPoints(entry, scores))}</span>
                     ${contextBadge}
                     ${pathBadge}
                     ${issues}
-                  </span>
+                  </div>
                   ${renderOrderCast(entry)}
-                  ${renderOrderLabels(entry)}
+                  ${orderLabels}
                   ${notices}
                   ${scoreBreakdown}
-                </span>
+                </div>
+                ${liveStats}
               </div>
             `;
           }).join("");
@@ -3298,7 +3402,7 @@
             state = result.state || state;
             closeOrderEditor();
             render();
-            setMsg("orderMsg", "Volgorde en calibratie opgeslagen.");
+            setMsg("orderMsg", "Volgorde opgeslagen.");
           } catch (err) {
             setMsg("orderMsg", formatError(err), true);
           }
@@ -3306,7 +3410,6 @@
 
         function renderCurrentOrder() {
           const order = state && state.currentOrder ? state.currentOrder : {};
-          const calibration = order.calibration || { active: false, completed: 0, total: Number(state && state.settings && state.settings.calibrationCount || 5) };
           const runStarted = isAlgorithmRunStarted();
           const nextSceneId = runStarted ? Number(order.next && order.next.sceneId || 0) : 0;
           const rows = currentOrderRows();
@@ -3322,13 +3425,12 @@
           $("orderInvalidBadge").textContent = warningRowCount ? `${warningRowCount} waarschuwing${warningRowCount === 1 ? "" : "en"}` : "";
           $("orderInvalidBadge").classList.toggle("hidden", !warningRowCount);
           $("orderSummary").textContent = orderEditOpen
-            ? "Je past nu de basisvolgorde aan. De eerste posities worden de calibratiesituaties."
+            ? "Je past nu de basisvolgorde aan."
             : rows.length && !hasQueueStatus && runStarted
               ? "Geen actieve of volgende situatie beschikbaar. Check waarschuwingen of reset de runs om opnieuw vanaf het begin te starten."
               : "";
           $("editOrderBtn").classList.toggle("hidden", orderEditOpen);
           $("orderEditHint").classList.toggle("hidden", !orderEditOpen);
-          $("orderEditSettings").classList.toggle("hidden", !orderEditOpen);
           $("orderEditActions").classList.toggle("active", orderEditOpen);
           renderQueueStatus(rows);
           if (orderEditOpen) destroyOrderBaseSortable();
@@ -3479,8 +3581,6 @@
         function renderLive() {
           const activeRun = state.activeRun || null;
           const recommendation = state.recommendation || {};
-          const currentOrder = state.currentOrder || {};
-          const calibration = currentOrder.calibration || recommendation.calibration || { active: false, completed: 0, total: 0 };
           const runtime = state.runtime || {};
           const promptText = activeRun && activeRun.promptSnapshot
             ? activeRun.promptSnapshot
@@ -3514,7 +3614,6 @@
           $("stopShowBtn").disabled = !!showActionPending;
           $("startShowBtn").textContent = showActionPending ? "Bezig..." : "Start show";
           $("stopShowBtn").textContent = showActionPending ? "Bezig..." : "Stop show";
-          if (document.activeElement !== $("calibrationCount")) $("calibrationCount").value = String(state.settings.calibrationCount || 5);
           if (document.activeElement !== $("globalPrompt")) $("globalPrompt").value = state.settings.globalPrompt || "";
           if (document.activeElement !== $("promptTemplate")) $("promptTemplate").value = state.settings.promptTemplate || "";
           renderScoreAlgorithmSettings();
@@ -3944,7 +4043,6 @@
 
         function algorithmSettingsBody() {
           return {
-            calibrationCount: $("calibrationCount").value,
             globalPrompt: $("globalPrompt").value,
             promptTemplate: $("promptTemplate").value,
             heartWeight: $("scoreHeartWeight").value,
@@ -4485,7 +4583,7 @@
           $("previousSceneBtn").addEventListener("click", restorePreviousScene);
           $("sceneToggleBtn").addEventListener("click", toggleSceneRun);
           $("resetRunsBtn").addEventListener("click", async () => {
-            if (!window.confirm("Reset alle algoritme-runs van deze sessie? Hearts, bored, comments en calibratie beginnen opnieuw.")) return;
+            if (!window.confirm("Reset alle algoritme-runs van deze sessie? Hearts, bored en comments beginnen opnieuw.")) return;
             await withRunActionPending(async () => {
               try {
                 scrollOrderSelectionOnNextRender = true;
