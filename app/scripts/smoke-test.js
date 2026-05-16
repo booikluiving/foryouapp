@@ -14,7 +14,7 @@ Usage:
 
 Options:
   --url <url>                Base URL to test (default: ${DEFAULT_URL})
-  --admin-password <value>   Also test /admin/login and /admin/state
+  --admin-password <value>   Also test admin APIs when auth is enabled
   --join-token <token>       Also test /join and authenticated chat WebSocket
   --send-comment [text]      Send a test chat comment after joining
   --algorithm-flow           Create a temporary algorithm catalog and test a scene run
@@ -244,13 +244,15 @@ async function checkUnauthenticatedChatWs(baseUrl, timeoutMs) {
 }
 
 async function loginAdmin(baseUrl, password, timeoutMs) {
+  const payload = { rememberDevice: false };
+  if (password) payload.password = password;
   const loginRes = await withTimeout(
     "admin login",
     timeoutMs,
     httpRequest(baseUrl, "/admin/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password, rememberDevice: false }),
+      body: JSON.stringify(payload),
     })
   );
   const loginBody = await readJson(loginRes);
@@ -258,6 +260,23 @@ async function loginAdmin(baseUrl, password, timeoutMs) {
     throw new Error(`Admin login failed: ${loginBody.error || loginRes.status}`);
   }
   return loginBody.token;
+}
+
+async function canLoginAdminWithoutPassword(baseUrl, timeoutMs) {
+  const loginRes = await withTimeout(
+    "admin auth bypass probe",
+    timeoutMs,
+    httpRequest(baseUrl, "/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rememberDevice: false }),
+    })
+  );
+  const loginBody = await readJson(loginRes);
+  return {
+    ok: !!(loginRes.ok && loginBody.ok && loginBody.token),
+    error: loginBody.error || String(loginRes.status),
+  };
 }
 
 async function checkAdmin(baseUrl, password, timeoutMs) {
@@ -291,6 +310,23 @@ async function checkAlgorithmState(baseUrl, password, timeoutMs) {
     throw new Error(`Algorithm state failed: ${body.error || res.status}`);
   }
   return `calibration ${body.settings.calibrationCount}`;
+}
+
+async function checkSyncSecretRequired(baseUrl, timeoutMs) {
+  const res = await withTimeout(
+    "sync secret guard",
+    timeoutMs,
+    httpRequest(baseUrl, "/admin/sync/changes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+  );
+  const body = await readJson(res);
+  if (res.status !== 401 || !body || body.error !== "sync_secret_required") {
+    throw new Error(`Sync route returned HTTP ${res.status} ${body && body.error ? body.error : ""}, expected 401 sync_secret_required`);
+  }
+  return "POST /admin/sync/changes requires sync secret";
 }
 
 async function adminJson(baseUrl, path, adminToken, body, timeoutMs) {
@@ -507,17 +543,32 @@ async function main() {
   await runCheck(results, "stage WebSocket", () => checkStageWs(baseUrl, options.timeoutMs));
   await runCheck(results, "chat access guard", () => checkUnauthenticatedChatWs(baseUrl, options.timeoutMs));
 
-  if (options.adminPassword) {
-    await runCheck(results, "admin API", () => checkAdmin(baseUrl, options.adminPassword, options.timeoutMs));
-    await runCheck(results, "algorithm API", () => checkAlgorithmState(baseUrl, options.adminPassword, options.timeoutMs));
+  let adminPasswordForChecks = options.adminPassword;
+  let adminChecksAvailable = !!options.adminPassword;
+  if (!adminPasswordForChecks) {
+    const bypass = await canLoginAdminWithoutPassword(baseUrl, options.timeoutMs).catch((err) => ({
+      ok: false,
+      error: err && err.message ? err.message : String(err),
+    }));
+    if (bypass.ok) {
+      adminPasswordForChecks = "";
+      adminChecksAvailable = true;
+    }
+  }
+
+  if (adminChecksAvailable) {
+    await runCheck(results, "admin API", () => checkAdmin(baseUrl, adminPasswordForChecks, options.timeoutMs));
+    await runCheck(results, "algorithm API", () => checkAlgorithmState(baseUrl, adminPasswordForChecks, options.timeoutMs));
+    await runCheck(results, "sync secret guard", () => checkSyncSecretRequired(baseUrl, options.timeoutMs));
     if (options.algorithmFlow) {
-      await runCheck(results, "algorithm flow", () => checkAlgorithmFlow(baseUrl, options.adminPassword, options.timeoutMs));
+      await runCheck(results, "algorithm flow", () => checkAlgorithmFlow(baseUrl, adminPasswordForChecks, options.timeoutMs));
     } else {
       results.push({ name: "algorithm flow", ok: null, detail: "skipped (pass --algorithm-flow)" });
     }
   } else {
-    results.push({ name: "admin API", ok: null, detail: "skipped (set SMOKE_ADMIN_PASSWORD or --admin-password)" });
-    results.push({ name: "algorithm API", ok: null, detail: "skipped (set SMOKE_ADMIN_PASSWORD or --admin-password)" });
+    results.push({ name: "admin API", ok: null, detail: "skipped (auth requires SMOKE_ADMIN_PASSWORD or --admin-password)" });
+    results.push({ name: "algorithm API", ok: null, detail: "skipped (auth requires SMOKE_ADMIN_PASSWORD or --admin-password)" });
+    results.push({ name: "sync secret guard", ok: null, detail: "skipped (auth requires SMOKE_ADMIN_PASSWORD or --admin-password)" });
     results.push({ name: "algorithm flow", ok: null, detail: "skipped" });
   }
 

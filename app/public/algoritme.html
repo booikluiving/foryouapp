@@ -4158,7 +4158,9 @@
           $("refreshBtn").addEventListener("click", () => loadState(false, { scrollOrder: true }));
           $("logoutBtn").addEventListener("click", () => {
             setToken("");
-            showLogin("");
+            tryDeviceLogin().then((ok) => {
+              if (!ok) showLogin("");
+            });
           });
 
           [

@@ -22,11 +22,8 @@ Het setup-script doet:
 - draait een smoke-test
 - print lokale en netwerk-URL's
 
-Bij een verse database is het tijdelijke admin-wachtwoord:
-
-```text
-Tijdelijk_2026!
-```
+Admin-auth staat standaard uit voor het besloten technici-netwerk. Zet `ADMIN_AUTH_DISABLED=0` om wachtwoordlogin later weer te activeren.
+Peer-sync blijft apart beveiligd: als sync gebruikt wordt, moet `FORYOU_SYNC_SECRET` of `SYNC_SECRET` expliciet in de environment staan.
 
 ## Dagelijks updaten op de Mac Studio
 

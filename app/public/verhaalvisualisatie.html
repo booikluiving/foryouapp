@@ -716,6 +716,26 @@
         renderGraph();
       }
 
+      async function autoLogin() {
+        try {
+          const body = await apiFetch("/admin/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              rememberDevice: false,
+              deviceLabel: navigator.userAgent || "",
+            }),
+          });
+          state.token = body.token || "";
+          localStorage.setItem(TOKEN_KEY, state.token);
+          showApp();
+          await loadState();
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
       function layoutOptions(name) {
         if (name === "grid") {
           return {
@@ -1341,7 +1361,9 @@
           state.cy = null;
         }
         clearSelection();
-        showLogin("");
+        autoLogin().then((ok) => {
+          if (!ok) showLogin("");
+        });
       });
 
       els.searchInput.addEventListener("input", () => applySearch(false));
@@ -1388,7 +1410,9 @@
           if (error.message !== "unauthorized") showLogin("Kon de bestaande sessie niet openen.");
         });
       } else {
-        showLogin("");
+        autoLogin().then((ok) => {
+          if (!ok) showLogin("");
+        });
       }
     })();
   </script>
