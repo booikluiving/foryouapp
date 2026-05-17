@@ -7,6 +7,7 @@ APP_LABEL="${FORYOU_LAUNCHD_LABEL:-nl.foryou.app}"
 APP_PORT="${FORYOU_PORT:-3310}"
 APP_BRANCH="${FORYOU_BRANCH:-main}"
 ALLOW_LIVE_BRANCH="${FORYOU_ALLOW_LIVE_BRANCH:-0}"
+ADMIN_AUTH_DISABLED="${FORYOU_ADMIN_AUTH_DISABLED:-1}"
 ADMIN_BOOTSTRAP_PASSWORD="${FORYOU_ADMIN_PASSWORD:-Tijdelijk_2026!}"
 PLIST_PATH="$HOME/Library/LaunchAgents/${APP_LABEL}.plist"
 LOG_DIR="$HOME/Library/Logs/ForYouApp"
@@ -127,6 +128,7 @@ write_launch_agent() {
   local escaped_label=""
   local escaped_app_dir=""
   local escaped_port=""
+  local escaped_admin_auth_disabled=""
   local escaped_password=""
   local escaped_npm=""
   local escaped_stdout=""
@@ -135,6 +137,7 @@ write_launch_agent() {
   escaped_label="$(xml_escape "$APP_LABEL")"
   escaped_app_dir="$(xml_escape "$APP_DIR")"
   escaped_port="$(xml_escape "$APP_PORT")"
+  escaped_admin_auth_disabled="$(xml_escape "$ADMIN_AUTH_DISABLED")"
   escaped_password="$(xml_escape "$ADMIN_BOOTSTRAP_PASSWORD")"
   escaped_npm="$(xml_escape "$(command -v npm)")"
   escaped_stdout="$(xml_escape "$LOG_DIR/server.out.log")"
@@ -155,7 +158,7 @@ write_launch_agent() {
   <array>
     <string>/bin/zsh</string>
     <string>-lc</string>
-    <string>cd "${escaped_app_dir}" &amp;&amp; PORT="${escaped_port}" ADMIN_PASSWORD="${escaped_password}" "${escaped_npm}" start</string>
+    <string>cd "${escaped_app_dir}" &amp;&amp; PORT="${escaped_port}" ADMIN_AUTH_DISABLED="${escaped_admin_auth_disabled}" ADMIN_PASSWORD="${escaped_password}" "${escaped_npm}" start</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
@@ -216,7 +219,7 @@ print_urls() {
     echo "Publiek/QR:    http://${lan_ip}:${APP_PORT}/"
   fi
   echo ""
-  echo "Admin wachtwoord bij verse database: ${ADMIN_BOOTSTRAP_PASSWORD}"
+  echo "Admin-auth staat standaard uit. Zet ADMIN_AUTH_DISABLED=0 om wachtwoordlogin weer te gebruiken."
   echo "Logs: $LOG_DIR"
 }
 

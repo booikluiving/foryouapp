@@ -35,6 +35,20 @@
     } catch { $("loginMsg").textContent = "Login mislukt."; }
   }
 
+  async function autoLogin() {
+    try {
+      const body = await api("/admin/login", {
+        method: "POST",
+        body: JSON.stringify({ rememberDevice: false, deviceLabel: navigator.userAgent || "" }),
+      });
+      saveToken(body.token);
+      await loadState();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function loadState() {
     const state = await api("/admin/algorithm/state");
     const catalog = state.catalog || state;
@@ -208,9 +222,6 @@
     renderAll();
   }
 
-  loadToken();
-  if (token) loadState();
-
   $("loginBtn").addEventListener("click", login);
   $("password").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
   document.querySelectorAll(".tabbar button").forEach((btn) => {
@@ -219,4 +230,17 @@
   document.querySelectorAll(".modeSwitch button").forEach((btn) => {
     btn.addEventListener("click", () => switchMode(btn.dataset.mode));
   });
+
+  (async function bootstrapAuth() {
+    loadToken();
+    if (token) {
+      try {
+        await loadState();
+        return;
+      } catch {
+        saveToken("");
+      }
+    }
+    await autoLogin();
+  })();
 })();

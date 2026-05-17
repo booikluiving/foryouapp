@@ -8,6 +8,7 @@ WORKTREE_ROOT="${FORYOU_WORKTREE_ROOT:-$BASE_DIR/worktrees}"
 LOG_DIR="${FORYOU_LOG_DIR:-$HOME/Library/Logs/ForYouApp}"
 PREVIEW_PORT="${FORYOU_PREVIEW_PORT:-3311}"
 PREVIEW_HOST="${FORYOU_PREVIEW_HOST:-127.0.0.1}"
+ADMIN_AUTH_DISABLED="${FORYOU_ADMIN_AUTH_DISABLED:-1}"
 ADMIN_BOOTSTRAP_PASSWORD="${FORYOU_PREVIEW_ADMIN_PASSWORD:-${FORYOU_ADMIN_PASSWORD:-Tijdelijk_2026!}}"
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
@@ -210,7 +211,7 @@ start_preview() {
   fi
 
   info "Preview starten: branch=$branch poort=$PREVIEW_PORT"
-  PORT="$PREVIEW_PORT" ADMIN_PASSWORD="$ADMIN_BOOTSTRAP_PASSWORD" npm start > "$log_file" 2>&1 &
+  PORT="$PREVIEW_PORT" ADMIN_AUTH_DISABLED="$ADMIN_AUTH_DISABLED" ADMIN_PASSWORD="$ADMIN_BOOTSTRAP_PASSWORD" npm start > "$log_file" 2>&1 &
   echo "$!" > "$pid_file"
 
   if ! wait_for_health; then

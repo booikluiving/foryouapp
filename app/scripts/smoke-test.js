@@ -14,7 +14,7 @@ Usage:
 
 Options:
   --url <url>                Base URL to test (default: ${DEFAULT_URL})
-  --admin-password <value>   Also test /admin/login and /admin/state
+  --admin-password <value>   Also test admin APIs when auth is enabled
   --join-token <token>       Also test /join and authenticated chat WebSocket
   --send-comment [text]      Send a test chat comment after joining
   --algorithm-flow           Create a temporary algorithm catalog and test a scene run
@@ -244,13 +244,15 @@ async function checkUnauthenticatedChatWs(baseUrl, timeoutMs) {
 }
 
 async function loginAdmin(baseUrl, password, timeoutMs) {
+  const payload = { rememberDevice: false };
+  if (password) payload.password = password;
   const loginRes = await withTimeout(
     "admin login",
     timeoutMs,
     httpRequest(baseUrl, "/admin/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password, rememberDevice: false }),
+      body: JSON.stringify(payload),
     })
   );
   const loginBody = await readJson(loginRes);
@@ -258,6 +260,23 @@ async function loginAdmin(baseUrl, password, timeoutMs) {
     throw new Error(`Admin login failed: ${loginBody.error || loginRes.status}`);
   }
   return loginBody.token;
+}
+
+async function canLoginAdminWithoutPassword(baseUrl, timeoutMs) {
+  const loginRes = await withTimeout(
+    "admin auth bypass probe",
+    timeoutMs,
+    httpRequest(baseUrl, "/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rememberDevice: false }),
+    })
+  );
+  const loginBody = await readJson(loginRes);
+  return {
+    ok: !!(loginRes.ok && loginBody.ok && loginBody.token),
+    error: loginBody.error || String(loginRes.status),
+  };
 }
 
 async function checkAdmin(baseUrl, password, timeoutMs) {
@@ -271,7 +290,7 @@ async function checkAdmin(baseUrl, password, timeoutMs) {
     })
   );
   const stateBody = await readJson(stateRes);
-  if (!stateRes.ok || !stateBody.ok || !stateBody.session || !stateBody.stage) {
+  if (!stateRes.ok || !stateBody.ok || !stateBody.session || !stateBody.stage || !stateBody.universe) {
     throw new Error(`Admin state failed: ${stateBody.error || stateRes.status}`);
   }
   return `session ${stateBody.session.id}`;
@@ -291,6 +310,60 @@ async function checkAlgorithmState(baseUrl, password, timeoutMs) {
     throw new Error(`Algorithm state failed: ${body.error || res.status}`);
   }
   return `calibration ${body.settings.calibrationCount}`;
+}
+
+async function checkUniverseApi(baseUrl, timeoutMs) {
+  const healthRes = await withTimeout("universe health", timeoutMs, httpRequest(baseUrl, "/api/universe/health"));
+  const health = await readJson(healthRes);
+  if (!healthRes.ok || !health.ok || !health.source || !health.source.databasePath) {
+    throw new Error(`Universe health failed: ${health.error || healthRes.status}`);
+  }
+  const databasePath = String(health.source.databasePath || "");
+  if (!databasePath.endsWith("/app/data/live.sqlite")) {
+    throw new Error(`Universe database is not app/data/live.sqlite: ${databasePath}`);
+  }
+  if (Object.prototype.hasOwnProperty.call(health.source, "runtimeDatabasePath")) {
+    throw new Error("Universe health still exposes a split runtimeDatabasePath");
+  }
+
+  const graphRes = await withTimeout("universe graph", timeoutMs, httpRequest(baseUrl, "/api/universe/graph"));
+  const graph = await readJson(graphRes);
+  const paths = graph && graph.graph && Array.isArray(graph.graph.paths) ? graph.graph.paths : [];
+  const edgeCount = graph && graph.graph && graph.graph.summary ? Number(graph.graph.summary.edgeCount || 0) : 0;
+  const network = graph && graph.graph ? graph.graph.networkMap : null;
+  const networkNodeCount = network && network.summary ? Number(network.summary.nodeCount || 0) : 0;
+  const networkEdgeCount = network && network.summary ? Number(network.summary.edgeCount || 0) : 0;
+  if (!graphRes.ok || !graph.ok || !paths.length || edgeCount < 1) {
+    throw new Error(`Universe graph failed: ${graph.error || graphRes.status}`);
+  }
+  if (!network || networkNodeCount < 1 || networkEdgeCount < 1) {
+    throw new Error("Universe network map is missing nodes or edges");
+  }
+
+  const runtimeRes = await withTimeout("universe runtime", timeoutMs, httpRequest(baseUrl, "/api/universe/runtime"));
+  const runtime = await readJson(runtimeRes);
+  if (!runtimeRes.ok || !runtime.ok || !runtime.runtime || !runtime.runtime.summary) {
+    throw new Error(`Universe runtime failed: ${runtime.error || runtimeRes.status}`);
+  }
+
+  return `${paths.length} paths, ${edgeCount} edges, ${networkNodeCount} network nodes`;
+}
+
+async function checkSyncSecretRequired(baseUrl, timeoutMs) {
+  const res = await withTimeout(
+    "sync secret guard",
+    timeoutMs,
+    httpRequest(baseUrl, "/admin/sync/changes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+  );
+  const body = await readJson(res);
+  if (res.status !== 401 || !body || body.error !== "sync_secret_required") {
+    throw new Error(`Sync route returned HTTP ${res.status} ${body && body.error ? body.error : ""}, expected 401 sync_secret_required`);
+  }
+  return "POST /admin/sync/changes requires sync secret";
 }
 
 async function adminJson(baseUrl, path, adminToken, body, timeoutMs) {
@@ -504,20 +577,38 @@ async function main() {
   await runCheck(results, "algorithm page", () => checkHttpRoute(baseUrl, "/algoritme"));
   await runCheck(results, "paths page", () => checkHttpRoute(baseUrl, "/paden"));
   await runCheck(results, "stage page", () => checkHttpRoute(baseUrl, "/stage"));
+  await runCheck(results, "universe page", () => checkHttpRoute(baseUrl, "/universe"));
+  await runCheck(results, "universe stage page", () => checkHttpRoute(baseUrl, "/universe/stage"));
+  await runCheck(results, "universe API", () => checkUniverseApi(baseUrl, options.timeoutMs));
   await runCheck(results, "stage WebSocket", () => checkStageWs(baseUrl, options.timeoutMs));
   await runCheck(results, "chat access guard", () => checkUnauthenticatedChatWs(baseUrl, options.timeoutMs));
 
-  if (options.adminPassword) {
-    await runCheck(results, "admin API", () => checkAdmin(baseUrl, options.adminPassword, options.timeoutMs));
-    await runCheck(results, "algorithm API", () => checkAlgorithmState(baseUrl, options.adminPassword, options.timeoutMs));
+  let adminPasswordForChecks = options.adminPassword;
+  let adminChecksAvailable = !!options.adminPassword;
+  if (!adminPasswordForChecks) {
+    const bypass = await canLoginAdminWithoutPassword(baseUrl, options.timeoutMs).catch((err) => ({
+      ok: false,
+      error: err && err.message ? err.message : String(err),
+    }));
+    if (bypass.ok) {
+      adminPasswordForChecks = "";
+      adminChecksAvailable = true;
+    }
+  }
+
+  if (adminChecksAvailable) {
+    await runCheck(results, "admin API", () => checkAdmin(baseUrl, adminPasswordForChecks, options.timeoutMs));
+    await runCheck(results, "algorithm API", () => checkAlgorithmState(baseUrl, adminPasswordForChecks, options.timeoutMs));
+    await runCheck(results, "sync secret guard", () => checkSyncSecretRequired(baseUrl, options.timeoutMs));
     if (options.algorithmFlow) {
-      await runCheck(results, "algorithm flow", () => checkAlgorithmFlow(baseUrl, options.adminPassword, options.timeoutMs));
+      await runCheck(results, "algorithm flow", () => checkAlgorithmFlow(baseUrl, adminPasswordForChecks, options.timeoutMs));
     } else {
       results.push({ name: "algorithm flow", ok: null, detail: "skipped (pass --algorithm-flow)" });
     }
   } else {
-    results.push({ name: "admin API", ok: null, detail: "skipped (set SMOKE_ADMIN_PASSWORD or --admin-password)" });
-    results.push({ name: "algorithm API", ok: null, detail: "skipped (set SMOKE_ADMIN_PASSWORD or --admin-password)" });
+    results.push({ name: "admin API", ok: null, detail: "skipped (auth requires SMOKE_ADMIN_PASSWORD or --admin-password)" });
+    results.push({ name: "algorithm API", ok: null, detail: "skipped (auth requires SMOKE_ADMIN_PASSWORD or --admin-password)" });
+    results.push({ name: "sync secret guard", ok: null, detail: "skipped (auth requires SMOKE_ADMIN_PASSWORD or --admin-password)" });
     results.push({ name: "algorithm flow", ok: null, detail: "skipped" });
   }
 

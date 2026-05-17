@@ -1,0 +1,17 @@
+{
+  "name": "for-universe",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Universe visualization subsystem for the For You app.",
+  "main": "src/integration/express-router.js",
+  "scripts": {
+    "check": "node --check server.js && node --check src/integration/express-router.js && node --check src/data/sqlite.js && node --check src/data/queries.js && node --check src/data/runtime-queries.js && node --check src/domain/normalize-paths.js && node --check src/domain/runtime-state.js && node --check src/domain/graph-model.js && node --check src/public/sky-layout.js && node --check src/public/sky-data-adapter.js && node --check src/public/sky-renderer.js && node --check src/public/app.js && node --check src/public/stage-app.js && node --check scripts/audit-data-diff.js && node --check scripts/test-runtime-filter.js && node --check scripts/test-network-map.js && node --check scripts/test-runtime-provider-readonly.js",
+    "audit:data": "node scripts/audit-data-diff.js",
+    "test:runtime-filter": "node scripts/test-runtime-filter.js",
+    "test:network-map": "node scripts/test-network-map.js",
+    "test": "node scripts/test-runtime-filter.js && node scripts/test-network-map.js && node scripts/test-runtime-provider-readonly.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

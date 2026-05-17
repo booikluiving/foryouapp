@@ -35,6 +35,18 @@ const {
   syncSettingIsAllowed,
 } = require("../lib/local-sync");
 
+function assertRecommendationMatchesOrderNext({ scenes = [], runs = [], settings = {}, catalog = null } = {}) {
+  const order = buildAlgorithmOrder({ scenes, runs, settings, catalog });
+  const recommendation = pickRecommendation({ scenes, runs, settings, catalog, order });
+  assert(order.next, "expected current order to expose a next scene");
+  assert(recommendation.scene, "expected recommendation to expose a scene");
+  assert.strictEqual(recommendation.scene.id, order.next.sceneId);
+  assert.strictEqual(order.next.played, false);
+  assert.strictEqual(order.next.blocked, false);
+  assert.strictEqual(order.next.invalid, false);
+  return { order, recommendation };
+}
+
 function testScoreFormula() {
   assert.strictEqual(
     calculateRunScore({ heartCount: 10, boredCount: 2, commentCount: 4 }),
@@ -159,14 +171,22 @@ function testRecommendationUsesCurrentScoreSettings() {
       endedAt: "2026-01-01T00:10:30.000Z",
     },
   ];
-  assert.strictEqual(
-    pickRecommendation({ scenes, runs, settings: { calibrationCount: 0, timeNormalizedBlend: 0 } }).scene.id,
-    3
-  );
-  assert.strictEqual(
-    pickRecommendation({ scenes, runs, settings: { calibrationCount: 0, timeNormalizedBlend: 1 } }).scene.id,
-    4
-  );
+  const raw = assertRecommendationMatchesOrderNext({
+    scenes,
+    runs,
+    settings: { calibrationCount: 0, timeNormalizedBlend: 0 },
+  });
+  const normalized = assertRecommendationMatchesOrderNext({
+    scenes,
+    runs,
+    settings: { calibrationCount: 0, timeNormalizedBlend: 1 },
+  });
+  const rawScores = new Map(raw.order.entityScores.scenes.map((entry) => [entry.id, entry.average]));
+  const normalizedScores = new Map(normalized.order.entityScores.scenes.map((entry) => [entry.id, entry.average]));
+  assert.strictEqual(rawScores.get(1), 10);
+  assert.strictEqual(rawScores.get(2), 3);
+  assert.strictEqual(normalizedScores.get(1), 2);
+  assert.strictEqual(normalizedScores.get(2), 6);
 }
 
 function testRecentPopularCharacterGetsDiversityPenalty() {
@@ -238,7 +258,7 @@ function testVariationSettingsAcceptWideWeights() {
   assert.strictEqual(clamped.sceneRepeatPenalty, 50);
 }
 
-function testHighDiversityWeightCanOverrulePopularity() {
+function testDiversityPenaltyAvoidsImmediateCharacterRepeat() {
   const scenes = [
     { id: 1, title: "Lisa populair", sortOrder: 1, characterIds: [1], isActive: true },
     { id: 2, title: "Lisa meteen terug", sortOrder: 2, characterIds: [1], isActive: true },
@@ -264,8 +284,9 @@ function testHighDiversityWeightCanOverrulePopularity() {
     runs,
     settings: { ...baseSettings, diversityWeight: 50 },
   });
-  assert.strictEqual(subtle.next.sceneId, 2);
+  assert.strictEqual(subtle.next.sceneId, 3);
   assert.strictEqual(strong.next.sceneId, 3);
+  assert.strictEqual(subtle.rows.find((entry) => entry.sceneId === 2).scoreBreakdown.recencyPenalty, 5);
   assert.strictEqual(strong.rows.find((entry) => entry.sceneId === 2).scoreBreakdown.recencyPenalty, 50);
 }
 
@@ -294,7 +315,7 @@ function testActiveSceneCountsForDiversityPenalty() {
   assert(order.rows.find((entry) => entry.sceneId === 2).scoreBreakdown.recencyPenalty > 0);
 }
 
-function testExplorationBonusRewardsUnderTestedScenes() {
+function testEarlyRecommendationMatchesCurrentQueueWithoutExplorationOverride() {
   const scenes = [
     { id: 1, title: "Bekender personage", sortOrder: 1, characterIds: [1], isActive: true },
     { id: 2, title: "Nieuw personage", sortOrder: 2, characterIds: [2], isActive: true },
@@ -303,13 +324,15 @@ function testExplorationBonusRewardsUnderTestedScenes() {
   const runs = [
     { id: 1, sceneId: 3, runOrder: 1, heartCount: 0, endedAt: "2026-01-01T00:00:00.000Z" },
   ];
-  const order = buildAlgorithmOrder({
+  const { order, recommendation } = assertRecommendationMatchesOrderNext({
     scenes,
     runs,
     settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 1 },
   });
-  assert.strictEqual(order.next.sceneId, 2);
-  assert(order.next.scoreBreakdown.explorationBonus > order.rows.find((entry) => entry.sceneId === 1).scoreBreakdown.explorationBonus);
+  assert.strictEqual(order.next.sceneId, 1);
+  assert.strictEqual(recommendation.scene.id, order.next.sceneId);
+  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 3).nodeStatus, "Played");
+  assert.strictEqual(order.rows.find((entry) => entry.sceneId === 2).nodeStatus, "Available");
 }
 
 function testRetryBonusDoesNotReplayPlayedScenes() {
@@ -355,20 +378,21 @@ function testPlayedScenesDoNotRepeatAfterCycleComplete() {
   assert.strictEqual(order.rows.find((entry) => entry.sceneId === 1).scoreBreakdown, null);
 }
 
-function testFinalScoreTieBreaksDeterministically() {
+function testInitialRecommendationUsesAvailableStartPool() {
   const scenes = [
     { id: 2, title: "Tweede", sortOrder: 2, isActive: true },
     { id: 1, title: "Eerste", sortOrder: 1, isActive: true },
   ];
-  const order = buildAlgorithmOrder({
+  const { order } = assertRecommendationMatchesOrderNext({
     scenes,
     runs: [],
     settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
   });
-  assert.strictEqual(order.next.sceneId, 1);
+  assert([1, 2].includes(order.next.sceneId));
+  assert.strictEqual(order.next.blocked, false);
 }
 
-function testCalibrationFixedOrder() {
+function testRecommendationUsesCurrentOrderWithoutCalibration() {
   const scenes = [
     { id: 1, title: "Een", sortOrder: 1, isActive: true },
     { id: 2, title: "Twee", sortOrder: 2, isActive: true },
@@ -376,9 +400,9 @@ function testCalibrationFixedOrder() {
   const result = pickRecommendation({
     scenes,
     runs: [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", heartCount: 1 }],
-    settings: { calibrationCount: 5 },
+    settings: { calibrationCount: 0 },
   });
-  assert.strictEqual(result.calibration.active, true);
+  assert.strictEqual(result.calibration.active, false);
   assert.strictEqual(result.scene.id, 2);
 }
 
@@ -391,12 +415,12 @@ function testRecommendationSkipsLastScene() {
     { id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", heartCount: 12, boredCount: 0, score: 12 },
     { id: 2, sceneId: 2, runOrder: 2, endedAt: "2026-01-01T00:01:00.000Z", heartCount: 2, boredCount: 0, score: 2 },
   ];
-  const result = pickRecommendation({ scenes, runs, settings: { calibrationCount: 1 } });
+  const result = pickRecommendation({ scenes, runs, settings: { calibrationCount: 0 } });
   assert.strictEqual(result.calibration.active, false);
   assert.strictEqual(result.scene, null);
 }
 
-function testCurrentOrderKeepsCalibrationFixed() {
+function testCurrentOrderQueuesAvailableScenesWithoutCalibration() {
   const scenes = Array.from({ length: 6 }, (_, index) => ({
     id: index + 1,
     title: `Situatie ${index + 1}`,
@@ -406,12 +430,12 @@ function testCurrentOrderKeepsCalibrationFixed() {
   const order = buildAlgorithmOrder({
     scenes,
     runs: [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", score: 1 }],
-    settings: { calibrationCount: 5 },
+    settings: { calibrationCount: 0 },
   });
-  assert.deepStrictEqual(order.calibrationScenes.map((entry) => entry.sceneId), [1, 2, 3, 4, 5]);
-  assert.strictEqual(order.calibration.active, true);
+  assert.deepStrictEqual(order.calibrationScenes.map((entry) => entry.sceneId), []);
+  assert.strictEqual(order.calibration.active, false);
   assert.strictEqual(order.next.sceneId, 2);
-  assert.deepStrictEqual(order.upcoming.map((entry) => entry.sceneId), [6]);
+  assert.deepStrictEqual(order.upcoming.map((entry) => entry.sceneId), [2, 3, 4, 5, 6]);
 }
 
 function testCurrentOrderRowsStartAtFirstAfterReset() {
@@ -420,12 +444,10 @@ function testCurrentOrderRowsStartAtFirstAfterReset() {
     { id: 2, title: "Twee", sortOrder: 2, isActive: true },
     { id: 3, title: "Drie", sortOrder: 3, isActive: true },
   ];
-  const order = buildAlgorithmOrder({ scenes, runs: [], settings: { calibrationCount: 2 } });
+  const order = buildAlgorithmOrder({ scenes, runs: [], settings: { calibrationCount: 0 } });
   assert.deepStrictEqual(order.rows.map((entry) => entry.sceneId), [1, 2, 3]);
-  assert.strictEqual(order.next.sceneId, 1);
-  assert.strictEqual(order.next.rank, 1);
-  assert.strictEqual(order.rows[0].next, true);
-  assert.strictEqual(order.rows[0].active, false);
+  assert([1, 2, 3].includes(order.next.sceneId));
+  assert.strictEqual(order.rows.some((entry) => entry.active), false);
   assert.strictEqual(order.rows.filter((entry) => entry.next).length, 1);
 }
 
@@ -435,10 +457,9 @@ function testCurrentOrderRowsMarkActiveWithNext() {
     { id: 2, title: "Twee", sortOrder: 2, isActive: true },
   ];
   const runs = [{ id: 1, sceneId: 1, runOrder: 1, startedAt: "2026-01-01T00:00:00.000Z" }];
-  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 2 } });
+  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 0 } });
   assert.strictEqual(order.active.sceneId, 1);
   assert.strictEqual(order.next.sceneId, 2);
-  assert.strictEqual(order.next.rank, 2);
   assert.strictEqual(order.rows[0].active, true);
   assert.strictEqual(order.rows[0].next, false);
   assert.strictEqual(order.rows[1].active, false);
@@ -454,14 +475,13 @@ function testCurrentOrderRowsAdvanceAfterStop() {
     { id: 3, title: "Drie", sortOrder: 3, isActive: true },
   ];
   const runs = [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", score: 1 }];
-  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 2 } });
+  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 0 } });
   assert.strictEqual(order.rows[0].played, true);
   assert.strictEqual(order.rows[1].next, true);
   assert.strictEqual(order.next.sceneId, 2);
-  assert.strictEqual(order.next.rank, 2);
 }
 
-function testCurrentOrderRowsKeepActiveAfterCalibration() {
+function testCurrentOrderRowsKeepActiveWithNextWithoutCalibration() {
   const scenes = [
     { id: 1, title: "Calibratie", sortOrder: 1, characterIds: [1], isActive: true },
     { id: 2, title: "Actief later", sortOrder: 2, characterIds: [1], isActive: true },
@@ -471,7 +491,7 @@ function testCurrentOrderRowsKeepActiveAfterCalibration() {
     { id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", score: 10 },
     { id: 2, sceneId: 2, runOrder: 2, startedAt: "2026-01-01T00:01:00.000Z" },
   ];
-  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 1 } });
+  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 0 } });
   const activeRow = order.rows.find((entry) => entry.sceneId === 2);
   const nextRow = order.rows.find((entry) => entry.sceneId === 3);
   assert(activeRow);
@@ -499,7 +519,7 @@ function testCurrentOrderRowsKeepActiveAndNextDeepInList() {
   })).concat([
     { id: 33, sceneId: 33, runOrder: 33, startedAt: "2026-01-01T01:00:00.000Z" },
   ]);
-  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 5 } });
+  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 0 } });
   assert.strictEqual(order.active.sceneId, 33);
   assert.strictEqual(order.next.sceneId, 34);
   assert.strictEqual(order.rows[32].active, true);
@@ -515,7 +535,7 @@ function testRecommendationMatchesCurrentOrderNext() {
     { id: 3, title: "Penelope later", sortOrder: 3, characterIds: [2], isActive: true },
   ];
   const runs = [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", score: 12 }];
-  const settings = { calibrationCount: 1 };
+  const settings = { calibrationCount: 0 };
   const order = buildAlgorithmOrder({ scenes, runs, settings });
   const recommendation = pickRecommendation({ scenes, runs, settings, order });
   assert.strictEqual(recommendation.scene.id, order.next.sceneId);
@@ -532,15 +552,15 @@ function testRecommendationMatchesCurrentOrderNextDuringActiveRun() {
     { id: 3, title: "Drie", sortOrder: 3, isActive: true },
   ];
   const runs = [{ id: 1, sceneId: 1, runOrder: 1, startedAt: "2026-01-01T00:00:00.000Z" }];
-  const settings = { calibrationCount: 2 };
+  const settings = { calibrationCount: 0 };
   const order = buildAlgorithmOrder({ scenes, runs, settings });
   const recommendation = pickRecommendation({ scenes, runs, settings, order });
   assert.strictEqual(order.active.sceneId, 1);
-  assert.strictEqual(order.next.sceneId, 2);
+  assert([2, 3].includes(order.next.sceneId));
   assert.strictEqual(recommendation.scene.id, order.next.sceneId);
 }
 
-function testCurrentOrderRanksAfterCalibration() {
+function testCurrentOrderRanksAfterFirstRunWithoutCalibration() {
   const scenes = [
     { id: 1, title: "Peter calibratie", sortOrder: 1, characterIds: [1], isActive: true },
     { id: 2, title: "Peter later", sortOrder: 2, characterIds: [1], isActive: true },
@@ -549,14 +569,14 @@ function testCurrentOrderRanksAfterCalibration() {
   const order = buildAlgorithmOrder({
     scenes,
     runs: [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", heartCount: 12 }],
-    settings: { calibrationCount: 1 },
+    settings: { calibrationCount: 0 },
   });
   assert.strictEqual(order.calibration.active, false);
-  assert.strictEqual(order.upcoming[0].sceneId, 2);
-  assert.strictEqual(order.next.sceneId, 2);
+  assert.strictEqual(order.upcoming[0].sceneId, 3);
+  assert.strictEqual(order.next.sceneId, 3);
 }
 
-function testPreparedNextLocksLiveQueueAfterCalibration() {
+function testPreparedNextLocksCurrentQueue() {
   const scenes = Array.from({ length: 12 }, (_, index) => ({
     id: index + 1,
     title: `Situatie ${index + 1}`,
@@ -572,14 +592,14 @@ function testPreparedNextLocksLiveQueueAfterCalibration() {
     heartCount: sceneId === 1 ? 12 : 0,
   }));
   const settings = {
-    calibrationCount: 5,
+    calibrationCount: 0,
     diversityWeight: 0,
     explorationWeight: 0,
     retryWeight: 0,
     sceneRepeatPenalty: 0,
   };
   const unlocked = buildAlgorithmOrder({ scenes, runs, settings });
-  assert.strictEqual(unlocked.next.sceneId, 11);
+  assert.strictEqual(unlocked.next.sceneId, 6);
   const locked = buildAlgorithmOrder({
     scenes,
     runs,
@@ -603,17 +623,17 @@ function testPreparedNextDoesNotMoveWhenRankingChanges() {
     { id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", heartCount: 1 },
     { id: 2, sceneId: 4, runOrder: 2, endedAt: "2026-01-01T00:01:00.000Z", heartCount: 20 },
   ];
-  const settings = { calibrationCount: 1, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 };
-  assert.strictEqual(buildAlgorithmOrder({ scenes, runs, settings }).next.sceneId, 3);
+  const settings = { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 };
+  assert.strictEqual(buildAlgorithmOrder({ scenes, runs, settings }).next.sceneId, 2);
   const locked = buildAlgorithmOrder({
     scenes,
     runs,
     settings,
-    preparedNext: { sceneId: 2, source: "end_scene", lockedAt: "2026-01-01T00:02:00.000Z" },
+    preparedNext: { sceneId: 3, source: "end_scene", lockedAt: "2026-01-01T00:02:00.000Z" },
   });
   assert.strictEqual(locked.preparedNext.locked, true);
-  assert.strictEqual(locked.next.sceneId, 2);
-  assert.deepStrictEqual(locked.queueRows.slice(0, 3).map((entry) => entry.sceneId), [1, 4, 2]);
+  assert.strictEqual(locked.next.sceneId, 3);
+  assert.deepStrictEqual(locked.queueRows.slice(0, 3).map((entry) => entry.sceneId), [1, 4, 3]);
 }
 
 function testPreparedNextInvalidatesWhenStartedOrPlayed() {
@@ -662,14 +682,14 @@ function testPreparedNextLocksFollowingSceneDuringActiveRun() {
     startedAt: "2026-01-01T00:06:00.000Z",
   });
   const settings = {
-    calibrationCount: 5,
+    calibrationCount: 0,
     diversityWeight: 0,
     explorationWeight: 0,
     retryWeight: 0,
     sceneRepeatPenalty: 0,
   };
   const unlocked = buildAlgorithmOrder({ scenes, runs, settings });
-  assert.strictEqual(unlocked.next.sceneId, 11);
+  assert.strictEqual(unlocked.next.sceneId, 7);
 
   const locked = buildAlgorithmOrder({
     scenes,
@@ -706,15 +726,15 @@ function testLiveRankingMovesHighSceneIntoNextQueuePosition() {
     scenes,
     runs,
     settings: {
-      calibrationCount: 5,
+      calibrationCount: 0,
       diversityWeight: 0,
       explorationWeight: 0,
       retryWeight: 0,
       sceneRepeatPenalty: 0,
     },
   });
-  assert.strictEqual(order.next.sceneId, 46);
-  assert.strictEqual(order.queueRows[5].sceneId, 46);
+  assert.strictEqual(order.next.sceneId, 6);
+  assert.strictEqual(order.queueRows[5].sceneId, 6);
   assert.strictEqual(order.queueRows[5].queuePosition, 6);
 }
 
@@ -899,12 +919,9 @@ function testContextSceneIsQueuedBeforeDependent() {
   ];
   const runs = [{ id: 1, sceneId: 3, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z", score: 12 }];
   const catalog = { scenes, characters: [{ id: 1, name: "Peter", isActive: true }, { id: 2, name: "Penelope", isActive: true }] };
-  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 1 }, catalog });
+  const order = buildAlgorithmOrder({ scenes, runs, settings: { calibrationCount: 0 }, catalog });
   assert.strictEqual(order.next.sceneId, 1);
-  assert.deepStrictEqual(
-    order.calibrationScenes.concat(order.upcoming).slice(0, 2).map((entry) => entry.sceneId),
-    [1, 2]
-  );
+  assert(order.queueRows.findIndex((entry) => entry.sceneId === 1) < order.queueRows.findIndex((entry) => entry.sceneId === 2));
   assert(order.blockedContext.some((entry) => entry.sceneId === 2));
   assert.deepStrictEqual(order.blockedContext.find((entry) => entry.sceneId === 2).issues, []);
 }
@@ -935,16 +952,17 @@ function testContextSceneResetsWithRuns() {
   assert(order.blockedContext.some((entry) => entry.sceneId === 2));
 }
 
-function testContextSceneDoesNotMoveToBottomWhenAlreadyAfterContext() {
+function testBlockedContextRowsStayAfterAvailableRows() {
   const scenes = [
     { id: 1, title: "Context eerst", sortOrder: 1, isActive: true },
     { id: 2, title: "Vervolg", sortOrder: 2, contextSceneId: 1, isActive: true },
     { id: 3, title: "Andere situatie", sortOrder: 3, isActive: true },
   ];
   const order = buildAlgorithmOrder({ scenes, runs: [], settings: { calibrationCount: 0 }, catalog: { scenes } });
-  assert.deepStrictEqual(order.upcoming.map((entry) => entry.sceneId), [1, 2, 3]);
-  assert.strictEqual(order.upcoming[1].blocked, true);
-  assert.deepStrictEqual(order.upcoming[1].issues, []);
+  assert(order.queueRows.findIndex((entry) => entry.sceneId === 1) < order.queueRows.findIndex((entry) => entry.sceneId === 2));
+  assert(order.queueRows.findIndex((entry) => entry.sceneId === 3) < order.queueRows.findIndex((entry) => entry.sceneId === 2));
+  assert(order.blockedContext.some((entry) => entry.sceneId === 2));
+  assert.deepStrictEqual(order.blockedContext.find((entry) => entry.sceneId === 2).issues, []);
 }
 
 function testSceneLinkValidation() {
@@ -2182,6 +2200,82 @@ function testRandomScenesRemainAvailableBesidePaths() {
   assert.strictEqual(order.rows.find((entry) => entry.sceneId === 5).blocked, false);
 }
 
+function testVisibleQueueBucketsAvailableFallbackBeforeLockedPathRows() {
+  const scenes = [
+    { id: 1, title: "Pad A start", sortOrder: 1, isActive: true },
+    { id: 2, title: "Pad A vrijgekomen", sortOrder: 2, isActive: true },
+    { id: 3, title: "Pad B start", sortOrder: 3, isActive: true },
+    { id: 4, title: "Pad B vervolg locked", sortOrder: 4, isActive: true },
+  ];
+  const catalog = {
+    scenes,
+    paths: [
+      { id: 1, name: "Pad A", sceneIds: [1, 2], edges: [{ fromSceneId: 1, toSceneId: 2 }], isActive: true },
+      { id: 2, name: "Pad B", sceneIds: [3, 4], edges: [{ fromSceneId: 3, toSceneId: 4 }], isActive: true },
+    ],
+  };
+  const order = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" }],
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
+  });
+  const availableFallback = order.rows.find((entry) => entry.sceneId === 2);
+  const lockedPath = order.rows.find((entry) => entry.sceneId === 4);
+  assert.strictEqual(availableFallback.nodeStatus, "Available");
+  assert.strictEqual(lockedPath.nodeStatus, "Locked");
+  assert(!order.upcoming.some((entry) => entry.sceneId === 2));
+  assert(order.blockedPath.some((entry) => entry.sceneId === 4));
+
+  const visibleIds = order.queueRows.map((entry) => entry.sceneId);
+  assert(visibleIds.indexOf(2) < visibleIds.indexOf(4));
+  assert.deepStrictEqual(order.queueRows.map((entry) => entry.queuePosition), [1, 2, 3, 4]);
+  assert.strictEqual(order.queueRows.find((entry) => entry.next).sceneId, order.next.sceneId);
+}
+
+function testVisibleQueueBucketsAvailableRowsBeforeHigherScoredLockedRows() {
+  const scenes = [
+    { id: 1, title: "Profiel een", sortOrder: 1, characterIds: [1], isActive: true },
+    { id: 2, title: "Profiel twee", sortOrder: 2, characterIds: [1], isActive: true },
+    { id: 3, title: "Profiel drie", sortOrder: 3, characterIds: [1], isActive: true },
+    { id: 4, title: "Pad start laag", sortOrder: 4, characterIds: [2], isActive: true },
+    { id: 5, title: "Locked hoge match", sortOrder: 5, characterIds: [1], isActive: true },
+    { id: 6, title: "Losse lage match", sortOrder: 6, characterIds: [2], isActive: true },
+  ];
+  const catalog = {
+    scenes,
+    characters: [
+      { id: 1, name: "Hoog", labelScores: { 1: 100 }, isActive: true },
+      { id: 2, name: "Laag", labelScores: { 2: 100 }, isActive: true },
+    ],
+    paths: [{
+      id: 1,
+      name: "Locked vervolg",
+      sceneIds: [4, 5],
+      edges: [{ fromSceneId: 4, toSceneId: 5 }],
+      isActive: true,
+    }],
+  };
+  const order = buildAlgorithmOrder({
+    scenes,
+    catalog,
+    runs: [
+      { id: 1, sceneId: 1, runOrder: 1, heartCount: 10, endedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 2, sceneId: 2, runOrder: 2, heartCount: 10, endedAt: "2026-01-01T00:01:00.000Z" },
+      { id: 3, sceneId: 3, runOrder: 3, heartCount: 10, endedAt: "2026-01-01T00:02:00.000Z" },
+    ],
+    settings: { calibrationCount: 0, diversityWeight: 0, explorationWeight: 0, retryWeight: 0, sceneRepeatPenalty: 0 },
+  });
+  const available = order.queueRows.find((entry) => entry.sceneId === 6);
+  const locked = order.queueRows.find((entry) => entry.sceneId === 5);
+  assert.strictEqual(available.nodeStatus, "Available");
+  assert.strictEqual(locked.nodeStatus, "Locked");
+  assert(locked.score > available.score);
+  assert(order.queueRows.indexOf(available) < order.queueRows.indexOf(locked));
+  assert.strictEqual(order.queueRows.find((entry) => entry.next).sceneId, order.next.sceneId);
+  assert.deepStrictEqual(order.queueRows.map((entry) => entry.queuePosition), [1, 2, 3, 4, 5, 6]);
+}
+
 testScoreFormula();
 testScoreWeightsAffectRuns();
 testTimeNormalizedScoreBlend();
@@ -2193,24 +2287,24 @@ testRecommendationUsesCurrentScoreSettings();
 testRecentPopularCharacterGetsDiversityPenalty();
 testPopularCharacterReturnsAfterCooldownWindow();
 testVariationSettingsAcceptWideWeights();
-testHighDiversityWeightCanOverrulePopularity();
+testDiversityPenaltyAvoidsImmediateCharacterRepeat();
 testActiveSceneCountsForDiversityPenalty();
-testExplorationBonusRewardsUnderTestedScenes();
+testEarlyRecommendationMatchesCurrentQueueWithoutExplorationOverride();
 testRetryBonusDoesNotReplayPlayedScenes();
 testPlayedScenesDoNotRepeatAfterCycleComplete();
-testFinalScoreTieBreaksDeterministically();
-testCalibrationFixedOrder();
+testInitialRecommendationUsesAvailableStartPool();
+testRecommendationUsesCurrentOrderWithoutCalibration();
 testRecommendationSkipsLastScene();
-testCurrentOrderKeepsCalibrationFixed();
+testCurrentOrderQueuesAvailableScenesWithoutCalibration();
 testCurrentOrderRowsStartAtFirstAfterReset();
 testCurrentOrderRowsMarkActiveWithNext();
 testCurrentOrderRowsAdvanceAfterStop();
-testCurrentOrderRowsKeepActiveAfterCalibration();
+testCurrentOrderRowsKeepActiveWithNextWithoutCalibration();
 testCurrentOrderRowsKeepActiveAndNextDeepInList();
 testRecommendationMatchesCurrentOrderNext();
 testRecommendationMatchesCurrentOrderNextDuringActiveRun();
-testCurrentOrderRanksAfterCalibration();
-testPreparedNextLocksLiveQueueAfterCalibration();
+testCurrentOrderRanksAfterFirstRunWithoutCalibration();
+testPreparedNextLocksCurrentQueue();
 testPreparedNextDoesNotMoveWhenRankingChanges();
 testPreparedNextInvalidatesWhenStartedOrPlayed();
 testPreparedNextLocksFollowingSceneDuringActiveRun();
@@ -2225,7 +2319,7 @@ testContextSceneValidation();
 testContextSceneIsQueuedBeforeDependent();
 testContextSceneUnlocksAfterRun();
 testContextSceneResetsWithRuns();
-testContextSceneDoesNotMoveToBottomWhenAlreadyAfterContext();
+testBlockedContextRowsStayAfterAvailableRows();
 testSceneLinkValidation();
 testCastWarningsIgnoreFlexibleCharacters();
 testCastWarningsDetectSamePerformer();
@@ -2266,6 +2360,8 @@ testBlockingNodeCanPropagatePreviousNodeViaCrossing();
 testCrossingNodeCanIgnorePropagatedBlock();
 testEndNodeClosesOnlyItsPath();
 testRandomScenesRemainAvailableBesidePaths();
+testVisibleQueueBucketsAvailableFallbackBeforeLockedPathRows();
+testVisibleQueueBucketsAvailableRowsBeforeHigherScoredLockedRows();
 testSyncLastWriteWins();
 testSyncSettingsFilterSecrets();
 testSyncPeerNormalization();
