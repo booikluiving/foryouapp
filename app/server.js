@@ -11666,6 +11666,7 @@ function getAlgorithmSceneOscAddresses(kind = "up_next") {
     addresses.push(`/foryou/algorithm/${safeKind}/personage_${index}_description`);
   }
   addresses.push(`/foryou/algorithm/${safeKind}/situation`);
+  addresses.push(`/foryou/algorithm/${safeKind}/score`);
   addresses.push(`/foryou/algorithm/${safeKind}/done`);
   return addresses;
 }
@@ -11683,14 +11684,18 @@ function getAlgorithmOscSendDocs() {
     { address: "/foryou/algorithm/test", args: "1", description: "Numerieke trigger vanuit de algoritme-UI naar TouchDesigner." },
     ...getAlgorithmUpNextOscAddresses().map((address) => ({
       address,
-      args: address.endsWith("/begin") || address.endsWith("/scene_id") || address.endsWith("/done") ? "sceneId" : "string",
+      args: address.endsWith("/begin") || address.endsWith("/scene_id") || address.endsWith("/done")
+        ? "sceneId"
+        : address.endsWith("/score") ? "score" : "string",
       description: address.includes("/personage_")
         ? "Resolved performer-slot in de Up Next-output naar TouchDesigner."
         : "Onderdeel van de Up Next-output naar TouchDesigner.",
     })),
     ...getAlgorithmCurrentSceneOscAddresses().map((address) => ({
       address,
-      args: address.endsWith("/begin") || address.endsWith("/scene_id") || address.endsWith("/done") ? "sceneId" : "string",
+      args: address.endsWith("/begin") || address.endsWith("/scene_id") || address.endsWith("/done")
+        ? "sceneId"
+        : address.endsWith("/score") ? "score" : "string",
       description: address.includes("/personage_")
         ? "Resolved performer-slot in de Current Scene-output naar TouchDesigner."
         : "Onderdeel van de Current Scene-output naar TouchDesigner.",
@@ -11830,6 +11835,12 @@ function algorithmOscIntArg(value) {
   return { type: "i", value: Math.floor(Number(value || 0)) };
 }
 
+function algorithmOscFloatArg(value) {
+  const score = Number(value || 0);
+  const safeScore = Number.isFinite(score) ? score : 0;
+  return { type: "f", value: Math.round(safeScore * 100) / 100 };
+}
+
 function algorithmUpNextSlotLabel(payload, slotNumber) {
   const slots = Array.isArray(payload && payload.characterSlots) ? payload.characterSlots : [];
   const slot = slots.find((item) => Number(item && item.slot || 0) === Number(slotNumber));
@@ -11877,6 +11888,7 @@ function buildAlgorithmSceneOscPackets(payload, kind = "up_next") {
     address: `/foryou/algorithm/${safeKind}/situation`,
     args: [algorithmOscStringArg(payload && payload.description || "")],
   });
+  packets.push({ address: `/foryou/algorithm/${safeKind}/score`, args: [algorithmOscFloatArg(payload && payload.score)] });
   packets.push({ address: `/foryou/algorithm/${safeKind}/done`, args: [algorithmOscIntArg(sceneId)] });
   return packets;
 }
