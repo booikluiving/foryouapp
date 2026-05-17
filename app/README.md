@@ -93,6 +93,7 @@ Mac launcher:
 - `scripts/open-admin.command` gebruikt lokaal poort `3010`, start de server alleen als er nog geen For You-server draait, opent admin via huidig LAN-IP (fallback localhost) en sluit daarna het Terminal-venster. Gebruik geen extra fallbackpoort zonder bewuste reden.
 - Dubbelklik op dit `.command` bestand of zet er een snelkoppeling/icoon van op je bureaublad.
 - Zie `MAC_STUDIO_SETUP.md` voor de show-machine setup.
+- Stream Deck / Companion op de Mac Studio staat beschreven in `docs/stream-deck/README.md`. Belangrijk: Companion-pagina 1 met bestaande OSC-knoppen blijft beschermd; de enige bewuste uitzondering is de page-switcher rechtsonder, waarbij de oorspronkelijke OSC-knop intact naar pagina 2 is verplaatst.
 
 ## Mac Studio branch-workflow
 Ontwikkelen op branches mag. De afspraak is alleen: live deploy naar poort `3310` loopt standaard via `main`.
