@@ -20,12 +20,11 @@ Belangrijke onderdelen:
 - Segmenten in admin herschikbaar (drag & drop), inklapbaar en onthouden per apparaat.
 - Donkere modus (admin + client).
 - Server-restart en server-stop direct vanuit admin.
-- "Onthoud dit apparaat" login voor admin (trusted device).
-- Admin wachtwoord wijzigen vanuit de admin console (met sterkte-eisen).
+- Admin-auth staat standaard uit voor het besloten technici-netwerk; de tokenlaag blijft als compatibiliteitshuls.
 - Nieuwe sessie + QR-flow: admin maakt een unieke join-token en QR, clients joinen via `/join?token=...`.
   - Toegang is sessiegebonden: bij een nieuwe sessie is opnieuw scannen/joinen vereist.
 - Stage output pagina (`/stage`) voor OBS/Electron/TouchDesigner browser output met toggles en live styling (QR/chat/emoji, schaal, positie, achtergrond transparant/zwart).
-- Algoritme-pagina (`/algoritme`) voor vaste speelbare situaties, personage- en omgevingsbeschrijvingen, calibratie, live score en OSC-output naar TouchDesigner.
+- Algoritme-pagina (`/algoritme`) voor vaste speelbare situaties, personage- en omgevingsbeschrijvingen, live score en OSC-output naar TouchDesigner.
 - Catalogus-saves op `/algoritme` spiegelen direct naar Dropbox en de lokale `database.md` mirror; API-playground/OpenAI tooling is deploybaar, maar secrets blijven per machine lokaal.
 - Open tabs (`/`, `/admin`, `/stage`) verversen automatisch na een server-restart op basis van server-instance detectie.
 
@@ -54,7 +53,9 @@ De Mac Studio show-machine gebruikt via de launchd/setup-scripts `3310`. Dat is 
 ## Omgevingsvariabelen
 Belangrijkste env vars:
 - `PORT` (lokale default: `3010`; Mac Studio setup: `3310`)
-- `ADMIN_PASSWORD` (default: `admin`)
+- `ADMIN_AUTH_DISABLED` (default: `1`; adminpagina's openen zonder wachtwoord)
+- `ADMIN_PASSWORD` (default: `admin`; alleen actief als `ADMIN_AUTH_DISABLED=0`)
+- `FORYOU_SYNC_SECRET` / `SYNC_SECRET` (expliciet nodig voor peer-sync wanneer `ADMIN_AUTH_DISABLED=1`; geen fallback naar `ADMIN_PASSWORD`)
 - `POLL_DURATION_SECONDS` (default: `60`)
 - `ADMIN_RESTART_BOOT_DELAY_MS` (default: `0`)
 - `ADMIN_RESTART_CHILD_BOOT_DELAY_MS` (default: `900`)
@@ -72,7 +73,7 @@ Belangrijkste env vars:
 
 Voorbeeld:
 ```bash
-ADMIN_PASSWORD="kies-een-sterk-wachtwoord" PORT=3010 npm start
+ADMIN_AUTH_DISABLED=1 PORT=3010 npm start
 ```
 
 Voor UniFi-configuratie: kopieer `.env.example` naar `.env` op de Mac Studio en vul daar de echte key in.
@@ -119,9 +120,9 @@ node scripts/simulate-chatters.js --help
 node scripts/smoke-test.js --help
 ```
 
-Smoke-test met optionele admin/join-checks:
+Smoke-test met optionele join-checks. Admin API-checks draaien zonder wachtwoord als `ADMIN_AUTH_DISABLED=1`.
 ```bash
-SMOKE_ADMIN_PASSWORD="jouw-admin-wachtwoord" npm run smoke -- --url http://127.0.0.1:3010
+npm run smoke -- --url http://127.0.0.1:3010
 SMOKE_JOIN_TOKEN="token-uit-admin-qr" npm run smoke -- --url http://127.0.0.1:3010 --send-comment
 ```
 
@@ -214,7 +215,7 @@ De handmatige canvas-layout en nodeposities worden op dit moment per browser in 
 ## API playground
 De API playground is deploybaar naar de Mac Studio. Secrets blijven per machine lokaal in `.env.local` en staan niet in Git.
 
-Via `/api-playground` kun je als admin de instellingen openen en waarden voor `OPENAI_API_KEY` en `ANTHROPIC_API_KEY` opslaan. De server schrijft die naar `.env.local` met beperkte bestandsrechten en stuurt de waarden nooit terug naar de browser.
+Via `/api-playground` kun je als admin de instellingen openen en waarden voor `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` en `DEEPSEEK_API_KEY` opslaan. De server schrijft die naar `.env.local` met beperkte bestandsrechten en stuurt de waarden nooit terug naar de browser.
 
 ## Moderatie en botstijl aanpassen
 - Voeg woorden toe in `moderation/bad-words.txt` voor blokkeren.
@@ -225,9 +226,10 @@ Via `/api-playground` kun je als admin de instellingen openen en waarden voor `O
 - In admin kun je simulatie live tunen met sliders en defaults opslaan.
 
 ## Veiligheid
-- Zet altijd `ADMIN_PASSWORD` via environment variable in productie.
-- Gebruik niet de default `admin`.
-- Controleer wie toegang heeft tot `/admin`.
+- `ADMIN_AUTH_DISABLED=1` is bedoeld voor het besloten technici-netwerk.
+- Zet `ADMIN_AUTH_DISABLED=0` en configureer `ADMIN_PASSWORD` als admin-auth weer actief moet zijn.
+- Peer-sync blijft apart beveiligd: zet `FORYOU_SYNC_SECRET` of `SYNC_SECRET` expliciet als sync gebruikt wordt.
+- Controleer wie netwerktoegang heeft tot `/admin`.
 - Debug logging staat standaard uit. Zet alleen tijdelijk aan met `DEBUG_LOG_ENABLED=1` bij troubleshooting.
 
 ## Licentie

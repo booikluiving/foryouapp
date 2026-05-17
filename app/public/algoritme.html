@@ -594,6 +594,7 @@
       .orderItem {
         grid-template-columns: auto minmax(0, 1fr);
         align-items: start;
+        position: relative;
       }
 
       .orderItem.next {
@@ -784,6 +785,66 @@
       .labelBarTrack { flex: 1; height: 10px; background: var(--paper-2); border-radius: 5px; overflow: hidden; }
       .labelBarFill { display: block; height: 100%; border-radius: 5px; min-width: 2px; transition: width 0.3s; }
       .labelBarPct { width: 32px; font-weight: 700; font-size: 10px; text-align: right; }
+
+      .orderLiveStats {
+        position: absolute;
+        top: 52px;
+        right: 10px;
+        width: clamp(280px, 36%, 360px);
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 253, 248, 0.94);
+        padding: 6px 8px;
+        pointer-events: none;
+      }
+
+      .orderLiveStats .labelBars {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin: 0;
+        gap: 5px 8px;
+      }
+
+      .orderLiveStats .labelBar {
+        display: grid;
+        grid-template-columns: 20px minmax(20px, 1fr) 24px;
+        align-items: center;
+        gap: 4px;
+        min-height: 12px;
+      }
+
+      .orderLiveStats .labelBarName {
+        width: auto;
+        max-width: none;
+        color: #697386;
+        font-size: 9px;
+        line-height: 1;
+        text-align: right;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+
+      .orderLiveStats .labelBarTrack {
+        flex: none;
+        height: 7px;
+        border-radius: 4px;
+      }
+
+      .orderLiveStats .labelBarFill {
+        border-radius: 4px;
+      }
+
+      .orderLiveStats .labelBarPct {
+        width: auto;
+        font-size: 9px;
+        line-height: 1;
+        color: var(--ink);
+      }
+
+      #currentOrderList.editing .orderLiveStats {
+        display: none;
+      }
 
       .sceneMetaLine,
       .sceneDescriptionBlock {
@@ -1054,11 +1115,15 @@
           width: 100%;
           justify-content: flex-start;
         }
+
+        .orderLiveStats {
+          display: none;
+        }
       }
     </style>
   </head>
   <body>
-    <section id="login" class="login">
+    <section id="login" class="login" style="display:none;">
       <form id="loginForm" class="loginCard">
         <div class="stack">
           <h1>Algoritme</h1>
@@ -1088,6 +1153,7 @@
             <a href="/verhaalvisualisatie"><button type="button">Open verhaalvisualisatie</button></a>
             <a href="/admin"><button type="button">Admin</button></a>
             <a href="/stage"><button type="button">Stage</button></a>
+            <a href="/universe"><button type="button">Universe</button></a>
             <span id="buildBadge" class="badge">build ...</span>
             <button id="refreshBtn" type="button">Refresh</button>
             <button id="logoutBtn" type="button">Logout</button>
@@ -1231,10 +1297,7 @@
             <span id="orderInvalidBadge" class="badge warning"></span>
           </div>
           <div id="currentOrderList" class="list orderList"></div>
-          <div id="orderEditHint" class="small hidden">Sleep de situaties in deze lijst. De eerste calibratieposities blijven vast; daarna mag het algoritme de live volgorde bepalen.</div>
-          <div id="orderEditSettings" class="stack hidden">
-            <label>Calibratie situaties<input id="calibrationCount" type="number" min="0" max="50" step="1" /></label>
-          </div>
+          <div id="orderEditHint" class="small hidden">Sleep de situaties in deze lijst. Deze basisvolgorde blijft beschikbaar voor handmatige ordening en tie-breaks.</div>
           <div id="orderEditActions" class="actions orderEditActions">
             <button id="saveOrderBtn" class="primary" type="button">Bewaar volgorde</button>
             <button id="cancelOrderBtn" type="button">Annuleer</button>
@@ -1474,6 +1537,17 @@
               </div>
             </div>
           </details>
+
+          <details class="settingsBlock" data-ui-state-key="settings.show" open>
+            <summary>Show control</summary>
+            <div class="settingsBlockBody">
+              <div class="actions">
+                <button id="startShowBtn" class="primary" type="button">Start show</button>
+                <button id="stopShowBtn" class="danger" type="button">Stop show</button>
+              </div>
+              <div id="showControlMsg" class="msg"></div>
+            </div>
+          </details>
         </section>
       </main>
     </section>
@@ -1544,6 +1618,7 @@
         let oscDraftDirty = false;
         let oscDraftHold = null;
         let runActionPending = false;
+        let showActionPending = false;
         let promptSettingsSavePending = false;
 
         const $ = (id) => document.getElementById(id);
@@ -2320,19 +2395,41 @@
         const LABEL_COLORS = ["#3B82F6", "#8B5CF6", "#F97316", "#22C55E", "#EF4444"];
         function labelColor(index) { return LABEL_COLORS[index % LABEL_COLORS.length]; }
 
-        function sceneLabelBars(scene = {}) {
+        function shortLabelName(name = "") {
+          const raw = String(name || "").trim();
+          const known = {
+            maatschappelijk: "MA",
+            absurd: "AB",
+            grof: "GR",
+            herkenbaar: "HE",
+            satirisch: "SA",
+            verwarring: "VE",
+          };
+          const normalized = raw.toLowerCase();
+          return known[normalized] || raw.slice(0, 2).toUpperCase() || "--";
+        }
+
+        function sceneLabelBars(scene = {}, options = {}) {
           const profile = scene.labelProfile && typeof scene.labelProfile === "object" ? scene.labelProfile : {};
           const entries = Object.entries(profile);
           if (!entries.length) return "";
+          const compact = !!(options && options.compact);
           // Sorteer op label-sortOrder
           const sorted = entries.map(([id, pct]) => {
             const label = itemById("labels", Number(id));
-            return { id, name: label ? label.name : "L" + id, pct: Number(pct) || 0, order: label ? label.sortOrder : 999 };
+            const name = label ? label.name : "L" + id;
+            return {
+              id,
+              name: compact ? shortLabelName(name) : name,
+              fullName: name,
+              pct: Number(pct) || 0,
+              order: label ? label.sortOrder : 999,
+            };
           }).sort((a, b) => a.order - b.order);
 
           return `<div class="labelBars">${sorted.map((item, i) => {
             const w = Math.max(2, Math.round(item.pct * 0.8));
-            return `<div class="labelBar">
+            return `<div class="labelBar" title="${esc(item.fullName)}">
               <span class="labelBarName">${esc(item.name)}</span>
               <span class="labelBarTrack"><span class="labelBarFill" style="width:${w}%;background:${labelColor(i)}"></span></span>
               <span class="labelBarPct">${item.pct}%</span>
@@ -2773,8 +2870,20 @@
         }
 
         function orderEntryScene(entry) {
-          if (entry && entry.scene) return entry.scene;
-          return itemById("scenes", entry && entry.sceneId) || null;
+          const entryScene = entry && entry.scene ? entry.scene : null;
+          const sceneId = Number(entry && entry.sceneId || entryScene && entryScene.id || 0);
+          const catalogScene = itemById("scenes", sceneId) || null;
+          if (entryScene && catalogScene) {
+            const entryProfile = entryScene.labelProfile && typeof entryScene.labelProfile === "object" && Object.keys(entryScene.labelProfile).length
+              ? entryScene.labelProfile
+              : null;
+            return {
+              ...catalogScene,
+              ...entryScene,
+              labelProfile: entryProfile || catalogScene.labelProfile,
+            };
+          }
+          return entryScene || catalogScene || null;
         }
 
         function orderEntryTitle(entry) {
@@ -2898,17 +3007,25 @@
           const environment = orderEnvironmentBadge(entry);
           if (!slots.length && !environment) return "";
           return `
-            <span class="orderCast">
+            <div class="orderCast">
               ${slots.map((slot) => `<span class="badge castBadge ${esc(slot.className)}">${esc(slot.label)}</span>`).join("")}
               ${environment ? `<span class="badge castBadge ${esc(environment.className)}">${esc(environment.label)}</span>` : ""}
-            </span>
+            </div>
           `;
         }
 
         function renderOrderLabels(entry) {
           const scene = orderEntryScene(entry);
           if (!scene || !Array.isArray(scene.labelIds) || !scene.labelIds.length) return "";
-          return `<span class="orderCast">${sceneLabelBars(scene)}</span>`;
+          return `<div class="orderCast">${sceneLabelBars(scene)}</div>`;
+        }
+
+        function renderOrderLiveStats(entry) {
+          const scene = orderEntryScene(entry);
+          if (!scene || !Array.isArray(scene.labelIds) || !scene.labelIds.length) return "";
+          const bars = sceneLabelBars(scene, { compact: true });
+          if (!bars) return "";
+          return `<div class="orderLiveStats">${bars}</div>`;
         }
 
         function orderEnvironmentBadge(entry) {
@@ -2946,7 +3063,6 @@
           if (nextId && sceneId === nextId) badges.push({ label: "volgende", className: "good" });
           if (entry && entry.lockedNext) badges.push({ label: "klaar voor Touch" });
           if (entry && entry.lockedFuture) badges.push({ label: "gepland" });
-          if (entry && entry.calibration) badges.push({ label: "calibratie" });
           if (entry && entry.pathStatus) {
             const pathStatus = entry.pathStatus;
             if (pathStatus.isPathStart) badges.push({ label: "Pad start" });
@@ -2992,7 +3108,20 @@
           return new Map((rows || []).map((item) => [Number(item.id || 0), Number(item.average || 0)]));
         }
 
+        function activeRunScoreForEntry(entry) {
+          const sceneId = Number(entry && entry.sceneId || 0);
+          const activeRun = state && state.activeRun ? state.activeRun : null;
+          if (!sceneId || !activeRun || Number(activeRun.sceneId || 0) !== sceneId) return null;
+          const details = activeRun.scoreDetails && typeof activeRun.scoreDetails === "object" ? activeRun.scoreDetails : {};
+          const detailScore = Number(details.score);
+          if (Number.isFinite(detailScore)) return detailScore;
+          const runScore = Number(activeRun.score);
+          return Number.isFinite(runScore) ? runScore : null;
+        }
+
         function orderEntryScore(entry, scores = sceneScoreMap()) {
+          const activeScore = activeRunScoreForEntry(entry);
+          if (activeScore !== null) return activeScore;
           const raw = Number(entry && entry.score);
           if (Number.isFinite(raw) && raw !== 0) return raw;
           const fallback = scores.get(Number(entry && entry.sceneId || 0));
@@ -3052,10 +3181,13 @@
           const activeRunBadge = activeRun
             ? `<span class="badge warning">actieve run #${Number(activeRun.runOrder || activeRun.id || 0)}</span>`
             : "";
+          const activePointsBadge = activeEntry
+            ? `<span class="badge">${esc(formatOrderPoints(activeEntry))}</span>`
+            : "";
           const activeLine = !runStarted
             ? `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="queueStatusValue muted">Run nog niet gestart</span></div>`
             : activeEntry
-            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="queueStatusValue">${esc(orderEntryTitle(activeEntry))}</span>${activeRunBadge}</div>`
+            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="queueStatusValue">${esc(orderEntryTitle(activeEntry))}</span>${activePointsBadge}${activeRunBadge}</div>`
             : `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="queueStatusValue muted">Geen actieve situatie</span></div>`;
           const nextLine = !runStarted
             ? `<div class="queueStatusLine"><span class="queueStatusLabel">Volgende</span><span class="queueStatusValue muted">Klik Start run om rij 1 klaar te zetten</span></div>`
@@ -3107,11 +3239,15 @@
             }
           };
           applyScroll(shouldAnimate ? "smooth" : "auto");
-          window.requestAnimationFrame(() => {
-            applyScroll("auto");
-            window.requestAnimationFrame(() => applyScroll("auto"));
-          });
-          window.setTimeout(() => applyScroll("auto"), 80);
+          if (shouldAnimate) {
+            window.setTimeout(() => {
+              const currentList = $("currentOrderList");
+              const currentTarget = currentList && targetSelector ? currentList.querySelector(targetSelector) : null;
+              if (!currentList || !currentTarget) return;
+              const targetTop = Math.max(0, currentTarget.getBoundingClientRect().top - currentList.getBoundingClientRect().top + currentList.scrollTop);
+              if (Math.abs(currentList.scrollTop - targetTop) > 3) applyScroll("auto");
+            }, 360);
+          }
           if (scrollOrderSelectionOnNextRender || key !== orderListAnchorKey) {
             orderListAnchorKey = key;
           }
@@ -3120,7 +3256,6 @@
 
         function buildEditableOrderRows() {
           const ids = orderDraftIds.length ? orderDraftIds : activeItems("scenes").map((item) => Number(item.id || 0));
-          const calibrationCount = Number(state && state.settings && state.settings.calibrationCount || 5);
           const liveById = new Map(currentOrderRows().map((entry) => [Number(entry.sceneId || 0), entry]));
           return ids.map((id, index) => {
             const scene = itemById("scenes", id);
@@ -3131,7 +3266,6 @@
               scene,
               sceneId: Number(scene.id || 0),
               title: scene.title || "",
-              calibration: index < calibrationCount,
               invalid: sceneHasLinkWarnings(scene),
               issues: sceneLinkIssues(scene),
             };
@@ -3182,6 +3316,8 @@
             const scoreBreakdown = scoreBreakdownText
               ? `<span class="orderNotice">${esc(scoreBreakdownText)}</span>`
               : "";
+            const orderLabels = editing ? renderOrderLabels(entry) : "";
+            const liveStats = !editing ? renderOrderLiveStats(entry) : "";
             const scene = orderEntryScene(entry);
             const contextId = Number(entry && entry.contextSceneId || scene && scene.contextSceneId || 0);
             const contextBadge = contextId ? `<span class="badge">context: ${esc(contextSceneTitle(contextId))}</span>` : "";
@@ -3190,22 +3326,23 @@
             return `
               <div class="${rowClasses.join(" ")}" data-id="${sceneId}">
                 <span class="orderNumber">${displayNumber}</span>
-                <span class="orderBody">
-                  <span class="nameLine">
+                <div class="orderBody">
+                  <div class="nameLine">
                     <span class="orderTitle">${esc(orderEntryTitle(entry))}</span>
                     <span class="actions">${renderOrderBadges({ ...entry, next: isNext }, { nextSceneId: isNext ? sceneId : 0 })}</span>
-                  </span>
-                  <span class="orderMeta">
+                  </div>
+                  <div class="orderMeta">
                     <span class="badge scoreBadge">${esc(formatOrderPoints(entry, scores))}</span>
                     ${contextBadge}
                     ${pathBadge}
                     ${issues}
-                  </span>
+                  </div>
                   ${renderOrderCast(entry)}
-                  ${renderOrderLabels(entry)}
+                  ${orderLabels}
                   ${notices}
                   ${scoreBreakdown}
-                </span>
+                </div>
+                ${liveStats}
               </div>
             `;
           }).join("");
@@ -3286,7 +3423,7 @@
             state = result.state || state;
             closeOrderEditor();
             render();
-            setMsg("orderMsg", "Volgorde en calibratie opgeslagen.");
+            setMsg("orderMsg", "Volgorde opgeslagen.");
           } catch (err) {
             setMsg("orderMsg", formatError(err), true);
           }
@@ -3294,7 +3431,6 @@
 
         function renderCurrentOrder() {
           const order = state && state.currentOrder ? state.currentOrder : {};
-          const calibration = order.calibration || { active: false, completed: 0, total: Number(state && state.settings && state.settings.calibrationCount || 5) };
           const runStarted = isAlgorithmRunStarted();
           const nextSceneId = runStarted ? Number(order.next && order.next.sceneId || 0) : 0;
           const rows = currentOrderRows();
@@ -3310,13 +3446,12 @@
           $("orderInvalidBadge").textContent = warningRowCount ? `${warningRowCount} waarschuwing${warningRowCount === 1 ? "" : "en"}` : "";
           $("orderInvalidBadge").classList.toggle("hidden", !warningRowCount);
           $("orderSummary").textContent = orderEditOpen
-            ? "Je past nu de basisvolgorde aan. De eerste posities worden de calibratiesituaties."
+            ? "Je past nu de basisvolgorde aan."
             : rows.length && !hasQueueStatus && runStarted
               ? "Geen actieve of volgende situatie beschikbaar. Check waarschuwingen of reset de runs om opnieuw vanaf het begin te starten."
               : "";
           $("editOrderBtn").classList.toggle("hidden", orderEditOpen);
           $("orderEditHint").classList.toggle("hidden", !orderEditOpen);
-          $("orderEditSettings").classList.toggle("hidden", !orderEditOpen);
           $("orderEditActions").classList.toggle("active", orderEditOpen);
           renderQueueStatus(rows);
           if (orderEditOpen) destroyOrderBaseSortable();
@@ -3467,8 +3602,6 @@
         function renderLive() {
           const activeRun = state.activeRun || null;
           const recommendation = state.recommendation || {};
-          const currentOrder = state.currentOrder || {};
-          const calibration = currentOrder.calibration || recommendation.calibration || { active: false, completed: 0, total: 0 };
           const runtime = state.runtime || {};
           const promptText = activeRun && activeRun.promptSnapshot
             ? activeRun.promptSnapshot
@@ -3476,7 +3609,7 @@
           const hasPreparedScene = !!preparedSceneId();
           const runStarted = isAlgorithmRunStarted();
           const canStartAlgorithmRun = currentOrderRows().length > 0;
-          const runActionDisabled = !!runActionPending;
+          const runActionDisabled = !!runActionPending || !!showActionPending;
           topMetaEl.textContent = `Sessie ${state.session.id} - ${state.session.isActive ? "actief" : "gesloten"}`;
           buildBadgeEl.textContent = runtime.buildLabel || runtime.buildVersion || "build onbekend";
           $("heartStat").textContent = String(activeRun ? activeRun.heartCount || 0 : 0);
@@ -3498,7 +3631,10 @@
           $("sceneToggleBtn").classList.toggle("primary", !activeRun);
           $("previousSceneBtn").disabled = runActionDisabled || !runStarted || !(state.runs || []).some((run) => run && run.endedAt);
           $("resetRunsBtn").disabled = runActionDisabled;
-          if (document.activeElement !== $("calibrationCount")) $("calibrationCount").value = String(state.settings.calibrationCount || 5);
+          $("startShowBtn").disabled = !!showActionPending;
+          $("stopShowBtn").disabled = !!showActionPending;
+          $("startShowBtn").textContent = showActionPending ? "Bezig..." : "Start show";
+          $("stopShowBtn").textContent = showActionPending ? "Bezig..." : "Stop show";
           if (document.activeElement !== $("globalPrompt")) $("globalPrompt").value = state.settings.globalPrompt || "";
           if (document.activeElement !== $("promptTemplate")) $("promptTemplate").value = state.settings.promptTemplate || "";
           renderScoreAlgorithmSettings();
@@ -3885,6 +4021,18 @@
           }
         }
 
+        async function withShowActionPending(work) {
+          if (showActionPending) return null;
+          showActionPending = true;
+          render();
+          try {
+            return await work();
+          } finally {
+            showActionPending = false;
+            render();
+          }
+        }
+
         function formatMirrorSync(mirrorSync) {
           if (!mirrorSync) return "";
           const parts = [];
@@ -3916,7 +4064,6 @@
 
         function algorithmSettingsBody() {
           return {
-            calibrationCount: $("calibrationCount").value,
             globalPrompt: $("globalPrompt").value,
             promptTemplate: $("promptTemplate").value,
             heartWeight: $("scoreHeartWeight").value,
@@ -4158,7 +4305,9 @@
           $("refreshBtn").addEventListener("click", () => loadState(false, { scrollOrder: true }));
           $("logoutBtn").addEventListener("click", () => {
             setToken("");
-            showLogin("");
+            tryDeviceLogin().then((ok) => {
+              if (!ok) showLogin("");
+            });
           });
 
           [
@@ -4441,6 +4590,8 @@
           });
           $("testOscBtn").addEventListener("click", sendOscTest);
           $("sendUpNextBtn").addEventListener("click", () => sendTouchDesigner("next"));
+          $("startShowBtn").addEventListener("click", startShow);
+          $("stopShowBtn").addEventListener("click", stopShow);
 
           $("editOrderBtn").addEventListener("click", openOrderEditor);
           $("cancelOrderBtn").addEventListener("click", () => {
@@ -4453,7 +4604,7 @@
           $("previousSceneBtn").addEventListener("click", restorePreviousScene);
           $("sceneToggleBtn").addEventListener("click", toggleSceneRun);
           $("resetRunsBtn").addEventListener("click", async () => {
-            if (!window.confirm("Reset alle algoritme-runs van deze sessie? Hearts, bored, comments en calibratie beginnen opnieuw.")) return;
+            if (!window.confirm("Reset alle algoritme-runs van deze sessie? Hearts, bored en comments beginnen opnieuw.")) return;
             await withRunActionPending(async () => {
               try {
                 scrollOrderSelectionOnNextRender = true;
@@ -4461,6 +4612,39 @@
                 setMsg("liveMsg", "Algoritme-runs gereset. Klik Start run om bij rij 1 te beginnen.");
               } catch (err) { setMsg("liveMsg", formatError(err), true); }
             });
+          });
+        }
+
+        async function startShow() {
+          return withShowActionPending(async () => {
+            try {
+              scrollOrderSelectionOnNextRender = true;
+              const result = await post("/admin/show/start", {}, "showControlMsg");
+              const sessionText = result.join && result.join.joinUrl ? "Nieuwe sessie gestart. QR klaar." : "Nieuwe sessie gestart.";
+              const feedbackText = result.oscFeedbackSent ? " OSC-feedback verstuurd." : " OSC-feedback niet verstuurd.";
+              setMsg("showControlMsg", `${sessionText} Run gereset en gestart.${feedbackText}`);
+            } catch (err) {
+              setMsg("showControlMsg", formatError(err), true);
+            }
+          });
+        }
+
+        async function stopShow() {
+          if (!window.confirm("Run resetten en sessie beëindigen?")) return null;
+          return withShowActionPending(async () => {
+            try {
+              scrollOrderSelectionOnNextRender = true;
+              const result = await post("/admin/show/stop", {}, "showControlMsg");
+              const closed = Number(result && result.closedClients || 0);
+              const statusText = result.sessionEnded
+                ? "Show gestopt. Run gereset en sessie beëindigd."
+                : "Show stond al stil. Run is gereset.";
+              const closedText = closed > 0 ? ` ${closed} clients verbroken.` : "";
+              const feedbackText = result.oscFeedbackSent ? " OSC-feedback verstuurd." : " OSC-feedback niet verstuurd.";
+              setMsg("showControlMsg", `${statusText}${closedText}${feedbackText}`);
+            } catch (err) {
+              setMsg("showControlMsg", formatError(err), true);
+            }
           });
         }
 

@@ -222,6 +222,181 @@
         grid-template-columns: minmax(0, 1fr) auto;
         gap: 8px;
       }
+      .operatorPanel {
+        grid-column: 1 / -1;
+      }
+      .operatorGrid {
+        display: grid;
+        grid-template-columns: minmax(260px, 0.75fr) minmax(420px, 1.3fr) minmax(240px, 0.65fr);
+        gap: 12px;
+        align-items: start;
+      }
+      .operatorSubpanel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+        min-width: 0;
+      }
+      select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 9px 10px;
+        background: #fff;
+        color: var(--text);
+        font: inherit;
+      }
+      .chips {
+        min-height: 28px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+      }
+      .chip {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        border: 1px solid #99f6e4;
+        background: #f0fdfa;
+        color: #115e59;
+        border-radius: 999px;
+        padding: 4px 8px;
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .chip button {
+        border: 0;
+        background: transparent;
+        padding: 0;
+        color: inherit;
+        font-weight: 900;
+        line-height: 1;
+      }
+      .previewText {
+        border-left: 3px solid var(--line);
+        padding-left: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .operatorChatLog {
+        min-height: 420px;
+        max-height: 620px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8fafc;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .operatorBubble {
+        max-width: min(88%, 760px);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        line-height: 1.5;
+      }
+      .operatorBubble.user {
+        align-self: flex-end;
+        background: #e0f2fe;
+        border-color: #bae6fd;
+      }
+      .operatorBubble.assistant {
+        align-self: flex-start;
+        background: #fff;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 12px;
+      }
+      .operatorBubble.streaming::after {
+        content: "|";
+        color: var(--accent);
+        font-weight: 900;
+      }
+      .operatorSceneTitle {
+        color: var(--accent);
+        font: 900 15px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        padding-bottom: 6px;
+        margin-bottom: 8px;
+        border-bottom: 1px solid var(--line);
+      }
+      .operatorMeta {
+        margin-top: 8px;
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .operatorForm {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: end;
+      }
+      .operatorStats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .terminalStyleBox {
+        border: 1px solid #111827;
+        border-radius: 8px;
+        background: #111827;
+        color: #f9fafb;
+        padding: 10px;
+        display: grid;
+        gap: 9px;
+      }
+      .terminalStyleBox h3 {
+        color: #f9fafb;
+      }
+      .terminalStyleBox label {
+        color: rgba(249, 250, 251, 0.68);
+      }
+      .terminalStyleBox select {
+        border-color: rgba(249, 250, 251, 0.22);
+        background: #030712;
+        color: #f9fafb;
+      }
+      .terminalStyleGrid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .terminalStyleGrid label:first-child {
+        grid-column: 1 / -1;
+      }
+      .terminalStyleBox .small {
+        color: rgba(249, 250, 251, 0.54);
+      }
+      .terminalStyleBox button {
+        background: #f9fafb;
+        border-color: #f9fafb;
+        color: #111827;
+      }
+      .statBox {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 9px;
+      }
+      .statBox .label {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 800;
+      }
+      .statBox .value {
+        font-size: 18px;
+        font-weight: 900;
+        color: var(--ink);
+      }
       .toggleLine {
         display: flex;
         gap: 10px;
@@ -231,12 +406,13 @@
         width: auto;
       }
       @media (max-width: 900px) {
-        main, .two { grid-template-columns: 1fr; }
+        main, .two, .operatorGrid { grid-template-columns: 1fr; }
+        .operatorForm { grid-template-columns: 1fr; }
       }
     </style>
   </head>
   <body>
-    <section id="login" class="login">
+    <section id="login" class="login" style="display:none;">
       <form id="loginForm" class="loginCard">
         <div>
           <h1>API Playground</h1>
@@ -267,6 +443,124 @@
       </header>
 
       <main>
+        <section class="panel operatorPanel">
+          <div class="row">
+            <h2>Operator Chat</h2>
+            <div class="actions" style="margin-left: auto;">
+              <button id="operatorStageOpenBtn" type="button">Open stage output</button>
+              <span id="operatorBadge" class="badge"></span>
+            </div>
+          </div>
+          <div id="operatorStatusText" class="small"></div>
+          <div class="operatorGrid">
+            <div class="operatorSubpanel">
+              <div class="two">
+                <label>Sessie<input id="operatorSessionId" maxlength="120" value="show_default" /></label>
+                <label>Provider<select id="operatorProvider"></select></label>
+              </div>
+              <label>Model<select id="operatorModel"></select></label>
+              <label>Situatie<select id="operatorSituation"></select></label>
+              <div id="operatorSituationPreview" class="previewText"></div>
+              <label>Personage toevoegen<select id="operatorCharacter"></select></label>
+              <div id="operatorChips" class="chips"></div>
+              <label>Omgeving<select id="operatorEnvironment"></select></label>
+              <div id="operatorEnvironmentPreview" class="previewText"></div>
+              <label>Regie vooraf<textarea id="operatorStarterExtra" rows="3" maxlength="1600" placeholder="optioneel"></textarea></label>
+              <div class="actions">
+                <button id="operatorSceneBtn" class="primary" type="button">Scene naar chat</button>
+                <button id="operatorReloadBtn" type="button">Herlaad</button>
+              </div>
+              <div id="operatorMsg" class="msg"></div>
+            </div>
+
+            <div class="operatorSubpanel">
+              <div class="operatorChatLog" id="operatorChatLog" aria-live="polite"></div>
+              <form id="operatorChatForm" class="operatorForm">
+                <textarea id="operatorChatInput" rows="2" maxlength="12000" placeholder="Typ een opdracht of feedback"></textarea>
+                <button id="operatorSendBtn" class="primary" type="submit">Stuur</button>
+              </form>
+            </div>
+
+            <div class="operatorSubpanel">
+              <div class="operatorStats">
+                <div class="statBox">
+                  <div class="label">Beurten</div>
+                  <div class="value" id="operatorStatTurns">0</div>
+                </div>
+                <div class="statBox">
+                  <div class="label">Tokens</div>
+                  <div class="value" id="operatorStatTokens">0</div>
+                </div>
+                <div class="statBox">
+                  <div class="label">Kosten</div>
+                  <div class="value" id="operatorStatCost">0.00</div>
+                </div>
+                <div class="statBox">
+                  <div class="label">Claude $</div>
+                  <div class="value" id="operatorStatClaudeCost">0.00</div>
+                </div>
+                <div class="statBox">
+                  <div class="label">OpenAI $</div>
+                  <div class="value" id="operatorStatOpenAiCost">0.00</div>
+                </div>
+                <div class="statBox">
+                  <div class="label">DeepSeek $</div>
+                  <div class="value" id="operatorStatDeepSeekCost">0.00</div>
+                </div>
+                <div class="statBox">
+                  <div class="label">Sessies</div>
+                  <div class="value" id="operatorStatSessions">0</div>
+                </div>
+              </div>
+              <div class="actions">
+                <button id="operatorUndoBtn" type="button">Undo</button>
+                <button id="operatorClearBtn" type="button">Wis chat</button>
+                <button id="operatorResetBtn" class="danger" type="button">Reset sessie</button>
+              </div>
+              <div class="terminalStyleBox">
+                <div class="row">
+                  <h3>Terminal styling</h3>
+                  <span id="operatorStageStyleStatus" class="small"></span>
+                </div>
+                <div class="terminalStyleGrid">
+                  <label>Font
+                    <select id="operatorStageFont">
+                      <option value="jetbrains">JetBrains Mono</option>
+                      <option value="ibm">IBM Plex Mono</option>
+                      <option value="system">System mono</option>
+                      <option value="courier">Courier</option>
+                    </select>
+                  </label>
+                  <label>Cursor
+                    <select id="operatorStageCursor">
+                      <option value="underscore">Streepje</option>
+                      <option value="bar">Staand</option>
+                      <option value="block">Blok</option>
+                    </select>
+                  </label>
+                  <label>Grootte
+                    <select id="operatorStageFontSize">
+                      <option value="26">Klein</option>
+                      <option value="30">Normaal</option>
+                      <option value="34">Groot</option>
+                      <option value="38">Extra</option>
+                    </select>
+                  </label>
+                </div>
+                <button id="operatorStageStyleSaveBtn" type="button">Bewaar instellingen</button>
+              </div>
+              <div class="row" style="margin-top: 14px;">
+                <h3>OSC</h3>
+                <button id="operatorOscTestBtn" type="button">Test OSC</button>
+              </div>
+              <div id="operatorOscStatusText" class="small"></div>
+              <div id="operatorAlgorithmLinkStatus" class="small"></div>
+              <div id="operatorOscCommands" class="commandList"></div>
+              <div id="operatorActivity" class="terminalLog" style="min-height: 170px; max-height: 260px;"></div>
+            </div>
+          </div>
+        </section>
+
         <section class="panel">
           <div class="row">
             <h2>Sync</h2>
@@ -307,6 +601,10 @@
           <div class="two">
             <label>OpenAI API key<input id="openAiApiKeyInput" type="password" autocomplete="off" placeholder="Laat leeg om niet te wijzigen" /></label>
             <label>Anthropic API key<input id="anthropicApiKeyInput" type="password" autocomplete="off" placeholder="Laat leeg om niet te wijzigen" /></label>
+          </div>
+          <div class="two">
+            <label>DeepSeek API key<input id="deepSeekApiKeyInput" type="password" autocomplete="off" placeholder="Laat leeg om niet te wijzigen" /></label>
+            <span></span>
           </div>
           <div class="two">
             <label>OpenAI vector store ID<input id="envOpenAiVectorStoreId" maxlength="160" placeholder="vs_... optioneel" /></label>
@@ -350,15 +648,52 @@
       (() => {
         const TOKEN_KEY = "api_playground_admin_token_v1";
         const OPENAI_VECTOR_STORE_KEY = "api_playground_openai_vector_store_id_v1";
+        const OPERATOR_PROVIDER_KEY = "api_playground_operator_provider_v1";
+        const OPERATOR_MODEL_KEY = "api_playground_operator_model_v1";
+        const OPERATOR_SESSION_KEY = "api_playground_operator_session_v1";
+        const OPERATOR_STAGE_SOURCE_KEY = "api_playground_operator_stage_source_v1";
+        const OPERATOR_STAGE_STYLE_DEFAULT = Object.freeze({ font: "jetbrains", cursor: "underscore", fontSize: 30 });
+        const OPERATOR_STAGE_FONTS = new Set(["jetbrains", "ibm", "system", "courier"]);
+        const OPERATOR_STAGE_CURSORS = new Set(["underscore", "bar", "block"]);
         let token = "";
         let state = null;
         let syncDraftDirty = false;
         let openAiTerminalEntries = [];
         let openAiLastPlan = null;
+        let operatorStatus = null;
+        let operatorDbIndex = { personages: [], omgevingen: [], situaties: [], promptSettings: {} };
+        let operatorSelectedSituation = null;
+        let operatorSelectedCharacters = new Map();
+        let operatorStreaming = false;
+        let operatorActivityEntries = [];
+        let operatorOscStatus = null;
+        let operatorActiveSceneTimer = null;
+        let operatorLastActiveSceneKey = "";
+        let operatorStageWs = null;
+        let operatorStageReconnectTimer = null;
+        let operatorStageReconnectDelayMs = 500;
+        let operatorStageRevision = 0;
+        let operatorStageApplyingDraft = false;
+        let operatorStageMessages = [];
+        let operatorStageBubbles = new Map();
+        let operatorStageStyle = { ...OPERATOR_STAGE_STYLE_DEFAULT };
+        const operatorStageSourceId = loadOperatorStageSourceId();
 
         const $ = (id) => document.getElementById(id);
         const loginEl = $("login");
         const appEl = $("app");
+
+        function loadOperatorStageSourceId() {
+          try {
+            const existing = String(localStorage.getItem(OPERATOR_STAGE_SOURCE_KEY) || "").trim();
+            if (existing) return existing;
+            const generated = `api_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+            localStorage.setItem(OPERATOR_STAGE_SOURCE_KEY, generated);
+            return generated;
+          } catch {
+            return `api_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+          }
+        }
 
         function esc(value) {
           return String(value || "").replace(/[&<>"']/g, (ch) => ({
@@ -417,10 +752,21 @@
           return {
             unauthorized: "Niet ingelogd.",
             openai_catalog_disabled: "OpenAI catalogus staat uit. Zet FORYOU_OPENAI_CATALOG_ENABLED=1 in je lokale .env.",
-            openai_api_key_missing: "OPENAI_API_KEY mist in je lokale .env.",
-            openai_vector_store_id_missing: "Vul een OpenAI vector store ID in.",
             confirmation_required: "Bevestiging ontbreekt.",
             api_playground_env_update_failed: "Instellingen konden niet worden opgeslagen.",
+            anthropic_api_key_missing: "Anthropic API key ontbreekt.",
+            openai_api_key_missing: "OpenAI API key ontbreekt.",
+            openai_vector_store_id_missing: "OpenAI vector store ontbreekt.",
+            deepseek_api_key_missing: "DeepSeek API key ontbreekt.",
+            deepseek_model_not_supported: "DeepSeek model wordt niet ondersteund.",
+            deepseek_api_error: "DeepSeek API gaf een fout terug.",
+            operator_stage_style_save_failed: "Terminal styling kon niet worden opgeslagen.",
+            operator_stage_error: "Stage sync gaf een fout.",
+            operator_stage_submit_failed: "Stage submit kon niet worden verstuurd.",
+            message_required: "Typ eerst een bericht.",
+            no_turn_to_undo: "Er is nog geen beurt om ongedaan te maken.",
+            database_md_path_missing: "database.md pad ontbreekt.",
+            database_md_missing: "database.md is nog niet gebouwd. Gebruik Rebuild database.md.",
           }[code] || code;
         }
 
@@ -510,14 +856,18 @@
         function renderSecrets() {
           const openAiKey = secretEntry("OPENAI_API_KEY");
           const anthropicKey = secretEntry("ANTHROPIC_API_KEY");
+          const deepSeekKey = secretEntry("DEEPSEEK_API_KEY");
           const enabled = secretEntry("FORYOU_OPENAI_CATALOG_ENABLED");
           const envStore = secretEntry("FORYOU_OPENAI_VECTOR_STORE_ID");
           const openAiConfigured = !!openAiKey.configured;
           const anthropicConfigured = !!anthropicKey.configured;
-          renderBadge("secretsBadge", openAiConfigured || anthropicConfigured ? "ingesteld" : "ontbreekt", openAiConfigured || anthropicConfigured ? "good" : "warn");
+          const deepSeekConfigured = !!deepSeekKey.configured;
+          const anyConfigured = openAiConfigured || anthropicConfigured || deepSeekConfigured;
+          renderBadge("secretsBadge", anyConfigured ? "ingesteld" : "ontbreekt", anyConfigured ? "good" : "warn");
           $("secretsStatusText").textContent =
             `OpenAI: ${openAiConfigured ? "ingesteld" : "ontbreekt"} · ` +
             `Anthropic: ${anthropicConfigured ? "ingesteld" : "ontbreekt"} · ` +
+            `DeepSeek: ${deepSeekConfigured ? "ingesteld" : "ontbreekt"} · ` +
             `.env.local: ${state && state.secrets && state.secrets.envLocalExists ? "aanwezig" : "nog niet aangemaakt"}`;
           if (document.activeElement !== $("openAiCatalogEnabled")) {
             $("openAiCatalogEnabled").checked = String(enabled.value || "") === "1";
@@ -544,6 +894,829 @@
           renderOpenAiTerminal();
         }
 
+        function operatorLog(text, isError = false) {
+          operatorActivityEntries.push({ text: String(text || ""), isError: !!isError, at: new Date() });
+          if (operatorActivityEntries.length > 80) operatorActivityEntries = operatorActivityEntries.slice(-80);
+          renderOperatorActivity();
+        }
+
+        function renderOperatorActivity() {
+          const target = $("operatorActivity");
+          if (!target) return;
+          if (!operatorActivityEntries.length) {
+            target.innerHTML = '<div class="terminalLine"><span class="role">sys</span> Operator chat klaar.</div>';
+            return;
+          }
+          target.innerHTML = operatorActivityEntries.slice().reverse().map((entry) => `
+            <div class="terminalLine ${entry.isError ? "error" : ""}"><span class="role">${entry.at.toLocaleTimeString("nl-NL")}</span> ${esc(entry.text)}</div>
+          `).join("");
+        }
+
+        function selectedOperatorProvider() {
+          return String($("operatorProvider").value || "anthropic");
+        }
+
+        function selectedOperatorModel() {
+          return String($("operatorModel").value || "");
+        }
+
+        function operatorSessionId() {
+          return String($("operatorSessionId").value || "show_default").trim() || "show_default";
+        }
+
+        function renderOperatorProviderControls() {
+          const providers = operatorStatus && operatorStatus.providers ? operatorStatus.providers : {};
+          const providerEl = $("operatorProvider");
+          const savedProvider = localStorage.getItem(OPERATOR_PROVIDER_KEY) || "";
+          if (!providerEl.options.length) {
+            providerEl.innerHTML = [
+              '<option value="anthropic">Claude</option>',
+              '<option value="openai">OpenAI</option>',
+              '<option value="deepseek">DeepSeek</option>',
+            ].join("");
+          }
+          if (["anthropic", "openai", "deepseek"].includes(savedProvider)) {
+            providerEl.value = savedProvider;
+          } else if (providers.anthropic && providers.anthropic.ready) {
+            providerEl.value = "anthropic";
+          } else if (providers.openai && providers.openai.ready) {
+            providerEl.value = "openai";
+          } else if (providers.deepseek && providers.deepseek.ready) {
+            providerEl.value = "deepseek";
+          }
+          const provider = selectedOperatorProvider();
+          const modelInfo = providers[provider] || {};
+          const models = Array.isArray(modelInfo.models) && modelInfo.models.length
+            ? modelInfo.models
+            : provider === "openai"
+              ? ["gpt-5.4-mini", "gpt-5.5", "gpt-5.4"]
+              : provider === "deepseek"
+                ? ["deepseek-v4-flash", "deepseek-v4-pro"]
+                : ["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5"];
+          const savedModel = localStorage.getItem(OPERATOR_MODEL_KEY) || modelInfo.default_model || models[0];
+          $("operatorModel").innerHTML = models.map((model) => `<option value="${esc(model)}">${esc(model)}</option>`).join("");
+          $("operatorModel").value = models.includes(savedModel) ? savedModel : (modelInfo.default_model || models[0]);
+        }
+
+        function renderOperatorStatus() {
+          const status = operatorStatus || {};
+          const providers = status.providers || {};
+          const anthropicReady = !!(providers.anthropic && providers.anthropic.ready);
+          const openAiReady = !!(providers.openai && providers.openai.ready);
+          const deepSeekReady = !!(providers.deepseek && providers.deepseek.ready);
+          const ready = anthropicReady || openAiReady || deepSeekReady;
+          renderBadge("operatorBadge", ready ? "provider klaar" : "provider mist", ready ? "good" : "warn");
+          const counts = status.indexCounts || {};
+          const openAiStore = providers.openai && providers.openai.vectorStoreId ? providers.openai.vectorStoreId : "geen vector store";
+          $("operatorStatusText").textContent =
+            `Claude: ${anthropicReady ? "klaar" : "geen key"} · OpenAI: ${openAiReady ? "klaar" : "niet compleet"} · DeepSeek: ${deepSeekReady ? "klaar" : "geen key"} · ${openAiStore} · ` +
+            `${counts.personages || 0} personages, ${counts.omgevingen || 0} omgevingen, ${counts.situaties || 0} situaties`;
+          $("operatorStatSessions").textContent = Number(status.activeSessions || 0).toLocaleString();
+          operatorOscStatus = status.osc || operatorOscStatus;
+          renderOperatorOsc();
+          renderOperatorProviderControls();
+          renderOperatorActivity();
+        }
+
+        function renderOperatorOsc() {
+          const osc = operatorOscStatus || {};
+          const answer = osc.answer || {};
+          const script = osc.script || {};
+          const answerTarget = answer.host && Number(answer.port || 0) > 0
+            ? `${answer.host}:${Number(answer.port || 0)}`
+            : "geen target";
+          const scriptTarget = script.host && Number(script.port || 0) > 0
+            ? `${script.host}:${Number(script.port || 0)}`
+            : "geen target";
+          $("operatorOscStatusText").textContent =
+            `UDP send: ${osc.sendReady ? "klaar" : "niet klaar"}${osc.sendLastError ? " · " + osc.sendLastError : ""} · ` +
+            `answer: ${answer.enabled ? "aan" : "uit"} → ${answerTarget} · ` +
+            `script: ${script.enabled ? "aan" : "uit"} → ${scriptTarget}`;
+          const commands = Array.isArray(osc.commands) ? osc.commands : [];
+          $("operatorOscCommands").innerHTML = commands.map((cmd) => `
+            <div class="commandRow">
+              <span class="mono">${esc(cmd.address || "")}</span>
+              <span class="small">${esc(cmd.args || "")} · ${esc(cmd.description || "")}</span>
+            </div>
+          `).join("") || '<div class="small">Geen operator OSC commands actief.</div>';
+        }
+
+        async function loadOperatorStatus() {
+          operatorStatus = await api("/admin/operator/status");
+          renderOperatorStatus();
+        }
+
+        async function loadOperatorOscStatus() {
+          operatorOscStatus = await api("/admin/operator/osc/status");
+          renderOperatorOsc();
+        }
+
+        async function loadOperatorDatabaseIndex() {
+          operatorDbIndex = await api("/admin/operator/database/index");
+          populateOperatorDropdowns();
+          startOperatorActiveSceneLink();
+          operatorLog(`database-index geladen: ${operatorDbIndex.personages.length} personages, ${operatorDbIndex.omgevingen.length} omgevingen, ${operatorDbIndex.situaties.length} situaties`);
+        }
+
+        function populateOperatorDropdowns() {
+          const sit = $("operatorSituation");
+          const currentSituation = sit.value;
+          sit.innerHTML = '<option value="">Kies een situatie</option>' +
+            (operatorDbIndex.situaties || []).map((item) => `<option value="${esc(item.id)}">${esc(item.naam)}</option>`).join("");
+          sit.value = currentSituation;
+
+          const character = $("operatorCharacter");
+          character.innerHTML = '<option value="">+ personage</option>' +
+            (operatorDbIndex.personages || []).map((item) => `<option value="${esc(item.id)}">${esc(item.naam)}</option>`).join("");
+
+          const environment = $("operatorEnvironment");
+          const currentEnvironment = environment.value;
+          environment.innerHTML = '<option value="">Geen / model kiest</option>' +
+            (operatorDbIndex.omgevingen || []).map((item) => `<option value="${esc(item.id)}">${esc(item.naam)}</option>`).join("");
+          environment.value = currentEnvironment;
+          updateOperatorSituationSelection();
+          updateOperatorEnvironmentPreview();
+        }
+
+        function renderOperatorChips() {
+          const target = $("operatorChips");
+          const rows = Array.from(operatorSelectedCharacters.entries());
+          target.innerHTML = rows.map(([id, name]) => `
+            <span class="chip">${esc(name)} <button type="button" data-character-id="${esc(id)}" title="verwijder">x</button></span>
+          `).join("") || '<span class="small">Geen personages gekozen.</span>';
+          target.querySelectorAll("button[data-character-id]").forEach((button) => {
+            button.addEventListener("click", () => {
+              operatorSelectedCharacters.delete(button.getAttribute("data-character-id"));
+              renderOperatorChips();
+            });
+          });
+        }
+
+        function updateOperatorSituationSelection() {
+          const id = String($("operatorSituation").value || "");
+          operatorSelectedSituation = (operatorDbIndex.situaties || []).find((item) => String(item.id) === id) || null;
+          $("operatorSituationPreview").textContent = operatorSelectedSituation
+            ? operatorSelectedSituation.beschrijving || operatorSelectedSituation.situationNames && operatorSelectedSituation.situationNames.join(", ") || ""
+            : "";
+          if (!operatorSelectedSituation) return;
+          if (Array.isArray(operatorSelectedSituation.characterIds) && operatorSelectedSituation.characterIds.length) {
+            operatorSelectedCharacters.clear();
+            operatorSelectedSituation.characterIds.forEach((characterId) => {
+              const character = (operatorDbIndex.personages || []).find((item) => String(item.id) === String(characterId));
+              if (character) operatorSelectedCharacters.set(String(character.id), character.naam);
+            });
+            renderOperatorChips();
+          }
+          if (operatorSelectedSituation.environmentId) {
+            $("operatorEnvironment").value = String(operatorSelectedSituation.environmentId);
+            updateOperatorEnvironmentPreview();
+          }
+        }
+
+        function updateOperatorEnvironmentPreview() {
+          const environment = (operatorDbIndex.omgevingen || []).find((item) => String(item.id) === String($("operatorEnvironment").value || ""));
+          $("operatorEnvironmentPreview").textContent = environment ? environment.beschrijving || "" : "";
+        }
+
+        function setOperatorAlgorithmLinkStatus(text, isError = false) {
+          const el = $("operatorAlgorithmLinkStatus");
+          if (!el) return;
+          el.textContent = text || "";
+          el.style.color = isError ? "var(--bad)" : "var(--muted)";
+        }
+
+        function operatorActiveSceneKey(data) {
+          if (!data || !data.active) return "inactive";
+          const run = data.run || {};
+          const scene = data.scene || {};
+          return [run.id || 0, scene.id || 0, run.updatedAt || "", scene.updatedAt || ""].join(":");
+        }
+
+        function applyOperatorActiveScene(data) {
+          if (!data || !data.active) {
+            setOperatorAlgorithmLinkStatus("Algoritme-link: geen actieve scene.");
+            return;
+          }
+          const ui = data.ui || {};
+          const scene = data.scene || {};
+          const situationId = String(ui.situationSlug || scene.id || "");
+          const situation = (operatorDbIndex.situaties || []).find((item) => String(item.id) === situationId) || null;
+          if (situation) {
+            $("operatorSituation").value = String(situation.id);
+            operatorSelectedSituation = situation;
+            $("operatorSituationPreview").textContent = situation.beschrijving || situation.promptOverride || "";
+          }
+          operatorSelectedCharacters.clear();
+          (ui.characterSlugs || []).forEach((id) => {
+            const character = (operatorDbIndex.personages || []).find((item) => String(item.id) === String(id));
+            if (character) operatorSelectedCharacters.set(String(character.id), character.naam);
+          });
+          renderOperatorChips();
+          if (ui.environmentSlug) {
+            $("operatorEnvironment").value = String(ui.environmentSlug);
+            updateOperatorEnvironmentPreview();
+          }
+          setOperatorAlgorithmLinkStatus(`Algoritme-link: actieve scene "${ui.situationName || scene.title || situationId}" ingevuld.`);
+          operatorLog(`algoritme-link → ${ui.situationName || scene.title || situationId}`);
+        }
+
+        async function pollOperatorActiveScene() {
+          try {
+            const data = await api("/admin/operator/algorithm/active-scene");
+            const key = operatorActiveSceneKey(data);
+            if (key === operatorLastActiveSceneKey) return;
+            operatorLastActiveSceneKey = key;
+            applyOperatorActiveScene(data);
+          } catch (err) {
+            setOperatorAlgorithmLinkStatus(`Algoritme-link niet beschikbaar: ${formatError(err)}`, true);
+          }
+        }
+
+        function startOperatorActiveSceneLink() {
+          if (operatorActiveSceneTimer) clearInterval(operatorActiveSceneTimer);
+          pollOperatorActiveScene().catch(() => {});
+          operatorActiveSceneTimer = setInterval(() => {
+            pollOperatorActiveScene().catch(() => {});
+          }, 2000);
+        }
+
+        function operatorSelectedCharacterObjects() {
+          return Array.from(operatorSelectedCharacters.keys())
+            .map((id) => (operatorDbIndex.personages || []).find((item) => String(item.id) === String(id)))
+            .filter(Boolean);
+        }
+
+        function compactOperatorPrompt(text) {
+          return String(text || "")
+            .split("\n")
+            .map((line) => line.trimEnd())
+            .join("\n")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
+        }
+
+        function fillOperatorTemplate(template, values) {
+          return compactOperatorPrompt(String(template || "").replace(/\{(\w+)\}/g, (_, key) => {
+            return Object.prototype.hasOwnProperty.call(values, key) ? String(values[key] || "") : "";
+          }));
+        }
+
+        function buildOperatorScenePrompt() {
+          if (operatorSelectedSituation && operatorSelectedSituation.prompt) return operatorSelectedSituation.prompt;
+          const settings = operatorDbIndex.promptSettings || {};
+          const characters = operatorSelectedCharacterObjects();
+          const environment = (operatorDbIndex.omgevingen || []).find((item) => String(item.id) === String($("operatorEnvironment").value || "")) || null;
+          const situationName = operatorSelectedSituation ? operatorSelectedSituation.naam : "Nieuwe scene";
+          const scenePrompt = operatorSelectedSituation
+            ? String(operatorSelectedSituation.promptOverride || operatorSelectedSituation.beschrijving || "").trim()
+            : "Schrijf een scene.";
+          const characterLines = characters.length
+            ? characters.map((item, index) => `Personage ${index + 1}: ${item.naam} ${item.beschrijving || ""}`.trim()).join("\n")
+            : "Geen personages.";
+          const template = settings.promptTemplate || [
+            "{globalPrompt}",
+            "",
+            "{characters}",
+            "",
+            "De personages bevinden zich in de volgende situatie: {situations}",
+            "{scenePrompt}",
+            "Locatie: {environmentName}",
+            "Personages: {characterNames}",
+            "Titel: {title}",
+            "De locatie is: {environmentDescription}",
+            "{audienceContext}",
+          ].join("\n");
+          return fillOperatorTemplate(template, {
+            globalPrompt: settings.globalPrompt || "",
+            characters: characterLines,
+            situations: situationName,
+            scenePrompt,
+            environmentName: environment ? environment.naam : "",
+            characterNames: characters.map((item) => item.naam).join(", "),
+            title: situationName,
+            environmentDescription: environment ? `${environment.naam}, ${environment.beschrijving || ""}`.replace(/,\s*$/, "") : "",
+            audienceContext: "",
+          });
+        }
+
+        function operatorSceneToChat() {
+          if (!operatorSelectedSituation && !operatorSelectedCharacters.size) {
+            setMsg("operatorMsg", "Kies eerst een situatie of personage.", true);
+            return;
+          }
+          const extra = String($("operatorStarterExtra").value || "").trim();
+          $("operatorChatInput").value = [extra, buildOperatorScenePrompt()].filter(Boolean).join("\n\n");
+          operatorSendChat();
+        }
+
+        function operatorEmptyState() {
+          $("operatorChatLog").innerHTML = '<div class="small" style="padding: 20px; text-align: center;">Kies links een situatie of typ direct een opdracht.</div>';
+        }
+
+        function renderOperatorAssistantContent(bubble, text) {
+          if (!text) {
+            bubble.innerHTML = "";
+            return;
+          }
+          const lines = String(text || "").split("\n");
+          let html = "";
+          let buffer = [];
+          const flush = () => {
+            if (buffer.length) {
+              html += esc(buffer.join("\n"));
+              buffer = [];
+            }
+          };
+          lines.forEach((line) => {
+            if (/^#\s+/.test(line)) {
+              flush();
+              html += `<div class="operatorSceneTitle">${esc(line.replace(/^#\s+/, ""))}</div>`;
+            } else {
+              buffer.push(line);
+            }
+          });
+          flush();
+          bubble.innerHTML = html;
+        }
+
+        function appendOperatorBubble(role, text, options = {}) {
+          const log = $("operatorChatLog");
+          if (log.querySelector(".small")) log.innerHTML = "";
+          const bubble = document.createElement("div");
+          bubble.className = `operatorBubble ${role}${options.streaming ? " streaming" : ""}`;
+          if (role === "assistant") renderOperatorAssistantContent(bubble, text);
+          else bubble.textContent = text;
+          log.appendChild(bubble);
+          log.scrollTop = log.scrollHeight;
+          return bubble;
+        }
+
+        function addOperatorMeta(bubble, meta = {}) {
+          const div = document.createElement("div");
+          div.className = "operatorMeta";
+          const osc = meta.osc || {};
+          const oscSent = !!(osc.answer && osc.answer.sent) || !!(osc.script && osc.script.sent);
+          div.innerHTML = `
+            <span class="badge">${esc(meta.provider || "")} / ${esc(meta.model || "")}</span>
+            <span class="badge">${Number(meta.tokens_input || 0).toLocaleString()} in</span>
+            <span class="badge">${Number(meta.tokens_output || 0).toLocaleString()} uit</span>
+            <span class="badge">$${Number(meta.kosten_dollar || 0).toFixed(4)}</span>
+            <span class="badge ${meta.cached ? "good" : "warn"}">${meta.cached ? "cached" : "no cache"}</span>
+            <span class="badge ${oscSent ? "good" : "warn"}">OSC ${oscSent ? "sent" : "niet sent"}</span>
+          `;
+          bubble.appendChild(div);
+        }
+
+        function updateOperatorStats(data = {}) {
+          const usage = data.provider_usage || {};
+          const claude = usage.anthropic || {};
+          const openai = usage.openai || {};
+          const deepseek = usage.deepseek || {};
+          $("operatorStatTurns").textContent = Number(data.turn_count || 0).toLocaleString();
+          $("operatorStatTokens").textContent = Number(data.tokens_totaal || data.sessie_tokens_totaal || 0).toLocaleString();
+          $("operatorStatCost").textContent = Number(data.kosten_totaal || data.sessie_kosten_totaal || 0).toFixed(4);
+          $("operatorStatClaudeCost").textContent = Number(claude.kosten_totaal || 0).toFixed(4);
+          $("operatorStatOpenAiCost").textContent = Number(openai.kosten_totaal || 0).toFixed(4);
+          $("operatorStatDeepSeekCost").textContent = Number(deepseek.kosten_totaal || 0).toFixed(4);
+        }
+
+        function operatorStageIsOpen() {
+          return operatorStageWs && operatorStageWs.readyState === WebSocket.OPEN;
+        }
+
+        function setOperatorStreamingState(streaming) {
+          operatorStreaming = !!streaming;
+          $("operatorSendBtn").disabled = operatorStreaming;
+          $("operatorSceneBtn").disabled = operatorStreaming;
+          $("operatorChatInput").disabled = operatorStreaming;
+        }
+
+        function operatorStageSend(message = {}) {
+          if (!operatorStageIsOpen()) return false;
+          try {
+            operatorStageWs.send(JSON.stringify(message));
+            return true;
+          } catch {
+            return false;
+          }
+        }
+
+        function normalizeOperatorStageStyle(style = {}) {
+          const source = style && typeof style === "object" ? style : {};
+          const font = String(source.font || OPERATOR_STAGE_STYLE_DEFAULT.font).trim().toLowerCase();
+          const cursor = String(source.cursor || OPERATOR_STAGE_STYLE_DEFAULT.cursor).trim().toLowerCase();
+          const fontSize = Math.max(24, Math.min(42, Number(source.fontSize || OPERATOR_STAGE_STYLE_DEFAULT.fontSize) || OPERATOR_STAGE_STYLE_DEFAULT.fontSize));
+          return {
+            font: OPERATOR_STAGE_FONTS.has(font) ? font : OPERATOR_STAGE_STYLE_DEFAULT.font,
+            cursor: OPERATOR_STAGE_CURSORS.has(cursor) ? cursor : OPERATOR_STAGE_STYLE_DEFAULT.cursor,
+            fontSize,
+          };
+        }
+
+        function setOperatorStageStyleStatus(text = "", error = false) {
+          const el = $("operatorStageStyleStatus");
+          if (!el) return;
+          el.textContent = text;
+          el.style.color = error ? "#fca5a5" : "";
+        }
+
+        function selectedOperatorStageStyle() {
+          return normalizeOperatorStageStyle({
+            font: $("operatorStageFont").value,
+            cursor: $("operatorStageCursor").value,
+            fontSize: $("operatorStageFontSize").value,
+          });
+        }
+
+        function applyOperatorStageStyle(style = {}) {
+          operatorStageStyle = normalizeOperatorStageStyle(style);
+          $("operatorStageFont").value = operatorStageStyle.font;
+          $("operatorStageCursor").value = operatorStageStyle.cursor;
+          $("operatorStageFontSize").value = String(operatorStageStyle.fontSize);
+        }
+
+        function sendOperatorStageStyle() {
+          return operatorStageSend({
+            type: "operator_stage_style",
+            sourceId: operatorStageSourceId,
+            style: operatorStageStyle,
+          });
+        }
+
+        function previewOperatorStageStyle() {
+          applyOperatorStageStyle(selectedOperatorStageStyle());
+          sendOperatorStageStyle();
+          setOperatorStageStyleStatus("preview");
+        }
+
+        async function loadOperatorStageStyle() {
+          const data = await api("/admin/operator/stage-style");
+          applyOperatorStageStyle(data.style || {});
+          setOperatorStageStyleStatus("");
+        }
+
+        async function saveOperatorStageStyle() {
+          const btn = $("operatorStageStyleSaveBtn");
+          const oldText = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = "Bewaren...";
+          setOperatorStageStyleStatus("");
+          try {
+            applyOperatorStageStyle(selectedOperatorStageStyle());
+            const data = await api("/admin/operator/stage-style", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ style: operatorStageStyle }),
+            });
+            applyOperatorStageStyle(data.style || operatorStageStyle);
+            setOperatorStageStyleStatus("bewaard");
+          } catch (err) {
+            setOperatorStageStyleStatus(formatError(err), true);
+          } finally {
+            btn.disabled = false;
+            btn.textContent = oldText;
+          }
+        }
+
+        function currentOperatorStageControl() {
+          return {
+            type: "operator_stage_control",
+            sourceId: operatorStageSourceId,
+            sessionId: operatorSessionId(),
+            provider: selectedOperatorProvider(),
+            model: selectedOperatorModel(),
+            vectorStoreId: selectedOpenAiVectorStoreId(),
+          };
+        }
+
+        function sendOperatorStageControl() {
+          return operatorStageSend(currentOperatorStageControl());
+        }
+
+        function sendOperatorStageDraft(text) {
+          if (!operatorStageIsOpen() || operatorStageApplyingDraft || operatorStreaming) return false;
+          operatorStageRevision += 1;
+          return operatorStageSend({
+            type: "operator_stage_draft",
+            sourceId: operatorStageSourceId,
+            text: String(text || ""),
+            revision: operatorStageRevision,
+          });
+        }
+
+        function renderOperatorStageMessages(messages = []) {
+          operatorStageMessages = Array.isArray(messages) ? messages.slice() : [];
+          operatorStageBubbles = new Map();
+          const log = $("operatorChatLog");
+          log.innerHTML = "";
+          if (!operatorStageMessages.length) {
+            operatorEmptyState();
+            return;
+          }
+          for (const message of operatorStageMessages) {
+            const role = message.role === "assistant" ? "assistant" : "user";
+            const bubble = appendOperatorBubble(role, message.content || "", { streaming: !!message.streaming });
+            if (message.id) {
+              bubble.dataset.operatorStageMessageId = String(message.id);
+              operatorStageBubbles.set(String(message.id), bubble);
+            }
+            if (role === "assistant" && message.meta) {
+              addOperatorMeta(bubble, message.meta);
+            }
+          }
+        }
+
+        function applyOperatorStageDraft(draft, sourceId = "") {
+          if (sourceId === operatorStageSourceId && document.activeElement === $("operatorChatInput")) return;
+          operatorStageApplyingDraft = true;
+          $("operatorChatInput").value = String(draft || "");
+          operatorStageApplyingDraft = false;
+        }
+
+        function applyOperatorStageState(stage = {}) {
+          if (Number.isFinite(Number(stage.revision))) operatorStageRevision = Number(stage.revision);
+          if (stage.style) applyOperatorStageStyle(stage.style);
+          applyOperatorStageDraft(stage.draft || "");
+          setOperatorStreamingState(!!stage.streaming);
+          if (Array.isArray(stage.messages)) renderOperatorStageMessages(stage.messages);
+          if (stage.sessionId && document.activeElement !== $("operatorSessionId")) {
+            $("operatorSessionId").value = String(stage.sessionId || "show_default");
+            localStorage.setItem(OPERATOR_SESSION_KEY, operatorSessionId());
+          }
+          operatorLog(`stage sync ${stage.streaming ? "streaming" : "klaar"}`);
+        }
+
+        function findOperatorStageMessage(id) {
+          const safeId = String(id || "");
+          return operatorStageMessages.find((message) => String(message.id || "") === safeId);
+        }
+
+        function applyOperatorStageDelta(data = {}) {
+          const id = String(data.assistantId || "");
+          if (!id) return;
+          let message = findOperatorStageMessage(id);
+          if (!message) {
+            message = { id, role: "assistant", content: "", streaming: true };
+            operatorStageMessages.push(message);
+          }
+          message.content = typeof data.fullText === "string"
+            ? data.fullText
+            : String(message.content || "") + String(data.text || "");
+          let bubble = operatorStageBubbles.get(id);
+          if (!bubble) {
+            bubble = appendOperatorBubble("assistant", "", { streaming: true });
+            bubble.dataset.operatorStageMessageId = id;
+            operatorStageBubbles.set(id, bubble);
+          }
+          renderOperatorAssistantContent(bubble, message.content);
+          bubble.classList.add("streaming");
+          $("operatorChatLog").scrollTop = $("operatorChatLog").scrollHeight;
+        }
+
+        function handleOperatorStageMessage(raw) {
+          let msg = {};
+          try { msg = JSON.parse(String(raw || "{}")); } catch { return; }
+          if (msg.type === "operator_stage_hello" || msg.type === "operator_stage_state") {
+            applyOperatorStageState(msg.stage || {});
+            return;
+          }
+          if (msg.type === "operator_stage_draft") {
+            operatorStageRevision = Number(msg.revision || operatorStageRevision);
+            applyOperatorStageDraft(msg.draft || "", msg.sourceId || "");
+            return;
+          }
+          if (msg.type === "operator_stage_style") {
+            applyOperatorStageStyle(msg.style || (msg.stage && msg.stage.style) || {});
+            setOperatorStageStyleStatus(msg.persisted ? "bewaard" : "preview");
+            return;
+          }
+          if (msg.type === "operator_stage_user" || msg.type === "operator_stage_start" || msg.type === "operator_stage_done") {
+            applyOperatorStageState(msg.stage || {});
+            if (msg.type === "operator_stage_done" && msg.meta) updateOperatorStats(msg.meta);
+            return;
+          }
+          if (msg.type === "operator_stage_delta") {
+            applyOperatorStageDelta(msg);
+            return;
+          }
+          if (msg.type === "operator_stage_error") {
+            applyOperatorStageState(msg.stage || {});
+            operatorLog(formatError({ message: msg.message || "operator_stage_error" }), true);
+            setMsg("operatorMsg", formatError({ message: msg.message || "operator_stage_error" }), true);
+          }
+        }
+
+        function scheduleOperatorStageReconnect() {
+          if (operatorStageReconnectTimer) return;
+          operatorStageReconnectTimer = setTimeout(() => {
+            operatorStageReconnectTimer = null;
+            connectOperatorStageSync();
+          }, operatorStageReconnectDelayMs);
+          operatorStageReconnectDelayMs = Math.min(6000, Math.floor(operatorStageReconnectDelayMs * 1.6));
+        }
+
+        function connectOperatorStageSync() {
+          if (operatorStageWs && (operatorStageWs.readyState === WebSocket.OPEN || operatorStageWs.readyState === WebSocket.CONNECTING)) return;
+          const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+          try {
+            operatorStageWs = new WebSocket(`${protocol}://${window.location.host}/?operatorStage=1`);
+          } catch {
+            scheduleOperatorStageReconnect();
+            return;
+          }
+          operatorStageWs.addEventListener("open", () => {
+            operatorStageReconnectDelayMs = 500;
+            operatorLog("stage sync verbonden");
+            sendOperatorStageControl();
+            operatorStageSend({ type: "operator_stage_refresh", sourceId: operatorStageSourceId });
+          });
+          operatorStageWs.addEventListener("message", (event) => handleOperatorStageMessage(event && event.data));
+          operatorStageWs.addEventListener("close", () => {
+            operatorStageWs = null;
+            operatorLog("stage sync reconnecting", true);
+            scheduleOperatorStageReconnect();
+          });
+          operatorStageWs.addEventListener("error", () => {
+            operatorLog("stage sync fout", true);
+          });
+        }
+
+        async function readOperatorStream(response, onData) {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let idx;
+            while ((idx = buffer.indexOf("\n\n")) >= 0) {
+              const raw = buffer.slice(0, idx);
+              buffer = buffer.slice(idx + 2);
+              const dataLine = raw.split(/\r?\n/).find((line) => line.startsWith("data: "));
+              if (!dataLine) continue;
+              onData(JSON.parse(dataLine.slice(6)));
+            }
+          }
+        }
+
+        async function operatorSendChat() {
+          if (operatorStreaming) return;
+          const text = String($("operatorChatInput").value || "").trim();
+          if (!text) return;
+          if (operatorStageIsOpen()) {
+            sendOperatorStageControl();
+            sendOperatorStageDraft(text);
+            setOperatorStreamingState(true);
+            operatorStageSend({
+              type: "operator_stage_submit",
+              sourceId: operatorStageSourceId,
+              sessionId: operatorSessionId(),
+              provider: selectedOperatorProvider(),
+              model: selectedOperatorModel(),
+              vectorStoreId: selectedOpenAiVectorStoreId(),
+            });
+            return;
+          }
+          setOperatorStreamingState(true);
+          appendOperatorBubble("user", text);
+          $("operatorChatInput").value = "";
+          const assistant = appendOperatorBubble("assistant", "", { streaming: true });
+          let fullText = "";
+          try {
+            operatorLog(`POST /admin/operator/chat/stream ${selectedOperatorProvider()}/${selectedOperatorModel()}`);
+            const headers = { "Content-Type": "application/json" };
+            if (token) headers["x-admin-token"] = token;
+            const response = await fetch("/admin/operator/chat/stream", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                sessie_id: operatorSessionId(),
+                message: text,
+                provider: selectedOperatorProvider(),
+                model: selectedOperatorModel(),
+                vectorStoreId: selectedOpenAiVectorStoreId(),
+              }),
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            let meta = null;
+            await readOperatorStream(response, (data) => {
+              if (data.type === "delta") {
+                fullText += data.text || "";
+                renderOperatorAssistantContent(assistant, fullText);
+                $("operatorChatLog").scrollTop = $("operatorChatLog").scrollHeight;
+              } else if (data.type === "done") {
+                meta = data;
+              } else if (data.type === "error") {
+                throw new Error(data.message || "operator_stream_error");
+              }
+            });
+            assistant.classList.remove("streaming");
+            renderOperatorAssistantContent(assistant, fullText);
+            if (meta) {
+              addOperatorMeta(assistant, meta);
+              updateOperatorStats(meta);
+              if (meta.osc) {
+                const answer = meta.osc.answer || {};
+                const script = meta.osc.script || {};
+                const answerText = answer.sent ? `answer → ${answer.targetHost || "?"}:${answer.targetPort || "?"}` : `answer niet sent (${answer.reason || "uit"})`;
+                const scriptText = script.sent ? `script → ${script.targetHost || "?"}:${script.targetPort || "?"}, ${script.lineCount || 0} regels` : `script niet sent (${script.reason || "uit"})`;
+                operatorLog(`OSC ${answerText}; ${scriptText}`);
+                operatorOscStatus = meta.osc.status || operatorOscStatus;
+                renderOperatorOsc();
+              }
+              operatorLog(`${meta.scene_id} klaar, $${Number(meta.kosten_dollar || 0).toFixed(4)}`);
+              loadOperatorStatus().catch(() => {});
+            }
+          } catch (err) {
+            assistant.classList.remove("streaming");
+            renderOperatorAssistantContent(assistant, `${fullText}\n\nFOUT: ${formatError(err)}`);
+            operatorLog(formatError(err), true);
+            setMsg("operatorMsg", formatError(err), true);
+          } finally {
+            setOperatorStreamingState(false);
+            $("operatorChatInput").focus();
+          }
+        }
+
+        async function loadOperatorChat() {
+          const sid = operatorSessionId();
+          localStorage.setItem(OPERATOR_SESSION_KEY, sid);
+          const history = await api(`/admin/operator/chat/${encodeURIComponent(sid)}`);
+          const log = $("operatorChatLog");
+          log.innerHTML = "";
+          if (!history.messages || !history.messages.length) {
+            operatorEmptyState();
+          } else {
+            history.messages.forEach((message) => appendOperatorBubble(message.role === "assistant" ? "assistant" : "user", message.content || ""));
+          }
+          updateOperatorStats(history);
+          try {
+            const session = await api(`/admin/operator/sessie/${encodeURIComponent(sid)}`);
+            updateOperatorStats(session);
+          } catch {}
+        }
+
+        async function operatorUndo() {
+          try {
+            await api(`/admin/operator/chat/${encodeURIComponent(operatorSessionId())}/undo`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            });
+            operatorLog("laatste beurt ongedaan");
+            await loadOperatorChat();
+          } catch (err) {
+            setMsg("operatorMsg", formatError(err), true);
+          }
+        }
+
+        async function operatorClearChat() {
+          if (!window.confirm(`Chat van "${operatorSessionId()}" wissen?`)) return;
+          await api(`/admin/operator/chat/${encodeURIComponent(operatorSessionId())}`, { method: "DELETE" });
+          operatorLog("chat gewist");
+          await loadOperatorChat();
+        }
+
+        async function operatorResetSession() {
+          if (!window.confirm(`Hele sessie "${operatorSessionId()}" resetten?`)) return;
+          await api(`/admin/operator/sessie/${encodeURIComponent(operatorSessionId())}`, { method: "DELETE" });
+          operatorLog("sessie gereset");
+          await loadOperatorStatus().catch(() => {});
+          await loadOperatorChat();
+        }
+
+        async function operatorOscTest() {
+          const btn = $("operatorOscTestBtn");
+          const oldText = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = "Test...";
+          try {
+            const result = await api("/admin/operator/osc/test", { method: "POST" });
+            operatorOscStatus = result.status || operatorOscStatus;
+            renderOperatorOsc();
+            const answer = result.answer || {};
+            const script = result.script || {};
+            const answerText = answer.sent ? `answer ${answer.targetHost || "?"}:${answer.targetPort || "?"}` : `answer ${answer.reason || "niet sent"}`;
+            const scriptText = script.sent ? `script ${script.targetHost || "?"}:${script.targetPort || "?"} (${script.lineCount || 0} regels)` : `script ${script.reason || "niet sent"}`;
+            operatorLog(`OSC test: ${answerText}; ${scriptText}`, !result.ok);
+          } catch (err) {
+            operatorLog(`OSC test: ${formatError(err)}`, true);
+            setMsg("operatorMsg", formatError(err), true);
+          } finally {
+            btn.disabled = false;
+            btn.textContent = oldText;
+          }
+        }
+
+        async function loadOperatorAll() {
+          await loadOperatorStageStyle().catch(() => {});
+          await loadOperatorStatus();
+          await loadOperatorOscStatus().catch(() => {});
+          await loadOperatorDatabaseIndex();
+          await loadOperatorChat();
+        }
+
         function render() {
           if (!state) return;
           $("buildBadge").textContent = state.runtime && state.runtime.buildLabel ? state.runtime.buildLabel : "build onbekend";
@@ -557,6 +1730,11 @@
           state = await api("/admin/api-playground/status");
           showApp();
           render();
+          loadOperatorAll().catch((err) => {
+            setMsg("operatorMsg", formatError(err), true);
+            operatorLog(formatError(err), true);
+          });
+          connectOperatorStageSync();
         }
 
         async function login() {
@@ -576,6 +1754,24 @@
             await loadStatus();
           } catch (err) {
             $("loginMsg").textContent = formatError(err);
+          }
+        }
+
+        async function autoLogin() {
+          try {
+            const body = await api("/admin/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                rememberDevice: false,
+                deviceLabel: navigator.userAgent || "",
+              }),
+            });
+            setToken(body.token);
+            await loadStatus();
+            return true;
+          } catch {
+            return false;
           }
         }
 
@@ -678,6 +1874,7 @@
         async function saveSecrets() {
           const openAiApiKey = String($("openAiApiKeyInput").value || "").trim();
           const anthropicApiKey = String($("anthropicApiKeyInput").value || "").trim();
+          const deepSeekApiKey = String($("deepSeekApiKeyInput").value || "").trim();
           const openAiVectorStoreId = String($("envOpenAiVectorStoreId").value || "").trim();
           try {
             const result = await api("/admin/api-playground/secrets", {
@@ -686,12 +1883,14 @@
               body: JSON.stringify({
                 openAiApiKey,
                 anthropicApiKey,
+                deepSeekApiKey,
                 openAiCatalogEnabled: $("openAiCatalogEnabled").checked,
                 openAiVectorStoreId,
               }),
             });
             $("openAiApiKeyInput").value = "";
             $("anthropicApiKeyInput").value = "";
+            $("deepSeekApiKeyInput").value = "";
             state.secrets = result.secrets || state.secrets;
             state.openAiCatalog = result.openAiCatalog || state.openAiCatalog;
             if (openAiVectorStoreId) {
@@ -894,7 +2093,9 @@
           $("refreshBtn").addEventListener("click", () => loadStatus().catch((err) => setMsg("mirrorMsg", formatError(err), true)));
           $("logoutBtn").addEventListener("click", () => {
             setToken("");
-            showLogin("");
+            autoLogin().then((ok) => {
+              if (!ok) showLogin("");
+            });
           });
           $("syncPeerUrl").addEventListener("input", () => { syncDraftDirty = true; });
           $("syncPeerUrl").addEventListener("change", () => { syncDraftDirty = true; });
@@ -908,8 +2109,12 @@
           $("openAiVectorStoreId").addEventListener("change", () => {
             saveOpenAiVectorStoreId(selectedOpenAiVectorStoreId());
             renderOpenAi();
+            sendOperatorStageControl();
           });
-          $("openAiVectorStoreId").addEventListener("input", () => saveOpenAiVectorStoreId(selectedOpenAiVectorStoreId()));
+          $("openAiVectorStoreId").addEventListener("input", () => {
+            saveOpenAiVectorStoreId(selectedOpenAiVectorStoreId());
+            sendOperatorStageControl();
+          });
           $("openAiStoresBtn").addEventListener("click", openAiListStores);
           $("openAiAuditBtn").addEventListener("click", openAiAudit);
           $("openAiPlanBtn").addEventListener("click", openAiSyncPlan);
@@ -918,14 +2123,73 @@
             event.preventDefault();
             handleOpenAiCommand($("openAiTerminalInput").value);
           });
+          applyOperatorStageStyle(operatorStageStyle);
+          ["operatorStageFont", "operatorStageCursor", "operatorStageFontSize"].forEach((id) => {
+            $(id).addEventListener("change", previewOperatorStageStyle);
+          });
+          $("operatorStageStyleSaveBtn").addEventListener("click", () => {
+            saveOperatorStageStyle();
+          });
+          $("operatorStageOpenBtn").addEventListener("click", () => {
+            window.open("/api-playground/stage", "foryou_api_playground_stage");
+          });
+          $("operatorProvider").addEventListener("change", () => {
+            localStorage.setItem(OPERATOR_PROVIDER_KEY, selectedOperatorProvider());
+            renderOperatorProviderControls();
+            sendOperatorStageControl();
+          });
+          $("operatorModel").addEventListener("change", () => {
+            localStorage.setItem(OPERATOR_MODEL_KEY, selectedOperatorModel());
+            sendOperatorStageControl();
+          });
+          $("operatorSessionId").value = localStorage.getItem(OPERATOR_SESSION_KEY) || $("operatorSessionId").value;
+          $("operatorSessionId").addEventListener("change", () => {
+            sendOperatorStageControl();
+            loadOperatorChat().catch((err) => setMsg("operatorMsg", formatError(err), true));
+          });
+          $("operatorSituation").addEventListener("change", updateOperatorSituationSelection);
+          $("operatorCharacter").addEventListener("change", () => {
+            const id = String($("operatorCharacter").value || "");
+            const character = (operatorDbIndex.personages || []).find((item) => String(item.id) === id);
+            if (character) {
+              operatorSelectedCharacters.set(String(character.id), character.naam);
+              renderOperatorChips();
+            }
+            $("operatorCharacter").value = "";
+          });
+          $("operatorEnvironment").addEventListener("change", updateOperatorEnvironmentPreview);
+          $("operatorSceneBtn").addEventListener("click", operatorSceneToChat);
+          $("operatorReloadBtn").addEventListener("click", () => loadOperatorAll().catch((err) => setMsg("operatorMsg", formatError(err), true)));
+          $("operatorChatForm").addEventListener("submit", (event) => {
+            event.preventDefault();
+            operatorSendChat();
+          });
+          $("operatorChatInput").addEventListener("keydown", (event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              operatorSendChat();
+            }
+          });
+          $("operatorChatInput").addEventListener("input", () => {
+            sendOperatorStageDraft($("operatorChatInput").value || "");
+          });
+          $("operatorUndoBtn").addEventListener("click", operatorUndo);
+          $("operatorClearBtn").addEventListener("click", () => operatorClearChat().catch((err) => setMsg("operatorMsg", formatError(err), true)));
+          $("operatorResetBtn").addEventListener("click", () => operatorResetSession().catch((err) => setMsg("operatorMsg", formatError(err), true)));
+          $("operatorOscTestBtn").addEventListener("click", operatorOscTest);
         }
 
         bindEvents();
         loadToken();
         if (token) {
-          loadStatus().catch(() => showLogin("Login opnieuw nodig."));
+          loadStatus().catch(async () => {
+            setToken("");
+            if (!(await autoLogin())) showLogin("Login opnieuw nodig.");
+          });
         } else {
-          showLogin("");
+          autoLogin().then((ok) => {
+            if (!ok) showLogin("");
+          });
         }
       })();
     </script>

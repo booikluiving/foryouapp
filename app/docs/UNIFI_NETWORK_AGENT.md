@@ -38,7 +38,7 @@ npm run unifi:status -- --base-url https://192.168.1.1/andere/api/base
 
 ## Adminroute
 
-De For_You server biedt alleen voor ingelogde admins:
+De For_You server biedt deze statusroute via de admin-auth huls. Met `ADMIN_AUTH_DISABLED=1` is die huls frictieloos. Peer-sync blijft apart beveiligd en vereist dan nog steeds een expliciete `FORYOU_SYNC_SECRET` of `SYNC_SECRET`:
 
 ```text
 GET /admin/network/status
