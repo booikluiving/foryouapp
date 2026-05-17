@@ -3108,7 +3108,20 @@
           return new Map((rows || []).map((item) => [Number(item.id || 0), Number(item.average || 0)]));
         }
 
+        function activeRunScoreForEntry(entry) {
+          const sceneId = Number(entry && entry.sceneId || 0);
+          const activeRun = state && state.activeRun ? state.activeRun : null;
+          if (!sceneId || !activeRun || Number(activeRun.sceneId || 0) !== sceneId) return null;
+          const details = activeRun.scoreDetails && typeof activeRun.scoreDetails === "object" ? activeRun.scoreDetails : {};
+          const detailScore = Number(details.score);
+          if (Number.isFinite(detailScore)) return detailScore;
+          const runScore = Number(activeRun.score);
+          return Number.isFinite(runScore) ? runScore : null;
+        }
+
         function orderEntryScore(entry, scores = sceneScoreMap()) {
+          const activeScore = activeRunScoreForEntry(entry);
+          if (activeScore !== null) return activeScore;
           const raw = Number(entry && entry.score);
           if (Number.isFinite(raw) && raw !== 0) return raw;
           const fallback = scores.get(Number(entry && entry.sceneId || 0));
@@ -3168,10 +3181,13 @@
           const activeRunBadge = activeRun
             ? `<span class="badge warning">actieve run #${Number(activeRun.runOrder || activeRun.id || 0)}</span>`
             : "";
+          const activePointsBadge = activeEntry
+            ? `<span class="badge">${esc(formatOrderPoints(activeEntry))}</span>`
+            : "";
           const activeLine = !runStarted
             ? `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="queueStatusValue muted">Run nog niet gestart</span></div>`
             : activeEntry
-            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="queueStatusValue">${esc(orderEntryTitle(activeEntry))}</span>${activeRunBadge}</div>`
+            ? `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="queueStatusValue">${esc(orderEntryTitle(activeEntry))}</span>${activePointsBadge}${activeRunBadge}</div>`
             : `<div class="queueStatusLine"><span class="queueStatusLabel">Nu</span><span class="queueStatusValue muted">Geen actieve situatie</span></div>`;
           const nextLine = !runStarted
             ? `<div class="queueStatusLine"><span class="queueStatusLabel">Volgende</span><span class="queueStatusValue muted">Klik Start run om rij 1 klaar te zetten</span></div>`
