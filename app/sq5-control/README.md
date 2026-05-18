@@ -55,6 +55,8 @@ Main        Main LR
 
 Gebruik voor Bitfocus Companion bij voorkeur HTTP, niet OSC. HTTP geeft responses terug en is makkelijker te gebruiken voor button feedback.
 
+De actuele Companion-inrichtingsprompt staat in `STREAM_DECK_PAGE1_ROW3_PROMPT.md`.
+
 ### Polling endpoint
 
 Laat Companion elke `250ms` tot `500ms` pollen:
