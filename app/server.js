@@ -11670,10 +11670,14 @@ function sendOscPacketToTarget(packet, target) {
 
 function getAlgorithmSceneOscAddresses(kind = "up_next") {
   const safeKind = String(kind || "up_next").replace(/[^a-z0-9_]/gi, "_") || "up_next";
+  // Vaste index-layout zodat current_scene en up_next dezelfde rij-nummers gebruiken in TouchDesigner:
+  // 0: begin, 1: title, 2: scene_id, 3: score, 4: environment, 5: environment_description,
+  // 6-11: personage_1..3 + _description, 12: situation, 13: done, 14: answer (alleen current)
   const addresses = [
     `/foryou/algorithm/${safeKind}/begin`,
-    `/foryou/algorithm/${safeKind}/scene_id`,
     `/foryou/algorithm/${safeKind}/title`,
+    `/foryou/algorithm/${safeKind}/scene_id`,
+    `/foryou/algorithm/${safeKind}/score`,
     `/foryou/algorithm/${safeKind}/environment`,
     `/foryou/algorithm/${safeKind}/environment_description`,
   ];
@@ -11682,7 +11686,6 @@ function getAlgorithmSceneOscAddresses(kind = "up_next") {
     addresses.push(`/foryou/algorithm/${safeKind}/personage_${index}_description`);
   }
   addresses.push(`/foryou/algorithm/${safeKind}/situation`);
-  addresses.push(`/foryou/algorithm/${safeKind}/score`);
   addresses.push(`/foryou/algorithm/${safeKind}/done`);
   return addresses;
 }
@@ -11876,6 +11879,9 @@ function algorithmUpNextSlotDescription(payload, slotNumber) {
 }
 
 function buildAlgorithmSceneOscPackets(payload, kind = "up_next", options = {}) {
+  // Vaste index-layout zodat current_scene en up_next dezelfde rij-nummers gebruiken in TouchDesigner:
+  // 0: begin, 1: title, 2: scene_id, 3: score, 4: environment, 5: environment_description,
+  // 6-11: personage_1..3 + _description, 12: situation, 13: done, 14: answer (optioneel)
   const safeKind = String(kind || "up_next").replace(/[^a-z0-9_]/gi, "_") || "up_next";
   const sceneId = Number(payload && payload.sceneId || 0);
   const environmentName = String(payload && payload.environmentMode || "") === "random"
@@ -11884,20 +11890,34 @@ function buildAlgorithmSceneOscPackets(payload, kind = "up_next", options = {}) 
   const environmentDescription = String(payload && payload.environmentMode || "") === "random"
     ? ""
     : String(payload && payload.environment && payload.environment.description || "");
-  const includeHeader = !(options && options.skipHeader);
   const includeAnswer = !!(options && options.includeAnswer);
   const packets = [];
-  if (includeHeader) {
-    packets.push(
-      { address: `/foryou/algorithm/${safeKind}/begin`, args: [algorithmOscIntArg(sceneId)] },
-      { address: `/foryou/algorithm/${safeKind}/scene_id`, args: [algorithmOscIntArg(sceneId)] },
-    );
-  }
+
+  // Index 0: begin
+  packets.push(
+    { address: `/foryou/algorithm/${safeKind}/begin`, args: [algorithmOscIntArg(sceneId)] },
+  );
+  // Index 1: title
   packets.push(
     { address: `/foryou/algorithm/${safeKind}/title`, args: [algorithmOscStringArg(payload && payload.title || "")] },
+  );
+  // Index 2: scene_id
+  packets.push(
+    { address: `/foryou/algorithm/${safeKind}/scene_id`, args: [algorithmOscIntArg(sceneId)] },
+  );
+  // Index 3: score
+  packets.push(
+    { address: `/foryou/algorithm/${safeKind}/score`, args: [algorithmOscFloatArg(payload && payload.score)] },
+  );
+  // Index 4: environment
+  packets.push(
     { address: `/foryou/algorithm/${safeKind}/environment`, args: [algorithmOscStringArg(environmentName)] },
+  );
+  // Index 5: environment_description
+  packets.push(
     { address: `/foryou/algorithm/${safeKind}/environment_description`, args: [algorithmOscStringArg(environmentDescription)] },
   );
+  // Indices 6-11: personage_1..3 + descriptions
   for (let index = 1; index <= ALGORITHM_OSC_CHARACTER_SLOT_COUNT; index += 1) {
     packets.push({
       address: `/foryou/algorithm/${safeKind}/personage_${index}`,
@@ -11908,12 +11928,16 @@ function buildAlgorithmSceneOscPackets(payload, kind = "up_next", options = {}) 
       args: [algorithmOscStringArg(algorithmUpNextSlotDescription(payload, index))],
     });
   }
+  // Index 12: situation
   packets.push({
     address: `/foryou/algorithm/${safeKind}/situation`,
     args: [algorithmOscStringArg(payload && payload.description || "")],
   });
-  packets.push({ address: `/foryou/algorithm/${safeKind}/score`, args: [algorithmOscFloatArg(payload && payload.score)] });
-  packets.push({ address: `/foryou/algorithm/${safeKind}/done`, args: [algorithmOscIntArg(sceneId)] });
+  // Index 13: done
+  packets.push(
+    { address: `/foryou/algorithm/${safeKind}/done`, args: [algorithmOscIntArg(sceneId)] },
+  );
+  // Index 14: answer (alleen voor current_scene)
   if (includeAnswer) {
     packets.push({
       address: `/foryou/algorithm/${safeKind}/answer`,
@@ -11928,7 +11952,7 @@ function buildAlgorithmUpNextOscPackets(payload) {
 }
 
 function buildAlgorithmCurrentSceneOscPackets(payload) {
-  return buildAlgorithmSceneOscPackets(payload, "current", { skipHeader: true, includeAnswer: true });
+  return buildAlgorithmSceneOscPackets(payload, "current");
 }
 
 function buildAlgorithmOscPacketPreview(packets) {
@@ -14622,7 +14646,13 @@ app.post("/admin/algorithm/recommendation/recompute", requireAdmin, (req, res) =
 
 app.post("/admin/algorithm/touchdesigner/send-current", requireAdmin, (req, res) => {
   try {
-    const oscSend = sendAlgorithmUpNextOsc("manual_up_next");
+    const target = String(req.body && req.body.target || "").toLowerCase();
+    // "current" → stuur huidige scene naar currentScenePort (8005)
+    // "next" / "up_next" / anders → stuur up_next naar sendPort (8002)
+    const isCurrent = target === "current";
+    const oscSend = isCurrent
+      ? sendAlgorithmCurrentSceneOsc("manual_current")
+      : sendAlgorithmUpNextOsc("manual_up_next");
     res.json({
       ok: true,
       sent: !!(oscSend.last && oscSend.last.sent),
