@@ -20,6 +20,22 @@ info() {
   echo "==> $*"
 }
 
+run_sq5_check() {
+  local status_script="$APP_DIR/scripts/sq5-control-status.command"
+  local setup_script="$APP_DIR/scripts/sq5-control-setup.command"
+
+  [[ -x "$status_script" && -x "$setup_script" ]] || return 0
+
+  info "SQ5 Control status controleren."
+  if "$status_script" >/dev/null 2>&1; then
+    info "SQ5 Control OK."
+    return 0
+  fi
+
+  info "SQ5 Control niet gezond of nog niet launchd-managed; setup/herstart uitvoeren."
+  "$setup_script"
+}
+
 [[ -n "$REPO_DIR" ]] || fail "Geen git clone gevonden rond $APP_DIR."
 [[ -f "$PLIST_PATH" ]] || fail "LaunchAgent ontbreekt. Run eerst scripts/mac-studio-setup.command."
 
@@ -51,6 +67,7 @@ for _ in {1..40}; do
   body="$(curl -fsS --max-time 1 "http://127.0.0.1:${APP_PORT}/health" 2>/dev/null || true)"
   if [[ "$body" == *'"ok":true'* && "$body" == *'"buildLabel"'* ]]; then
     npm run smoke -- --url "http://127.0.0.1:${APP_PORT}"
+    run_sq5_check
     echo ""
     echo "Update klaar: http://127.0.0.1:${APP_PORT}/admin"
     exit 0

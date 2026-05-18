@@ -130,9 +130,9 @@ Voor de stap waarin de TouchDesigner-knop dynamisch/togglebaar is gemaakt:
 - Pagina 2 heeft op rij `0`, kolom `0` de dynamische serverknop, op kolom `1` de server-herstartknop en op kolom `2` de dynamische TouchDesigner-knop.
 - Pagina 2 heeft de paginalinks op rij `1`, kolommen `0` t/m `5`.
 - Pagina 2 heeft de dynamische show- en situatieknoppen op rij `2`, kolommen `0` en `2`.
-- Pagina 2 heeft op rij `3`, kolom `0` de verplaatste OSC-knop `osc1`.
+- Pagina 2 heeft op rij `3`, kolom `0` de verplaatste OSC-knop `osc1` en op kolom `1` de dynamische audio/SQ5 bridge-knop.
 - Pagina 1 en pagina 2 hebben rechtsonder een native Companion `pagedown` page-switcher.
-- Er is een trigger `For You server status poll` die elke seconde de serverstatus en TouchDesigner-status leest, de serverknop bijwerkt en server-afhankelijke knoppen dimt wanneer de server uit staat.
+- Er is een trigger `For You server status poll` die elke seconde de serverstatus, TouchDesigner-status en audio/SQ5 bridge-status leest, de dynamische knoppen bijwerkt en server-afhankelijke knoppen dimt wanneer de server uit staat.
 
 Huidige pagina-2-knoppen:
 
@@ -150,6 +150,7 @@ Huidige pagina-2-knoppen:
 | 2 | 0 | `START SHOW` / `STOP SHOW` | `session.isActive` | start of stop show via website endpoint |
 | 2 | 2 | `VOLG. SITUATIE` / `STOP SITUATIE` / `SITUATIE UIT` | `activeRun` en `session.isActive` | start volgende situatie of stop actieve situatie |
 | 3 | 0 | `osc1` | `/osc/osc32` | originele OSC-knop, verplaatst vanaf pagina 1 rechtsonder |
+| 3 | 1 | `AUDIO AAN` / `AUDIO UIT` / `AUDIO ERROR` | SQ5 bridge + mixerstatus | toggle `nl.foryou.sq5-control` |
 | 3 | 7 | Companion page-switcher | `pagedown` | wisselt bij de huidige twee pagina's naar de andere pagina |
 
 Bij het toevoegen van de paginalinks op rij `1` zijn de routes eerst lokaal op de Mac Studio getest. Alle routes gaven HTTP `200`.
@@ -248,6 +249,48 @@ Tijdens de korte feedback na een druk op de show- of situatieknop schrijft `fory
 Zolang die marker actief is, laat de statuspoll de dynamische show/situatieknoppen met rust. Daardoor wordt `WACHT`, `SHOW GESTART` of `SIT. GESTOPT` niet meteen overschreven door de poll.
 
 Bij een serverstatus-wissel geeft het script de server-afhankelijke knoppen kort een pulse en zet ze daarna naar de juiste actief/gedimde kleur.
+
+## Audio / SQ5 bridge-knop
+
+De audioknop staat op pagina 2, rij `3`, kolom `1`. Deze plek wordt alleen gebruikt als hij vrij is; het configuratiescript weigert expliciet om een bestaande knop te overschrijven.
+
+Bestanden op de Mac Studio:
+
+```text
+/Users/for_you/ForYou/companion-scripts/foryou-audio-toggle.sh
+/Users/for_you/ForYou/companion-scripts/configure-page2-audio-button.js
+/Users/for_you/ForYou/companion-scripts/foryou-server-status-to-companion.js
+```
+
+Bronkopieën in deze repo:
+
+```text
+docs/stream-deck/foryou-audio-toggle.sh
+docs/stream-deck/configure-page2-audio-button.js
+docs/stream-deck/foryou-server-status-to-companion.js
+```
+
+Gedrag:
+
+- `AUDIO AAN`: de SQ5 bridge draait via launchd, luistert lokaal op `127.0.0.1:3105`, en de mixerprobe naar `192.168.1.129:51325` is groen.
+- `AUDIO UIT`: de bridge is gestopt en er luistert niets meer op poort `3105`.
+- `AUDIO ERROR`: de bridge of mixerverbinding is niet gezond; een druk op de knop stopt/ruimt de bridge op, waarna een tweede druk hem schoon opnieuw start.
+- Klik op de knop togglet alleen de control bridge. Er worden geen mute-, fader-, scene- of softkey-commando's naar de SQ5 gestuurd.
+
+De bridge zelf draait als LaunchAgent:
+
+```text
+~/Library/LaunchAgents/nl.foryou.sq5-control.plist
+```
+
+Setup/status:
+
+```bash
+ssh foryou-studio "/Users/for_you/ForYou/main/app/scripts/sq5-control-setup.command"
+ssh foryou-studio "/Users/for_you/ForYou/main/app/scripts/sq5-control-status.command"
+```
+
+De Mac Studio update-check herstart de SQ5 bridge niet standaard bij elke app-deploy. Hij voert alleen `sq5-control-setup.command` uit wanneer de bridge ontbreekt, niet via launchd draait, breed bindt, of de mixerprobe faalt.
 
 Poll-interval opnieuw instellen:
 

@@ -39,6 +39,15 @@ node app/sq5-control/server.js
 
 Veilige default: HTTP en OSC luisteren lokaal. Companion gebruikt lokaal `http://127.0.0.1:3105`, dus daar verandert niets aan. Wil je de HTTP-interface vanaf een andere machine openen, start dan met `SQ5_CONTROL_TOKEN=<token> SQ5_TOOL_HOST=0.0.0.0` en open `http://<mac-studio-ip>:3105/?token=<token>`. Remote OSC is niet met een token te beschermen en vereist daarom expliciet `SQ5_ALLOW_REMOTE=1 SQ5_OSC_LISTEN_ADDRESS=0.0.0.0`.
 
+Op de Mac Studio hoort de bridge als launchd-sidecar te draaien, niet als losse shell:
+
+```bash
+app/scripts/sq5-control-setup.command
+app/scripts/sq5-control-status.command
+```
+
+De LaunchAgent heet `nl.foryou.sq5-control`, bindt HTTP en OSC op loopback en gebruikt standaard `SQ5_HOST=192.168.1.129`.
+
 ## Mapping
 
 ```text

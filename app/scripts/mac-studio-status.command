@@ -78,6 +78,19 @@ cd "$REPO_DIR"
 git status --short --branch || true
 echo ""
 
+echo "sq5 control:"
+if [[ -x "$APP_DIR/scripts/sq5-control-status.command" ]]; then
+  if "$APP_DIR/scripts/sq5-control-status.command" >/tmp/foryou-sq5-status.out 2>&1; then
+    echo "  OK"
+  else
+    echo "  niet gezond"
+    sed 's/^/  /' /tmp/foryou-sq5-status.out | tail -n 20
+  fi
+else
+  echo "  status-script ontbreekt"
+fi
+echo ""
+
 echo "branch previews:"
 preview_found=0
 for pid_file in "$LOG_DIR"/preview-*.pid(N); do
