@@ -13,7 +13,9 @@ Context:
 
 Taak:
 
-Op pagina 1, rij 4, knoppen 4 tot en met 8:
+Verplaats eerst eventuele bestaande OSC-knoppen die nu op pagina 1, rij 3, knoppen 4 tot en met 8 staan naar de eerste vrije posities op pagina 2. Behoud daarbij hun bestaande labels, acties en feedback-instellingen.
+
+Maak daarna op pagina 1, rij 3, knoppen 4 tot en met 8:
 
 ```text
 Knop 4: Brent Mic mute/unmute toggle

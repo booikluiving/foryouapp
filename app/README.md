@@ -94,7 +94,7 @@ Mac launcher:
 - `scripts/open-admin.command` gebruikt lokaal poort `3010`, start de server alleen als er nog geen For You-server draait, opent admin via huidig LAN-IP (fallback localhost) en sluit daarna het Terminal-venster. Gebruik geen extra fallbackpoort zonder bewuste reden.
 - Dubbelklik op dit `.command` bestand of zet er een snelkoppeling/icoon van op je bureaublad.
 - Zie `MAC_STUDIO_SETUP.md` voor de show-machine setup.
-- Stream Deck / Companion op de Mac Studio staat beschreven in `docs/stream-deck/README.md`. Belangrijk: Companion-pagina 1 met bestaande OSC-knoppen blijft beschermd; de enige bewuste uitzondering is de page-switcher rechtsonder, waarbij de oorspronkelijke OSC-knop intact naar pagina 2 is verplaatst.
+- Stream Deck / Companion op de Mac Studio staat beschreven in `docs/stream-deck/README.md`. Belangrijk: Companion-pagina 1 met bestaande OSC-knoppen blijft beschermd; bewuste uitzonderingen zijn de page-switcher rechtsonder en de SQ5 mute-knoppen op pagina 1 rij 3, waarbij oorspronkelijke OSC-knoppen intact naar pagina 2 mogen worden verplaatst.
 - SQ5 Control start los met `SQ5_HOST=192.168.1.129 node sq5-control/server.js`; Stream Deck polling en de Companion-prompt staan in `sq5-control/README.md`.
 
 ## Mac Studio branch-workflow
