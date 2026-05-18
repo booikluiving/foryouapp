@@ -4776,7 +4776,8 @@
             state = result.state || state;
             render();
             const oscSend = result.oscSend || {};
-            setMsg("oscMsg", result.sent ? "Up Next verstuurd via OSC." : `Niet verstuurd: ${formatOscReason(oscSend.reason)}.`);
+            const label = String(target || "") === "current" ? "Huidige scène" : "Up Next";
+            setMsg("oscMsg", result.sent ? `${label} verstuurd via OSC.` : `${label} niet verstuurd: ${formatOscReason(oscSend.reason)}.`);
           } catch (err) {
             setMsg("oscMsg", formatError(err), true);
           }
@@ -4800,9 +4801,11 @@
           const friendly = {
             send_disabled: "OSC verzenden staat uit",
             no_up_next: "geen Up Next beschikbaar",
+            no_current_scene: "geen huidige scène beschikbaar",
             osc_not_ready: "OSC receive poort is niet actief",
             osc_send_not_ready: "OSC send socket is niet actief",
             send_target_required: "vul send host en send poort in",
+            current_scene_target_required: "vul send host en huidige scène poort in",
           };
           return friendly[String(reason || "")] || String(reason || "onbekende reden");
         }
