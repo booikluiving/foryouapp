@@ -4,12 +4,16 @@ const { URL } = require("url");
 const osc = require("osc");
 
 const TOOL_PORT = Number(process.env.SQ5_TOOL_PORT || 3105);
+const TOOL_HOST = String(process.env.SQ5_TOOL_HOST || "127.0.0.1").trim() || "127.0.0.1";
 const DEFAULT_MIXER_PORT = Number(process.env.SQ5_MIXER_PORT || 51325);
 const DEFAULT_OSC_PORT = Number(process.env.SQ5_OSC_PORT || 53000);
+const DEFAULT_OSC_LISTEN_ADDRESS = String(process.env.SQ5_OSC_LISTEN_ADDRESS || "127.0.0.1").trim() || "127.0.0.1";
 const TCP_TIMEOUT_MS = Number(process.env.SQ5_TCP_TIMEOUT_MS || 1800);
 const STATUS_POLL_MS = Number(process.env.SQ5_STATUS_POLL_MS || 1500);
 const STREAMDECK_POLL_MS = Number(process.env.SQ5_STREAMDECK_POLL_MS || 500);
 const MIDI_RESPONSE_WINDOW_MS = Number(process.env.SQ5_MIDI_RESPONSE_WINDOW_MS || 90);
+const CONTROL_TOKEN = String(process.env.SQ5_CONTROL_TOKEN || "").trim();
+const ALLOW_REMOTE = parseBooleanLike(process.env.SQ5_ALLOW_REMOTE || "0");
 
 const state = {
   mixerHost: String(process.env.SQ5_HOST || "").trim(),
@@ -17,6 +21,7 @@ const state = {
   midiChannel: clampInt(process.env.SQ5_MIDI_CHANNEL || 1, 1, 16),
   faderLaw: String(process.env.SQ5_FADER_LAW || "linear").toLowerCase() === "audio" ? "audio" : "linear",
   oscListenPort: DEFAULT_OSC_PORT,
+  oscListenAddress: DEFAULT_OSC_LISTEN_ADDRESS,
   defaultDestination: "lr",
   channels: {
     brent: { key: "brent", label: "Brent", input: clampInt(process.env.SQ5_BRENT_INPUT || 1, 1, 48) },
@@ -220,6 +225,43 @@ function clampNumber(value, min, max) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return min;
   return Math.max(min, Math.min(max, parsed));
+}
+
+function parseBooleanLike(value) {
+  const raw = String(value === undefined || value === null ? "" : value).trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+function normalizeBindHost(value) {
+  const host = String(value || "").trim();
+  return host || "127.0.0.1";
+}
+
+function isLoopbackBindHost(host) {
+  const normalized = normalizeBindHost(host).toLowerCase();
+  return normalized === "localhost"
+    || normalized === "127.0.0.1"
+    || normalized === "::1"
+    || normalized === "[::1]";
+}
+
+function isWildcardBindHost(host) {
+  const normalized = normalizeBindHost(host).toLowerCase();
+  return normalized === "0.0.0.0" || normalized === "::" || normalized === "[::]";
+}
+
+function isRemoteBindHost(host) {
+  return !isLoopbackBindHost(host);
+}
+
+function requireSafeBind(kind, host, options = {}) {
+  const normalized = normalizeBindHost(host);
+  if (!isRemoteBindHost(normalized)) return normalized;
+  const tokenAllowed = !!options.allowToken && !!CONTROL_TOKEN;
+  if (!ALLOW_REMOTE && !tokenAllowed) {
+    throw new Error(`${kind} remote bind ${normalized} requires SQ5_ALLOW_REMOTE=1${options.allowToken ? " or SQ5_CONTROL_TOKEN" : ""}`);
+  }
+  return normalized;
 }
 
 function byte(value) {
@@ -827,12 +869,17 @@ function rememberControlValue(meta = {}, decoded = null) {
 
 function publicState() {
   return {
+    toolHost: TOOL_HOST,
+    toolPort: TOOL_PORT,
     mixerHost: state.mixerHost,
     mixerPort: state.mixerPort,
     midiChannel: state.midiChannel,
     faderLaw: state.faderLaw,
+    oscListenAddress: state.oscListenAddress,
     oscListenPort: state.oscListenPort,
     defaultDestination: state.defaultDestination,
+    remoteAllowed: ALLOW_REMOTE,
+    tokenProtected: !!CONTROL_TOKEN,
     channels: state.channels,
     controlState,
     lastSyncAt,
@@ -894,6 +941,24 @@ function sendJson(res, status, body) {
     "Content-Length": Buffer.byteLength(payload),
   });
   res.end(payload);
+}
+
+function requestControlToken(req, url) {
+  const headerToken = String(req.headers["x-sq5-control-token"] || "").trim();
+  if (headerToken) return headerToken;
+  const auth = String(req.headers.authorization || "").trim();
+  const bearer = auth.match(/^Bearer\s+(.+)$/i);
+  if (bearer) return String(bearer[1] || "").trim();
+  return String(url.searchParams.get("token") || url.searchParams.get("controlToken") || "").trim();
+}
+
+function isControlRequestAllowed(req, url) {
+  if (!CONTROL_TOKEN) return true;
+  return requestControlToken(req, url) === CONTROL_TOKEN;
+}
+
+function rejectUnauthorized(res) {
+  sendJson(res, 401, { error: "sq5_control_token_required" });
 }
 
 function readJson(req) {
@@ -1561,13 +1626,13 @@ function openOscPort() {
   }
 
   oscPort = new osc.UDPPort({
-    localAddress: "0.0.0.0",
+    localAddress: state.oscListenAddress,
     localPort: state.oscListenPort,
     metadata: true,
   });
 
   oscPort.on("ready", () => {
-    addActivity({ status: "ok", source: "osc", message: `OSC luistert op ${state.oscListenPort}` });
+    addActivity({ status: "ok", source: "osc", message: `OSC luistert op ${state.oscListenAddress}:${state.oscListenPort}` });
   });
   oscPort.on("message", (message) => {
     handleOscMessage(message);
@@ -1997,6 +2062,7 @@ function html() {
   </main>
 
   <script>
+    const controlToken = new URLSearchParams(location.search).get("token") || new URLSearchParams(location.search).get("controlToken") || "";
     const app = {
       status: null,
       sliderTimers: new Map(),
@@ -2055,9 +2121,11 @@ function html() {
     }
 
     async function api(path, body, options = {}) {
+      const headers = body === undefined ? {} : { "Content-Type": "application/json" };
+      if (controlToken) headers["x-sq5-control-token"] = controlToken;
       const response = await fetch(path, {
         method: body === undefined ? "GET" : "POST",
-        headers: body === undefined ? {} : { "Content-Type": "application/json" },
+        headers,
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       const data = await response.json();
@@ -2419,6 +2487,10 @@ function createServer() {
   return http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
     try {
+      if (!isControlRequestAllowed(req, url)) {
+        rejectUnauthorized(res);
+        return;
+      }
       if (url.pathname === "/") {
         serveIndex(res);
         return;
@@ -2436,12 +2508,15 @@ function createServer() {
 }
 
 function start() {
+  const httpHost = requireSafeBind("HTTP", TOOL_HOST, { allowToken: true });
+  state.oscListenAddress = requireSafeBind("OSC", state.oscListenAddress, { allowToken: false });
   openOscPort();
   startStatePolling();
   startStreamdeckPolling();
   const server = createServer();
-  server.listen(TOOL_PORT, "0.0.0.0", () => {
-    const message = `SQ5 Control: http://127.0.0.1:${TOOL_PORT}`;
+  server.listen(TOOL_PORT, httpHost, () => {
+    const displayHost = isWildcardBindHost(httpHost) ? "127.0.0.1" : httpHost;
+    const message = `SQ5 Control: http://${displayHost}:${TOOL_PORT}`;
     addActivity({ status: "ok", source: "http", message });
     console.log(message);
   });

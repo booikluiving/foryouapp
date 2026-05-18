@@ -26,14 +26,18 @@ Optionele env-vars:
 
 ```bash
 SQ5_HOST=192.168.1.x \
+SQ5_TOOL_HOST=127.0.0.1 \
 SQ5_MIXER_PORT=51325 \
 SQ5_MIDI_CHANNEL=1 \
 SQ5_FADER_LAW=linear \
+SQ5_OSC_LISTEN_ADDRESS=127.0.0.1 \
 SQ5_OSC_PORT=53000 \
 SQ5_STATUS_POLL_MS=1500 \
 SQ5_STREAMDECK_POLL_MS=500 \
 node app/sq5-control/server.js
 ```
+
+Veilige default: HTTP en OSC luisteren lokaal. Companion gebruikt lokaal `http://127.0.0.1:3105`, dus daar verandert niets aan. Wil je de HTTP-interface vanaf een andere machine openen, start dan met `SQ5_CONTROL_TOKEN=<token> SQ5_TOOL_HOST=0.0.0.0` en open `http://<mac-studio-ip>:3105/?token=<token>`. Remote OSC is niet met een token te beschermen en vereist daarom expliciet `SQ5_ALLOW_REMOTE=1 SQ5_OSC_LISTEN_ADDRESS=0.0.0.0`.
 
 ## Mapping
 
@@ -158,7 +162,7 @@ main
 OSC blijft beschikbaar voor TouchDesigner of andere show-control:
 
 ```text
-host: <bridge-computer-ip>
+host: 127.0.0.1 standaard, of <bridge-computer-ip> met SQ5_ALLOW_REMOTE=1
 port: 53000
 ```
 

@@ -8,6 +8,7 @@ const args = new Set(process.argv.slice(3));
 const DB_PATH = "/Users/for_you/Library/Application Support/companion/v4.3/db.sqlite";
 const CACHE_PATH = "/Users/for_you/Library/Caches/ForYouApp/streamdeck-server-status.json";
 const ACTION_BUSY_PATH = "/Users/for_you/Library/Caches/ForYouApp/streamdeck-action-feedback.json";
+const TOUCHDESIGNER_SCRIPT = "/Users/for_you/ForYou/companion-scripts/open-current-touchdesigner.sh";
 const TRPC_URL = "ws://127.0.0.1:8008/trpc";
 const HEALTH_URL = "http://127.0.0.1:3310/health";
 const STATE_URL = "http://127.0.0.1:3310/admin/algorithm/state";
@@ -40,6 +41,8 @@ const dynamicActionButtons = [
   { row: 2, column: 0, styleForState: showButtonStyle },
   { row: 2, column: 2, styleForState: sceneButtonStyle },
 ];
+
+const touchDesignerButton = { row: 0, column: 2 };
 
 const serverDependentLocations = [
   ...pageLinkButtons,
@@ -103,16 +106,17 @@ function readCache() {
       return {
         status: String(parsed.status || ""),
         actionKey: String(parsed.actionKey || ""),
+        touchDesignerStatus: String(parsed.touchDesignerStatus || ""),
       };
     }
   } catch {}
-  return { status: "", actionKey: "" };
+  return { status: "", actionKey: "", touchDesignerStatus: "" };
 }
 
-function writeCache(status, actionKey) {
+function writeCache(status, actionKey, touchDesignerStatus) {
   try {
     fs.mkdirSync(path.dirname(CACHE_PATH), { recursive: true });
-    fs.writeFileSync(CACHE_PATH, JSON.stringify({ status, actionKey, updatedAt: new Date().toISOString() }));
+    fs.writeFileSync(CACHE_PATH, JSON.stringify({ status, actionKey, touchDesignerStatus, updatedAt: new Date().toISOString() }));
   } catch (error) {
     console.error(error.stack || error.message || error);
   }
@@ -197,6 +201,24 @@ function sceneButtonStyle(state) {
     : { text: "VOLG.\nSITUATIE", size: "15", color: WHITE, bgcolor: TEAL };
 }
 
+function readTouchDesignerStatus() {
+  try {
+    const output = execFileSync(TOUCHDESIGNER_SCRIPT, ["status"], {
+      encoding: "utf8",
+      timeout: 2000,
+    }).trim();
+    return output === "aan" ? "aan" : "uit";
+  } catch {
+    return "error";
+  }
+}
+
+function touchDesignerButtonStyle(status) {
+  if (status === "aan") return { text: "TD\nAAN", size: "22", color: WHITE, bgcolor: GREEN };
+  if (status === "error") return { text: "TD\nERROR", size: "18", color: WHITE, bgcolor: RED };
+  return { text: "OPEN\nTD", size: "22", color: WHITE, bgcolor: TEAL };
+}
+
 function actionStateKey(state) {
   if (!state) return "";
   return [
@@ -235,6 +257,13 @@ async function updateDynamicActionButtons(client, isOn, state) {
   }
 }
 
+async function updateTouchDesignerButton(client, status) {
+  const page = readPage(2);
+  if (!page) return;
+  const id = controlIdAt(page, touchDesignerButton.row, touchDesignerButton.column);
+  await setStyle(client, id, touchDesignerButtonStyle(status));
+}
+
 async function pulseServerDependentButtons(client, isOn) {
   const page = readPage(2);
   if (!page) return;
@@ -259,6 +288,8 @@ async function main() {
   const state = isOn && !busy ? await readAppState() : null;
   const actionKey = state ? actionStateKey(state) : cache.actionKey;
   const actionChanged = !!state && cache.actionKey !== actionKey;
+  const touchDesignerStatus = readTouchDesignerStatus();
+  const touchDesignerChanged = cache.touchDesignerStatus !== touchDesignerStatus;
 
   const client = makeTrpcClient();
   await client.ready;
@@ -281,7 +312,11 @@ async function main() {
       await updateDynamicActionButtons(client, isOn, state);
     }
 
-    writeCache(status, actionKey);
+    if (force || touchDesignerChanged) {
+      await updateTouchDesignerButton(client, touchDesignerStatus);
+    }
+
+    writeCache(status, actionKey, touchDesignerStatus);
   } finally {
     client.close();
   }
