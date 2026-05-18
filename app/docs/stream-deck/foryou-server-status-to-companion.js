@@ -9,6 +9,7 @@ const DB_PATH = "/Users/for_you/Library/Application Support/companion/v4.3/db.sq
 const CACHE_PATH = "/Users/for_you/Library/Caches/ForYouApp/streamdeck-server-status.json";
 const ACTION_BUSY_PATH = "/Users/for_you/Library/Caches/ForYouApp/streamdeck-action-feedback.json";
 const TOUCHDESIGNER_SCRIPT = "/Users/for_you/ForYou/companion-scripts/open-current-touchdesigner.sh";
+const AUDIO_SCRIPT = "/Users/for_you/ForYou/companion-scripts/foryou-audio-toggle.sh";
 const TRPC_URL = "ws://127.0.0.1:8008/trpc";
 const HEALTH_URL = "http://127.0.0.1:3310/health";
 const STATE_URL = "http://127.0.0.1:3310/admin/algorithm/state";
@@ -43,6 +44,7 @@ const dynamicActionButtons = [
 ];
 
 const touchDesignerButton = { row: 0, column: 2 };
+const audioButton = { row: 3, column: 1 };
 
 const serverDependentLocations = [
   ...pageLinkButtons,
@@ -107,16 +109,17 @@ function readCache() {
         status: String(parsed.status || ""),
         actionKey: String(parsed.actionKey || ""),
         touchDesignerStatus: String(parsed.touchDesignerStatus || ""),
+        audioStatus: String(parsed.audioStatus || ""),
       };
     }
   } catch {}
-  return { status: "", actionKey: "", touchDesignerStatus: "" };
+  return { status: "", actionKey: "", touchDesignerStatus: "", audioStatus: "" };
 }
 
-function writeCache(status, actionKey, touchDesignerStatus) {
+function writeCache(status, actionKey, touchDesignerStatus, audioStatus) {
   try {
     fs.mkdirSync(path.dirname(CACHE_PATH), { recursive: true });
-    fs.writeFileSync(CACHE_PATH, JSON.stringify({ status, actionKey, touchDesignerStatus, updatedAt: new Date().toISOString() }));
+    fs.writeFileSync(CACHE_PATH, JSON.stringify({ status, actionKey, touchDesignerStatus, audioStatus, updatedAt: new Date().toISOString() }));
   } catch (error) {
     console.error(error.stack || error.message || error);
   }
@@ -219,6 +222,25 @@ function touchDesignerButtonStyle(status) {
   return { text: "OPEN\nTD", size: "22", color: WHITE, bgcolor: TEAL };
 }
 
+function readAudioStatus() {
+  try {
+    const output = execFileSync(AUDIO_SCRIPT, ["status"], {
+      encoding: "utf8",
+      timeout: 2500,
+    }).trim();
+    if (output === "aan" || output === "uit" || output === "error") return output;
+  } catch {
+    return "error";
+  }
+  return "error";
+}
+
+function audioButtonStyle(status) {
+  if (status === "aan") return { text: "AUDIO\nAAN", size: "19", color: WHITE, bgcolor: GREEN };
+  if (status === "uit") return { text: "AUDIO\nUIT", size: "19", color: WHITE, bgcolor: RED };
+  return { text: "AUDIO\nERROR", size: "15", color: BLACK, bgcolor: ORANGE };
+}
+
 function actionStateKey(state) {
   if (!state) return "";
   return [
@@ -264,6 +286,13 @@ async function updateTouchDesignerButton(client, status) {
   await setStyle(client, id, touchDesignerButtonStyle(status));
 }
 
+async function updateAudioButton(client, status) {
+  const page = readPage(2);
+  if (!page) return;
+  const id = controlIdAt(page, audioButton.row, audioButton.column);
+  await setStyle(client, id, audioButtonStyle(status));
+}
+
 async function pulseServerDependentButtons(client, isOn) {
   const page = readPage(2);
   if (!page) return;
@@ -290,6 +319,8 @@ async function main() {
   const actionChanged = !!state && cache.actionKey !== actionKey;
   const touchDesignerStatus = readTouchDesignerStatus();
   const touchDesignerChanged = cache.touchDesignerStatus !== touchDesignerStatus;
+  const audioStatus = readAudioStatus();
+  const audioChanged = cache.audioStatus !== audioStatus;
 
   const client = makeTrpcClient();
   await client.ready;
@@ -316,7 +347,11 @@ async function main() {
       await updateTouchDesignerButton(client, touchDesignerStatus);
     }
 
-    writeCache(status, actionKey, touchDesignerStatus);
+    if (force || audioChanged) {
+      await updateAudioButton(client, audioStatus);
+    }
+
+    writeCache(status, actionKey, touchDesignerStatus, audioStatus);
   } finally {
     client.close();
   }

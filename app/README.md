@@ -86,7 +86,9 @@ Voor UniFi-configuratie: kopieer `.env.example` naar `.env` op de Mac Studio en 
 - `npm run simulate` start de losse simulator CLI (`scripts/simulate-chatters.js`)
 - `npm run unifi:status` test de read-only UniFi network agent
 - `scripts/mac-studio-setup.command` installeert/start de Mac Studio show-machine via launchd
-- `scripts/mac-studio-update.command` pullt de laatste code, installeert dependencies, herstart en smoke-test
+- `scripts/mac-studio-update.command` pullt de laatste code, installeert dependencies, herstart, smoke-test en controleert de SQ5 sidecar
+- `scripts/sq5-control-setup.command` installeert/start de SQ5 bridge als Mac Studio launchd-sidecar
+- `scripts/sq5-control-status.command` controleert launchd, lokale binds en mixerconnectie voor SQ5
 - `scripts/mac-studio-preview.command <branch>` start een losse branch-preview op poort `3311` zonder de live showserver te raken
 - `scripts/mac-studio-status.command` toont launchd, health, URLs, git status en logs
 
@@ -95,7 +97,7 @@ Mac launcher:
 - Dubbelklik op dit `.command` bestand of zet er een snelkoppeling/icoon van op je bureaublad.
 - Zie `MAC_STUDIO_SETUP.md` voor de show-machine setup.
 - Stream Deck / Companion op de Mac Studio staat beschreven in `docs/stream-deck/README.md`. Belangrijk: Companion-pagina 1 met bestaande OSC-knoppen blijft beschermd; bewuste uitzonderingen zijn de page-switcher rechtsonder en de SQ5 mute-knoppen op pagina 1 rij 3, waarbij oorspronkelijke OSC-knoppen intact naar pagina 2 mogen worden verplaatst.
-- SQ5 Control start los met `SQ5_HOST=192.168.1.129 node sq5-control/server.js`; HTTP/OSC luisteren standaard lokaal en Stream Deck polling plus remote-opties staan in `sq5-control/README.md`.
+- SQ5 Control draait op de Mac Studio als aparte launchd-sidecar `nl.foryou.sq5-control`; HTTP/OSC luisteren lokaal en Stream Deck polling plus remote-opties staan in `sq5-control/README.md`.
 
 ## Mac Studio branch-workflow
 Ontwikkelen op branches mag. De afspraak is alleen: live deploy naar poort `3310` loopt standaard via `main`.

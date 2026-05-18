@@ -207,6 +207,14 @@ run_smoke() {
   npm run smoke -- --url "http://127.0.0.1:${APP_PORT}"
 }
 
+setup_sq5_control() {
+  local setup_script="$APP_DIR/scripts/sq5-control-setup.command"
+  [[ -x "$setup_script" ]] || return 0
+
+  info "SQ5 Control sidecar installeren/starten."
+  "$setup_script"
+}
+
 print_urls() {
   local lan_ip=""
   lan_ip="$(detect_lan_ip)"
@@ -232,6 +240,7 @@ main() {
   restart_service
   wait_for_health
   run_smoke
+  setup_sq5_control
   print_urls
 }
 
