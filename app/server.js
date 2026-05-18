@@ -11858,7 +11858,7 @@ function algorithmUpNextSlotDescription(payload, slotNumber) {
   return String(slot.description || "");
 }
 
-function buildAlgorithmSceneOscPackets(payload, kind = "up_next") {
+function buildAlgorithmSceneOscPackets(payload, kind = "up_next", options = {}) {
   const safeKind = String(kind || "up_next").replace(/[^a-z0-9_]/gi, "_") || "up_next";
   const sceneId = Number(payload && payload.sceneId || 0);
   const environmentName = String(payload && payload.environmentMode || "") === "random"
@@ -11867,13 +11867,20 @@ function buildAlgorithmSceneOscPackets(payload, kind = "up_next") {
   const environmentDescription = String(payload && payload.environmentMode || "") === "random"
     ? ""
     : String(payload && payload.environment && payload.environment.description || "");
-  const packets = [
-    { address: `/foryou/algorithm/${safeKind}/begin`, args: [algorithmOscIntArg(sceneId)] },
-    { address: `/foryou/algorithm/${safeKind}/scene_id`, args: [algorithmOscIntArg(sceneId)] },
+  const includeHeader = !(options && options.skipHeader);
+  const includeAnswer = !!(options && options.includeAnswer);
+  const packets = [];
+  if (includeHeader) {
+    packets.push(
+      { address: `/foryou/algorithm/${safeKind}/begin`, args: [algorithmOscIntArg(sceneId)] },
+      { address: `/foryou/algorithm/${safeKind}/scene_id`, args: [algorithmOscIntArg(sceneId)] },
+    );
+  }
+  packets.push(
     { address: `/foryou/algorithm/${safeKind}/title`, args: [algorithmOscStringArg(payload && payload.title || "")] },
     { address: `/foryou/algorithm/${safeKind}/environment`, args: [algorithmOscStringArg(environmentName)] },
     { address: `/foryou/algorithm/${safeKind}/environment_description`, args: [algorithmOscStringArg(environmentDescription)] },
-  ];
+  );
   for (let index = 1; index <= ALGORITHM_OSC_CHARACTER_SLOT_COUNT; index += 1) {
     packets.push({
       address: `/foryou/algorithm/${safeKind}/personage_${index}`,
@@ -11890,6 +11897,12 @@ function buildAlgorithmSceneOscPackets(payload, kind = "up_next") {
   });
   packets.push({ address: `/foryou/algorithm/${safeKind}/score`, args: [algorithmOscFloatArg(payload && payload.score)] });
   packets.push({ address: `/foryou/algorithm/${safeKind}/done`, args: [algorithmOscIntArg(sceneId)] });
+  if (includeAnswer) {
+    packets.push({
+      address: `/foryou/algorithm/${safeKind}/answer`,
+      args: [algorithmOscStringArg(payload && payload.prompt || "")],
+    });
+  }
   return packets;
 }
 
@@ -11898,7 +11911,7 @@ function buildAlgorithmUpNextOscPackets(payload) {
 }
 
 function buildAlgorithmCurrentSceneOscPackets(payload) {
-  return buildAlgorithmSceneOscPackets(payload, "current");
+  return buildAlgorithmSceneOscPackets(payload, "current", { skipHeader: true, includeAnswer: true });
 }
 
 function buildAlgorithmOscPacketPreview(packets) {
