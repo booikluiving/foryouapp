@@ -652,6 +652,10 @@
         const OPERATOR_MODEL_KEY = "api_playground_operator_model_v1";
         const OPERATOR_SESSION_KEY = "api_playground_operator_session_v1";
         const OPERATOR_STAGE_SOURCE_KEY = "api_playground_operator_stage_source_v1";
+        const OPERATOR_PROVIDER_DEFAULT_VERSION_KEY = "api_playground_operator_provider_default_version_v1";
+        const OPERATOR_PROVIDER_DEFAULT_VERSION = "deepseek-v4-flash";
+        const OPERATOR_DEFAULT_PROVIDER = "deepseek";
+        const OPERATOR_DEFAULT_MODEL = "deepseek-v4-flash";
         const OPERATOR_STAGE_STYLE_DEFAULT = Object.freeze({ font: "jetbrains", cursor: "underscore", fontSize: 30 });
         const OPERATOR_STAGE_FONTS = new Set(["jetbrains", "ibm", "system", "courier"]);
         const OPERATOR_STAGE_CURSORS = new Set(["underscore", "bar", "block"]);
@@ -913,7 +917,7 @@
         }
 
         function selectedOperatorProvider() {
-          return String($("operatorProvider").value || "anthropic");
+          return String($("operatorProvider").value || OPERATOR_DEFAULT_PROVIDER);
         }
 
         function selectedOperatorModel() {
@@ -927,7 +931,12 @@
         function renderOperatorProviderControls() {
           const providers = operatorStatus && operatorStatus.providers ? operatorStatus.providers : {};
           const providerEl = $("operatorProvider");
-          const savedProvider = localStorage.getItem(OPERATOR_PROVIDER_KEY) || "";
+          const validProviders = ["anthropic", "openai", "deepseek"];
+          const statusDefaultProvider = validProviders.includes(operatorStatus && operatorStatus.default_provider)
+            ? operatorStatus.default_provider
+            : OPERATOR_DEFAULT_PROVIDER;
+          const shouldApplyNewDefault = localStorage.getItem(OPERATOR_PROVIDER_DEFAULT_VERSION_KEY) !== OPERATOR_PROVIDER_DEFAULT_VERSION;
+          const savedProvider = shouldApplyNewDefault ? "" : localStorage.getItem(OPERATOR_PROVIDER_KEY) || "";
           if (!providerEl.options.length) {
             providerEl.innerHTML = [
               '<option value="anthropic">Claude</option>',
@@ -935,14 +944,12 @@
               '<option value="deepseek">DeepSeek</option>',
             ].join("");
           }
-          if (["anthropic", "openai", "deepseek"].includes(savedProvider)) {
+          if (validProviders.includes(savedProvider)) {
             providerEl.value = savedProvider;
-          } else if (providers.anthropic && providers.anthropic.ready) {
-            providerEl.value = "anthropic";
-          } else if (providers.openai && providers.openai.ready) {
-            providerEl.value = "openai";
-          } else if (providers.deepseek && providers.deepseek.ready) {
-            providerEl.value = "deepseek";
+          } else {
+            providerEl.value = statusDefaultProvider;
+            localStorage.setItem(OPERATOR_PROVIDER_DEFAULT_VERSION_KEY, OPERATOR_PROVIDER_DEFAULT_VERSION);
+            localStorage.setItem(OPERATOR_PROVIDER_KEY, statusDefaultProvider);
           }
           const provider = selectedOperatorProvider();
           const modelInfo = providers[provider] || {};
@@ -953,9 +960,12 @@
               : provider === "deepseek"
                 ? ["deepseek-v4-flash", "deepseek-v4-pro"]
                 : ["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5"];
-          const savedModel = localStorage.getItem(OPERATOR_MODEL_KEY) || modelInfo.default_model || models[0];
+          const savedModel = shouldApplyNewDefault && provider === OPERATOR_DEFAULT_PROVIDER
+            ? OPERATOR_DEFAULT_MODEL
+            : localStorage.getItem(OPERATOR_MODEL_KEY) || modelInfo.default_model || models[0];
           $("operatorModel").innerHTML = models.map((model) => `<option value="${esc(model)}">${esc(model)}</option>`).join("");
           $("operatorModel").value = models.includes(savedModel) ? savedModel : (modelInfo.default_model || models[0]);
+          if (shouldApplyNewDefault) localStorage.setItem(OPERATOR_MODEL_KEY, $("operatorModel").value);
         }
 
         function renderOperatorStatus() {
