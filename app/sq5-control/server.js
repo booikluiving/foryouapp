@@ -8,6 +8,7 @@ const DEFAULT_MIXER_PORT = Number(process.env.SQ5_MIXER_PORT || 51325);
 const DEFAULT_OSC_PORT = Number(process.env.SQ5_OSC_PORT || 53000);
 const TCP_TIMEOUT_MS = Number(process.env.SQ5_TCP_TIMEOUT_MS || 1800);
 const STATUS_POLL_MS = Number(process.env.SQ5_STATUS_POLL_MS || 1500);
+const STREAMDECK_POLL_MS = Number(process.env.SQ5_STREAMDECK_POLL_MS || 500);
 const MIDI_RESPONSE_WINDOW_MS = Number(process.env.SQ5_MIDI_RESPONSE_WINDOW_MS || 90);
 
 const state = {
@@ -28,8 +29,11 @@ let activity = [];
 let oscPort = null;
 let controlState = {};
 let lastSyncAt = "";
+let lastStreamdeckSyncAt = "";
 let syncInProgress = false;
+let streamdeckSyncInProgress = false;
 let syncTimer = null;
+let streamdeckSyncTimer = null;
 const midiClient = {
   socket: null,
   connecting: null,
@@ -832,8 +836,11 @@ function publicState() {
     channels: state.channels,
     controlState,
     lastSyncAt,
+    lastStreamdeckSyncAt,
     syncInProgress,
+    streamdeckSyncInProgress,
     statusPollMs: STATUS_POLL_MS,
+    streamdeckPollMs: STREAMDECK_POLL_MS,
     activity,
     commands: commandCatalog(),
   };
@@ -867,6 +874,7 @@ function streamdeckState() {
   const result = {
     updatedAt: new Date().toISOString(),
     lastSyncAt,
+    lastStreamdeckSyncAt,
   };
 
   for (const target of Object.values(STREAMDECK_TARGETS)) {
@@ -1310,6 +1318,25 @@ async function syncMixerState({ force = false } = {}) {
   return publicState();
 }
 
+async function syncStreamdeckMuteState({ force = false } = {}) {
+  if (!state.mixerHost) return streamdeckState();
+  if (streamdeckSyncInProgress && !force) return streamdeckState();
+
+  streamdeckSyncInProgress = true;
+  try {
+    await handleInputAction("brent", "get", { parameter: "mute" }, "streamdeck-sync", { silent: true });
+    await handleInputAction("megan", "get", { parameter: "mute" }, "streamdeck-sync", { silent: true });
+    await handleInputAction("booi", "get", { parameter: "mute" }, "streamdeck-sync", { silent: true });
+    await handleOutputAction("main", "get", { parameter: "mute" }, "streamdeck-sync", { silent: true });
+    lastStreamdeckSyncAt = new Date().toISOString();
+  } catch (error) {
+    addActivity({ status: "error", source: "streamdeck-sync", message: error.message || String(error) });
+  } finally {
+    streamdeckSyncInProgress = false;
+  }
+  return streamdeckState();
+}
+
 function startStatePolling() {
   if (syncTimer) clearInterval(syncTimer);
   syncTimer = setInterval(() => {
@@ -1322,6 +1349,20 @@ function startStatePolling() {
       addActivity({ status: "error", source: "sync", message: error.message || String(error) });
     });
   }, 250);
+}
+
+function startStreamdeckPolling() {
+  if (streamdeckSyncTimer) clearInterval(streamdeckSyncTimer);
+  streamdeckSyncTimer = setInterval(() => {
+    syncStreamdeckMuteState().catch((error) => {
+      addActivity({ status: "error", source: "streamdeck-sync", message: error.message || String(error) });
+    });
+  }, STREAMDECK_POLL_MS);
+  setTimeout(() => {
+    syncStreamdeckMuteState().catch((error) => {
+      addActivity({ status: "error", source: "streamdeck-sync", message: error.message || String(error) });
+    });
+  }, 100);
 }
 
 async function routeApi(req, res, url) {
@@ -2397,6 +2438,7 @@ function createServer() {
 function start() {
   openOscPort();
   startStatePolling();
+  startStreamdeckPolling();
   const server = createServer();
   server.listen(TOOL_PORT, "0.0.0.0", () => {
     const message = `SQ5 Control: http://127.0.0.1:${TOOL_PORT}`;
@@ -2406,6 +2448,7 @@ function start() {
 
   process.on("SIGINT", () => {
     if (syncTimer) clearInterval(syncTimer);
+    if (streamdeckSyncTimer) clearInterval(streamdeckSyncTimer);
     if (oscPort) {
       try {
         oscPort.close();

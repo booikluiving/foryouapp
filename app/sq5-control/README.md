@@ -31,6 +31,7 @@ SQ5_MIDI_CHANNEL=1 \
 SQ5_FADER_LAW=linear \
 SQ5_OSC_PORT=53000 \
 SQ5_STATUS_POLL_MS=1500 \
+SQ5_STREAMDECK_POLL_MS=500 \
 node app/sq5-control/server.js
 ```
 
@@ -56,7 +57,7 @@ Gebruik voor Bitfocus Companion bij voorkeur HTTP, niet OSC. HTTP geeft response
 
 ### Polling endpoint
 
-Laat Companion elke `500ms` tot `1000ms` pollen:
+Laat Companion elke `250ms` tot `500ms` pollen:
 
 ```text
 GET http://127.0.0.1:3105/api/streamdeck/state
@@ -90,6 +91,8 @@ true  = muted
 false = unmuted
 null  = nog geen state bekend
 ```
+
+De bridge pollt de belangrijke Stream Deck mute-status standaard elke `500ms` via `SQ5_STREAMDECK_POLL_MS`. Daardoor kan Companion meestal sneller dan 1 seconde reageren op mute-wijzigingen die elders gebeuren.
 
 Gebruik voor feedback in Companion deze velden:
 

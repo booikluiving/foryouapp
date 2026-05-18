@@ -1,80 +1,81 @@
-# Prompt: SQ5 Mute Buttons In Companion
+# Prompt: SQ5 Mute-Knoppen In Companion
 
-Configure Bitfocus Companion for the For You SQ5 bridge.
+Configureer Bitfocus Companion voor de For You SQ5 bridge.
 
 Context:
 
 - Bridge base URL: `http://127.0.0.1:3105`
-- Use HTTP, not OSC.
-- Companion should poll `GET /api/streamdeck/state` every 0.5 to 1 second for feedback.
-- In the JSON state, `true` means muted and `false` means unmuted.
-- Use dynamic feedback so button color/text updates when the SQ-5, website, TouchDesigner, or another controller changes mute state.
+- Gebruik HTTP-actions, geen OSC.
+- De bridge moet draaien met snelle Stream Deck mute-polling, bij voorkeur: `SQ5_STREAMDECK_POLL_MS=500`.
+- Companion moet `GET /api/streamdeck/state` elke `250ms` tot `500ms` pollen voor feedback.
+- In de JSON-status betekent `true` gemute en `false` niet gemute.
+- De knoppen moeten dynamisch zijn: als mute op de SQ-5, de SQ5 webpagina, TouchDesigner of een andere controller verandert, moet Companion de button-status zo snel mogelijk updaten.
 
-Task:
+Taak:
 
-On page 1, row 4, buttons 4 through 8:
+Op pagina 1, rij 4, knoppen 4 tot en met 8:
 
 ```text
-Button 4: Brent mute/unmute toggle
-Button 5: Megan mute/unmute toggle
-Button 6: Booi mute/unmute toggle
-Button 7: All mics mute/unmute toggle for Brent + Megan + Booi
-Button 8: Main mute/unmute toggle for Main LR
+Knop 4: Brent Mic mute/unmute toggle
+Knop 5: Megan Mic mute/unmute toggle
+Knop 6: Booi Mic mute/unmute toggle
+Knop 7: All Mics mute/unmute toggle voor Brent + Megan + Booi
+Knop 8: Main Mute mute/unmute toggle voor Main LR
 ```
 
-Actions:
+Acties:
 
 ```text
-Button 4 press: POST http://127.0.0.1:3105/api/streamdeck/brent/toggle
-Button 5 press: POST http://127.0.0.1:3105/api/streamdeck/megan/toggle
-Button 6 press: POST http://127.0.0.1:3105/api/streamdeck/booi/toggle
-Button 7 press: POST http://127.0.0.1:3105/api/streamdeck/allmics/toggle
-Button 8 press: POST http://127.0.0.1:3105/api/streamdeck/main/toggle
+Knop 4 press: POST http://127.0.0.1:3105/api/streamdeck/brent/toggle
+Knop 5 press: POST http://127.0.0.1:3105/api/streamdeck/megan/toggle
+Knop 6 press: POST http://127.0.0.1:3105/api/streamdeck/booi/toggle
+Knop 7 press: POST http://127.0.0.1:3105/api/streamdeck/allmics/toggle
+Knop 8 press: POST http://127.0.0.1:3105/api/streamdeck/main/toggle
 ```
 
-Feedback fields from `GET /api/streamdeck/state`:
+Feedbackvelden uit `GET /api/streamdeck/state`:
 
 ```text
-Button 4 uses JSON field: brent
-Button 5 uses JSON field: megan
-Button 6 uses JSON field: booi
-Button 7 uses JSON fields: allMics and allMicsMixed
-Button 8 uses JSON field: main
+Knop 4 gebruikt JSON-veld: brent
+Knop 5 gebruikt JSON-veld: megan
+Knop 6 gebruikt JSON-veld: booi
+Knop 7 gebruikt JSON-velden: allMics en allMicsMixed
+Knop 8 gebruikt JSON-veld: main
+```
+
+Labels:
+
+```text
+Knop 4: BRENT MIC
+Knop 5: MEGAN MIC
+Knop 6: BOOI MIC
+Knop 7: ALL MICS
+Knop 8: MAIN MUTE
 ```
 
 Feedback styling:
 
 ```text
-If muted is true:
-  text: MUTED
-  background: red
-  foreground: white
+Als het mute-veld true is:
+  tekst: MUTED
+  achtergrond: rood
+  tekstkleur: wit
 
-If muted is false:
-  text: ON
-  background: dark green or dark grey
-  foreground: white
+Als het mute-veld false is:
+  tekst: ON
+  achtergrond: donkergroen of donkergrijs
+  tekstkleur: wit
 
-For Button 7 only:
-  if allMicsMixed is true:
-    text: MIXED
-    background: amber/orange
-    foreground: black
+Alleen voor knop 7:
+  als allMicsMixed true is:
+    tekst: MIXED
+    achtergrond: amber/oranje
+    tekstkleur: zwart
 ```
 
-Suggested labels:
+Verificatie:
 
-```text
-Button 4: BRENT
-Button 5: MEGAN
-Button 6: BOOI
-Button 7: ALL MICS
-Button 8: MAIN
-```
-
-Verification:
-
-1. Press each button once and confirm the SQ-5 mute state changes.
-2. Change mute state from the SQ-5 or SQ5 web page.
-3. Confirm the Companion button feedback updates within about 1 second.
-4. For Button 7, mute only one of Brent/Megan/Booi and confirm the button shows MIXED.
+1. Druk elke knop een keer in en controleer of de mute-status op de SQ-5 verandert.
+2. Verander mute daarna vanaf de SQ-5 of de SQ5 webpagina.
+3. Controleer dat Companion de button-feedback binnen ongeveer 0.5 seconde tot maximaal 1 seconde update.
+4. Voor knop 7: mute maar een van Brent/Megan/Booi en controleer dat de knop `MIXED` toont.
