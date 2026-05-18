@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 APP_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+REPO_DIR="$(cd -- "$APP_DIR" && git rev-parse --show-toplevel 2>/dev/null || true)"
 APP_LABEL="${FORYOU_LAUNCHD_LABEL:-nl.foryou.app}"
 APP_PORT="${FORYOU_PORT:-3310}"
 APP_BRANCH="${FORYOU_BRANCH:-main}"
@@ -19,14 +20,14 @@ info() {
   echo "==> $*"
 }
 
-cd "$APP_DIR"
-[[ -d .git ]] || fail "Geen git clone gevonden in $APP_DIR."
+[[ -n "$REPO_DIR" ]] || fail "Geen git clone gevonden rond $APP_DIR."
 [[ -f "$PLIST_PATH" ]] || fail "LaunchAgent ontbreekt. Run eerst scripts/mac-studio-setup.command."
 
 if [[ "$APP_PORT" == "3310" && "$APP_BRANCH" != "main" && "$ALLOW_LIVE_BRANCH" != "1" ]]; then
   fail "Live update op poort 3310 mag standaard alleen vanaf main. Gebruik scripts/mac-studio-preview.command ${APP_BRANCH} voor branch-preview, of zet bewust FORYOU_ALLOW_LIVE_BRANCH=1."
 fi
 
+cd "$REPO_DIR"
 if [[ -n "$(git status --porcelain)" ]]; then
   fail "Werkmap heeft lokale wijzigingen. Commit/stash die eerst, zodat update geen showcode overschrijft."
 fi
@@ -37,6 +38,7 @@ git checkout "$APP_BRANCH"
 git pull --ff-only origin "$APP_BRANCH"
 
 info "Dependencies bijwerken."
+cd "$APP_DIR"
 npm install
 
 info "Service herstarten."

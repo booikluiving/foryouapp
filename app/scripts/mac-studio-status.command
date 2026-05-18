@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 APP_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+REPO_DIR="$(cd -- "$APP_DIR" && git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$APP_DIR")"
 APP_LABEL="${FORYOU_LAUNCHD_LABEL:-nl.foryou.app}"
 APP_PORT="${FORYOU_PORT:-3310}"
 LOG_DIR="$HOME/Library/Logs/ForYouApp"
@@ -73,7 +74,7 @@ fi
 echo ""
 
 echo "git:"
-cd "$APP_DIR"
+cd "$REPO_DIR"
 git status --short --branch || true
 echo ""
 

@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 APP_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+REPO_DIR="$(cd -- "$APP_DIR" && git rev-parse --show-toplevel 2>/dev/null || true)"
 APP_LABEL="${FORYOU_LAUNCHD_LABEL:-nl.foryou.app}"
 APP_PORT="${FORYOU_PORT:-3310}"
 APP_BRANCH="${FORYOU_BRANCH:-main}"
@@ -58,8 +59,7 @@ detect_lan_ip() {
 }
 
 ensure_git_repo() {
-  cd "$APP_DIR"
-  if [[ ! -d .git ]]; then
+  if [[ -z "$REPO_DIR" ]]; then
     fail "Deze map is geen git clone. Clone eerst de repo en run dit script opnieuw."
   fi
 }
@@ -95,7 +95,7 @@ ensure_node() {
 }
 
 ensure_clean_worktree_for_pull() {
-  cd "$APP_DIR"
+  cd "$REPO_DIR"
   if [[ -n "$(git status --porcelain)" ]]; then
     info "Werkmap heeft lokale wijzigingen; git pull wordt overgeslagen."
     return 1
@@ -104,7 +104,7 @@ ensure_clean_worktree_for_pull() {
 }
 
 pull_latest() {
-  cd "$APP_DIR"
+  cd "$REPO_DIR"
   if [[ "$APP_PORT" == "3310" && "$APP_BRANCH" != "main" && "$ALLOW_LIVE_BRANCH" != "1" ]]; then
     fail "Launchd setup op live poort 3310 mag standaard alleen vanaf main. Gebruik scripts/mac-studio-preview.command ${APP_BRANCH} voor branch-preview, of zet bewust FORYOU_ALLOW_LIVE_BRANCH=1."
   fi
