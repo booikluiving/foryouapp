@@ -2,6 +2,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { buildGraph } = require("../src/domain/normalize-paths");
 
 const graph = buildGraph({
@@ -47,5 +49,12 @@ assert.equal(duplicateEdge.isMultiPath, true, "Duplicate edge should still be ma
 assert.equal(graph.networkMap.summary.componentCount, 2, "Loose scene should remain its own component");
 assert.equal(graph.networkMap.summary.largestComponentSize, 3, "Connected path scenes should form the largest component");
 assert.equal(graph.networkMap.summary.isolatedNodeCount, 1, "Loose scene should be isolated");
+
+const rendererSource = fs.readFileSync(path.join(__dirname, "..", "src", "public", "sky-renderer.js"), "utf8");
+assert.equal(
+  rendererSource.includes("state.tweaks.labels || status"),
+  false,
+  "Runtime status should not force network labels when the labels toggle is off"
+);
 
 console.log("Universe network-map tests passed");

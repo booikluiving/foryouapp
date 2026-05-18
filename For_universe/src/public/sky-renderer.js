@@ -3114,7 +3114,7 @@
         nodeLayer.appendChild(group);
         state.bb.networkNodeGroups.set(node.sceneId, group);
 
-        if (state.tweaks.labels || status) {
+        if (state.tweaks.labels) {
           const label = el("text", {
             x: pos.x,
             y: pos.y - radius - 9,
