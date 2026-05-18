@@ -2211,6 +2211,19 @@
 
         function formatSceneWarning(warning) {
           const text = String(warning || "");
+          if (text.startsWith("named_character_missing:")) {
+            const parts = text.split(":");
+            const displayName = parts[1] || "Onbekend personage";
+            const ids = String(parts[2] || "")
+              .split(",")
+              .map((id) => Number(id || 0))
+              .filter((id) => id > 0);
+            const labels = ids.map((id) => {
+              const character = itemById("characters", id);
+              return character ? character.name : `#${id}`;
+            }).filter(Boolean);
+            return `Personage genoemd maar niet geselecteerd: ${labels.join(" of ") || displayName}.`;
+          }
           if (text.startsWith("performer_conflict:")) {
             const parts = text.split(":");
             const performerId = Number(parts[1] || 0);
@@ -2245,9 +2258,20 @@
           return text;
         }
 
+        function normalizeMentionText(value) {
+          return String(value || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        }
+
         function formatSceneIssue(issue) {
           const text = String(issue || "");
           if (!text) return "";
+          if (text.startsWith("named_character_missing:")) return formatSceneWarning(text);
           if (text.startsWith("performer_")) return formatSceneWarning(text);
           if (text.startsWith("too_many_roles:")) return formatSceneWarning(text);
           const parts = text.split(":");
@@ -2309,6 +2333,35 @@
           });
           const overflowIds = rawSlots.slice(ACTOR_SLOT_COUNT).filter((id) => id > 0);
           if (overflowIds.length) warnings.push(`too_many_roles:${overflowIds.join(",")}`);
+          const mentionText = normalizeMentionText([
+            scene.title || "",
+            scene.promptOverride || "",
+            (Array.isArray(scene.situationIds) ? scene.situationIds : [])
+              .map((id) => itemById("situations", id))
+              .filter(Boolean)
+              .map((item) => `${item.name || ""}\n${item.description || ""}`)
+              .join("\n"),
+          ].join("\n"));
+          if (mentionText) {
+            const textWithSpaces = ` ${mentionText} `;
+            const selectedIds = new Set(rawSlots.filter((id) => id > 0));
+            const selectedNames = new Set(catalogItems("characters")
+              .filter((item) => selectedIds.has(Number(item.id || 0)))
+              .map((item) => normalizeMentionText(item.name))
+              .filter(Boolean));
+            const charactersByName = new Map();
+            catalogItems("characters").filter(isActiveItem).forEach((character) => {
+              const key = normalizeMentionText(character.name);
+              if (!key || key.length < 3) return;
+              if (!charactersByName.has(key)) charactersByName.set(key, []);
+              charactersByName.get(key).push(character);
+            });
+            charactersByName.forEach((rows, key) => {
+              if (!textWithSpaces.includes(` ${key} `)) return;
+              if (selectedNames.has(key)) return;
+              warnings.push(`named_character_missing:${rows[0].name}:${rows.map((item) => item.id).join(",")}`);
+            });
+          }
           return warnings;
         }
 

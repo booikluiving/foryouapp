@@ -5,6 +5,7 @@ const assert = require("assert");
 const {
   ALGORITHM_RANDOM_SLOT_VALUE,
   buildAlgorithmOrder,
+  buildSceneMentionWarnings,
   buildSceneWarnings,
   calculateRunScore,
   calculateRunScoreDetails,
@@ -1351,6 +1352,59 @@ function testPromptCompositionSkipsEmptySlots() {
   assert(!prompt.includes("random personage."));
 }
 
+function testSceneMentionWarningsCatchNamedCharacterMissing() {
+  const warnings = buildSceneMentionWarnings({
+    id: 1,
+    title: "Boomer wordt ingewerkt",
+    characterSlots: [13, 32, 0],
+    promptOverride: "Tijmen is Johan aan het inwerken.",
+  }, {
+    characters: [
+      { id: 13, name: "Johan", isActive: true },
+      { id: 32, name: "Alex", isActive: true },
+      { id: 99, name: "Tijmen", isActive: true },
+    ],
+  });
+  assert(warnings.some((warning) => warning.startsWith("named_character_missing:Tijmen:")));
+  assert(!warnings.some((warning) => warning.startsWith("named_character_missing:Johan:")));
+}
+
+function testSceneMentionWarningsAcceptSelectedNamedCharacter() {
+  const warnings = buildSceneMentionWarnings({
+    id: 1,
+    title: "Boomer wordt ingewerkt",
+    characterSlots: [13, 32, 0],
+    promptOverride: "Tijmen is Johan aan het inwerken.",
+  }, {
+    characters: [
+      { id: 13, name: "Johan", isActive: true },
+      { id: 32, name: "Tijmen", isActive: true },
+    ],
+  });
+  assert.deepStrictEqual(warnings, []);
+}
+
+function testSceneMentionWarningsUseSituationText() {
+  const warnings = buildSceneMentionWarnings({
+    id: 1,
+    title: "Dorpsoverleg",
+    characterSlots: [13, 32, 0],
+    situationIds: [7],
+    promptOverride: "",
+  }, {
+    characters: [
+      { id: 13, name: "Johan", isActive: true },
+      { id: 32, name: "Tijmen", isActive: true },
+      { id: 38, name: "Buurvrouw Bea", isActive: true },
+    ],
+    situations: [
+      { id: 7, name: "Koffie bij de buren", description: "Buurvrouw Bea komt verhaal halen bij Johan." },
+    ],
+  });
+  assert(warnings.some((warning) => warning.startsWith("named_character_missing:Buurvrouw Bea:")));
+  assert(!warnings.some((warning) => warning.startsWith("named_character_missing:Johan:")));
+}
+
 function testSyncLastWriteWins() {
   assert.strictEqual(incomingWins("2026-05-07T10:00:00.000Z", "2026-05-07T10:00:01.000Z"), true);
   assert.strictEqual(incomingWins("2026-05-07T10:00:01.000Z", "2026-05-07T10:00:00.000Z"), false);
@@ -2340,6 +2394,9 @@ testPromptCompositionWithResolvedRandomEnvironmentHasNoRandomPlaceholder();
 testPromptComposition();
 testPromptCompositionWithRandomSlots();
 testPromptCompositionSkipsEmptySlots();
+testSceneMentionWarningsCatchNamedCharacterMissing();
+testSceneMentionWarningsAcceptSelectedNamedCharacter();
+testSceneMentionWarningsUseSituationText();
 testPathValidation();
 testEndNodesAreExplicitOnly();
 testPathStartAndSuccessorGate();

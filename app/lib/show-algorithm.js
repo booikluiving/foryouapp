@@ -770,6 +770,12 @@ function normalizeRun(input = {}) {
     score: Number.isFinite(Number(src.score)) ? Number(src.score) : null,
     promptSnapshot: normalizeText(src.promptSnapshot, 12000),
     reason: normalizeText(src.reason, 1000),
+    randomSeed: normalizeText(src.randomSeed, 200),
+    resolvedCharacterSlots: normalizeCharacterSlots(src.resolvedCharacterSlots, []),
+    resolvedEnvironmentId: normalizeId(src.resolvedEnvironmentId),
+    resolvedScene: src.resolvedScene && typeof src.resolvedScene === "object" && !Array.isArray(src.resolvedScene)
+      ? src.resolvedScene
+      : null,
   };
 }
 
@@ -2979,7 +2985,58 @@ function validateSceneLinks(scene, { characters = [], situations = [], labels = 
   return { ok: issues.length === 0, issues };
 }
 
-function buildSceneWarnings(scene, { characters = [], performers = [] } = {}) {
+function normalizeMentionText(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildSceneMentionWarnings(scene, { characters = [], situations = [] } = {}) {
+  const rawScene = scene && typeof scene === "object" && !Array.isArray(scene) ? scene : {};
+  const safeScene = normalizeScene(scene);
+  const situationById = new Map((Array.isArray(situations) ? situations : [])
+    .map(normalizeSituation)
+    .filter((item) => item.id)
+    .map((item) => [item.id, item]));
+  const situationRows = Array.isArray(rawScene.situations) && rawScene.situations.length
+    ? rawScene.situations.map(normalizeSituation)
+    : safeScene.situationIds.map((id) => situationById.get(id)).filter(Boolean);
+  const situationText = situationRows
+    .map((item) => `${item.name || ""}\n${item.description || ""}`)
+    .join("\n");
+  const text = normalizeMentionText(`${safeScene.title}\n${safeScene.promptOverride}\n${situationText}`);
+  if (!text) return [];
+  const textWithSpaces = ` ${text} `;
+  const characterRows = (Array.isArray(characters) ? characters : [])
+    .map(normalizeCharacter)
+    .filter((item) => item.id && item.name && item.isActive && !item.archivedAt);
+  const selectedIds = new Set(safeScene.characterSlots.filter((id) => id > 0));
+  const selectedNameKeys = new Set(characterRows
+    .filter((item) => selectedIds.has(item.id))
+    .map((item) => normalizeMentionText(item.name))
+    .filter(Boolean));
+  const byName = new Map();
+  for (const character of characterRows) {
+    const key = normalizeMentionText(character.name);
+    if (!key || key.length < 3) continue;
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key).push(character);
+  }
+  const warnings = [];
+  for (const [key, rows] of byName.entries()) {
+    if (!textWithSpaces.includes(` ${key} `)) continue;
+    if (selectedNameKeys.has(key)) continue;
+    const displayName = rows[0] && rows[0].name ? rows[0].name : key;
+    warnings.push(`named_character_missing:${displayName}:${rows.map((item) => item.id).join(",")}`);
+  }
+  return warnings;
+}
+
+function buildSceneWarnings(scene, { characters = [], performers = [], situations = [] } = {}) {
   const safeScene = normalizeScene(scene);
   const characterById = new Map((Array.isArray(characters) ? characters : [])
     .map(normalizeCharacter)
@@ -3016,6 +3073,7 @@ function buildSceneWarnings(scene, { characters = [], performers = [] } = {}) {
     .slice(ALGORITHM_ACTOR_SLOT_COUNT)
     .filter((id) => id > 0);
   if (overflowCharacterIds.length) warnings.push(`too_many_roles:${overflowCharacterIds.join(",")}`);
+  warnings.push(...buildSceneMentionWarnings(scene, { characters, situations }));
 
   return warnings;
 }
@@ -3196,6 +3254,7 @@ module.exports = {
   validateAlgorithmPath,
   buildPathSceneStatuses,
   buildSceneWarnings,
+  buildSceneMentionWarnings,
   composeScenePrompt,
   buildAudienceContext,
 };

@@ -2996,6 +2996,10 @@ db.exec(`
     score REAL,
     prompt_snapshot TEXT,
     reason TEXT,
+    random_seed TEXT,
+    resolved_character_slots_json TEXT NOT NULL DEFAULT '[]',
+    resolved_environment_id INTEGER,
+    resolved_scene_json TEXT NOT NULL DEFAULT '{}',
     updated_at TEXT,
     FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
     FOREIGN KEY(scene_id) REFERENCES algorithm_scenes(id)
@@ -3218,6 +3222,18 @@ const algorithmRunColumns = db.prepare("PRAGMA table_info(algorithm_scene_runs)"
 if (!algorithmRunColumns.some((column) => String(column.name || "") === "updated_at")) {
   db.exec("ALTER TABLE algorithm_scene_runs ADD COLUMN updated_at TEXT");
   db.exec("UPDATE algorithm_scene_runs SET updated_at = COALESCE(ended_at, started_at, datetime('now')) WHERE updated_at IS NULL");
+}
+if (!algorithmRunColumns.some((column) => String(column.name || "") === "random_seed")) {
+  db.exec("ALTER TABLE algorithm_scene_runs ADD COLUMN random_seed TEXT");
+}
+if (!algorithmRunColumns.some((column) => String(column.name || "") === "resolved_character_slots_json")) {
+  db.exec("ALTER TABLE algorithm_scene_runs ADD COLUMN resolved_character_slots_json TEXT NOT NULL DEFAULT '[]'");
+}
+if (!algorithmRunColumns.some((column) => String(column.name || "") === "resolved_environment_id")) {
+  db.exec("ALTER TABLE algorithm_scene_runs ADD COLUMN resolved_environment_id INTEGER");
+}
+if (!algorithmRunColumns.some((column) => String(column.name || "") === "resolved_scene_json")) {
+  db.exec("ALTER TABLE algorithm_scene_runs ADD COLUMN resolved_scene_json TEXT NOT NULL DEFAULT '{}'");
 }
 
 function seedDefaultAlgorithmPerformers() {
@@ -3734,7 +3750,12 @@ const sql = {
     `SELECT id, session_id AS sessionId, scene_id AS sceneId, run_order AS runOrder,
       selection_source AS selectionSource, started_at AS startedAt, ended_at AS endedAt,
       heart_count AS heartCount, bored_count AS boredCount, comment_count AS commentCount,
-      score, prompt_snapshot AS promptSnapshot, reason, updated_at AS updatedAt
+      score, prompt_snapshot AS promptSnapshot, reason,
+      random_seed AS randomSeed,
+      resolved_character_slots_json AS resolvedCharacterSlotsJson,
+      resolved_environment_id AS resolvedEnvironmentId,
+      resolved_scene_json AS resolvedSceneJson,
+      updated_at AS updatedAt
      FROM algorithm_scene_runs
      WHERE session_id = ?
      ORDER BY run_order ASC, id ASC`
@@ -3743,7 +3764,12 @@ const sql = {
     `SELECT id, session_id AS sessionId, scene_id AS sceneId, run_order AS runOrder,
       selection_source AS selectionSource, started_at AS startedAt, ended_at AS endedAt,
       heart_count AS heartCount, bored_count AS boredCount, comment_count AS commentCount,
-      score, prompt_snapshot AS promptSnapshot, reason, updated_at AS updatedAt
+      score, prompt_snapshot AS promptSnapshot, reason,
+      random_seed AS randomSeed,
+      resolved_character_slots_json AS resolvedCharacterSlotsJson,
+      resolved_environment_id AS resolvedEnvironmentId,
+      resolved_scene_json AS resolvedSceneJson,
+      updated_at AS updatedAt
      FROM algorithm_scene_runs
      WHERE session_id = ? AND ended_at IS NULL
      ORDER BY id DESC
@@ -3753,7 +3779,12 @@ const sql = {
     `SELECT id, session_id AS sessionId, scene_id AS sceneId, run_order AS runOrder,
       selection_source AS selectionSource, started_at AS startedAt, ended_at AS endedAt,
       heart_count AS heartCount, bored_count AS boredCount, comment_count AS commentCount,
-      score, prompt_snapshot AS promptSnapshot, reason, updated_at AS updatedAt
+      score, prompt_snapshot AS promptSnapshot, reason,
+      random_seed AS randomSeed,
+      resolved_character_slots_json AS resolvedCharacterSlotsJson,
+      resolved_environment_id AS resolvedEnvironmentId,
+      resolved_scene_json AS resolvedSceneJson,
+      updated_at AS updatedAt
      FROM algorithm_scene_runs
      WHERE id = ?`
   ),
@@ -3761,7 +3792,12 @@ const sql = {
     `SELECT id, session_id AS sessionId, scene_id AS sceneId, run_order AS runOrder,
       selection_source AS selectionSource, started_at AS startedAt, ended_at AS endedAt,
       heart_count AS heartCount, bored_count AS boredCount, comment_count AS commentCount,
-      score, prompt_snapshot AS promptSnapshot, reason, updated_at AS updatedAt
+      score, prompt_snapshot AS promptSnapshot, reason,
+      random_seed AS randomSeed,
+      resolved_character_slots_json AS resolvedCharacterSlotsJson,
+      resolved_environment_id AS resolvedEnvironmentId,
+      resolved_scene_json AS resolvedSceneJson,
+      updated_at AS updatedAt
      FROM algorithm_scene_runs
      WHERE session_id = ? AND ended_at IS NOT NULL
      ORDER BY ended_at DESC, id DESC
@@ -3775,8 +3811,10 @@ const sql = {
   insertAlgorithmSceneRun: db.prepare(
     `INSERT INTO algorithm_scene_runs (
       session_id, scene_id, run_order, selection_source, started_at, ended_at,
-      heart_count, bored_count, comment_count, score, prompt_snapshot, reason, updated_at
-    ) VALUES (?, ?, ?, ?, ?, NULL, 0, 0, 0, NULL, ?, ?, ?)`
+      heart_count, bored_count, comment_count, score, prompt_snapshot, reason,
+      random_seed, resolved_character_slots_json, resolved_environment_id, resolved_scene_json,
+      updated_at
+    ) VALUES (?, ?, ?, ?, ?, NULL, 0, 0, 0, NULL, ?, ?, ?, ?, ?, ?, ?)`
   ),
   updateAlgorithmSceneRunMetrics: db.prepare(
     `UPDATE algorithm_scene_runs
@@ -4234,7 +4272,7 @@ const SYNC_TABLE_DEFS = Object.freeze([
   },
   {
     name: "algorithm_scene_runs",
-    columns: ["id", "session_id", "scene_id", "run_order", "selection_source", "started_at", "ended_at", "heart_count", "bored_count", "comment_count", "score", "prompt_snapshot", "reason", "updated_at"],
+    columns: ["id", "session_id", "scene_id", "run_order", "selection_source", "started_at", "ended_at", "heart_count", "bored_count", "comment_count", "score", "prompt_snapshot", "reason", "random_seed", "resolved_character_slots_json", "resolved_environment_id", "resolved_scene_json", "updated_at"],
     updatedAtColumn: "updated_at",
   },
 ]);
@@ -4292,6 +4330,8 @@ function normalizeSyncRowForTable(def, row = {}) {
   if (def.name === "algorithm_path_scenes" && out.ignore_crossing_blocks === null) out.ignore_crossing_blocks = 0;
   if (def.name === "algorithm_path_edges" && !out.edge_type) out.edge_type = "required";
   if (def.name === "algorithm_path_node_blocks" && out.include_crossing_paths === null) out.include_crossing_paths = 0;
+  if (def.name === "algorithm_scene_runs" && out.resolved_character_slots_json === null) out.resolved_character_slots_json = "[]";
+  if (def.name === "algorithm_scene_runs" && out.resolved_scene_json === null) out.resolved_scene_json = "{}";
   if (def.updatedAtColumn && !out[def.updatedAtColumn]) out[def.updatedAtColumn] = nowIso();
   return out;
 }
@@ -5231,6 +5271,14 @@ function parseAlgorithmSlotJson(value) {
     });
 }
 
+function parseAlgorithmResolvedSceneJson(value) {
+  const parsed = safeJsonParse(value || "{}", null);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const sceneId = Number(parsed.id || 0);
+  if (!sceneId) return null;
+  return parsed;
+}
+
 function parseAlgorithmLabelScoresJson(value) {
   const parsed = safeJsonParse(value || "{}", {});
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
@@ -5389,6 +5437,10 @@ function parseAlgorithmRunRow(row) {
     score: row.score,
     promptSnapshot: row.promptSnapshot,
     reason: row.reason,
+    randomSeed: row.randomSeed,
+    resolvedCharacterSlots: parseAlgorithmSlotJson(row.resolvedCharacterSlotsJson),
+    resolvedEnvironmentId: row.resolvedEnvironmentId,
+    resolvedScene: parseAlgorithmResolvedSceneJson(row.resolvedSceneJson),
   });
   run.updatedAt = normalizeSyncIso(row.updatedAt || row.updated_at || run.endedAt || run.startedAt, "");
   return run;
@@ -5689,12 +5741,7 @@ function resolveAlgorithmSceneRandomSlots(scene, catalog, options = {}) {
   };
 }
 
-function buildAlgorithmPromptForScene(scene, catalog, recommendation = null, options = {}) {
-  const resolved = resolveAlgorithmSceneRandomSlots(scene, catalog, {
-    seed: options.randomSeed,
-    source: options.source || "prompt",
-  });
-  const expanded = expandAlgorithmScene(resolved.scene, catalog);
+function composeAlgorithmPromptFromExpandedScene(expanded, catalog, recommendation = null) {
   if (!expanded) return "";
   const settings = getAlgorithmSettings();
   const audienceContext = buildAudienceContext({
@@ -5710,6 +5757,33 @@ function buildAlgorithmPromptForScene(scene, catalog, recommendation = null, opt
     settings,
     audienceContext,
   });
+}
+
+function buildAlgorithmResolvedSceneSnapshot(scene, catalog, options = {}) {
+  const randomSeed = String(options.randomSeed === undefined || options.randomSeed === null
+    ? algorithmRuntimeRandomSeed(scene && scene.id, options.source || "runtime")
+    : options.randomSeed);
+  const resolved = resolveAlgorithmSceneRandomSlots(scene, catalog, {
+    seed: randomSeed,
+    source: options.source || "runtime",
+  });
+  const expanded = expandAlgorithmScene(resolved.scene, catalog);
+  return {
+    randomSeed,
+    scene: expanded,
+    randomResolutions: resolved.randomResolutions || [],
+    randomEnvironment: resolved.randomEnvironment || null,
+    randomWarnings: resolved.randomWarnings || [],
+  };
+}
+
+function buildAlgorithmPromptForScene(scene, catalog, recommendation = null, options = {}) {
+  const resolved = resolveAlgorithmSceneRandomSlots(scene, catalog, {
+    seed: options.randomSeed,
+    source: options.source || "prompt",
+  });
+  const expanded = expandAlgorithmScene(resolved.scene, catalog);
+  return composeAlgorithmPromptFromExpandedScene(expanded, catalog, recommendation);
 }
 
 function buildAlgorithmRecommendation(catalog = getAlgorithmCatalog(), runs = getAlgorithmRunsForCurrentSession(), currentOrder = null, options = {}) {
@@ -6072,7 +6146,8 @@ function buildAlgorithmTouchDesignerPayload(bundle, options = {}) {
   let randomResolutions = [];
   let randomEnvironment = null;
   let randomWarnings = [];
-  if (scene && catalog) {
+  const shouldResolveRandom = !!(scene && catalog && options.resolveRandom !== false);
+  if (shouldResolveRandom) {
     const resolved = resolveAlgorithmSceneRandomSlots(scene, catalog, {
       seed: options.randomSeed,
       source: options.source || "payload",
@@ -6082,7 +6157,7 @@ function buildAlgorithmTouchDesignerPayload(bundle, options = {}) {
     randomEnvironment = resolved.randomEnvironment || null;
     randomWarnings = resolved.randomWarnings || [];
   }
-  const expandedScene = scene && catalog
+  const expandedScene = scene && catalog && !options.useResolvedScene
     ? expandAlgorithmScene(scene, catalog)
     : scene && scene.characters ? scene : null;
   const characterById = new Map(expandedScene ? expandedScene.characters.map((item) => [Number(item.id || 0), item]) : []);
@@ -6145,6 +6220,31 @@ function buildAlgorithmTouchDesignerPayload(bundle, options = {}) {
   };
 }
 
+function resolvedSceneFromAlgorithmRun(run) {
+  const scene = run && run.resolvedScene && typeof run.resolvedScene === "object" && !Array.isArray(run.resolvedScene)
+    ? run.resolvedScene
+    : null;
+  if (!scene || !Number(scene.id || 0)) return null;
+  return scene;
+}
+
+function buildAlgorithmTouchDesignerPayloadForRun(bundle, run, options = {}) {
+  const resolvedScene = resolvedSceneFromAlgorithmRun(run);
+  if (resolvedScene) {
+    return buildAlgorithmTouchDesignerPayload({
+      ...bundle,
+      scene: resolvedScene,
+    }, {
+      ...options,
+      catalog: null,
+      useResolvedScene: true,
+      resolveRandom: false,
+      randomSeed: String(run && run.randomSeed || options.randomSeed || ""),
+    });
+  }
+  return buildAlgorithmTouchDesignerPayload(bundle, options);
+}
+
 function getAlgorithmState() {
   renormalizeAlgorithmScenesForPerformerRoles();
   const catalog = getAlgorithmCatalog();
@@ -6159,7 +6259,7 @@ function getAlgorithmState() {
   const awaitingStart = !algorithmRunStarted && !activeRun && runs.length === 0;
   const currentOrder = awaitingStart ? maskAlgorithmOrderUntilRunStart(rawCurrentOrder) : rawCurrentOrder;
   const nextSceneId = Number(currentOrder && currentOrder.next && currentOrder.next.sceneId || 0);
-  const randomSeed = algorithmRuntimeRandomSeed(nextSceneId, "up_next");
+  const randomSeed = String(currentOrder && currentOrder.next && currentOrder.next.randomSeed || "") || algorithmRuntimeRandomSeed(nextSceneId, "up_next");
   const recommendation = awaitingStart
     ? emptyAlgorithmRecommendationForOrder(currentOrder)
     : buildAlgorithmRecommendation(catalog, runs, currentOrder, {
@@ -6180,7 +6280,7 @@ function getAlgorithmState() {
     audienceProfileObj[String(label.id)] = eff;
   });
   const activeScene = activeRun
-    ? expandAlgorithmScene(getAlgorithmSceneById(activeRun.sceneId), catalog)
+    ? resolvedSceneFromAlgorithmRun(activeRun) || expandAlgorithmScene(getAlgorithmSceneById(activeRun.sceneId), catalog)
     : null;
   return {
     ok: true,
@@ -6252,7 +6352,8 @@ function publicAlgorithmCharactersForScene(scene, catalog = getAlgorithmCatalog(
 function buildPublicAlgorithmScenePayload(run, catalog = getAlgorithmCatalog()) {
   const safeRun = run ? parseAlgorithmRunRow(run) || run : null;
   if (!safeRun) return null;
-  const scene = expandAlgorithmScene(getAlgorithmSceneById(safeRun.sceneId), catalog);
+  const scene = resolvedSceneFromAlgorithmRun(safeRun)
+    || expandAlgorithmScene(getAlgorithmSceneById(safeRun.sceneId), catalog);
   if (!scene) return null;
   return {
     runId: Number(safeRun.id || 0),
@@ -6322,7 +6423,8 @@ function buildPublicAlgorithmVotePrompt(meta = {}, options = {}) {
   if (hasResolvedAlgorithmCharacterVotePrompt(run.id, safeClientKey)) return null;
 
   const catalog = getAlgorithmCatalog();
-  const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
+  const scene = resolvedSceneFromAlgorithmRun(run)
+    || expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
   const characters = publicAlgorithmCharactersForScene(scene, catalog);
   if (characters.length < 2) return null;
 
@@ -6398,7 +6500,8 @@ function recordAlgorithmCharacterVote(meta = {}, runId, characterId) {
   }
 
   const catalog = getAlgorithmCatalog();
-  const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
+  const scene = resolvedSceneFromAlgorithmRun(run)
+    || expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
   const characters = publicAlgorithmCharactersForScene(scene, catalog);
   if (characters.length < 2) throw new Error("algorithm_vote_unavailable");
   if (!characters.some((character) => Number(character.id || 0) === safeCharacterId)) {
@@ -6462,7 +6565,8 @@ function recordAlgorithmCharacterVoteSkip(meta = {}, runId) {
   }
 
   const catalog = getAlgorithmCatalog();
-  const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
+  const scene = resolvedSceneFromAlgorithmRun(run)
+    || expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
   const characters = publicAlgorithmCharactersForScene(scene, catalog);
   if (characters.length < 2) throw new Error("algorithm_vote_unavailable");
 
@@ -7174,14 +7278,15 @@ function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
   const orderRow = sql.getMaxAlgorithmRunOrderBySession.get(currentSession.id);
   const runOrder = Number(orderRow && orderRow.n || 0) + 1;
   const randomSeed = String(lockedStartEntry && lockedStartEntry.randomSeed || "") || algorithmRuntimeRandomSeed(scene.id, "up_next");
+  const resolvedSnapshot = buildAlgorithmResolvedSceneSnapshot(scene, catalog, {
+    randomSeed,
+    source: "up_next",
+  });
   const recommendation = buildAlgorithmRecommendation(catalog, runs, currentOrder, {
     randomSeed,
     source: "up_next",
   });
-  const prompt = buildAlgorithmPromptForScene(scene, catalog, recommendation, {
-    randomSeed,
-    source: "up_next",
-  });
+  const prompt = composeAlgorithmPromptFromExpandedScene(resolvedSnapshot.scene, catalog, recommendation);
   const now = nowIso();
   const insert = sql.insertAlgorithmSceneRun.run(
     currentSession.id,
@@ -7191,6 +7296,10 @@ function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
     now,
     prompt,
     String(recommendation && recommendation.reason || "").slice(0, 1000),
+    randomSeed,
+    safeJsonStringify(resolvedSnapshot.scene && resolvedSnapshot.scene.characterSlots || [], "[]"),
+    Number(resolvedSnapshot.scene && resolvedSnapshot.scene.environmentId || 0) || null,
+    safeJsonStringify(resolvedSnapshot.scene || {}, "{}"),
     now
   );
   setAlgorithmRunStartedForCurrentSession(true);
@@ -11439,15 +11548,16 @@ function buildOscControlCommands() {
           if (!sceneId) throw new Error("scene_id_required");
           const run = startAlgorithmSceneRun(sceneId, selectionSource);
           const catalog = getAlgorithmCatalog();
-          const scene = expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
-          const randomSeed = algorithmRuntimeRandomSeed(sceneId, "osc_start_scene");
-          const payload = buildAlgorithmTouchDesignerPayload({
+          const scene = resolvedSceneFromAlgorithmRun(run)
+            || expandAlgorithmScene(getAlgorithmSceneById(run.sceneId), catalog);
+          const randomSeed = String(run && run.randomSeed || "") || algorithmRuntimeRandomSeed(sceneId, "up_next");
+          const payload = buildAlgorithmTouchDesignerPayloadForRun({
             scene,
             prompt: run.promptSnapshot,
             score: 0,
             reason: "Situatie gestart via OSC.",
             calibration: buildAlgorithmRecommendation(catalog, getAlgorithmRunsForCurrentSession()).calibration,
-          }, {
+          }, run, {
             catalog,
             randomSeed,
             source: "osc_start_scene",
@@ -11808,7 +11918,8 @@ function buildAlgorithmCurrentScenePayload(source = "current_scene") {
       calibration: null,
     });
   }
-  const scene = expandAlgorithmScene(getAlgorithmSceneById(activeRun.sceneId), catalog);
+  const scene = resolvedSceneFromAlgorithmRun(activeRun)
+    || expandAlgorithmScene(getAlgorithmSceneById(activeRun.sceneId), catalog);
   if (!scene) {
     return buildAlgorithmTouchDesignerPayload({
       scene: null,
@@ -11820,7 +11931,7 @@ function buildAlgorithmCurrentScenePayload(source = "current_scene") {
   }
   const runs = getAlgorithmRunsForCurrentSession();
   const settings = getAlgorithmSettings();
-  const randomSeed = algorithmRuntimeRandomSeed(activeRun.sceneId, source);
+  const randomSeed = String(activeRun.randomSeed || "") || algorithmRuntimeRandomSeed(activeRun.sceneId, source);
   const recommendation = buildAlgorithmRecommendation(catalog, runs, null, {
     randomSeed,
     source,
@@ -11831,13 +11942,13 @@ function buildAlgorithmCurrentScenePayload(source = "current_scene") {
       source,
     });
   return {
-    ...buildAlgorithmTouchDesignerPayload({
+    ...buildAlgorithmTouchDesignerPayloadForRun({
       scene,
       prompt,
       score: calculateRunScore(activeRun, settings),
       reason: "Huidige actieve scene.",
       calibration: recommendation && recommendation.calibration,
-    }, {
+    }, activeRun, {
       catalog,
       randomSeed,
       source,
