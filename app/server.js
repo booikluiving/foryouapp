@@ -11362,6 +11362,22 @@ function buildOscControlCommands() {
       },
     },
     {
+      address: "/foryou/operator/scene_to_chat",
+      args: "[extra_regie]",
+      description: "Stuur de klaargezette Up Next-scene naar de operator chat/API Playground.",
+      feedback: true,
+      feedbackMessage(result) {
+        return result && result.title ? `Operator chat gestart: ${result.title}` : "Operator chat gestart";
+      },
+      execute(ctx) {
+        const extra = getOscArgString(ctx.args, 0, "");
+        return triggerOperatorSceneToChatFromPreparedScene({
+          sourceId: "osc_scene_to_chat",
+          extra,
+        });
+      },
+    },
+    {
       address: "/foryou/algorithm/start_run",
       args: "(geen)",
       description: "Start de algoritme-run en stuur Up Next naar TouchDesigner.",
@@ -11731,7 +11747,7 @@ function rememberOscReceived(info, patch = {}) {
   return lastOscReceived;
 }
 
-function buildAlgorithmCurrentUpNextPayload(source = "up_next") {
+function buildAlgorithmCurrentUpNextPayload(source = "up_next", options = {}) {
   renormalizeAlgorithmScenesForPerformerRoles();
   let catalog = getAlgorithmCatalog();
   let runs = getAlgorithmRunsForCurrentSession();
@@ -11767,6 +11783,7 @@ function buildAlgorithmCurrentUpNextPayload(source = "up_next") {
     catalog,
     randomSeed,
     source: "up_next",
+    fullPrompt: !!(options && options.fullPrompt),
   });
   return {
     ...payload,
@@ -12375,6 +12392,69 @@ function sendOperatorOscTest() {
     model: "operator-osc-test",
     source: "operator_osc_test",
   });
+}
+
+function compactOperatorScenePrompt(text) {
+  return String(text || "")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function buildOperatorPromptFromPreparedPayload(payload = {}, extra = "") {
+  const basePrompt = compactOperatorScenePrompt(payload && payload.prompt);
+  if (!basePrompt) throw new Error("operator_scene_prompt_missing");
+  return compactOperatorScenePrompt([String(extra || "").trim(), basePrompt].filter(Boolean).join("\n\n"));
+}
+
+function triggerOperatorSceneToChatFromPreparedScene(options = {}) {
+  if (operatorStageState.streaming) throw new Error("operator_chat_streaming");
+  const activeRun = getCurrentActiveAlgorithmSceneRun();
+  if (activeRun && !activeRun.endedAt) throw new Error("operator_scene_playing");
+
+  const payload = buildAlgorithmCurrentUpNextPayload("operator_scene_to_chat", { fullPrompt: true });
+  const sceneId = Number(payload && payload.sceneId || 0);
+  if (!sceneId) throw new Error("operator_scene_not_prepared");
+
+  const sourceId = normalizeOperatorStageSourceId(options.sourceId || "osc_scene_to_chat");
+  const message = buildOperatorPromptFromPreparedPayload(payload, options.extra);
+  updateOperatorStageDraft({
+    sourceId,
+    text: message,
+  });
+  submitOperatorStageDraft({
+    sourceId,
+    sessionId: operatorStageState.sessionId,
+    provider: operatorStageState.provider,
+    model: operatorStageState.model,
+    vectorStoreId: operatorStageState.vectorStoreId,
+  }).catch((err) => {
+    writeDebug("operator_scene_to_chat_failed", {
+      sceneId,
+      sourceId,
+      message: safePublicError(err, "operator_scene_to_chat_failed"),
+    });
+  });
+
+  writeDebug("operator_scene_to_chat_started", {
+    sceneId,
+    title: String(payload && payload.title || ""),
+    sourceId,
+    promptChars: message.length,
+    provider: String(operatorStageState.provider || ""),
+    model: String(operatorStageState.model || ""),
+  });
+  return {
+    ok: true,
+    submitted: true,
+    sceneId,
+    title: String(payload && payload.title || ""),
+    promptChars: message.length,
+    provider: String(operatorStageState.provider || ""),
+    model: String(operatorStageState.model || ""),
+  };
 }
 
 function getOperatorPreparedAlgorithmScene() {
