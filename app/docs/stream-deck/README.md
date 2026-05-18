@@ -108,19 +108,31 @@ Voor de stap waarin de betekenis van `SITUATIE UIT` is aangescherpt:
 /Users/for_you/ForYou/companion-backups/20260517-183422-before-situatie-uit-semantics/
 ```
 
+Voor de stap waarin de TouchDesigner-openknop is toegevoegd:
+
+```text
+/Users/for_you/ForYou/companion-backups/20260518-154523-before-touchdesigner-button/
+```
+
+Voor de stap waarin de TouchDesigner-knop dynamisch/togglebaar is gemaakt:
+
+```text
+/Users/for_you/ForYou/companion-backups/20260518-155651-before-touchdesigner-toggle/
+```
+
 ## Huidige Companion-status
 
 - Pagina 1 is alleen op rij `3`, kolom `7` aangepast: die positie is nu een page-switcher.
 - De OSC-knop die op pagina 1 rij `3`, kolom `7` stond is intact verplaatst naar pagina 2 rij `3`, kolom `0`.
 - Alle bestaande control-values uit de oorspronkelijke backup bleven gelijk.
-- Companion heeft nu 2 pagina's en 45 controls.
+- Companion heeft nu 2 pagina's en 46 controls.
 - Pagina 2 heet `FOR YOU`.
-- Pagina 2 heeft op rij `0`, kolom `0` de dynamische serverknop en op kolom `1` de server-herstartknop.
+- Pagina 2 heeft op rij `0`, kolom `0` de dynamische serverknop, op kolom `1` de server-herstartknop en op kolom `2` de dynamische TouchDesigner-knop.
 - Pagina 2 heeft de paginalinks op rij `1`, kolommen `0` t/m `5`.
 - Pagina 2 heeft de dynamische show- en situatieknoppen op rij `2`, kolommen `0` en `2`.
 - Pagina 2 heeft op rij `3`, kolom `0` de verplaatste OSC-knop `osc1`.
 - Pagina 1 en pagina 2 hebben rechtsonder een native Companion `pagedown` page-switcher.
-- Er is een trigger `For You server status poll` die elke seconde de serverstatus leest, de serverknop bijwerkt en server-afhankelijke knoppen dimt wanneer de server uit staat.
+- Er is een trigger `For You server status poll` die elke seconde de serverstatus en TouchDesigner-status leest, de serverknop bijwerkt en server-afhankelijke knoppen dimt wanneer de server uit staat.
 
 Huidige pagina-2-knoppen:
 
@@ -128,6 +140,7 @@ Huidige pagina-2-knoppen:
 | --- | --- | --- | --- | --- |
 | 0 | 0 | `SERVER AAN` / `SERVER UIT` | `/health` | toggle launchd service |
 | 0 | 1 | `SERVER HERSTART` | restart | stop, kill lingering port `3310` listeners, wait, start |
+| 0 | 2 | `OPEN TD` / `TD AAN` / `TD ERROR` | TouchDesigner-processtatus | toggle actuele API- en For You-TouchDesignerbestanden |
 | 1 | 0 | `OPEN ADMIN` | `/admin` | `open http://127.0.0.1:3310/admin` |
 | 1 | 1 | `ALGO RITME` | `/algoritme` | `open http://127.0.0.1:3310/algoritme` |
 | 1 | 2 | `UNIVERSE` | `/universe` | `open http://127.0.0.1:3310/universe` |
@@ -260,6 +273,85 @@ De Stream Deck herstartknop start deze restart op de achtergrond en schrijft out
 /Users/for_you/Library/Logs/ForYouApp/streamdeck-restart.log
 ```
 
+## TouchDesigner-knop
+
+De TouchDesigner-knop staat op pagina 2, rij `0`, kolom `2`. De knop is dynamisch:
+
+- `OPEN TD`: TouchDesigner staat uit; klikken opent de actuele API- en For You-projecten.
+- `TD AAN`: TouchDesigner draait; klikken vraagt TouchDesigner om te stoppen.
+- `TD ERROR`: de statuscheck faalde; controleer het script/logbestand.
+
+Hij werkt met twee TouchDesigner-projecten vanuit Dropbox:
+
+- het actuele API-project;
+- het actuele For You-project.
+
+Bestanden op de Mac Studio:
+
+```text
+/Users/for_you/ForYou/companion-scripts/open-current-touchdesigner.sh
+/Users/for_you/ForYou/companion-scripts/configure-page2-touchdesigner-button.js
+/Users/for_you/ForYou/companion-scripts/foryou-server-status-to-companion.js
+```
+
+Bronkopieen in deze repo:
+
+```text
+docs/stream-deck/open-current-touchdesigner.sh
+docs/stream-deck/configure-page2-touchdesigner-button.js
+docs/stream-deck/foryou-server-status-to-companion.js
+```
+
+De launcher zoekt bij elke druk opnieuw onder:
+
+```text
+/Users/for_you/Library/CloudStorage/Dropbox/Current Touch Designer version
+```
+
+De mapnaam wordt met een paar varianten ondersteund, waaronder `Current TouchDesigner Version`.
+
+Selectieregel:
+
+- zoek alleen `.toe` bestanden direct in die huidige map, niet in `Backup`;
+- voor API: bestandsnaam bevat `API`;
+- voor For You: bestandsnaam bevat `For You` en niet `API`;
+- kies alleen exacte hoofdversies aan het einde van de naam, zoals `v1.toe`, `v3.toe`, `v4.toe`;
+- negeer decimale backup/werkversies zoals `v1.2.toe` of `v3.15.toe`;
+- als meerdere exacte hoofdversies bestaan, kies de hoogste hoofdversie.
+
+Op 2026-05-18 koos de dry-run:
+
+```text
+API AI systeem- week 3 v1.toe
+For You V15 - week 3 (2023TD) v3.toe
+```
+
+Status lezen zonder iets te openen of sluiten:
+
+```bash
+ssh foryou-studio "/Users/for_you/ForYou/companion-scripts/open-current-touchdesigner.sh status"
+```
+
+Geselecteerde bestanden tonen:
+
+```bash
+ssh foryou-studio "/Users/for_you/ForYou/companion-scripts/open-current-touchdesigner.sh selected"
+```
+
+Dry-run van de toggle zonder TouchDesigner echt te openen of sluiten:
+
+```bash
+ssh foryou-studio "FORYOU_TD_DRY_RUN=1 /Users/for_you/ForYou/companion-scripts/open-current-touchdesigner.sh toggle"
+```
+
+De statuspoll werkt de knoptekst/kleur elke seconde bij. Bij status `aan` is de knop groen met `TD AAN`; bij status `uit` is hij blauw/groen met `OPEN TD`. De statuscheck detecteert TouchDesigner-processen die in de huidige Dropbox-map draaien of die map in hun commandoregel hebben.
+
+Normale runs schrijven naar:
+
+```text
+/Users/for_you/Library/Logs/ForYouApp/streamdeck-touchdesigner.log
+```
+
 ## Show- en situatieknoppen
 
 De show- en situatiebediening staat op pagina 2, rij `2`:
@@ -319,6 +411,12 @@ De show/situatieknoppen zijn niet met `controls.hotPressControl` getest, omdat d
 ## Companion API-aanpak
 
 Gebruik bij voorkeur Companion's eigen tRPC API in plaats van direct in `db.sqlite` te schrijven. Dan houdt Companion zijn runtime-state en database zelf consistent.
+
+Let op bij SSH/non-interactive shells op de Mac Studio: `node` staat daar niet altijd op `PATH`. Gebruik voor checks of scripts expliciet `/opt/homebrew/bin/node`, of voor Companion-acties de runtime:
+
+```text
+/Applications/Companion.app/Contents/Resources/node-runtimes/node22/bin/node
+```
 
 De tRPC WebSocket endpoint is:
 
