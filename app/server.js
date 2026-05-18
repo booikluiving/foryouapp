@@ -12364,20 +12364,42 @@ function sendOperatorOscTest() {
   });
 }
 
-function getOperatorActiveAlgorithmScene() {
+function getOperatorPreparedAlgorithmScene() {
   const activeRun = getCurrentActiveAlgorithmSceneRun();
-  if (!activeRun || activeRun.endedAt) {
+  const session = {
+    id: Number(currentSession && currentSession.id || 0),
+    name: String(currentSession && currentSession.name || ""),
+  };
+  if (activeRun && !activeRun.endedAt) {
     return {
       ok: true,
       active: false,
-      session: {
-        id: Number(currentSession && currentSession.id || 0),
-        name: String(currentSession && currentSession.name || ""),
+      prepared: false,
+      playing: true,
+      session,
+      run: {
+        id: Number(activeRun.id || 0),
+        sceneId: Number(activeRun.sceneId || 0),
+        selectionSource: String(activeRun.selectionSource || ""),
+        startedAt: String(activeRun.startedAt || ""),
+        updatedAt: String(activeRun.updatedAt || activeRun.startedAt || ""),
       },
+      reason: "Huidige scene speelt; operator behoudt de al klaargezette scene.",
     };
   }
-  const payload = buildAlgorithmCurrentScenePayload("operator_active_scene");
-  const sceneId = Number(payload && payload.sceneId || activeRun.sceneId || 0);
+
+  const payload = buildAlgorithmCurrentUpNextPayload("operator_prepared_scene");
+  const sceneId = Number(payload && payload.sceneId || 0);
+  if (!sceneId) {
+    return {
+      ok: true,
+      active: false,
+      prepared: false,
+      playing: false,
+      session,
+      reason: String(payload && payload.reason || "Geen volgende scene klaargezet."),
+    };
+  }
   const selectedSlots = (Array.isArray(payload.characterSlots) ? payload.characterSlots : [])
     .filter((slot) => String(slot.mode || "") === "selected" && Number(slot.id || 0) > 0);
   const characterIds = selectedSlots.length
@@ -12390,24 +12412,16 @@ function getOperatorActiveAlgorithmScene() {
   return {
     ok: true,
     active: true,
-    session: {
-      id: Number(currentSession && currentSession.id || 0),
-      name: String(currentSession && currentSession.name || ""),
-    },
-    run: {
-      id: Number(activeRun.id || 0),
-      sceneId,
-      selectionSource: String(activeRun.selectionSource || ""),
-      startedAt: String(activeRun.startedAt || ""),
-      updatedAt: String(activeRun.updatedAt || activeRun.startedAt || ""),
-      promptSnapshot: String(activeRun.promptSnapshot || payload.prompt || ""),
-    },
+    prepared: true,
+    playing: false,
+    session,
+    run: null,
     scene: {
       id: sceneId,
       title: String(payload.title || ""),
       promptOverride: String(payload.description || ""),
       environmentId: environment ? Number(environment.id || 0) : 0,
-      updatedAt: String(activeRun.updatedAt || activeRun.startedAt || ""),
+      updatedAt: String(payload.currentOrderNextSceneId || sceneId),
     },
     ui: {
       situationSlug: sceneId ? String(sceneId) : "",
@@ -14052,7 +14066,7 @@ app.post("/admin/operator/osc/test", requireAdmin, (req, res) => {
 
 app.get("/admin/operator/algorithm/active-scene", requireAdmin, (req, res) => {
   try {
-    res.json(getOperatorActiveAlgorithmScene());
+    res.json(getOperatorPreparedAlgorithmScene());
   } catch (err) {
     res.status(500).json({ ok: false, error: safePublicError(err, "operator_active_scene_failed") });
   }
