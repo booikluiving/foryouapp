@@ -1096,6 +1096,10 @@
         }
 
         function operatorActiveSceneKey(data) {
+          if (data && data.playing) {
+            const run = data.run || {};
+            return ["playing", run.id || 0, run.sceneId || 0, run.updatedAt || ""].join(":");
+          }
           if (!data || !data.active) return "inactive";
           const run = data.run || {};
           const scene = data.scene || {};
@@ -1103,8 +1107,12 @@
         }
 
         function applyOperatorActiveScene(data) {
+          if (data && data.playing) {
+            setOperatorAlgorithmLinkStatus("Algoritme-link: scene speelt; operator blijft op de klaargezette scene.");
+            return;
+          }
           if (!data || !data.active) {
-            setOperatorAlgorithmLinkStatus("Algoritme-link: geen actieve scene.");
+            setOperatorAlgorithmLinkStatus("Algoritme-link: geen volgende scene klaargezet.");
             return;
           }
           const ui = data.ui || {};
@@ -1126,8 +1134,8 @@
             $("operatorEnvironment").value = String(ui.environmentSlug);
             updateOperatorEnvironmentPreview();
           }
-          setOperatorAlgorithmLinkStatus(`Algoritme-link: actieve scene "${ui.situationName || scene.title || situationId}" ingevuld.`);
-          operatorLog(`algoritme-link → ${ui.situationName || scene.title || situationId}`);
+          setOperatorAlgorithmLinkStatus(`Algoritme-link: volgende scene "${ui.situationName || scene.title || situationId}" ingevuld.`);
+          operatorLog(`algoritme-link → volgende scene: ${ui.situationName || scene.title || situationId}`);
         }
 
         async function pollOperatorActiveScene() {
