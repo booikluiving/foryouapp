@@ -25,6 +25,7 @@ Belangrijke onderdelen:
   - Toegang is sessiegebonden: bij een nieuwe sessie is opnieuw scannen/joinen vereist.
 - Stage output pagina (`/stage`) voor OBS/Electron/TouchDesigner browser output met toggles en live styling (QR/chat/emoji, schaal, positie, achtergrond transparant/zwart).
 - Algoritme-pagina (`/algoritme`) voor vaste speelbare situaties, personage- en omgevingsbeschrijvingen, live score en OSC-output naar TouchDesigner.
+- SQ5 Control (`sq5-control/`) voor Allen & Heath SQ-5 mute/fader control via HTTP, OSC en Companion/Stream Deck feedback.
 - Catalogus-saves op `/algoritme` spiegelen direct naar Dropbox en de lokale `database.md` mirror; API-playground/OpenAI tooling is deploybaar, maar secrets blijven per machine lokaal.
 - Open tabs (`/`, `/admin`, `/stage`) verversen automatisch na een server-restart op basis van server-instance detectie.
 
@@ -94,6 +95,7 @@ Mac launcher:
 - Dubbelklik op dit `.command` bestand of zet er een snelkoppeling/icoon van op je bureaublad.
 - Zie `MAC_STUDIO_SETUP.md` voor de show-machine setup.
 - Stream Deck / Companion op de Mac Studio staat beschreven in `docs/stream-deck/README.md`. Belangrijk: Companion-pagina 1 met bestaande OSC-knoppen blijft beschermd; de enige bewuste uitzondering is de page-switcher rechtsonder, waarbij de oorspronkelijke OSC-knop intact naar pagina 2 is verplaatst.
+- SQ5 Control start los met `SQ5_HOST=192.168.1.129 node sq5-control/server.js`; Stream Deck polling en de Companion-prompt staan in `sq5-control/README.md`.
 
 ## Mac Studio branch-workflow
 Ontwikkelen op branches mag. De afspraak is alleen: live deploy naar poort `3310` loopt standaard via `main`.
@@ -187,6 +189,7 @@ Admin API endpoints (subset):
 - `public/algoritme.html` algoritme-regietafel
 - `public/paden.html`, `public/paden-editor.js`, `public/paden-graph.js` visuele padeneditor
 - `scripts/simulate-chatters.js` standalone botsimulator
+- `sq5-control/` SQ-5 bridge + verticale mixer UI + Stream Deck polling endpoints
 - `moderation/bad-words.txt` tekstwoorden voor filtering
 - `moderation/blocked-words.json` extra/gestructureerde blocked words
 - `brainrot.txt` woordenlijst voor bot-stijl
