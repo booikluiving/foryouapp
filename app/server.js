@@ -7590,8 +7590,8 @@ const operatorStageState = {
   revision: 0,
   streaming: false,
   sessionId: "show_default",
-  provider: "anthropic",
-  model: "",
+  provider: "deepseek",
+  model: "deepseek-v4-flash",
   vectorStoreId: "",
   messages: [],
   active: null,
@@ -9091,7 +9091,7 @@ function normalizeOperatorStageProvider(input) {
   if (value === "claude" || value === "anthropic") return "anthropic";
   if (value === "openai" || value === "gpt") return "openai";
   if (value === "deepseek" || value === "deepseeker") return "deepseek";
-  return operatorStageState.provider || "anthropic";
+  return operatorStageState.provider || "deepseek";
 }
 
 function normalizeOperatorStageModel(input) {

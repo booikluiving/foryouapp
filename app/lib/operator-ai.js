@@ -2,7 +2,7 @@
 
 const fs = require("fs");
 
-const DEFAULT_PROVIDER = "anthropic";
+const DEFAULT_PROVIDER = "deepseek";
 const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
 const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
