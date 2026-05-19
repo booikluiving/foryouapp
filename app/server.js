@@ -158,6 +158,7 @@ const DEBUG_LOG_TRIM_TO_BYTES = clampInt(
   DEBUG_LOG_MAX_BYTES,
   512 * 1024
 );
+const SCRIPT_OUTPUT_PATH = path.join(__dirname, "data", "script-output", "current-scene.txt");
 const SIM_INTERNAL_ACCESS_KEY = crypto.randomBytes(16).toString("hex");
 const SERVER_INSTANCE_ID = `${Date.now()}-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
 const BUILD_VERSION_PREFIX = "v0.0";
@@ -12503,6 +12504,33 @@ function sendOperatorOscOutput(payload = {}) {
     scriptReason: String(script.reason || ""),
     scriptLineCount: Number(script.lineCount || 0),
   });
+
+  // Save formatted script to file for TouchDesigner File In DAT
+  try {
+    const formattedScript = formatOperatorScriptForTouchDesigner(text);
+    if (formattedScript) {
+      // Strip markdown headers and empty lines — keep only dialogue
+      const dialogueOnly = formattedScript
+        .split("\n")
+        .filter((line) => {
+          const trimmed = line.trim();
+          if (!trimmed) return false;
+          if (trimmed.startsWith("#")) return false;
+          return true;
+        })
+        .join("\n");
+      if (dialogueOnly) {
+        const dir = path.dirname(SCRIPT_OUTPUT_PATH);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(SCRIPT_OUTPUT_PATH, dialogueOnly, "utf8");
+      }
+    }
+  } catch (fileErr) {
+    writeDebug("operator_script_file_error", {
+      message: fileErr && fileErr.message ? String(fileErr.message) : "unknown",
+    });
+  }
+
   return {
     ok: !!(answer.sent || script.sent),
     answer,
@@ -14296,6 +14324,22 @@ app.get("/admin/operator/algorithm/active-scene", requireAdmin, (req, res) => {
     res.json(getOperatorPreparedAlgorithmScene());
   } catch (err) {
     res.status(500).json({ ok: false, error: safePublicError(err, "operator_active_scene_failed") });
+  }
+});
+
+app.post("/admin/operator/scene-to-chat", requireAdmin, (req, res) => {
+  try {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const result = triggerOperatorSceneToChatFromPreparedScene({
+      sourceId: "streamdeck_scene_to_chat",
+      extra: String(body.extra || ""),
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(409).json({
+      ok: false,
+      error: safePublicError(err, "operator_scene_to_chat_failed"),
+    });
   }
 });
 
