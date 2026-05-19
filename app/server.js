@@ -11780,10 +11780,11 @@ function sendOscPacketToTarget(packet, target) {
 
 function getAlgorithmSceneOscAddresses(kind = "up_next") {
   const safeKind = String(kind || "up_next").replace(/[^a-z0-9_]/gi, "_") || "up_next";
-  // TouchDesigner heeft zelf rij 0 ("message"). Eerste verzonden OSC-packet moet dus op rij 1 landen.
+  // TouchDesigner gebruikt de eerste OSC-packet als trigger/header-slot. Daarna begint het vaste zichtbare blok.
   // 1: title, 2: scene_id, 3: score, 4: environment, 5: environment_description,
-  // 6-11: personage_1..3 + _description, 12: situation. Metadata komt daarna.
+  // 6-11: personage_1..3 + _description, 12: situation. Done komt daarna.
   const addresses = [
+    `/foryou/algorithm/${safeKind}/begin`,
     `/foryou/algorithm/${safeKind}/title`,
     `/foryou/algorithm/${safeKind}/scene_id`,
     `/foryou/algorithm/${safeKind}/score`,
@@ -11795,7 +11796,6 @@ function getAlgorithmSceneOscAddresses(kind = "up_next") {
     addresses.push(`/foryou/algorithm/${safeKind}/personage_${index}_description`);
   }
   addresses.push(`/foryou/algorithm/${safeKind}/situation`);
-  addresses.push(`/foryou/algorithm/${safeKind}/begin`);
   addresses.push(`/foryou/algorithm/${safeKind}/done`);
   return addresses;
 }
@@ -11990,9 +11990,9 @@ function algorithmUpNextSlotDescription(payload, slotNumber) {
 }
 
 function buildAlgorithmSceneOscPackets(payload, kind = "up_next", options = {}) {
-  // TouchDesigner heeft zelf rij 0 ("message"). Eerste verzonden OSC-packet moet dus op rij 1 landen.
+  // TouchDesigner gebruikt de eerste OSC-packet als trigger/header-slot. Daarna begint het vaste zichtbare blok.
   // 1: title, 2: scene_id, 3: score, 4: environment, 5: environment_description,
-  // 6-11: personage_1..3 + _description, 12: situation. Metadata komt daarna.
+  // 6-11: personage_1..3 + _description, 12: situation. Done komt daarna.
   const safeKind = String(kind || "up_next").replace(/[^a-z0-9_]/gi, "_") || "up_next";
   const sceneId = Number(payload && payload.sceneId || 0);
   const environmentName = String(payload && payload.environmentMode || "") === "random"
@@ -12004,6 +12004,10 @@ function buildAlgorithmSceneOscPackets(payload, kind = "up_next", options = {}) 
   const includeAnswer = !!(options && options.includeAnswer);
   const packets = [];
 
+  // Trigger/header-slot dat TouchDesigner buiten het vaste zichtbare blok gebruikt.
+  packets.push(
+    { address: `/foryou/algorithm/${safeKind}/begin`, args: [algorithmOscIntArg(sceneId)] },
+  );
   // Index 1: title
   packets.push(
     { address: `/foryou/algorithm/${safeKind}/title`, args: [algorithmOscStringArg(payload && payload.title || "")] },
@@ -12041,9 +12045,6 @@ function buildAlgorithmSceneOscPackets(payload, kind = "up_next", options = {}) 
     args: [algorithmOscStringArg(payload && payload.description || "")],
   });
   // Metadata buiten het vaste TouchDesigner-blok.
-  packets.push(
-    { address: `/foryou/algorithm/${safeKind}/begin`, args: [algorithmOscIntArg(sceneId)] },
-  );
   packets.push(
     { address: `/foryou/algorithm/${safeKind}/done`, args: [algorithmOscIntArg(sceneId)] },
   );
