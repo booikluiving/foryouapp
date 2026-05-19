@@ -159,6 +159,7 @@ const DEBUG_LOG_TRIM_TO_BYTES = clampInt(
   512 * 1024
 );
 const SCRIPT_OUTPUT_PATH = path.join(__dirname, "data", "script-output", "current-scene.txt");
+const ENVIRONMENT_OUTPUT_PATH = path.join(__dirname, "data", "script-output", "current-environment.txt");
 const SIM_INTERNAL_ACCESS_KEY = crypto.randomBytes(16).toString("hex");
 const SERVER_INSTANCE_ID = `${Date.now()}-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
 const BUILD_VERSION_PREFIX = "v0.0";
@@ -12106,6 +12107,23 @@ function sendAlgorithmUpNextOsc(source = "manual") {
     title: String(payload && payload.title || ""),
     payload,
   };
+
+  // Write current environment name to file for TouchDesigner
+  if (sceneId && payload && payload.environment && payload.environment.name) {
+    try {
+      const envName = String(payload.environment.name).trim();
+      if (envName) {
+        const dir = path.dirname(ENVIRONMENT_OUTPUT_PATH);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(ENVIRONMENT_OUTPUT_PATH, envName, "utf8");
+      }
+    } catch (fileErr) {
+      writeDebug("environment_file_error", {
+        message: fileErr && fileErr.message ? String(fileErr.message) : "unknown",
+      });
+    }
+  }
+
   const packets = sceneId ? buildAlgorithmUpNextOscPackets(payload) : [];
   const messages = buildAlgorithmOscPacketPreview(packets);
   if (!oscControlSendEnabled) {
@@ -12579,6 +12597,22 @@ function triggerOperatorSceneToChatFromPreparedScene(options = {}) {
   const payload = buildAlgorithmCurrentUpNextPayload("operator_scene_to_chat", { fullPrompt: true });
   const sceneId = Number(payload && payload.sceneId || 0);
   if (!sceneId) throw new Error("operator_scene_not_prepared");
+
+  // Write current environment name to file for TouchDesigner
+  if (payload && payload.environment && payload.environment.name) {
+    try {
+      const envName = String(payload.environment.name).trim();
+      if (envName) {
+        const dir = path.dirname(ENVIRONMENT_OUTPUT_PATH);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(ENVIRONMENT_OUTPUT_PATH, envName, "utf8");
+      }
+    } catch (fileErr) {
+      writeDebug("environment_file_error", {
+        message: fileErr && fileErr.message ? String(fileErr.message) : "unknown",
+      });
+    }
+  }
 
   const sourceId = normalizeOperatorStageSourceId(options.sourceId || "osc_scene_to_chat");
   const message = buildOperatorPromptFromPreparedPayload(payload, options.extra);
