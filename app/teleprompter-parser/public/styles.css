@@ -458,7 +458,8 @@ label {
   color: #ffffff;
 }
 
-.caption-body.caption-debug-mode .caption-root {
+.caption-body.caption-debug-mode .caption-root,
+.caption-body.caption-browser-preview-mode .caption-root {
   width: 100vw;
   height: 100vh;
   transform: none;
@@ -498,7 +499,8 @@ label {
     0 0 32px rgba(0, 0, 0, 0.72);
 }
 
-.caption-body.caption-debug-mode .caption-card {
+.caption-body.caption-debug-mode .caption-card,
+.caption-body.caption-browser-preview-mode .caption-card {
   width: min(86vw, 980px);
   max-height: 42vh;
   font-size: clamp(52px, 6vw, 96px);
@@ -512,7 +514,8 @@ label {
   line-height: 1.12;
 }
 
-.caption-body.caption-debug-mode .caption-card.direction {
+.caption-body.caption-debug-mode .caption-card.direction,
+.caption-body.caption-browser-preview-mode .caption-card.direction {
   max-height: 36vh;
   font-size: clamp(44px, 5.2vw, 78px);
 }
@@ -522,7 +525,8 @@ label {
   text-transform: uppercase;
 }
 
-.caption-body.caption-debug-mode .caption-card.end {
+.caption-body.caption-debug-mode .caption-card.end,
+.caption-body.caption-browser-preview-mode .caption-card.end {
   font-size: clamp(58px, 6vw, 100px);
 }
 

@@ -16,7 +16,7 @@
   let cue = { index: 0, version: -1, deckLength: 0 };
 
   function updateCaptionScale() {
-    if (debugEnabled) {
+    if (debugEnabled || browserPreviewEnabled) {
       root.style.setProperty("--caption-scale", "1");
       return;
     }
