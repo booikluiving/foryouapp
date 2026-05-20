@@ -80,6 +80,7 @@ loadLocalDotEnv(__dirname);
 
 const LOCAL_API_PLAYGROUND_HTML_PATH = path.join(__dirname, "public", "api-playground.html");
 const LOCAL_API_PLAYGROUND_STAGE_HTML_PATH = path.join(__dirname, "public", "api-playground-stage.html");
+const LOCAL_TD_PREVIEW_HTML_PATH = path.join(__dirname, "public", "td-preview.html");
 const LOCAL_OPENAI_CATALOG_SYNC_PATH = path.join(__dirname, "lib", "openai-catalog-sync.js");
 const LOCAL_OPERATOR_STAGE_STYLE_PATH = path.join(__dirname, "config", "operator-stage-style.json");
 let createOpenAiCatalogSync = null;
@@ -183,6 +184,7 @@ const BUILD_VERSION_INPUT_FILES = [
   path.join(__dirname, "public", "vendor", "cytoscape.min.js"),
   path.join(__dirname, "public", "stage.html"),
   path.join(__dirname, "public", "api-playground-stage.html"),
+  path.join(__dirname, "public", "td-preview.html"),
   path.join(__dirname, "public", "stage-session-qr.html"),
   path.join(__dirname, "public", "stage-wifi-qr.html"),
   path.join(__dirname, "public", "stage-qr-output.js"),
@@ -8801,6 +8803,139 @@ function requireAdminOrSyncPeer(req, res, next) {
   requireAdmin(req, res, next);
 }
 
+const TD_PREVIEW_STALE_AFTER_MS = clampInt(process.env.TD_PREVIEW_STALE_AFTER_MS || "5000", 1000, 60000, 5000);
+const TD_PREVIEW_MAX_FRAME_BYTES = clampInt(
+  process.env.TD_PREVIEW_MAX_FRAME_BYTES || String(4 * 1024 * 1024),
+  64 * 1024,
+  12 * 1024 * 1024,
+  4 * 1024 * 1024
+);
+const TD_PREVIEW_WEB_STAGES = Object.freeze([
+  { id: "stage", label: "Stage", path: "/stage", aspect: "portrait" },
+  { id: "universe_stage", label: "Universe stage", path: "/universe/stage", aspect: "portrait" },
+  { id: "api_playground_stage", label: "API playground", path: "/api-playground/stage", aspect: "portrait" },
+  { id: "session_qr", label: "Session QR", path: "/stage/session-qr", aspect: "landscape" },
+  { id: "wifi_qr", label: "Wifi QR", path: "/stage/wifi-qr", aspect: "landscape" },
+  { id: "teleprompter_stage", label: "Teleprompter", path: "/teleprompter-parser/stage", aspect: "landscape" },
+  { id: "live_captions", label: "Live captions", path: "/teleprompter-parser/live-captions", aspect: "overlay" },
+]);
+const TD_PREVIEW_HARDWARE_SOURCES = Object.freeze([
+  { id: "cam1_raw", label: "Cam 1 raw", kind: "camera", aspect: "landscape" },
+  { id: "cam1_key", label: "Cam 1 key", kind: "camera", aspect: "landscape" },
+  { id: "cam2_raw", label: "Cam 2 raw", kind: "camera", aspect: "landscape" },
+  { id: "cam2_key", label: "Cam 2 key", kind: "camera", aspect: "landscape" },
+  { id: "cam3_raw", label: "Cam 3 raw", kind: "camera", aspect: "landscape" },
+  { id: "cam3_key", label: "Cam 3 key", kind: "camera", aspect: "landscape" },
+  { id: "main_out", label: "Main out", kind: "output", aspect: "landscape" },
+  { id: "tp1_out", label: "TP 1 out", kind: "teleprompter", aspect: "landscape" },
+  { id: "tp2_out", label: "TP 2 out", kind: "teleprompter", aspect: "landscape" },
+  { id: "tp3_out", label: "TP 3 out", kind: "teleprompter", aspect: "landscape" },
+  { id: "environment_background", label: "Environment background", kind: "future", aspect: "portrait" },
+  { id: "caption_overlay", label: "Caption overlay", kind: "future", aspect: "overlay" },
+]);
+const TD_PREVIEW_SOURCE_IDS = new Set(TD_PREVIEW_HARDWARE_SOURCES.map((source) => source.id));
+const tdPreviewFrames = new Map();
+
+function normalizeTdPreviewSourceId(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function tdPreviewFrameUrl(sourceId, updatedAt) {
+  const suffix = updatedAt ? `?t=${encodeURIComponent(updatedAt)}` : "";
+  return `/admin/td-preview/frame/${encodeURIComponent(sourceId)}.jpg${suffix}`;
+}
+
+function sanitizeTdPreviewMetadata(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const safe = {};
+  for (const [rawKey, rawValue] of Object.entries(value).slice(0, 32)) {
+    const key = String(rawKey || "").trim().slice(0, 80);
+    if (!key) continue;
+    if (rawValue === null || typeof rawValue === "boolean" || typeof rawValue === "number") {
+      safe[key] = rawValue;
+    } else if (typeof rawValue === "string") {
+      safe[key] = rawValue.slice(0, 500);
+    } else {
+      try {
+        safe[key] = JSON.stringify(rawValue).slice(0, 1000);
+      } catch (_err) {
+        safe[key] = "[unserializable]";
+      }
+    }
+  }
+  return safe;
+}
+
+function parseTdPreviewMetadataHeader(req) {
+  const raw = String(req.headers["x-td-preview-metadata"] || "").trim();
+  if (!raw) return {};
+  try {
+    return sanitizeTdPreviewMetadata(JSON.parse(raw));
+  } catch (_err) {
+    return {};
+  }
+}
+
+function parseTdPreviewFrameRequest(req) {
+  const isRawJpeg = Buffer.isBuffer(req.body);
+  const body = !isRawJpeg && req.body && typeof req.body === "object" ? req.body : {};
+  const sourceId = normalizeTdPreviewSourceId(
+    body.sourceId || req.query.sourceId || req.headers["x-td-preview-source"] || req.headers["x-source-id"]
+  );
+  if (!TD_PREVIEW_SOURCE_IDS.has(sourceId)) {
+    return { ok: false, status: 400, error: "unknown_source_id", sourceId };
+  }
+
+  let frame = null;
+  let metadata = parseTdPreviewMetadataHeader(req);
+  if (isRawJpeg) {
+    frame = req.body;
+  } else {
+    const encoded = String(body.jpeg || body.base64 || body.frame || body.image || body.data || "").trim();
+    if (!encoded) return { ok: false, status: 400, error: "jpeg_required", sourceId };
+    const base64 = encoded.includes(",") ? encoded.slice(encoded.indexOf(",") + 1) : encoded;
+    try {
+      frame = Buffer.from(base64, "base64");
+    } catch (_err) {
+      return { ok: false, status: 400, error: "invalid_base64", sourceId };
+    }
+    metadata = sanitizeTdPreviewMetadata(Object.assign({}, metadata, sanitizeTdPreviewMetadata(body.metadata)));
+  }
+
+  if (!frame || frame.length < 4) return { ok: false, status: 400, error: "empty_frame", sourceId };
+  if (frame.length > TD_PREVIEW_MAX_FRAME_BYTES) return { ok: false, status: 413, error: "frame_too_large", sourceId };
+  if (frame[0] !== 0xff || frame[1] !== 0xd8) return { ok: false, status: 415, error: "jpeg_required", sourceId };
+  return { ok: true, sourceId, frame, metadata };
+}
+
+function tdPreviewSourceState(source, now = Date.now()) {
+  const frame = tdPreviewFrames.get(source.id);
+  const updatedAtMs = frame ? frame.updatedAtMs : 0;
+  const ageMs = updatedAtMs ? Math.max(0, now - updatedAtMs) : null;
+  return Object.assign({}, source, {
+    hasFrame: !!frame,
+    updatedAt: frame ? frame.updatedAt : null,
+    ageMs,
+    staleAfterMs: TD_PREVIEW_STALE_AFTER_MS,
+    stale: !frame || ageMs > TD_PREVIEW_STALE_AFTER_MS,
+    byteLength: frame ? frame.byteLength : 0,
+    metadata: frame ? frame.metadata : {},
+    frameUrl: frame ? tdPreviewFrameUrl(source.id, frame.updatedAt) : null,
+  });
+}
+
+function tdPreviewStatePayload() {
+  const now = Date.now();
+  return {
+    ok: true,
+    generatedAt: new Date(now).toISOString(),
+    staleAfterMs: TD_PREVIEW_STALE_AFTER_MS,
+    maxFrameBytes: TD_PREVIEW_MAX_FRAME_BYTES,
+    webStages: TD_PREVIEW_WEB_STAGES,
+    sources: TD_PREVIEW_HARDWARE_SOURCES.map((source) => tdPreviewSourceState(source, now)),
+  };
+}
+
 function getClientLabel(target) {
   const scope = resolveModerationScope(target);
   if (!scope) return "iemand";
@@ -13987,6 +14122,62 @@ app.get("/join", (req, res) => {
 app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "admin.html"));
 });
+
+app.get("/admin/td-preview", (req, res) => {
+  res.sendFile(LOCAL_TD_PREVIEW_HTML_PATH);
+});
+
+app.get("/admin/td-preview/state", requireAdmin, (_req, res) => {
+  res.json(tdPreviewStatePayload());
+});
+
+app.get("/admin/td-preview/frame/:sourceId.jpg", requireAdmin, (req, res) => {
+  const sourceId = normalizeTdPreviewSourceId(req.params.sourceId);
+  if (!TD_PREVIEW_SOURCE_IDS.has(sourceId)) {
+    res.status(404).json({ ok: false, error: "unknown_source_id" });
+    return;
+  }
+  const frame = tdPreviewFrames.get(sourceId);
+  if (!frame) {
+    res.status(404).json({ ok: false, error: "frame_not_available", sourceId });
+    return;
+  }
+  res.type("image/jpeg");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("X-TD-Preview-Source-Id", sourceId);
+  res.setHeader("X-TD-Preview-Updated-At", frame.updatedAt);
+  res.send(frame.buffer);
+});
+
+app.post(
+  "/admin/td-preview/frame",
+  requireAdmin,
+  express.raw({ type: ["image/jpeg", "image/jpg"], limit: TD_PREVIEW_MAX_FRAME_BYTES }),
+  (req, res) => {
+    const parsed = parseTdPreviewFrameRequest(req);
+    if (!parsed.ok) {
+      res.status(parsed.status || 400).json({ ok: false, error: parsed.error, sourceId: parsed.sourceId || null });
+      return;
+    }
+    const updatedAtMs = Date.now();
+    const updatedAt = new Date(updatedAtMs).toISOString();
+    tdPreviewFrames.set(parsed.sourceId, {
+      sourceId: parsed.sourceId,
+      buffer: parsed.frame,
+      byteLength: parsed.frame.length,
+      updatedAt,
+      updatedAtMs,
+      metadata: parsed.metadata,
+    });
+    res.json({
+      ok: true,
+      source: tdPreviewSourceState(
+        TD_PREVIEW_HARDWARE_SOURCES.find((source) => source.id === parsed.sourceId),
+        updatedAtMs
+      ),
+    });
+  }
+);
 
 app.get("/algoritme", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "algoritme.html"));
