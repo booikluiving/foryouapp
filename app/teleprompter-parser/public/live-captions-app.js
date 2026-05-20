@@ -7,13 +7,44 @@
   const CAPTION_WIDTH = 1080;
   const CAPTION_HEIGHT = 1920;
   const params = new URLSearchParams(window.location.search);
-  const debugEnabled = params.get("debug") === "1" || params.get("preview") === "1";
-  const transparentRequested = params.get("transparent") === "1" || params.get("obs") === "1";
-  const obsBrowser = /\bobs\b|obsbrowser|obs-browser/i.test(window.navigator.userAgent || "");
-  const browserPreviewEnabled = !debugEnabled && !transparentRequested && !obsBrowser;
+  const debugEnabled = params.get("debug") === "1";
+  const browserPreviewEnabled = params.get("preview") === "1";
+
+  const DEFAULT_CAPTION_STYLE = Object.freeze({
+    fontSizeScale: 1,
+    verticalPosition: 66,
+    widthPercent: 86,
+    outlineScale: 1,
+  });
 
   let teleprompt = null;
   let cue = { index: 0, version: -1, deckLength: 0 };
+  let captionStyle = { ...DEFAULT_CAPTION_STYLE };
+
+  function clampNumber(value, min, max, fallback) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.max(min, Math.min(max, numeric));
+  }
+
+  function normalizeCaptionStyle(style = {}) {
+    return {
+      fontSizeScale: clampNumber(style.fontSizeScale, 0.45, 1.25, DEFAULT_CAPTION_STYLE.fontSizeScale),
+      verticalPosition: clampNumber(style.verticalPosition, 50, 84, DEFAULT_CAPTION_STYLE.verticalPosition),
+      widthPercent: clampNumber(style.widthPercent, 56, 96, DEFAULT_CAPTION_STYLE.widthPercent),
+      outlineScale: clampNumber(style.outlineScale, 0.45, 1.25, DEFAULT_CAPTION_STYLE.outlineScale),
+    };
+  }
+
+  function applyCaptionStyle(style = {}) {
+    captionStyle = normalizeCaptionStyle(style);
+    root.style.setProperty("--caption-size-scale", captionStyle.fontSizeScale.toFixed(3));
+    root.style.setProperty("--caption-top", `${captionStyle.verticalPosition.toFixed(1)}%`);
+    root.style.setProperty("--caption-width", `${captionStyle.widthPercent.toFixed(1)}%`);
+    root.style.setProperty("--caption-outline-lg", `${Math.max(1, Math.round(6 * captionStyle.outlineScale))}px`);
+    root.style.setProperty("--caption-outline-md", `${Math.max(1, Math.round(4 * captionStyle.outlineScale))}px`);
+    root.style.setProperty("--caption-outline-sm", `${Math.max(1, Math.round(5 * captionStyle.outlineScale))}px`);
+  }
 
   function updateCaptionScale() {
     if (debugEnabled || browserPreviewEnabled) {
@@ -75,11 +106,12 @@
     card.style.removeProperty("font-size");
     const baseFontSize = Number.parseFloat(window.getComputedStyle(card).fontSize);
     if (!Number.isFinite(baseFontSize) || !isOverflowing(card)) return;
-    for (let size = baseFontSize - 4; size >= 58; size -= 4) {
+    const minFontSize = 58 * captionStyle.fontSizeScale;
+    for (let size = baseFontSize - 4; size >= minFontSize; size -= 4) {
       card.style.fontSize = `${size}px`;
       if (!isOverflowing(card)) return;
     }
-    card.style.fontSize = "58px";
+    card.style.fontSize = `${Math.max(26, Math.round(minFontSize))}px`;
   }
 
   function render() {
@@ -107,6 +139,7 @@
     if (!payload || !payload.ok) return;
     teleprompt = payload.teleprompt || null;
     cue = payload.cue || { index: 0, version: -1, deckLength: 0 };
+    applyCaptionStyle(payload.captionStyle || DEFAULT_CAPTION_STYLE);
     render();
   }
 
@@ -133,6 +166,7 @@
 
   if (debugEnabled) document.body.classList.add("caption-debug-mode");
   else if (browserPreviewEnabled) document.body.classList.add("caption-browser-preview-mode");
+  applyCaptionStyle(DEFAULT_CAPTION_STYLE);
   updateCaptionScale();
   connectEvents();
   pollCurrent();

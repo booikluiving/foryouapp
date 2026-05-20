@@ -47,6 +47,11 @@ function parse(rawText, title = "") {
   assert.strictEqual(store.getCue().deckLength, 5);
   assert.strictEqual(store.setCueIndex(99).cue.index, 4);
   assert.strictEqual(store.setCueIndex(-10).cue.index, 0);
+  assert.strictEqual(store.getCaptionStyle().fontSizeScale, 1);
+  assert.strictEqual(store.setCaptionStyle({ fontSizeScale: 0.7, verticalPosition: 72 }).captionStyle.fontSizeScale, 0.7);
+  assert.strictEqual(store.getCaptionStyle().verticalPosition, 72);
+  assert.strictEqual(store.setCaptionStyle({ fontSizeScale: 99, widthPercent: 2 }).captionStyle.fontSizeScale, 1.25);
+  assert.strictEqual(store.getCaptionStyle().widthPercent, 56);
   store.ingest({
     rawText: "Solo: Nieuwe zin.",
     source: "test",

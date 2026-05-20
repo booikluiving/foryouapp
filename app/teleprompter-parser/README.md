@@ -14,6 +14,7 @@ GET  /api/teleprompter-parser/health
 GET  /api/teleprompter-parser/current
 GET  /api/teleprompter-parser/events
 POST /api/teleprompter-parser/cue
+POST /admin/teleprompter-parser/caption-style
 POST /admin/teleprompter-parser/parse
 ```
 
@@ -80,6 +81,8 @@ De Teleprompt Stage is de cue-master. Bij navigatie post hij de actieve kaart-in
 
 ## Live captions
 
-`/teleprompter-parser/live-captions` gebruikt een verticale overlay van `1080 x 1920` CSS-pixels. De overlay volgt dezelfde cue-index via SSE met polling fallback. Titel en personagenamen worden niet getoond; dialoog, regieaanwijzingen en `Einde` verschijnen als witte captions met zwarte rand.
+`/teleprompter-parser/live-captions` gebruikt een transparante verticale overlay van `1080 x 1920` CSS-pixels. De overlay volgt dezelfde cue-index via SSE met polling fallback. Titel en personagenamen worden niet getoond; dialoog, regieaanwijzingen en `Einde` verschijnen als witte captions met zwarte rand.
 
-In een gewone browser krijgt de pagina automatisch een checkerboard-previewachtergrond zodat witte captions zichtbaar zijn. OBS wordt automatisch transparant behandeld; gebruik anders expliciet `/teleprompter-parser/live-captions?transparent=1`. Gebruik `/teleprompter-parser/live-captions?debug=1` om de bron te controleren met cue-status.
+Gebruik `/teleprompter-parser/live-captions?preview=1` voor een browser-preview met checkerboardachtergrond. Gebruik `/teleprompter-parser/live-captions?debug=1` om de bron te controleren met cue-status.
+
+De parserpagina bevat live-caption styling voor tekstgrootte, verticale positie, breedte en zwarte rand. Die instellingen worden in-memory gedeeld via `/api/teleprompter-parser/current` en direct toegepast op de overlay.
