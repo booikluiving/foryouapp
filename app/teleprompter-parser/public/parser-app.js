@@ -8,9 +8,102 @@
   const previewTitle = document.getElementById("previewTitle");
   const previewMeta = document.getElementById("previewMeta");
   const linePreview = document.getElementById("linePreview");
+  const captionSizeInput = document.getElementById("captionSizeInput");
+  const captionPositionInput = document.getElementById("captionPositionInput");
+  const captionWidthInput = document.getElementById("captionWidthInput");
+  const captionOutlineInput = document.getElementById("captionOutlineInput");
+  const captionSizeValue = document.getElementById("captionSizeValue");
+  const captionPositionValue = document.getElementById("captionPositionValue");
+  const captionWidthValue = document.getElementById("captionWidthValue");
+  const captionOutlineValue = document.getElementById("captionOutlineValue");
+  const captionStyleReset = document.getElementById("captionStyleReset");
+  const captionStyleStatus = document.getElementById("captionStyleStatus");
+
+  const DEFAULT_CAPTION_STYLE = Object.freeze({
+    fontSizeScale: 1,
+    verticalPosition: 66,
+    widthPercent: 86,
+    outlineScale: 1,
+  });
 
   let currentVersion = 0;
+  let currentCaptionStyleVersion = -1;
+  let captionStyleSaveTimer = null;
+  let savingCaptionStyle = false;
   let userEdited = false;
+
+  function clampNumber(value, min, max, fallback) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.max(min, Math.min(max, numeric));
+  }
+
+  function normalizeCaptionStyle(style = {}, fallback = DEFAULT_CAPTION_STYLE) {
+    return {
+      fontSizeScale: clampNumber(style.fontSizeScale, 0.45, 1.25, fallback.fontSizeScale),
+      verticalPosition: clampNumber(style.verticalPosition, 50, 84, fallback.verticalPosition),
+      widthPercent: clampNumber(style.widthPercent, 56, 96, fallback.widthPercent),
+      outlineScale: clampNumber(style.outlineScale, 0.45, 1.25, fallback.outlineScale),
+      version: Number.isFinite(Number(style.version)) ? Number(style.version) : currentCaptionStyleVersion,
+    };
+  }
+
+  function renderCaptionStyleValues(style) {
+    const safe = normalizeCaptionStyle(style);
+    captionSizeValue.textContent = `${Math.round(safe.fontSizeScale * 100)}%`;
+    captionPositionValue.textContent = `${Math.round(safe.verticalPosition)}%`;
+    captionWidthValue.textContent = `${Math.round(safe.widthPercent)}%`;
+    captionOutlineValue.textContent = `${Math.round(safe.outlineScale * 100)}%`;
+  }
+
+  function applyCaptionStyleControls(style) {
+    const safe = normalizeCaptionStyle(style);
+    captionSizeInput.value = String(Math.round(safe.fontSizeScale * 100));
+    captionPositionInput.value = String(Math.round(safe.verticalPosition));
+    captionWidthInput.value = String(Math.round(safe.widthPercent));
+    captionOutlineInput.value = String(Math.round(safe.outlineScale * 100));
+    renderCaptionStyleValues(safe);
+    if (Number.isFinite(Number(safe.version))) currentCaptionStyleVersion = Number(safe.version);
+  }
+
+  function readCaptionStyleControls() {
+    return normalizeCaptionStyle({
+      fontSizeScale: Number(captionSizeInput.value) / 100,
+      verticalPosition: Number(captionPositionInput.value),
+      widthPercent: Number(captionWidthInput.value),
+      outlineScale: Number(captionOutlineInput.value) / 100,
+    });
+  }
+
+  async function saveCaptionStyle(style = readCaptionStyleControls()) {
+    savingCaptionStyle = true;
+    captionStyleStatus.textContent = "Captionstijl opslaan...";
+    try {
+      const response = await fetch("/admin/teleprompter-parser/caption-style", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ captionStyle: style }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "caption_style_failed");
+      applyCaptionStyleControls(payload.captionStyle || style);
+      captionStyleStatus.textContent = "Captionstijl opgeslagen.";
+    } catch (err) {
+      captionStyleStatus.textContent = `Captionstijl mislukt: ${err && err.message ? err.message : "onbekend"}`;
+    } finally {
+      savingCaptionStyle = false;
+    }
+  }
+
+  function queueCaptionStyleSave() {
+    const style = readCaptionStyleControls();
+    renderCaptionStyleValues(style);
+    captionStyleStatus.textContent = "Captionstijl klaar om op te slaan...";
+    window.clearTimeout(captionStyleSaveTimer);
+    captionStyleSaveTimer = window.setTimeout(() => {
+      saveCaptionStyle(style);
+    }, 180);
+  }
 
   function appendFormattedText(target, input) {
     const text = String(input || "");
@@ -87,7 +180,14 @@
     try {
       const response = await fetch("/api/teleprompter-parser/current", { cache: "no-store" });
       const payload = await response.json();
-      if (!response.ok || !payload.ok || !payload.teleprompt) return;
+      if (!response.ok || !payload.ok) return;
+      if (payload.captionStyle && !savingCaptionStyle) {
+        const styleVersion = Number(payload.captionStyle.version || 0);
+        if (styleVersion !== currentCaptionStyleVersion) {
+          applyCaptionStyleControls(payload.captionStyle);
+        }
+      }
+      if (!payload.teleprompt) return;
       const nextVersion = Number(payload.teleprompt.version || 0);
       if (nextVersion === currentVersion) return;
       currentVersion = nextVersion;
@@ -107,7 +207,15 @@
   rawTextInput.addEventListener("input", () => {
     userEdited = true;
   });
+  [captionSizeInput, captionPositionInput, captionWidthInput, captionOutlineInput].forEach((input) => {
+    input.addEventListener("input", queueCaptionStyleSave);
+  });
+  captionStyleReset.addEventListener("click", () => {
+    applyCaptionStyleControls({ ...DEFAULT_CAPTION_STYLE, version: currentCaptionStyleVersion });
+    saveCaptionStyle(DEFAULT_CAPTION_STYLE);
+  });
 
+  applyCaptionStyleControls(DEFAULT_CAPTION_STYLE);
   pollCurrent();
   window.setInterval(pollCurrent, 1000);
 })();

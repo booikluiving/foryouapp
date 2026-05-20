@@ -16,6 +16,7 @@ function mountTeleprompterParser(app, options = {}) {
       reason,
       teleprompt: store.getCurrent(),
       cue: store.getCue(),
+      captionStyle: store.getCaptionStyle(),
     };
   }
 
@@ -50,6 +51,7 @@ function mountTeleprompterParser(app, options = {}) {
       ok: true,
       currentVersion: store.getCurrent() ? store.getCurrent().version : 0,
       cue: store.getCue(),
+      captionStyle: store.getCaptionStyle(),
     });
   });
 
@@ -77,6 +79,20 @@ function mountTeleprompterParser(app, options = {}) {
     res.json({
       ok: true,
       cue: result.cue,
+      teleprompt: store.getCurrent(),
+      captionStyle: store.getCaptionStyle(),
+    });
+  });
+
+  app.post("/admin/teleprompter-parser/caption-style", requireAdmin, (req, res) => {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const styleInput = body.captionStyle && typeof body.captionStyle === "object" ? body.captionStyle : body;
+    const result = store.setCaptionStyle(styleInput);
+    if (result.changed) broadcast("caption_style");
+    res.json({
+      ok: true,
+      captionStyle: result.captionStyle,
+      cue: store.getCue(),
       teleprompt: store.getCurrent(),
     });
   });
@@ -115,6 +131,7 @@ function mountTeleprompterParser(app, options = {}) {
     ingest,
     getCurrent,
     getCue: () => store.getCue(),
+    getCaptionStyle: () => store.getCaptionStyle(),
   };
 }
 

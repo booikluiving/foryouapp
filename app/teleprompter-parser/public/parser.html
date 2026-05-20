@@ -15,6 +15,7 @@
       <div class="parser-actions">
         <a class="stage-link" href="/teleprompter-parser/stage" target="_blank" rel="noreferrer">Stage</a>
         <a class="stage-link" href="/teleprompter-parser/live-captions" target="_blank" rel="noreferrer">Live captions</a>
+        <a class="stage-link" href="/teleprompter-parser/live-captions?preview=1" target="_blank" rel="noreferrer">Caption preview</a>
         <button id="parseButton" class="primary" type="button">Parse</button>
       </div>
     </header>
@@ -37,6 +38,34 @@
             <textarea id="rawTextInput" spellcheck="false" placeholder="PERSONAGE: tekst..."></textarea>
           </label>
         </div>
+        <section class="caption-style-panel" aria-labelledby="captionStyleTitle">
+          <div class="panel-heading compact">
+            <div>
+              <h2 id="captionStyleTitle">Live captions</h2>
+              <p>Styling voor de verticale overlay.</p>
+            </div>
+            <button id="captionStyleReset" type="button">Reset</button>
+          </div>
+          <div class="caption-style-controls">
+            <label>
+              <span>Tekstgrootte <output id="captionSizeValue">100%</output></span>
+              <input id="captionSizeInput" type="range" min="45" max="125" step="5" value="100" />
+            </label>
+            <label>
+              <span>Hoogte <output id="captionPositionValue">66%</output></span>
+              <input id="captionPositionInput" type="range" min="50" max="84" step="1" value="66" />
+            </label>
+            <label>
+              <span>Breedte <output id="captionWidthValue">86%</output></span>
+              <input id="captionWidthInput" type="range" min="56" max="96" step="1" value="86" />
+            </label>
+            <label>
+              <span>Zwarte rand <output id="captionOutlineValue">100%</output></span>
+              <input id="captionOutlineInput" type="range" min="45" max="125" step="5" value="100" />
+            </label>
+          </div>
+          <p id="captionStyleStatus" class="status-text">Captionstijl klaar.</p>
+        </section>
         <p id="statusText" class="status-text">Nog geen parse.</p>
       </section>
 
