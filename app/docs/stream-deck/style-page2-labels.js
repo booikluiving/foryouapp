@@ -159,6 +159,8 @@ async function main() {
     { row: 1, column: 3, text: "PADEN", size: "22", ...webOn(WHITE, BLUE) },
     { row: 1, column: 4, text: "API\nPLAY", size: "22", ...webOn(WHITE, BLUE) },
     { row: 1, column: 5, text: "PUBLIEK\nCHAT", size: "20", ...webOn(WHITE, BLUE) },
+    { row: 1, column: 6, text: "TEKST\nPARSER", size: "18", ...webOn(WHITE, BLUE) },
+    { row: 1, column: 7, text: "TD\nPREVIEW", size: "18", ...webOn(WHITE, BLUE) },
 
     { row: 2, column: 0, ...showButton },
     { row: 2, column: 2, ...sceneButton },

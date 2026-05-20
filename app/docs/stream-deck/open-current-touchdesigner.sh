@@ -5,6 +5,13 @@ DROPBOX_ROOT="${FORYOU_DROPBOX_ROOT:-$HOME/Library/CloudStorage/Dropbox}"
 LOG_PATH="${FORYOU_TD_OPEN_LOG:-$HOME/Library/Logs/ForYouApp/streamdeck-touchdesigner.log}"
 DRY_RUN="${FORYOU_TD_DRY_RUN:-0}"
 ACTION="${1:-toggle}"
+SHOW_TD_PROJECT="${FORYOU_TOUCHDESIGNER_PROJECT:-$DROPBOX_ROOT/For You/Voorstelling/show/td-light/For You TD Light POC from v3.37.toe}"
+API_TD_PROJECT="${FORYOU_TOUCHDESIGNER_API_PROJECT:-}"
+TD_WINDOW_X="${FORYOU_TD_WINDOW_X:--2550}"
+TD_WINDOW_Y="${FORYOU_TD_WINDOW_Y:-40}"
+TD_WINDOW_WIDTH="${FORYOU_TD_WINDOW_WIDTH:-2520}"
+TD_WINDOW_HEIGHT="${FORYOU_TD_WINDOW_HEIGHT:-1360}"
+TD_WINDOW_POSITION_RETRIES="${FORYOU_TD_WINDOW_POSITION_RETRIES:-10}"
 
 mkdir -p "$(dirname "$LOG_PATH")"
 
@@ -12,82 +19,26 @@ log() {
   printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >> "$LOG_PATH"
 }
 
-select_exact_major_toe() {
-  local folder="$1"
-  local kind="$2"
-
-  find "$folder" -maxdepth 1 -type f -iname "*.toe" -print0 2>/dev/null | while IFS= read -r -d '' file; do
-    local base version mtime
-    base="$(basename "$file")"
-
-    case "$kind" in
-      api)
-        [[ "$base" =~ [Aa][Pp][Ii] ]] || continue
-        ;;
-      foryou)
-        [[ "$base" =~ [Ff]or[[:space:]]*[Yy]ou ]] || continue
-        [[ "$base" =~ [Aa][Pp][Ii] ]] && continue
-        ;;
-      *)
-        return 64
-        ;;
-    esac
-
-    if [[ "$base" =~ [vV]([0-9]+)[[:space:]]*\.toe$ ]]; then
-      version="${BASH_REMATCH[1]}"
-      mtime="$(stat -f '%m' "$file")"
-      printf '%s|%s|%s\n' "$version" "$mtime" "$file"
-    fi
-  done | sort -t '|' -k1,1nr -k2,2nr | head -n 1 | cut -d '|' -f 3-
-}
-
-candidate_folders() {
-  local candidates=(
-    "$DROPBOX_ROOT/Current Touch Designer version"
-    "$DROPBOX_ROOT/Current Touch Designer Version"
-    "$DROPBOX_ROOT/Current TouchDesigner version"
-    "$DROPBOX_ROOT/Current TouchDesigner Version"
-  )
-
-  local candidate
-  for candidate in "${candidates[@]}"; do
-    [[ -d "$candidate" ]] && printf '%s\n' "$candidate"
-  done
-
-  if command -v mdfind >/dev/null 2>&1; then
-    mdfind -onlyin "$DROPBOX_ROOT" \
-      "kMDItemFSName == 'Current Touch Designer version' || kMDItemFSName == 'Current Touch Designer Version' || kMDItemFSName == 'Current TouchDesigner version' || kMDItemFSName == 'Current TouchDesigner Version'" \
-      2>/dev/null || true
-  fi
-}
-
 find_current_folder() {
-  local best=""
-  best="$(
-    candidate_folders | awk '!seen[$0]++' | while IFS= read -r candidate; do
-      [[ -d "$candidate" ]] || continue
-      local api_file foryou_file score
-      api_file="$(select_exact_major_toe "$candidate" api || true)"
-      foryou_file="$(select_exact_major_toe "$candidate" foryou || true)"
-      [[ -n "$api_file" && -n "$foryou_file" ]] || continue
-      score="$(printf '%s\n%s\n' "$(stat -f '%m' "$api_file")" "$(stat -f '%m' "$foryou_file")" | sort -nr | head -n 1)"
-      printf '%s|%s\n' "$score" "$candidate"
-    done | sort -t '|' -k1,1nr | head -n 1 | cut -d '|' -f 2-
-  )"
-
-  [[ -n "$best" ]] || return 1
-  printf '%s\n' "$best"
+  [[ -f "$SHOW_TD_PROJECT" ]] || return 1
+  dirname "$SHOW_TD_PROJECT"
 }
 
 selected_files() {
   local folder="$1"
   local api_file foryou_file
-  api_file="$(select_exact_major_toe "$folder" api)"
-  foryou_file="$(select_exact_major_toe "$folder" foryou)"
+  api_file="$API_TD_PROJECT"
+  foryou_file="$SHOW_TD_PROJECT"
 
-  if [[ -z "$api_file" || -z "$foryou_file" ]]; then
-    log "ERROR missing exact major .toe files folder=$folder api=$api_file foryou=$foryou_file"
-    printf 'Missing exact major .toe files in %s\n' "$folder" >&2
+  if [[ -n "$api_file" && ! -f "$api_file" ]]; then
+    log "ERROR missing configured API TouchDesigner project api=$api_file"
+    printf 'Missing configured API TouchDesigner project: %s\n' "$api_file" >&2
+    return 1
+  fi
+
+  if [[ ! -f "$foryou_file" ]]; then
+    log "ERROR missing configured For You TouchDesigner project foryou=$foryou_file"
+    printf 'Missing configured For You TouchDesigner project: %s\n' "$foryou_file" >&2
     return 1
   fi
 
@@ -132,8 +83,56 @@ open_touchdesigner() {
     return 0
   fi
 
-  /usr/bin/open "$api_file"
+  [[ -n "$api_file" ]] && /usr/bin/open "$api_file"
   /usr/bin/open "$foryou_file"
+  position_touchdesigner_windows
+}
+
+position_touchdesigner_windows() {
+  local result attempt
+
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf 'window|x=%s|y=%s|w=%s|h=%s\n' "$TD_WINDOW_X" "$TD_WINDOW_Y" "$TD_WINDOW_WIDTH" "$TD_WINDOW_HEIGHT"
+    return 0
+  fi
+
+  for ((attempt = 1; attempt <= TD_WINDOW_POSITION_RETRIES; attempt += 1)); do
+    result="$(
+      osascript - "$TD_WINDOW_X" "$TD_WINDOW_Y" "$TD_WINDOW_WIDTH" "$TD_WINDOW_HEIGHT" <<'APPLESCRIPT' 2>&1 || true
+on run argv
+  set windowX to item 1 of argv as integer
+  set windowY to item 2 of argv as integer
+  set windowWidth to item 3 of argv as integer
+  set windowHeight to item 4 of argv as integer
+  set positionedCount to 0
+
+  tell application "System Events"
+    if not (exists process "TouchDesigner") then return "missing"
+    tell process "TouchDesigner"
+      if (count of windows) is 0 then return "no_windows"
+      repeat with touchDesignerWindow in windows
+        try
+          set windowName to name of touchDesignerWindow as text
+          if windowName contains ".toe" then
+            set position of touchDesignerWindow to {windowX, windowY}
+            set size of touchDesignerWindow to {windowWidth, windowHeight}
+            set positionedCount to positionedCount + 1
+          end if
+        end try
+      end repeat
+      if positionedCount is 0 then return "no_editor_window"
+      return "positioned"
+    end tell
+  end tell
+end run
+APPLESCRIPT
+    )"
+
+    log "POSITION attempt=$attempt result=$result bounds=$TD_WINDOW_X,$TD_WINDOW_Y,$TD_WINDOW_WIDTH,$TD_WINDOW_HEIGHT"
+    [[ "$result" == "positioned" ]] && return 0
+    [[ "$result" != "missing" && "$result" != "no_windows" && "$result" != "no_editor_window" ]] && return 0
+    sleep 1
+  done
 }
 
 close_touchdesigner() {
@@ -170,8 +169,8 @@ main() {
   local folder status api_file foryou_file selected
 
   folder="$(find_current_folder)" || {
-    log "ERROR missing Current TouchDesigner folder under $DROPBOX_ROOT"
-    printf 'Missing Current TouchDesigner folder under %s\n' "$DROPBOX_ROOT" >&2
+    log "ERROR missing configured TouchDesigner project project=$SHOW_TD_PROJECT"
+    printf 'Missing configured TouchDesigner project: %s\n' "$SHOW_TD_PROJECT" >&2
     return 1
   }
 

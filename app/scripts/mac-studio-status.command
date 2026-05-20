@@ -110,4 +110,10 @@ fi
 echo ""
 
 echo "laatste logs:"
+if [[ -f "$LOG_DIR/server.err.log" ]]; then
+  err_mtime="$(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S %z' "$LOG_DIR/server.err.log" 2>/dev/null || true)"
+  if [[ -n "$err_mtime" ]]; then
+    echo "  server.err.log laatst gewijzigd: $err_mtime"
+  fi
+fi
 tail -n 30 "$LOG_DIR/server.err.log" 2>/dev/null || echo "  nog geen error log"
