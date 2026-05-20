@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>For You - Tekstparser</title>
+    <link rel="stylesheet" href="/teleprompter-parser/styles.css" />
+  </head>
+  <body class="parser-body">
+    <header class="parser-header">
+      <div>
+        <p class="eyebrow">For You</p>
+        <h1>Tekstparser</h1>
+      </div>
+      <a class="stage-link" href="/teleprompter-parser/stage" target="_blank" rel="noreferrer">Stage</a>
+    </header>
+
+    <main class="parser-layout">
+      <section class="parser-panel input-panel">
+        <label>
+          <span>Titel</span>
+          <input id="titleInput" type="text" autocomplete="off" placeholder="Teleprompt" />
+        </label>
+        <label class="raw-label">
+          <span>Ruwe scene-tekst</span>
+          <textarea id="rawInput" spellcheck="false"></textarea>
+        </label>
+        <div class="parser-actions">
+          <button id="parseButton" class="primary" type="button">Parseer</button>
+          <button id="sampleButton" type="button">Voorbeeld</button>
+          <button id="clearButton" type="button">Leeg</button>
+        </div>
+        <p id="statusLine" class="status-line" aria-live="polite"></p>
+      </section>
+
+      <section class="parser-panel preview-panel">
+        <div class="preview-head">
+          <div>
+            <p class="eyebrow">Preview</p>
+            <h2 id="previewTitle">Teleprompt</h2>
+          </div>
+          <span id="versionBadge" class="version-badge">v0</span>
+        </div>
+        <div id="characterList" class="character-list"></div>
+        <div id="linePreview" class="line-preview"></div>
+      </section>
+    </main>
+
+    <script src="/teleprompter-parser/parser-app.js"></script>
+  </body>
+</html>
+

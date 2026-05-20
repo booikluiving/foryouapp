@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TouchDesigner Preview</title>
+    <link rel="icon" type="image/svg+xml" href="/favicons/admin.svg" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #101114;
+        --panel: #181b20;
+        --panel-soft: #20242b;
+        --border: #343a44;
+        --text: #f3f4f6;
+        --muted: #a5adba;
+        --accent: #5cc8ff;
+        --ok: #6ee7a8;
+        --warn: #ffcc66;
+        --bad: #ff7a7a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        border-bottom: 1px solid var(--border);
+        background: rgba(16, 17, 20, 0.94);
+        backdrop-filter: blur(14px);
+      }
+
+      .bar {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        padding: 16px 20px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .subline {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+
+      button,
+      .linkButton {
+        appearance: none;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--panel-soft);
+        color: var(--text);
+        cursor: pointer;
+        font: inherit;
+        font-size: 13px;
+        min-height: 34px;
+        padding: 7px 11px;
+        text-decoration: none;
+      }
+
+      button:hover,
+      .linkButton:hover {
+        border-color: var(--accent);
+      }
+
+      .tabs {
+        display: flex;
+        gap: 8px;
+        padding: 0 20px 14px;
+      }
+
+      .tab {
+        border-color: transparent;
+        background: transparent;
+        color: var(--muted);
+      }
+
+      .tab.active {
+        border-color: var(--accent);
+        background: rgba(92, 200, 255, 0.14);
+        color: var(--text);
+      }
+
+      main {
+        padding: 18px 20px 28px;
+      }
+
+      .statusBar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 16px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .pill {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--panel);
+        padding: 5px 9px;
+      }
+
+      .pill.ok {
+        border-color: rgba(110, 231, 168, 0.45);
+        color: var(--ok);
+      }
+
+      .pill.warn {
+        border-color: rgba(255, 204, 102, 0.45);
+        color: var(--warn);
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      .webGrid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      }
+
+      .hardwareGrid {
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      }
+
+      .card {
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .cardHead {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--border);
+        padding: 10px 12px;
+      }
+
+      .cardTitle {
+        min-width: 0;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .cardMeta {
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .frame {
+        position: relative;
+        background: #050609;
+      }
+
+      .frame.landscape {
+        aspect-ratio: 16 / 9;
+      }
+
+      .frame.portrait {
+        aspect-ratio: 9 / 16;
+        max-height: 72vh;
+      }
+
+      iframe,
+      .previewImg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        object-fit: contain;
+        background: #050609;
+      }
+
+      .empty {
+        display: grid;
+        min-height: 180px;
+        place-items: center;
+        color: var(--muted);
+        padding: 24px;
+        text-align: center;
+      }
+
+      .badge {
+        border-radius: 999px;
+        background: #2a2f38;
+        color: var(--muted);
+        font-size: 11px;
+        padding: 4px 7px;
+      }
+
+      .badge.live {
+        background: rgba(110, 231, 168, 0.13);
+        color: var(--ok);
+      }
+
+      .badge.stale {
+        background: rgba(255, 204, 102, 0.13);
+        color: var(--warn);
+      }
+
+      .badge.missing {
+        background: rgba(255, 122, 122, 0.13);
+        color: var(--bad);
+      }
+
+      .panel[hidden] {
+        display: none;
+      }
+
+      @media (max-width: 700px) {
+        .bar {
+          grid-template-columns: 1fr;
+        }
+
+        .actions {
+          justify-content: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="bar">
+        <div>
+          <h1>TouchDesigner Preview</h1>
+          <div class="subline">Webstages en hardware-thumbnails voor de For You show-engine.</div>
+        </div>
+        <div class="actions">
+          <button id="refreshBtn" type="button">Refresh</button>
+          <button id="simulateBtn" type="button">Simuleer frames</button>
+          <a class="linkButton" href="/admin">Admin</a>
+        </div>
+      </div>
+      <div class="tabs" role="tablist" aria-label="Preview tabs">
+        <button class="tab active" id="webTab" type="button" role="tab" aria-selected="true">Web Stages</button>
+        <button class="tab" id="hardwareTab" type="button" role="tab" aria-selected="false">Hardware Stages</button>
+      </div>
+    </header>
+
+    <main>
+      <div class="statusBar">
+        <span class="pill" id="serverStatus">Server: laden</span>
+        <span class="pill" id="frameStatus">Frames: laden</span>
+        <span class="pill" id="tailscaleHint">Tailscale: onbekend</span>
+      </div>
+
+      <section class="panel" id="webPanel" role="tabpanel" aria-labelledby="webTab">
+        <div class="grid webGrid" id="webGrid"></div>
+      </section>
+
+      <section class="panel" id="hardwarePanel" role="tabpanel" aria-labelledby="hardwareTab" hidden>
+        <div class="grid hardwareGrid" id="hardwareGrid"></div>
+      </section>
+    </main>
+
+    <script>
+      const POLL_MS = 900;
+      const imageUrls = new Map();
+      const imageVersions = new Map();
+      let activeTab = "web";
+      let lastState = null;
+      let pollTimer = null;
+
+      const webTab = document.getElementById("webTab");
+      const hardwareTab = document.getElementById("hardwareTab");
+      const webPanel = document.getElementById("webPanel");
+      const hardwarePanel = document.getElementById("hardwarePanel");
+      const webGrid = document.getElementById("webGrid");
+      const hardwareGrid = document.getElementById("hardwareGrid");
+      const refreshBtn = document.getElementById("refreshBtn");
+      const simulateBtn = document.getElementById("simulateBtn");
+      const serverStatus = document.getElementById("serverStatus");
+      const frameStatus = document.getElementById("frameStatus");
+      const tailscaleHint = document.getElementById("tailscaleHint");
+
+      function adminHeaders(extra = {}) {
+        const headers = Object.assign({}, extra);
+        try {
+          const token = localStorage.getItem("admin_token");
+          if (token) headers["x-admin-token"] = token;
+        } catch {}
+        return headers;
+      }
+
+      async function fetchJson(url, options = {}) {
+        const res = await fetch(url, Object.assign({}, options, {
+          headers: adminHeaders(options.headers || {}),
+          cache: "no-store",
+        }));
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(body && body.error ? body.error : "request_failed");
+        }
+        return body;
+      }
+
+      function setTab(next) {
+        activeTab = next === "hardware" ? "hardware" : "web";
+        const isHardware = activeTab === "hardware";
+        webPanel.hidden = isHardware;
+        hardwarePanel.hidden = !isHardware;
+        webTab.classList.toggle("active", !isHardware);
+        hardwareTab.classList.toggle("active", isHardware);
+        webTab.setAttribute("aria-selected", String(!isHardware));
+        hardwareTab.setAttribute("aria-selected", String(isHardware));
+      }
+
+      function stageCard(stage) {
+        const card = document.createElement("article");
+        card.className = "card";
+        card.innerHTML = `
+          <div class="cardHead">
+            <div class="cardTitle"></div>
+            <a class="cardMeta" target="_blank" rel="noreferrer"></a>
+          </div>
+          <div class="frame">
+            <iframe loading="lazy"></iframe>
+          </div>
+        `;
+        card.querySelector(".cardTitle").textContent = stage.label || stage.id;
+        const link = card.querySelector("a");
+        link.href = stage.path || stage.url || "#";
+        link.textContent = stage.path || "";
+        const frame = card.querySelector(".frame");
+        frame.classList.add(stage.aspect === "landscape" ? "landscape" : "portrait");
+        const iframe = card.querySelector("iframe");
+        iframe.src = stage.path || stage.url || "about:blank";
+        iframe.title = stage.label || stage.id;
+        return card;
+      }
+
+      function sourceCard(source) {
+        const card = document.createElement("article");
+        card.className = "card";
+        card.dataset.sourceId = source.id;
+        card.innerHTML = `
+          <div class="cardHead">
+            <div>
+              <div class="cardTitle"></div>
+              <div class="cardMeta"></div>
+            </div>
+            <span class="badge missing">missing</span>
+          </div>
+          <div class="frame">
+            <div class="empty">Nog geen frame ontvangen</div>
+            <img class="previewImg" alt="" hidden />
+          </div>
+        `;
+        card.querySelector(".cardTitle").textContent = source.label || source.id;
+        updateSourceCard(card, source);
+        return card;
+      }
+
+      function updateSourceCard(card, source) {
+        const badge = card.querySelector(".badge");
+        const meta = card.querySelector(".cardMeta");
+        const empty = card.querySelector(".empty");
+        const img = card.querySelector(".previewImg");
+        const frame = card.querySelector(".frame");
+        const hasFrame = !!source.hasFrame;
+        const aspect = source.aspect === "portrait" ? "portrait" : "landscape";
+
+        frame.classList.toggle("portrait", aspect === "portrait");
+        frame.classList.toggle("landscape", aspect !== "portrait");
+
+        badge.className = "badge";
+        if (!hasFrame) {
+          badge.classList.add("missing");
+          badge.textContent = "missing";
+        } else if (source.stale) {
+          badge.classList.add("stale");
+          badge.textContent = "stale";
+        } else {
+          badge.classList.add("live");
+          badge.textContent = "live";
+        }
+
+        const age = typeof source.ageMs === "number" ? `${Math.round(source.ageMs)} ms` : "-";
+        const size = source.width && source.height ? `${source.width}x${source.height}` : "unknown size";
+        const bytes = source.bytes ? `${Math.round(source.bytes / 1024)} KB` : "0 KB";
+        meta.textContent = `${source.group || "Hardware"} | ${size} | ${bytes} | ${age}`;
+
+        empty.hidden = hasFrame;
+        img.hidden = !hasFrame;
+        img.alt = source.label || source.id;
+      }
+
+      function renderWebStages(stages) {
+        const existing = new Set(Array.from(webGrid.children).map((el) => el.dataset.stageId));
+        for (const stage of stages) {
+          if (existing.has(stage.id)) continue;
+          const card = stageCard(stage);
+          card.dataset.stageId = stage.id;
+          webGrid.appendChild(card);
+        }
+      }
+
+      function renderHardwareSources(sources) {
+        const byId = new Map(Array.from(hardwareGrid.children).map((el) => [el.dataset.sourceId, el]));
+        for (const source of sources) {
+          let card = byId.get(source.id);
+          if (!card) {
+            card = sourceCard(source);
+            hardwareGrid.appendChild(card);
+          } else {
+            updateSourceCard(card, source);
+          }
+        }
+      }
+
+      async function updateImages(sources) {
+        await Promise.all(sources.map(async (source) => {
+          if (!source.hasFrame) return;
+          const version = `${source.updatedAt || ""}:${source.sequence || 0}:${source.bytes || 0}`;
+          if (imageVersions.get(source.id) === version) return;
+          const res = await fetch(`${source.frameUrl}?t=${encodeURIComponent(version)}`, {
+            headers: adminHeaders(),
+            cache: "no-store",
+          });
+          if (!res.ok) return;
+          const blob = await res.blob();
+          const nextUrl = URL.createObjectURL(blob);
+          const prevUrl = imageUrls.get(source.id);
+          if (prevUrl) URL.revokeObjectURL(prevUrl);
+          imageUrls.set(source.id, nextUrl);
+          imageVersions.set(source.id, version);
+          const img = hardwareGrid.querySelector(`[data-source-id="${CSS.escape(source.id)}"] .previewImg`);
+          if (img) img.src = nextUrl;
+        }));
+      }
+
+      function updateStatus(state) {
+        const sources = Array.isArray(state.sources) ? state.sources : [];
+        const live = sources.filter((source) => source.hasFrame && !source.stale).length;
+        const stale = sources.filter((source) => source.hasFrame && source.stale).length;
+        serverStatus.textContent = `Server: ${state.buildLabel || state.buildVersion || "ok"}`;
+        serverStatus.className = "pill ok";
+        frameStatus.textContent = `Frames: ${live} live, ${stale} stale, ${sources.length} totaal`;
+        frameStatus.className = live ? "pill ok" : "pill warn";
+        tailscaleHint.textContent = `Tailscale: ${state.tailscaleHintUrl || "gebruik Mac Studio IP:3310"}`;
+      }
+
+      async function refresh() {
+        try {
+          const state = await fetchJson("/admin/td-preview/state");
+          lastState = state;
+          renderWebStages(Array.isArray(state.webStages) ? state.webStages : []);
+          renderHardwareSources(Array.isArray(state.sources) ? state.sources : []);
+          updateStatus(state);
+          await updateImages(Array.isArray(state.sources) ? state.sources : []);
+        } catch (err) {
+          serverStatus.textContent = `Server: ${err.message || "fout"}`;
+          serverStatus.className = "pill warn";
+        }
+      }
+
+      function canvasDataUrl(label, hue) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 640;
+        canvas.height = 360;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = `hsl(${hue}, 46%, 18%)`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = `hsl(${hue}, 70%, 42%)`;
+        ctx.fillRect(0, 0, canvas.width, 36);
+        ctx.strokeStyle = "rgba(255,255,255,0.25)";
+        ctx.lineWidth = 2;
+        for (let x = 0; x < canvas.width; x += 80) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, canvas.height);
+          ctx.stroke();
+        }
+        for (let y = 0; y < canvas.height; y += 60) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(canvas.width, y);
+          ctx.stroke();
+        }
+        ctx.fillStyle = "#fff";
+        ctx.font = "700 34px system-ui, sans-serif";
+        ctx.fillText(label, 32, 190);
+        ctx.font = "18px system-ui, sans-serif";
+        ctx.fillText(new Date().toLocaleTimeString(), 32, 226);
+        return canvas.toDataURL("image/jpeg", 0.68);
+      }
+
+      async function simulateFrames() {
+        const sources = lastState && Array.isArray(lastState.sources) ? lastState.sources : [];
+        if (!sources.length) await refresh();
+        const nextSources = lastState && Array.isArray(lastState.sources) ? lastState.sources : [];
+        await Promise.all(nextSources.map((source, index) => fetchJson("/admin/td-preview/frame", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sourceId: source.id,
+            width: 640,
+            height: 360,
+            sequence: Date.now(),
+            imageBase64: canvasDataUrl(source.label || source.id, (index * 37) % 360),
+          }),
+        })));
+        await refresh();
+      }
+
+      webTab.addEventListener("click", () => setTab("web"));
+      hardwareTab.addEventListener("click", () => setTab("hardware"));
+      refreshBtn.addEventListener("click", refresh);
+      simulateBtn.addEventListener("click", () => {
+        simulateBtn.disabled = true;
+        simulateFrames().finally(() => {
+          simulateBtn.disabled = false;
+        });
+      });
+
+      refresh();
+      pollTimer = window.setInterval(refresh, POLL_MS);
+      window.addEventListener("beforeunload", () => {
+        if (pollTimer) window.clearInterval(pollTimer);
+        for (const url of imageUrls.values()) URL.revokeObjectURL(url);
+      });
+    </script>
+  </body>
+</html>
