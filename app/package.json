@@ -10,6 +10,7 @@
     "test:algorithm": "node scripts/test-show-algorithm.js",
     "test:narrative-graph": "node scripts/test-narrative-graph.js",
     "test:paden-graph": "node scripts/test-paden-graph.js",
+    "test:teleprompter": "node teleprompter-parser/scripts/smoke-test.js",
     "test:dropbox-catalog": "node scripts/test-dropbox-catalog-sync.js",
     "test:universe": "node ../For_universe/scripts/test-runtime-filter.js && node ../For_universe/scripts/test-network-map.js && node ../For_universe/scripts/test-runtime-provider-readonly.js",
     "sync:dropbox-catalog": "node scripts/run-dropbox-catalog-sync.js",

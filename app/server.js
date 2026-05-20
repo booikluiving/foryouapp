@@ -74,6 +74,7 @@ const { writeCatalogDatabaseMarkdown } = require("./lib/catalog-database-md");
 const { createUnifiNetworkAgent } = require("./lib/unifi-network-agent");
 const { createOperatorAi } = require("./lib/operator-ai");
 const { mountUniverse } = require("../For_universe/src/integration/express-router");
+const { mountTeleprompterParser } = require("./teleprompter-parser/src/integration/express-router");
 
 loadLocalDotEnv(__dirname);
 
@@ -185,6 +186,16 @@ const BUILD_VERSION_INPUT_FILES = [
   path.join(__dirname, "public", "stage-session-qr.html"),
   path.join(__dirname, "public", "stage-wifi-qr.html"),
   path.join(__dirname, "public", "stage-qr-output.js"),
+  path.join(__dirname, "teleprompter-parser", "src", "domain", "parse-teleprompt.js"),
+  path.join(__dirname, "teleprompter-parser", "src", "runtime", "teleprompt-store.js"),
+  path.join(__dirname, "teleprompter-parser", "src", "integration", "express-router.js"),
+  path.join(__dirname, "teleprompter-parser", "public", "parser.html"),
+  path.join(__dirname, "teleprompter-parser", "public", "stage.html"),
+  path.join(__dirname, "teleprompter-parser", "public", "live-captions.html"),
+  path.join(__dirname, "teleprompter-parser", "public", "parser-app.js"),
+  path.join(__dirname, "teleprompter-parser", "public", "stage-app.js"),
+  path.join(__dirname, "teleprompter-parser", "public", "live-captions-app.js"),
+  path.join(__dirname, "teleprompter-parser", "public", "styles.css"),
   path.join(__dirname, "package.json"),
 ];
 const BUILD_FINGERPRINT = computeBuildFingerprint(BUILD_VERSION_INPUT_FILES);
@@ -1398,6 +1409,10 @@ mountUniverse(app, {
   express,
   databasePath: DB_PATH,
   runtimeProvider: getUniverseAlgorithmRuntimeOverlay,
+});
+const teleprompterParser = mountTeleprompterParser(app, {
+  express,
+  requireAdmin,
 });
 app.get("/verhaalvisualisatie", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "verhaalvisualisatie.html"));
@@ -12501,6 +12516,30 @@ function sendOperatorScriptOscFinal(text, meta = {}) {
   };
 }
 
+function shouldIngestTeleprompterOperatorOutput(payload = {}) {
+  const source = String(payload.source || "operator_chat");
+  if (source === "operator_osc_test") return false;
+  return source === "chat" || source === "operator_chat" || source === "api_playground";
+}
+
+function ingestTeleprompterOperatorOutput(payload = {}) {
+  if (!shouldIngestTeleprompterOperatorOutput(payload)) return null;
+  const text = String(payload.text || "");
+  if (!text.trim()) return null;
+  try {
+    return teleprompterParser.ingest({
+      title: payload.title || "",
+      rawText: text,
+      source: payload.source || "operator_chat",
+    });
+  } catch (err) {
+    writeDebug("teleprompter_ingest_failed", {
+      message: err && err.message ? String(err.message) : "unknown",
+    });
+    return null;
+  }
+}
+
 function sendOperatorOscOutput(payload = {}) {
   const text = String(payload.text || "");
   const meta = {
@@ -12522,6 +12561,14 @@ function sendOperatorOscOutput(payload = {}) {
     scriptReason: String(script.reason || ""),
     scriptLineCount: Number(script.lineCount || 0),
   });
+  const teleprompt = ingestTeleprompterOperatorOutput(payload);
+  if (teleprompt) {
+    writeDebug("teleprompter_ingested", {
+      version: Number(teleprompt.version || 0),
+      lineCount: Array.isArray(teleprompt.lines) ? teleprompt.lines.length : 0,
+      source: String(teleprompt.source && teleprompt.source.kind || ""),
+    });
+  }
 
   // Save formatted script to file for TouchDesigner File In DAT
   try {

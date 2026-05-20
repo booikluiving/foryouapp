@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>For You - Teleprompt Stage</title>
+    <link rel="stylesheet" href="/teleprompter-parser/styles.css" />
+  </head>
+  <body class="stage-body">
+    <main id="stageRoot" class="stage-root" tabindex="0" aria-live="polite">
+      <div class="stage-topbar">
+        <span id="stageSceneTitle" class="stage-scene-title">Teleprompt</span>
+        <span id="stageProgress" class="stage-progress">0 / 0</span>
+      </div>
+
+      <section id="stageCard" class="stage-card title-card">
+        <h1 class="stage-title">Wacht op teleprompt</h1>
+      </section>
+
+      <nav class="stage-controls" aria-label="Teleprompt navigatie">
+        <button id="prevButton" type="button" aria-label="Vorige kaart">&lt;</button>
+        <button id="nextButton" type="button" aria-label="Volgende kaart">&gt;</button>
+      </nav>
+    </main>
+
+    <script src="/teleprompter-parser/stage-app.js"></script>
+  </body>
+</html>
