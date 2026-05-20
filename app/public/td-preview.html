@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>For You - TD Preview</title>
+    <link rel="icon" type="image/svg+xml" href="/favicons/admin.svg" />
+    <style>
+      :root {
+        --bg: #111316;
+        --panel: #191d22;
+        --panel-2: #20262d;
+        --line: #343c46;
+        --line-strong: #55606d;
+        --text: #f4f7fb;
+        --muted: #9ca8b6;
+        --soft: #c7d0da;
+        --ok: #3ddc97;
+        --warn: #ffbd59;
+        --bad: #ff6b6b;
+        --cyan: #6ad7e5;
+        --shadow: 0 16px 46px rgba(0, 0, 0, 0.32);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, "Avenir Next", "Segoe UI", system-ui, sans-serif;
+        letter-spacing: 0;
+      }
+
+      body {
+        overflow-x: hidden;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .shell {
+        width: min(1680px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 22px 0 28px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      .title-group {
+        min-width: 0;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.15;
+        font-weight: 800;
+      }
+
+      .subtitle {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .status-strip {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        min-width: 260px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        max-width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 6px 10px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--soft);
+        font-size: 12px;
+        line-height: 1.2;
+        white-space: nowrap;
+      }
+
+      .pill.ok {
+        border-color: rgba(61, 220, 151, 0.34);
+        color: var(--ok);
+      }
+
+      .pill.warn {
+        border-color: rgba(255, 189, 89, 0.38);
+        color: var(--warn);
+      }
+
+      .tabs {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 18px;
+      }
+
+      .tab {
+        appearance: none;
+        border: 0;
+        border-bottom: 3px solid transparent;
+        border-radius: 0;
+        background: transparent;
+        color: var(--muted);
+        min-height: 42px;
+        padding: 0 10px;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 750;
+        cursor: pointer;
+      }
+
+      .tab[aria-selected="true"] {
+        color: var(--text);
+        border-bottom-color: var(--cyan);
+      }
+
+      .panel {
+        display: none;
+      }
+
+      .panel.active {
+        display: block;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+        gap: 14px;
+        align-items: start;
+      }
+
+      .preview-card {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-height: 46px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .card-title {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .card-title strong {
+        display: block;
+        font-size: 13px;
+        line-height: 1.2;
+        overflow-wrap: anywhere;
+      }
+
+      .card-title span {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.2;
+        overflow-wrap: anywhere;
+      }
+
+      .badge {
+        flex: 0 0 auto;
+        border: 1px solid var(--line-strong);
+        border-radius: 6px;
+        padding: 4px 7px;
+        color: var(--soft);
+        font-size: 11px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .badge.good {
+        border-color: rgba(61, 220, 151, 0.35);
+        color: var(--ok);
+      }
+
+      .badge.warn {
+        border-color: rgba(255, 189, 89, 0.38);
+        color: var(--warn);
+      }
+
+      .badge.bad {
+        border-color: rgba(255, 107, 107, 0.45);
+        color: var(--bad);
+      }
+
+      .stage-frame,
+      .hardware-frame {
+        position: relative;
+        width: 100%;
+        overflow: hidden;
+        background:
+          linear-gradient(45deg, rgba(255, 255, 255, 0.05) 25%, transparent 25%),
+          linear-gradient(-45deg, rgba(255, 255, 255, 0.05) 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.05) 75%),
+          linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.05) 75%);
+        background-color: #0a0c0f;
+        background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+        background-size: 20px 20px;
+      }
+
+      .stage-frame.portrait {
+        aspect-ratio: 9 / 16;
+      }
+
+      .stage-frame.landscape,
+      .hardware-frame.landscape {
+        aspect-ratio: 16 / 9;
+      }
+
+      .stage-frame.overlay,
+      .hardware-frame.overlay {
+        aspect-ratio: 16 / 9;
+      }
+
+      .hardware-frame.portrait {
+        aspect-ratio: 9 / 16;
+      }
+
+      iframe,
+      .hardware-frame img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+
+      iframe {
+        background: transparent;
+      }
+
+      .hardware-frame img {
+        object-fit: contain;
+        background: #050608;
+      }
+
+      .empty-frame {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 18px;
+        color: var(--muted);
+        text-align: center;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      .meta {
+        display: grid;
+        gap: 5px;
+        padding: 10px 12px 12px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.35;
+        border-top: 1px solid var(--line);
+        background: rgba(0, 0, 0, 0.13);
+      }
+
+      .meta-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .meta-row span:last-child {
+        color: var(--soft);
+        text-align: right;
+        overflow-wrap: anywhere;
+      }
+
+      .error {
+        display: none;
+        margin: 0 0 14px;
+        border: 1px solid rgba(255, 107, 107, 0.38);
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: #ffd0d0;
+        background: rgba(255, 107, 107, 0.12);
+        font-size: 13px;
+      }
+
+      .error.visible {
+        display: block;
+      }
+
+      @media (max-width: 760px) {
+        .shell {
+          width: min(100vw - 20px, 680px);
+          padding-top: 14px;
+        }
+
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .status-strip {
+          justify-content: flex-start;
+          min-width: 0;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="title-group">
+          <h1>TouchDesigner Preview</h1>
+          <p class="subtitle">Web stages en low-FPS hardwareframes voor TD-light.</p>
+        </div>
+        <div class="status-strip" aria-live="polite">
+          <span id="apiStatus" class="pill">State laden</span>
+          <span id="clockStatus" class="pill">--</span>
+        </div>
+      </header>
+
+      <nav class="tabs" aria-label="Preview tabs">
+        <button class="tab" type="button" id="webTab" aria-selected="true" aria-controls="webPanel">Web Stages</button>
+        <button class="tab" type="button" id="hardwareTab" aria-selected="false" aria-controls="hardwarePanel">Hardware Stages</button>
+      </nav>
+
+      <p id="errorBox" class="error"></p>
+
+      <section id="webPanel" class="panel active" aria-labelledby="webTab">
+        <div id="webGrid" class="grid"></div>
+      </section>
+
+      <section id="hardwarePanel" class="panel" aria-labelledby="hardwareTab">
+        <div id="hardwareGrid" class="grid"></div>
+      </section>
+    </main>
+
+    <script>
+      (() => {
+        const TOKEN_KEY = "admin_token";
+        const state = {
+          webStages: [
+            { id: "stage", label: "Stage", path: "/stage", aspect: "portrait" },
+            { id: "universe_stage", label: "Universe stage", path: "/universe/stage", aspect: "portrait" },
+            { id: "api_playground_stage", label: "API playground", path: "/api-playground/stage", aspect: "portrait" },
+            { id: "session_qr", label: "Session QR", path: "/stage/session-qr", aspect: "landscape" },
+            { id: "wifi_qr", label: "Wifi QR", path: "/stage/wifi-qr", aspect: "landscape" },
+            { id: "teleprompter_stage", label: "Teleprompter", path: "/teleprompter-parser/stage", aspect: "landscape" },
+            { id: "live_captions", label: "Live captions", path: "/teleprompter-parser/live-captions", aspect: "overlay" },
+          ],
+          sources: [],
+          frames: new Map(),
+        };
+
+        const webGrid = document.getElementById("webGrid");
+        const hardwareGrid = document.getElementById("hardwareGrid");
+        const apiStatus = document.getElementById("apiStatus");
+        const clockStatus = document.getElementById("clockStatus");
+        const errorBox = document.getElementById("errorBox");
+        const webTab = document.getElementById("webTab");
+        const hardwareTab = document.getElementById("hardwareTab");
+        const webPanel = document.getElementById("webPanel");
+        const hardwarePanel = document.getElementById("hardwarePanel");
+
+        function tokenHeaders() {
+          const token = String(localStorage.getItem(TOKEN_KEY) || "").trim();
+          return token ? { "x-admin-token": token } : {};
+        }
+
+        function setError(message) {
+          errorBox.textContent = message || "";
+          errorBox.classList.toggle("visible", !!message);
+        }
+
+        function formatTime(iso) {
+          if (!iso) return "geen frame";
+          const date = new Date(iso);
+          if (Number.isNaN(date.getTime())) return iso;
+          return date.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        }
+
+        function formatAge(ms) {
+          if (ms === null || ms === undefined) return "--";
+          if (ms < 1000) return `${ms}ms`;
+          return `${(ms / 1000).toFixed(1)}s`;
+        }
+
+        function activateTab(name) {
+          const isWeb = name === "web";
+          webTab.setAttribute("aria-selected", isWeb ? "true" : "false");
+          hardwareTab.setAttribute("aria-selected", isWeb ? "false" : "true");
+          webPanel.classList.toggle("active", isWeb);
+          hardwarePanel.classList.toggle("active", !isWeb);
+        }
+
+        function renderWebStages() {
+          webGrid.innerHTML = "";
+          for (const stage of state.webStages) {
+            const card = document.createElement("article");
+            card.className = "preview-card";
+            card.innerHTML = `
+              <div class="card-head">
+                <div class="card-title">
+                  <strong></strong>
+                  <span></span>
+                </div>
+                <span class="badge warn">laden</span>
+              </div>
+              <div class="stage-frame ${stage.aspect || "landscape"}">
+                <iframe title="" src="" loading="lazy"></iframe>
+              </div>
+            `;
+            const title = card.querySelector("strong");
+            const path = card.querySelector(".card-title span");
+            const badge = card.querySelector(".badge");
+            const frame = card.querySelector("iframe");
+            title.textContent = stage.label;
+            path.textContent = stage.path;
+            frame.title = stage.label;
+            frame.src = stage.path;
+            frame.addEventListener("load", () => {
+              badge.textContent = "geladen";
+              badge.className = "badge good";
+            });
+            setTimeout(() => {
+              if (badge.textContent === "laden") {
+                badge.textContent = "wacht";
+                badge.className = "badge warn";
+              }
+            }, 3500);
+            webGrid.appendChild(card);
+          }
+        }
+
+        function renderHardware() {
+          hardwareGrid.innerHTML = "";
+          for (const source of state.sources) {
+            const card = document.createElement("article");
+            const stale = !!source.stale;
+            const hasFrame = !!source.hasFrame;
+            const badgeClass = hasFrame ? (stale ? "warn" : "good") : "bad";
+            const badgeText = hasFrame ? (stale ? "stale" : "live") : "geen frame";
+            card.className = "preview-card";
+            card.innerHTML = `
+              <div class="card-head">
+                <div class="card-title">
+                  <strong></strong>
+                  <span></span>
+                </div>
+                <span class="badge ${badgeClass}">${badgeText}</span>
+              </div>
+              <div class="hardware-frame ${source.aspect || "landscape"}"></div>
+              <div class="meta">
+                <div class="meta-row"><span>Update</span><span>${formatTime(source.updatedAt)}</span></div>
+                <div class="meta-row"><span>Leeftijd</span><span>${formatAge(source.ageMs)}</span></div>
+                <div class="meta-row"><span>Bytes</span><span>${source.byteLength || 0}</span></div>
+              </div>
+            `;
+            card.querySelector("strong").textContent = source.label || source.id;
+            card.querySelector(".card-title span").textContent = source.id;
+            const frameBox = card.querySelector(".hardware-frame");
+            if (hasFrame && source.frameUrl) {
+              const image = document.createElement("img");
+              image.alt = source.label || source.id;
+              image.decoding = "async";
+              image.src = source.frameUrl;
+              frameBox.appendChild(image);
+            } else {
+              const empty = document.createElement("div");
+              empty.className = "empty-frame";
+              empty.textContent = source.kind === "future" ? "Later aan te sluiten" : "Wacht op testframe";
+              frameBox.appendChild(empty);
+            }
+            hardwareGrid.appendChild(card);
+          }
+        }
+
+        async function refreshState() {
+          try {
+            const response = await fetch("/admin/td-preview/state", {
+              headers: Object.assign({ accept: "application/json" }, tokenHeaders()),
+              cache: "no-store",
+            });
+            if (!response.ok) throw new Error(`state ${response.status}`);
+            const data = await response.json();
+            if (!data || !data.ok) throw new Error("state invalid");
+            state.sources = Array.isArray(data.sources) ? data.sources : [];
+            if (Array.isArray(data.webStages) && data.webStages.length) state.webStages = data.webStages;
+            apiStatus.textContent = `${state.sources.filter((source) => source.hasFrame).length}/${state.sources.length} frames`;
+            apiStatus.className = "pill ok";
+            clockStatus.textContent = formatTime(data.generatedAt);
+            setError("");
+            renderHardware();
+          } catch (err) {
+            apiStatus.textContent = "State fout";
+            apiStatus.className = "pill warn";
+            setError(`TD-preview state niet beschikbaar: ${err.message || err}`);
+          }
+        }
+
+        webTab.addEventListener("click", () => activateTab("web"));
+        hardwareTab.addEventListener("click", () => activateTab("hardware"));
+        renderWebStages();
+        refreshState();
+        setInterval(refreshState, 1500);
+      })();
+    </script>
+  </body>
+</html>
