@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>For You - Tekstparser</title>
+    <link rel="stylesheet" href="/teleprompter-parser/styles.css" />
+  </head>
+  <body class="parser-body">
+    <header class="parser-header">
+      <div>
+        <h1>Tekstparser</h1>
+        <p>Rule-based parser voor teleprompter-kaarten.</p>
+      </div>
+      <div class="parser-actions">
+        <a class="stage-link" href="/teleprompter-parser/stage" target="_blank" rel="noreferrer">Stage</a>
+        <a class="stage-link" href="/teleprompter-parser/live-captions" target="_blank" rel="noreferrer">Live captions</a>
+        <button id="parseButton" class="primary" type="button">Parse</button>
+      </div>
+    </header>
+
+    <main class="parser-layout">
+      <section class="parser-panel input-panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Input</h2>
+            <p>Plak ruwe scène-output of wacht op Operator/API-output.</p>
+          </div>
+        </div>
+        <div class="input-stack">
+          <label>
+            Titel
+            <input id="titleInput" autocomplete="off" placeholder="optioneel" />
+          </label>
+          <label>
+            Ruwe tekst
+            <textarea id="rawTextInput" spellcheck="false" placeholder="PERSONAGE: tekst..."></textarea>
+          </label>
+        </div>
+        <p id="statusText" class="status-text">Nog geen parse.</p>
+      </section>
+
+      <section class="parser-panel preview-panel">
+        <div class="panel-heading">
+          <div>
+            <h2 id="previewTitle">Teleprompt</h2>
+            <p id="previewMeta">Geen regels.</p>
+          </div>
+        </div>
+        <p class="status-text">Preview van de huidige stage-state.</p>
+        <div id="linePreview" class="line-preview">
+          <p class="empty-preview">Nog geen teleprompt.</p>
+        </div>
+      </section>
+    </main>
+
+    <script src="/teleprompter-parser/parser-app.js"></script>
+  </body>
+</html>
