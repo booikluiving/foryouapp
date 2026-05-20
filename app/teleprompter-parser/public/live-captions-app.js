@@ -41,9 +41,7 @@
     root.style.setProperty("--caption-size-scale", captionStyle.fontSizeScale.toFixed(3));
     root.style.setProperty("--caption-top", `${captionStyle.verticalPosition.toFixed(1)}%`);
     root.style.setProperty("--caption-width", `${captionStyle.widthPercent.toFixed(1)}%`);
-    root.style.setProperty("--caption-outline-lg", `${Math.max(1, Math.round(6 * captionStyle.outlineScale))}px`);
-    root.style.setProperty("--caption-outline-md", `${Math.max(1, Math.round(4 * captionStyle.outlineScale))}px`);
-    root.style.setProperty("--caption-outline-sm", `${Math.max(1, Math.round(5 * captionStyle.outlineScale))}px`);
+    root.style.setProperty("--caption-stroke", `${Math.max(1, Math.round(7 * captionStyle.outlineScale))}px`);
   }
 
   function updateCaptionScale() {

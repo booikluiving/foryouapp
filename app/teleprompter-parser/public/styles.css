@@ -471,8 +471,7 @@ label {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  display: grid;
-  place-items: center;
+  position: relative;
   background: transparent;
   color: #ffffff;
 }
@@ -504,15 +503,15 @@ label {
   --caption-size-scale: 1;
   --caption-top: 66%;
   --caption-width: 86%;
-  --caption-outline-lg: 6px;
-  --caption-outline-md: 4px;
-  --caption-outline-sm: 5px;
-  position: relative;
+  --caption-stroke: 7px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
   width: 1080px;
   height: 1920px;
   flex: 0 0 auto;
   overflow: hidden;
-  transform: scale(var(--caption-scale));
+  transform: translate(-50%, -50%) scale(var(--caption-scale));
   transform-origin: center center;
   background: transparent;
   color: #ffffff;
@@ -522,7 +521,7 @@ label {
 .caption-body.caption-browser-preview-mode .caption-root {
   width: 100vw;
   height: 100vh;
-  transform: none;
+  transform: translate(-50%, -50%);
 }
 
 .caption-card {
@@ -530,33 +529,21 @@ label {
   top: var(--caption-top);
   left: 50%;
   width: var(--caption-width);
-  max-height: 360px;
-  overflow: hidden;
+  max-height: 430px;
+  overflow: visible;
   transform: translate(-50%, -50%);
   color: #ffffff;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Arial Black", Arial, Helvetica, sans-serif;
   font-size: calc(82px * var(--caption-size-scale));
   font-weight: 900;
-  line-height: 1.08;
+  line-height: 1.06;
   letter-spacing: 0;
+  padding: 0.08em 0.18em 0.18em;
   text-align: center;
-  -webkit-text-stroke: 0 transparent;
-  text-shadow:
-    calc(-1 * var(--caption-outline-lg)) calc(-1 * var(--caption-outline-lg)) 0 #000000,
-    var(--caption-outline-lg) calc(-1 * var(--caption-outline-lg)) 0 #000000,
-    calc(-1 * var(--caption-outline-lg)) var(--caption-outline-lg) 0 #000000,
-    var(--caption-outline-lg) var(--caption-outline-lg) 0 #000000,
-    calc(-1 * var(--caption-outline-md)) calc(-1 * var(--caption-outline-md)) 0 #000000,
-    var(--caption-outline-md) calc(-1 * var(--caption-outline-md)) 0 #000000,
-    calc(-1 * var(--caption-outline-md)) var(--caption-outline-md) 0 #000000,
-    var(--caption-outline-md) var(--caption-outline-md) 0 #000000,
-    0 calc(-1 * var(--caption-outline-sm)) 0 #000000,
-    var(--caption-outline-sm) 0 0 #000000,
-    0 var(--caption-outline-sm) 0 #000000,
-    calc(-1 * var(--caption-outline-sm)) 0 0 #000000,
-    0 var(--caption-outline-sm) 0 #000000,
-    0 0 18px rgba(0, 0, 0, 0.86),
-    0 0 32px rgba(0, 0, 0, 0.72);
+  -webkit-text-fill-color: #ffffff;
+  -webkit-text-stroke: var(--caption-stroke) #000000;
+  paint-order: stroke fill;
+  text-shadow: none;
 }
 
 .caption-body.caption-debug-mode .caption-card,
@@ -571,7 +558,7 @@ label {
 }
 
 .caption-card.direction {
-  max-height: 300px;
+  max-height: 340px;
   font-size: calc(70px * var(--caption-size-scale));
   font-style: italic;
   font-weight: 720;
