@@ -278,6 +278,27 @@ De bestaande media-assets en basename-conventie zijn waardevol. De oude API/Drop
 
 ## Gefaseerde aanpak
 
+### Huidige Mac Studio status - 2026-05-20
+
+De Mac Studio repo staat op `main` met de live showserver op poort `3310`.
+
+Bewezen gezond in deze sessie:
+
+```text
+GET /health
+GET /admin/td-preview
+GET /admin/td-preview/state
+GET /teleprompter-parser/stage
+GET /teleprompter-parser/live-captions
+GET /api/teleprompter-parser/current
+```
+
+Let op bij faseplanning: Fase 2 is de web-previewlaag, maar de huidige code
+bevat ook al teleprompter/caption-routes uit Fase 3. In Dropbox staat bovendien
+al een TD-light POC-map met een `/ShowLight/preview_bus` in de geëxpande
+`.toe.dir`. Behandel de komende stap daarom als contract- en betrouwbaarheidswerk
+tussen webapp en TD-light previewbus, niet als een volledig lege Fase 2.
+
 ### Fase 1: inventarisatie current workflow
 
 Doel: niets wijzigen, alleen bewijzen hoe het huidige TD-bestand werkt.
@@ -392,6 +413,12 @@ Eindig met diff/vergelijking en conclusie of de kopie veilig is.
 ### Fase 5: preview bus vanuit TD
 
 Doel: TD stuurt lage-FPS previews naar de webapp.
+
+Huidige stand: de webapp heeft `/admin/td-preview` en
+`/admin/td-preview/frame`; de TD-light POC bevat al een `/ShowLight/preview_bus`
+met bronselects voor `cam*_raw`, `cam*_key`, `main_out` en `tp*_out`.
+De preview-state kan nog steeds `hasFrame:false` tonen zolang TouchDesigner niet
+draait of de sender-loop geen frames post.
 
 Startprompt:
 
@@ -525,4 +552,3 @@ Voor TouchDesigner altijd minimaal een van deze bewijzen:
 - test-OSC;
 - frame/timestamp updates;
 - expliciete command-output.
-

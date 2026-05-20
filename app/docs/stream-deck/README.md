@@ -120,6 +120,12 @@ Voor de stap waarin de TouchDesigner-knop dynamisch/togglebaar is gemaakt:
 /Users/for_you/ForYou/companion-backups/20260518-155651-before-touchdesigner-toggle/
 ```
 
+Voor de stap waarin de tekstparser- en TD-preview-links zijn voorbereid:
+
+```text
+/Users/for_you/ForYou/companion-backups/20260520-120113-before-textparser-tdpreview-links/
+```
+
 ## Huidige Companion-status
 
 - Pagina 1 is alleen op rij `3`, kolom `7` aangepast: die positie is nu een page-switcher.
@@ -129,6 +135,7 @@ Voor de stap waarin de TouchDesigner-knop dynamisch/togglebaar is gemaakt:
 - Pagina 2 heet `FOR YOU`.
 - Pagina 2 heeft op rij `0`, kolom `0` de dynamische serverknop, op kolom `1` de server-herstartknop en op kolom `2` de dynamische TouchDesigner-knop.
 - Pagina 2 heeft de paginalinks op rij `1`, kolommen `0` t/m `5`.
+- Pagina 2 is voorbereid voor extra paginalinks op rij `1`, kolommen `6` en `7`: `TEKST PARSER` en `TD PREVIEW`.
 - Pagina 2 heeft de dynamische show- en situatieknoppen op rij `2`, kolommen `0` en `2`.
 - Pagina 2 heeft op rij `3`, kolom `0` de verplaatste OSC-knop `osc1` en op kolom `1` de dynamische audio/SQ5 bridge-knop.
 - Pagina 1 en pagina 2 hebben rechtsonder een native Companion `pagedown` page-switcher.
@@ -140,13 +147,15 @@ Huidige pagina-2-knoppen:
 | --- | --- | --- | --- | --- |
 | 0 | 0 | `SERVER AAN` / `SERVER UIT` | `/health` | toggle launchd service |
 | 0 | 1 | `SERVER HERSTART` | restart | stop, kill lingering port `3310` listeners, wait, start |
-| 0 | 2 | `OPEN TD` / `TD AAN` / `TD ERROR` | TouchDesigner-processtatus | toggle actuele API- en For You-TouchDesignerbestanden |
+| 0 | 2 | `OPEN TD` / `TD AAN` / `TD ERROR` | TouchDesigner-processtatus | toggle vast TD-light showproject |
 | 1 | 0 | `OPEN ADMIN` | `/admin` | `open http://127.0.0.1:3310/admin` |
 | 1 | 1 | `ALGO RITME` | `/algoritme` | `open http://127.0.0.1:3310/algoritme` |
 | 1 | 2 | `UNIVERSE` | `/universe` | `open http://127.0.0.1:3310/universe` |
 | 1 | 3 | `PADEN` | `/paden` | `open http://127.0.0.1:3310/paden` |
 | 1 | 4 | `API PLAY` | `/api-playground` | `open http://127.0.0.1:3310/api-playground` |
 | 1 | 5 | `PUBLIEK CHAT` | `/` | `open http://127.0.0.1:3310/` |
+| 1 | 6 | `TEKST PARSER` | `/teleprompter-parser` | `open http://127.0.0.1:3310/teleprompter-parser` |
+| 1 | 7 | `TD PREVIEW` | `/admin/td-preview` | `open http://127.0.0.1:3310/admin/td-preview` |
 | 2 | 0 | `START SHOW` / `STOP SHOW` | `session.isActive` | start of stop show via website endpoint |
 | 2 | 2 | `VOLG. SITUATIE` / `STOP SITUATIE` / `SITUATIE UIT` | `activeRun` en `session.isActive` | start volgende situatie of stop actieve situatie |
 | 3 | 0 | `osc1` | `/osc/osc32` | originele OSC-knop, verplaatst vanaf pagina 1 rechtsonder |
@@ -236,6 +245,7 @@ Daardoor worden de pagina-2 knoppen niet onnodig elke seconde herschreven. De pa
 Als de server uit staat, dimt hetzelfde script ook de web-afhankelijke knoppen op pagina 2:
 
 - rij `1`, kolommen `0` t/m `5`: de pagina-links;
+- rij `1`, kolommen `6` en `7`: de tekstparser- en TD-preview-links;
 - rij `2`, kolommen `0` en `2`: show- en situatieknoppen.
 
 Bij de paginalinks worden alleen `color` en `bgcolor` aangepast. Bij de twee dynamische show/situatieknoppen mag de statuspoll ook tekst en kleur aanpassen, zodat de knoppen hun actuele functie tonen.
@@ -320,14 +330,17 @@ De Stream Deck herstartknop start deze restart op de achtergrond en schrijft out
 
 De TouchDesigner-knop staat op pagina 2, rij `0`, kolom `2`. De knop is dynamisch:
 
-- `OPEN TD`: TouchDesigner staat uit; klikken opent de actuele API- en For You-projecten.
+- `OPEN TD`: TouchDesigner staat uit; klikken opent het vaste TD-light showproject.
 - `TD AAN`: TouchDesigner draait; klikken vraagt TouchDesigner om te stoppen.
 - `TD ERROR`: de statuscheck faalde; controleer het script/logbestand.
 
-Hij werkt met twee TouchDesigner-projecten vanuit Dropbox:
+Hij werkt standaard met dit TouchDesigner-project vanuit Dropbox:
 
-- het actuele API-project;
-- het actuele For You-project.
+```text
+/Users/for_you/Library/CloudStorage/Dropbox/For You/Voorstelling/show/td-light/For You TD Light POC from v3.37.toe
+```
+
+De launcher positioneert het TouchDesigner-editorvenster op het linker Dell-scherm. Output-vensters, zoals de LG/HDMI-window, worden niet mee verplaatst.
 
 Bestanden op de Mac Studio:
 
@@ -345,28 +358,18 @@ docs/stream-deck/configure-page2-touchdesigner-button.js
 docs/stream-deck/foryou-server-status-to-companion.js
 ```
 
-De launcher zoekt bij elke druk opnieuw onder:
+De standaard projectkeuze kan tijdelijk worden overschreven met:
 
 ```text
-/Users/for_you/Library/CloudStorage/Dropbox/Current Touch Designer version
+FORYOU_TOUCHDESIGNER_PROJECT=/pad/naar/showproject.toe
+FORYOU_TOUCHDESIGNER_API_PROJECT=/pad/naar/api-project.toe
 ```
 
-De mapnaam wordt met een paar varianten ondersteund, waaronder `Current TouchDesigner Version`.
-
-Selectieregel:
-
-- zoek alleen `.toe` bestanden direct in die huidige map, niet in `Backup`;
-- voor API: bestandsnaam bevat `API`;
-- voor For You: bestandsnaam bevat `For You` en niet `API`;
-- kies alleen exacte hoofdversies aan het einde van de naam, zoals `v1.toe`, `v3.toe`, `v4.toe`;
-- negeer decimale backup/werkversies zoals `v1.2.toe` of `v3.15.toe`;
-- als meerdere exacte hoofdversies bestaan, kies de hoogste hoofdversie.
-
-Op 2026-05-18 koos de dry-run:
+De `selected`-output hoort standaard dit te tonen:
 
 ```text
-API AI systeem- week 3 v1.toe
-For You V15 - week 3 (2023TD) v3.toe
+api|
+foryou|/Users/for_you/Library/CloudStorage/Dropbox/For You/Voorstelling/show/td-light/For You TD Light POC from v3.37.toe
 ```
 
 Status lezen zonder iets te openen of sluiten:
@@ -387,7 +390,7 @@ Dry-run van de toggle zonder TouchDesigner echt te openen of sluiten:
 ssh foryou-studio "FORYOU_TD_DRY_RUN=1 /Users/for_you/ForYou/companion-scripts/open-current-touchdesigner.sh toggle"
 ```
 
-De statuspoll werkt de knoptekst/kleur elke seconde bij. Bij status `aan` is de knop groen met `TD AAN`; bij status `uit` is hij blauw/groen met `OPEN TD`. De statuscheck detecteert TouchDesigner-processen die in de huidige Dropbox-map draaien of die map in hun commandoregel hebben.
+De statuspoll werkt de knoptekst/kleur elke seconde bij. Bij status `aan` is de knop groen met `TD AAN`; bij status `uit` is hij blauw/groen met `OPEN TD`. De statuscheck detecteert TouchDesigner-processen die in de vaste showprojectmap draaien of die map in hun commandoregel hebben.
 
 Normale runs schrijven naar:
 

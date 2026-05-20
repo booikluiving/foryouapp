@@ -36,6 +36,8 @@ const pageLinkButtons = [
   { row: 1, column: 3, on: { color: WHITE, bgcolor: BLUE } },
   { row: 1, column: 4, on: { color: WHITE, bgcolor: BLUE } },
   { row: 1, column: 5, on: { color: WHITE, bgcolor: BLUE } },
+  { row: 1, column: 6, on: { color: WHITE, bgcolor: BLUE } },
+  { row: 1, column: 7, on: { color: WHITE, bgcolor: BLUE } },
 ];
 
 const dynamicActionButtons = [

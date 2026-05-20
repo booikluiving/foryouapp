@@ -459,6 +459,14 @@ label {
   font-weight: 900;
 }
 
+.stage-td-render-mode .stage-root {
+  --stage-scale: 1 !important;
+}
+
+.stage-td-render-mode .stage-controls {
+  display: none;
+}
+
 .caption-body {
   width: 100vw;
   height: 100vh;

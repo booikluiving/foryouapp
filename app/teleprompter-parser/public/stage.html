@@ -4,9 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>For You - Teleprompt Stage</title>
-    <link rel="stylesheet" href="/teleprompter-parser/styles.css" />
+    <link rel="stylesheet" href="/teleprompter-parser/styles.css?v=td4" />
   </head>
   <body class="stage-body">
+    <script>
+      if (new URLSearchParams(window.location.search).has("td")) {
+        document.body.classList.add("stage-td-render-mode");
+      }
+    </script>
     <main id="stageRoot" class="stage-root" tabindex="0" aria-live="polite">
       <div class="stage-topbar">
         <span id="stageSceneTitle" class="stage-scene-title">Teleprompt</span>
@@ -23,6 +28,6 @@
       </nav>
     </main>
 
-    <script src="/teleprompter-parser/stage-app.js"></script>
+    <script src="/teleprompter-parser/stage-app.js?v=td4"></script>
   </body>
 </html>

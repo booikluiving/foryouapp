@@ -9,6 +9,8 @@
   const nextButton = document.getElementById("nextButton");
   const STAGE_WIDTH = 1312;
   const STAGE_HEIGHT = 1080;
+  const params = new URLSearchParams(window.location.search);
+  const isTouchDesignerRender = params.has("td") || document.body.classList.contains("stage-td-render-mode");
 
   let teleprompt = null;
   let currentVersion = -1;
@@ -16,9 +18,17 @@
   let currentIndex = 0;
 
   function updateStageScale() {
+    if (isTouchDesignerRender) {
+      root.style.setProperty("--stage-scale", "1");
+      return;
+    }
     const viewport = window.visualViewport;
     const width = viewport && viewport.width ? viewport.width : window.innerWidth;
     const height = viewport && viewport.height ? viewport.height : window.innerHeight;
+    if (width <= 1 || height <= 1) {
+      root.style.setProperty("--stage-scale", "1");
+      return;
+    }
     const scale = Math.max(0.1, Math.min(width / STAGE_WIDTH, height / STAGE_HEIGHT, 1));
     root.style.setProperty("--stage-scale", scale.toFixed(5));
   }
@@ -289,6 +299,7 @@
   window.addEventListener("resize", updateStageScale);
   if (window.visualViewport) window.visualViewport.addEventListener("resize", updateStageScale);
 
+  if (isTouchDesignerRender) document.body.classList.add("stage-td-render-mode");
   updateStageScale();
   root.focus();
   connectEvents();

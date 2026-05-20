@@ -8803,13 +8803,14 @@ function requireAdminOrSyncPeer(req, res, next) {
   requireAdmin(req, res, next);
 }
 
-const TD_PREVIEW_STALE_AFTER_MS = clampInt(process.env.TD_PREVIEW_STALE_AFTER_MS || "5000", 1000, 60000, 5000);
+const TD_PREVIEW_STALE_AFTER_MS = clampInt(process.env.TD_PREVIEW_STALE_AFTER_MS || "15000", 1000, 60000, 15000);
 const TD_PREVIEW_MAX_FRAME_BYTES = clampInt(
   process.env.TD_PREVIEW_MAX_FRAME_BYTES || String(4 * 1024 * 1024),
   64 * 1024,
   12 * 1024 * 1024,
   4 * 1024 * 1024
 );
+const TD_PREVIEW_SECRET = String(process.env.TD_PREVIEW_SECRET || "").trim();
 const TD_PREVIEW_WEB_STAGES = Object.freeze([
   { id: "stage", label: "Stage", path: "/stage", aspect: "portrait" },
   { id: "universe_stage", label: "Universe stage", path: "/universe/stage", aspect: "portrait" },
@@ -8876,6 +8877,33 @@ function parseTdPreviewMetadataHeader(req) {
   }
 }
 
+function parseTdPreviewQueryMetadata(req) {
+  const metadata = {};
+  ["width", "height", "sequence"].forEach((key) => {
+    if (req.query && Object.prototype.hasOwnProperty.call(req.query, key)) {
+      metadata[key] = req.query[key];
+    }
+  });
+  return sanitizeTdPreviewMetadata(metadata);
+}
+
+function isValidTdPreviewSecretRequest(req) {
+  const incoming = String(req.headers["x-td-preview-secret"] || "").trim();
+  if (!incoming || !TD_PREVIEW_SECRET) return false;
+  const left = Buffer.from(incoming);
+  const right = Buffer.from(TD_PREVIEW_SECRET);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function requireAdminOrTdPreviewSecret(req, res, next) {
+  if (isValidTdPreviewSecretRequest(req)) {
+    req.tdPreviewSecret = true;
+    next();
+    return;
+  }
+  requireAdmin(req, res, next);
+}
+
 function parseTdPreviewFrameRequest(req) {
   const isRawJpeg = Buffer.isBuffer(req.body);
   const body = !isRawJpeg && req.body && typeof req.body === "object" ? req.body : {};
@@ -8887,11 +8915,11 @@ function parseTdPreviewFrameRequest(req) {
   }
 
   let frame = null;
-  let metadata = parseTdPreviewMetadataHeader(req);
+  let metadata = Object.assign({}, parseTdPreviewQueryMetadata(req), parseTdPreviewMetadataHeader(req));
   if (isRawJpeg) {
     frame = req.body;
   } else {
-    const encoded = String(body.jpeg || body.base64 || body.frame || body.image || body.data || "").trim();
+    const encoded = String(body.imageBase64 || body.jpeg || body.base64 || body.frame || body.image || body.data || "").trim();
     if (!encoded) return { ok: false, status: 400, error: "jpeg_required", sourceId };
     const base64 = encoded.includes(",") ? encoded.slice(encoded.indexOf(",") + 1) : encoded;
     try {
@@ -8899,7 +8927,16 @@ function parseTdPreviewFrameRequest(req) {
     } catch (_err) {
       return { ok: false, status: 400, error: "invalid_base64", sourceId };
     }
-    metadata = sanitizeTdPreviewMetadata(Object.assign({}, metadata, sanitizeTdPreviewMetadata(body.metadata)));
+    metadata = sanitizeTdPreviewMetadata(Object.assign(
+      {},
+      metadata,
+      sanitizeTdPreviewMetadata({
+        width: body.width,
+        height: body.height,
+        sequence: body.sequence,
+      }),
+      sanitizeTdPreviewMetadata(body.metadata)
+    ));
   }
 
   if (!frame || frame.length < 4) return { ok: false, status: 400, error: "empty_frame", sourceId };
@@ -14151,7 +14188,7 @@ app.get("/admin/td-preview/frame/:sourceId.jpg", requireAdmin, (req, res) => {
 
 app.post(
   "/admin/td-preview/frame",
-  requireAdmin,
+  requireAdminOrTdPreviewSecret,
   express.raw({ type: ["image/jpeg", "image/jpg"], limit: TD_PREVIEW_MAX_FRAME_BYTES }),
   (req, res) => {
     const parsed = parseTdPreviewFrameRequest(req);
