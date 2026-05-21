@@ -724,6 +724,20 @@
         display: flex;
       }
 
+      .orderControls {
+        display: flex;
+        justify-content: flex-start;
+      }
+
+      .orderShuffleToggle {
+        justify-content: flex-start;
+        color: var(--muted);
+      }
+
+      .orderShuffleToggle input {
+        width: auto;
+      }
+
       #currentOrderList.editing .listItem {
         cursor: grab;
       }
@@ -1193,7 +1207,10 @@
           <details id="environmentsPane" class="catalogWindow" data-ui-state-key="catalog.window.environments" open>
             <summary class="catalogWindowSummary"><h2>Omgevingen</h2></summary>
             <div class="catalogWindowBody">
-            <div class="actions"><button id="newEnvironmentBtn" type="button">Voeg toe</button></div>
+            <div class="actions">
+              <button id="newEnvironmentBtn" type="button">Voeg toe</button>
+              <a href="/environment-assets.html"><button type="button">Assets beheren</button></a>
+            </div>
             <div id="environmentForm" class="stack hidden">
               <label>Naam<input id="environmentName" maxlength="140" /></label>
               <label>Beschrijving<textarea id="environmentDescription"></textarea></label>
@@ -1290,6 +1307,12 @@
             <h2>Huidige Volgorde</h2>
             <span id="orderCycleBadge" class="badge"></span>
             <button id="editOrderBtn" type="button">Pas volgorde aan</button>
+          </div>
+          <div class="orderControls">
+            <label class="toggleLine orderShuffleToggle">
+              <span>Shuffle gelijke punten</span>
+              <input id="availableShuffleEnabled" type="checkbox" />
+            </label>
           </div>
           <div id="orderSummary" class="small"></div>
           <div class="row">
@@ -1572,6 +1595,7 @@
           explorationWeight: 0.5,
           retryWeight: 0.35,
           sceneRepeatPenalty: 1,
+          availableShuffleEnabled: true,
         };
         const VARIATION_LIMITS = {
           characterCooldownWindow: { min: 0, max: 10 },
@@ -1582,6 +1606,7 @@
         };
         let token = "";
         let state = null;
+        let environmentAssets = null;
         let edit = { performer: 0, label: 0, character: 0, environment: 0, scene: 0, path: 0 };
         let expanded = { performer: 0, label: 0, character: 0, environment: 0, scene: 0, path: 0 };
         let sceneDraft = {
@@ -1813,8 +1838,12 @@
 
         async function loadState(show = false, options = {}) {
           try {
-            const data = await api("/admin/algorithm/state");
+            const [data, assetData] = await Promise.all([
+              api("/admin/algorithm/state"),
+              api("/admin/algorithm/environment-assets").catch(() => null),
+            ]);
             state = data;
+            if (assetData) environmentAssets = assetData;
             const shouldScrollOrder = !!(options && options.scrollOrder)
               || (!!initialOrderListScrollPending && stateHasOrderScrollAnchor(data));
             if (shouldScrollOrder) scrollOrderSelectionOnNextRender = true;
@@ -2054,6 +2083,53 @@
               </div>
             `;
           }).join("");
+        }
+
+        function environmentAssetRow(item) {
+          const id = Number(item && item.id || 0);
+          return (environmentAssets && Array.isArray(environmentAssets.environments) ? environmentAssets.environments : [])
+            .find((row) => Number(row && row.id || 0) === id) || null;
+        }
+
+        function environmentAssetBucket(row, type) {
+          return row && row.assets && row.assets[type] ? row.assets[type] : { present: false, files: [], primary: null };
+        }
+
+        function environmentAssetBadges(item) {
+          const row = environmentAssetRow(item);
+          if (!row) return [{ label: "assets laden", className: "" }];
+          const background = environmentAssetBucket(row, "background").present;
+          const audio = environmentAssetBucket(row, "audio").present;
+          const fx = environmentAssetBucket(row, "fx").present;
+          return [
+            { label: background ? "BG OK" : "BG mist", className: background ? "good" : "bad" },
+            { label: audio ? "Audio OK" : "Audio mist", className: audio ? "good" : "bad" },
+            { label: fx ? "FX OK" : "FX mist", className: fx ? "good" : "" },
+          ];
+        }
+
+        function environmentAssetFileNames(row, type) {
+          const files = environmentAssetBucket(row, type).files || [];
+          return files.length ? files.map((file) => file.filename).join(", ") : "mist";
+        }
+
+        function renderEnvironmentDetails(item) {
+          const row = environmentAssetRow(item);
+          const description = String(item && item.description || "").trim();
+          const assetSummary = row ? `
+            <div class="small">
+              BG: ${esc(environmentAssetFileNames(row, "background"))}<br>
+              Audio: ${esc(environmentAssetFileNames(row, "audio"))}<br>
+              FX: ${esc(environmentAssetFileNames(row, "fx"))}
+            </div>
+          ` : `<div class="small">Assetstatus wordt geladen.</div>`;
+          return `
+            <div class="itemDescription">${esc(description || "Geen beschrijving.")}</div>
+            ${assetSummary}
+            <div class="actions">
+              <a href="/environment-assets.html"><button type="button">Assets beheren</button></a>
+            </div>
+          `;
         }
 
         function renderCharactersList(id, items, inactive = false) {
@@ -3208,6 +3284,17 @@
           return Array.isArray(order.rows) ? order.rows : [];
         }
 
+        function availableShuffleEnabledFromState() {
+          const settings = state && state.settings ? state.settings : {};
+          return settings.availableShuffleEnabled !== false;
+        }
+
+        function renderAvailableShuffleToggle() {
+          const input = $("availableShuffleEnabled");
+          if (!input || document.activeElement === input) return;
+          input.checked = availableShuffleEnabledFromState();
+        }
+
         function currentOrderActiveEntry(rows = currentOrderRows()) {
           const order = state && state.currentOrder ? state.currentOrder : {};
           if (order.active && Number(order.active.sceneId || 0)) return order.active;
@@ -3506,6 +3593,7 @@
           $("editOrderBtn").classList.toggle("hidden", orderEditOpen);
           $("orderEditHint").classList.toggle("hidden", !orderEditOpen);
           $("orderEditActions").classList.toggle("active", orderEditOpen);
+          renderAvailableShuffleToggle();
           renderQueueStatus(rows);
           if (orderEditOpen) destroyOrderBaseSortable();
           const rowsForList = orderEditOpen ? buildEditableOrderRows() : displayRows;
@@ -3537,7 +3625,8 @@
             kind: "environment",
             selectedId: edit.environment,
             labelFn: (item) => item.name || "Naamloos",
-            detailFn: (item) => item.description || "",
+            detailHtmlFn: renderEnvironmentDetails,
+            badgesFn: environmentAssetBadges,
             emptyText: "Nog geen omgevingen.",
           });
           renderCatalogList("environmentsInactiveList", alphabeticCatalogItems("environments", inactiveItems("environments")), {
@@ -3545,7 +3634,8 @@
             selectedId: edit.environment,
             inactive: true,
             labelFn: (item) => item.name || "Naamloos",
-            detailFn: (item) => item.description || "",
+            detailHtmlFn: renderEnvironmentDetails,
+            badgesFn: environmentAssetBadges,
             emptyText: "Geen non-actieve omgevingen.",
           });
           renderCatalogList("scenesList", alphabeticCatalogItems("scenes", activeItems("scenes")), {
@@ -4128,6 +4218,7 @@
             explorationWeight: $("variationExplorationWeight").value,
             retryWeight: $("variationRetryWeight").value,
             sceneRepeatPenalty: $("variationSceneRepeatPenalty").value,
+            availableShuffleEnabled: $("availableShuffleEnabled").checked,
           };
         }
 
@@ -4647,6 +4738,9 @@
           $("stopShowBtn").addEventListener("click", stopShow);
 
           $("editOrderBtn").addEventListener("click", openOrderEditor);
+          $("availableShuffleEnabled").addEventListener("change", () => {
+            saveAlgorithmSettings("orderMsg", $("availableShuffleEnabled").checked ? "Shuffle voor gelijke punten staat aan." : "Shuffle voor gelijke punten staat uit.");
+          });
           $("cancelOrderBtn").addEventListener("click", () => {
             closeOrderEditor();
             renderCurrentOrder();

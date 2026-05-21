@@ -34,6 +34,17 @@ function titleFromHeading(rawText) {
   return heading ? heading.replace(/^#{1,3}\s+/, "").trim() : "";
 }
 
+function titleFromFirstLine(rawText) {
+  const firstLine = String(rawText || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (!firstLine || /^#{1,3}\s+\S/.test(firstLine)) return "";
+  const withoutBullet = firstLine.replace(/^[-•]\s+/, "").trim();
+  if (!withoutBullet || STAGE_PREFIX_RE.test(withoutBullet) || DIALOGUE_RE.test(withoutBullet)) return "";
+  return stripOuterMarks(withoutBullet);
+}
+
 function removeTitleHeading(rawText, title) {
   if (!title) return rawText;
   const lines = String(rawText || "").split("\n");
@@ -84,7 +95,7 @@ function parseTeleprompt(input = {}) {
   const sourceKind = String(input.source || "manual");
   const rawText = cleanText(input.rawText || input.text || "");
   const explicitTitle = cleanText(input.title || "");
-  const inferredTitle = explicitTitle || titleFromHeading(rawText) || "Teleprompt";
+  const inferredTitle = explicitTitle || titleFromHeading(rawText) || titleFromFirstLine(rawText) || "Teleprompt";
   const sourceText = removeTitleHeading(rawText, inferredTitle);
   const characters = [];
   const charactersByLabel = new Map();

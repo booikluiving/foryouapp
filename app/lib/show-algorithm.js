@@ -41,6 +41,8 @@ const DEFAULT_ALGORITHM_SETTINGS = Object.freeze({
   explorationWeight: 0.5,
   retryWeight: 0.35,
   sceneRepeatPenalty: 1,
+  availableShuffleEnabled: true,
+  availableShuffleSeed: "",
   labelScaleMode: "rising",  // "rising" | "normalized"
 });
 const ALGORITHM_ACTOR_SLOT_COUNT = 3;
@@ -130,8 +132,20 @@ function normalizeAlgorithmSettings(input = {}) {
     explorationWeight: Number(clampFloat(src.explorationWeight, 0, 20, DEFAULT_ALGORITHM_SETTINGS.explorationWeight).toFixed(2)),
     retryWeight: Number(clampFloat(src.retryWeight, 0, 10, DEFAULT_ALGORITHM_SETTINGS.retryWeight).toFixed(2)),
     sceneRepeatPenalty: Number(clampFloat(src.sceneRepeatPenalty, 0, 50, DEFAULT_ALGORITHM_SETTINGS.sceneRepeatPenalty).toFixed(2)),
+    availableShuffleEnabled: normalizeBoolean(src.availableShuffleEnabled, DEFAULT_ALGORITHM_SETTINGS.availableShuffleEnabled),
+    availableShuffleSeed: normalizeText(src.availableShuffleSeed, 200),
     labelScaleMode: String(src.labelScaleMode || "").trim().toLowerCase() === "normalized" ? "normalized" : "rising",
   };
+}
+
+function stableShuffleValue(value) {
+  const text = String(value || "");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
 function normalizePreparedNext(input = {}) {
@@ -2396,6 +2410,29 @@ function buildAlgorithmOrder({ scenes = [], runs = [], settings = {}, catalog = 
 
   // Recent character weights voor diversity penalty
   const recentCharacterWeights = buildRecentCharacterWeights({ scenes: playableScenes, runs: normalizedRuns, settings: safeSettings });
+  const shuffleAvailableTies = !!(safeSettings.availableShuffleEnabled && safeSettings.availableShuffleSeed);
+  const availableShuffleTieBySceneId = new Map();
+  const availableShuffleTieForScene = (scene) => {
+    const sceneId = Number(scene && scene.id || scene && scene.sceneId || 0);
+    if (!sceneId) return 0;
+    if (!availableShuffleTieBySceneId.has(sceneId)) {
+      availableShuffleTieBySceneId.set(sceneId, stableShuffleValue(`${safeSettings.availableShuffleSeed}:${sceneId}`));
+    }
+    return Number(availableShuffleTieBySceneId.get(sceneId) || 0);
+  };
+  const compareAvailableScoreTie = (a, b, sceneGetter = (entry) => entry && entry.scene) => {
+    const byScore = Number(b && b.score || 0) - Number(a && a.score || 0);
+    if (byScore !== 0) return byScore;
+    const aScene = sceneGetter(a) || {};
+    const bScene = sceneGetter(b) || {};
+    if (shuffleAvailableTies) {
+      const byShuffle = availableShuffleTieForScene(aScene) - availableShuffleTieForScene(bScene);
+      if (byShuffle !== 0) return byShuffle;
+    }
+    const bySortOrder = Number(aScene.sortOrder || a && a.sortOrder || 0) - Number(bScene.sortOrder || b && b.sortOrder || 0);
+    if (bySortOrder !== 0) return bySortOrder;
+    return Number(aScene.id || a && a.sceneId || 0) - Number(bScene.id || b && b.sceneId || 0);
+  };
 
   let candidatesFrom;
   let selectionReason = "";
@@ -2446,7 +2483,7 @@ function buildAlgorithmOrder({ scenes = [], runs = [], settings = {}, catalog = 
       const score = Number((matchDistance + recencyPenalty + repeatPenalty).toFixed(2));
       return { scene, score: -score, matchDistance, recencyPenalty, repeatPenalty,
         reason: `Labelmatch: ${matchDistance} · ${selectionReason}`, played: played.has(scene.id) };
-    }).sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+    }).sort(compareAvailableScoreTie);
 
     upcoming = labelRanked.map((entry) => {
       const block = contextBlockForScene(entry.scene);
@@ -2457,7 +2494,7 @@ function buildAlgorithmOrder({ scenes = [], runs = [], settings = {}, catalog = 
         : buildEntry(entry.scene, { score: baseScore, matchDistance: entry.matchDistance,
             scoreBreakdown: { matchDistance: entry.matchDistance, recencyPenalty: entry.recencyPenalty, repeatPenalty: entry.repeatPenalty, finalScore: entry.score },
             reason: optionalPathReason(entry.scene, entry.reason), played: entry.played });
-    }).sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+    }).sort((a, b) => compareAvailableScoreTie(a, b, (entry) => entry && (entry.scene || playableById.get(Number(entry.sceneId || 0)))));
     next = upcoming.find((entry) => !entry.blocked) || null;
   } else {
     // Na 3 scenes: volledig humorprofiel
@@ -2496,11 +2533,7 @@ function buildAlgorithmOrder({ scenes = [], runs = [], settings = {}, catalog = 
           : `Labelmatch afstand: ${matchDistance}`,
         played: played.has(scene.id),
       };
-    }).sort((a, b) => {
-      const byScore = Number(b.score || 0) - Number(a.score || 0);
-      if (byScore !== 0) return byScore;
-      return Number(a.scene.sortOrder || 0) - Number(b.scene.sortOrder || 0);
-    });
+    }).sort(compareAvailableScoreTie);
 
     const contextAwareEntries = labelRanked.map((entry) => {
       const block = contextBlockForScene(entry.scene);
@@ -2523,11 +2556,7 @@ function buildAlgorithmOrder({ scenes = [], runs = [], settings = {}, catalog = 
         reason: optionalPathReason(entry.scene, entry.reason),
         played: entry.played,
       });
-    }).sort((a, b) => {
-      const byScore = Number(b.score || 0) - Number(a.score || 0);
-      if (byScore !== 0) return byScore;
-      return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
-    });
+    }).sort((a, b) => compareAvailableScoreTie(a, b, (entry) => entry && (entry.scene || playableById.get(Number(entry.sceneId || 0)))));
     const firstBlockedEntry = labelRanked.find((entry) => !isContextReady(entry.scene)) || null;
     let contextEntry = null;
     if (firstBlockedEntry) {

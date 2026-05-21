@@ -673,6 +673,7 @@
         let operatorOscStatus = null;
         let operatorActiveSceneTimer = null;
         let operatorLastActiveSceneKey = "";
+        let operatorAlgorithmSceneContext = { sceneId: 0, characterIds: [], characterNames: [] };
         let operatorStageWs = null;
         let operatorStageReconnectTimer = null;
         let operatorStageReconnectDelayMs = 500;
@@ -1107,14 +1108,27 @@
         }
 
         function applyOperatorActiveScene(data) {
+          if (data && data.playing && data.ui) {
+            applyOperatorAlgorithmSceneUi(data, "actieve scene");
+            return;
+          }
           if (data && data.playing) {
-            setOperatorAlgorithmLinkStatus("Algoritme-link: scene speelt; operator blijft op de klaargezette scene.");
+            operatorAlgorithmSceneContext = {
+              sceneId: Number(data.run && data.run.sceneId || 0),
+              characterIds: [],
+              characterNames: [],
+            };
+            setOperatorAlgorithmLinkStatus("Algoritme-link: scene speelt; resolved cast niet ontvangen.");
             return;
           }
           if (!data || !data.active) {
             setOperatorAlgorithmLinkStatus("Algoritme-link: geen volgende scene klaargezet.");
             return;
           }
+          applyOperatorAlgorithmSceneUi(data, "volgende scene");
+        }
+
+        function applyOperatorAlgorithmSceneUi(data, label) {
           const ui = data.ui || {};
           const scene = data.scene || {};
           const situationId = String(ui.situationSlug || scene.id || "");
@@ -1134,8 +1148,13 @@
             $("operatorEnvironment").value = String(ui.environmentSlug);
             updateOperatorEnvironmentPreview();
           }
-          setOperatorAlgorithmLinkStatus(`Algoritme-link: volgende scene "${ui.situationName || scene.title || situationId}" ingevuld.`);
-          operatorLog(`algoritme-link → volgende scene: ${ui.situationName || scene.title || situationId}`);
+          operatorAlgorithmSceneContext = {
+            sceneId: Number(situationId || 0),
+            characterIds: Array.isArray(ui.characterSlugs) ? ui.characterSlugs.map((id) => String(id)) : [],
+            characterNames: Array.isArray(ui.characterNames) ? ui.characterNames.map((name) => String(name)) : [],
+          };
+          setOperatorAlgorithmLinkStatus(`Algoritme-link: ${label} "${ui.situationName || scene.title || situationId}" ingevuld.`);
+          operatorLog(`algoritme-link → ${label}: ${ui.situationName || scene.title || situationId}`);
         }
 
         async function pollOperatorActiveScene() {
@@ -1164,6 +1183,13 @@
             .filter(Boolean);
         }
 
+        function operatorAlgorithmSceneId() {
+          const contextId = Number(operatorAlgorithmSceneContext && operatorAlgorithmSceneContext.sceneId || 0);
+          if (Number.isFinite(contextId) && contextId > 0) return contextId;
+          const selectedId = Number(operatorSelectedSituation && operatorSelectedSituation.id || $("operatorSituation").value || 0);
+          return Number.isFinite(selectedId) && selectedId > 0 ? selectedId : 0;
+        }
+
         function compactOperatorPrompt(text) {
           return String(text || "")
             .split("\n")
@@ -1180,14 +1206,21 @@
         }
 
         function buildOperatorScenePrompt() {
-          if (operatorSelectedSituation && operatorSelectedSituation.prompt) return operatorSelectedSituation.prompt;
           const settings = operatorDbIndex.promptSettings || {};
           const characters = operatorSelectedCharacterObjects();
           const environment = (operatorDbIndex.omgevingen || []).find((item) => String(item.id) === String($("operatorEnvironment").value || "")) || null;
           const situationName = operatorSelectedSituation ? operatorSelectedSituation.naam : "Nieuwe scene";
-          const scenePrompt = operatorSelectedSituation
+          const rawScenePrompt = operatorSelectedSituation
             ? String(operatorSelectedSituation.promptOverride || operatorSelectedSituation.beschrijving || "").trim()
             : "Schrijf een scene.";
+          const scenePrompt = fillOperatorTemplate(rawScenePrompt, {
+            personage1: characters[0] ? characters[0].naam : "",
+            personage2: characters[1] ? characters[1].naam : "",
+            personage3: characters[2] ? characters[2].naam : "",
+            character1: characters[0] ? characters[0].naam : "",
+            character2: characters[1] ? characters[1].naam : "",
+            character3: characters[2] ? characters[2].naam : "",
+          });
           const characterLines = characters.length
             ? characters.map((item, index) => `Personage ${index + 1}: ${item.naam} ${item.beschrijving || ""}`.trim()).join("\n")
             : "Geen personages.";
@@ -1566,7 +1599,7 @@
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            buffer += decoder.decode(value, { stream: true });
+            buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
             let idx;
             while ((idx = buffer.indexOf("\n\n")) >= 0) {
               const raw = buffer.slice(0, idx);
@@ -1575,6 +1608,11 @@
               if (!dataLine) continue;
               onData(JSON.parse(dataLine.slice(6)));
             }
+          }
+          const tail = buffer.trim();
+          if (tail) {
+            const dataLine = tail.split("\n").find((line) => line.startsWith("data: "));
+            if (dataLine) onData(JSON.parse(dataLine.slice(6)));
           }
         }
 
@@ -1593,6 +1631,8 @@
               provider: selectedOperatorProvider(),
               model: selectedOperatorModel(),
               vectorStoreId: selectedOpenAiVectorStoreId(),
+              source: "api_playground",
+              algorithmSceneId: operatorAlgorithmSceneId(),
             });
             return;
           }
@@ -1614,6 +1654,8 @@
                 provider: selectedOperatorProvider(),
                 model: selectedOperatorModel(),
                 vectorStoreId: selectedOpenAiVectorStoreId(),
+                source: "api_playground",
+                algorithmSceneId: operatorAlgorithmSceneId(),
               }),
             });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);

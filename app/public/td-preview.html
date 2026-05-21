@@ -307,6 +307,98 @@
         overflow-wrap: anywhere;
       }
 
+      .health-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+
+      .health-count {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: var(--panel);
+      }
+
+      .health-count strong {
+        display: block;
+        margin-bottom: 3px;
+        font-size: 22px;
+        line-height: 1;
+      }
+
+      .health-count span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .health-card {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        overflow: hidden;
+      }
+
+      .health-card .card-head {
+        background: rgba(255, 255, 255, 0.025);
+      }
+
+      .health-list {
+        display: grid;
+      }
+
+      .health-row {
+        display: grid;
+        grid-template-columns: 12px minmax(120px, 1fr) minmax(80px, 0.7fr);
+        gap: 10px;
+        align-items: start;
+        padding: 9px 12px;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .health-row:first-child {
+        border-top: 0;
+      }
+
+      .health-dot {
+        width: 9px;
+        height: 9px;
+        margin-top: 4px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+
+      .health-row.ok .health-dot { background: var(--ok); }
+      .health-row.warn .health-dot { background: var(--warn); }
+      .health-row.bad .health-dot { background: var(--bad); }
+
+      .health-label {
+        min-width: 0;
+      }
+
+      .health-label strong {
+        display: block;
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+
+      .health-label span {
+        display: block;
+        margin-top: 2px;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+
+      .health-value {
+        color: var(--soft);
+        text-align: right;
+        overflow-wrap: anywhere;
+      }
+
       .error {
         display: none;
         margin: 0 0 14px;
@@ -341,6 +433,15 @@
         .grid {
           grid-template-columns: 1fr;
         }
+
+        .health-row {
+          grid-template-columns: 12px minmax(0, 1fr);
+        }
+
+        .health-value {
+          grid-column: 2;
+          text-align: left;
+        }
       }
     </style>
   </head>
@@ -360,6 +461,7 @@
       <nav class="tabs" aria-label="Preview tabs">
         <button class="tab" type="button" id="webTab" aria-selected="true" aria-controls="webPanel">Web Stages</button>
         <button class="tab" type="button" id="hardwareTab" aria-selected="false" aria-controls="hardwarePanel">Hardware Stages</button>
+        <button class="tab" type="button" id="healthTab" aria-selected="false" aria-controls="healthPanel">Health</button>
       </nav>
 
       <p id="errorBox" class="error"></p>
@@ -370,6 +472,11 @@
 
       <section id="hardwarePanel" class="panel" aria-labelledby="hardwareTab">
         <div id="hardwareGrid" class="grid"></div>
+      </section>
+
+      <section id="healthPanel" class="panel" aria-labelledby="healthTab">
+        <div id="healthSummary" class="health-summary"></div>
+        <div id="healthGrid" class="grid"></div>
       </section>
     </main>
 
@@ -388,17 +495,22 @@
           ],
           sources: [],
           frames: new Map(),
+          health: null,
         };
 
         const webGrid = document.getElementById("webGrid");
         const hardwareGrid = document.getElementById("hardwareGrid");
+        const healthGrid = document.getElementById("healthGrid");
+        const healthSummary = document.getElementById("healthSummary");
         const apiStatus = document.getElementById("apiStatus");
         const clockStatus = document.getElementById("clockStatus");
         const errorBox = document.getElementById("errorBox");
         const webTab = document.getElementById("webTab");
         const hardwareTab = document.getElementById("hardwareTab");
+        const healthTab = document.getElementById("healthTab");
         const webPanel = document.getElementById("webPanel");
         const hardwarePanel = document.getElementById("hardwarePanel");
+        const healthPanel = document.getElementById("healthPanel");
 
         function tokenHeaders() {
           const token = String(localStorage.getItem(TOKEN_KEY) || "").trim();
@@ -423,12 +535,23 @@
           return `${(ms / 1000).toFixed(1)}s`;
         }
 
+        function statusLabel(status) {
+          if (status === "bad") return "error";
+          if (status === "warn") return "warning";
+          if (status === "ok") return "ok";
+          return "unknown";
+        }
+
         function activateTab(name) {
           const isWeb = name === "web";
+          const isHardware = name === "hardware";
+          const isHealth = name === "health";
           webTab.setAttribute("aria-selected", isWeb ? "true" : "false");
-          hardwareTab.setAttribute("aria-selected", isWeb ? "false" : "true");
+          hardwareTab.setAttribute("aria-selected", isHardware ? "true" : "false");
+          healthTab.setAttribute("aria-selected", isHealth ? "true" : "false");
           webPanel.classList.toggle("active", isWeb);
-          hardwarePanel.classList.toggle("active", !isWeb);
+          hardwarePanel.classList.toggle("active", isHardware);
+          healthPanel.classList.toggle("active", isHealth);
         }
 
         function renderWebStages() {
@@ -513,6 +636,103 @@
           }
         }
 
+        function renderHealth() {
+          const data = state.health;
+          if (!data) {
+            healthSummary.innerHTML = "";
+            healthGrid.innerHTML = "";
+            return;
+          }
+          const counts = data.counts || {};
+          const summaryItems = [
+            ["Status", statusLabel(data.status), data.cached ? "cache" : "live"],
+            ["OK", counts.ok || 0, "checks groen"],
+            ["Warnings", counts.warn || 0, "aandacht nodig"],
+            ["Errors", counts.bad || 0, "actie nodig"],
+            ["Unknown", counts.unknown || 0, "niet gemeten"],
+          ];
+          healthSummary.innerHTML = "";
+          for (const [label, value, detail] of summaryItems) {
+            const box = document.createElement("div");
+            box.className = "health-count";
+            const strong = document.createElement("strong");
+            strong.textContent = value;
+            const span = document.createElement("span");
+            span.textContent = label === "Status" && data.currentEnvironment
+              ? `${label} - ${data.currentEnvironment}`
+              : `${label} - ${detail}`;
+            box.append(strong, span);
+            healthSummary.appendChild(box);
+          }
+
+          healthGrid.innerHTML = "";
+          for (const group of data.groups || []) {
+            const card = document.createElement("article");
+            const badgeClass = group.status === "ok" ? "good" : group.status === "bad" ? "bad" : group.status === "warn" ? "warn" : "";
+            card.className = "health-card";
+            card.innerHTML = `
+              <div class="card-head">
+                <div class="card-title">
+                  <strong></strong>
+                  <span></span>
+                </div>
+                <span class="badge ${badgeClass}"></span>
+              </div>
+              <div class="health-list"></div>
+            `;
+            card.querySelector("strong").textContent = group.label || group.id;
+            card.querySelector(".card-title span").textContent = `${(group.items || []).length} checks`;
+            card.querySelector(".badge").textContent = statusLabel(group.status);
+            const list = card.querySelector(".health-list");
+            for (const item of group.items || []) {
+              const row = document.createElement("div");
+              row.className = `health-row ${item.status || "unknown"}`;
+              const dot = document.createElement("span");
+              dot.className = "health-dot";
+              const label = document.createElement("div");
+              label.className = "health-label";
+              const strong = document.createElement("strong");
+              strong.textContent = item.label || item.id;
+              const detail = document.createElement("span");
+              detail.textContent = [item.detail, item.path].filter(Boolean).join(" - ");
+              label.append(strong, detail);
+              const value = document.createElement("div");
+              value.className = "health-value";
+              value.textContent = item.value || statusLabel(item.status);
+              row.append(dot, label, value);
+              list.appendChild(row);
+            }
+            healthGrid.appendChild(card);
+          }
+        }
+
+        async function refreshHealth() {
+          try {
+            const response = await fetch("/admin/td-preview/health", {
+              headers: Object.assign({ accept: "application/json" }, tokenHeaders()),
+              cache: "no-store",
+            });
+            if (!response.ok) throw new Error(`health ${response.status}`);
+            const data = await response.json();
+            if (!data || !data.ok) throw new Error("health invalid");
+            state.health = data;
+            renderHealth();
+          } catch (err) {
+            state.health = {
+              ok: true,
+              status: "bad",
+              counts: { ok: 0, warn: 0, bad: 1, unknown: 0 },
+              groups: [{
+                id: "health",
+                label: "Health API",
+                status: "bad",
+                items: [{ id: "health_api", label: "Health API", status: "bad", value: "fout", detail: err.message || String(err) }],
+              }],
+            };
+            renderHealth();
+          }
+        }
+
         async function refreshState() {
           try {
             const response = await fetch("/admin/td-preview/state", {
@@ -538,9 +758,12 @@
 
         webTab.addEventListener("click", () => activateTab("web"));
         hardwareTab.addEventListener("click", () => activateTab("hardware"));
+        healthTab.addEventListener("click", () => activateTab("health"));
         renderWebStages();
         refreshState();
+        refreshHealth();
         setInterval(refreshState, 1500);
+        setInterval(refreshHealth, 2500);
       })();
     </script>
   </body>

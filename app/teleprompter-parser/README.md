@@ -36,6 +36,12 @@ Output:
 {
   "version": 1,
   "title": "Scene titel",
+  "environment": {
+    "id": 7,
+    "name": "Supermarkt",
+    "description": "Is een supermarkt.",
+    "imageUrl": "/api/teleprompter-parser/environment-assets/file/Supermarkt.jpg"
+  },
   "characters": [
     { "id": "character_1", "label": "PERSONAGE 1", "color": "#4cc9f0" }
   ],
@@ -85,4 +91,4 @@ De Teleprompt Stage is de cue-master. Bij navigatie post hij de actieve kaart-in
 
 Gebruik `/teleprompter-parser/live-captions?preview=1` voor een browser-preview met checkerboardachtergrond. Gebruik `/teleprompter-parser/live-captions?debug=1` om de bron te controleren met cue-status.
 
-De parserpagina bevat live-caption styling voor tekstgrootte, verticale positie, breedte en zwarte rand. Die instellingen worden in-memory gedeeld via `/api/teleprompter-parser/current` en direct toegepast op de overlay.
+De parserpagina bevat live-caption styling voor tekstgrootte, verticale positie, breedte en zwarte rand. Die instellingen worden opgeslagen in `app/data/teleprompter-caption-style.json`, gedeeld via `/api/teleprompter-parser/current` en direct toegepast op de overlay.

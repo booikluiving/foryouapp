@@ -148,6 +148,33 @@ Als het script op de Mac Studio op een andere plek staat, zoek eerst:
 ssh foryou-studio "find /Users/for_you/ForYou -name open-current-touchdesigner.sh -print"
 ```
 
+## TD Preview Health-tab
+
+De adminpreview heeft naast `Web Stages` en `Hardware Stages` ook een `Health`-tab:
+
+```text
+http://127.0.0.1:3310/admin/td-preview
+```
+
+De tab leest dezelfde data via:
+
+```text
+http://127.0.0.1:3310/admin/td-preview/health
+```
+
+Deze healthcheck is bedoeld als snelle operator/dev-diagnose. Hij wijzigt geen database en schrijft niet naar TouchDesigner. De checks lezen:
+
+- app/OSC-status en laatste algoritme-send;
+- TD bridge/timeline via `http://127.0.0.1:9988`;
+- huidige omgeving plus background/audio/fx assets;
+- alle relevante web stages;
+- camera 1, 2 en 3 plus previewframes;
+- teleprompter 1, 2 en 3 plus live captions;
+- SQ5 geluidsmixer via `http://127.0.0.1:3105/api/status`;
+- TD audio nodes en video outputs.
+
+Als de pagina rood is, betekent dat niet automatisch dat de show kapot is. Rode checks zijn eerst aanwijzingen: bijvoorbeeld een camera die niet capturet, previewframes die na een serverrestart nog niet opnieuw binnenkomen, of een omgeving zonder gekoppelde audio/fx.
+
 ## TouchDesigner analyse
 
 Voor analyse van `.toe` files:
@@ -282,6 +309,15 @@ De bestaande media-assets en basename-conventie zijn waardevol. De oude API/Drop
 
 De Mac Studio repo staat op `main` met de live showserver op poort `3310`.
 
+Actief TD-light showbestand vanaf 2026-05-20:
+
+```text
+/Users/for_you/Library/CloudStorage/Dropbox/For You/Voorstelling/show/td-light/For You TD Light POC from v3.38.toe
+```
+
+`v3.37` blijft alleen nog referentie/backup; nieuwe sessies, Stream Deck-openers
+en showwerk gebruiken `v3.38`.
+
 Bewezen gezond in deze sessie:
 
 ```text
@@ -390,11 +426,12 @@ Verifieer:
 ### Fase 4: TD-light kopie maken
 
 Doel: veilige kopie van het bewezen TD-bestand, nog geen grote verbouwing.
+Deze fase is inmiddels afgerond; werk vanaf nu door in de actieve `v3.38` POC.
 
 Startprompt:
 
 ```text
-Maak een veilige TD-light proof-of-concept vanuit de huidige v3.37 TouchDesigner file.
+Maak een veilige TD-light proof-of-concept vanuit de huidige TouchDesigner file.
 
 Werk op de Mac Studio zelf.
 Wijzig het originele bestand niet.

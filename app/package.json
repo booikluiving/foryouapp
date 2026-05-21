@@ -21,6 +21,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "busboy": "^1.6.0",
     "cytoscape": "^3.33.3",
     "express": "^5.2.1",
     "osc": "^2.4.5",

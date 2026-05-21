@@ -5,6 +5,7 @@ const fs = require("fs");
 const os = require("os");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
+const Busboy = require("busboy");
 const WebSocket = require("ws");
 const { Server: SocketIOServer } = require("socket.io");
 const { EventEmitter } = require("events");
@@ -83,6 +84,7 @@ const LOCAL_API_PLAYGROUND_STAGE_HTML_PATH = path.join(__dirname, "public", "api
 const LOCAL_TD_PREVIEW_HTML_PATH = path.join(__dirname, "public", "td-preview.html");
 const LOCAL_OPENAI_CATALOG_SYNC_PATH = path.join(__dirname, "lib", "openai-catalog-sync.js");
 const LOCAL_OPERATOR_STAGE_STYLE_PATH = path.join(__dirname, "config", "operator-stage-style.json");
+const CATALOG_MIRROR_SYNC_SCRIPT_PATH = path.join(__dirname, "scripts", "sync-catalog-mirrors-once.js");
 let createOpenAiCatalogSync = null;
 if (fs.existsSync(LOCAL_OPENAI_CATALOG_SYNC_PATH)) {
   try {
@@ -94,6 +96,7 @@ if (fs.existsSync(LOCAL_OPENAI_CATALOG_SYNC_PATH)) {
 
 let PORT = Number.parseInt(process.env.PORT || "3010", 10);
 if (!Number.isFinite(PORT) || PORT < 1 || PORT > 65535) PORT = 3010;
+const SERVER_BIND_HOST = normalizeServerBindHost(process.env.FORYOU_BIND_HOST || process.env.BIND_HOST || "0.0.0.0");
 const MODERATION_WORDS_PATH = path.join(__dirname, "moderation", "bad-words.txt");
 const MODERATION_JSON_PATH = path.join(__dirname, "moderation", "blocked-words.json");
 const MODERATION_TEXT_DEFAULT = "# Een woord per regel. Lege regels en regels met # worden genegeerd.\n";
@@ -162,6 +165,37 @@ const DEBUG_LOG_TRIM_TO_BYTES = clampInt(
 );
 const SCRIPT_OUTPUT_PATH = path.join(__dirname, "data", "script-output", "current-scene.txt");
 const ENVIRONMENT_OUTPUT_PATH = path.join(__dirname, "data", "script-output", "current-environment.txt");
+const ENVIRONMENT_ASSET_MEDIA_DIR = process.env.ENVIRONMENT_ASSET_MEDIA_DIR
+  || path.join(os.homedir(), "Library", "CloudStorage", "Dropbox", "For You", "Voorstelling", "Media", "Achtergrondjes");
+const ENVIRONMENT_ASSET_BACKUP_DIRNAME = "_asset-backups";
+const ENVIRONMENT_ASSET_UPLOAD_TMP_DIRNAME = "_asset-upload-tmp";
+const ENVIRONMENT_ASSET_TYPES = Object.freeze({
+  background: {
+    label: "Achtergrond",
+    extensions: Object.freeze(["jpg", "jpeg", "png", "webp"]),
+    maxBytes: 30 * 1024 * 1024,
+  },
+  audio: {
+    label: "Audio",
+    extensions: Object.freeze(["mp3", "wav", "aif", "aiff", "m4a", "aac", "flac"]),
+    maxBytes: 150 * 1024 * 1024,
+  },
+  fx: {
+    label: "FX",
+    extensions: Object.freeze(["mp4", "mov", "m4v", "webm", "jpg", "jpeg", "png", "webp"]),
+    maxBytes: 300 * 1024 * 1024,
+  },
+  prompt: {
+    label: "Prompt",
+    extensions: Object.freeze(["txt"]),
+    maxBytes: 512 * 1024,
+  },
+});
+const ENVIRONMENT_ASSET_FX_IMAGE_EXTENSIONS = Object.freeze(["jpg", "jpeg", "png", "webp"]);
+const ENVIRONMENT_ASSET_FX_VIDEO_EXTENSIONS = Object.freeze(["mp4", "mov", "m4v", "webm"]);
+const ENVIRONMENT_ASSET_UPLOAD_MAX_BYTES = Math.max(
+  ...Object.values(ENVIRONMENT_ASSET_TYPES).map((type) => type.maxBytes)
+);
 const SIM_INTERNAL_ACCESS_KEY = crypto.randomBytes(16).toString("hex");
 const SERVER_INSTANCE_ID = `${Date.now()}-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
 const BUILD_VERSION_PREFIX = "v0.0";
@@ -175,6 +209,7 @@ const BUILD_VERSION_INPUT_FILES = [
   path.join(__dirname, "public", "index.html"),
   path.join(__dirname, "public", "admin.html"),
   path.join(__dirname, "public", "algoritme.html"),
+  path.join(__dirname, "public", "environment-assets.html"),
   path.join(__dirname, "public", "paden.html"),
   path.join(__dirname, "public", "paden-editor.js"),
   path.join(__dirname, "public", "paden-graph.js"),
@@ -241,6 +276,7 @@ const ALGORITHM_DIVERSITY_WEIGHT_SETTING_KEY = "algorithm_variation_diversity_we
 const ALGORITHM_EXPLORATION_WEIGHT_SETTING_KEY = "algorithm_variation_exploration_weight";
 const ALGORITHM_RETRY_WEIGHT_SETTING_KEY = "algorithm_variation_retry_weight";
 const ALGORITHM_SCENE_REPEAT_PENALTY_SETTING_KEY = "algorithm_variation_scene_repeat_penalty";
+const ALGORITHM_AVAILABLE_SHUFFLE_SETTING_KEY = "algorithm_variation_available_shuffle_enabled";
 const ALGORITHM_RUN_STARTED_SETTING_PREFIX = "algorithm_run_started_session_";
 const ALGORITHM_PREPARED_NEXT_SETTING_PREFIX = "algorithm_prepared_next_session_";
 const ALGORITHM_LOCKED_QUEUE_SETTING_PREFIX = "algorithm_locked_queue_session_";
@@ -1298,6 +1334,55 @@ const DEFAULT_ALGORITHM_CURRENT_SCENE_OSC_PORT = clampInt(
   65535,
   8005
 );
+const TOUCHDESIGNER_LOCAL_OSC_HOST = String(
+  process.env.FORYOU_TD_LOCAL_OSC_HOST || "127.0.0.1"
+).trim() || "127.0.0.1";
+const TOUCHDESIGNER_ENV_REFRESH_OSC_PORT = clampInt(
+  process.env.FORYOU_TD_ENV_REFRESH_OSC_PORT || "8004",
+  1,
+  65535,
+  8004
+);
+const TOUCHDESIGNER_STAGE_OSC_PORT = clampInt(
+  process.env.FORYOU_TD_STAGE_OSC_PORT || "8008",
+  1,
+  65535,
+  8008
+);
+const TOUCHDESIGNER_ENV_REFRESH_OSC_ADDRESS = String(
+  process.env.FORYOU_TD_ENV_REFRESH_OSC_ADDRESS || "/v1"
+).trim() || "/v1";
+const TOUCHDESIGNER_STAGE_OSC_ADDRESSES = Object.freeze({
+  inloop: "/osc/osc2",
+  next: "/osc/osc3",
+  scene: "/osc/osc6",
+});
+const TOUCHDESIGNER_CAMERA_OSC_ADDRESSES = Object.freeze({
+  1: "/osc/osc25",
+  2: "/osc/osc26",
+  3: "/osc/osc27",
+});
+const TOUCHDESIGNER_OSC_PULSE_RESET_MS = clampInt(
+  process.env.FORYOU_TD_OSC_PULSE_RESET_MS || "80",
+  20,
+  1000,
+  80
+);
+const TOUCHDESIGNER_STAGE_OSC_PULSE_RESET_MS = clampInt(
+  process.env.FORYOU_TD_STAGE_OSC_PULSE_RESET_MS || "220",
+  20,
+  1000,
+  220
+);
+const SQ5_CONTROL_BASE_URL = String(
+  process.env.FORYOU_SQ5_CONTROL_BASE_URL || "http://127.0.0.1:3105"
+).replace(/\/+$/, "");
+const SQ5_SCENE_MICS_TIMEOUT_MS = clampInt(
+  process.env.FORYOU_SQ5_SCENE_MICS_TIMEOUT_MS || "1200",
+  100,
+  5000,
+  1200
+);
 const OSC_CONTROL_FEEDBACK_DATA_MAX_CHARS = clampInt(
   process.env.OSC_CONTROL_FEEDBACK_DATA_MAX_CHARS || "4000",
   120,
@@ -1407,6 +1492,21 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: "6mb" }));
+app.use((err, _req, res, next) => {
+  if (!err) {
+    next();
+    return;
+  }
+  if (err.type === "entity.parse.failed" || err instanceof SyntaxError) {
+    res.status(400).json({ ok: false, error: "invalid_json" });
+    return;
+  }
+  if (err.type === "entity.too.large") {
+    res.status(413).json({ ok: false, error: "request_too_large" });
+    return;
+  }
+  next(err);
+});
 mountUniverse(app, {
   express,
   databasePath: DB_PATH,
@@ -1415,6 +1515,36 @@ mountUniverse(app, {
 const teleprompterParser = mountTeleprompterParser(app, {
   express,
   requireAdmin,
+  getShowState: () => {
+    const sessionActive = isCurrentSessionActive();
+    const runStarted = sessionActive && getAlgorithmRunStartedForCurrentSession();
+    return {
+      active: !!(sessionActive && runStarted),
+      sessionActive,
+      runStarted,
+      sessionId: Number(currentSession && currentSession.id || 0),
+      name: String(currentSession && currentSession.name || ""),
+      endedAt: currentSession && currentSession.endedAt ? String(currentSession.endedAt) : null,
+    };
+  },
+  endSceneFromStage: () => withAlgorithmRunActionGuard("teleprompter_end_scene", null, () => {
+    const run = endActiveAlgorithmSceneRun("teleprompter_end_card");
+    const sq5SceneMics = queueSq5SceneMics(false, "teleprompter_end_scene");
+    fillAlgorithmLockedQueueForCurrentSession("teleprompter_end_scene", algorithmLockedQueueTargetForRuns(getAlgorithmRunsForCurrentSession(), 2));
+    const oscSend = sendAlgorithmUpNextOsc("teleprompter_end_scene");
+    const tdStagePulse = sendTouchDesignerStagePulse("next", "teleprompter_end_scene");
+    const preparedScene = prepareTeleprompterFromAlgorithmPayload(oscSend.payload || {});
+    return {
+      run,
+      sq5SceneMics,
+      oscSend: oscSend && oscSend.last ? oscSend.last : oscSend,
+      tdStagePulse,
+      preparedScene,
+      state: getAlgorithmState(),
+    };
+  }),
+  onAutoCameraSwitch: (event) => sendTouchDesignerCameraPulse(event && event.slot, "teleprompter_auto_camera"),
+  getAutoCameraScene: () => buildTeleprompterAutoCameraSceneFromActiveRun(),
 });
 app.get("/verhaalvisualisatie", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "verhaalvisualisatie.html"));
@@ -1764,6 +1894,17 @@ function parseBooleanLike(value, fallback = false) {
   if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
   if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
   return fallback;
+}
+
+function normalizeServerBindHost(value) {
+  const host = String(value || "").trim();
+  if (!host || /\s/.test(host) || host.length > 120) return "0.0.0.0";
+  return host;
+}
+
+function isLoopbackServerBindHost(host) {
+  const normalized = String(host || "").trim().toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
 }
 
 function normalizeSimText(input) {
@@ -5366,6 +5507,392 @@ function parseAlgorithmEnvironmentRow(row) {
   });
 }
 
+function normalizeEnvironmentAssetType(value) {
+  const type = String(value || "").trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(ENVIRONMENT_ASSET_TYPES, type) ? type : "";
+}
+
+function normalizeEnvironmentAssetExtension(filename) {
+  return path.extname(String(filename || "")).replace(/^\./, "").toLowerCase();
+}
+
+function isEnvironmentAssetHiddenName(filename) {
+  const name = String(filename || "");
+  return !name || name === ".DS_Store" || name.startsWith("._") || name.startsWith(".");
+}
+
+function environmentAssetBaseName(environment) {
+  const name = String(environment && environment.name || "").trim();
+  if (!name || /[\/\\\0:]/.test(name)) throw new Error("invalid_environment_name");
+  return name;
+}
+
+function environmentAssetFileUrl(filename, mtimeMs = 0) {
+  const suffix = Number.isFinite(mtimeMs) && mtimeMs > 0 ? `?v=${Math.round(mtimeMs)}` : "";
+  return `/admin/algorithm/environment-assets/file/${encodeURIComponent(filename)}${suffix}`;
+}
+
+function teleprompterEnvironmentAssetFileUrl(filename, mtimeMs = 0) {
+  const suffix = Number.isFinite(mtimeMs) && mtimeMs > 0 ? `?v=${Math.round(mtimeMs)}` : "";
+  return `/api/teleprompter-parser/environment-assets/file/${encodeURIComponent(filename)}${suffix}`;
+}
+
+function environmentAssetFileItem(filename) {
+  const absolutePath = path.join(ENVIRONMENT_ASSET_MEDIA_DIR, filename);
+  const stats = fs.statSync(absolutePath);
+  if (!stats.isFile()) return null;
+  const ext = normalizeEnvironmentAssetExtension(filename);
+  return {
+    filename,
+    ext,
+    size: stats.size,
+    updatedAt: stats.mtime.toISOString(),
+    url: environmentAssetFileUrl(filename, stats.mtimeMs),
+  };
+}
+
+function teleprompterEnvironmentPayload(environment) {
+  if (!environment || typeof environment !== "object") return null;
+  const payload = {
+    id: Number(environment.id || 0),
+    name: String(environment.name || ""),
+    description: String(environment.description || ""),
+    imageUrl: "",
+  };
+  if (!payload.name && !payload.description && !payload.id) return null;
+
+  try {
+    const assets = environmentAssetRow(environment, environmentAssetFilesByBase().byBase);
+    const background = assets && assets.assets && assets.assets.background && assets.assets.background.primary;
+    if (background && background.filename) {
+      payload.imageUrl = teleprompterEnvironmentAssetFileUrl(background.filename, Date.parse(background.updatedAt || ""));
+    }
+  } catch (err) {
+    writeDebug("teleprompter_environment_asset_failed", {
+      environmentId: payload.id,
+      environmentName: payload.name,
+      message: err && err.message ? String(err.message) : "unknown",
+    });
+  }
+  return payload;
+}
+
+function environmentAssetFilesByBase() {
+  const byBase = new Map();
+  let filenames = [];
+  try {
+    filenames = fs.readdirSync(ENVIRONMENT_ASSET_MEDIA_DIR);
+  } catch (err) {
+    return { byBase, error: err && err.message ? err.message : "asset_media_dir_unavailable" };
+  }
+  for (const filename of filenames) {
+    if (isEnvironmentAssetHiddenName(filename)) continue;
+    const absolutePath = path.join(ENVIRONMENT_ASSET_MEDIA_DIR, filename);
+    let stats = null;
+    try {
+      stats = fs.statSync(absolutePath);
+    } catch (_err) {
+      continue;
+    }
+    if (!stats.isFile()) continue;
+    const ext = normalizeEnvironmentAssetExtension(filename);
+    const base = path.basename(filename, path.extname(filename));
+    if (!base || !ext) continue;
+    const item = {
+      filename,
+      ext,
+      size: stats.size,
+      updatedAt: stats.mtime.toISOString(),
+      url: environmentAssetFileUrl(filename, stats.mtimeMs),
+    };
+    if (!byBase.has(base)) byBase.set(base, []);
+    byBase.get(base).push(item);
+  }
+  return { byBase, error: "" };
+}
+
+function environmentAssetBucket(items, type) {
+  const config = ENVIRONMENT_ASSET_TYPES[type];
+  const extensions = new Set(config.extensions);
+  const files = (items || [])
+    .filter((item) => extensions.has(item.ext))
+    .sort((a, b) => a.filename.localeCompare(b.filename, "nl"));
+  return {
+    present: files.length > 0,
+    files,
+    primary: files[0] || null,
+  };
+}
+
+function environmentAssetFxBucket(baseItems, fxItems) {
+  const videoExtensions = new Set(ENVIRONMENT_ASSET_FX_VIDEO_EXTENSIONS);
+  const imageExtensions = new Set(ENVIRONMENT_ASSET_FX_IMAGE_EXTENSIONS);
+  const files = [
+    ...(baseItems || []).filter((item) => videoExtensions.has(item.ext)),
+    ...(fxItems || []).filter((item) => imageExtensions.has(item.ext) || videoExtensions.has(item.ext)),
+  ].sort((a, b) => a.filename.localeCompare(b.filename, "nl"));
+  return {
+    present: files.length > 0,
+    files,
+    primary: files[0] || null,
+  };
+}
+
+function environmentAssetRow(environment, byBase) {
+  const baseName = environmentAssetBaseName(environment);
+  const items = byBase.get(baseName) || [];
+  const fxItems = byBase.get(`${baseName}.fx`) || [];
+  const assets = {
+    background: environmentAssetBucket(items, "background"),
+    audio: environmentAssetBucket(items, "audio"),
+    fx: environmentAssetFxBucket(items, fxItems),
+    prompt: environmentAssetBucket(items, "prompt"),
+  };
+  return {
+    id: Number(environment.id || 0),
+    name: String(environment.name || ""),
+    description: String(environment.description || ""),
+    isActive: !!environment.isActive,
+    archivedAt: environment.archivedAt || "",
+    status: environment.archivedAt ? "gearchiveerd" : environment.isActive ? "actief" : "inactief",
+    assets,
+    complete: !!(assets.background.present && assets.audio.present),
+  };
+}
+
+function getEnvironmentAssetsPayload() {
+  const environments = sql.getAlgorithmEnvironments.all()
+    .map(parseAlgorithmEnvironmentRow)
+    .filter(Boolean);
+  const assetFiles = environmentAssetFilesByBase();
+  const rows = environments.map((environment) => environmentAssetRow(environment, assetFiles.byBase));
+  const activeRows = rows.filter((row) => row.status === "actief");
+  return {
+    ok: true,
+    mediaDir: ENVIRONMENT_ASSET_MEDIA_DIR,
+    generatedAt: nowIso(),
+    mediaDirError: assetFiles.error || "",
+    counts: {
+      total: rows.length,
+      active: activeRows.length,
+      archivedOrInactive: rows.length - activeRows.length,
+      activeComplete: activeRows.filter((row) => row.complete).length,
+      activeMissingBackground: activeRows.filter((row) => !row.assets.background.present).length,
+      activeMissingAudio: activeRows.filter((row) => !row.assets.audio.present).length,
+      activeWithFx: activeRows.filter((row) => row.assets.fx.present).length,
+    },
+    environments: rows,
+  };
+}
+
+function environmentAssetFilePathFromRequest(filename) {
+  const safeName = String(filename || "").trim();
+  if (!safeName || isEnvironmentAssetHiddenName(safeName) || safeName.includes("/") || safeName.includes("\\")) {
+    throw new Error("asset_file_not_found");
+  }
+  const absolutePath = path.join(ENVIRONMENT_ASSET_MEDIA_DIR, safeName);
+  const resolvedRoot = path.resolve(ENVIRONMENT_ASSET_MEDIA_DIR);
+  const resolvedFile = path.resolve(absolutePath);
+  if (!resolvedFile.startsWith(resolvedRoot + path.sep)) throw new Error("asset_file_not_found");
+  if (!fs.existsSync(resolvedFile) || !fs.statSync(resolvedFile).isFile()) throw new Error("asset_file_not_found");
+  return resolvedFile;
+}
+
+function ensureEnvironmentAssetDir(dirPath) {
+  fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function environmentAssetBackupStamp() {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+function existingEnvironmentAssetFiles(baseName, assetType) {
+  const config = ENVIRONMENT_ASSET_TYPES[assetType];
+  const extensions = new Set(config.extensions);
+  const videoExtensions = new Set(ENVIRONMENT_ASSET_FX_VIDEO_EXTENSIONS);
+  const fxBaseName = `${baseName}.fx`;
+  let filenames = [];
+  try {
+    filenames = fs.readdirSync(ENVIRONMENT_ASSET_MEDIA_DIR);
+  } catch (_err) {
+    return [];
+  }
+  return filenames
+    .filter((filename) => {
+      if (isEnvironmentAssetHiddenName(filename)) return false;
+      const fileBaseName = path.basename(filename, path.extname(filename));
+      const extension = normalizeEnvironmentAssetExtension(filename);
+      if (assetType === "fx") {
+        return (fileBaseName === baseName && videoExtensions.has(extension))
+          || (fileBaseName === fxBaseName && extensions.has(extension));
+      }
+      if (fileBaseName !== baseName) return false;
+      return extensions.has(extension);
+    })
+    .map((filename) => path.join(ENVIRONMENT_ASSET_MEDIA_DIR, filename))
+    .filter((absolutePath) => {
+      try {
+        return fs.statSync(absolutePath).isFile();
+      } catch (_err) {
+        return false;
+      }
+    });
+}
+
+function backupExistingEnvironmentAssets(baseName, assetType) {
+  const existing = existingEnvironmentAssetFiles(baseName, assetType);
+  if (!existing.length) return [];
+  const backupDir = path.join(ENVIRONMENT_ASSET_MEDIA_DIR, ENVIRONMENT_ASSET_BACKUP_DIRNAME, environmentAssetBackupStamp());
+  ensureEnvironmentAssetDir(backupDir);
+  return existing.map((sourcePath) => {
+    const targetPath = path.join(backupDir, path.basename(sourcePath));
+    fs.renameSync(sourcePath, targetPath);
+    return {
+      from: path.basename(sourcePath),
+      to: path.relative(ENVIRONMENT_ASSET_MEDIA_DIR, targetPath),
+    };
+  });
+}
+
+function parseEnvironmentAssetUpload(req) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const fields = {};
+    const writeJobs = [];
+    let upload = null;
+    let tempPath = "";
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      if (tempPath) {
+        try { fs.unlinkSync(tempPath); } catch (_unlinkErr) {}
+      }
+      reject(err);
+    };
+
+    let busboy = null;
+    try {
+      busboy = Busboy({
+        headers: req.headers,
+        limits: {
+          fields: 12,
+          files: 1,
+          fileSize: ENVIRONMENT_ASSET_UPLOAD_MAX_BYTES,
+        },
+      });
+    } catch (_err) {
+      reject(new Error("invalid_upload"));
+      return;
+    }
+
+    busboy.on("field", (name, value) => {
+      fields[String(name || "")] = String(value || "").slice(0, 1000);
+    });
+
+    busboy.on("file", (name, file, info) => {
+      if (String(name || "") !== "asset") {
+        file.resume();
+        return;
+      }
+      if (upload || tempPath) {
+        file.resume();
+        fail(new Error("invalid_multiple_files"));
+        return;
+      }
+      const tempDir = path.join(ENVIRONMENT_ASSET_MEDIA_DIR, ENVIRONMENT_ASSET_UPLOAD_TMP_DIRNAME);
+      try {
+        ensureEnvironmentAssetDir(tempDir);
+        tempPath = path.join(tempDir, `${Date.now()}-${crypto.randomBytes(8).toString("hex")}.upload`);
+      } catch (_err) {
+        file.resume();
+        fail(new Error("invalid_asset_media_dir"));
+        return;
+      }
+      let size = 0;
+      let limitReached = false;
+      const writeStream = fs.createWriteStream(tempPath, { flags: "wx" });
+      const writeDone = new Promise((resolveWrite, rejectWrite) => {
+        file.on("data", (chunk) => {
+          size += chunk.length;
+        });
+        file.on("limit", () => {
+          limitReached = true;
+        });
+        file.on("error", rejectWrite);
+        writeStream.on("error", rejectWrite);
+        writeStream.on("finish", () => {
+          upload = {
+            tempPath,
+            size,
+            limitReached,
+            filename: String(info && info.filename || ""),
+            mimeType: String(info && info.mimeType || ""),
+          };
+          resolveWrite();
+        });
+      });
+      writeJobs.push(writeDone);
+      file.pipe(writeStream);
+    });
+
+    busboy.on("error", () => fail(new Error("invalid_upload")));
+    busboy.on("finish", async () => {
+      if (settled) return;
+      try {
+        await Promise.all(writeJobs);
+        if (!upload) throw new Error("file_required");
+        if (upload.limitReached) throw new Error("invalid_file_too_large");
+        settled = true;
+        resolve({ fields, upload });
+      } catch (err) {
+        fail(err);
+      }
+    });
+
+    req.pipe(busboy);
+  });
+}
+
+async function saveEnvironmentAssetUpload(req) {
+  const parsed = await parseEnvironmentAssetUpload(req);
+  let tempPath = parsed.upload.tempPath;
+  try {
+    const environmentId = Number.parseInt(String(parsed.fields.environmentId || ""), 10);
+    if (!Number.isInteger(environmentId) || environmentId <= 0) throw new Error("environment_required");
+    const assetType = normalizeEnvironmentAssetType(parsed.fields.assetType);
+    if (!assetType || assetType === "prompt") throw new Error("invalid_asset_type");
+    const config = ENVIRONMENT_ASSET_TYPES[assetType];
+    const extension = normalizeEnvironmentAssetExtension(parsed.upload.filename);
+    if (!extension || !config.extensions.includes(extension)) throw new Error("invalid_file_extension");
+    if (parsed.upload.size <= 0) throw new Error("invalid_empty_file");
+    if (parsed.upload.size > config.maxBytes) throw new Error("invalid_file_too_large");
+
+    const environment = parseAlgorithmEnvironmentRow(sql.getAlgorithmEnvironmentById.get(environmentId));
+    if (!environment) throw new Error("environment_not_found");
+    const baseName = environmentAssetBaseName(environment);
+    const targetBaseName = assetType === "fx" && ENVIRONMENT_ASSET_FX_IMAGE_EXTENSIONS.includes(extension)
+      ? `${baseName}.fx`
+      : baseName;
+    const targetName = `${targetBaseName}.${extension}`;
+    const targetPath = path.join(ENVIRONMENT_ASSET_MEDIA_DIR, targetName);
+    const backups = backupExistingEnvironmentAssets(baseName, assetType);
+    fs.renameSync(tempPath, targetPath);
+    tempPath = "";
+    return {
+      environmentId,
+      environmentName: environment.name,
+      assetType,
+      filename: targetName,
+      size: parsed.upload.size,
+      backups,
+    };
+  } finally {
+    if (tempPath) {
+      try { fs.unlinkSync(tempPath); } catch (_err) {}
+    }
+  }
+}
+
 function parseAlgorithmSceneRow(row) {
   if (!row) return null;
   return normalizeScene({
@@ -5479,6 +6006,7 @@ function getAlgorithmSettings() {
     explorationWeight: getSetting(ALGORITHM_EXPLORATION_WEIGHT_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.explorationWeight)),
     retryWeight: getSetting(ALGORITHM_RETRY_WEIGHT_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.retryWeight)),
     sceneRepeatPenalty: getSetting(ALGORITHM_SCENE_REPEAT_PENALTY_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.sceneRepeatPenalty)),
+    availableShuffleEnabled: getSetting(ALGORITHM_AVAILABLE_SHUFFLE_SETTING_KEY, String(DEFAULT_ALGORITHM_SETTINGS.availableShuffleEnabled)),
   });
 }
 
@@ -5501,6 +6029,7 @@ function saveAlgorithmSettings(patch = {}) {
   setSetting(ALGORITHM_EXPLORATION_WEIGHT_SETTING_KEY, String(next.explorationWeight));
   setSetting(ALGORITHM_RETRY_WEIGHT_SETTING_KEY, String(next.retryWeight));
   setSetting(ALGORITHM_SCENE_REPEAT_PENALTY_SETTING_KEY, String(next.sceneRepeatPenalty));
+  setSetting(ALGORITHM_AVAILABLE_SHUFFLE_SETTING_KEY, String(next.availableShuffleEnabled));
   return next;
 }
 
@@ -5725,6 +6254,19 @@ function algorithmRuntimeRandomSeed(sceneId, extra = "") {
   ].join(":");
 }
 
+function algorithmAvailableShuffleSeed(runs = getAlgorithmRunsForCurrentSession()) {
+  const orderedRuns = sortedAlgorithmRunsForQueue(runs);
+  const latestRun = orderedRuns[orderedRuns.length - 1] || null;
+  return [
+    Number(currentSession && currentSession.id || 0),
+    "available-shuffle",
+    Number(orderedRuns.length || 0),
+    Number(latestRun && latestRun.id || 0),
+    Number(latestRun && latestRun.sceneId || 0),
+    String(latestRun && latestRun.endedAt || latestRun && latestRun.startedAt || ""),
+  ].join(":");
+}
+
 function algorithmQueueRandomSeed(sceneId, position, source = "queue") {
   return [
     Number(currentSession && currentSession.id || 0),
@@ -5830,6 +6372,12 @@ function buildAlgorithmRecommendation(catalog = getAlgorithmCatalog(), runs = ge
 }
 
 function buildAlgorithmOrderForCurrentSession(catalog, runs, settings, options = {}) {
+  const orderSettings = normalizeAlgorithmSettings({
+    ...settings,
+    availableShuffleSeed: settings && settings.availableShuffleEnabled === false
+      ? ""
+      : algorithmAvailableShuffleSeed(runs),
+  });
   const lockedQueue = Object.prototype.hasOwnProperty.call(options || {}, "lockedQueue")
     ? options.lockedQueue
     : getAlgorithmLockedQueueForCurrentSession();
@@ -5839,7 +6387,7 @@ function buildAlgorithmOrderForCurrentSession(catalog, runs, settings, options =
   const order = buildAlgorithmOrder({
     scenes: catalog.scenes,
     runs,
-    settings,
+    settings: orderSettings,
     catalog,
     preparedNext,
     lockedQueue,
@@ -7270,7 +7818,8 @@ function beginAlgorithmRunWithUpNext(source = "start_run") {
   const run = beginAlgorithmRunForCurrentSession();
   initializeAlgorithmLockedQueueForCurrentSession(safeSource);
   const oscSend = sendAlgorithmUpNextOsc(safeSource);
-  return { run, oscSend };
+  const tdStagePulse = sendTouchDesignerStagePulse("next", safeSource);
+  return { run, oscSend, tdStagePulse };
 }
 
 function startAlgorithmSceneRun(sceneId, selectionSource = "manual") {
@@ -7633,6 +8182,97 @@ async function syncCatalogMirrorsAfterSave(reason = "catalog_save", options = {}
   return result;
 }
 
+let catalogMirrorSyncChildRunning = false;
+let catalogMirrorSyncPendingReason = "";
+let catalogMirrorSyncLast = null;
+
+function queueCatalogMirrorSyncAfterSave(reason = "catalog_save") {
+  const safeReason = String(reason || "catalog_save").slice(0, 80);
+  if (catalogMirrorSyncChildRunning) {
+    catalogMirrorSyncPendingReason = safeReason;
+    return {
+      ok: true,
+      queued: true,
+      running: true,
+      reason: safeReason,
+      last: catalogMirrorSyncLast,
+    };
+  }
+
+  catalogMirrorSyncChildRunning = true;
+  const startedAt = nowIso();
+  const child = spawn(process.execPath, [CATALOG_MIRROR_SYNC_SCRIPT_PATH], {
+    cwd: __dirname,
+    env: {
+      ...process.env,
+      FORYOU_CATALOG_MIRROR_REASON: safeReason,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  let childSettled = false;
+
+  function finishCatalogMirrorSync(payload) {
+    if (childSettled) return;
+    childSettled = true;
+    catalogMirrorSyncLast = payload;
+    writeDebug(payload.ok ? "catalog_mirror_sync_finished" : "catalog_mirror_sync_failed", catalogMirrorSyncLast);
+    catalogMirrorSyncChildRunning = false;
+    const pendingReason = catalogMirrorSyncPendingReason;
+    catalogMirrorSyncPendingReason = "";
+    if (pendingReason) {
+      setTimeout(() => queueCatalogMirrorSyncAfterSave(pendingReason), 250).unref();
+    }
+  }
+
+  child.stdout.on("data", (chunk) => {
+    stdout += String(chunk || "").slice(0, 20000);
+    if (stdout.length > 20000) stdout = stdout.slice(-20000);
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr += String(chunk || "").slice(0, 12000);
+    if (stderr.length > 12000) stderr = stderr.slice(-12000);
+  });
+  child.on("error", (err) => {
+    finishCatalogMirrorSync({
+      ok: false,
+      queued: false,
+      reason: safeReason,
+      startedAt,
+      finishedAt: nowIso(),
+      error: safePublicError(err, "catalog_mirror_sync_spawn_failed"),
+    });
+  });
+  child.on("close", (code, signal) => {
+    let parsed = null;
+    try {
+      const lastLine = stdout.trim().split(/\n/).filter(Boolean).pop() || "";
+      parsed = lastLine ? JSON.parse(lastLine) : null;
+    } catch {}
+    finishCatalogMirrorSync({
+      ok: Number(code || 0) === 0 && !!(parsed && parsed.ok),
+      queued: false,
+      reason: safeReason,
+      startedAt,
+      finishedAt: nowIso(),
+      code: Number(code || 0),
+      signal: signal || "",
+      result: parsed,
+      stderr: stderr.trim().slice(-1000),
+    });
+  });
+
+  return {
+    ok: true,
+    queued: true,
+    running: false,
+    reason: safeReason,
+    startedAt,
+    last: catalogMirrorSyncLast,
+  };
+}
+
 let operatorAi = null;
 
 function getOperatorAi() {
@@ -7721,6 +8361,7 @@ const operatorStageState = {
   provider: "deepseek",
   model: "deepseek-v4-flash",
   vectorStoreId: "",
+  algorithmSceneId: 0,
   messages: [],
   active: null,
   style: loadOperatorStageStyleConfig(),
@@ -8836,6 +9477,37 @@ const TD_PREVIEW_HARDWARE_SOURCES = Object.freeze([
 ]);
 const TD_PREVIEW_SOURCE_IDS = new Set(TD_PREVIEW_HARDWARE_SOURCES.map((source) => source.id));
 const tdPreviewFrames = new Map();
+const TD_HEALTH_CACHE_MS = clampInt(process.env.TD_HEALTH_CACHE_MS || "2500", 500, 15000, 2500);
+const TD_HEALTH_HTTP_TIMEOUT_MS = clampInt(process.env.TD_HEALTH_HTTP_TIMEOUT_MS || "1200", 150, 3000, 1200);
+const TD_HEALTH_TD_BRIDGE_URL = String(process.env.TD_HEALTH_TD_BRIDGE_URL || "http://127.0.0.1:9988").replace(/\/+$/, "");
+const TD_HEALTH_SQ5_STATUS_URL = String(process.env.TD_HEALTH_SQ5_STATUS_URL || "http://127.0.0.1:3105/api/status").trim();
+const TD_HEALTH_STALE_SIGNAL_MS = clampInt(process.env.TD_HEALTH_STALE_SIGNAL_MS || "15000", 1000, 120000, 15000);
+const TD_HEALTH_TD_OPS = Object.freeze([
+  { id: "stage_web", group: "stages", label: "Stage WebRender", path: "/ForU/cam_bg_mix/webrender1", kind: "stage" },
+  { id: "universe_stage", group: "stages", label: "Universe stage", path: "/ForU/cam_bg_mix/INLOOP/webrender1", kind: "stage", heavy: true },
+  { id: "api_playground_stage", group: "stages", label: "API playground stage", path: "/ForU/cam_bg_mix/Waitscreens/webrender1", kind: "stage", heavy: true },
+  { id: "session_qr_stage", group: "stages", label: "Session QR", path: "/ForU/cam_bg_mix/INLOOP/webrender_sessie", kind: "stage" },
+  { id: "wifi_qr_stage", group: "stages", label: "Wifi QR", path: "/ForU/cam_bg_mix/INLOOP/webrender_wifi", kind: "stage" },
+  { id: "teleprompter_web", group: "teleprompters", label: "Teleprompter WebRender", path: "/ForU/Text/teleprompter_web", kind: "teleprompter" },
+  { id: "live_captions_web", group: "teleprompters", label: "Live captions WebRender", path: "/ForU/cam_bg_mix/live_captions_web", kind: "teleprompter" },
+  { id: "teleprompt_1", group: "teleprompters", label: "Teleprompter 1 component", path: "/ForU/Teleprompt_1", kind: "teleprompter" },
+  { id: "teleprompt_2", group: "teleprompters", label: "Teleprompter 2 component", path: "/ForU/Teleprompt_2", kind: "teleprompter" },
+  { id: "teleprompt_3", group: "teleprompters", label: "Teleprompter 3 component", path: "/ForU/Teleprompt_3", kind: "teleprompter" },
+  { id: "cam1_input", group: "cameras", label: "Camera 1 input", path: "/ForU/Input/Camera1/videodevin1", kind: "camera" },
+  { id: "cam2_input", group: "cameras", label: "Camera 2 input", path: "/ForU/Input/Camera2/videodevin1", kind: "camera" },
+  { id: "cam3_input", group: "cameras", label: "Camera 3 input", path: "/ForU/Input/Camera3/videodevin1", kind: "camera" },
+  { id: "background_movie", group: "environment", label: "TD background node", path: "/ForU/AI/moviefilein1", kind: "asset" },
+  { id: "environment_audio", group: "mixer", label: "TD environment audio", path: "/ForU/AI/audiofilein1", kind: "audio" },
+  { id: "environment_sound", group: "mixer", label: "TD audio bus", path: "/ForU/AI/Sound", kind: "audio" },
+  { id: "td_audio_dynamics", group: "mixer", label: "TD audio dynamics", path: "/ForU/cam_bg_mix/audiodyna1", kind: "audio" },
+  { id: "td_audio_out", group: "mixer", label: "TD audio output", path: "/ForU/cam_bg_mix/audiodevout1", kind: "audio" },
+  { id: "fx_movie", group: "environment", label: "TD FX node", path: "/ForU/AI/moviefilein2", kind: "asset" },
+  { id: "video_out_1", group: "outputs", label: "Video output 1", path: "/ForU/videodevout1", kind: "output" },
+  { id: "video_out_2", group: "outputs", label: "Video output 2", path: "/ForU/videodevout2", kind: "output" },
+  { id: "video_out_3", group: "outputs", label: "Video output 3", path: "/ForU/videodevout3", kind: "output" },
+  { id: "video_out_4", group: "outputs", label: "Video output 4", path: "/ForU/videodevout4", kind: "output", heavy: true },
+]);
+let tdHealthCache = { expiresAt: 0, value: null, pending: null };
 
 function normalizeTdPreviewSourceId(value) {
   return String(value || "").trim().toLowerCase();
@@ -8971,6 +9643,496 @@ function tdPreviewStatePayload() {
     webStages: TD_PREVIEW_WEB_STAGES,
     sources: TD_PREVIEW_HARDWARE_SOURCES.map((source) => tdPreviewSourceState(source, now)),
   };
+}
+
+function tdHealthStatusRank(status) {
+  if (status === "bad") return 3;
+  if (status === "warn") return 2;
+  if (status === "unknown") return 1;
+  return 0;
+}
+
+function tdHealthWorstStatus(items) {
+  return (items || []).reduce((worst, item) => (
+    tdHealthStatusRank(item && item.status) > tdHealthStatusRank(worst) ? item.status : worst
+  ), "ok");
+}
+
+function tdHealthItem(id, label, status, value = "", detail = "", extra = {}) {
+  return {
+    id: String(id || ""),
+    label: String(label || id || ""),
+    status: ["ok", "warn", "bad", "unknown"].includes(status) ? status : "unknown",
+    value: String(value === undefined || value === null ? "" : value),
+    detail: String(detail === undefined || detail === null ? "" : detail),
+    ...extra,
+  };
+}
+
+function tdHealthGroup(id, label, items) {
+  const safeItems = Array.isArray(items) ? items : [];
+  return {
+    id,
+    label,
+    status: tdHealthWorstStatus(safeItems),
+    items: safeItems,
+  };
+}
+
+function tdHealthCounts(groups) {
+  const counts = { ok: 0, warn: 0, bad: 0, unknown: 0 };
+  for (const group of groups || []) {
+    for (const item of group.items || []) {
+      const status = ["ok", "warn", "bad", "unknown"].includes(item.status) ? item.status : "unknown";
+      counts[status] += 1;
+    }
+  }
+  return counts;
+}
+
+async function tdHealthMapLimit(items, limit, iterator) {
+  const source = Array.isArray(items) ? items : [];
+  const size = clampInt(limit, 1, 12, 4);
+  const results = new Array(source.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < source.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await iterator(source[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(size, source.length) }, () => worker()));
+  return results;
+}
+
+function tdHealthFormatAge(ms) {
+  if (!Number.isFinite(ms)) return "";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 3600000) return `${Math.round(ms / 60000)}m`;
+  return `${Math.round(ms / 3600000)}u`;
+}
+
+function tdHealthSafeReadText(filePath) {
+  try {
+    return { ok: true, value: fs.readFileSync(filePath, "utf8") };
+  } catch (err) {
+    return { ok: false, value: "", error: err && err.message ? err.message : "read_failed" };
+  }
+}
+
+async function tdHealthFetchJson(url, timeoutMs = TD_HEALTH_HTTP_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    const parsed = text ? safeSyncJsonParse(text, null) : null;
+    if (!response.ok) {
+      const err = new Error(parsed && parsed.error ? parsed.error : `http_${response.status}`);
+      err.status = response.status;
+      err.body = parsed;
+      throw err;
+    }
+    return parsed || {};
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function tdHealthBridgeUrl(pathname, params = {}) {
+  const url = new URL(pathname, `${TD_HEALTH_TD_BRIDGE_URL}/`);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, String(value));
+  }
+  return url.toString();
+}
+
+function tdHealthNormalizeMessages(value) {
+  if (!value) return "";
+  if (Array.isArray(value)) {
+    if (value.every((part) => typeof part === "string" && part.length <= 1)) {
+      return value.join("").replace(/^Warning:\s*/i, "").trim();
+    }
+    return value.map((part) => String(part || "").trim()).filter(Boolean).join("; ");
+  }
+  return String(value || "").replace(/^Warning:\s*/i, "").trim();
+}
+
+function tdHealthParamEval(op, name) {
+  const param = op && op.params && op.params[name];
+  if (!param) return "";
+  if (param.eval !== undefined && param.eval !== null) return String(param.eval);
+  if (param.val !== undefined && param.val !== null) return String(param.val);
+  return "";
+}
+
+function tdHealthBoolParam(op, name) {
+  const value = tdHealthParamEval(op, name).toLowerCase();
+  if (!value) return null;
+  if (["true", "1", "on"].includes(value)) return true;
+  if (["false", "0", "off"].includes(value)) return false;
+  return null;
+}
+
+function tdHealthResolution(op) {
+  const width = Number(op && op.width || 0);
+  const height = Number(op && op.height || 0);
+  if (!width || !height) return "";
+  return `${width}x${height}`;
+}
+
+function tdHealthTdOpItem(check, result) {
+  if (!result || !result.ok || !result.op) {
+    const error = result && result.error ? result.error : "niet bereikbaar";
+    const timeout = /abort|timeout/i.test(error);
+    return tdHealthItem(check.id, check.label, timeout ? "unknown" : "bad", timeout ? "timeout" : "geen data", error, { path: check.path });
+  }
+  const op = result.op;
+  if (!op.exists) return tdHealthItem(check.id, check.label, "bad", "mist", "operator bestaat niet", { path: check.path });
+
+  const errors = tdHealthNormalizeMessages(op.errors);
+  const warnings = tdHealthNormalizeMessages(op.warnings);
+  const active = tdHealthBoolParam(op, "active");
+  const resolution = tdHealthResolution(op);
+  const type = String(op.type || "");
+  const file = tdHealthParamEval(op, "file");
+  const url = tdHealthParamEval(op, "url");
+  let status = "ok";
+  let value = [active === null ? "" : active ? "actief" : "inactief", resolution, type].filter(Boolean).join(" ");
+  let detail = errors || warnings || file || url || "";
+
+  if (errors) status = "bad";
+  else if (warnings) status = check.kind === "camera" && /unable to start/i.test(warnings) ? "bad" : "warn";
+  else if (active === false) status = "warn";
+
+  const pixels = Number(op.width || 0) * Number(op.height || 0);
+  if (status === "ok" && check.heavy && active !== false && pixels >= 3840 * 2160) {
+    status = "warn";
+    detail = detail || "hoge resolutie actief; check of deze output/stage nodig is";
+  }
+  if (check.kind === "output" && active !== false && /3840x2160/.test(resolution)) {
+    status = status === "bad" ? status : "warn";
+    detail = detail || "4K output actief; dit kan performance drukken";
+  }
+  if (!value) value = op.exists ? "aanwezig" : "mist";
+  return tdHealthItem(check.id, check.label, status, value, detail, {
+    path: check.path,
+    type,
+    width: op.width || 0,
+    height: op.height || 0,
+  });
+}
+
+async function tdHealthInspectTdOp(check) {
+  try {
+    return await tdHealthFetchJson(tdHealthBridgeUrl("/inspect", { path: check.path }));
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : "inspect_failed" };
+  }
+}
+
+async function tdHealthReadTdParam(pathname, name) {
+  try {
+    return await tdHealthFetchJson(tdHealthBridgeUrl("/param", { path: pathname, name }));
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : "param_failed" };
+  }
+}
+
+function tdHealthCurrentEnvironmentItems(now) {
+  const items = [];
+  const envRead = tdHealthSafeReadText(ENVIRONMENT_OUTPUT_PATH);
+  const envName = envRead.ok ? String(envRead.value || "").trim() : "";
+  items.push(tdHealthItem(
+    "current_environment_file",
+    "Current environment file",
+    envRead.ok ? (envName ? "ok" : "warn") : "bad",
+    envName || "leeg",
+    envRead.ok ? ENVIRONMENT_OUTPUT_PATH : envRead.error
+  ));
+
+  let mediaDirStats = null;
+  try {
+    mediaDirStats = fs.statSync(ENVIRONMENT_ASSET_MEDIA_DIR);
+  } catch (_err) {
+    mediaDirStats = null;
+  }
+  items.push(tdHealthItem(
+    "media_dir",
+    "Dropbox/media map",
+    mediaDirStats && mediaDirStats.isDirectory() ? "ok" : "bad",
+    mediaDirStats && mediaDirStats.isDirectory() ? "bereikbaar" : "niet bereikbaar",
+    ENVIRONMENT_ASSET_MEDIA_DIR
+  ));
+
+  if (!envName) return { envName, items };
+
+  const assetFiles = environmentAssetFilesByBase();
+  const envRow = sql.getAlgorithmEnvironments.all().find((row) => String(row && row.name || "").trim() === envName);
+  const environment = envRow ? parseAlgorithmEnvironmentRow(envRow) : { id: 0, name: envName, description: "", isActive: false, archivedAt: "" };
+  const row = environmentAssetRow(environment, assetFiles.byBase);
+  if (assetFiles.error) {
+    items.push(tdHealthItem("asset_scan", "Asset scan", "bad", "fout", assetFiles.error));
+  }
+  items.push(tdHealthItem(
+    "environment_catalog",
+    "Environment in catalogus",
+    envRow ? "ok" : "warn",
+    envRow ? `id ${row.id}` : "niet gevonden",
+    envRow ? row.status : "current-environment bestaat wel, maar staat niet actief in catalogus"
+  ));
+  for (const type of ["background", "audio", "fx"]) {
+    const bucket = row.assets[type];
+    const required = type !== "fx";
+    const primary = bucket && bucket.primary;
+    items.push(tdHealthItem(
+      `asset_${type}`,
+      type === "background" ? "Background asset" : type === "audio" ? "Audio asset" : "FX asset",
+      primary ? "ok" : required ? "bad" : "warn",
+      primary ? primary.filename : "mist",
+      primary ? `${Math.round(primary.size / 1024)} KB` : `${envName}.${ENVIRONMENT_ASSET_TYPES[type].extensions.join("|")}`,
+      primary ? { updatedAt: primary.updatedAt, url: primary.url } : {}
+    ));
+  }
+  return { envName, items };
+}
+
+function tdHealthPreviewItems(now) {
+  return TD_PREVIEW_HARDWARE_SOURCES.map((source) => {
+    const state = tdPreviewSourceState(source, now);
+    const status = state.hasFrame ? state.stale ? "warn" : "ok" : "bad";
+    const value = state.hasFrame ? state.stale ? "stale" : "live" : "geen frame";
+    const detail = state.hasFrame
+      ? `laatste update ${tdHealthFormatAge(state.ageMs)} geleden`
+      : "nog geen frame ontvangen";
+    return tdHealthItem(`preview_${source.id}`, source.label, status, value, detail, {
+      sourceId: source.id,
+      kind: source.kind,
+      updatedAt: state.updatedAt,
+      ageMs: state.ageMs,
+    });
+  });
+}
+
+function tdHealthOscItems() {
+  const oscState = getOscControlState();
+  const lastReceivedAt = oscState.lastReceived && oscState.lastReceived.at ? String(oscState.lastReceived.at) : "";
+  const lastReceivedMs = lastReceivedAt ? Date.parse(lastReceivedAt) : NaN;
+  const lastReceivedAge = Number.isFinite(lastReceivedMs) ? Date.now() - lastReceivedMs : NaN;
+  const send = lastAlgorithmOscSend || null;
+  const sentAt = send && send.at ? String(send.at) : "";
+  const sentMs = sentAt ? Date.parse(sentAt) : NaN;
+  const sentAge = Number.isFinite(sentMs) ? Date.now() - sentMs : NaN;
+  return [
+    tdHealthItem(
+      "osc_receive",
+      "OSC receive",
+      oscState.ready ? "ok" : "bad",
+      `${oscState.listenAddress}:${oscState.listenPort}`,
+      oscState.lastError || "luistert naar control commands"
+    ),
+    tdHealthItem(
+      "osc_last_received",
+      "Laatste OSC binnen",
+      lastReceivedAt ? (lastReceivedAge > TD_HEALTH_STALE_SIGNAL_MS ? "warn" : "ok") : "warn",
+      lastReceivedAt ? `${tdHealthFormatAge(lastReceivedAge)} geleden` : "nog niets",
+      oscState.lastReceived && oscState.lastReceived.address ? oscState.lastReceived.address : ""
+    ),
+    tdHealthItem(
+      "osc_send",
+      "OSC send",
+      oscState.sendEnabled && oscState.sendReady ? "ok" : oscState.sendEnabled ? "bad" : "warn",
+      oscState.sendEnabled ? `${oscState.feedbackHost}:${oscState.feedbackPort}` : "uit",
+      oscState.sendLastError || `feedback mode: ${oscState.feedbackMode}`
+    ),
+    tdHealthItem(
+      "osc_last_algorithm_send",
+      "Laatste algoritme OSC",
+      send ? (send.sent ? (sentAge > 5 * 60 * 1000 ? "warn" : "ok") : "bad") : "warn",
+      send ? `${send.source || "send"} ${send.sent ? "sent" : "niet verzonden"}` : "geen send",
+      send ? `${send.reason || ""} ${sentAt ? `${tdHealthFormatAge(sentAge)} geleden` : ""}`.trim() : ""
+    ),
+  ];
+}
+
+function tdHealthDropboxItems() {
+  const status = dropboxCatalogSync ? dropboxCatalogSync.getStatus() : { ok: true, enabled: false, running: false };
+  return [
+    tdHealthItem(
+      "dropbox_catalog",
+      "Dropbox catalog sync",
+      status.enabled ? (status.running ? "ok" : "warn") : "warn",
+      status.enabled ? status.running ? "actief" : "gestopt" : "uit",
+      status.lastError || status.rootDir || ""
+    ),
+  ];
+}
+
+function tdHealthSq5Items(sq5Result) {
+  if (!sq5Result || !sq5Result.ok) {
+    return [
+      tdHealthItem("sq5_bridge", "SQ5 mixer bridge", "bad", "niet bereikbaar", sq5Result && sq5Result.error ? sq5Result.error : TD_HEALTH_SQ5_STATUS_URL),
+    ];
+  }
+  const data = sq5Result.data || {};
+  const now = Date.now();
+  const lastSyncMs = Date.parse(String(data.lastSyncAt || ""));
+  const lastStreamdeckMs = Date.parse(String(data.lastStreamdeckSyncAt || ""));
+  const lastSyncAge = Number.isFinite(lastSyncMs) ? now - lastSyncMs : NaN;
+  const lastStreamdeckAge = Number.isFinite(lastStreamdeckMs) ? now - lastStreamdeckMs : NaN;
+  const items = [
+    tdHealthItem(
+      "sq5_bridge",
+      "SQ5 mixer bridge",
+      "ok",
+      `${data.toolHost || "127.0.0.1"}:${data.toolPort || 3105}`,
+      data.mixerHost ? `mixer ${data.mixerHost}:${data.mixerPort || ""}` : "geen mixer IP"
+    ),
+    tdHealthItem(
+      "sq5_sync",
+      "SQ5 mixer sync",
+      Number.isFinite(lastSyncAge) ? (lastSyncAge > 10000 ? "warn" : "ok") : "warn",
+      Number.isFinite(lastSyncAge) ? `${tdHealthFormatAge(lastSyncAge)} geleden` : "nog geen sync",
+      data.syncInProgress ? "sync loopt" : `poll ${data.statusPollMs || "?"}ms`
+    ),
+    tdHealthItem(
+      "sq5_streamdeck_sync",
+      "SQ5 Stream Deck sync",
+      Number.isFinite(lastStreamdeckAge) ? (lastStreamdeckAge > 5000 ? "warn" : "ok") : "warn",
+      Number.isFinite(lastStreamdeckAge) ? `${tdHealthFormatAge(lastStreamdeckAge)} geleden` : "nog geen sync",
+      data.streamdeckSyncInProgress ? "sync loopt" : `poll ${data.streamdeckPollMs || "?"}ms`
+    ),
+  ];
+  const controlState = data.controlState && typeof data.controlState === "object" ? data.controlState : {};
+  for (const key of ["brent", "megan", "booi", "mac", "studio", "mics", "muziek", "sub", "main"]) {
+    const channel = controlState[key];
+    if (!channel) continue;
+    const mute = channel.mute && typeof channel.mute.value === "boolean" ? channel.mute.value : null;
+    const level = channel.destinations && channel.destinations.lr && channel.destinations.lr.level
+      ? channel.destinations.lr.level.display
+      : "";
+    items.push(tdHealthItem(
+      `sq5_${key}`,
+      `SQ5 ${channel.label || key}`,
+      "ok",
+      mute === null ? "mute onbekend" : mute ? "mute aan" : "mute uit",
+      level || (channel.updatedAt ? `update ${channel.updatedAt}` : "")
+    ));
+  }
+  return items;
+}
+
+async function buildTdPreviewHealthPayload() {
+  const now = Date.now();
+  const generatedAt = new Date(now).toISOString();
+  const environment = tdHealthCurrentEnvironmentItems(now);
+  const [bridgeResult, sq5Result] = await Promise.all([
+    tdHealthFetchJson(tdHealthBridgeUrl("/status"))
+      .then((data) => ({ ok: true, data }))
+      .catch((err) => ({ ok: false, error: err && err.message ? err.message : "td_bridge_unavailable" })),
+    TD_HEALTH_SQ5_STATUS_URL
+      ? tdHealthFetchJson(TD_HEALTH_SQ5_STATUS_URL)
+        .then((data) => ({ ok: true, data }))
+        .catch((err) => ({ ok: false, error: err && err.message ? err.message : "sq5_unavailable" }))
+      : Promise.resolve({ ok: false, error: "sq5_status_url_empty" }),
+  ]);
+
+  const bridgeItems = [
+    tdHealthItem(
+      "td_bridge",
+      "TD bridge",
+      bridgeResult.ok && bridgeResult.data && bridgeResult.data.ok ? "ok" : "bad",
+      bridgeResult.ok ? `${bridgeResult.data.bridge || "bridge"} :${bridgeResult.data.port || 9988}` : "niet bereikbaar",
+      bridgeResult.ok ? String(bridgeResult.data.project || "") : bridgeResult.error
+    ),
+  ];
+
+  let tdOpItems = TD_HEALTH_TD_OPS.map((check) => (
+    tdHealthItem(check.id, check.label, "unknown", "niet gemeten", "TD bridge niet bereikbaar", { path: check.path })
+  ));
+  let timelineItems = [
+    tdHealthItem("td_timeline_rate", "TD timeline FPS", "unknown", "niet gemeten", "TD bridge niet bereikbaar"),
+  ];
+  if (bridgeResult.ok && bridgeResult.data && bridgeResult.data.ok) {
+    const [opResults, rateResult] = await Promise.all([
+      tdHealthMapLimit(TD_HEALTH_TD_OPS, 4, (check) => tdHealthInspectTdOp(check)),
+      tdHealthReadTdParam("/local/time", "rate"),
+    ]);
+    tdOpItems = TD_HEALTH_TD_OPS.map((check, index) => tdHealthTdOpItem(check, opResults[index]));
+    const rateValue = rateResult && rateResult.ok && rateResult.param ? String(rateResult.param.eval || rateResult.param.val || "") : "";
+    timelineItems = [
+      tdHealthItem(
+        "td_timeline_rate",
+        "TD timeline FPS",
+        rateValue ? "ok" : "warn",
+        rateValue || "onbekend",
+        rateResult && rateResult.param && rateResult.param.expr ? `expr ${rateResult.param.expr}` : ""
+      ),
+    ];
+  }
+
+  const previewItems = tdHealthPreviewItems(now);
+  const groups = [
+    tdHealthGroup("app_osc", "App / OSC", [...tdHealthOscItems(), ...tdHealthDropboxItems()]),
+    tdHealthGroup("td_bridge", "TD Bridge / Timeline", [...bridgeItems, ...timelineItems]),
+    tdHealthGroup("environment", `Environment assets${environment.envName ? `: ${environment.envName}` : ""}`, [
+      ...environment.items,
+      ...tdOpItems.filter((item) => ["background_movie", "fx_movie"].includes(item.id)),
+    ]),
+    tdHealthGroup("stages", "Web stages", tdOpItems.filter((item) => TD_HEALTH_TD_OPS.find((check) => check.id === item.id && check.group === "stages"))),
+    tdHealthGroup("cameras", "Camera's", [
+      ...tdOpItems.filter((item) => TD_HEALTH_TD_OPS.find((check) => check.id === item.id && check.group === "cameras")),
+      ...previewItems.filter((item) => /^preview_cam/.test(item.id)),
+    ]),
+    tdHealthGroup("teleprompters", "Teleprompters", [
+      ...tdOpItems.filter((item) => TD_HEALTH_TD_OPS.find((check) => check.id === item.id && check.group === "teleprompters")),
+      ...previewItems.filter((item) => /^preview_tp/.test(item.id)),
+    ]),
+    tdHealthGroup("mixer", "Geluidsmixer / Audio", [
+      ...tdHealthSq5Items(sq5Result),
+      ...tdOpItems.filter((item) => TD_HEALTH_TD_OPS.find((check) => check.id === item.id && check.group === "mixer")),
+    ]),
+    tdHealthGroup("outputs", "Video outputs", [
+      ...tdOpItems.filter((item) => TD_HEALTH_TD_OPS.find((check) => check.id === item.id && check.group === "outputs")),
+      ...previewItems.filter((item) => /^preview_main_out/.test(item.id)),
+    ]),
+    tdHealthGroup("preview", "Preview frames", previewItems),
+  ];
+  const counts = tdHealthCounts(groups);
+  const status = counts.bad > 0 ? "bad" : counts.warn > 0 ? "warn" : counts.unknown > 0 ? "unknown" : "ok";
+  return {
+    ok: true,
+    generatedAt,
+    cached: false,
+    cacheMs: TD_HEALTH_CACHE_MS,
+    status,
+    counts,
+    currentEnvironment: environment.envName || "",
+    groups,
+  };
+}
+
+async function tdPreviewHealthPayload() {
+  const now = Date.now();
+  if (tdHealthCache.value && tdHealthCache.expiresAt > now) {
+    return { ...tdHealthCache.value, cached: true };
+  }
+  if (tdHealthCache.pending) return tdHealthCache.pending;
+  tdHealthCache.pending = buildTdPreviewHealthPayload()
+    .then((payload) => {
+      tdHealthCache.value = payload;
+      tdHealthCache.expiresAt = Date.now() + TD_HEALTH_CACHE_MS;
+      return payload;
+    })
+    .finally(() => {
+      tdHealthCache.pending = null;
+    });
+  return tdHealthCache.pending;
 }
 
 function getClientLabel(target) {
@@ -9235,6 +10397,7 @@ function startShowSequence(source = "admin", req = null) {
 
   const reset = resetAlgorithmRunsForCurrentSession();
   const runStart = beginAlgorithmRunWithUpNext(`show_start_${safeSource}`);
+  const preparedScene = prepareTeleprompterFromAlgorithmPayload(runStart && runStart.oscSend && runStart.oscSend.payload || {});
   const result = {
     action: "start",
     source: safeSource,
@@ -9255,6 +10418,8 @@ function startShowSequence(source = "admin", req = null) {
     runsReset: Number(reset && reset.deletedRuns || 0),
     runStarted: !!(runStart && runStart.run && runStart.run.started),
     run: runStart.run,
+    preparedScene,
+    tdStagePulse: runStart.tdStagePulse,
     oscSend: runStart.oscSend && runStart.oscSend.last ? runStart.oscSend.last : runStart.oscSend,
   };
   writeDebug("show_started", {
@@ -9280,6 +10445,7 @@ function stopShowSequence(source = "admin") {
     endedSession = endCurrentSession(safeSource);
     closedClients = disconnectAllClientsForSessionEnd();
     broadcastStageState(null, "show_stop_session_end");
+    teleprompterParser.refresh("show_stop");
   }
   const result = {
     action: "stop",
@@ -9292,6 +10458,7 @@ function stopShowSequence(source = "admin") {
     runReset: true,
     runsReset: Number(reset && reset.deletedRuns || 0),
     runStarted: false,
+    tdStagePulse: sendTouchDesignerStagePulse("inloop", `show_stop_${safeSource}`),
     session: endedSession
       ? {
           id: Number(endedSession.id || 0),
@@ -9425,6 +10592,7 @@ function operatorStageSnapshot() {
     provider: operatorStageState.provider,
     model: operatorStageState.model,
     vectorStoreId: operatorStageState.vectorStoreId,
+    algorithmSceneId: Number(operatorStageState.algorithmSceneId || 0),
     active: operatorStageState.active ? { ...operatorStageState.active } : null,
     style: normalizeOperatorStageStyle(operatorStageState.style),
     messages: operatorStageState.messages.map((message) => ({ ...message })),
@@ -9476,6 +10644,7 @@ function updateOperatorStageControl(message = {}) {
   operatorStageState.vectorStoreId = String(message.vectorStoreId || message.vector_store_id || operatorStageState.vectorStoreId || "")
     .trim()
     .slice(0, 180);
+  operatorStageState.algorithmSceneId = Math.max(0, Number.parseInt(String(message.algorithmSceneId || message.sceneId || operatorStageState.algorithmSceneId || 0), 10) || 0);
   operatorStageState.updatedAt = nowIso();
   if (previousSession !== operatorStageState.sessionId && !operatorStageState.streaming) {
     operatorStageState.draft = "";
@@ -9581,6 +10750,7 @@ async function submitOperatorStageDraft(message = {}) {
   operatorStageState.active = {
     assistantId: assistantMessage.id,
     sceneId: "",
+    algorithmSceneId: Number(operatorStageState.algorithmSceneId || 0),
     startedAt: assistantMessage.at,
     provider: operatorStageState.provider,
     model: operatorStageState.model,
@@ -9605,6 +10775,7 @@ async function submitOperatorStageDraft(message = {}) {
       operatorStageState.active = {
         ...operatorStageState.active,
         sceneId: assistantMessage.sceneId,
+        algorithmSceneId: Number(operatorStageState.algorithmSceneId || 0),
         provider: assistantMessage.provider,
         model: assistantMessage.model,
       };
@@ -9658,6 +10829,8 @@ async function submitOperatorStageDraft(message = {}) {
       provider: operatorStageState.provider,
       model: operatorStageState.model,
       vectorStoreId: operatorStageState.vectorStoreId,
+      source: message.source || "operator_stage",
+      algorithmSceneId: operatorStageState.algorithmSceneId,
     }, emit);
   } catch (err) {
     const publicError = safePublicError(err, "operator_chat_stream_failed");
@@ -11685,8 +12858,13 @@ function buildOscControlCommands() {
       },
       execute(ctx) {
         return runAlgorithmOscAction("start_run", ctx, () => {
-          const { run, oscSend } = beginAlgorithmRunWithUpNext("osc_start_run");
-          return { run, upNext: oscSend.payload || null, oscSend: oscSend.last || oscSend };
+          const runStart = beginAlgorithmRunWithUpNext("osc_start_run");
+          return {
+            run: runStart.run,
+            upNext: runStart.oscSend && runStart.oscSend.payload || null,
+            tdStagePulse: runStart.tdStagePulse,
+            oscSend: runStart.oscSend && runStart.oscSend.last ? runStart.oscSend.last : runStart.oscSend,
+          };
         });
       },
     },
@@ -11704,14 +12882,18 @@ function buildOscControlCommands() {
           const sceneId = Number(upNext && upNext.sceneId || 0);
           if (!sceneId) throw new Error("scene_id_required");
           const run = startAlgorithmSceneRun(sceneId, "osc_up_next");
+          const sq5SceneMics = queueSq5SceneMics(true, "osc_start_next");
           const currentSceneOscSend = sendAlgorithmCurrentSceneOsc("osc_scene_started_current");
+          const tdStagePulse = sendTouchDesignerStagePulse("scene", "osc_start_next");
           const oscSend = sendAlgorithmUpNextOsc("osc_scene_started");
           return {
             ...upNext,
             prompt: run.promptSnapshot,
             runId: Number(run.id || 0),
             next: oscSend.payload || null,
+            sq5SceneMics,
             currentSceneOscSend: currentSceneOscSend.last || currentSceneOscSend,
+            tdStagePulse,
             oscSend: oscSend.last || oscSend,
           };
         });
@@ -11752,12 +12934,16 @@ function buildOscControlCommands() {
             source: "osc_start_scene",
           });
           const currentSceneOscSend = sendAlgorithmCurrentSceneOsc("osc_scene_started_current");
+          const sq5SceneMics = queueSq5SceneMics(true, "osc_start_scene");
+          const tdStagePulse = sendTouchDesignerStagePulse("scene", "osc_start_scene");
           const oscSend = sendAlgorithmUpNextOsc("osc_scene_started");
           return {
             ...payload,
             runId: Number(run.id || 0),
             next: oscSend.payload || null,
+            sq5SceneMics,
             currentSceneOscSend: currentSceneOscSend.last || currentSceneOscSend,
+            tdStagePulse,
             oscSend: oscSend.last || oscSend,
           };
         });
@@ -11774,8 +12960,11 @@ function buildOscControlCommands() {
       execute(ctx) {
         return runAlgorithmOscAction("end_scene", ctx, () => {
           const ended = endActiveAlgorithmSceneRun("osc");
+          const sq5SceneMics = queueSq5SceneMics(false, "osc_end_scene");
           fillAlgorithmLockedQueueForCurrentSession("osc_end_scene", algorithmLockedQueueTargetForRuns(getAlgorithmRunsForCurrentSession(), 2));
           const oscSend = sendAlgorithmUpNextOsc("osc_end_scene");
+          const tdStagePulse = sendTouchDesignerStagePulse("next", "osc_end_scene");
+          const preparedScene = prepareTeleprompterFromAlgorithmPayload(oscSend.payload || {});
           return {
             endedRun: ended
               ? {
@@ -11785,9 +12974,12 @@ function buildOscControlCommands() {
                   heartCount: Number(ended.heartCount || 0),
                   boredCount: Number(ended.boredCount || 0),
                   commentCount: Number(ended.commentCount || 0),
-                }
+            }
               : null,
             next: oscSend.payload || null,
+            sq5SceneMics,
+            preparedScene,
+            tdStagePulse,
             oscSend: oscSend.last || oscSend,
           };
         });
@@ -11806,12 +12998,16 @@ function buildOscControlCommands() {
       execute(ctx) {
         return runAlgorithmOscAction("previous_scene", ctx, () => {
           const previous = restorePreviousAlgorithmSceneRunForCurrentSession("osc");
+          const sq5SceneMics = queueSq5SceneMics(true, "osc_previous_scene");
           const currentSceneOscSend = sendAlgorithmCurrentSceneOsc("osc_previous_scene_current");
+          const tdStagePulse = sendTouchDesignerStagePulse("scene", "osc_previous_scene");
           const oscSend = sendAlgorithmUpNextOsc("osc_previous_scene");
           return {
             ...previous,
             next: oscSend.payload || null,
+            sq5SceneMics,
             currentSceneOscSend: currentSceneOscSend.last || currentSceneOscSend,
+            tdStagePulse,
             oscSend: oscSend.last || oscSend,
           };
         });
@@ -11965,6 +13161,131 @@ function sendOscPacketToTarget(packet, target) {
     oscSendUdpPort.socket.setBroadcast(true);
   }
   oscSendUdpPort.send(packet, target.address, target.port);
+}
+
+function sendTouchDesignerLocalOscPulse(address, options = {}) {
+  const oscAddress = String(address || "").trim();
+  const target = {
+    address: normalizeOscControlFeedbackHost(options.host || TOUCHDESIGNER_LOCAL_OSC_HOST),
+    port: clampInt(options.port, 1, 65535, TOUCHDESIGNER_STAGE_OSC_PORT),
+  };
+  const source = String(options.source || "unknown").slice(0, 120);
+  if (!oscAddress) return { sent: false, reason: "address_required", source };
+  if (!target.address || target.port < 1) return { sent: false, reason: "target_required", address: oscAddress, source };
+  if (!oscSendUdpPort || !oscSendReady) return { sent: false, reason: "osc_send_not_ready", address: oscAddress, targetHost: target.address, targetPort: target.port, source };
+
+  const valueType = options.valueType || "f";
+  const resetMs = clampInt(options.resetMs || TOUCHDESIGNER_OSC_PULSE_RESET_MS, 20, 1000, TOUCHDESIGNER_OSC_PULSE_RESET_MS);
+  const makePacket = (value) => ({
+    address: oscAddress,
+    args: [{ type: valueType, value }],
+  });
+
+  try {
+    sendOscPacketToTarget(makePacket(1), target);
+    const resetTimer = setTimeout(() => {
+      try {
+        if (oscSendUdpPort && oscSendReady) sendOscPacketToTarget(makePacket(0), target);
+      } catch (err) {
+        writeDebug("touchdesigner_local_osc_pulse_reset_failed", {
+          source,
+          address: oscAddress,
+          targetHost: target.address,
+          targetPort: target.port,
+          message: err && err.message ? err.message : "unknown",
+        });
+      }
+    }, resetMs);
+    if (resetTimer && typeof resetTimer.unref === "function") resetTimer.unref();
+    writeDebug("touchdesigner_local_osc_pulse_sent", {
+      source,
+      address: oscAddress,
+      targetHost: target.address,
+      targetPort: target.port,
+    });
+    return { sent: true, address: oscAddress, targetHost: target.address, targetPort: target.port, source };
+  } catch (err) {
+    const reason = err && err.message ? err.message : "osc_send_failed";
+    writeDebug("touchdesigner_local_osc_pulse_failed", {
+      source,
+      address: oscAddress,
+      targetHost: target.address,
+      targetPort: target.port,
+      message: reason,
+    });
+    return { sent: false, reason, address: oscAddress, targetHost: target.address, targetPort: target.port, source };
+  }
+}
+
+function sendTouchDesignerEnvironmentRefreshPulse(source = "unknown") {
+  return sendTouchDesignerLocalOscPulse(TOUCHDESIGNER_ENV_REFRESH_OSC_ADDRESS, {
+    port: TOUCHDESIGNER_ENV_REFRESH_OSC_PORT,
+    source: `environment_refresh:${source}`,
+  });
+}
+
+function sendTouchDesignerStagePulse(stage, source = "unknown") {
+  const key = String(stage || "").toLowerCase();
+  const address = TOUCHDESIGNER_STAGE_OSC_ADDRESSES[key] || "";
+  return sendTouchDesignerLocalOscPulse(address, {
+    port: TOUCHDESIGNER_STAGE_OSC_PORT,
+    valueType: "i",
+    resetMs: TOUCHDESIGNER_STAGE_OSC_PULSE_RESET_MS,
+    source: `stage_${key}:${source}`,
+  });
+}
+
+function sendTouchDesignerCameraPulse(slot, source = "unknown") {
+  const numericSlot = Number.parseInt(String(slot || 0), 10);
+  const safeSlot = Number.isFinite(numericSlot) && numericSlot >= 1 && numericSlot <= 3 ? numericSlot : 0;
+  const address = TOUCHDESIGNER_CAMERA_OSC_ADDRESSES[safeSlot] || "";
+  return sendTouchDesignerLocalOscPulse(address, {
+    port: TOUCHDESIGNER_STAGE_OSC_PORT,
+    valueType: "i",
+    resetMs: TOUCHDESIGNER_STAGE_OSC_PULSE_RESET_MS,
+    source: `camera_${safeSlot}:${source}`,
+  });
+}
+
+function queueSq5SceneMics(micsOn, source = "unknown") {
+  const action = micsOn ? "unmute" : "mute";
+  const safeSource = String(source || "unknown").slice(0, 120);
+  if (!SQ5_CONTROL_BASE_URL) return { queued: false, reason: "sq5_base_url_empty", action, target: "allmics", main: "untouched", source: safeSource };
+  const url = `${SQ5_CONTROL_BASE_URL}/api/streamdeck/allmics/${action}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SQ5_SCENE_MICS_TIMEOUT_MS);
+  if (timer && typeof timer.unref === "function") timer.unref();
+
+  fetch(url, {
+    method: "POST",
+    signal: controller.signal,
+  }).then(async (response) => {
+    clearTimeout(timer);
+    let body = null;
+    try {
+      body = await response.json();
+    } catch {}
+    writeDebug("sq5_scene_mics_automation", {
+      source: safeSource,
+      action,
+      target: "allmics",
+      main: "untouched",
+      ok: response.ok,
+      status: response.status,
+      message: body && (body.message || body.error) ? String(body.message || body.error) : "",
+    });
+  }).catch((err) => {
+    clearTimeout(timer);
+    writeDebug("sq5_scene_mics_automation_failed", {
+      source: safeSource,
+      action,
+      target: "allmics",
+      main: "untouched",
+      message: err && err.message ? String(err.message) : "unknown",
+    });
+  });
+
+  return { queued: true, action, target: "allmics", main: "untouched", source: safeSource };
 }
 
 function getAlgorithmSceneOscAddresses(kind = "up_next") {
@@ -12147,6 +13468,23 @@ function buildAlgorithmCurrentScenePayload(source = "current_scene") {
   };
 }
 
+function buildTeleprompterAutoCameraSceneFromActiveRun() {
+  const payload = buildAlgorithmCurrentScenePayload("teleprompter_auto_camera");
+  const characters = (Array.isArray(payload && payload.characterSlots) ? payload.characterSlots : [])
+    .map((slot) => ({
+      id: Number(slot && slot.id || 0),
+      name: String(slot && slot.name || ""),
+      slot: Number(slot && slot.slot || 0),
+    }))
+    .filter((character) => character.id > 0 && character.name && character.slot >= 1 && character.slot <= 3);
+  return {
+    sceneId: Number(payload && payload.sceneId || 0),
+    title: String(payload && payload.title || ""),
+    status: Number(payload && payload.sceneId || 0) > 0 ? "playing" : "prepared",
+    characters,
+  };
+}
+
 function algorithmOscStringArg(value) {
   return { type: "s", value: String(value === undefined || value === null ? "" : value) };
 }
@@ -12285,31 +13623,43 @@ function rememberAlgorithmOscSend(result) {
   return lastAlgorithmOscSend;
 }
 
+function writeEnvironmentOutputFromPayload(payload, source = "unknown") {
+  const sceneId = Number(payload && payload.sceneId || 0);
+  const envName = String(payload && payload.environment && payload.environment.name || "").trim();
+  if (!sceneId || !envName) return { wrote: false, reason: "missing_environment", sceneId, envName };
+  try {
+    const dir = path.dirname(ENVIRONMENT_OUTPUT_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(ENVIRONMENT_OUTPUT_PATH, envName, "utf8");
+    const refreshPulse = sendTouchDesignerEnvironmentRefreshPulse(source);
+    writeDebug("environment_file_written", { source: String(source || "unknown"), sceneId, envName, refreshPulse });
+    return { wrote: true, source: String(source || "unknown"), sceneId, envName, refreshPulse };
+  } catch (fileErr) {
+    const message = fileErr && fileErr.message ? String(fileErr.message) : "unknown";
+    writeDebug("environment_file_error", { source: String(source || "unknown"), sceneId, envName, message });
+    return { wrote: false, reason: message, sceneId, envName };
+  }
+}
+
 function sendAlgorithmUpNextOsc(source = "manual") {
   const payload = buildAlgorithmCurrentUpNextPayload(source);
   const sceneId = Number(payload && payload.sceneId || 0);
+  const activeRunForEnvironment = getCurrentActiveAlgorithmSceneRun();
+  const environmentFile = activeRunForEnvironment && !activeRunForEnvironment.endedAt
+    ? {
+        wrote: false,
+        reason: "active_scene_keeps_current_environment",
+        activeRunId: Number(activeRunForEnvironment.id || 0),
+        activeSceneId: Number(activeRunForEnvironment.sceneId || 0),
+      }
+    : writeEnvironmentOutputFromPayload(payload, `up_next:${source}`);
   const baseResult = {
     source: String(source || "manual"),
     sceneId,
     title: String(payload && payload.title || ""),
     payload,
+    environmentFile,
   };
-
-  // Write current environment name to file for TouchDesigner
-  if (sceneId && payload && payload.environment && payload.environment.name) {
-    try {
-      const envName = String(payload.environment.name).trim();
-      if (envName) {
-        const dir = path.dirname(ENVIRONMENT_OUTPUT_PATH);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(ENVIRONMENT_OUTPUT_PATH, envName, "utf8");
-      }
-    } catch (fileErr) {
-      writeDebug("environment_file_error", {
-        message: fileErr && fileErr.message ? String(fileErr.message) : "unknown",
-      });
-    }
-  }
 
   const packets = sceneId ? buildAlgorithmUpNextOscPackets(payload) : [];
   const messages = buildAlgorithmOscPacketPreview(packets);
@@ -12377,11 +13727,13 @@ function getAlgorithmCurrentSceneOscTarget() {
 function sendAlgorithmCurrentSceneOsc(source = "manual_current") {
   const payload = buildAlgorithmCurrentScenePayload(source);
   const sceneId = Number(payload && payload.sceneId || 0);
+  const environmentFile = writeEnvironmentOutputFromPayload(payload, `current:${source}`);
   const baseResult = {
     source: String(source || "manual_current"),
     sceneId,
     title: String(payload && payload.title || ""),
     payload,
+    environmentFile,
   };
   const packets = sceneId ? buildAlgorithmCurrentSceneOscPackets(payload) : [];
   const messages = buildAlgorithmOscPacketPreview(packets);
@@ -12691,7 +14043,11 @@ function sendOperatorScriptOscFinal(text, meta = {}) {
 function shouldIngestTeleprompterOperatorOutput(payload = {}) {
   const source = String(payload.source || "operator_chat");
   if (source === "operator_osc_test") return false;
-  return source === "chat" || source === "operator_chat" || source === "api_playground";
+  return source === "chat"
+    || source === "operator_chat"
+    || source === "api_playground"
+    || source === "operator_stage"
+    || source === "operator_scene_to_chat";
 }
 
 function ingestTeleprompterOperatorOutput(payload = {}) {
@@ -12703,9 +14059,30 @@ function ingestTeleprompterOperatorOutput(payload = {}) {
       title: payload.title || "",
       rawText: text,
       source: payload.source || "operator_chat",
+      sceneId: payload.sceneId || payload.scene_id || 0,
     });
   } catch (err) {
     writeDebug("teleprompter_ingest_failed", {
+      message: err && err.message ? String(err.message) : "unknown",
+    });
+    return null;
+  }
+}
+
+function prepareTeleprompterFromAlgorithmPayload(payload = {}) {
+  const sceneId = Number(payload && payload.sceneId || payload.currentOrderNextSceneId || 0);
+  if (!sceneId) return null;
+  try {
+    return teleprompterParser.prepare({
+      sceneId,
+      title: payload.title || "",
+      environment: teleprompterEnvironmentPayload(payload.environment),
+      characters: payload.characters || [],
+      characterSlots: payload.characterSlots || [],
+    });
+  } catch (err) {
+    writeDebug("teleprompter_prepare_failed", {
+      sceneId,
       message: err && err.message ? String(err.message) : "unknown",
     });
     return null;
@@ -12845,6 +14222,8 @@ function triggerOperatorSceneToChatFromPreparedScene(options = {}) {
     provider: operatorStageState.provider,
     model: operatorStageState.model,
     vectorStoreId: operatorStageState.vectorStoreId,
+    source: "operator_scene_to_chat",
+    algorithmSceneId: sceneId,
   }).catch((err) => {
     writeDebug("operator_scene_to_chat_failed", {
       sceneId,
@@ -12879,6 +14258,16 @@ function getOperatorPreparedAlgorithmScene() {
     name: String(currentSession && currentSession.name || ""),
   };
   if (activeRun && !activeRun.endedAt) {
+    const payload = buildAlgorithmCurrentScenePayload("operator_active_scene");
+    const selectedSlots = (Array.isArray(payload.characterSlots) ? payload.characterSlots : [])
+      .filter((slot) => String(slot.mode || "") === "selected" && Number(slot.id || 0) > 0);
+    const characterIds = selectedSlots.length
+      ? selectedSlots.map((slot) => String(Number(slot.id || 0)))
+      : (Array.isArray(payload.characters) ? payload.characters : []).map((item) => String(Number(item.id || 0))).filter((id) => id !== "0");
+    const characterNames = selectedSlots.length
+      ? selectedSlots.map((slot) => String(slot.name || "")).filter(Boolean)
+      : (Array.isArray(payload.characters) ? payload.characters : []).map((item) => String(item.name || "")).filter(Boolean);
+    const environment = payload && payload.environment ? payload.environment : null;
     return {
       ok: true,
       active: false,
@@ -12892,7 +14281,23 @@ function getOperatorPreparedAlgorithmScene() {
         startedAt: String(activeRun.startedAt || ""),
         updatedAt: String(activeRun.updatedAt || activeRun.startedAt || ""),
       },
-      reason: "Huidige scene speelt; operator behoudt de al klaargezette scene.",
+      scene: {
+        id: Number(payload.sceneId || activeRun.sceneId || 0),
+        title: String(payload.title || ""),
+        promptOverride: String(payload.description || ""),
+        environmentId: environment ? Number(environment.id || 0) : 0,
+        updatedAt: String(activeRun.updatedAt || activeRun.startedAt || ""),
+      },
+      ui: {
+        situationSlug: String(payload.sceneId || activeRun.sceneId || ""),
+        situationName: String(payload.title || ""),
+        characterSlugs: characterIds,
+        characterNames,
+        environmentSlug: environment ? String(Number(environment.id || 0)) : "",
+        environmentName: environment ? String(environment.name || "") : "",
+        situationSlugs: payload.sceneId ? [String(payload.sceneId)] : [],
+      },
+      reason: "Huidige scene speelt; operator gebruikt de resolved actieve scene als bron.",
     };
   }
 
@@ -14168,6 +15573,14 @@ app.get("/admin/td-preview/state", requireAdmin, (_req, res) => {
   res.json(tdPreviewStatePayload());
 });
 
+app.get("/admin/td-preview/health", requireAdmin, async (_req, res) => {
+  try {
+    res.json(await tdPreviewHealthPayload());
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safePublicError(err, "td_preview_health_failed") });
+  }
+});
+
 app.get("/admin/td-preview/frame/:sourceId.jpg", requireAdmin, (req, res) => {
   const sourceId = normalizeTdPreviewSourceId(req.params.sourceId);
   if (!TD_PREVIEW_SOURCE_IDS.has(sourceId)) {
@@ -14851,14 +16264,14 @@ app.post("/admin/algorithm/settings", requireAdmin, (req, res) => {
   }
 });
 
-app.post("/admin/algorithm/prompt-settings", requireAdmin, async (req, res) => {
+app.post("/admin/algorithm/prompt-settings", requireAdmin, (req, res) => {
   try {
     const body = req.body && typeof req.body === "object" ? req.body : {};
     const settings = saveAlgorithmSettings({
       globalPrompt: body.globalPrompt,
       promptTemplate: body.promptTemplate,
     });
-    const mirrorSync = await syncCatalogMirrorsAfterSave("prompt_settings_save");
+    const mirrorSync = queueCatalogMirrorSyncAfterSave("prompt_settings_save");
     syncAllPeers("prompt_settings_save").catch((err) => {
       writeDebug("sync_prompt_settings_failed", { message: err && err.message ? err.message : "unknown" });
     });
@@ -14878,61 +16291,101 @@ app.post("/admin/algorithm/performers/upsert", requireAdmin, (req, res) => {
   }
 });
 
-app.post("/admin/algorithm/characters/upsert", requireAdmin, async (req, res) => {
+app.post("/admin/algorithm/characters/upsert", requireAdmin, (req, res) => {
   try {
     const character = upsertAlgorithmCharacterFromBody(req.body || {});
     const normalizedSceneCount = renormalizeAlgorithmScenesForPerformerRoles();
-    const mirrorSync = await syncCatalogMirrorsAfterSave("character_save");
+    const mirrorSync = queueCatalogMirrorSyncAfterSave("character_save");
     res.json({ ok: true, character, normalizedSceneCount, mirrorSync, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
 });
 
-app.post("/admin/algorithm/situations/upsert", requireAdmin, async (req, res) => {
+app.post("/admin/algorithm/situations/upsert", requireAdmin, (req, res) => {
   try {
     const situation = upsertAlgorithmSituationFromBody(req.body || {});
-    const mirrorSync = await syncCatalogMirrorsAfterSave("situation_save");
+    const mirrorSync = queueCatalogMirrorSyncAfterSave("situation_save");
     res.json({ ok: true, situation, mirrorSync, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
 });
 
-app.post("/admin/algorithm/labels/upsert", requireAdmin, async (req, res) => {
+app.post("/admin/algorithm/labels/upsert", requireAdmin, (req, res) => {
   try {
     const label = upsertAlgorithmLabelFromBody(req.body || {});
-    const mirrorSync = await syncCatalogMirrorsAfterSave("label_save");
+    const mirrorSync = queueCatalogMirrorSyncAfterSave("label_save");
     res.json({ ok: true, label, mirrorSync, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
 });
 
-app.post("/admin/algorithm/environments/upsert", requireAdmin, async (req, res) => {
+app.get("/admin/algorithm/environment-assets", requireAdmin, (_req, res) => {
+  try {
+    res.json(getEnvironmentAssetsPayload());
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.get("/admin/algorithm/environment-assets/file/:filename", requireAdmin, (req, res) => {
+  try {
+    const filePath = environmentAssetFilePathFromRequest(req.params.filename);
+    res.sendFile(filePath);
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.get("/api/teleprompter-parser/environment-assets/file/:filename", (req, res) => {
+  try {
+    const filePath = environmentAssetFilePathFromRequest(req.params.filename);
+    const ext = normalizeEnvironmentAssetExtension(req.params.filename);
+    if (!ENVIRONMENT_ASSET_TYPES.background.extensions.includes(ext)) {
+      res.status(404).json({ ok: false, error: "environment_image_not_found" });
+      return;
+    }
+    res.sendFile(filePath);
+  } catch (err) {
+    res.status(404).json({ ok: false, error: safePublicError(err, "environment_image_not_found") });
+  }
+});
+
+app.post("/admin/algorithm/environment-assets/upload", requireAdmin, async (req, res) => {
+  try {
+    const upload = await saveEnvironmentAssetUpload(req);
+    res.json({ ok: true, upload, assets: getEnvironmentAssetsPayload() });
+  } catch (err) {
+    sendAlgorithmApiError(res, err);
+  }
+});
+
+app.post("/admin/algorithm/environments/upsert", requireAdmin, (req, res) => {
   try {
     const environment = upsertAlgorithmEnvironmentFromBody(req.body || {});
-    const mirrorSync = await syncCatalogMirrorsAfterSave("environment_save");
+    const mirrorSync = queueCatalogMirrorSyncAfterSave("environment_save");
     res.json({ ok: true, environment, mirrorSync, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
 });
 
-app.post("/admin/algorithm/scenes/upsert", requireAdmin, async (req, res) => {
+app.post("/admin/algorithm/scenes/upsert", requireAdmin, (req, res) => {
   try {
     const scene = upsertAlgorithmSceneFromBody(req.body || {});
-    const mirrorSync = await syncCatalogMirrorsAfterSave("scene_situation_save");
+    const mirrorSync = queueCatalogMirrorSyncAfterSave("scene_situation_save");
     res.json({ ok: true, scene, mirrorSync, state: getAlgorithmState(req) });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
 });
 
-app.post("/admin/algorithm/paths/upsert", requireAdmin, async (req, res) => {
+app.post("/admin/algorithm/paths/upsert", requireAdmin, (req, res) => {
   try {
     const pathItem = upsertAlgorithmPathFromBody(req.body || {});
-    const mirrorSync = await syncCatalogMirrorsAfterSave("path_save");
+    const mirrorSync = queueCatalogMirrorSyncAfterSave("path_save");
     syncAllPeers("path_save").catch((err) => {
       writeDebug("sync_path_save_failed", { message: err && err.message ? err.message : "unknown" });
     });
@@ -14942,10 +16395,10 @@ app.post("/admin/algorithm/paths/upsert", requireAdmin, async (req, res) => {
   }
 });
 
-app.post("/admin/algorithm/crossing-thresholds/upsert", requireAdmin, async (req, res) => {
+app.post("/admin/algorithm/crossing-thresholds/upsert", requireAdmin, (req, res) => {
   try {
     const crossingThreshold = upsertAlgorithmCrossingThresholdFromBody(req.body || {});
-    const mirrorSync = await syncCatalogMirrorsAfterSave("crossing_threshold_save");
+    const mirrorSync = queueCatalogMirrorSyncAfterSave("crossing_threshold_save");
     syncAllPeers("crossing_threshold_save").catch((err) => {
       writeDebug("sync_crossing_threshold_save_failed", { message: err && err.message ? err.message : "unknown" });
     });
@@ -14970,7 +16423,7 @@ app.post("/admin/algorithm/archive", requireAdmin, async (req, res) => {
     const result = archiveAlgorithmItem(kind, req.body && req.body.id);
     let mirrorSync = null;
     if (kind === "path") {
-      mirrorSync = await syncCatalogMirrorsAfterSave("path_archive");
+      mirrorSync = queueCatalogMirrorSyncAfterSave("path_archive");
       syncAllPeers("path_archive").catch((err) => {
         writeDebug("sync_path_archive_failed", { message: err && err.message ? err.message : "unknown" });
       });
@@ -15002,14 +16455,18 @@ app.post("/admin/algorithm/runs/start", requireAdmin, (req, res) => {
       }
       if (!sceneId) throw new Error("scene_id_required");
       const run = startAlgorithmSceneRun(sceneId, selectionSource || "manual");
+      const sq5SceneMics = queueSq5SceneMics(true, "admin_scene_started");
       const currentSceneOscSend = sendAlgorithmCurrentSceneOsc("scene_started_current");
+      const tdStagePulse = sendTouchDesignerStagePulse("scene", "admin_scene_started");
       const oscSend = sendAlgorithmUpNextOsc("scene_started");
-      return { run, currentSceneOscSend, oscSend };
+      return { run, sq5SceneMics, currentSceneOscSend, tdStagePulse, oscSend };
     });
     res.json({
       ok: true,
       run: result.run,
+      sq5SceneMics: result.sq5SceneMics,
       currentSceneOscSend: result.currentSceneOscSend.last || result.currentSceneOscSend,
+      tdStagePulse: result.tdStagePulse,
       oscSend: result.oscSend.last || result.oscSend,
       state: getAlgorithmState(req),
     });
@@ -15021,9 +16478,18 @@ app.post("/admin/algorithm/runs/start", requireAdmin, (req, res) => {
 app.post("/admin/algorithm/runs/begin", requireAdmin, (req, res) => {
   try {
     const result = withAlgorithmRunActionGuard("begin", req.body && req.body.expectedState, () => {
-      return beginAlgorithmRunWithUpNext("start_run");
+      const runStart = beginAlgorithmRunWithUpNext("start_run");
+      const preparedScene = prepareTeleprompterFromAlgorithmPayload(runStart && runStart.oscSend && runStart.oscSend.payload || {});
+      return { ...runStart, preparedScene };
     });
-    res.json({ ok: true, run: result.run, oscSend: result.oscSend.last || result.oscSend, state: getAlgorithmState(req) });
+    res.json({
+      ok: true,
+      run: result.run,
+      preparedScene: result.preparedScene,
+      tdStagePulse: result.tdStagePulse,
+      oscSend: result.oscSend.last || result.oscSend,
+      state: getAlgorithmState(req),
+    });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -15033,11 +16499,22 @@ app.post("/admin/algorithm/runs/end", requireAdmin, (req, res) => {
   try {
     const result = withAlgorithmRunActionGuard("end", req.body && req.body.expectedState, () => {
       const run = endActiveAlgorithmSceneRun(String(req.body && req.body.reason || "manual"));
+      const sq5SceneMics = queueSq5SceneMics(false, "admin_end_scene");
       fillAlgorithmLockedQueueForCurrentSession("end_scene", algorithmLockedQueueTargetForRuns(getAlgorithmRunsForCurrentSession(), 2));
       const oscSend = sendAlgorithmUpNextOsc("end_scene");
-      return { run, oscSend };
+      const tdStagePulse = sendTouchDesignerStagePulse("next", "admin_end_scene");
+      const preparedScene = prepareTeleprompterFromAlgorithmPayload(oscSend.payload || {});
+      return { run, sq5SceneMics, oscSend, tdStagePulse, preparedScene };
     });
-    res.json({ ok: true, run: result.run, oscSend: result.oscSend.last || result.oscSend, state: getAlgorithmState(req) });
+    res.json({
+      ok: true,
+      run: result.run,
+      sq5SceneMics: result.sq5SceneMics,
+      oscSend: result.oscSend.last || result.oscSend,
+      tdStagePulse: result.tdStagePulse,
+      preparedScene: result.preparedScene,
+      state: getAlgorithmState(req),
+    });
   } catch (err) {
     sendAlgorithmApiError(res, err);
   }
@@ -15047,14 +16524,18 @@ app.post("/admin/algorithm/runs/previous", requireAdmin, (req, res) => {
   try {
     const result = withAlgorithmRunActionGuard("previous", req.body && req.body.expectedState, () => {
       const previous = restorePreviousAlgorithmSceneRunForCurrentSession(String(req.body && req.body.reason || "manual"));
+      const sq5SceneMics = queueSq5SceneMics(true, "admin_previous_scene");
       const currentSceneOscSend = sendAlgorithmCurrentSceneOsc("previous_scene_current");
+      const tdStagePulse = sendTouchDesignerStagePulse("scene", "admin_previous_scene");
       const oscSend = sendAlgorithmUpNextOsc("previous_scene");
-      return { previous, currentSceneOscSend, oscSend };
+      return { previous, sq5SceneMics, currentSceneOscSend, tdStagePulse, oscSend };
     });
     res.json({
       ok: true,
       previous: result.previous,
+      sq5SceneMics: result.sq5SceneMics,
       currentSceneOscSend: result.currentSceneOscSend.last || result.currentSceneOscSend,
+      tdStagePulse: result.tdStagePulse,
       oscSend: result.oscSend.last || result.oscSend,
       state: getAlgorithmState(req),
     });
@@ -17037,27 +18518,46 @@ wss.on("error", (err) => {
   writeDebug("wss_error", { message: err && err.message ? err.message : "unknown" });
 });
 
-bindOscControlPort(currentOscListenPort, "startup").catch((err) => {
-  writeDebug("osc_control_startup_failed", {
-    listenAddress: OSC_CONTROL_LISTEN_ADDRESS,
-    listenPort: currentOscListenPort,
+function startOscPorts(requestedBy = "startup") {
+  bindOscControlPort(currentOscListenPort, requestedBy).catch((err) => {
+    writeDebug("osc_control_startup_failed", {
+      listenAddress: OSC_CONTROL_LISTEN_ADDRESS,
+      listenPort: currentOscListenPort,
+      message: err && err.message ? err.message : "unknown",
+    });
+  });
+  bindOscSendPort(requestedBy).catch((err) => {
+    writeDebug("osc_send_startup_failed", {
+      listenAddress: "0.0.0.0",
+      message: err && err.message ? err.message : "unknown",
+    });
+  });
+}
+
+server.on("error", (err) => {
+  const code = err && err.code ? String(err.code) : "";
+  writeDebug("server_listen_error", {
+    code,
+    port: PORT,
+    pid: process.pid,
     message: err && err.message ? err.message : "unknown",
   });
-});
-bindOscSendPort("startup").catch((err) => {
-  writeDebug("osc_send_startup_failed", {
-    listenAddress: "0.0.0.0",
-    message: err && err.message ? err.message : "unknown",
-  });
+  if (code === "EADDRINUSE" || code === "EACCES") {
+    setTimeout(() => process.exit(1), 10).unref();
+  }
 });
 
 function startServerListening() {
-  server.listen(PORT, "0.0.0.0", () => {
+  server.listen(PORT, SERVER_BIND_HOST, () => {
+    startOscPorts("startup");
     const lanIp = getPreferredLanIpv4();
-    const publicBaseUrl = lanIp ? `http://${lanIp}:${PORT}` : `http://127.0.0.1:${PORT}`;
+    const publicBaseUrl = isLoopbackServerBindHost(SERVER_BIND_HOST)
+      ? `http://127.0.0.1:${PORT}`
+      : lanIp ? `http://${lanIp}:${PORT}` : `http://127.0.0.1:${PORT}`;
     console.log(`Server running on ${publicBaseUrl}`);
     writeDebug("server_started", {
       port: PORT,
+      bindHost: SERVER_BIND_HOST,
       publicBaseUrl,
       lanIp: lanIp || "",
       pid: process.pid,

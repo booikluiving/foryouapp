@@ -337,7 +337,7 @@ De TouchDesigner-knop staat op pagina 2, rij `0`, kolom `2`. De knop is dynamisc
 Hij werkt standaard met dit TouchDesigner-project vanuit Dropbox:
 
 ```text
-/Users/for_you/Library/CloudStorage/Dropbox/For You/Voorstelling/show/td-light/For You TD Light POC from v3.37.toe
+/Users/for_you/Library/CloudStorage/Dropbox/For You/Voorstelling/show/td-light/For You TD Light POC from v3.38.toe
 ```
 
 De launcher positioneert het TouchDesigner-editorvenster op het linker Dell-scherm. Output-vensters, zoals de LG/HDMI-window, worden niet mee verplaatst.
@@ -369,7 +369,7 @@ De `selected`-output hoort standaard dit te tonen:
 
 ```text
 api|
-foryou|/Users/for_you/Library/CloudStorage/Dropbox/For You/Voorstelling/show/td-light/For You TD Light POC from v3.37.toe
+foryou|/Users/for_you/Library/CloudStorage/Dropbox/For You/Voorstelling/show/td-light/For You TD Light POC from v3.38.toe
 ```
 
 Status lezen zonder iets te openen of sluiten:

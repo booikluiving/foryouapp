@@ -18,6 +18,8 @@
   const captionOutlineValue = document.getElementById("captionOutlineValue");
   const captionStyleReset = document.getElementById("captionStyleReset");
   const captionStyleStatus = document.getElementById("captionStyleStatus");
+  const autoCameraSwitchInput = document.getElementById("autoCameraSwitchInput");
+  const reactionCameraSwitchInput = document.getElementById("reactionCameraSwitchInput");
 
   const DEFAULT_CAPTION_STYLE = Object.freeze({
     fontSizeScale: 1,
@@ -28,8 +30,10 @@
 
   let currentVersion = 0;
   let currentCaptionStyleVersion = -1;
+  let currentAutoCameraSwitchVersion = -1;
   let captionStyleSaveTimer = null;
   let savingCaptionStyle = false;
+  let savingAutoCameraSwitch = false;
   let userEdited = false;
 
   function clampNumber(value, min, max, fallback) {
@@ -92,6 +96,41 @@
       captionStyleStatus.textContent = `Captionstijl mislukt: ${err && err.message ? err.message : "onbekend"}`;
     } finally {
       savingCaptionStyle = false;
+    }
+  }
+
+  function applyAutoCameraSwitchControl(state) {
+    if (!state) return;
+    if (autoCameraSwitchInput) autoCameraSwitchInput.checked = !!state.enabled;
+    if (reactionCameraSwitchInput) reactionCameraSwitchInput.checked = !!state.reactionShotsEnabled;
+    if (Number.isFinite(Number(state.version))) currentAutoCameraSwitchVersion = Number(state.version);
+  }
+
+  async function saveAutoCameraSwitch() {
+    if (!autoCameraSwitchInput && !reactionCameraSwitchInput) return;
+    savingAutoCameraSwitch = true;
+    try {
+      const response = await fetch("/admin/teleprompter-parser/auto-camera", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: !!(autoCameraSwitchInput && autoCameraSwitchInput.checked),
+          reactionShotsEnabled: !!(reactionCameraSwitchInput && reactionCameraSwitchInput.checked),
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "auto_camera_failed");
+      applyAutoCameraSwitchControl(payload.autoCameraSwitch);
+      const autoOn = !!(payload.autoCameraSwitch && payload.autoCameraSwitch.enabled);
+      const reactionOn = !!(payload.autoCameraSwitch && payload.autoCameraSwitch.reactionShotsEnabled);
+      statusText.textContent = autoOn
+        ? reactionOn ? "Auto cams + auto reacties aan." : "Auto cams aan."
+        : reactionOn ? "Auto reacties klaar; auto cams staan uit." : "Auto cams uit.";
+    } catch (err) {
+      statusText.textContent = `Auto cams mislukt: ${err && err.message ? err.message : "onbekend"}`;
+      pollCurrent();
+    } finally {
+      savingAutoCameraSwitch = false;
     }
   }
 
@@ -187,6 +226,12 @@
           applyCaptionStyleControls(payload.captionStyle);
         }
       }
+      if (payload.autoCameraSwitch && !savingAutoCameraSwitch) {
+        const autoCameraSwitchVersion = Number(payload.autoCameraSwitch.version || 0);
+        if (autoCameraSwitchVersion !== currentAutoCameraSwitchVersion) {
+          applyAutoCameraSwitchControl(payload.autoCameraSwitch);
+        }
+      }
       if (!payload.teleprompt) return;
       const nextVersion = Number(payload.teleprompt.version || 0);
       if (nextVersion === currentVersion) return;
@@ -214,6 +259,12 @@
     applyCaptionStyleControls({ ...DEFAULT_CAPTION_STYLE, version: currentCaptionStyleVersion });
     saveCaptionStyle(DEFAULT_CAPTION_STYLE);
   });
+  if (autoCameraSwitchInput) {
+    autoCameraSwitchInput.addEventListener("change", saveAutoCameraSwitch);
+  }
+  if (reactionCameraSwitchInput) {
+    reactionCameraSwitchInput.addEventListener("change", saveAutoCameraSwitch);
+  }
 
   applyCaptionStyleControls(DEFAULT_CAPTION_STYLE);
   pollCurrent();

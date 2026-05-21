@@ -18,8 +18,11 @@
   });
 
   let teleprompt = null;
+  let preparedScene = null;
+  let showState = null;
   let cue = { index: 0, version: -1, deckLength: 0 };
   let captionStyle = { ...DEFAULT_CAPTION_STYLE };
+  let endSceneInFlight = false;
 
   function clampNumber(value, min, max, fallback) {
     const numeric = Number(value);
@@ -61,6 +64,15 @@
     return lines.length ? lines.length + 2 : 0;
   }
 
+  function captionsAreLive() {
+    return !!(
+      showState &&
+      showState.active === true &&
+      preparedScene &&
+      preparedScene.status === "playing"
+    );
+  }
+
   function clampIndex(index) {
     return Math.max(0, Math.min(Number.parseInt(index, 10) || 0, Math.max(deckLength() - 1, 0)));
   }
@@ -95,6 +107,10 @@
     return { type: "direction", text: line.text };
   }
 
+  function atEndCard() {
+    return captionsAreLive() && deckLength() > 0 && clampIndex(cue.index) >= deckLength() - 1;
+  }
+
   function isOverflowing(element) {
     return element.scrollHeight > element.clientHeight + 1 || element.scrollWidth > element.clientWidth + 1;
   }
@@ -113,14 +129,16 @@
   }
 
   function render() {
-    const activeCaption = captionForIndex(clampIndex(cue.index));
+    const activeCaption = captionsAreLive() ? captionForIndex(clampIndex(cue.index)) : null;
     clearCard();
     root.dataset.cueIndex = String(cue.index || 0);
     root.dataset.captionText = activeCaption ? activeCaption.text : "";
+    root.dataset.live = captionsAreLive() ? "1" : "0";
     if (debugEnabled && debug) {
       const title = teleprompt && teleprompt.title ? teleprompt.title : "geen scene";
       debug.hidden = false;
-      debug.textContent = `Live captions | cue ${cue.index || 0}/${Math.max(deckLength() - 1, 0)} | ${title}`;
+      const status = captionsAreLive() ? "live" : "verborgen";
+      debug.textContent = `Live captions ${status} | cue ${cue.index || 0}/${Math.max(deckLength() - 1, 0)} | ${title}`;
     }
     if (!activeCaption) {
       card.hidden = true;
@@ -135,10 +153,36 @@
 
   function applyCurrentPayload(payload) {
     if (!payload || !payload.ok) return;
+    showState = payload.show || null;
+    preparedScene = payload.preparedScene || null;
     teleprompt = payload.teleprompt || null;
     cue = payload.cue || { index: 0, version: -1, deckLength: 0 };
     applyCaptionStyle(payload.captionStyle || DEFAULT_CAPTION_STYLE);
     render();
+  }
+
+  async function triggerEndSceneFromEndCard() {
+    if (!atEndCard() || endSceneInFlight) return;
+    endSceneInFlight = true;
+    try {
+      const response = await fetch("/api/teleprompter-parser/end-scene", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const payload = await response.json();
+      if (response.ok && payload && payload.ok) applyCurrentPayload(payload);
+    } catch {
+    } finally {
+      endSceneInFlight = false;
+    }
+  }
+
+  function handleAdvanceKey(event) {
+    if (event.key !== "PageDown" && event.key !== "ArrowRight" && event.key !== " ") return;
+    if (!atEndCard()) return;
+    event.preventDefault();
+    triggerEndSceneFromEndCard();
   }
 
   async function pollCurrent() {
@@ -160,6 +204,7 @@
   }
 
   window.addEventListener("resize", updateCaptionScale);
+  window.addEventListener("keydown", handleAdvanceKey);
   if (window.visualViewport) window.visualViewport.addEventListener("resize", updateCaptionScale);
 
   if (debugEnabled) document.body.classList.add("caption-debug-mode");

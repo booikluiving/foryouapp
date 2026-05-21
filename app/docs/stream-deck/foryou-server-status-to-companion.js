@@ -13,6 +13,7 @@ const AUDIO_SCRIPT = "/Users/for_you/ForYou/companion-scripts/foryou-audio-toggl
 const TRPC_URL = "ws://127.0.0.1:8008/trpc";
 const HEALTH_URL = "http://127.0.0.1:3310/health";
 const STATE_URL = "http://127.0.0.1:3310/admin/algorithm/state";
+const TELEPROMPTER_CURRENT_URL = "http://127.0.0.1:3310/api/teleprompter-parser/current";
 const WHITE = 16777215;
 const GREEN = 51200;
 const RED = 13107200;
@@ -45,6 +46,8 @@ const dynamicActionButtons = [
   { row: 2, column: 2, styleForState: sceneButtonStyle },
 ];
 
+const startSceneButton = { row: 0, column: 5 };
+const readyButton = { row: 0, column: 4 };
 const touchDesignerButton = { row: 0, column: 2 };
 const audioButton = { row: 3, column: 1 };
 
@@ -86,6 +89,21 @@ async function readAppState() {
   }
 }
 
+async function readTeleprompterState() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1000);
+  try {
+    const response = await fetch(TELEPROMPTER_CURRENT_URL, { signal: controller.signal, cache: "no-store" });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body || !body.ok) return null;
+    return body;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function sqlite(sql) {
   return execFileSync("sqlite3", [DB_PATH, sql], { encoding: "utf8" }).trim();
 }
@@ -110,18 +128,19 @@ function readCache() {
       return {
         status: String(parsed.status || ""),
         actionKey: String(parsed.actionKey || ""),
+        teleprompterKey: String(parsed.teleprompterKey || ""),
         touchDesignerStatus: String(parsed.touchDesignerStatus || ""),
         audioStatus: String(parsed.audioStatus || ""),
       };
     }
   } catch {}
-  return { status: "", actionKey: "", touchDesignerStatus: "", audioStatus: "" };
+  return { status: "", actionKey: "", teleprompterKey: "", touchDesignerStatus: "", audioStatus: "" };
 }
 
-function writeCache(status, actionKey, touchDesignerStatus, audioStatus) {
+function writeCache(status, actionKey, teleprompterKey, touchDesignerStatus, audioStatus) {
   try {
     fs.mkdirSync(path.dirname(CACHE_PATH), { recursive: true });
-    fs.writeFileSync(CACHE_PATH, JSON.stringify({ status, actionKey, touchDesignerStatus, audioStatus, updatedAt: new Date().toISOString() }));
+    fs.writeFileSync(CACHE_PATH, JSON.stringify({ status, actionKey, teleprompterKey, touchDesignerStatus, audioStatus, updatedAt: new Date().toISOString() }));
   } catch (error) {
     console.error(error.stack || error.message || error);
   }
@@ -206,6 +225,19 @@ function sceneButtonStyle(state) {
     : { text: "VOLG.\nSITUATIE", size: "15", color: WHITE, bgcolor: TEAL };
 }
 
+function startSceneButtonStyle(state) {
+  if (!state) return { text: "SCENE\nERROR", size: "16", color: WHITE, bgcolor: RED };
+  if (state.activeRun) return { text: "STOP\nSCENE", size: "17", color: BLACK, bgcolor: ORANGE };
+  if (!nextSceneId(state)) return { text: "GEEN\nNEXT", size: "16", color: DIM_COLOR, bgcolor: DIM_BG };
+  return { text: "START\nSCENE", size: "17", color: WHITE, bgcolor: TEAL };
+}
+
+function readyButtonStyle(teleprompterState) {
+  const prepared = teleprompterState && teleprompterState.preparedScene;
+  if (prepared && prepared.ready) return { text: "READY", size: "21", color: WHITE, bgcolor: GREEN };
+  return { text: "Ready?", size: "18", color: WHITE, bgcolor: 13056 };
+}
+
 function readTouchDesignerStatus() {
   try {
     const output = execFileSync(TOUCHDESIGNER_SCRIPT, ["status"], {
@@ -253,6 +285,17 @@ function actionStateKey(state) {
   ].join("|");
 }
 
+function teleprompterStateKey(teleprompterState) {
+  const prepared = teleprompterState && teleprompterState.preparedScene;
+  if (!prepared) return "prepared:none";
+  return [
+    `prepared:${Number(prepared.sceneId || 0)}`,
+    `ready:${prepared.ready ? "yes" : "no"}`,
+    `status:${String(prepared.status || "")}`,
+    `version:${Number(prepared.version || 0)}`,
+  ].join("|");
+}
+
 async function setStyle(client, targetControlId, styleFields) {
   if (!targetControlId || !styleFields) return;
   await client.call("controls.setStyleFields", {
@@ -279,6 +322,22 @@ async function updateDynamicActionButtons(client, isOn, state) {
     const id = controlIdAt(page, button.row, button.column);
     await setStyle(client, id, isOn ? button.styleForState(state) : off);
   }
+}
+
+async function updateStartSceneButton(client, isOn, state) {
+  const page = readPage(1);
+  if (!page) return;
+  const id = controlIdAt(page, startSceneButton.row, startSceneButton.column);
+  const off = { text: "GEEN\nNEXT", size: "16", color: DIM_COLOR, bgcolor: DIM_BG };
+  await setStyle(client, id, isOn ? startSceneButtonStyle(state) : off);
+}
+
+async function updateReadyButton(client, isOn, teleprompterState) {
+  const page = readPage(1);
+  if (!page) return;
+  const id = controlIdAt(page, readyButton.row, readyButton.column);
+  const off = { text: "Ready?", size: "18", color: DIM_COLOR, bgcolor: DIM_BG };
+  await setStyle(client, id, isOn ? readyButtonStyle(teleprompterState) : off);
 }
 
 async function updateTouchDesignerButton(client, status) {
@@ -317,8 +376,11 @@ async function main() {
   const pulse = args.has("--pulse") || (cache.status && statusChanged);
   const busy = actionFeedbackBusy();
   const state = isOn && !busy ? await readAppState() : null;
+  const teleprompterState = isOn && !busy ? await readTeleprompterState() : null;
   const actionKey = state ? actionStateKey(state) : cache.actionKey;
   const actionChanged = !!state && cache.actionKey !== actionKey;
+  const teleprompterKey = teleprompterState ? teleprompterStateKey(teleprompterState) : cache.teleprompterKey;
+  const teleprompterChanged = !!teleprompterState && cache.teleprompterKey !== teleprompterKey;
   const touchDesignerStatus = readTouchDesignerStatus();
   const touchDesignerChanged = cache.touchDesignerStatus !== touchDesignerStatus;
   const audioStatus = readAudioStatus();
@@ -341,8 +403,15 @@ async function main() {
       if (pulse) await pulseServerDependentButtons(client, isOn);
       await updatePageLinks(client, isOn);
       await updateDynamicActionButtons(client, isOn, state);
+      await updateStartSceneButton(client, isOn, state);
+      await updateReadyButton(client, isOn, teleprompterState);
     } else if (actionChanged) {
       await updateDynamicActionButtons(client, isOn, state);
+      await updateStartSceneButton(client, isOn, state);
+    }
+
+    if (force || teleprompterChanged) {
+      await updateReadyButton(client, isOn, teleprompterState);
     }
 
     if (force || touchDesignerChanged) {
@@ -353,7 +422,7 @@ async function main() {
       await updateAudioButton(client, audioStatus);
     }
 
-    writeCache(status, actionKey, touchDesignerStatus, audioStatus);
+    writeCache(status, actionKey, teleprompterKey, touchDesignerStatus, audioStatus);
   } finally {
     client.close();
   }

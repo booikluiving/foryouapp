@@ -10,6 +10,7 @@ const MAX_HISTORY = 10;
 const MAX_LIVECHAT = 50;
 const MAX_CHAT_MESSAGES_FOR_PROVIDER = 50;
 const TOKEN_WARNING_THRESHOLD = 500_000;
+const DEFAULT_PROVIDER_TIMEOUT_MS = 180_000;
 
 const ANTHROPIC_MODELS = Object.freeze([
   "claude-sonnet-4-6",
@@ -132,6 +133,15 @@ function safePublicError(err, fallback = "operator_ai_error") {
     .replace(/sk-[A-Za-z0-9_-]+/g, "sk-...");
 }
 
+function providerTimeoutMs(env) {
+  return clampInt(
+    env.FORYOU_PROVIDER_TIMEOUT_MS || env.PROVIDER_TIMEOUT_MS || DEFAULT_PROVIDER_TIMEOUT_MS,
+    10_000,
+    600_000,
+    DEFAULT_PROVIDER_TIMEOUT_MS
+  );
+}
+
 function anthropicApiKey(env) {
   return normalizeText(env.ANTHROPIC_API_KEY || env.CLAUDE_API_KEY || "", 1000);
 }
@@ -237,13 +247,13 @@ function parseSseEvent(raw) {
   return event;
 }
 
-async function readSseStream(body, onEvent) {
+async function readSseStream(body, onEvent, idleTimeoutMs = 0, timeoutError = "provider_stream_timeout") {
   if (!body) throw new Error("stream_body_missing");
   const decoder = new TextDecoder();
   let buffer = "";
 
   async function pushChunk(chunk) {
-    buffer += decoder.decode(chunk, { stream: true });
+    buffer += decoder.decode(chunk, { stream: true }).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     let index = buffer.indexOf("\n\n");
     while (index >= 0) {
       const rawEvent = buffer.slice(0, index);
@@ -264,10 +274,29 @@ async function readSseStream(body, onEvent) {
 
   if (typeof body.getReader === "function") {
     const reader = body.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      await pushChunk(value);
+    try {
+      while (true) {
+        let timer = null;
+        const readPromise = reader.read();
+        const result = idleTimeoutMs > 0
+          ? await Promise.race([
+            readPromise,
+            new Promise((resolve, reject) => {
+              timer = setTimeout(() => reject(new Error(timeoutError)), idleTimeoutMs);
+              if (timer && typeof timer.unref === "function") timer.unref();
+            }),
+          ])
+          : await readPromise;
+        if (timer) clearTimeout(timer);
+        const { done, value } = result;
+        if (done) break;
+        await pushChunk(value);
+      }
+    } catch (err) {
+      try {
+        await reader.cancel();
+      } catch {}
+      throw err;
     }
   } else {
     for await (const chunk of body) {
@@ -342,6 +371,28 @@ function createOperatorAi(options = {}) {
     try {
       logger(event, meta);
     } catch {}
+  }
+
+  async function fetchProvider(url, requestOptions, fallback) {
+    const timeoutMs = providerTimeoutMs(env);
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = controller
+      ? setTimeout(() => controller.abort(new Error(`${fallback}_timeout`)), timeoutMs)
+      : null;
+    if (timer && typeof timer.unref === "function") timer.unref();
+    try {
+      return await fetchImpl(url, {
+        ...requestOptions,
+        signal: controller ? controller.signal : requestOptions.signal,
+      });
+    } catch (err) {
+      if (err && (err.name === "AbortError" || String(err.message || "").includes(`${fallback}_timeout`))) {
+        throw new Error(`${fallback}_timeout`);
+      }
+      throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   async function notifyOutput(payload = {}) {
@@ -695,7 +746,7 @@ function createOperatorAi(options = {}) {
     }));
   }
 
-  async function streamAnthropic({ session, sessieId, message, model, maxTokens, sceneId, emit }) {
+  async function streamAnthropic({ session, sessieId, message, model, maxTokens, sceneId, algorithmSceneId = 0, source = "chat", emit }) {
     const messages = historyForProvider(session);
     messages.push({
       role: "user",
@@ -705,7 +756,7 @@ function createOperatorAi(options = {}) {
         cache_control: { type: "ephemeral" },
       }],
     });
-    const response = await fetchImpl("https://api.anthropic.com/v1/messages", {
+    const response = await fetchProvider("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -719,7 +770,7 @@ function createOperatorAi(options = {}) {
         system: anthropicSystemBlocks(),
         messages,
       }),
-    });
+    }, "anthropic_api");
     if (!response.ok) throw await responseError(response, "anthropic_api_error");
 
     let fullText = "";
@@ -742,7 +793,7 @@ function createOperatorAi(options = {}) {
       }
       if (data.type === "message_delta" && data.usage) mergeUsage(usage, data.usage);
       if (data.type === "message_stop" && data.usage) mergeUsage(usage, data.usage);
-    });
+    }, providerTimeoutMs(env), "anthropic_api_timeout");
 
     const tokensIn = usageNumber(usage, "input_tokens")
       + usageNumber(usage, "cache_creation_input_tokens")
@@ -757,6 +808,7 @@ function createOperatorAi(options = {}) {
     const done = {
       type: "done",
       scene_id: sceneId,
+      algorithm_scene_id: Number(algorithmSceneId || 0),
       provider: "anthropic",
       model,
       tokens_input: tokensIn,
@@ -773,19 +825,20 @@ function createOperatorAi(options = {}) {
     const osc = await notifyOutput({
       text: fullText,
       scene_id: sceneId,
+      sceneId: Number(algorithmSceneId || 0),
       sessie_id: sessieId,
       provider: "anthropic",
       model,
-      source: "chat",
+      source,
     });
     if (osc) done.osc = osc;
     return done;
   }
 
-  async function streamOpenAi({ session, sessieId, message, model, maxTokens, sceneId, vectorStoreId, emit }) {
+  async function streamOpenAi({ session, sessieId, message, model, maxTokens, sceneId, algorithmSceneId = 0, vectorStoreId, source = "chat", emit }) {
     const input = historyForProvider(session);
     input.push({ role: "user", content: message });
-    const response = await fetchImpl("https://api.openai.com/v1/responses", {
+    const response = await fetchProvider("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -803,7 +856,7 @@ function createOperatorAi(options = {}) {
           max_num_results: 10,
         }],
       }),
-    });
+    }, "openai_api");
     if (!response.ok) throw await responseError(response, "openai_api_error");
 
     let fullText = "";
@@ -825,7 +878,7 @@ function createOperatorAi(options = {}) {
         const err = data.response && data.response.error;
         throw new Error(safePublicError({ message: err && err.message ? err.message : "openai_response_failed" }));
       }
-    });
+    }, providerTimeoutMs(env), "openai_api_timeout");
     const priced = calculateOpenAiCost(model, usage);
     recordUsage(session, "openai", priced.input + priced.output, priced.cost);
     session.messages.push({ role: "user", content: message });
@@ -835,6 +888,7 @@ function createOperatorAi(options = {}) {
     const done = {
       type: "done",
       scene_id: sceneId,
+      algorithm_scene_id: Number(algorithmSceneId || 0),
       provider: "openai",
       model,
       tokens_input: priced.input,
@@ -852,22 +906,23 @@ function createOperatorAi(options = {}) {
     const osc = await notifyOutput({
       text: fullText,
       scene_id: sceneId,
+      sceneId: Number(algorithmSceneId || 0),
       sessie_id: sessieId,
       provider: "openai",
       model,
-      source: "chat",
+      source,
     });
     if (osc) done.osc = osc;
     return done;
   }
 
-  async function streamDeepSeek({ session, sessieId, message, model, maxTokens, sceneId, emit }) {
+  async function streamDeepSeek({ session, sessieId, message, model, maxTokens, sceneId, algorithmSceneId = 0, source = "chat", emit }) {
     const messages = [
       { role: "system", content: compactCatalogInstructions() },
       ...historyForProvider(session),
       { role: "user", content: message },
     ];
-    const response = await fetchImpl("https://api.deepseek.com/chat/completions", {
+    const response = await fetchProvider("https://api.deepseek.com/chat/completions", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -881,7 +936,7 @@ function createOperatorAi(options = {}) {
         stream_options: { include_usage: true },
         thinking: { type: "disabled" },
       }),
-    });
+    }, "deepseek_api");
     if (!response.ok) throw await responseError(response, "deepseek_api_error");
 
     let fullText = "";
@@ -900,7 +955,7 @@ function createOperatorAi(options = {}) {
           emit({ type: "delta", text: delta.content });
         }
       }
-    });
+    }, providerTimeoutMs(env), "deepseek_api_timeout");
     const priced = calculateDeepSeekCost(model, usage);
     recordUsage(session, "deepseek", priced.input + priced.output, priced.cost);
     session.messages.push({ role: "user", content: message });
@@ -910,6 +965,7 @@ function createOperatorAi(options = {}) {
     const done = {
       type: "done",
       scene_id: sceneId,
+      algorithm_scene_id: Number(algorithmSceneId || 0),
       provider: "deepseek",
       model,
       tokens_input: priced.input,
@@ -927,10 +983,11 @@ function createOperatorAi(options = {}) {
     const osc = await notifyOutput({
       text: fullText,
       scene_id: sceneId,
+      sceneId: Number(algorithmSceneId || 0),
       sessie_id: sessieId,
       provider: "deepseek",
       model,
-      source: "chat",
+      source,
     });
     if (osc) done.osc = osc;
     return done;
@@ -944,6 +1001,8 @@ function createOperatorAi(options = {}) {
     const model = normalizeModel(provider, body.model);
     const maxTokens = clampInt(body.max_tokens || body.maxTokens || 4096, 256, 16000, 4096);
     const vectorStoreId = getOpenAiVectorStoreId(body.vectorStoreId);
+    const algorithmSceneId = Math.max(0, Number.parseInt(String(body.algorithmSceneId || body.sceneId || 0), 10) || 0);
+    const source = normalizeText(body.source || "chat", 80) || "chat";
     assertProviderReady(provider, vectorStoreId);
 
     const session = getSession(sessieId);
@@ -951,11 +1010,11 @@ function createOperatorAi(options = {}) {
     emit({ type: "start", scene_id: sceneId, provider, model });
     let done = null;
     if (provider === "openai") {
-      done = await streamOpenAi({ session, sessieId, message, model, maxTokens, sceneId, vectorStoreId, emit });
+      done = await streamOpenAi({ session, sessieId, message, model, maxTokens, sceneId, algorithmSceneId, vectorStoreId, source, emit });
     } else if (provider === "deepseek") {
-      done = await streamDeepSeek({ session, sessieId, message, model, maxTokens, sceneId, emit });
+      done = await streamDeepSeek({ session, sessieId, message, model, maxTokens, sceneId, algorithmSceneId, source, emit });
     } else {
-      done = await streamAnthropic({ session, sessieId, message, model, maxTokens, sceneId, emit });
+      done = await streamAnthropic({ session, sessieId, message, model, maxTokens, sceneId, algorithmSceneId, source, emit });
     }
     emit(done);
     return done;

@@ -13,9 +13,12 @@
   const isTouchDesignerRender = params.has("td") || document.body.classList.contains("stage-td-render-mode");
 
   let teleprompt = null;
+  let preparedScene = null;
+  let showState = null;
   let currentVersion = -1;
   let currentCueVersion = -1;
   let currentIndex = 0;
+  let endSceneInFlight = false;
 
   function updateStageScale() {
     if (isTouchDesignerRender) {
@@ -60,8 +63,43 @@
     return characters.find((entry) => entry.id === line.speakerId) || null;
   }
 
+  function sourceSceneId() {
+    return Number(teleprompt && teleprompt.source && teleprompt.source.sceneId || 0);
+  }
+
+  function preparedSceneId() {
+    return Number(preparedScene && preparedScene.sceneId || 0);
+  }
+
+  function telepromptMatchesPreparedScene() {
+    const preparedId = preparedSceneId();
+    const sourceId = sourceSceneId();
+    return !preparedId || !sourceId || preparedId === sourceId;
+  }
+
+  function canUseTelepromptLines() {
+    if (!teleprompt || !Array.isArray(teleprompt.lines) || !teleprompt.lines.length) return false;
+    if (preparedScene && preparedScene.status === "playing") return telepromptMatchesPreparedScene();
+    return true;
+  }
+
+  function activeTitle() {
+    if (preparedScene && preparedScene.status === "playing" && preparedScene.title) {
+      const parsedTitle = String(teleprompt && teleprompt.title || "").trim();
+      if (!parsedTitle || parsedTitle === "Teleprompt" || !telepromptMatchesPreparedScene()) return preparedScene.title;
+    }
+    if (preparedScene && preparedScene.status === "playing" && !telepromptMatchesPreparedScene()) {
+      return preparedScene.title || "Teleprompt";
+    }
+    return (teleprompt && teleprompt.title) || (preparedScene && preparedScene.title) || "Teleprompt";
+  }
+
+  function showIsInactive() {
+    return !!(showState && showState.active === false);
+  }
+
   function deckLength() {
-    const lines = teleprompt && Array.isArray(teleprompt.lines) ? teleprompt.lines : [];
+    const lines = canUseTelepromptLines() ? teleprompt.lines : [];
     return lines.length + 2;
   }
 
@@ -79,6 +117,37 @@
     element.textContent = text || "";
     card.appendChild(element);
     return element;
+  }
+
+  function environmentImageAlt(environment) {
+    const name = String(environment && environment.name || "").trim();
+    return name ? `Omgeving ${name}` : "Omgeving";
+  }
+
+  function appendPrepEnvironment() {
+    const environment = preparedScene && preparedScene.environment ? preparedScene.environment : null;
+    if (!environment || (!environment.name && !environment.imageUrl)) return;
+
+    const wrapper = document.createElement("section");
+    wrapper.className = "stage-prep-environment";
+
+    if (environment.imageUrl) {
+      const image = document.createElement("img");
+      image.className = "stage-prep-environment-image";
+      image.src = environment.imageUrl;
+      image.alt = environmentImageAlt(environment);
+      image.loading = "eager";
+      wrapper.appendChild(image);
+    }
+
+    const text = document.createElement("div");
+    text.className = "stage-prep-environment-text";
+    const name = document.createElement("p");
+    name.className = "stage-prep-environment-name";
+    name.textContent = environment.name || "Onbekende omgeving";
+    text.appendChild(name);
+    wrapper.appendChild(text);
+    card.appendChild(wrapper);
   }
 
   function appendFormattedText(target, input) {
@@ -143,7 +212,9 @@
   }
 
   function renderEmpty() {
+    clearNoShowState();
     root.classList.add("is-title-card");
+    root.classList.remove("is-prep-card", "is-ready");
     root.classList.remove("is-end-card");
     card.className = "stage-card title-card";
     clearCard();
@@ -152,17 +223,78 @@
     progress.textContent = "0 / 0";
   }
 
+  function renderNoShow() {
+    root.classList.add("is-no-show", "is-title-card");
+    root.classList.remove("is-prep-card", "is-ready", "is-end-card");
+    card.className = "stage-card title-card no-show-card";
+    card.style.removeProperty("--speaker-color");
+    clearCard();
+    appendTextElement("p", "stage-no-show-kicker", "GEEN ACTIEVE SHOW");
+    appendTextElement("h1", "stage-no-show-title", "Wacht op start show");
+    sceneTitle.textContent = "Geen actieve show";
+    progress.textContent = "UIT";
+  }
+
+  function clearNoShowState() {
+    root.classList.remove("is-no-show");
+  }
+
   function renderTitleCard() {
+    clearNoShowState();
     root.classList.add("is-title-card");
+    root.classList.remove("is-prep-card", "is-ready");
     root.classList.remove("is-end-card");
     card.className = "stage-card title-card";
     card.style.removeProperty("--speaker-color");
     clearCard();
-    appendTextElement("h1", "stage-title", teleprompt.title || "Teleprompt");
+    const title = activeTitle();
+    appendTextElement("h1", "stage-title", title);
+    sceneTitle.textContent = title;
+    progress.textContent = `${currentIndex + 1} / ${deckLength()}`;
+  }
+
+  function renderPrepCard() {
+    clearNoShowState();
+    const characters = Array.isArray(preparedScene && preparedScene.characters) ? preparedScene.characters : [];
+    root.classList.remove("is-title-card", "is-end-card");
+    root.classList.add("is-prep-card");
+    root.classList.toggle("is-ready", !!(preparedScene && preparedScene.ready));
+    card.className = "stage-card prep-card";
+    card.style.removeProperty("--speaker-color");
+    clearCard();
+    appendTextElement("p", "stage-prep-kicker", preparedScene && preparedScene.ready ? "READY" : "VOLGENDE SCENE");
+    appendTextElement("h1", "stage-prep-title", (preparedScene && preparedScene.title) || "Volgende scene");
+    appendPrepEnvironment();
+    const list = document.createElement("ul");
+    list.className = "stage-prep-characters";
+    characters.slice(0, 3).forEach((character) => {
+      const item = document.createElement("li");
+      const slot = Number(character && character.slot || 0) || list.children.length + 1;
+      const name = character && character.name ? character.name : "Personage";
+      const number = document.createElement("span");
+      number.className = "stage-prep-character-slot";
+      number.textContent = String(slot);
+      const label = document.createElement("span");
+      label.className = "stage-prep-character-name";
+      label.textContent = name;
+      item.appendChild(number);
+      item.appendChild(label);
+      list.appendChild(item);
+    });
+    if (!list.children.length) {
+      const item = document.createElement("li");
+      item.textContent = "Geen personages";
+      list.appendChild(item);
+    }
+    card.appendChild(list);
+    sceneTitle.textContent = (preparedScene && preparedScene.title) || "Volgende scene";
+    progress.textContent = preparedScene && preparedScene.ready ? "READY" : "PREP";
   }
 
   function renderEndCard() {
+    clearNoShowState();
     root.classList.remove("is-title-card");
+    root.classList.remove("is-prep-card", "is-ready");
     root.classList.add("is-end-card");
     card.className = "stage-card title-card end-card";
     card.style.removeProperty("--speaker-color");
@@ -171,8 +303,9 @@
   }
 
   function renderDialogue(line) {
+    clearNoShowState();
     const character = characterFor(line);
-    root.classList.remove("is-title-card", "is-end-card");
+    root.classList.remove("is-title-card", "is-end-card", "is-prep-card", "is-ready");
     card.className = "stage-card dialogue-card";
     card.style.setProperty("--speaker-color", character && character.color ? character.color : "#4cc9f0");
     clearCard();
@@ -182,7 +315,8 @@
   }
 
   function renderDirection(line) {
-    root.classList.remove("is-title-card", "is-end-card");
+    clearNoShowState();
+    root.classList.remove("is-title-card", "is-end-card", "is-prep-card", "is-ready");
     card.className = "stage-card direction-card";
     card.style.removeProperty("--speaker-color");
     clearCard();
@@ -192,12 +326,21 @@
   }
 
   function render() {
-    if (!teleprompt || !teleprompt.lines || !teleprompt.lines.length) {
-      renderEmpty();
+    if (showIsInactive()) {
+      renderNoShow();
+      return;
+    }
+    if (preparedScene && preparedScene.status === "prepared") {
+      renderPrepCard();
+      return;
+    }
+    if (!canUseTelepromptLines()) {
+      if (preparedScene && preparedScene.status === "playing") renderTitleCard();
+      else renderEmpty();
       return;
     }
     currentIndex = clampIndex(currentIndex);
-    sceneTitle.textContent = teleprompt.title || "Teleprompt";
+    sceneTitle.textContent = activeTitle();
     progress.textContent = `${currentIndex + 1} / ${deckLength()}`;
 
     if (currentIndex === 0) {
@@ -218,6 +361,8 @@
   function applyCurrentPayload(payload) {
     const nextTeleprompt = payload && payload.teleprompt;
     const nextCue = payload && payload.cue;
+    showState = payload && payload.show ? payload.show : null;
+    preparedScene = payload && payload.preparedScene ? payload.preparedScene : null;
     const nextVersion = Number(nextTeleprompt && nextTeleprompt.version || 0);
     if (nextVersion !== currentVersion) {
       currentVersion = nextVersion;
@@ -248,7 +393,37 @@
     } catch {}
   }
 
+  async function triggerEndSceneFromEndCard() {
+    if (endSceneInFlight) return;
+    endSceneInFlight = true;
+    progress.textContent = "STOP";
+    try {
+      const response = await fetch("/api/teleprompter-parser/end-scene", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const payload = await response.json();
+      if (response.ok && payload && payload.ok) {
+        applyCurrentPayload(payload);
+      } else {
+        progress.textContent = "ERROR";
+      }
+    } catch {
+      progress.textContent = "ERROR";
+    } finally {
+      endSceneInFlight = false;
+    }
+  }
+
   function move(delta, options = {}) {
+    if (showIsInactive()) return;
+    if (preparedScene && preparedScene.status === "prepared") return;
+    if (preparedScene && preparedScene.status === "playing" && !canUseTelepromptLines()) return;
+    if (delta > 0 && canUseTelepromptLines() && currentIndex === deckLength() - 1) {
+      triggerEndSceneFromEndCard();
+      return;
+    }
     currentIndex = clampIndex(currentIndex + delta);
     render();
     if (!options.silent) publishCue();
@@ -283,10 +458,10 @@
   });
   root.addEventListener("click", () => move(1));
   window.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowRight" || event.key === " ") {
+    if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
       event.preventDefault();
       move(1);
-    } else if (event.key === "ArrowLeft") {
+    } else if (event.key === "ArrowLeft" || event.key === "PageUp") {
       event.preventDefault();
       move(-1);
     } else if (event.key === "Home") {

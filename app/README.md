@@ -54,6 +54,7 @@ De Mac Studio show-machine gebruikt via de launchd/setup-scripts `3310`. Dat is 
 ## Omgevingsvariabelen
 Belangrijkste env vars:
 - `PORT` (lokale default: `3010`; Mac Studio setup: `3310`)
+- `FORYOU_BIND_HOST` / `BIND_HOST` (default: `0.0.0.0`; gebruik `127.0.0.1` voor lokale smoke-tests zonder LAN-bind)
 - `ADMIN_AUTH_DISABLED` (default: `1`; adminpagina's openen zonder wachtwoord)
 - `ADMIN_PASSWORD` (default: `admin`; alleen actief als `ADMIN_AUTH_DISABLED=0`)
 - `FORYOU_SYNC_SECRET` / `SYNC_SECRET` (expliciet nodig voor peer-sync wanneer `ADMIN_AUTH_DISABLED=1`; geen fallback naar `ADMIN_PASSWORD`)

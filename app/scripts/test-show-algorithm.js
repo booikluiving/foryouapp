@@ -439,6 +439,35 @@ function testCurrentOrderQueuesAvailableScenesWithoutCalibration() {
   assert.deepStrictEqual(order.upcoming.map((entry) => entry.sceneId), [2, 3, 4, 5, 6]);
 }
 
+function testAvailableShuffleOnlyChangesEqualScoreTies() {
+  const scenes = Array.from({ length: 8 }, (_, index) => ({
+    id: index + 1,
+    title: `Situatie ${index + 1}`,
+    sortOrder: index + 1,
+    isActive: true,
+  }));
+  const runs = [{ id: 1, sceneId: 1, runOrder: 1, endedAt: "2026-01-01T00:00:00.000Z" }];
+  const baseSettings = { calibrationCount: 0 };
+  const unshuffled = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { ...baseSettings, availableShuffleEnabled: false, availableShuffleSeed: "shuffle-a" },
+  });
+  const shuffled = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { ...baseSettings, availableShuffleEnabled: true, availableShuffleSeed: "shuffle-a" },
+  });
+  const repeated = buildAlgorithmOrder({
+    scenes,
+    runs,
+    settings: { ...baseSettings, availableShuffleEnabled: true, availableShuffleSeed: "shuffle-a" },
+  });
+  assert.deepStrictEqual(unshuffled.upcoming.map((entry) => entry.sceneId), [2, 3, 4, 5, 6, 7, 8]);
+  assert.deepStrictEqual(shuffled.upcoming.map((entry) => entry.sceneId), repeated.upcoming.map((entry) => entry.sceneId));
+  assert.notDeepStrictEqual(shuffled.upcoming.map((entry) => entry.sceneId), unshuffled.upcoming.map((entry) => entry.sceneId));
+}
+
 function testCurrentOrderRowsStartAtFirstAfterReset() {
   const scenes = [
     { id: 1, title: "Een", sortOrder: 1, isActive: true },
@@ -2350,6 +2379,7 @@ testInitialRecommendationUsesAvailableStartPool();
 testRecommendationUsesCurrentOrderWithoutCalibration();
 testRecommendationSkipsLastScene();
 testCurrentOrderQueuesAvailableScenesWithoutCalibration();
+testAvailableShuffleOnlyChangesEqualScoreTies();
 testCurrentOrderRowsStartAtFirstAfterReset();
 testCurrentOrderRowsMarkActiveWithNext();
 testCurrentOrderRowsAdvanceAfterStop();

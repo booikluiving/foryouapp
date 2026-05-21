@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Omgeving assets</title>
+    <style>
+      :root {
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --panel-2: #f9fafb;
+        --text: #111827;
+        --muted: #6b7280;
+        --line: #d1d5db;
+        --accent: #0f766e;
+        --good: #047857;
+        --bad: #b91c1c;
+        --warn: #92400e;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button,
+      .fileButton {
+        min-height: 34px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        color: var(--text);
+        padding: 7px 10px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button.primary,
+      .fileButton.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: wait;
+      }
+
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.94);
+        backdrop-filter: blur(12px);
+      }
+
+      .headerInner {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 14px 18px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        align-items: center;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: 0;
+      }
+
+      .headerMeta,
+      .small {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      main {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 16px 18px 32px;
+      }
+
+      .summary {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 26px;
+        border-radius: 999px;
+        padding: 4px 9px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        overflow-wrap: anywhere;
+      }
+
+      .badge.good { color: var(--good); background: #ecfdf3; border-color: #bbf7d0; }
+      .badge.bad { color: var(--bad); background: #fef2f2; border-color: #fecaca; }
+      .badge.warn { color: var(--warn); background: #fffbeb; border-color: #fde68a; }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+        gap: 12px;
+      }
+
+      .envCard {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .envCard.focused {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.16);
+      }
+
+      .envHeader {
+        padding: 12px;
+        border-bottom: 1px solid var(--line);
+        display: grid;
+        gap: 8px;
+      }
+
+      .envTitle {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .envTitle h2 {
+        margin: 0;
+        font-size: 17px;
+        letter-spacing: 0;
+      }
+
+      .assetBadges {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .preview {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #111827;
+        overflow: hidden;
+      }
+
+      .preview img,
+      .preview .fxOverlay {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .preview .fxOverlay {
+        mix-blend-mode: screen;
+        opacity: 0.82;
+        pointer-events: none;
+      }
+
+      .previewEmpty {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        color: #e5e7eb;
+        text-align: center;
+        font-weight: 800;
+      }
+
+      .envBody {
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .dropGrid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .dropZone {
+        border: 1px dashed var(--line);
+        background: var(--panel-2);
+        border-radius: 8px;
+        min-height: 108px;
+        padding: 9px;
+        display: grid;
+        gap: 7px;
+        align-content: space-between;
+      }
+
+      .dropZone.dragOver {
+        border-color: var(--accent);
+        background: #e6fffb;
+      }
+
+      .dropZone strong {
+        display: block;
+        font-size: 13px;
+      }
+
+      .fileName {
+        color: var(--muted);
+        font-size: 12px;
+        overflow-wrap: anywhere;
+        min-height: 32px;
+      }
+
+      .fileButton {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+
+      input[type="file"] {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      audio {
+        width: 100%;
+        min-height: 36px;
+      }
+
+      .msg {
+        min-height: 22px;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .msg.error { color: var(--bad); }
+
+      @media (max-width: 760px) {
+        .headerInner {
+          grid-template-columns: 1fr;
+        }
+
+        .toolbar {
+          justify-content: flex-start;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .dropGrid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="headerInner">
+        <div>
+          <h1>Omgeving assets</h1>
+          <div id="meta" class="headerMeta">Laden...</div>
+        </div>
+        <div class="toolbar">
+          <select id="filter">
+            <option value="active">Actief</option>
+            <option value="missing">Mist assets</option>
+            <option value="all">Alles</option>
+          </select>
+          <button id="refreshBtn" type="button">Refresh</button>
+          <a class="fileButton" href="/algoritme.html">Algoritme</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <div id="summary" class="summary"></div>
+      <div id="msg" class="msg"></div>
+      <section id="grid" class="grid"></section>
+    </main>
+
+    <script>
+      (() => {
+        const TOKEN_KEY = "algorithm_admin_token_v1";
+        const token = localStorage.getItem(TOKEN_KEY) || "";
+        const assetTypes = {
+          background: {
+            label: "Achtergrond",
+            accept: ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp",
+          },
+          audio: {
+            label: "Audio",
+            accept: ".mp3,.wav,.aif,.aiff,.m4a,.aac,.flac,audio/*",
+          },
+          fx: {
+            label: "FX",
+            accept: ".mp4,.mov,.m4v,.webm,.jpg,.jpeg,.png,.webp,video/*,image/jpeg,image/png,image/webp",
+          },
+        };
+        let data = null;
+        let pending = false;
+        let focusApplied = false;
+
+        const $ = (id) => document.getElementById(id);
+        const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#039;",
+        }[char]));
+
+        function headers(extra = {}) {
+          return token ? Object.assign({ "x-admin-token": token }, extra) : extra;
+        }
+
+        async function api(url, options = {}) {
+          const res = await fetch(url, Object.assign({}, options, {
+            headers: headers(options.headers || {}),
+          }));
+          const raw = await res.text();
+          let body = {};
+          try { body = raw ? JSON.parse(raw) : {}; } catch (_err) {}
+          if (!res.ok || body.ok === false) {
+            throw new Error(body && body.error ? body.error : `request_failed_${res.status}`);
+          }
+          return body;
+        }
+
+        function asset(row, type) {
+          return row && row.assets && row.assets[type] ? row.assets[type] : { present: false, files: [], primary: null };
+        }
+
+        function badge(label, ok, neutral = false) {
+          const cls = neutral ? "" : ok ? " good" : " bad";
+          return `<span class="badge${cls}">${esc(label)}</span>`;
+        }
+
+        function statusBadges(row) {
+          return [
+            badge(asset(row, "background").present ? "BG OK" : "BG mist", asset(row, "background").present),
+            badge(asset(row, "audio").present ? "Audio OK" : "Audio mist", asset(row, "audio").present),
+            badge(asset(row, "fx").present ? "FX OK" : "FX mist", asset(row, "fx").present, !asset(row, "fx").present),
+          ].join("");
+        }
+
+        function primaryFile(row, type) {
+          return asset(row, type).primary || null;
+        }
+
+        function isVideoAsset(file) {
+          return ["mp4", "mov", "m4v", "webm"].includes(String(file && file.ext || "").toLowerCase());
+        }
+
+        function fileText(row, type) {
+          const files = asset(row, type).files || [];
+          return files.length ? files.map((file) => file.filename).join(", ") : "Geen bestand";
+        }
+
+        function renderPreview(row) {
+          const bg = primaryFile(row, "background");
+          const fx = primaryFile(row, "fx");
+          return `
+            <div class="preview">
+              ${bg ? `<img src="${esc(bg.url)}" alt="">` : `<div class="previewEmpty">Geen achtergrond</div>`}
+              ${fx && isVideoAsset(fx) ? `<video class="fxOverlay" src="${esc(fx.url)}" autoplay muted loop playsinline></video>` : ""}
+              ${fx && !isVideoAsset(fx) ? `<img class="fxOverlay" src="${esc(fx.url)}" alt="">` : ""}
+            </div>
+          `;
+        }
+
+        function renderDropZone(row, type) {
+          const config = assetTypes[type];
+          const inputId = `file-${row.id}-${type}`;
+          return `
+            <div class="dropZone" data-env-id="${row.id}" data-asset-type="${type}">
+              <div>
+                <strong>${esc(config.label)}</strong>
+                <div class="fileName">${esc(fileText(row, type))}</div>
+              </div>
+              <label class="fileButton primary" for="${esc(inputId)}">Upload</label>
+              <input id="${esc(inputId)}" type="file" accept="${esc(config.accept)}" data-env-id="${row.id}" data-asset-type="${type}">
+            </div>
+          `;
+        }
+
+        function rowVisible(row) {
+          const filter = $("filter").value;
+          if (filter === "all") return true;
+          if (filter === "missing") {
+            return row.status === "actief" && (!asset(row, "background").present || !asset(row, "audio").present || !asset(row, "fx").present);
+          }
+          return row.status === "actief";
+        }
+
+        function render() {
+          if (!data) return;
+          $("meta").textContent = `${data.counts.active} actief · media-map: ${data.mediaDir}`;
+          $("summary").innerHTML = [
+            `<span class="badge">Totaal ${data.counts.total}</span>`,
+            `<span class="badge good">Compleet ${data.counts.activeComplete}</span>`,
+            `<span class="badge bad">BG mist ${data.counts.activeMissingBackground}</span>`,
+            `<span class="badge bad">Audio mist ${data.counts.activeMissingAudio}</span>`,
+            `<span class="badge">FX aanwezig ${data.counts.activeWithFx}</span>`,
+          ].join("");
+
+          const rows = (data.environments || []).filter(rowVisible);
+          $("grid").innerHTML = rows.map((row) => `
+            <article class="envCard" data-env-name="${esc(row.name)}">
+              <div class="envHeader">
+                <div class="envTitle">
+                  <h2>${esc(row.name)}</h2>
+                  <span class="badge">${esc(row.status)}</span>
+                </div>
+                <div class="assetBadges">${statusBadges(row)}</div>
+              </div>
+              ${renderPreview(row)}
+              <div class="envBody">
+                ${primaryFile(row, "audio") ? `<audio controls src="${esc(primaryFile(row, "audio").url)}"></audio>` : `<div class="small">Geen audio-preview</div>`}
+                <div class="dropGrid">
+                  ${renderDropZone(row, "background")}
+                  ${renderDropZone(row, "audio")}
+                  ${renderDropZone(row, "fx")}
+                </div>
+              </div>
+            </article>
+          `).join("") || `<div class="small">Geen omgevingen voor dit filter.</div>`;
+          focusEnvironmentFromUrl();
+        }
+
+        function focusEnvironmentFromUrl() {
+          if (focusApplied) return;
+          const focus = new URLSearchParams(window.location.search).get("focus");
+          if (!focus) return;
+          const targetName = focus.trim().toLowerCase();
+          const card = Array.from(document.querySelectorAll(".envCard"))
+            .find((item) => String(item.dataset.envName || "").toLowerCase() === targetName);
+          if (!card) return;
+          focusApplied = true;
+          card.classList.add("focused");
+          setTimeout(() => card.scrollIntoView({ block: "center" }), 80);
+        }
+
+        function setMsg(text, error = false) {
+          $("msg").textContent = text || "";
+          $("msg").classList.toggle("error", !!error);
+        }
+
+        async function load() {
+          if (pending) return;
+          pending = true;
+          $("refreshBtn").disabled = true;
+          try {
+            data = await api("/admin/algorithm/environment-assets");
+            render();
+            setMsg(data.mediaDirError ? `Media-map fout: ${data.mediaDirError}` : "");
+          } catch (err) {
+            setMsg(err.message || "Laden mislukt.", true);
+          } finally {
+            pending = false;
+            $("refreshBtn").disabled = false;
+          }
+        }
+
+        async function uploadFile(envId, assetType, file) {
+          if (!file || pending) return;
+          pending = true;
+          setMsg(`${file.name} uploaden...`);
+          const form = new FormData();
+          form.append("environmentId", String(envId));
+          form.append("assetType", assetType);
+          form.append("asset", file, file.name);
+          try {
+            const result = await api("/admin/algorithm/environment-assets/upload", {
+              method: "POST",
+              body: form,
+            });
+            data = result.assets || data;
+            render();
+            setMsg(`${result.upload.filename} opgeslagen.`);
+          } catch (err) {
+            setMsg(err.message || "Upload mislukt.", true);
+          } finally {
+            pending = false;
+          }
+        }
+
+        document.addEventListener("change", (event) => {
+          const input = event.target.closest("input[type='file'][data-env-id]");
+          if (!input || !input.files || !input.files[0]) return;
+          uploadFile(input.dataset.envId, input.dataset.assetType, input.files[0]);
+          input.value = "";
+        });
+
+        function hasDraggedFiles(event) {
+          const types = event.dataTransfer && event.dataTransfer.types;
+          return types && Array.from(types).includes("Files");
+        }
+
+        function clearDragState() {
+          document.querySelectorAll(".dropZone.dragOver").forEach((zone) => zone.classList.remove("dragOver"));
+        }
+
+        document.addEventListener("dragover", (event) => {
+          if (!hasDraggedFiles(event)) return;
+          event.preventDefault();
+          if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+          clearDragState();
+          const zone = event.target.closest(".dropZone");
+          if (zone) zone.classList.add("dragOver");
+        });
+
+        document.addEventListener("dragleave", (event) => {
+          const zone = event.target.closest(".dropZone");
+          if (zone) zone.classList.remove("dragOver");
+        });
+
+        document.addEventListener("drop", (event) => {
+          if (!hasDraggedFiles(event)) return;
+          event.preventDefault();
+          clearDragState();
+          const zone = event.target.closest(".dropZone");
+          if (!zone) {
+            setMsg("Sleep het bestand op Achtergrond, Audio of FX.", true);
+            return;
+          }
+          const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+          uploadFile(zone.dataset.envId, zone.dataset.assetType, file);
+        });
+
+        $("refreshBtn").addEventListener("click", load);
+        $("filter").addEventListener("change", render);
+        load();
+      })();
+    </script>
+  </body>
+</html>

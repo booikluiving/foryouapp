@@ -5,6 +5,7 @@ debug.log
 data/*.sqlite
 data/*.sqlite-shm
 data/*.sqlite-wal
+data/teleprompter-caption-style.json
 
 # Local/generated development artefacts
 .DS_Store
