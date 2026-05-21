@@ -1,0 +1,166 @@
+erDiagram
+  sessions {
+    INTEGER id PK
+    TEXT name
+    TEXT started_at
+    TEXT ended_at
+  }
+
+  chat_messages {
+    INTEGER id PK
+    INTEGER session_id FK
+    TEXT client_key
+    TEXT name
+    TEXT text
+    TEXT status
+  }
+
+  moderation_actions {
+    INTEGER id PK
+    INTEGER session_id FK
+    TEXT action_type
+    TEXT client_key
+    TEXT expires_at
+  }
+
+  polls {
+    INTEGER id PK
+    INTEGER session_id FK
+    TEXT question
+    TEXT options_json
+    TEXT status
+  }
+
+  poll_votes {
+    INTEGER id PK
+    INTEGER poll_id FK
+    TEXT client_key
+    INTEGER option_index
+  }
+
+  session_engagement_scores {
+    INTEGER session_id PK
+    TEXT engagement_key PK
+    TEXT client_key
+    INTEGER emoji_count
+    INTEGER comment_count
+  }
+
+  session_join_tokens {
+    INTEGER id PK
+    INTEGER session_id FK
+    TEXT token
+    TEXT expires_at
+  }
+
+  session_access_grants {
+    INTEGER id PK
+    INTEGER session_id FK
+    TEXT grant_id
+    TEXT expires_at
+  }
+
+  algorithm_performers {
+    INTEGER id PK
+    TEXT name
+    INTEGER role_slot
+  }
+
+  algorithm_characters {
+    INTEGER id PK
+    TEXT name
+    INTEGER performer_id FK
+    TEXT label_scores_json
+  }
+
+  algorithm_situations {
+    INTEGER id PK
+    TEXT name
+    TEXT required_character_ids_json
+    TEXT allowed_character_ids_json
+  }
+
+  algorithm_labels {
+    INTEGER id PK
+    TEXT name
+  }
+
+  algorithm_environments {
+    INTEGER id PK
+    TEXT name
+    TEXT label_scores_json
+  }
+
+  algorithm_scenes {
+    INTEGER id PK
+    TEXT title
+    TEXT character_slots_json
+    TEXT situation_ids_json
+    INTEGER environment_id FK
+    INTEGER context_scene_id FK
+  }
+
+  algorithm_paths {
+    INTEGER id PK
+    TEXT name
+    TEXT color
+    TEXT edge_mode
+  }
+
+  algorithm_path_scenes {
+    INTEGER id PK
+    INTEGER path_id FK
+    INTEGER scene_id FK
+    INTEGER is_end_node
+  }
+
+  algorithm_path_edges {
+    INTEGER id PK
+    INTEGER path_id FK
+    INTEGER from_scene_id FK
+    INTEGER to_scene_id FK
+    TEXT edge_type
+  }
+
+  algorithm_scene_runs {
+    INTEGER id PK
+    INTEGER session_id FK
+    INTEGER scene_id FK
+    INTEGER run_order
+    REAL score
+  }
+
+  algorithm_character_votes {
+    INTEGER id PK
+    INTEGER session_id FK
+    INTEGER run_id FK
+    INTEGER scene_id FK
+    INTEGER character_id FK
+  }
+
+  settings {
+    TEXT key PK
+    TEXT value
+    TEXT updated_at
+  }
+
+  sessions ||--o{ chat_messages : has
+  sessions ||--o{ moderation_actions : has
+  sessions ||--o{ polls : has
+  polls ||--o{ poll_votes : has
+  sessions ||--o{ session_engagement_scores : scores
+  sessions ||--o{ session_join_tokens : issues
+  sessions ||--o{ session_access_grants : grants
+  sessions ||--o{ algorithm_scene_runs : runs
+
+  algorithm_performers ||--o{ algorithm_characters : plays
+  algorithm_environments ||--o{ algorithm_scenes : selected_by
+  algorithm_scenes ||--o{ algorithm_scene_runs : executed_as
+  algorithm_scenes ||--o{ algorithm_character_votes : receives
+  algorithm_characters ||--o{ algorithm_character_votes : receives
+  algorithm_scene_runs ||--o{ algorithm_character_votes : contains
+
+  algorithm_paths ||--o{ algorithm_path_scenes : contains
+  algorithm_paths ||--o{ algorithm_path_edges : contains
+  algorithm_scenes ||--o{ algorithm_path_scenes : appears_in
+  algorithm_scenes ||--o{ algorithm_path_edges : from_or_to

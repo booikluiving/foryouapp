@@ -1,0 +1,34 @@
+flowchart TD
+  admin["Admin maakt sessie<br/>/admin/session/new-with-token"] --> session["sessions<br/>actieve show-sessie"]
+  admin --> token["session_join_tokens<br/>QR token + expiry"]
+  token --> qr["Stage QR output<br/>/stage/session-qr"]
+  qr --> join["Publiek opent<br/>/join?token=..."]
+  join --> grant["session_access_grants<br/>cookie voor huidige sessie"]
+  grant --> client["Publieke client /"]
+
+  client --> ws["WebSocket / Socket.IO compat"]
+  ws --> register["register<br/>naam + clientTag"]
+  ws --> message["message<br/>chat tekst"]
+  ws --> reaction["reaction<br/>emoji / heart / bored"]
+
+  message --> moderation["Moderatie<br/>bad-words, mute, block, rate-limit"]
+  moderation --> chatMessages["chat_messages<br/>accepted / rejected"]
+  reaction --> engagement["session_engagement_scores<br/>leaderboard en activiteit"]
+  chatMessages --> adminState["/admin/state<br/>moderatie + live chat"]
+  chatMessages --> stage["/stage<br/>chat overlay"]
+  engagement --> stage
+
+  admin --> pollStart["/admin/polls/start"]
+  pollStart --> polls["polls"]
+  client --> pollVote["poll_vote via WS"]
+  pollVote --> pollVotes["poll_votes"]
+  polls --> stage
+  pollVotes --> stage
+
+  chatMessages --> algorithmMetrics["Actieve scene metrics<br/>comment_count"]
+  reaction --> algorithmMetrics
+  algorithmMetrics --> run["algorithm_scene_runs<br/>heart, bored, comments, score"]
+  run --> recommendation["Volgende aanbeveling<br/>show-algorithm"]
+
+  session --> end["/admin/session/end"]
+  end --> close["ended_at gezet<br/>clients moeten opnieuw joinen"]

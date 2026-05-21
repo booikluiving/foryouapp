@@ -82,6 +82,7 @@ Voor UniFi-configuratie: kopieer `.env.example` naar `.env` op de Mac Studio en 
 
 ## NPM scripts
 - `npm start` start de server (`server.js`)
+- `npm run docs:architecture` bouwt de losse architectuur- en dataflowkaarten onder `docs/architecture/`
 - `npm run smoke -- --url http://127.0.0.1:3010` controleert health, pagina's en WebSockets
 - `npm run test:algorithm` test de losse algoritme-engine
 - `npm run simulate` start de losse simulator CLI (`scripts/simulate-chatters.js`)
@@ -192,6 +193,7 @@ Admin API endpoints (subset):
 - `public/algoritme.html` algoritme-regietafel
 - `public/paden.html`, `public/paden-editor.js`, `public/paden-graph.js` visuele padeneditor
 - `scripts/simulate-chatters.js` standalone botsimulator
+- `docs/architecture/` losse Mermaid architectuurkaarten, routekaart, SQLite schema-overzicht en module-dependencies
 - `sq5-control/` SQ-5 bridge + verticale mixer UI + Stream Deck polling endpoints
 - `moderation/bad-words.txt` tekstwoorden voor filtering
 - `moderation/blocked-words.json` extra/gestructureerde blocked words

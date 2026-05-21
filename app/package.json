@@ -4,6 +4,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "docs:architecture": "node scripts/generate-architecture-maps.js",
     "smoke": "node scripts/smoke-test.js",
     "simulate": "node scripts/simulate-chatters.js",
     "test:sim": "node ../crowd-system/scripts/test-crowd-engine.js",

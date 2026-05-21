@@ -1,0 +1,32 @@
+flowchart TD
+  streamDeck["Stream Deck / Companion"] --> companionScripts["docs/stream-deck scripts<br/>HTTP buttons + polling"]
+  companionScripts --> foryouHttp["For You HTTP admin API<br/>show, ready, start-scene"]
+  companionScripts --> sq5Http["SQ5 HTTP API<br/>/api/streamdeck/*"]
+
+  touchdesigner["TouchDesigner"] --> oscIn["OSC in<br/>For You listens on 1234 default"]
+  oscIn --> oscCommands["OSC command router<br/>session, stage, sim, algorithm"]
+  oscCommands --> showState["show runtime state"]
+  showState --> oscOut["OSC out<br/>Up Next, Current Scene, pulses"]
+  oscOut --> touchdesigner
+
+  touchdesigner --> tdFrames["POST /admin/td-preview/frame<br/>JPEG preview frames"]
+  tdFrames --> tdPreview["/admin/td-preview<br/>health and visual preview"]
+  tdPreview --> sq5Status["SQ5 status health<br/>http://127.0.0.1:3105/api/status"]
+
+  sq5Http --> sq5Sidecar["sq5-control/server.js"]
+  sq5Osc["OSC 53000"] --> sq5Sidecar
+  sq5Sidecar --> midiTcp["MIDI-over-TCP 51325"]
+  midiTcp --> mixer["Allen & Heath SQ-5"]
+
+  cameraUi["Camera Control UI<br/>127.0.0.1:3110"] --> cameraSidecar["camera-control/server.js"]
+  cameraOsc["OSC 53100"] --> cameraSidecar
+  cameraSidecar --> blackmagic["Blackmagic cameras<br/>REST API"]
+  teleprompter["Teleprompter auto-camera"] --> oscOut
+  oscOut --> cameraOsc
+
+  unifi["UniFi agent<br/>read-only"] --> network["UniFi Network API"]
+  foryouHttp --> unifi
+
+  dropbox["Dropbox catalog folder"] <--> dropboxSync["dropbox-catalog-sync.js"]
+  dropboxSync <--> sqlite[("data/live.sqlite")]
+  openai["OpenAI catalog sync<br/>optioneel"] --> dropbox

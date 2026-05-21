@@ -1,0 +1,48 @@
+flowchart TD
+  subgraph catalog["Catalogus en routes"]
+    performers["algorithm_performers"]
+    characters["algorithm_characters"]
+    situations["algorithm_situations"]
+    labels["algorithm_labels"]
+    environments["algorithm_environments"]
+    scenes["algorithm_scenes"]
+    paths["algorithm_paths + path nodes/edges"]
+  end
+
+  adminUi["/algoritme admin UI"] --> catalogApi["/admin/algorithm/* API"]
+  padenUi["/paden editor"] --> catalogApi
+  catalogApi <--> catalog
+  catalog --> sqlite[("data/live.sqlite")]
+  sqlite <--> dropbox["Dropbox catalog sync<br/>.foryou.md mirror"]
+  sqlite --> databaseMd["database.md mirror<br/>GPT/context export"]
+
+  sqlite --> state["getAlgorithmState"]
+  state --> engine["show-algorithm engine"]
+  engine --> validation["validatie<br/>cast, paden, thresholds"]
+  engine --> scoring["ranking<br/>scores, cooldown, labels"]
+  scoring --> queue["locked queue + prepared next"]
+
+  queue --> start["Start scene<br/>/admin/algorithm/runs/start or begin"]
+  start --> run["algorithm_scene_runs<br/>active run"]
+  run --> publicState["broadcastPublicAlgorithmState"]
+  publicState --> client["Publieke client<br/>stemmen en feedback"]
+  publicState --> stage["/stage output"]
+  publicState --> adminUi
+  publicState --> universe["/universe graph<br/>read-only runtime"]
+
+  start --> currentOsc["Current Scene OSC<br/>TouchDesigner"]
+  start --> upNextOsc["Up Next OSC<br/>TouchDesigner"]
+  start --> sq5["SQ5 all-mics queue<br/>HTTP sidecar"]
+  start --> telePrepare["prepareTeleprompterFromAlgorithmPayload"]
+  telePrepare --> teleStore["Teleprompter preparedScene"]
+
+  client --> votes["algorithm_character_votes<br/>of skips"]
+  votes --> run
+  client --> reactions["hearts / bored / comments"]
+  reactions --> run
+
+  endScene["End scene<br/>admin, OSC, teleprompter"] --> closeRun["ended_at + score"]
+  closeRun --> run
+  closeRun --> nextOsc["Nieuwe Up Next OSC"]
+  closeRun --> telePrepare
+  closeRun --> queue
