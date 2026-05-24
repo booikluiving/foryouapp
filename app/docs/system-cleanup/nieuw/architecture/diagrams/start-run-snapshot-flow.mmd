@@ -1,0 +1,27 @@
+sequenceDiagram
+  participant Operator
+  participant Runtime as Runtime Service
+  participant Catalog as Catalog Service
+  participant Paths as Paths Service
+  participant Algorithm as Algorithm Service
+  participant RuntimeDb as runtime.sqlite
+  participant Events as Runtime Events
+  participant ShowControl as Show Control Service
+
+  Operator->>Runtime: POST /runtime/runs/start
+  Runtime->>Catalog: GET /catalog/read-model
+  Catalog-->>Runtime: catalog snapshot + version
+  Runtime->>Paths: GET /paths/read-model
+  Paths-->>Runtime: paths snapshot + version
+  Runtime->>Algorithm: GET /algorithm/config
+  Algorithm-->>Runtime: algorithm config snapshot
+  Runtime->>RuntimeDb: store showRun snapshot
+  Runtime->>Paths: POST /paths/evaluate with snapshot facts
+  Paths-->>Runtime: pathAvailable + pathLocked
+  Runtime->>Algorithm: GET /algorithm/scores
+  Algorithm-->>Runtime: score list for all situations
+  Runtime->>Runtime: sort eligible pool with score list
+  Runtime->>RuntimeDb: store preparedNext + resolvedPreparedNext
+  Runtime->>Events: publish run_started + prepared_next
+  Runtime->>ShowControl: POST prepare cues from resolvedPreparedNext
+  ShowControl-->>Events: publish target status + warnings

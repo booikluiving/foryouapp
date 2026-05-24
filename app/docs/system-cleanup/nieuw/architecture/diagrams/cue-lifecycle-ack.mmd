@@ -1,0 +1,25 @@
+flowchart LR
+  runtime["Runtime<br/>active of prepared state"] --> showControl["Show Control<br/>parallel cue fan-out"]
+  showControl --> mode{"Cue mode"}
+
+  mode --> fireForget["fire-and-forget<br/>FX, pulse, simpele trigger"]
+  fireForget --> sendFast["send parallel"]
+  sendFast --> continueNow["show gaat direct door"]
+  sendFast -. status als die komt .-> asyncLog["async status / compact log"]
+
+  mode --> acknowledged["acknowledged async<br/>belangrijke trigger"]
+  acknowledged --> sendAck["send parallel"]
+  sendAck --> continueAck["show wacht niet"]
+  sendAck -. ack window .-> warning["warning bij timeout of failed ack"]
+  warning --> dashboard["Dashboard status<br/>operator kan retry / force / panic"]
+
+  mode --> requiredReady["required-ready<br/>alleen voorbereiding"]
+  requiredReady --> prepare["prepare media / target state"]
+  prepare --> readyCheck{"ready op tijd?"}
+  readyCheck -->|ja| goAllowed["go mag afgevuurd worden"]
+  readyCheck -->|nee| holdWarning["waarschuwing<br/>operator beslist"]
+  goAllowed --> goCue["GO cue<br/>non-blocking"]
+  goCue --> continueGo["show gaat direct door"]
+
+  holdWarning --> dashboard
+  asyncLog --> dashboard

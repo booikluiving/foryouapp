@@ -1,0 +1,33 @@
+flowchart LR
+  idle["Idle / reset"] --> startRun["Start run"]
+  startRun --> snapshot["Volledige snapshot<br/>catalogus + paden + algorithm-config"]
+  snapshot --> runtimeState["Runtime state<br/>showRun, played, active, signals"]
+
+  runtimeState --> pathsEval["Paths evaluate<br/>op snapshot"]
+  pathsEval --> pathAvailable["pathAvailablePool"]
+  pathsEval --> pathLocked["pathLockedPool"]
+  pathLocked --> hardStopBoundary["Harde grens"]
+
+  pathAvailable --> orderRules["Runtime volgorderegels"]
+  runtimeState --> orderRules
+  orderRules --> eligible["eligiblePool"]
+
+  scoreFeed["Algorithm score feed<br/>scores voor alle situaties"] --> candidates["Runtime gesorteerde kandidaten"]
+  eligible --> candidates
+  runtimeState --> candidates
+  candidates --> prepared["Runtime kiest preparedNext"]
+  prepared --> resolved["Runtime materialiseert<br/>resolvedPreparedNext"]
+
+  resolved --> showControlPrepare["Show Control<br/>prepare-cues"]
+  showControlPrepare --> prepareConsumers["Voorbereiding targets"]
+  resolved --> startSituation["Start situatie"]
+  startSituation --> active["activeSituation"]
+  active --> showControlGo["Show Control<br/>go-cues + status"]
+  active --> collect["situationSignals verzamelen"]
+  collect --> runtimeState
+  active --> stopSituation["Stop situatie"]
+  stopSituation --> played["playedSituations"]
+  played --> runtimeState
+
+  prepared -. frozen .-> resolved
+  collect -. verandert preparedNext niet automatisch .-> prepared

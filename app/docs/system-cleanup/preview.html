@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>For You Oud / Nieuw</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f4ee;
+      --ink: #171717;
+      --muted: #62665f;
+      --panel: #ffffff;
+      --line: #d9d5ca;
+      --accent: #1d766d;
+      --accent-soft: #e5f3ef;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      border-bottom: 1px solid var(--line);
+      background: rgba(246, 244, 238, 0.95);
+      backdrop-filter: blur(14px);
+    }
+
+    .bar {
+      display: grid;
+      grid-template-columns: minmax(200px, 1fr) auto;
+      align-items: center;
+      gap: 10px 18px;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 12px 24px 8px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .tabs {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .tab {
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--ink);
+      cursor: pointer;
+      font: inherit;
+      font-weight: 720;
+      padding: 9px 18px;
+    }
+
+    .tab[aria-selected="true"] {
+      background: var(--accent);
+      color: #ffffff;
+    }
+
+    nav {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 7px;
+      overflow-x: auto;
+      padding: 0 0 4px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--line) transparent;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    nav::-webkit-scrollbar {
+      height: 6px;
+    }
+
+    nav::-webkit-scrollbar-thumb {
+      border-radius: 999px;
+      background: var(--line);
+    }
+
+    nav a {
+      flex: 0 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      padding: 6px 10px;
+      text-decoration: none;
+      font-size: 13px;
+      background: rgba(255, 255, 255, 0.7);
+      white-space: nowrap;
+    }
+
+    nav a:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .intro {
+      margin: 0 0 20px;
+      color: var(--muted);
+      max-width: 920px;
+      font-size: 15px;
+    }
+
+    .references {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0 0 24px;
+    }
+
+    .references a {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      padding: 7px 11px;
+      text-decoration: none;
+      font-size: 14px;
+      background: rgba(255, 255, 255, 0.75);
+    }
+
+    section {
+      margin: 0 0 28px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 12px 34px rgba(24, 24, 20, 0.06);
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 8px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 720;
+      vertical-align: middle;
+    }
+
+    .diagram {
+      width: 100%;
+      min-height: 260px;
+      overflow: auto;
+      border-radius: 6px;
+      background: #fbfaf7;
+      padding: 16px;
+    }
+
+    .diagram svg {
+      display: block;
+      max-width: none;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 0;
+    }
+
+    .error {
+      color: #9d2b20;
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+    }
+
+    @media (max-width: 760px) {
+      header {
+        position: static;
+      }
+
+      .bar {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 18px 14px 12px;
+      }
+
+      h1 {
+        font-size: 20px;
+      }
+
+      .tabs {
+        width: 100%;
+      }
+
+      .tab {
+        flex: 1;
+        padding: 10px 12px;
+      }
+
+      nav {
+        gap: 6px;
+        margin: 0 -14px;
+        padding: 0 14px 4px;
+        scrollbar-width: none;
+      }
+
+      nav::-webkit-scrollbar {
+        display: none;
+      }
+
+      main {
+        padding: 14px;
+      }
+
+      section {
+        padding: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="bar">
+      <h1>For You Architectuur</h1>
+      <div class="tabs" role="tablist" aria-label="Versie">
+        <button class="tab" id="tab-oud" type="button" role="tab" aria-selected="true" data-version="oud">Oud</button>
+        <button class="tab" id="tab-nieuw" type="button" role="tab" aria-selected="false" data-version="nieuw">Nieuw</button>
+      </div>
+      <nav id="nav" aria-label="Diagrammen"></nav>
+    </div>
+  </header>
+
+  <main id="app">
+    <p class="status">Diagrammen laden...</p>
+  </main>
+
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+    const baseDiagrams = [
+      ["System Context", "architecture/diagrams/system-context.mmd"],
+      ["Audience Session Flow", "architecture/diagrams/audience-session-flow.mmd"],
+      ["Algorithm Scene Flow", "architecture/diagrams/algorithm-scene-flow.mmd"],
+      ["Teleprompter And Camera Flow", "architecture/diagrams/teleprompter-camera-flow.mmd"],
+      ["Integration Sidecars", "architecture/diagrams/integration-sidecars.mmd"],
+      ["Database Model", "architecture/diagrams/database-model.mmd"],
+      ["Code Dependencies", "architecture/generated/code-deps.mmd"]
+    ];
+
+    const versions = {
+      oud: {
+        label: "Oud",
+        root: "oud",
+        intro: "Huidige architectuur als vaste referentie. Deze kant gebruiken we om niets kwijt te raken.",
+        badge: "referentie"
+      },
+      nieuw: {
+        label: "Nieuw",
+        root: "nieuw",
+        intro: "Werkversie voor de nieuwe architectuur. Oud blijft de referentie; hier werken we de opschoning uit.",
+        badge: "werkversie",
+        includeBase: false,
+        includeGeneratedReferences: false,
+        references: [
+          ["Catalogus bronmodel", "nieuw/architecture/01-catalogus-bronmodel.md"],
+          ["Runtime / volgorde contract", "nieuw/architecture/02-runtime-volgorde-contract.md"],
+          ["Losgekoppelde services", "nieuw/architecture/03-losgekoppelde-services.md"],
+          ["Show Control cue protocol", "nieuw/architecture/04-show-control-cue-protocol.md"],
+          ["TouchDesigner command surface", "nieuw/architecture/05-touchdesigner-command-surface.md"],
+          ["TouchDesigner cheat sheet", "nieuw/architecture/06-touchdesigner-cheat-sheet.md"],
+          ["Algorithm service contract", "nieuw/architecture/07-algorithm-service-contract.md"]
+        ],
+        diagrams: [
+          ["Module Map", "architecture/diagrams/service-module-map.mmd"],
+          ["Doelarchitectuur Services", "architecture/diagrams/doelarchitectuur-services.mmd"],
+          ["Verantwoordelijkheidsgrenzen", "architecture/diagrams/verantwoordelijkheidsgrenzen.mmd"],
+          ["Start Run Snapshot Flow", "architecture/diagrams/start-run-snapshot-flow.mmd"],
+          ["Prepared Next Service Flow", "architecture/diagrams/prepared-next-service-flow.mmd"],
+          ["Live Consumers Flow", "architecture/diagrams/live-consumers-flow.mmd"],
+          ["Catalogus Bronmodel", "architecture/diagrams/catalogus-bronmodel.mmd"],
+          ["Runtime / Volgorde Contract", "architecture/diagrams/runtime-volgorde-contract.mmd"],
+          ["Algorithm Service Contract", "architecture/diagrams/algorithm-service-contract.mmd"],
+          ["Show Control Service", "architecture/diagrams/show-control-service.mmd"]
+        ]
+      }
+    };
+
+    const slug = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const app = document.querySelector("#app");
+    const nav = document.querySelector("#nav");
+    const tabs = [...document.querySelectorAll(".tab")];
+
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "loose",
+      theme: "base",
+      themeVariables: {
+        background: "#fbfaf7",
+        primaryColor: "#e8f4ef",
+        primaryTextColor: "#171717",
+        primaryBorderColor: "#1d766d",
+        lineColor: "#5e716b",
+        secondaryColor: "#f2efe5",
+        tertiaryColor: "#ffffff",
+        fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+      }
+    });
+
+    async function renderDiagram(path, index) {
+      const sourceUrl = `${path}?v=${Date.now()}`;
+      const source = await fetch(sourceUrl, { cache: "no-store" }).then((response) => {
+        if (!response.ok) {
+          throw new Error(`Kon ${path} niet laden: ${response.status}`);
+        }
+        return response.text();
+      });
+      return mermaid.render(`diagram-${index}-${Date.now()}`, source);
+    }
+
+    async function load(versionKey) {
+      const version = versions[versionKey];
+      app.textContent = "";
+      nav.textContent = "";
+
+      tabs.forEach((tab) => {
+        tab.setAttribute("aria-selected", String(tab.dataset.version === versionKey));
+      });
+
+      const intro = document.createElement("p");
+      intro.className = "intro";
+      intro.textContent = version.intro;
+      app.append(intro);
+
+      const references = document.createElement("div");
+      references.className = "references";
+      const referenceItems = [
+        ...(version.references || []),
+        ["00-overzicht.md", `${version.root}/architecture/00-overzicht.md`]
+      ];
+      if (version.includeGeneratedReferences !== false) {
+        referenceItems.push(
+          ["Routes", `${version.root}/architecture/generated/routes.md`],
+          ["SQLite schema", `${version.root}/architecture/generated/sqlite-schema.md`]
+        );
+      }
+      referenceItems.forEach(([label, href]) => {
+        const link = document.createElement("a");
+        link.href = href;
+        link.textContent = label;
+        references.append(link);
+      });
+      app.append(references);
+
+      const diagrams = [...(version.diagrams || []), ...(version.includeBase === false ? [] : baseDiagrams)];
+
+      for (const [index, item] of diagrams.entries()) {
+        const [title, relativePath] = item;
+        const id = slug(`${versionKey}-${title}`);
+        const path = `${version.root}/${relativePath}`;
+
+        const navLink = document.createElement("a");
+        navLink.href = `#${id}`;
+        navLink.textContent = title;
+        nav.append(navLink);
+
+        const section = document.createElement("section");
+        section.id = id;
+
+        const heading = document.createElement("h2");
+        heading.textContent = title;
+
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = version.badge;
+        heading.append(badge);
+
+        const shell = document.createElement("div");
+        shell.className = "diagram";
+
+        try {
+          const rendered = await renderDiagram(path, index);
+          shell.innerHTML = rendered.svg;
+        } catch (error) {
+          const message = document.createElement("pre");
+          message.className = "error";
+          message.textContent = error.stack || error.message;
+          shell.append(message);
+        }
+
+        section.append(heading);
+        section.append(shell);
+        app.append(section);
+      }
+
+      window.location.hash = versionKey;
+    }
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => load(tab.dataset.version));
+    });
+
+    const initial = window.location.hash.replace("#", "") === "nieuw" ? "nieuw" : "oud";
+    load(initial).catch((error) => {
+      app.innerHTML = `<section><h2>Preview kon niet laden</h2><p class="error">${error.stack || error.message}</p></section>`;
+    });
+  </script>
+</body>
+</html>

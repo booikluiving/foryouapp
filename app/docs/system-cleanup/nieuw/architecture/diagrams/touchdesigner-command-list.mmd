@@ -1,0 +1,34 @@
+flowchart TD
+  commands["Nieuwe TD commands<br/>via een OSC controlpoort"] --> phase["td.phase.set<br/>inloop / wait / cams"]
+  commands --> camera["td.camera.set<br/>camera 1 / 2 / 3"]
+  commands --> envPrepare["td.environment.prepare<br/>environmentId + asset refs"]
+  commands --> envGo["td.environment.go<br/>activate prepared environment"]
+  commands --> assetPrepare["td.asset.prepare<br/>background / soundscape / fx / specials"]
+  commands --> audioPrepare["td.audio.prepare<br/>mp3 / soundscape / fx"]
+  commands --> audioGo["td.audio.go<br/>start / stop / duck"]
+  commands --> fx["td.fx.trigger"]
+  commands --> webPrepare["td.webstage.prepare<br/>url + fixed resolution"]
+  commands --> webShow["td.webstage.show / hide"]
+  commands --> caption["td.caption.update / clear<br/>TD-styled payload"]
+  commands --> safe["td.reset / td.blackout"]
+  commands --> heartbeat["td.status.heartbeat<br/>error-first status"]
+
+  envPrepare --> required["required-ready<br/>prepare verzamelt readiness"]
+  assetPrepare --> required
+  audioPrepare --> required
+  webPrepare --> required
+  phase --> ack["acknowledged async<br/>warning bij timeout"]
+  camera --> ack
+  webShow --> ack
+  caption --> ack
+  envGo --> fast["GO wacht nooit"]
+  audioGo --> fast
+  fx --> fast
+  safe --> ack
+  heartbeat --> status["status update"]
+
+  removed["Niet meer nieuw gebruiken"] --> oldNext["up_next/current OSC scenevelden"]
+  removed --> oldOperator["operator answer/script OSC"]
+  removed --> oldFile["current-environment file polling"]
+  removed --> oldCatalog["cataloguslijst of promptlogica in TD"]
+  removed --> oldCaptionStage["live captions als enige verplichte browser stage"]

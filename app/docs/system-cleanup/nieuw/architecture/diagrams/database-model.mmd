@@ -1,0 +1,59 @@
+flowchart LR
+  subgraph catalogDb["catalog.sqlite"]
+    performers["performers"]
+    characters["characters"]
+    environments["environments"]
+    assets["environment_assets<br/>metadata + file_path"]
+    situations["situations"]
+    labels["labels"]
+  end
+
+  subgraph pathsDb["paths.sqlite"]
+    paths["paths"]
+    pathNodes["path_nodes"]
+    pathEdges["path_edges"]
+    pathRules["thresholds / funnels"]
+  end
+
+  subgraph algorithmDb["algorithm-config.sqlite"]
+    settings["score settings"]
+    orderRules["order rule config"]
+    weights["label / recency / diversity weights"]
+  end
+
+  subgraph runtimeDb["runtime.sqlite"]
+    runs["show_runs"]
+    snapshots["show_run_snapshots"]
+    prepared["prepared_next"]
+    active["situation_runs"]
+    played["played_situations"]
+    signals["runtime_signals"]
+  end
+
+  subgraph showControlDb["show-control.sqlite"]
+    cues["cues"]
+    cueTargets["cue_targets"]
+    cueAcks["cue_acks"]
+    cueWarnings["cue_warnings"]
+    cueDebug["cue_debug_log<br/>optioneel uitgebreid"]
+  end
+
+  catalogDb --> snapshotA["catalog snapshot"]
+  mediaFolder["Gedeelde mediamap<br/>jpg, mp3, mp4"] -. file paths verwijzen naar .-> assets
+  pathsDb --> snapshotB["paths snapshot"]
+  algorithmDb --> snapshotC["algorithm config snapshot"]
+  snapshotA --> snapshots
+  snapshotB --> snapshots
+  snapshotC --> snapshots
+
+  snapshots --> prepared
+  prepared --> active
+  active --> played
+  signals --> active
+
+  prepared --> cues
+  active --> cues
+  cues --> cueTargets
+  cueTargets --> cueAcks
+  cueAcks --> cueWarnings
+  cueTargets --> cueDebug

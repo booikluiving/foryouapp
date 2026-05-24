@@ -1,0 +1,47 @@
+flowchart LR
+  subgraph catalog["Catalog Service"]
+    catalogEditor["Catalogus-editor"]
+    catalogDb[("catalog.sqlite")]
+    catalogRead["Catalog read model"]
+    catalogEditor --> catalogDb
+    catalogDb --> catalogRead
+  end
+
+  subgraph paths["Paths Service"]
+    pathsEditor["Paden-editor"]
+    pathsDb[("paths.sqlite")]
+    pathsRead["Paths read model"]
+    pathsEditor --> pathsDb
+    pathsDb --> pathsRead
+  end
+
+  subgraph algorithm["Algorithm Service"]
+    algorithmConfig["Algorithm-config"]
+    algorithmDb[("algorithm-config.sqlite")]
+    scoreApi["Score API"]
+    algorithmConfig --> algorithmDb
+    algorithmDb --> scoreApi
+  end
+
+  subgraph runtime["Runtime Service"]
+    snapshot["Start run snapshot"]
+    facts["Runtime facts"]
+    eligible["eligiblePool"]
+    scoreList["scoreList"]
+    prepared["preparedNext"]
+    resolved["resolvedPreparedNext"]
+    snapshot --> facts
+    facts --> eligible
+    eligible --> scoreList
+    scoreList --> prepared
+    prepared --> resolved
+  end
+
+  catalogRead --> snapshot
+  pathsRead --> snapshot
+  algorithmDb --> snapshot
+  scoreApi --> scoreList
+
+  scoreApi -. scores, geen order .-> runtime
+  catalog -. schrijft geen runtime .-> runtime
+  algorithm -. schrijft geen state .-> runtime

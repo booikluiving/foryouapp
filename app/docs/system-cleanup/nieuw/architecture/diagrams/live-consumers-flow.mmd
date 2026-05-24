@@ -1,0 +1,57 @@
+flowchart LR
+  runtime["Runtime Service<br/>waarheid van actieve run"] --> events["SSE / WebSocket events"]
+  runtime --> runtimeApi["Runtime query API"]
+  runtime --> showControl["Show Control Service<br/>cue orchestration + ack"]
+  runtime --> scriptAgent["Script Agent Service<br/>script, parser, teleprompter, captions"]
+
+  events --> dashboard["Gateway / Dashboard<br/>live status"]
+  events --> universe["Universe<br/>netwerk + runtime overlay"]
+  events --> scriptAgent
+
+  runtimeApi --> scriptAgent
+
+  scriptAgent --> apiPlayground["API Playground / Operator AI"]
+  scriptAgent --> teleprompter["Teleprompter"]
+  scriptAgent --> captions["Live captions"]
+  scriptAgent --> scriptOutput["Script output"]
+
+  showControl --> showEvents["Show Control events<br/>target status + warnings"]
+  showEvents --> dashboard
+  showEvents --> streamDeck["Stream Deck<br/>button feedback"]
+  streamDeck --> showControl
+  perfectCue["Perfect Cue<br/>USB keyboard input"] --> showControl
+
+  showControl --> scriptAgent
+  showControl --> touchdesigner["TouchDesigner<br/>OSC cue + HTTP payload"]
+  showControl --> sq5["SQ5 audio"]
+  showControl --> dmx["DMX licht<br/>Art-Net"]
+  showControl --> camera["Camera control"]
+  showControl --> stage["Stage / publiek output"]
+
+  touchdesigner --> showControl
+  sq5 --> showControl
+  dmx --> showControl
+  camera --> showControl
+  scriptAgent --> showControl
+
+  mediaFolder["Gedeelde mediamap<br/>jpg, mp3, mp4"] --> touchdesigner
+
+  dashboard --> runtimeCommands["Runtime commands"]
+  dashboard --> showCommands["Show Control commands"]
+  dashboard --> scriptCommands["Script Agent commands"]
+  runtimeCommands --> runtime
+  showCommands --> showControl
+  scriptCommands --> scriptAgent
+
+  catalog["Catalog Service"] -. editor data voor volgende run .-> dashboard
+  paths["Paths Service"] -. voorbereiding voor volgende run .-> dashboard
+  algorithm["Algorithm Service<br/>situation scores"] -. score/debug view .-> dashboard
+  audience["Audience Service<br/>public app + chat"] -. signal/debug view .-> dashboard
+  backup["Dropbox backup mirror<br/>tool"] -. backup status .-> dashboard
+
+  catalog -. asset metadata voor snapshot .-> runtime
+  catalog -. media refs .-> scriptAgent
+  paths -. niet live bron .-> touchdesigner
+  algorithm -. geen order of cue eigenaar .-> runtime
+  audience -. signalen naar scores .-> algorithm
+  backup -. geen live bron .-> runtime

@@ -1,0 +1,39 @@
+flowchart TD
+  subgraph algorithm["Algorithm Service"]
+    scoreConfig["Score config<br/>wegingen + normalisatie"]
+    scoreModel["Scoremodel<br/>observed + predicted"]
+    scoreFeed["Situation scores<br/>alle situaties"]
+    scoreConfig --> scoreModel
+    scoreModel --> scoreFeed
+  end
+
+  subgraph runtime["Runtime Service"]
+    runState["showRun state"]
+    active["activeSituation"]
+    played["played history"]
+    prepared["preparedNext"]
+    orderRules["order rules<br/>available + paden + hard rules"]
+    choice["Runtime keuze"]
+    runState --> active
+    runState --> played
+    orderRules --> choice
+    scoreFeed --> choice
+    choice --> prepared
+  end
+
+  subgraph forbidden["Niet Van Algorithm"]
+    paths["paden"]
+    available["available pool"]
+    pathLocked["path locked"]
+    preparedOwner["preparedNext eigenaar"]
+    playedOwner["played uitsluiten"]
+  end
+
+  paths --> orderRules
+  available --> orderRules
+  pathLocked --> orderRules
+  playedOwner --> orderRules
+  preparedOwner --> prepared
+
+  forbidden -. blijft buiten Algorithm .-> algorithm
+  algorithm -. schrijft geen Runtime state .-> runtime

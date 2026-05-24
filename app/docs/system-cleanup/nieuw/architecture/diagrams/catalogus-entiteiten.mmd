@@ -1,0 +1,64 @@
+erDiagram
+  performer_slots {
+    INTEGER slot_number PK
+    TEXT camera
+    TEXT physical_position
+    TEXT actor_name
+  }
+
+  characters {
+    INTEGER id PK
+    TEXT name
+    TEXT description
+  }
+
+  performer_slot_characters {
+    INTEGER slot_number FK
+    INTEGER character_id FK
+  }
+
+  environments {
+    INTEGER id PK
+    TEXT name
+    TEXT description
+  }
+
+  environment_assets {
+    INTEGER id PK
+    INTEGER environment_id FK
+    TEXT asset_type "background | soundscape | fx"
+    TEXT file_path "jpg | mp3 | mp4 in media folder"
+  }
+
+  situations {
+    INTEGER id PK
+    TEXT title
+    TEXT description
+    INTEGER environment_id FK
+  }
+
+  situation_characters {
+    INTEGER situation_id FK
+    INTEGER character_id FK
+    INTEGER sort_order
+  }
+
+  labels {
+    INTEGER id PK
+    TEXT name
+    TEXT description
+  }
+
+  situation_labels {
+    INTEGER situation_id FK
+    INTEGER label_id FK
+  }
+
+  performer_slots ||--o{ performer_slot_characters : allows
+  characters ||--o{ performer_slot_characters : playable_by
+  environments ||--o{ environment_assets : has
+  environments ||--o{ situations : hosts
+  situations ||--|{ situation_characters : uses
+  characters ||--o{ situation_characters : appears_in
+  situations ||--o{ situation_labels : tagged_with
+  labels ||--o{ situation_labels : selected_by

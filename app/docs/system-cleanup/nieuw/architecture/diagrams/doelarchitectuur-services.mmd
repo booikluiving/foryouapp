@@ -1,0 +1,134 @@
+flowchart LR
+  operator["Operator / makers"] --> gateway["Gateway / Dashboard<br/>UI, routing, live views"]
+  audienceUsers["Publiek"] --> gateway
+  externalDisplays["Stage / devices"] --> gateway
+
+  subgraph catalogBlock["Catalog Service"]
+    catalogApi["Express API"]
+    catalogLogic["Brondata + read model"]
+    mediaManager["Media Asset Manager"]
+    catalogDb[("catalog.sqlite")]
+    catalogApi --> catalogLogic
+    catalogLogic --> mediaManager
+    catalogLogic --> catalogDb
+  end
+
+  subgraph pathsBlock["Paths Service"]
+    pathsApi["Express API"]
+    pathsLogic["Padenregels + path locked evaluatie"]
+    universeView["Universe<br/>read-only visualisatie"]
+    pathsDb[("paths.sqlite")]
+    pathsApi --> pathsLogic
+    pathsLogic --> universeView
+    pathsLogic --> pathsDb
+  end
+
+  subgraph algorithmBlock["Algorithm Service"]
+    algorithmApi["Express API"]
+    algorithmLogic["Situation scoring<br/>score feed"]
+    optionalInput["Optional inputs<br/>sensoren later"]
+    algorithmDb[("algorithm-scores.sqlite")]
+    algorithmApi --> algorithmLogic
+    optionalInput --> algorithmLogic
+    algorithmLogic --> algorithmDb
+  end
+
+  subgraph runtimeBlock["Runtime Service"]
+    runtimeApi["Express API"]
+    runtimeEvents["SSE / WebSocket events"]
+    runtimeLogic["Run lifecycle + materialisatie"]
+    runtimeDb[("runtime.sqlite")]
+    runtimeApi --> runtimeLogic
+    runtimeLogic --> runtimeDb
+    runtimeLogic --> runtimeEvents
+  end
+
+  subgraph showControlBlock["Show Control Service"]
+    showApi["Express API"]
+    showEvents["SSE / WebSocket events"]
+    showLogic["Cue orchestration + ack tracking"]
+    showDb[("show-control.sqlite")]
+    showApi --> showLogic
+    showLogic --> showDb
+    showLogic --> showEvents
+  end
+
+  subgraph audienceBlock["Audience Service"]
+    audienceApi["Express API"]
+    publicApp["Public app<br/>chat + hearts + bored"]
+    signalNormalizer["Signal normalizer"]
+    audienceDb[("audience.sqlite")]
+    publicApp --> signalNormalizer
+    audienceApi --> signalNormalizer
+    signalNormalizer --> audienceDb
+  end
+
+  subgraph scriptBlock["Script Agent Service"]
+    scriptApi["Express API"]
+    scriptLogic["AI script + prompt + parser"]
+    apiPlayground["API Playground"]
+    teleprompter["Teleprompter + live captions"]
+    scriptDb[("script-agent.sqlite")]
+    scriptApi --> scriptLogic
+    scriptLogic --> apiPlayground
+    scriptLogic --> teleprompter
+    scriptLogic --> scriptDb
+  end
+
+  backupTool["Dropbox backup mirror<br/>tool, geen live service"]
+  dropbox["Dropbox mirror"]
+  backupTool --> dropbox
+
+  gateway <--> catalogApi
+  gateway <--> pathsApi
+  gateway <--> algorithmApi
+  gateway <--> runtimeApi
+  gateway <--> showApi
+  gateway <--> audienceApi
+  gateway <--> scriptApi
+  gateway -. backup status .-> backupTool
+
+  runtimeEvents --> gateway
+  showEvents --> gateway
+
+  runtimeApi --> catalogApi
+  runtimeApi --> pathsApi
+  runtimeApi --> algorithmApi
+  runtimeApi --> showApi
+  runtimeApi --> scriptApi
+
+  audienceApi --> algorithmApi
+  signalNormalizer --> algorithmApi
+  catalogApi --> algorithmApi
+  algorithmApi --> runtimeApi
+
+  runtimeEvents --> showApi
+  runtimeEvents --> scriptApi
+  showApi --> scriptApi
+
+  backupTool -. backup leest via contracten .-> catalogApi
+  backupTool -. backup leest via contracten .-> pathsApi
+  backupTool -. backup leest via contracten .-> runtimeApi
+  backupTool -. restore via eigenaar .-> catalogApi
+  backupTool -. restore via eigenaar .-> pathsApi
+
+  showLogic --> touchdesigner["TouchDesigner<br/>OSC cue + HTTP payload"]
+  showLogic --> sq5["SQ5 audio"]
+  showLogic --> dmx["DMX licht<br/>Art-Net"]
+  showLogic --> camera["Camera control"]
+  showLogic --> streamDeck["Stream Deck feedback"]
+  perfectCue["Perfect Cue<br/>USB keyboard input"] --> showApi
+
+  touchdesigner --> showLogic
+  sq5 --> showLogic
+  dmx --> showLogic
+  camera --> showLogic
+  streamDeck --> showApi
+
+  mediaFolder["Gedeelde mediamap<br/>jpg, mp3, mp4"] --> touchdesigner
+
+  catalogLogic -. deelt contracten .-> runtimeLogic
+  pathsLogic -. deelt contracten .-> runtimeLogic
+  algorithmLogic -. score feed, geen order .-> runtimeLogic
+  runtimeLogic -. runtime-output contract .-> showLogic
+  runtimeLogic -. resolved state .-> scriptLogic

@@ -1,0 +1,61 @@
+flowchart LR
+  %% Generated from runtime CommonJS require(...) calls.
+  n_For_universe_src_data_queries_js["For_universe/src/data/queries.js"]
+  n_For_universe_src_data_runtime_queries_js["For_universe/src/data/runtime-queries.js"]
+  n_For_universe_src_data_sqlite_js["For_universe/src/data/sqlite.js"]
+  n_For_universe_src_domain_graph_model_js["For_universe/src/domain/graph-model.js"]
+  n_For_universe_src_domain_normalize_paths_js["For_universe/src/domain/normalize-paths.js"]
+  n_For_universe_src_domain_runtime_state_js["For_universe/src/domain/runtime-state.js"]
+  n_For_universe_src_integration_express_router_js["For_universe/src/integration/express-router.js"]
+  n_app_camera_control_server_js["camera-control/server.js"]
+  n_app_lib_catalog_database_md_js["lib/catalog-database-md.js"]
+  n_app_lib_dropbox_catalog_sync_js["lib/dropbox-catalog-sync.js"]
+  n_app_lib_local_sync_js["lib/local-sync.js"]
+  n_app_lib_openai_catalog_sync_js["lib/openai-catalog-sync.js"]
+  n_app_lib_operator_ai_js["lib/operator-ai.js"]
+  n_app_lib_show_algorithm_js["lib/show-algorithm.js"]
+  n_app_lib_unifi_network_agent_js["lib/unifi-network-agent.js"]
+  n_app_server_js["server.js"]
+  n_app_sq5_control_server_js["sq5-control/server.js"]
+  n_app_teleprompter_parser_src_domain_parse_telepromp["teleprompter-parser/src/domain/parse-teleprompt.js"]
+  n_app_teleprompter_parser_src_integration_express_ro["teleprompter-parser/src/integration/express-router.js"]
+  n_app_teleprompter_parser_src_runtime_teleprompt_sto["teleprompter-parser/src/runtime/teleprompt-store.js"]
+  n_crowd_system_index_js["crowd-system/index.js"]
+  n_crowd_system_lib_crowd_engine_js["crowd-system/lib/crowd-engine.js"]
+  n_external_busboy["npm/core: busboy"]
+  n_external_express["npm/core: express"]
+  n_external_node_sqlite["npm/core: node:sqlite"]
+  n_external_osc["npm/core: osc"]
+  n_external_socket_io["npm/core: socket.io"]
+  n_external_ws["npm/core: ws"]
+  n_app_camera_control_server_js --> n_external_osc
+  n_app_camera_control_server_js --> n_external_ws
+  n_app_lib_catalog_database_md_js --> n_app_lib_dropbox_catalog_sync_js
+  n_app_lib_dropbox_catalog_sync_js --> n_external_node_sqlite
+  n_app_lib_openai_catalog_sync_js --> n_app_lib_dropbox_catalog_sync_js
+  n_app_server_js --> n_app_lib_catalog_database_md_js
+  n_app_server_js --> n_app_lib_dropbox_catalog_sync_js
+  n_app_server_js --> n_app_lib_local_sync_js
+  n_app_server_js --> n_app_lib_operator_ai_js
+  n_app_server_js --> n_app_lib_show_algorithm_js
+  n_app_server_js --> n_app_lib_unifi_network_agent_js
+  n_app_server_js --> n_app_teleprompter_parser_src_integration_express_ro
+  n_app_server_js --> n_crowd_system_index_js
+  n_app_server_js --> n_external_busboy
+  n_app_server_js --> n_external_express
+  n_app_server_js --> n_external_node_sqlite
+  n_app_server_js --> n_external_osc
+  n_app_server_js --> n_external_socket_io
+  n_app_server_js --> n_external_ws
+  n_app_server_js --> n_For_universe_src_integration_express_router_js
+  n_app_sq5_control_server_js --> n_external_osc
+  n_app_teleprompter_parser_src_integration_express_ro --> n_app_teleprompter_parser_src_runtime_teleprompt_sto
+  n_app_teleprompter_parser_src_runtime_teleprompt_sto --> n_app_teleprompter_parser_src_domain_parse_telepromp
+  n_crowd_system_index_js --> n_crowd_system_lib_crowd_engine_js
+  n_For_universe_src_data_sqlite_js --> n_external_node_sqlite
+  n_For_universe_src_domain_graph_model_js --> n_For_universe_src_data_queries_js
+  n_For_universe_src_domain_graph_model_js --> n_For_universe_src_data_runtime_queries_js
+  n_For_universe_src_domain_graph_model_js --> n_For_universe_src_data_sqlite_js
+  n_For_universe_src_domain_graph_model_js --> n_For_universe_src_domain_normalize_paths_js
+  n_For_universe_src_domain_graph_model_js --> n_For_universe_src_domain_runtime_state_js
+  n_For_universe_src_integration_express_router_js --> n_For_universe_src_domain_graph_model_js

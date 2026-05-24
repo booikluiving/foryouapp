@@ -1,0 +1,24 @@
+flowchart LR
+  runtime["Runtime Service<br/>resolvedPreparedNext + activeSituation"] --> events["Runtime events"]
+  events --> teleStore["Teleprompter store<br/>prepared, current, cues"]
+  events --> showControl["Show Control Service<br/>technical cues + ack"]
+
+  teleStore --> stage["Teleprompter stage UI"]
+  teleStore --> captions["Live captions"]
+  teleStore --> roleView["Rolverdeling<br/>performer slots"]
+
+  stage --> cue["Cue advance"]
+  cue --> teleStore
+  captions --> endButton["End situation button"]
+  endButton --> runtimeCommand["POST Runtime<br/>stop situation"]
+  runtimeCommand --> runtime
+
+  teleStore --> autoCamera["Auto camera switch<br/>speaker slot mapping"]
+  autoCamera --> showControl
+  showControl --> touchdesigner["TouchDesigner camera cue"]
+  showControl --> cameraSidecar["Camera Control sidecar"]
+  touchdesigner --> showControl
+  cameraSidecar --> showControl
+
+  runtime --> nextPrepared["Nieuwe resolvedPreparedNext"]
+  nextPrepared --> events

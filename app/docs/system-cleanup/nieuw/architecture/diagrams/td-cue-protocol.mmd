@@ -1,0 +1,27 @@
+sequenceDiagram
+  participant RT as Runtime Service
+  participant SC as Show Control Service
+  participant TD as TouchDesigner
+  participant DB as Show Control DB
+  participant UI as Gateway / Dashboard
+
+  RT->>SC: previous situation stopped, preparedNext chosen
+  SC->>DB: create prepare cueId and ordered actions
+  SC->>TD: OSC /td/cue cueId td.environment.prepare payloadId
+  TD->>SC: GET payload by payloadId
+  SC-->>TD: environmentId, stable asset refs, fixed stage sizes
+  SC->>TD: OSC /td/cue cueId td.asset.prepare payloadId
+  SC->>TD: OSC /td/cue cueId td.audio.prepare payloadId
+  SC->>TD: OSC /td/cue cueId td.webstage.prepare payloadId
+  TD-->>SC: lightweight ack media found and audio ready
+  SC-->>UI: prepared ready or warning
+
+  RT->>SC: POST go cue for activeSituation
+  SC->>DB: create go cue record
+  loop ordered actions with optional delayMs
+    SC->>TD: OSC /td/cue cueId command payloadId
+  end
+  Note over SC,TD: GO commands are non-blocking. Show Control does not wait.
+  TD-->>SC: async ack received/applied or warning
+  SC->>DB: store ack status
+  SC-->>UI: live status update

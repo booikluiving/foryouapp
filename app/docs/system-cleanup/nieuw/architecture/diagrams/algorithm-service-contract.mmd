@@ -1,0 +1,19 @@
+flowchart LR
+  catalog["Catalogus / run snapshot<br/>situaties + labels + personages"] --> algorithm["Algorithm Service<br/>scoremachine"]
+
+  chat["Publieke chat/app<br/>heart + bored + ruwe chattekst"] --> collector["Situation signal collector<br/>koppelt signalen aan actieve situatie"]
+  optionalSensors["Optionele sensorinput later<br/>lachen / energie / aandacht"] -. optioneel .-> collector
+  runtimeObserved["Runtime Service<br/>situation stopped event"] --> collector
+
+  collector --> observed["situationObserved<br/>data van gespeelde situatie"]
+  observed --> algorithm
+
+  algorithm --> observedScore["Observed score<br/>voor gespeelde situatie"]
+  algorithm --> predictedScores["Predicted scores<br/>voor alle situaties"]
+  algorithm --> scoreLog["Intern scorelog<br/>debug later"]
+
+  predictedScores --> runtime["Runtime Service<br/>leest scores"]
+  runtime --> order["Runtime kiest volgorde<br/>available + paden + played + preparedNext"]
+
+  paths["Paths Service"] --> order
+  algorithm -. geen paden / geen order .-> order

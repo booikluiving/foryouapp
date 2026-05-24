@@ -1,0 +1,23 @@
+flowchart TD
+  audience["Publiek"] --> gateway["Gateway / public client"]
+  runtime["Runtime Service<br/>waarheid activeSituation"] --> gateway
+  gateway --> chat["Chat / audience input"]
+
+  chat --> moderation["Moderatie"]
+  moderation --> accepted["Geaccepteerde berichten"]
+  gateway --> reactions["Likes / bored / votes"]
+
+  accepted --> situationSignals["Situation signals<br/>met Runtime situationRunId"]
+  reactions --> situationSignals
+  situationSignals --> runtime
+
+  runtime --> events["Runtime events"]
+  events --> dashboard["Dashboard"]
+  events --> stage["Stage output"]
+  events --> observed["situationObserved na stop"]
+
+  observed --> algorithm["Algorithm Service"]
+  algorithm --> scores["Situation score feed"]
+  scores --> runtime
+
+  runtime --> prepared["preparedNext blijft frozen<br/>tot runtime/operator kiest"]

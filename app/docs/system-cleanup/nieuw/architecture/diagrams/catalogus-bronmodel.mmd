@@ -1,0 +1,57 @@
+flowchart LR
+  subgraph editors["Voorbereiding"]
+    catalogEditor["Catalogus-editor"]
+    assetManager["Media Asset Manager"]
+    catalogFiles["Catalogusbestanden<br/>import/export"]
+  end
+
+  subgraph catalogService["Catalog Service"]
+    catalogApi["Express routes"]
+    catalogRules["Validatie + read model"]
+    catalogDb[("catalog.sqlite")]
+    performers["Performers"]
+    characters["Personages"]
+    environments["Omgevingen"]
+    assets["Asset metadata<br/>type, id/name, file path"]
+    mediaFolder["Gedeelde mediamap<br/>jpg, mp3, mp4"]
+    situations["Situaties"]
+    labels["Labels"]
+  end
+
+  subgraph consumers["Leest via API"]
+    pathsService["Paths Service"]
+    runtimeService["Runtime Service<br/>start run snapshot"]
+    showControl["Show Control Service<br/>cue payloads"]
+    dashboard["Gateway / Dashboard"]
+  end
+
+  catalogEditor --> catalogApi
+  assetManager --> catalogApi
+  catalogFiles --> catalogApi
+  catalogApi --> catalogRules
+  catalogRules --> catalogDb
+
+  catalogDb --> performers
+  catalogDb --> characters
+  catalogDb --> environments
+  catalogDb --> assets
+  mediaFolder --> assets
+  catalogDb --> situations
+  catalogDb --> labels
+
+  performers --> readModel["Catalog read model"]
+  characters --> readModel
+  environments --> readModel
+  assets --> readModel
+  situations --> readModel
+  labels --> readModel
+
+  readModel --> pathsService
+  readModel --> runtimeService
+  readModel --> dashboard
+  runtimeService --> showControl
+  showControl --> td["TouchDesigner<br/>leest mediafiles direct"]
+  mediaFolder --> td
+
+  runtimeService -. schrijft niet terug .-> catalogService
+  pathsService -. verwijst naar situatie IDs .-> catalogService

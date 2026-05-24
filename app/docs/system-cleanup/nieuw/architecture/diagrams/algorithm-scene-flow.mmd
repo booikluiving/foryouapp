@@ -1,0 +1,31 @@
+flowchart TD
+  runtime["Runtime Service"] --> facts["Runtime facts<br/>snapshot, played, active, signals"]
+  facts --> paths["Paths Service<br/>evaluate path rules"]
+  paths --> available["pathAvailablePool"]
+  paths --> locked["pathLockedPool"]
+  locked --> never["Nooit startbaar"]
+
+  available --> orderRules["Runtime order rules<br/>harde filters"]
+  facts --> orderRules
+  orderRules --> eligible["eligiblePool"]
+
+  algorithm["Algorithm Service<br/>score feed"] --> scoreList["scores voor situaties"]
+  scoreList --> runtimeScoring["Runtime sorteert eligiblePool"]
+  eligible --> runtimeScoring
+
+  runtimeScoring --> runtimeChoice["Runtime kiest preparedNext"]
+  runtimeChoice --> resolver["Runtime materialisatie<br/>random personages, omgeving, slots"]
+  resolver --> resolved["resolvedPreparedNext"]
+
+  resolved --> showControlPrepare["Show Control<br/>prepare-cues"]
+  showControlPrepare --> prepare["Voorbereiding targets"]
+  resolved --> start["Start situatie"]
+  start --> active["activeSituation"]
+  active --> showControlGo["Show Control<br/>go-cues"]
+  active --> signals["situationSignals"]
+  signals --> observed["Runtime publiceert situationObserved"]
+  observed --> algorithm
+  signals --> facts
+  active --> stop["Stop situatie"]
+  stop --> played["playedSituations"]
+  played --> facts

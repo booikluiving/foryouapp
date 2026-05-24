@@ -1,0 +1,40 @@
+flowchart TB
+  root["app/"]
+
+  gateway["gateway/<br/>dashboard<br/>routing<br/>health<br/>auth"]
+  shared["shared/<br/>contracts<br/>event-types<br/>schema-utils"]
+  tools["tools/<br/>dropbox-mirror"]
+
+  root --> gateway
+  root --> modules["modules/"]
+  root --> shared
+  root --> tools
+
+  modules --> catalog["catalog/<br/>editor<br/>media-asset-manager<br/>validation<br/>read-model<br/>contracts<br/>db"]
+  modules --> paths["paths/<br/>editor<br/>rules-engine<br/>universe<br/>contracts<br/>db"]
+  modules --> algorithm["algorithm/<br/>scoring<br/>score-history<br/>optional-inputs<br/>contracts<br/>db"]
+  modules --> runtime["runtime/<br/>run-control<br/>snapshots<br/>order-state<br/>materialization<br/>run-log<br/>contracts<br/>db"]
+  modules --> showControl["show-control/<br/>cue-engine<br/>cue-library<br/>adapters<br/>status<br/>contracts<br/>db"]
+  modules --> audience["audience/<br/>public-app<br/>chat<br/>reactions<br/>moderation<br/>sessions<br/>signal-normalizer<br/>contracts<br/>db"]
+  modules --> scriptAgent["script-agent/<br/>api-playground<br/>operator-ai<br/>prompt-builder<br/>text-parser<br/>teleprompter<br/>live-captions<br/>script-output<br/>contracts<br/>db"]
+
+  showControl --> adapters["adapters/<br/>touchdesigner<br/>sq5<br/>cameras<br/>dmx<br/>streamdeck<br/>perfect-cue"]
+
+  catalog -. brondata .-> runtime
+  paths -. padregels .-> runtime
+  algorithm -. score feed .-> runtime
+  audience -. signalen .-> algorithm
+  runtime -. resolved state .-> scriptAgent
+  runtime -. active / prepared .-> showControl
+  scriptAgent -. tekst / captions .-> showControl
+  tools -. backup via contracten .-> catalog
+  tools -. backup via contracten .-> paths
+  tools -. backup via contracten .-> runtime
+
+  shared -. contracten, geen businesslogica .-> catalog
+  shared -. contracten, geen businesslogica .-> paths
+  shared -. contracten, geen businesslogica .-> algorithm
+  shared -. contracten, geen businesslogica .-> runtime
+  shared -. contracten, geen businesslogica .-> showControl
+  shared -. contracten, geen businesslogica .-> audience
+  shared -. contracten, geen businesslogica .-> scriptAgent

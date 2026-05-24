@@ -1,0 +1,28 @@
+flowchart TD
+  runtimeFacts["Runtime facts<br/>played, active, snapshot"] --> pathEval["Paths evaluate<br/>bevroren paden snapshot"]
+  pathEval --> available["pathAvailablePool"]
+  pathEval --> pathLocked["pathLockedPool"]
+  pathLocked --> hardNo["Nooit startbaar"]
+
+  available --> orderRules["Runtime harde volgorderegels<br/>start eerst, geen personage/omgeving overlap"]
+  runtimeFacts --> orderRules
+  orderRules --> eligible["eligiblePool"]
+
+  algorithmScores["Algorithm score feed<br/>predicted scores voor alle situaties"] --> scoreLookup["Runtime leest scores<br/>geen recommendation owner"]
+  eligible --> scoreLookup
+  scoreLookup --> candidates["Runtime gesorteerde kandidaten<br/>binnen eligiblePool"]
+
+  candidates --> choose["Runtime kiest preparedNext"]
+  choose --> materialize["Runtime materialiseert<br/>random personages, slots, omgeving, seed"]
+  runtimeFacts --> materialize
+  materialize --> resolved["resolvedPreparedNext"]
+
+  resolved --> store["Runtime DB<br/>frozen next uitvoer"]
+  resolved --> publish["Runtime events"]
+  publish --> runtimeConsumers["Dashboard / Script Agent / Universe"]
+  publish --> showControl["Show Control<br/>prepare-cues + target status"]
+  showControl --> technicalTargets["TD / audio / licht / camera"]
+  runtimeConsumers --> scriptTargets["API Playground / Teleprompter / captions"]
+
+  algorithmScores -. geen paden / geen volgorde .-> choose
+  pathLocked -. harde grens .-> choose

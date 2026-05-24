@@ -1,0 +1,42 @@
+flowchart LR
+  cueUi["Show Control UI<br/>cue naam + omschrijving + actions"] --> cueStore["Show Control Service<br/>cue registry + active cue"]
+  cueStore --> sequencer["Cue sequencer<br/>ordered actions + optional delayMs"]
+  runtime["Runtime Service<br/>active/prepared state"] --> cueStore
+  streamDeck["Stream Deck<br/>trigger + live button state"] <--> cueStore
+  perfectCue["Perfect Cue<br/>USB keyboard trigger only"] --> cueStore
+
+  sequencer --> osc["Een TD OSC controlpoort<br/>/td/cue cueId command payloadId"]
+  sequencer --> payload["HTTP payload endpoint<br/>grote data + stable asset IDs"]
+  cueStore --> dashboard["Dashboard<br/>status + warnings"]
+  sequencer --> artnet["Art-Net / DMX<br/>licht buiten TD"]
+  artnet --> keyLight["RGB key light<br/>environment ambience"]
+
+  osc --> td["TouchDesigner<br/>video hub"]
+  payload --> td
+
+  subgraph tdResponsibilities["TouchDesigner blijft eigenaar van uitvoering"]
+    phase["Fases<br/>inloop / wait / cams"]
+    cameras["Camera switching<br/>camera 1 / 2 / 3"]
+    assets["Assets<br/>background / soundscape / fx / specials"]
+    audio["Audio engine<br/>soundscape + fx"]
+    webstages["Webstages<br/>fixed render size"]
+    captions["Captions<br/>browser fallback or TD payload"]
+    outputs["Outputs<br/>DeckLink teleprompters + main"]
+  end
+
+  td --> phase
+  td --> cameras
+  td --> assets
+  td --> audio
+  td --> webstages
+  td --> captions
+  td --> outputs
+
+  mediaFolder["Gedeelde mediamap<br/>jpg / mp3 / mp4 via IDs"] --> assets
+  mediaFolder --> audio
+  audio --> sq5["SQ5 / audio output"]
+
+  td -. lightweight ack status .-> cueStore
+  cueStore -. live status .-> dashboard
+
+  legacy["Legacy weg uit doelbeeld<br/>up_next/current/operator/script/cataloguslijst/file polling"] -. vervangen door .-> cueStore

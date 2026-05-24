@@ -1,0 +1,43 @@
+flowchart TD
+  runtime["Runtime Service<br/>active + resolvedPreparedNext"] --> events["Runtime events"]
+  runtime --> runtimeApi["Runtime API"]
+  events --> showControl["Show Control Service<br/>cue orchestration"]
+  events --> scriptAgent["Script Agent Service<br/>script + parser + teleprompter"]
+
+  events --> universe["Universe<br/>network overlay"]
+  events --> dashboard["Gateway / Dashboard"]
+
+  runtimeApi --> scriptAgent
+  scriptAgent --> apiPlayground["API Playground / Operator AI"]
+  scriptAgent --> prompt["Prompt uit resolvedPreparedNext<br/>en runtime context"]
+  prompt --> apiPlayground
+  scriptAgent --> teleprompter["Teleprompter<br/>tekst + cues"]
+  scriptAgent --> captions["Live captions"]
+
+  streamDeck["Stream Deck / Companion"] --> gatewayCommands["Gateway commands"]
+  perfectCue["Perfect Cue<br/>USB keyboard input"] --> showControl
+  gatewayCommands --> runtimeApi
+  gatewayCommands --> showControl
+  gatewayCommands --> scriptAgent
+
+  showControl --> touchdesigner["TouchDesigner<br/>OSC cue + HTTP payload"]
+  showControl --> sq5["SQ5 sidecar<br/>audio commands + status"]
+  showControl --> camera["Camera control<br/>cue + status"]
+  showControl --> dmx["DMX licht<br/>Art-Net"]
+  showControl --> stage["Stage output"]
+  showControl --> streamDeck
+  showControl --> scriptAgent
+
+  touchdesigner --> showControl
+  teleprompter --> scriptAgent
+  sq5 --> showControl
+  camera --> showControl
+  dmx --> showControl
+
+  mediaFolder["Gedeelde mediamap<br/>jpg, mp3, mp4"] --> touchdesigner
+
+  catalog["Catalog Service"] -. alleen voorbereiding .-> dashboard
+  paths["Paths Service"] -. alleen voorbereiding .-> dashboard
+  algorithm["Algorithm Service"] -. score/debug view .-> dashboard
+  audience["Audience Service"] -. public app + signalen .-> dashboard
+  backup["Dropbox backup mirror<br/>tool"] -. Dropbox backup status .-> dashboard

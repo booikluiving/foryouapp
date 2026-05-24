@@ -1,0 +1,20 @@
+sequenceDiagram
+  participant Runtime as Runtime Service
+  participant Chat as Publieke chat/app
+  participant Collector as Signal collector
+  participant Algorithm as Algorithm Service
+  participant ScoreStore as Algorithm scores
+
+  Runtime->>Collector: situation started, situationRunId
+  Chat-->>Collector: heart during active situation
+  Chat-->>Collector: bored during active situation
+  Chat-->>Collector: raw chat messages during active situation
+  Note over Collector: Signalen worden gekoppeld aan deze actieve situatie.
+
+  Runtime->>Collector: situation stopped
+  Collector->>Algorithm: situationObserved with duration, audience size, hearts, bored, raw chat
+  Algorithm->>Algorithm: compute observed score for stopped situation
+  Algorithm->>Algorithm: update audience/profile context
+  Algorithm->>ScoreStore: publish predicted scores for all situations
+  ScoreStore-->>Runtime: current score list
+  Note over Runtime: Runtime gebruikt scores binnen eigen order/padregels.

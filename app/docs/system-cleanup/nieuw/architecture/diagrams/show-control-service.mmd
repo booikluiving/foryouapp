@@ -1,0 +1,31 @@
+flowchart LR
+  runtime["Runtime Service<br/>active + resolvedPreparedNext"] --> showApi["Show Control API<br/>create cue / execute cue"]
+  dashboard["Gateway / Dashboard<br/>operator controls"] <--> showApi
+
+  subgraph showControl["Show Control Service"]
+    showApi --> cuePlanner["Cue planner<br/>targets + timing"]
+    cuePlanner --> fanout["Cue fan-out<br/>parallel or ordered delayMs"]
+    fanout --> ackTracker["Ack tracker<br/>status + warnings"]
+    ackTracker --> showDb[("show-control.sqlite<br/>cues + target status")]
+    ackTracker --> showEvents["Live events<br/>SSE / WebSocket"]
+  end
+
+  fanout --> td["TouchDesigner<br/>OSC controlpoort + HTTP payload + asset IDs"]
+  fanout --> sq5["SQ5 audio<br/>status / mix output"]
+  fanout --> dmx["DMX licht<br/>Art-Net"]
+  fanout --> camera["Camera control<br/>cue / status"]
+  fanout --> scriptAgent["Script Agent<br/>teleprompter / captions cue"]
+  fanout --> streamDeck["Stream Deck<br/>button feedback"]
+
+  td --> ackTracker
+  sq5 --> ackTracker
+  dmx --> ackTracker
+  camera --> ackTracker
+  scriptAgent --> ackTracker
+  streamDeck --> showApi
+  perfectCue["Perfect Cue<br/>USB keyboard input"] --> showApi
+
+  showEvents --> dashboard
+  showEvents --> streamDeck
+
+  mediaFolder["Gedeelde mediamap<br/>jpg, mp3, mp4 via stable IDs"] --> td

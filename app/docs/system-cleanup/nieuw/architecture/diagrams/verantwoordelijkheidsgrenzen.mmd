@@ -1,0 +1,64 @@
+flowchart TD
+  subgraph writes["Schrijft"]
+    catalogWrite["Catalog Service<br/>performers, personages, omgevingen, media asset metadata, situaties, labels"]
+    pathsWrite["Paths Service<br/>paden, start-situaties, unlock regels"]
+    algorithmWrite["Algorithm Service<br/>scoreconfig, observed scores, predicted situation scores"]
+    runtimeWrite["Runtime Service<br/>showRun, snapshots, preparedNext, active, played, order"]
+    showWrite["Show Control Service<br/>cues, target status, acks, warnings, retries"]
+    audienceWrite["Audience Service<br/>public app, chat, hearts, bored, sessies, moderatie"]
+    scriptWrite["Script Agent Service<br/>prompts, scripts, parser-output, teleprompter, captions"]
+    dashboardWrite["Gateway / Dashboard<br/>geen domeinwrites"]
+    backupWrite["Dropbox backup mirror<br/>backupbestanden, geen live state"]
+  end
+
+  subgraph reads["Leest via contract"]
+    catalogRead["Catalog read model"]
+    pathsRead["Paths snapshot / evaluate"]
+    signalRead["Audience signal feed"]
+    algorithmRead["Situation score feed"]
+    runtimeRead["Runtime state / events"]
+    showRead["Show Control API / events"]
+    scriptRead["Script Agent API / events"]
+    backupRead["Backup status / restore files"]
+  end
+
+  catalogWrite --> catalogRead
+  pathsWrite --> pathsRead
+  audienceWrite --> signalRead
+  algorithmWrite --> algorithmRead
+  runtimeWrite --> runtimeRead
+  showWrite --> showRead
+  scriptWrite --> scriptRead
+  backupWrite --> backupRead
+
+  runtimeWrite --> catalogRead
+  runtimeWrite --> pathsRead
+  runtimeWrite --> algorithmRead
+  algorithmWrite --> catalogRead
+  algorithmWrite --> signalRead
+  scriptWrite --> catalogRead
+  scriptWrite --> runtimeRead
+  showWrite --> runtimeRead
+  showWrite --> scriptRead
+  backupWrite --> catalogRead
+  backupWrite --> pathsRead
+  backupWrite --> runtimeRead
+
+  dashboardWrite --> catalogRead
+  dashboardWrite --> pathsRead
+  dashboardWrite --> algorithmRead
+  dashboardWrite --> runtimeRead
+  dashboardWrite --> showRead
+  dashboardWrite --> signalRead
+  dashboardWrite --> scriptRead
+  dashboardWrite --> backupRead
+
+  catalogRead -. geen runtime writes .-> runtimeWrite
+  pathsRead -. geen Algorithm input .-> algorithmWrite
+  algorithmRead -. scores, geen volgorde .-> runtimeWrite
+  signalRead -. publieksinput, geen order .-> algorithmWrite
+  runtimeRead -. geen catalogus writes .-> catalogWrite
+  showRead -. geen situatiekeuze .-> runtimeWrite
+  scriptRead -. geen preparedNext eigenaar .-> runtimeWrite
+  backupRead -. geen live waarheid .-> runtimeWrite
+  runtimeRead -. bron voor cues .-> showWrite

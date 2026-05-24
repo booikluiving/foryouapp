@@ -1,0 +1,78 @@
+flowchart LR
+  operator["Operator / makers"] --> gateway["Gateway / Dashboard<br/>losse schermen + routing"]
+  audienceUser["Publiek<br/>mobiele app"] --> audience["Audience Service<br/>public app + chat + signalen"]
+  stageDisplay["Stage / devices"] --> gateway
+
+  gateway --> catalog["Catalog Service<br/>brondata + media assets"]
+  gateway --> paths["Paths Service<br/>padenregels + Universe"]
+  gateway --> algorithm["Algorithm Service<br/>situation scores"]
+  gateway --> runtime["Runtime Service<br/>showRun + order state"]
+  gateway --> showControl["Show Control Service<br/>cues + acks"]
+  gateway --> scriptAgent["Script Agent Service<br/>AI script + parser + teleprompter"]
+  gateway --> audience
+  gateway -. backup status .-> backup["Dropbox backup mirror<br/>tool"]
+
+  catalogDb[("catalog.sqlite")]
+  pathsDb[("paths.sqlite")]
+  algorithmDb[("algorithm-scores.sqlite")]
+  runtimeDb[("runtime.sqlite")]
+  showDb[("show-control.sqlite")]
+  scriptDb[("script-agent.sqlite")]
+  audienceDb[("audience.sqlite")]
+
+  catalog --> catalogDb
+  paths --> pathsDb
+  algorithm --> algorithmDb
+  runtime --> runtimeDb
+  showControl --> showDb
+  scriptAgent --> scriptDb
+  audience --> audienceDb
+
+  runtime --> catalog
+  runtime --> paths
+  runtime --> algorithm
+  runtime --> showControl
+  runtime --> scriptAgent
+
+  audience --> algorithm
+  algorithm --> runtime
+  scriptAgent --> showControl
+  showControl --> scriptAgent
+
+  runtime --> events["Runtime events<br/>SSE / WebSocket"]
+  events --> gateway
+  events --> paths
+  events --> scriptAgent
+  events --> publicOutput["Publieke output"]
+
+  showControl --> showEvents["Show Control events<br/>cue status + warnings"]
+  showEvents --> gateway
+
+  showControl --> touchdesigner["TouchDesigner<br/>OSC + HTTP payload"]
+  showControl --> sq5["SQ5 audio"]
+  showControl --> dmx["DMX licht<br/>Art-Net"]
+  showControl --> camera["Camera control"]
+  showControl --> streamDeck["Stream Deck feedback"]
+  streamDeck --> showControl
+  perfectCue["Perfect Cue<br/>USB keyboard input"] --> showControl
+
+  scriptAgent --> apiPlayground["API Playground / Operator AI"]
+  scriptAgent --> teleprompter["Teleprompter + captions"]
+
+  mediaFolder["Gedeelde mediamap<br/>jpg, mp3, mp4"] --> touchdesigner
+  catalog --> mediaFolder
+
+  backup -. backup via contracten .-> catalog
+  backup -. backup via contracten .-> paths
+  backup -. backup via contracten .-> runtime
+
+  contracts["Shared contracts<br/>schemas, event types, clients"]
+  catalog -. contracten .-> contracts
+  paths -. contracten .-> contracts
+  algorithm -. contracten .-> contracts
+  runtime -. contracten .-> contracts
+  showControl -. contracten .-> contracts
+  scriptAgent -. contracten .-> contracts
+  audience -. contracten .-> contracts
+
+  contracts -. geen businesslogica .-> gateway
