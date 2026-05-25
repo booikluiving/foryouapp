@@ -16,4 +16,9 @@ app/v2/modules/runtime/db/current-run.json
 app/v2/modules/runtime/db/runs/
 app/v2/modules/script-agent/db/*.json
 app/v2/modules/show-control/db/*.json
-app/v2/modules/catalog/media/_asset-backups/
+app/v2/modules/catalog/media/**
+!app/v2/modules/catalog/media/
+!app/v2/modules/catalog/media/**/
+!app/v2/modules/catalog/media/.gitkeep
+!app/v2/modules/catalog/media/**/.gitkeep
+!app/v2/modules/catalog/media/README.md
