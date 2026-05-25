@@ -82,6 +82,7 @@ Show Control kiest geen situatie. Show Control voert cues uit en bewaakt of targ
 - [TouchDesigner command surface](05-touchdesigner-command-surface.md)
 - [TouchDesigner cheat sheet](06-touchdesigner-cheat-sheet.md)
 - [Algorithm service contract](07-algorithm-service-contract.md)
+- [V2 implementatieplan](08-v2-implementatieplan.md)
 
 ## Belangrijkste Diagrammen
 

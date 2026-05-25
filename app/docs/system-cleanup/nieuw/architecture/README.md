@@ -12,6 +12,7 @@ Open eerst:
 - [05-touchdesigner-command-surface.md](05-touchdesigner-command-surface.md)
 - [06-touchdesigner-cheat-sheet.md](06-touchdesigner-cheat-sheet.md)
 - [07-algorithm-service-contract.md](07-algorithm-service-contract.md)
+- [08-v2-implementatieplan.md](08-v2-implementatieplan.md)
 
 De Mermaid-bronbestanden staan in `diagrams/`. De afgeleide kaarten staan in `generated/` en worden opnieuw opgebouwd met:
 

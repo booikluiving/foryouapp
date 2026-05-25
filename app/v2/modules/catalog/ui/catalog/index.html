@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Catalogus V2</title>
+    <link rel="stylesheet" href="/shared/ui/foryou-v2.css">
+    <link rel="stylesheet" href="/catalog/styles.css">
+  </head>
+  <body class="fy-page">
+    <header class="fy-topbar">
+      <div class="fy-bar">
+        <div class="fy-brand">
+          <span class="fy-brand-mark">FY</span>
+          <div class="fy-brand-text">
+            <strong>Catalogus</strong>
+            <span id="topMeta">Laden...</span>
+          </div>
+        </div>
+        <div class="fy-actions fy-actions-end">
+          <a class="fy-button" href="/catalog/media-assets/">Assets beheren</a>
+          <button id="refreshBtn" class="fy-button" type="button">Refresh</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="fy-main catalog-main">
+      <details class="fy-panel catalogPanel" open>
+        <summary class="fy-panel-header panelSummary">
+          <h2>Catalogus</h2>
+        </summary>
+        <div id="catalogColumns" class="fy-grid-3 catalogWindows">
+          <details id="charactersPane" class="fy-window catalogWindow" open>
+            <summary class="fy-window-header catalogWindowSummary"><h2>Personages</h2></summary>
+            <div class="fy-window-body catalogWindowBody">
+              <div class="fy-actions"><button id="newCharacterBtn" class="fy-button" type="button">Voeg toe</button></div>
+              <div id="charactersList" class="fy-scroll-list catalogList"></div>
+            </div>
+          </details>
+
+          <details id="environmentsPane" class="fy-window catalogWindow" open>
+            <summary class="fy-window-header catalogWindowSummary"><h2>Omgevingen</h2></summary>
+            <div class="fy-window-body catalogWindowBody">
+              <div class="fy-actions">
+                <button id="newEnvironmentBtn" class="fy-button" type="button">Voeg toe</button>
+                <a class="fy-button" href="/catalog/media-assets/">Assets beheren</a>
+              </div>
+              <div id="environmentsList" class="fy-scroll-list catalogList"></div>
+            </div>
+          </details>
+
+          <details id="situationsPane" class="fy-window catalogWindow" open>
+            <summary class="fy-window-header catalogWindowSummary"><h2>Situaties</h2></summary>
+            <div class="fy-window-body catalogWindowBody">
+              <div class="fy-actions"><button id="newSituationBtn" class="fy-button" type="button">Voeg toe</button></div>
+              <div id="situationsList" class="fy-scroll-list catalogList"></div>
+            </div>
+          </details>
+        </div>
+      </details>
+
+      <details class="fy-panel performerPanel">
+        <summary class="fy-panel-header panelSummary">
+          <h2>Performers beheren</h2>
+        </summary>
+        <div class="fy-stack">
+          <div id="performerSlotOverview" class="fy-slot-grid performer-slots"></div>
+          <div id="performerForm" class="fy-stack fy-hidden">
+            <label class="fy-label">Naam<input id="performerName" class="fy-input" maxlength="120"></label>
+            <label class="fy-label">Performer-slot<select id="performerSlot" class="fy-select">
+              <option value="0">Geen vast performer-slot</option>
+              <option value="1">Performer 1</option>
+              <option value="2">Performer 2</option>
+              <option value="3">Performer 3</option>
+            </select></label>
+            <div class="fy-actions">
+              <button id="savePerformerBtn" class="fy-button fy-button-primary" type="button">Opslaan</button>
+              <button id="cancelPerformerBtn" class="fy-button" type="button">Annuleer</button>
+            </div>
+            <div id="performerIssues" class="issues"></div>
+          </div>
+          <div class="fy-actions">
+            <button id="newPerformerBtn" class="fy-button" type="button">Voeg performer toe</button>
+          </div>
+          <div id="performersList" class="fy-list performer-list"></div>
+        </div>
+      </details>
+
+      <details class="fy-panel internalToolsPanel">
+        <summary class="fy-panel-header panelSummary">
+          <h2>Interne tools</h2>
+        </summary>
+        <div class="fy-actions">
+          <button id="validateBtn" class="fy-button" type="button">Validatie verversen</button>
+          <button id="snapshotBtn" class="fy-button" type="button">Snapshot maken</button>
+        </div>
+        <div class="validationGrid">
+          <div class="fy-stack">
+            <div id="validationSummary" class="fy-small"></div>
+            <div id="validationIssues" class="issues validationIssues"></div>
+          </div>
+          <dl id="snapshotFacts" class="facts"></dl>
+        </div>
+      </details>
+    </main>
+
+    <script src="/catalog/app.js"></script>
+  </body>
+</html>

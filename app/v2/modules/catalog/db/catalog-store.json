@@ -1,0 +1,1271 @@
+{
+  "schemaVersion": "catalog.write-store.v0",
+  "createdAt": "2026-05-24T20:40:49.725Z",
+  "updatedAt": "2026-05-25T10:28:37.109Z",
+  "nextCounters": {
+    "performer": 1,
+    "character": 1,
+    "environment": 1,
+    "situation": 1
+  },
+  "performers": [],
+  "characters": [],
+  "environments": [],
+  "situations": [],
+  "mediaAssets": [
+    {
+      "id": "media-asset:environment:24:background:bioscoop-783d8648b528a935",
+      "environmentId": "environment:24",
+      "environmentName": "Bioscoop",
+      "type": "background",
+      "filename": "bioscoop-783d8648b528a935.jpg",
+      "originalFilename": "Bioscoop.jpg",
+      "relativePath": "environments/environment_24/background/bioscoop-783d8648b528a935.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_24/background/bioscoop-783d8648b528a935.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 82573,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:49.726Z",
+      "updatedAt": "2026-05-24T20:40:49.726Z"
+    },
+    {
+      "id": "media-asset:environment:24:soundscape:bioscoop-70e98d00addaf7b6",
+      "environmentId": "environment:24",
+      "environmentName": "Bioscoop",
+      "type": "soundscape",
+      "filename": "bioscoop-70e98d00addaf7b6.mp3",
+      "originalFilename": "Bioscoop.mp3",
+      "relativePath": "environments/environment_24/soundscape/bioscoop-70e98d00addaf7b6.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_24/soundscape/bioscoop-70e98d00addaf7b6.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 497926,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:49.730Z",
+      "updatedAt": "2026-05-24T20:40:49.730Z"
+    },
+    {
+      "id": "media-asset:environment:24:fx:bioscoopfx-be0666c5ff63edb4",
+      "environmentId": "environment:24",
+      "environmentName": "Bioscoop",
+      "type": "fx",
+      "filename": "bioscoopfx-be0666c5ff63edb4.png",
+      "originalFilename": "Bioscoop.fx.png",
+      "relativePath": "environments/environment_24/fx/bioscoopfx-be0666c5ff63edb4.png",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_24/fx/bioscoopfx-be0666c5ff63edb4.png",
+      "mimeType": "image/png",
+      "extension": "png",
+      "sizeBytes": 537670,
+      "tags": [
+        "fx"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:49.734Z",
+      "updatedAt": "2026-05-24T20:40:49.734Z"
+    },
+    {
+      "id": "media-asset:environment:4:background:cradam-8776622e461a7480",
+      "environmentId": "environment:4",
+      "environmentName": "Cradam",
+      "type": "background",
+      "filename": "cradam-8776622e461a7480.jpg",
+      "originalFilename": "Cradam.jpg",
+      "relativePath": "environments/environment_4/background/cradam-8776622e461a7480.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_4/background/cradam-8776622e461a7480.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 187052,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:49.737Z",
+      "updatedAt": "2026-05-24T20:40:49.737Z"
+    },
+    {
+      "id": "media-asset:environment:4:soundscape:cradam-d39bd2e9e046a22c",
+      "environmentId": "environment:4",
+      "environmentName": "Cradam",
+      "type": "soundscape",
+      "filename": "cradam-d39bd2e9e046a22c.mp3",
+      "originalFilename": "Cradam.mp3",
+      "relativePath": "environments/environment_4/soundscape/cradam-d39bd2e9e046a22c.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_4/soundscape/cradam-d39bd2e9e046a22c.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 45707078,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:49.857Z",
+      "updatedAt": "2026-05-24T20:40:49.857Z"
+    },
+    {
+      "id": "media-asset:environment:10:background:eerste-handboogstraat-f7162fbf1970902f",
+      "environmentId": "environment:10",
+      "environmentName": "Eerste_handboogstraat",
+      "type": "background",
+      "filename": "eerste-handboogstraat-f7162fbf1970902f.jpg",
+      "originalFilename": "Eerste_handboogstraat.jpg",
+      "relativePath": "environments/environment_10/background/eerste-handboogstraat-f7162fbf1970902f.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_10/background/eerste-handboogstraat-f7162fbf1970902f.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 329813,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:49.860Z",
+      "updatedAt": "2026-05-24T20:40:49.860Z"
+    },
+    {
+      "id": "media-asset:environment:10:soundscape:eerste-handboogstraat-d3aafc146e109054",
+      "environmentId": "environment:10",
+      "environmentName": "Eerste_handboogstraat",
+      "type": "soundscape",
+      "filename": "eerste-handboogstraat-d3aafc146e109054.mp3",
+      "originalFilename": "Eerste_handboogstraat.mp3",
+      "relativePath": "environments/environment_10/soundscape/eerste-handboogstraat-d3aafc146e109054.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_10/soundscape/eerste-handboogstraat-d3aafc146e109054.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 33886948,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:49.952Z",
+      "updatedAt": "2026-05-24T20:40:49.952Z"
+    },
+    {
+      "id": "media-asset:environment:23:background:fata-morgana-86257bead497b253",
+      "environmentId": "environment:23",
+      "environmentName": "Fata_morgana",
+      "type": "background",
+      "filename": "fata-morgana-86257bead497b253.jpg",
+      "originalFilename": "Fata_morgana.jpg",
+      "relativePath": "environments/environment_23/background/fata-morgana-86257bead497b253.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_23/background/fata-morgana-86257bead497b253.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 689530,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:49.958Z",
+      "updatedAt": "2026-05-24T20:40:49.958Z"
+    },
+    {
+      "id": "media-asset:environment:23:soundscape:fata-morgana-cd1b70447d38a04e",
+      "environmentId": "environment:23",
+      "environmentName": "Fata_morgana",
+      "type": "soundscape",
+      "filename": "fata-morgana-cd1b70447d38a04e.mp3",
+      "originalFilename": "Fata_morgana.mp3",
+      "relativePath": "environments/environment_23/soundscape/fata-morgana-cd1b70447d38a04e.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_23/soundscape/fata-morgana-cd1b70447d38a04e.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 30866322,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.039Z",
+      "updatedAt": "2026-05-24T20:40:50.039Z"
+    },
+    {
+      "id": "media-asset:environment:18:background:festival-7d9916f199a1bd93",
+      "environmentId": "environment:18",
+      "environmentName": "Festival",
+      "type": "background",
+      "filename": "festival-7d9916f199a1bd93.jpg",
+      "originalFilename": "Festival.jpg",
+      "relativePath": "environments/environment_18/background/festival-7d9916f199a1bd93.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_18/background/festival-7d9916f199a1bd93.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 781946,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.044Z",
+      "updatedAt": "2026-05-24T20:40:50.044Z"
+    },
+    {
+      "id": "media-asset:environment:18:soundscape:festival-29c9c645e2720db0",
+      "environmentId": "environment:18",
+      "environmentName": "Festival",
+      "type": "soundscape",
+      "filename": "festival-29c9c645e2720db0.mp3",
+      "originalFilename": "Festival.mp3",
+      "relativePath": "environments/environment_18/soundscape/festival-29c9c645e2720db0.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_18/soundscape/festival-29c9c645e2720db0.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 50435150,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.166Z",
+      "updatedAt": "2026-05-24T20:40:50.166Z"
+    },
+    {
+      "id": "media-asset:environment:18:fx:festival-2e32b358f3df110f",
+      "environmentId": "environment:18",
+      "environmentName": "Festival",
+      "type": "fx",
+      "filename": "festival-2e32b358f3df110f.mp4",
+      "originalFilename": "Festival.mp4",
+      "relativePath": "environments/environment_18/fx/festival-2e32b358f3df110f.mp4",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_18/fx/festival-2e32b358f3df110f.mp4",
+      "mimeType": "video/mp4",
+      "extension": "mp4",
+      "sizeBytes": 3776020,
+      "tags": [
+        "fx"
+      ],
+      "metadata": {
+        "previewKind": "video",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.183Z",
+      "updatedAt": "2026-05-24T20:40:50.183Z"
+    },
+    {
+      "id": "media-asset:environment:3:background:grimmige-slaapkamer-46c66801e2f3030e",
+      "environmentId": "environment:3",
+      "environmentName": "Grimmige_slaapkamer",
+      "type": "background",
+      "filename": "grimmige-slaapkamer-46c66801e2f3030e.png",
+      "originalFilename": "Grimmige_slaapkamer.png",
+      "relativePath": "environments/environment_3/background/grimmige-slaapkamer-46c66801e2f3030e.png",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_3/background/grimmige-slaapkamer-46c66801e2f3030e.png",
+      "mimeType": "image/png",
+      "extension": "png",
+      "sizeBytes": 1782623,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.189Z",
+      "updatedAt": "2026-05-24T20:40:50.189Z"
+    },
+    {
+      "id": "media-asset:environment:3:soundscape:grimmige-slaapkamer-d981d2ec933bf981",
+      "environmentId": "environment:3",
+      "environmentName": "Grimmige_slaapkamer",
+      "type": "soundscape",
+      "filename": "grimmige-slaapkamer-d981d2ec933bf981.mp3",
+      "originalFilename": "Grimmige_slaapkamer.mp3",
+      "relativePath": "environments/environment_3/soundscape/grimmige-slaapkamer-d981d2ec933bf981.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_3/soundscape/grimmige-slaapkamer-d981d2ec933bf981.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 42423708,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.285Z",
+      "updatedAt": "2026-05-24T20:40:50.285Z"
+    },
+    {
+      "id": "media-asset:environment:19:background:hotelkamer-22ace6f3d4438ea4",
+      "environmentId": "environment:19",
+      "environmentName": "Hotelkamer",
+      "type": "background",
+      "filename": "hotelkamer-22ace6f3d4438ea4.webp",
+      "originalFilename": "Hotelkamer.webp",
+      "relativePath": "environments/environment_19/background/hotelkamer-22ace6f3d4438ea4.webp",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_19/background/hotelkamer-22ace6f3d4438ea4.webp",
+      "mimeType": "image/webp",
+      "extension": "webp",
+      "sizeBytes": 926038,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.296Z",
+      "updatedAt": "2026-05-24T20:40:50.296Z"
+    },
+    {
+      "id": "media-asset:environment:19:soundscape:hotelkamer-9620b6bb32f21664",
+      "environmentId": "environment:19",
+      "environmentName": "Hotelkamer",
+      "type": "soundscape",
+      "filename": "hotelkamer-9620b6bb32f21664.m4a",
+      "originalFilename": "Hotelkamer.m4a",
+      "relativePath": "environments/environment_19/soundscape/hotelkamer-9620b6bb32f21664.m4a",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_19/soundscape/hotelkamer-9620b6bb32f21664.m4a",
+      "mimeType": "audio/mp4",
+      "extension": "m4a",
+      "sizeBytes": 3137005,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.304Z",
+      "updatedAt": "2026-05-24T20:40:50.304Z"
+    },
+    {
+      "id": "media-asset:environment:20:background:keuken-911e0b413b96fefb",
+      "environmentId": "environment:20",
+      "environmentName": "Keuken",
+      "type": "background",
+      "filename": "keuken-911e0b413b96fefb.jpg",
+      "originalFilename": "Keuken.jpg",
+      "relativePath": "environments/environment_20/background/keuken-911e0b413b96fefb.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_20/background/keuken-911e0b413b96fefb.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 76991,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.306Z",
+      "updatedAt": "2026-05-24T20:40:50.306Z"
+    },
+    {
+      "id": "media-asset:environment:20:soundscape:keuken-47c17437633b8a70",
+      "environmentId": "environment:20",
+      "environmentName": "Keuken",
+      "type": "soundscape",
+      "filename": "keuken-47c17437633b8a70.mp3",
+      "originalFilename": "Keuken.mp3",
+      "relativePath": "environments/environment_20/soundscape/keuken-47c17437633b8a70.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_20/soundscape/keuken-47c17437633b8a70.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 3656800,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.318Z",
+      "updatedAt": "2026-05-24T20:40:50.318Z"
+    },
+    {
+      "id": "media-asset:environment:9:background:kruipruimte-407df285a638d69d",
+      "environmentId": "environment:9",
+      "environmentName": "Kruipruimte",
+      "type": "background",
+      "filename": "kruipruimte-407df285a638d69d.jpg",
+      "originalFilename": "Kruipruimte.jpg",
+      "relativePath": "environments/environment_9/background/kruipruimte-407df285a638d69d.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_9/background/kruipruimte-407df285a638d69d.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 200788,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.320Z",
+      "updatedAt": "2026-05-24T20:40:50.320Z"
+    },
+    {
+      "id": "media-asset:environment:9:soundscape:kruipruimte-511f466d3760d62f",
+      "environmentId": "environment:9",
+      "environmentName": "Kruipruimte",
+      "type": "soundscape",
+      "filename": "kruipruimte-511f466d3760d62f.mp3",
+      "originalFilename": "Kruipruimte.mp3",
+      "relativePath": "environments/environment_9/soundscape/kruipruimte-511f466d3760d62f.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_9/soundscape/kruipruimte-511f466d3760d62f.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 50435162,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.440Z",
+      "updatedAt": "2026-05-24T20:40:50.440Z"
+    },
+    {
+      "id": "media-asset:environment:21:background:linksvoor-c547915398ef5be8",
+      "environmentId": "environment:21",
+      "environmentName": "Linksvoor",
+      "type": "background",
+      "filename": "linksvoor-c547915398ef5be8.jpeg",
+      "originalFilename": "Linksvoor.jpeg",
+      "relativePath": "environments/environment_21/background/linksvoor-c547915398ef5be8.jpeg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_21/background/linksvoor-c547915398ef5be8.jpeg",
+      "mimeType": "image/jpeg",
+      "extension": "jpeg",
+      "sizeBytes": 327265,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.443Z",
+      "updatedAt": "2026-05-24T20:40:50.443Z"
+    },
+    {
+      "id": "media-asset:environment:21:soundscape:linksvoor-5de9962d2c24c962",
+      "environmentId": "environment:21",
+      "environmentName": "Linksvoor",
+      "type": "soundscape",
+      "filename": "linksvoor-5de9962d2c24c962.m4a",
+      "originalFilename": "Linksvoor.m4a",
+      "relativePath": "environments/environment_21/soundscape/linksvoor-5de9962d2c24c962.m4a",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_21/soundscape/linksvoor-5de9962d2c24c962.m4a",
+      "mimeType": "audio/mp4",
+      "extension": "m4a",
+      "sizeBytes": 3658673,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.454Z",
+      "updatedAt": "2026-05-24T20:40:50.454Z"
+    },
+    {
+      "id": "media-asset:environment:21:fx:linksvoor-2e32b358f3df110f",
+      "environmentId": "environment:21",
+      "environmentName": "Linksvoor",
+      "type": "fx",
+      "filename": "linksvoor-2e32b358f3df110f.mp4",
+      "originalFilename": "Linksvoor.mp4",
+      "relativePath": "environments/environment_21/fx/linksvoor-2e32b358f3df110f.mp4",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_21/fx/linksvoor-2e32b358f3df110f.mp4",
+      "mimeType": "video/mp4",
+      "extension": "mp4",
+      "sizeBytes": 3776020,
+      "tags": [
+        "fx"
+      ],
+      "metadata": {
+        "previewKind": "video",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.467Z",
+      "updatedAt": "2026-05-24T20:40:50.467Z"
+    },
+    {
+      "id": "media-asset:environment:5:background:logeerkamer-d8083bd7d76b7265",
+      "environmentId": "environment:5",
+      "environmentName": "Logeerkamer",
+      "type": "background",
+      "filename": "logeerkamer-d8083bd7d76b7265.jpg",
+      "originalFilename": "Logeerkamer.jpg",
+      "relativePath": "environments/environment_5/background/logeerkamer-d8083bd7d76b7265.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_5/background/logeerkamer-d8083bd7d76b7265.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 220660,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.469Z",
+      "updatedAt": "2026-05-24T20:40:50.469Z"
+    },
+    {
+      "id": "media-asset:environment:5:soundscape:logeerkamer-538f6021d0f6b9eb",
+      "environmentId": "environment:5",
+      "environmentName": "Logeerkamer",
+      "type": "soundscape",
+      "filename": "logeerkamer-538f6021d0f6b9eb.mp3",
+      "originalFilename": "Logeerkamer.mp3",
+      "relativePath": "environments/environment_5/soundscape/logeerkamer-538f6021d0f6b9eb.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_5/soundscape/logeerkamer-538f6021d0f6b9eb.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 33098960,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.554Z",
+      "updatedAt": "2026-05-24T20:40:50.554Z"
+    },
+    {
+      "id": "media-asset:environment:14:background:nos-studio-92db99fd86ecc963",
+      "environmentId": "environment:14",
+      "environmentName": "NOS_Studio",
+      "type": "background",
+      "filename": "nos-studio-92db99fd86ecc963.png",
+      "originalFilename": "NOS_Studio.png",
+      "relativePath": "environments/environment_14/background/nos-studio-92db99fd86ecc963.png",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_14/background/nos-studio-92db99fd86ecc963.png",
+      "mimeType": "image/png",
+      "extension": "png",
+      "sizeBytes": 4645114,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.567Z",
+      "updatedAt": "2026-05-24T20:40:50.567Z"
+    },
+    {
+      "id": "media-asset:environment:14:soundscape:nos-studio-fd5f969b95c237ca",
+      "environmentId": "environment:14",
+      "environmentName": "NOS_Studio",
+      "type": "soundscape",
+      "filename": "nos-studio-fd5f969b95c237ca.mp3",
+      "originalFilename": "NOS_Studio.mp3",
+      "relativePath": "environments/environment_14/soundscape/nos-studio-fd5f969b95c237ca.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_14/soundscape/nos-studio-fd5f969b95c237ca.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 32179608,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.647Z",
+      "updatedAt": "2026-05-24T20:40:50.647Z"
+    },
+    {
+      "id": "media-asset:environment:6:background:persconferentie-fa694aa672c4d2bd",
+      "environmentId": "environment:6",
+      "environmentName": "Persconferentie",
+      "type": "background",
+      "filename": "persconferentie-fa694aa672c4d2bd.jpg",
+      "originalFilename": "Persconferentie.jpg",
+      "relativePath": "environments/environment_6/background/persconferentie-fa694aa672c4d2bd.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_6/background/persconferentie-fa694aa672c4d2bd.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 173700,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.650Z",
+      "updatedAt": "2026-05-24T20:40:50.650Z"
+    },
+    {
+      "id": "media-asset:environment:6:soundscape:persconferentie-a62de3db92d90151",
+      "environmentId": "environment:6",
+      "environmentName": "Persconferentie",
+      "type": "soundscape",
+      "filename": "persconferentie-a62de3db92d90151.mp3",
+      "originalFilename": "Persconferentie.mp3",
+      "relativePath": "environments/environment_6/soundscape/persconferentie-a62de3db92d90151.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_6/soundscape/persconferentie-a62de3db92d90151.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 4528192,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.663Z",
+      "updatedAt": "2026-05-24T20:40:50.663Z"
+    },
+    {
+      "id": "media-asset:environment:17:background:podcaststudio-a108f0d305c91f28",
+      "environmentId": "environment:17",
+      "environmentName": "Podcaststudio",
+      "type": "background",
+      "filename": "podcaststudio-a108f0d305c91f28.jpg",
+      "originalFilename": "Podcaststudio.jpg",
+      "relativePath": "environments/environment_17/background/podcaststudio-a108f0d305c91f28.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_17/background/podcaststudio-a108f0d305c91f28.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 1209894,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.669Z",
+      "updatedAt": "2026-05-24T20:40:50.669Z"
+    },
+    {
+      "id": "media-asset:environment:17:soundscape:podcaststudio-ec72c18ba91cf8db",
+      "environmentId": "environment:17",
+      "environmentName": "Podcaststudio",
+      "type": "soundscape",
+      "filename": "podcaststudio-ec72c18ba91cf8db.mp3",
+      "originalFilename": "Podcaststudio.mp3",
+      "relativePath": "environments/environment_17/soundscape/podcaststudio-ec72c18ba91cf8db.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_17/soundscape/podcaststudio-ec72c18ba91cf8db.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 3441760,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.680Z",
+      "updatedAt": "2026-05-24T20:40:50.680Z"
+    },
+    {
+      "id": "media-asset:environment:16:background:restaurant-fd03403fa9eee296",
+      "environmentId": "environment:16",
+      "environmentName": "Restaurant",
+      "type": "background",
+      "filename": "restaurant-fd03403fa9eee296.jpg",
+      "originalFilename": "Restaurant.jpg",
+      "relativePath": "environments/environment_16/background/restaurant-fd03403fa9eee296.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_16/background/restaurant-fd03403fa9eee296.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 325449,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.683Z",
+      "updatedAt": "2026-05-24T20:40:50.683Z"
+    },
+    {
+      "id": "media-asset:environment:16:soundscape:restaurant-658759d4236d0967",
+      "environmentId": "environment:16",
+      "environmentName": "Restaurant",
+      "type": "soundscape",
+      "filename": "restaurant-658759d4236d0967.mp3",
+      "originalFilename": "Restaurant.mp3",
+      "relativePath": "environments/environment_16/soundscape/restaurant-658759d4236d0967.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_16/soundscape/restaurant-658759d4236d0967.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 3407967,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.694Z",
+      "updatedAt": "2026-05-24T20:40:50.694Z"
+    },
+    {
+      "id": "media-asset:environment:7:background:spelletjeskamer-f971608870d4786e",
+      "environmentId": "environment:7",
+      "environmentName": "Spelletjeskamer",
+      "type": "background",
+      "filename": "spelletjeskamer-f971608870d4786e.jpg",
+      "originalFilename": "Spelletjeskamer.jpg",
+      "relativePath": "environments/environment_7/background/spelletjeskamer-f971608870d4786e.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_7/background/spelletjeskamer-f971608870d4786e.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 1524601,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.702Z",
+      "updatedAt": "2026-05-24T20:40:50.702Z"
+    },
+    {
+      "id": "media-asset:environment:7:soundscape:spelletjeskamer-03f47811c35b6004",
+      "environmentId": "environment:7",
+      "environmentName": "Spelletjeskamer",
+      "type": "soundscape",
+      "filename": "spelletjeskamer-03f47811c35b6004.mp3",
+      "originalFilename": "Spelletjeskamer.mp3",
+      "relativePath": "environments/environment_7/soundscape/spelletjeskamer-03f47811c35b6004.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_7/soundscape/spelletjeskamer-03f47811c35b6004.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 11428768,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.733Z",
+      "updatedAt": "2026-05-24T20:40:50.733Z"
+    },
+    {
+      "id": "media-asset:environment:15:background:supermarkt-dd58c0367d1fad7f",
+      "environmentId": "environment:15",
+      "environmentName": "Supermarkt",
+      "type": "background",
+      "filename": "supermarkt-dd58c0367d1fad7f.jpg",
+      "originalFilename": "Supermarkt.jpg",
+      "relativePath": "environments/environment_15/background/supermarkt-dd58c0367d1fad7f.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_15/background/supermarkt-dd58c0367d1fad7f.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 1295815,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.738Z",
+      "updatedAt": "2026-05-24T20:40:50.738Z"
+    },
+    {
+      "id": "media-asset:environment:15:soundscape:supermarkt-be4a0bfc4f4097f5",
+      "environmentId": "environment:15",
+      "environmentName": "Supermarkt",
+      "type": "soundscape",
+      "filename": "supermarkt-be4a0bfc4f4097f5.mp3",
+      "originalFilename": "Supermarkt.mp3",
+      "relativePath": "environments/environment_15/soundscape/supermarkt-be4a0bfc4f4097f5.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_15/soundscape/supermarkt-be4a0bfc4f4097f5.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 22198136,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.799Z",
+      "updatedAt": "2026-05-24T20:40:50.799Z"
+    },
+    {
+      "id": "media-asset:environment:13:background:tennis-4de5ab87f7b7d13e",
+      "environmentId": "environment:13",
+      "environmentName": "Tennis",
+      "type": "background",
+      "filename": "tennis-4de5ab87f7b7d13e.jpg",
+      "originalFilename": "Tennis.jpg",
+      "relativePath": "environments/environment_13/background/tennis-4de5ab87f7b7d13e.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_13/background/tennis-4de5ab87f7b7d13e.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 856459,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.804Z",
+      "updatedAt": "2026-05-24T20:40:50.804Z"
+    },
+    {
+      "id": "media-asset:environment:13:soundscape:tennis-4cc05ecfaf57956e",
+      "environmentId": "environment:13",
+      "environmentName": "Tennis",
+      "type": "soundscape",
+      "filename": "tennis-4cc05ecfaf57956e.mp3",
+      "originalFilename": "Tennis.mp3",
+      "relativePath": "environments/environment_13/soundscape/tennis-4cc05ecfaf57956e.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_13/soundscape/tennis-4cc05ecfaf57956e.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 3324352,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.812Z",
+      "updatedAt": "2026-05-24T20:40:50.812Z"
+    },
+    {
+      "id": "media-asset:environment:8:background:trampolinepark-49beb1be6ad4505c",
+      "environmentId": "environment:8",
+      "environmentName": "Trampolinepark",
+      "type": "background",
+      "filename": "trampolinepark-49beb1be6ad4505c.png",
+      "originalFilename": "Trampolinepark.png",
+      "relativePath": "environments/environment_8/background/trampolinepark-49beb1be6ad4505c.png",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_8/background/trampolinepark-49beb1be6ad4505c.png",
+      "mimeType": "image/png",
+      "extension": "png",
+      "sizeBytes": 2525847,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.820Z",
+      "updatedAt": "2026-05-24T20:40:50.820Z"
+    },
+    {
+      "id": "media-asset:environment:8:soundscape:trampolinepark-20d5051e7e4fb152",
+      "environmentId": "environment:8",
+      "environmentName": "Trampolinepark",
+      "type": "soundscape",
+      "filename": "trampolinepark-20d5051e7e4fb152.mp3",
+      "originalFilename": "Trampolinepark.mp3",
+      "relativePath": "environments/environment_8/soundscape/trampolinepark-20d5051e7e4fb152.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_8/soundscape/trampolinepark-20d5051e7e4fb152.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 756420,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.825Z",
+      "updatedAt": "2026-05-24T20:40:50.825Z"
+    },
+    {
+      "id": "media-asset:environment:11:background:trein-2c8676a12c24af0c",
+      "environmentId": "environment:11",
+      "environmentName": "Trein",
+      "type": "background",
+      "filename": "trein-2c8676a12c24af0c.jpg",
+      "originalFilename": "Trein.jpg",
+      "relativePath": "environments/environment_11/background/trein-2c8676a12c24af0c.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_11/background/trein-2c8676a12c24af0c.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 633254,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.829Z",
+      "updatedAt": "2026-05-24T20:40:50.829Z"
+    },
+    {
+      "id": "media-asset:environment:11:soundscape:trein-edf06d9f9b7e196e",
+      "environmentId": "environment:11",
+      "environmentName": "Trein",
+      "type": "soundscape",
+      "filename": "trein-edf06d9f9b7e196e.mp3",
+      "originalFilename": "Trein.mp3",
+      "relativePath": "environments/environment_11/soundscape/trein-edf06d9f9b7e196e.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_11/soundscape/trein-edf06d9f9b7e196e.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 21935466,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.882Z",
+      "updatedAt": "2026-05-24T20:40:50.882Z"
+    },
+    {
+      "id": "media-asset:environment:12:background:ziekenhuis-fb5b4d0d6bdb6d79",
+      "environmentId": "environment:12",
+      "environmentName": "Ziekenhuis",
+      "type": "background",
+      "filename": "ziekenhuis-fb5b4d0d6bdb6d79.jpg",
+      "originalFilename": "Ziekenhuis.jpg",
+      "relativePath": "environments/environment_12/background/ziekenhuis-fb5b4d0d6bdb6d79.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_12/background/ziekenhuis-fb5b4d0d6bdb6d79.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 1103782,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:50.887Z",
+      "updatedAt": "2026-05-24T20:40:50.887Z"
+    },
+    {
+      "id": "media-asset:environment:12:soundscape:ziekenhuis-54688182b5c872c5",
+      "environmentId": "environment:12",
+      "environmentName": "Ziekenhuis",
+      "type": "soundscape",
+      "filename": "ziekenhuis-54688182b5c872c5.mp3",
+      "originalFilename": "Ziekenhuis.mp3",
+      "relativePath": "environments/environment_12/soundscape/ziekenhuis-54688182b5c872c5.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_12/soundscape/ziekenhuis-54688182b5c872c5.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 56213886,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:51.225Z",
+      "updatedAt": "2026-05-24T20:40:51.225Z"
+    },
+    {
+      "id": "media-asset:environment:22:background:zonnebloemveld-1bc780676023fd9b",
+      "environmentId": "environment:22",
+      "environmentName": "Zonnebloemveld",
+      "type": "background",
+      "filename": "zonnebloemveld-1bc780676023fd9b.jpg",
+      "originalFilename": "Zonnebloemveld.jpg",
+      "relativePath": "environments/environment_22/background/zonnebloemveld-1bc780676023fd9b.jpg",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_22/background/zonnebloemveld-1bc780676023fd9b.jpg",
+      "mimeType": "image/jpeg",
+      "extension": "jpg",
+      "sizeBytes": 1049461,
+      "tags": [
+        "background"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:51.229Z",
+      "updatedAt": "2026-05-24T20:40:51.229Z"
+    },
+    {
+      "id": "media-asset:environment:22:soundscape:zonnebloemveld-3fda78504848035a",
+      "environmentId": "environment:22",
+      "environmentName": "Zonnebloemveld",
+      "type": "soundscape",
+      "filename": "zonnebloemveld-3fda78504848035a.mp3",
+      "originalFilename": "Zonnebloemveld.mp3",
+      "relativePath": "environments/environment_22/soundscape/zonnebloemveld-3fda78504848035a.mp3",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_22/soundscape/zonnebloemveld-3fda78504848035a.mp3",
+      "mimeType": "audio/mpeg",
+      "extension": "mp3",
+      "sizeBytes": 18520784,
+      "tags": [
+        "audio",
+        "soundscape"
+      ],
+      "metadata": {
+        "previewKind": "audio",
+        "backups": []
+      },
+      "createdAt": "2026-05-24T20:40:51.282Z",
+      "updatedAt": "2026-05-24T20:40:51.282Z"
+    },
+    {
+      "id": "media-asset:environment:24:fxImage:pngimgcom-champagne-png104377-4833638015900407",
+      "environmentId": "environment:24",
+      "environmentName": "Bioscoop",
+      "type": "fx",
+      "role": "fxImage",
+      "filename": "pngimgcom-champagne-png104377-4833638015900407.png",
+      "originalFilename": "pngimg.com - champagne_PNG104377.png",
+      "relativePath": "environments/environment_24/fx/pngimgcom-champagne-png104377-4833638015900407.png",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_24/fx/pngimgcom-champagne-png104377-4833638015900407.png",
+      "mimeType": "image/png",
+      "extension": "png",
+      "sizeBytes": 449399,
+      "tags": [
+        "fx",
+        "image"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "role": "fxImage",
+        "dimensions": {
+          "width": 843,
+          "height": 713
+        },
+        "backups": []
+      },
+      "createdAt": "2026-05-25T07:39:58.820Z",
+      "updatedAt": "2026-05-25T10:20:40.775Z",
+      "status": "deleted",
+      "deletedAt": "2026-05-25T10:20:40.775Z"
+    },
+    {
+      "id": "media-asset:environment:24:fxImage:bioscoop-output-409af50bd5ef5aa5",
+      "environmentId": "environment:24",
+      "environmentName": "Bioscoop",
+      "type": "fx",
+      "role": "fxImage",
+      "filename": "bioscoop-output-409af50bd5ef5aa5.png",
+      "originalFilename": "bioscoop-output.png",
+      "relativePath": "environments/environment_24/fx/bioscoop-output-409af50bd5ef5aa5.png",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_24/fx/bioscoop-output-409af50bd5ef5aa5.png",
+      "mimeType": "image/png",
+      "extension": "png",
+      "sizeBytes": 3388841,
+      "tags": [
+        "fx",
+        "image",
+        "rendered-output",
+        "td-output"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "role": "fxImage",
+        "dimensions": {
+          "width": 6480,
+          "height": 3840
+        },
+        "backups": []
+      },
+      "createdAt": "2026-05-25T10:05:14.465Z",
+      "updatedAt": "2026-05-25T10:05:14.465Z",
+      "status": "replaced",
+      "replacedAt": "2026-05-25T10:20:29.696Z",
+      "backupFilePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/_asset-backups/2026-05-25T10-20-29-694Z/environment_24/fx/bioscoop-output-409af50bd5ef5aa5.png",
+      "backupRelativePath": "_asset-backups/2026-05-25T10-20-29-694Z/environment_24/fx/bioscoop-output-409af50bd5ef5aa5.png"
+    },
+    {
+      "id": "media-asset:environment:24:fxImage:bioscoop-output-232c554133f31af9",
+      "environmentId": "environment:24",
+      "environmentName": "Bioscoop",
+      "type": "fx",
+      "role": "fxImage",
+      "filename": "bioscoop-output-232c554133f31af9.png",
+      "originalFilename": "bioscoop-output.png",
+      "relativePath": "environments/environment_24/fx/bioscoop-output-232c554133f31af9.png",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_24/fx/bioscoop-output-232c554133f31af9.png",
+      "mimeType": "image/png",
+      "extension": "png",
+      "sizeBytes": 2163284,
+      "tags": [
+        "fx",
+        "image",
+        "rendered-output",
+        "td-output"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "role": "fxImage",
+        "dimensions": {
+          "width": 6480,
+          "height": 3840
+        },
+        "backups": [
+          {
+            "assetId": "media-asset:environment:24:fxImage:bioscoop-output-409af50bd5ef5aa5",
+            "from": "environments/environment_24/fx/bioscoop-output-409af50bd5ef5aa5.png",
+            "to": "_asset-backups/2026-05-25T10-20-29-694Z/environment_24/fx/bioscoop-output-409af50bd5ef5aa5.png"
+          }
+        ]
+      },
+      "createdAt": "2026-05-25T10:20:29.696Z",
+      "updatedAt": "2026-05-25T10:20:29.696Z",
+      "status": "replaced",
+      "replacedAt": "2026-05-25T10:28:37.108Z",
+      "backupFilePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/_asset-backups/2026-05-25T10-28-37-107Z/environment_24/fx/bioscoop-output-232c554133f31af9.png",
+      "backupRelativePath": "_asset-backups/2026-05-25T10-28-37-107Z/environment_24/fx/bioscoop-output-232c554133f31af9.png"
+    },
+    {
+      "id": "media-asset:environment:24:fxImage:bioscoop-output-080a760670f0c012",
+      "environmentId": "environment:24",
+      "environmentName": "Bioscoop",
+      "type": "fx",
+      "role": "fxImage",
+      "filename": "bioscoop-output-080a760670f0c012.png",
+      "originalFilename": "bioscoop-output.png",
+      "relativePath": "environments/environment_24/fx/bioscoop-output-080a760670f0c012.png",
+      "filePath": "/Users/booikluiving/Library/CloudStorage/SynologyDrive-home/For You/App/app/v2/modules/catalog/media/environments/environment_24/fx/bioscoop-output-080a760670f0c012.png",
+      "mimeType": "image/png",
+      "extension": "png",
+      "sizeBytes": 3237779,
+      "tags": [
+        "fx",
+        "image",
+        "rendered-output",
+        "td-output"
+      ],
+      "metadata": {
+        "previewKind": "image",
+        "role": "fxImage",
+        "dimensions": {
+          "width": 6480,
+          "height": 3840
+        },
+        "backups": [
+          {
+            "assetId": "media-asset:environment:24:fxImage:bioscoop-output-232c554133f31af9",
+            "from": "environments/environment_24/fx/bioscoop-output-232c554133f31af9.png",
+            "to": "_asset-backups/2026-05-25T10-28-37-107Z/environment_24/fx/bioscoop-output-232c554133f31af9.png"
+          }
+        ]
+      },
+      "createdAt": "2026-05-25T10:28:37.108Z",
+      "updatedAt": "2026-05-25T10:28:37.108Z"
+    }
+  ],
+  "environmentCompositions": [
+    {
+      "schemaVersion": "catalog.environment-composition.v0",
+      "id": "environment:24",
+      "environmentId": "environment:24",
+      "canvas": {
+        "panels": 3,
+        "panelWidth": 2160,
+        "panelHeight": 3840,
+        "canvasWidth": 6480,
+        "canvasHeight": 3840,
+        "aspectRatio": "27:16"
+      },
+      "guidesVisible": true,
+      "backgroundLayer": {
+        "id": "layer:background:media-assetenvironment24backgroundbioscoop-783d8:1",
+        "assetId": "media-asset:environment:24:background:bioscoop-783d8648b528a935",
+        "role": "background",
+        "name": "Bioscoop.jpg",
+        "visible": true,
+        "locked": false,
+        "x": 26,
+        "y": 9,
+        "width": 6480,
+        "height": 3840,
+        "rotationDeg": 0,
+        "opacity": 1,
+        "zIndex": 0
+      },
+      "fxVideoLayer": null,
+      "imageLayers": [
+        {
+          "id": "layer:fxImage:media-assetenvironment24fxbioscoopfx-be0666c5ff6:1",
+          "assetId": "media-asset:environment:24:fx:bioscoopfx-be0666c5ff63edb4",
+          "role": "fxImage",
+          "name": "Bioscoop.fx.png",
+          "visible": true,
+          "locked": false,
+          "x": 2383,
+          "y": 1167,
+          "width": 2160,
+          "height": 1280,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "zIndex": 30
+        }
+      ],
+      "createdAt": "2026-05-25T07:10:03.182Z",
+      "updatedAt": "2026-05-25T10:28:36.667Z",
+      "source": {
+        "type": "v2-composition-store"
+      }
+    }
+  ]
+}

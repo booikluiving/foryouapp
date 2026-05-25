@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Media Asset Manager V2</title>
+    <link rel="stylesheet" href="/shared/ui/foryou-v2.css">
+    <link rel="stylesheet" href="/catalog/styles.css">
+  </head>
+  <body class="fy-page">
+    <header class="fy-topbar">
+      <div class="fy-bar">
+        <div class="fy-brand">
+          <span class="fy-brand-mark">FY</span>
+          <div class="fy-brand-text">
+            <strong>Media Asset Manager</strong>
+            <span id="statusLine">Laden...</span>
+          </div>
+        </div>
+        <div class="fy-actions fy-actions-end">
+          <a class="fy-button" href="/catalog/">Catalogus</a>
+          <button id="refreshBtn" class="fy-button" type="button">Refresh</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="fy-main media-main">
+      <div id="summary" class="summary"></div>
+      <section id="environmentCards" class="asset-grid"></section>
+    </main>
+
+    <script src="/catalog/media-assets/app.js"></script>
+  </body>
+</html>

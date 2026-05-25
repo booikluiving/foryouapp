@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>For You V2 Dashboard</title>
+    <link rel="stylesheet" href="/dashboard/styles.css">
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="rail">
+        <div class="brand">
+          <span class="mark">FY</span>
+          <span>For You V2</span>
+        </div>
+        <nav>
+          <a href="#services">Status</a>
+          <a href="#runtime">Runtime</a>
+          <a href="#cues">Cues</a>
+        </nav>
+      </aside>
+      <main>
+        <header class="topbar">
+          <div>
+            <h1>Dashboard</h1>
+            <p id="generatedAt">Wachten op status</p>
+          </div>
+          <div class="actions">
+            <button id="refreshStatus" type="button" title="Status verversen">Refresh</button>
+            <button id="startRun" type="button" title="Start run via Runtime">Start run</button>
+            <button id="prepareCue" type="button" title="Prepare cue via Show Control">Prepare</button>
+            <button id="startSituation" type="button" title="Start situatie via Runtime">Start situation</button>
+            <button id="goCue" type="button" title="GO cue via Show Control">GO</button>
+            <button id="stopSituation" type="button" title="Stop situatie via Runtime">Stop</button>
+          </div>
+        </header>
+
+        <section id="services" class="band">
+          <div class="section-title">
+            <h2>Services</h2>
+            <span id="overallStatus" class="pill muted">unknown</span>
+          </div>
+          <div id="serviceGrid" class="service-grid"></div>
+        </section>
+
+        <section id="runtime" class="split">
+          <div class="surface">
+            <h2>Runtime</h2>
+            <dl id="runtimeFacts" class="facts"></dl>
+          </div>
+          <div id="cues" class="surface">
+            <h2>Show Control</h2>
+            <dl id="cueFacts" class="facts"></dl>
+          </div>
+        </section>
+
+        <section class="surface log-surface">
+          <h2>Log</h2>
+          <ol id="eventLog" class="event-log"></ol>
+        </section>
+      </main>
+    </div>
+    <script src="/dashboard/app.js"></script>
+  </body>
+</html>

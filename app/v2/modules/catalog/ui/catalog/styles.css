@@ -1,0 +1,978 @@
+.panelSummary,
+.catalogWindowSummary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.panelSummary::-webkit-details-marker,
+.catalogWindowSummary::-webkit-details-marker {
+  display: none;
+}
+
+.panelSummary::before,
+.catalogWindowSummary::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--fy-muted);
+  border-bottom: 2px solid var(--fy-muted);
+  transform: rotate(-45deg);
+  transition: transform 140ms ease;
+  flex: 0 0 auto;
+}
+
+details[open] > .panelSummary::before,
+details[open] > .catalogWindowSummary::before {
+  transform: rotate(45deg);
+}
+
+.panelSummary h2,
+.catalogWindowSummary h2 {
+  margin-right: auto;
+}
+
+.catalog-main {
+  gap: 12px;
+}
+
+.catalogWindows {
+  grid-template-columns: repeat(3, minmax(260px, 1fr));
+  align-items: start;
+}
+
+.catalogWindowBody {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.catalogList {
+  max-height: min(56vh, 560px);
+  overflow: auto;
+}
+
+.performer-list {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.performerEditButton {
+  min-height: 28px;
+  padding: 5px 9px;
+  font-size: 12px;
+  white-space: nowrap;
+  justify-self: start;
+}
+
+.performerPanel {
+  order: 2;
+}
+
+.internalToolsPanel {
+  order: 3;
+}
+
+.itemTop,
+.envTitle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.itemTop > .fy-badge,
+.envTitle > .fy-badge {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.envTitle {
+  align-items: center;
+}
+
+.nameLine {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.nameLine strong {
+  color: var(--fy-ink);
+  overflow-wrap: anywhere;
+}
+
+.catalog-row {
+  cursor: default;
+}
+
+.catalogRowHeader {
+  appearance: none;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  display: block;
+}
+
+.catalogRowHeader:focus-visible {
+  outline: 2px solid var(--fy-focus);
+  outline-offset: 3px;
+  border-radius: var(--fy-radius);
+}
+
+.catalog-row.is-expanded {
+  border-color: var(--fy-line-strong);
+}
+
+.inlineForm {
+  border-top: 1px solid var(--fy-line);
+  margin-top: 6px;
+  padding-top: 10px;
+  cursor: default;
+}
+
+.inlineForm .fy-actions {
+  margin-top: 2px;
+}
+
+.catalog-row .rowLink {
+  cursor: pointer;
+}
+
+.catalog-row:hover {
+  border-color: var(--fy-line-strong);
+}
+
+.assetBadges,
+.summary {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.summary:empty {
+  display: none;
+}
+
+.rowLink {
+  color: var(--fy-accent);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  width: max-content;
+}
+
+.rowLink:hover {
+  text-decoration: underline;
+}
+
+.checkGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px;
+}
+
+.check {
+  display: flex;
+  flex-direction: row;
+  gap: 7px;
+  align-items: center;
+  border: 1px solid var(--fy-line);
+  border-radius: var(--fy-radius);
+  background: var(--fy-surface);
+  padding: 7px 8px;
+  color: var(--fy-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.check input {
+  width: auto;
+}
+
+.slotCell small {
+  color: var(--fy-muted);
+  font-weight: 700;
+}
+
+.issue {
+  border-left: 3px solid var(--fy-danger);
+  background: #fef2f2;
+  border-radius: var(--fy-radius);
+  color: var(--fy-danger);
+  padding: 7px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.issue.warning,
+.issue.warn {
+  border-left-color: var(--fy-warn);
+  background: #fffbeb;
+  color: var(--fy-warn);
+}
+
+.issue.info {
+  border-left-color: var(--fy-accent);
+  background: #e6fffb;
+  color: var(--fy-accent);
+}
+
+.issues {
+  display: grid;
+  gap: 6px;
+}
+
+.validationGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.45fr);
+  gap: 14px;
+}
+
+.facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 10px;
+  font-size: 12px;
+}
+
+.facts dt {
+  color: var(--fy-muted);
+  font-weight: 800;
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.media-main {
+  max-width: 1500px;
+}
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 12px;
+}
+
+.envCard {
+  padding: 0;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  overflow: hidden;
+}
+
+.envCard.focused {
+  border-color: var(--fy-accent);
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.16);
+}
+
+.envHeader {
+  padding: 12px;
+  border-bottom: 1px solid var(--fy-line);
+  display: grid;
+  gap: 8px;
+}
+
+.envTitle h2 {
+  font-size: 17px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.envCard .fy-preview {
+  border-radius: 0;
+}
+
+.editCompositionButton {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 5px 9px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.asset-grid.is-editing {
+  grid-template-columns: 1fr;
+}
+
+.compositionPreview,
+.compositionEditor .compositionCanvas {
+  aspect-ratio: 27 / 16;
+}
+
+.compositionPreview {
+  padding: 0;
+}
+
+.compositionPreview .compositionCanvas {
+  position: absolute;
+  inset: 0;
+}
+
+.compositionEditor {
+  padding: 0;
+  overflow: hidden;
+}
+
+.editorHeader {
+  padding: 12px;
+  border-bottom: 1px solid var(--fy-line);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.editorHeader h2 {
+  font-size: 19px;
+}
+
+.editorStatus {
+  margin: 10px 12px 0;
+  border-left: 3px solid var(--fy-accent);
+  background: #e6fffb;
+  color: var(--fy-accent);
+  border-radius: var(--fy-radius);
+  padding: 7px 8px;
+  font-weight: 800;
+}
+
+.saveState {
+  min-width: 92px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fy-muted);
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.saveState .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--fy-muted);
+}
+
+.saveState.saved .dot {
+  background: #16a34a;
+}
+
+.saveState.dirty .dot {
+  background: #d97706;
+}
+
+.saveState.saving .dot {
+  background: var(--fy-accent);
+  animation: savePulse 0.9s ease-in-out infinite;
+}
+
+.saveState.error .dot {
+  background: #dc2626;
+}
+
+@keyframes savePulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.compositionLayout {
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.35fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.compositionStage {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.compositionCanvas {
+  position: relative;
+  width: 100%;
+  background: #111827;
+  overflow: hidden;
+  border-radius: var(--fy-radius);
+  outline: 1px solid var(--fy-line-strong);
+}
+
+.compositionCanvas.is-interactive {
+  cursor: default;
+}
+
+.compositionCanvas.is-drag-over {
+  outline: 3px solid var(--fy-accent);
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.18);
+}
+
+.compositionCanvas:focus-visible {
+  outline: 2px solid var(--fy-focus);
+  outline-offset: 2px;
+}
+
+.compositionLayer {
+  position: absolute;
+  transform-origin: 50% 50%;
+  touch-action: none;
+  user-select: none;
+}
+
+.compositionCanvas.is-interactive .compositionLayer {
+  cursor: move;
+}
+
+.compositionLayer.is-locked {
+  cursor: not-allowed;
+}
+
+.compositionLayer img,
+.compositionLayer video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: fill;
+  pointer-events: none;
+}
+
+.compositionLayer.role-fxVideo {
+  mix-blend-mode: screen;
+}
+
+.videoPoster,
+.videoPosterImage {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: fill;
+  pointer-events: none;
+}
+
+.videoPoster {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 38%),
+    #111827;
+  background-position: center;
+  background-size: cover;
+}
+
+.compositionLayer.is-selected {
+  outline: 2px solid var(--fy-accent);
+  outline-offset: 2px;
+}
+
+.layerHandle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--fy-accent);
+  background: var(--fy-surface);
+  border-radius: 999px;
+  box-shadow: var(--fy-shadow);
+  z-index: 3;
+}
+
+.resizeHandle {
+  right: -8px;
+  bottom: -8px;
+  cursor: nwse-resize;
+}
+
+.rotateHandle {
+  top: -28px;
+  left: calc(50% - 7px);
+  cursor: grab;
+}
+
+.compositionGuides {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  z-index: 5000;
+  pointer-events: none;
+}
+
+.compositionGuides > div {
+  border-right: 1px solid rgba(255, 255, 255, 0.44);
+  background: rgba(255, 255, 255, 0.035);
+  display: grid;
+  place-items: start center;
+}
+
+.compositionGuides > div:last-child {
+  border-right: 0;
+}
+
+.compositionGuides span {
+  margin-top: 8px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: #111827;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.compositionPeople {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.personPanel {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ghostStandIn {
+  position: absolute;
+  left: 50%;
+  bottom: -54%;
+  display: block;
+  width: 112% !important;
+  height: auto !important;
+  max-width: none;
+  opacity: 0.3;
+  filter: invert(1);
+  object-fit: contain !important;
+  object-position: center center !important;
+  transform: translateX(-50%);
+}
+
+.compositionSide {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  align-content: start;
+}
+
+.editorUploadStrip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.editorPlayback {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+
+.mediaPlaybackRow {
+  border: 1px solid var(--fy-line);
+  border-radius: var(--fy-radius);
+  background: var(--fy-surface);
+  padding: 8px;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.mediaPlaybackLabel {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mediaPlaybackLabel strong,
+.mediaPlaybackLabel span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mediaPlaybackLabel span {
+  color: var(--fy-muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.mediaPlaybackRow audio,
+.mediaPlaybackRow video {
+  width: 100%;
+}
+
+.mediaPlaybackRow video {
+  height: 42px;
+  background: #111827;
+  border-radius: 8px;
+  display: block;
+}
+
+.editorUploadStrip .fy-drop-zone {
+  min-height: 94px;
+}
+
+.layerPanel {
+  border: 1px solid var(--fy-line);
+  background: var(--fy-panel);
+  border-radius: var(--fy-radius);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.layerPanel h3 {
+  font-size: 14px;
+}
+
+.layerList {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.inactiveAssetList {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.inactiveAssetsPanel summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.inactiveAssetsPanel summary::-webkit-details-marker {
+  display: none;
+}
+
+.inactiveAssetsPanel summary::before {
+  content: "+";
+  color: var(--fy-muted);
+  margin-right: 2px;
+}
+
+.inactiveAssetsPanel[open] summary {
+  margin-bottom: 8px;
+}
+
+.inactiveAssetsPanel[open] summary::before {
+  content: "-";
+}
+
+.layerListItem {
+  appearance: none;
+  border: 1px solid var(--fy-line);
+  border-radius: var(--fy-radius);
+  background: var(--fy-surface);
+  padding: 7px 8px;
+  color: var(--fy-ink);
+  text-align: left;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22px;
+  gap: 8px;
+  align-items: center;
+  min-height: 46px;
+  cursor: pointer;
+}
+
+.layerListItem.is-selected {
+  border-color: var(--fy-accent);
+  background: #e6fffb;
+}
+
+.layerListItem.is-dragging {
+  opacity: 0.5;
+}
+
+.layerListItem.is-drop-target {
+  border-color: var(--fy-accent);
+  box-shadow: inset 0 0 0 1px var(--fy-accent);
+}
+
+.layerListItem.is-locked {
+  cursor: default;
+}
+
+.layerListItem.is-hidden {
+  opacity: 0.45;
+}
+
+.layerListItem.is-hidden.is-selected {
+  opacity: 0.68;
+}
+
+.layerListText {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+
+.layerTitle {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 800;
+}
+
+.layerDragHandle,
+.layerLockIcon {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--fy-line);
+  border-radius: 6px;
+  justify-self: end;
+  background: var(--fy-panel-2);
+}
+
+.layerDragHandle {
+  position: relative;
+  cursor: grab;
+  background-image:
+    linear-gradient(var(--fy-muted), var(--fy-muted)),
+    linear-gradient(var(--fy-muted), var(--fy-muted)),
+    linear-gradient(var(--fy-muted), var(--fy-muted));
+  background-position: center 6px, center 10px, center 14px;
+  background-repeat: no-repeat;
+  background-size: 12px 2px;
+}
+
+.layerLockIcon {
+  box-sizing: border-box;
+  padding: 2px;
+  object-fit: contain;
+}
+
+.inactiveAssetItem {
+  border: 1px solid var(--fy-line);
+  border-radius: var(--fy-radius);
+  background: var(--fy-surface);
+  padding: 7px 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+}
+
+.inactiveAssetItem.is-output {
+  background: var(--fy-panel-2);
+}
+
+.inactiveAssetTitle {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 800;
+}
+
+.inactiveAssetActions {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.inactiveAssetActions .fy-button {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.layerControls {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.layerControlsHeader {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.layerControlsHeader strong {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+
+.layerControlsHeader .fy-button {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.transformGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(96px, 1fr));
+  gap: 10px 12px;
+  min-width: 0;
+}
+
+.layerControls label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.layerControls label span {
+  color: var(--fy-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.layerControls input[type="text"],
+.layerControls input[type="number"] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--fy-line);
+  border-radius: 8px;
+  background: var(--fy-surface);
+  color: var(--fy-text);
+  padding: 7px 9px;
+  outline: none;
+}
+
+.layerControls input[type="text"]:focus,
+.layerControls input[type="number"]:focus {
+  border-color: var(--fy-line-strong);
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.45);
+}
+
+.controlChecks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.layerControls .check {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.layerControls .check input {
+  flex: 0 0 auto;
+}
+
+.layerControls .fy-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.layerControls .fy-actions .fy-button {
+  min-height: 34px;
+  padding: 7px 8px;
+  font-size: 13px;
+}
+
+.guideToggle {
+  min-height: 36px;
+}
+
+.fxOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  mix-blend-mode: screen;
+  opacity: 0.82;
+  pointer-events: none;
+}
+
+.envBody {
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.fileName {
+  color: var(--fy-muted);
+  font-size: 12px;
+  min-height: 32px;
+  overflow-wrap: anywhere;
+}
+
+.fy-drop-zone.is-required-missing {
+  background: #fff7f7;
+  border-color: #ead5d5;
+}
+
+.fy-drop-zone.is-required-missing .fileName {
+  color: #9f5757;
+  font-weight: 750;
+}
+
+.fileButton {
+  width: 100%;
+}
+
+.fy-drop-zone input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.uploadStatus:empty {
+  display: none;
+}
+
+audio {
+  width: 100%;
+  min-height: 36px;
+}
+
+@media (max-width: 980px) {
+  .catalogWindows,
+  .validationGrid,
+  .compositionLayout,
+  .editorHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .catalogList {
+    max-height: 420px;
+  }
+
+  .editorHeader .fy-actions {
+    justify-content: start;
+  }
+}
+
+@media (max-width: 1240px) {
+  .transformGrid,
+  .controlChecks,
+  .layerControls .fy-actions,
+  .editorUploadStrip {
+    grid-template-columns: 1fr;
+  }
+}
