@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Algorithm V2</title>
+    <link rel="stylesheet" href="/shared/ui/foryou-v2.css">
+    <link rel="stylesheet" href="/algorithm/styles.css?v=algorithm-ui-2">
+  </head>
+  <body class="fy-page">
+    <header class="fy-topbar">
+      <div class="fy-bar">
+        <div class="fy-brand">
+          <span class="fy-brand-mark">FY</span>
+          <div class="fy-brand-text">
+            <strong>Algorithm</strong>
+            <span id="topMeta">Laden...</span>
+          </div>
+        </div>
+        <div class="fy-actions fy-actions-end">
+          <nav class="service-nav" aria-label="V2 service links">
+            <a href="http://127.0.0.1:3026/admin" target="_blank" rel="noopener">Audience Admin</a>
+            <a href="http://127.0.0.1:3024/runtime/" target="_blank" rel="noopener">Runtime</a>
+            <a href="http://127.0.0.1:3023/algorithm/" aria-current="page">Algorithm</a>
+          </nav>
+          <span id="healthBadge" class="fy-badge">Health</span>
+          <button id="refreshBtn" class="fy-button" type="button">Refresh</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="fy-main algorithm-main">
+      <section class="fy-panel config-panel">
+        <div class="fy-panel-header">
+          <h2>Config</h2>
+          <div class="fy-actions">
+            <button id="saveConfigBtn" class="fy-button fy-button-primary" type="button">Opslaan</button>
+            <button id="reloadConfigBtn" class="fy-button" type="button">Reset</button>
+          </div>
+        </div>
+        <div id="configGrid" class="config-grid"></div>
+        <div id="configMsg" class="fy-small"></div>
+      </section>
+
+      <section class="fy-grid-2 algorithm-grid">
+        <section class="fy-window contexts-window">
+          <div class="fy-window-header">
+            <h2>Scoring contexts</h2>
+            <span id="contextCount" class="fy-badge">0</span>
+          </div>
+          <div class="fy-window-body">
+            <div id="contextsList" class="fy-list contexts-list"></div>
+          </div>
+        </section>
+
+        <section class="fy-window observations-window">
+          <div class="fy-window-header">
+            <h2>Observations</h2>
+            <span id="observationCount" class="fy-badge">0</span>
+          </div>
+          <div class="fy-window-body">
+            <div id="observationsList" class="fy-list observations-list"></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="fy-grid-2 algorithm-grid">
+        <section class="fy-window simulation-window">
+          <div class="fy-window-header">
+            <h2>Simulatie</h2>
+            <span id="simulationBadge" class="fy-badge">Niet berekend</span>
+          </div>
+          <div class="fy-window-body">
+            <div class="simulation-form">
+              <label class="fy-label">Situatie<select id="simulationSituation" class="fy-select"></select></label>
+              <label class="fy-label">Hearts<input id="simulationHearts" class="fy-input" type="number" min="0" step="1" value="12"></label>
+              <label class="fy-label">Bored<input id="simulationBored" class="fy-input" type="number" min="0" step="1" value="1"></label>
+              <label class="fy-label">Duur sec<input id="simulationDuration" class="fy-input" type="number" min="1" step="1" value="120"></label>
+              <label class="fy-label">Audience size<input id="simulationAudience" class="fy-input" type="number" min="1" step="1" value="25"></label>
+              <label class="fy-label simulation-chat">Chatberichten<textarea id="simulationMessages" class="fy-textarea">ja
+meer hiervan</textarea></label>
+            </div>
+            <div class="fy-actions">
+              <button id="runSimulationBtn" class="fy-button fy-button-primary" type="button">Bereken</button>
+            </div>
+            <div id="simulationResult" class="simulation-result"></div>
+          </div>
+        </section>
+
+        <section class="fy-window tops-window">
+          <div class="fy-window-header">
+            <h2>Top debug</h2>
+            <span id="scoreCount" class="fy-badge">0 scores</span>
+          </div>
+          <div class="fy-window-body top-debug-grid">
+            <div>
+              <h3>Personages</h3>
+              <div id="topCharacters" class="fy-list compact-list"></div>
+            </div>
+            <div>
+              <h3>Labels</h3>
+              <div id="topLabels" class="fy-list compact-list"></div>
+            </div>
+            <div>
+              <h3>Situaties</h3>
+              <div id="topSituations" class="fy-list compact-list"></div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="fy-window scores-window">
+        <div class="fy-window-header">
+          <h2>Scorefeed</h2>
+          <span id="scoreFeedMeta" class="fy-badge">Geen context</span>
+        </div>
+        <div class="fy-window-body">
+          <div id="scoresTable" class="score-table"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/algorithm/app.js"></script>
+  </body>
+</html>

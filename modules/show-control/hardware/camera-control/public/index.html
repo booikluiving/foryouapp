@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Camera Control</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Camera Control</h1>
+        <p>Blackmagic Micro Studio Camera 4K G2 sidecar</p>
+      </div>
+      <div class="toolbar">
+        <label class="toggle">
+          <input id="fineMode" type="checkbox">
+          <span>Fine</span>
+        </label>
+        <button id="syncButton" type="button">Sync</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="cameraGrid" class="camera-grid" aria-live="polite"></section>
+      <aside class="activity-panel">
+        <div class="panel-head">
+          <h2>System</h2>
+          <span id="serverStatus" class="pill">connecting</span>
+        </div>
+        <div id="activityLog" class="activity-log"></div>
+      </aside>
+    </main>
+
+    <template id="cameraTemplate">
+      <article class="camera-card">
+        <div class="camera-head">
+          <div>
+            <h2 data-field="label"></h2>
+            <span data-field="host" class="muted"></span>
+          </div>
+          <span data-field="tally" class="tally">none</span>
+        </div>
+
+        <div class="preview" data-field="preview"></div>
+
+        <div class="health">
+          <span data-field="online" class="pill">offline</span>
+          <span data-field="rest" class="pill">REST</span>
+          <span data-field="ws" class="pill">WS</span>
+        </div>
+
+        <section class="tally-controls" aria-label="Tally">
+          <button data-tally="none" type="button">Off</button>
+          <button data-tally="preview" type="button">Preview</button>
+          <button data-tally="program" type="button">Program</button>
+        </section>
+
+        <section class="control-section">
+          <div class="section-title">
+            <h3>Lens</h3>
+            <span data-field="lensReadout" class="readout"></span>
+          </div>
+          <label class="slider-row">
+            <span>Focus</span>
+            <input data-control="focus" type="range" min="0" max="1" step="0.001">
+            <output data-output="focus"></output>
+          </label>
+          <label class="slider-row">
+            <span>Iris</span>
+            <input data-control="iris" type="range" min="0" max="1" step="0.001">
+            <output data-output="iris"></output>
+          </label>
+          <label class="slider-row">
+            <span>Zoom</span>
+            <input data-control="zoom" type="range" min="0" max="1" step="0.001">
+            <output data-output="zoom"></output>
+          </label>
+        </section>
+
+        <section class="control-section">
+          <div class="section-title">
+            <h3>Contrast</h3>
+            <span class="readout">pivot / adjust</span>
+          </div>
+          <label class="slider-row">
+            <span>Pivot</span>
+            <input data-control="contrast-pivot" type="range" min="0" max="1" step="0.001">
+            <output data-output="contrast-pivot"></output>
+          </label>
+          <label class="slider-row">
+            <span>Adjust</span>
+            <input data-control="contrast-adjust" type="range" min="0" max="2" step="0.001">
+            <output data-output="contrast-adjust"></output>
+          </label>
+        </section>
+
+        <section class="control-section color-section">
+          <div class="section-title">
+            <h3>Color</h3>
+            <span class="readout">luma + RGB</span>
+          </div>
+          <div class="color-tabs">
+            <button data-color-tab="lift" type="button">Lift</button>
+            <button data-color-tab="gamma" type="button">Gamma</button>
+            <button data-color-tab="gain" type="button">Gain</button>
+            <button data-color-tab="offset" type="button">Offset</button>
+          </div>
+          <label class="slider-row">
+            <span>Luma</span>
+            <input data-color-component="luma" type="range" min="-4" max="4" step="0.001">
+            <output data-color-output="luma"></output>
+          </label>
+          <label class="slider-row red">
+            <span>Red</span>
+            <input data-color-component="red" type="range" min="-4" max="4" step="0.001">
+            <output data-color-output="red"></output>
+          </label>
+          <label class="slider-row green">
+            <span>Green</span>
+            <input data-color-component="green" type="range" min="-4" max="4" step="0.001">
+            <output data-color-output="green"></output>
+          </label>
+          <label class="slider-row blue">
+            <span>Blue</span>
+            <input data-color-component="blue" type="range" min="-4" max="4" step="0.001">
+            <output data-color-output="blue"></output>
+          </label>
+        </section>
+
+        <footer class="camera-foot">
+          <span data-field="updated" class="muted"></span>
+          <span data-field="error" class="error"></span>
+        </footer>
+      </article>
+    </template>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,218 @@
+.show-main {
+  gap: 12px;
+}
+
+.tab-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--fy-line);
+  padding-bottom: 8px;
+}
+
+.tab-button {
+  min-height: 34px;
+  border: 1px solid var(--fy-line);
+  border-radius: 8px;
+  background: var(--fy-surface);
+  color: var(--fy-muted);
+  padding: 7px 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.tab-button.active {
+  background: var(--fy-ink);
+  border-color: var(--fy-ink);
+  color: var(--fy-paper);
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+.metric-grid,
+.target-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric,
+.target-item,
+.latest-cue,
+.action-card,
+.command-card,
+.log-row {
+  border: 1px solid var(--fy-line);
+  border-radius: 8px;
+  background: var(--fy-surface);
+  min-width: 0;
+}
+
+.metric {
+  padding: 9px 10px;
+  display: grid;
+  gap: 3px;
+}
+
+.metric span {
+  color: var(--fy-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.metric strong {
+  color: var(--fy-ink);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.latest-cue,
+.target-item,
+.log-row {
+  padding: 9px 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.target-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.target-item strong,
+.log-row strong {
+  color: var(--fy-ink);
+  overflow-wrap: anywhere;
+}
+
+.target-item span,
+.log-row span {
+  color: var(--fy-muted);
+  font-size: 12px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.compact-list,
+.library-list,
+.log-list {
+  max-height: calc(100vh - 240px);
+}
+
+.builder-grid {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(320px, 0.72fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.action-list,
+.command-stack {
+  display: grid;
+  gap: 9px;
+}
+
+.action-card {
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.action-fields {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.1fr) minmax(110px, 0.6fr) repeat(3, minmax(76px, 0.45fr));
+  gap: 8px;
+  align-items: end;
+}
+
+.payload-preview,
+.action-payload {
+  min-height: 160px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.action-payload {
+  min-height: 92px;
+}
+
+.command-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.command-card {
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.command-card strong {
+  color: var(--fy-ink);
+  overflow-wrap: anywhere;
+}
+
+.command-card span {
+  color: var(--fy-muted);
+  font-size: 12px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.json-output {
+  border: 1px solid var(--fy-line);
+  border-radius: 8px;
+  background: var(--fy-surface);
+  color: var(--fy-text);
+  min-height: 260px;
+  max-height: 520px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.message {
+  color: var(--fy-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.message.error {
+  color: var(--fy-danger);
+}
+
+.library-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.library-row .fy-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 980px) {
+  .builder-grid,
+  .fy-grid-2,
+  .fy-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .action-fields,
+  .command-grid,
+  .target-grid,
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+}

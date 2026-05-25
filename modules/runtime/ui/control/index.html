@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Runtime V2</title>
+    <link rel="stylesheet" href="/shared/ui/foryou-v2.css">
+    <link rel="stylesheet" href="/runtime/styles.css?v=runtime-ui-9">
+  </head>
+  <body class="fy-page">
+    <header class="fy-topbar">
+      <div class="fy-bar">
+        <div class="fy-brand">
+          <span class="fy-brand-mark">FY</span>
+          <div class="fy-brand-text">
+            <strong>Runtime</strong>
+            <span id="topMeta">Laden...</span>
+          </div>
+        </div>
+        <nav class="service-nav" aria-label="V2 service links">
+          <a href="http://127.0.0.1:3026/admin" target="_blank" rel="noopener">Audience Admin</a>
+          <a href="http://127.0.0.1:3024/runtime/" aria-current="page">Runtime</a>
+          <a href="http://127.0.0.1:3023/algorithm/" target="_blank" rel="noopener">Algorithm</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="fy-main runtime-main">
+      <section class="fy-panel live-panel">
+        <div class="fy-panel-header">
+          <h2>Huidige scene</h2>
+          <span id="runStatusBadge" class="fy-badge">idle</span>
+        </div>
+        <div id="queueStatus" class="queue-status"></div>
+        <div class="runtime-stats">
+          <div class="stat"><span>Gespeeld</span><strong id="playedCount">0</strong></div>
+          <div class="stat"><span>Speelbaar</span><strong id="eligibleCount">0</strong></div>
+          <div class="stat"><span>Scores</span><strong id="scoreCount">0</strong></div>
+        </div>
+        <label class="runtime-option">
+          <input id="randomizeEqualScoresToggle" type="checkbox">
+          <span>Random bij gelijke score</span>
+        </label>
+        <div class="fy-actions runtime-actions live-actions">
+          <button id="situationToggleBtn" class="fy-button fy-button-dark" type="button">Start situatie</button>
+          <button id="previousSituationBtn" class="fy-button" type="button">Vorige situatie</button>
+          <button id="runToggleBtn" class="fy-button fy-button-primary" type="button">Start run</button>
+        </div>
+        <div id="message" class="message" role="status"></div>
+      </section>
+
+      <section class="fy-panel order-panel">
+        <div class="fy-panel-header">
+          <h2>Huidige Volgorde</h2>
+          <span id="orderBadge" class="fy-badge">0 situaties</span>
+        </div>
+        <div id="runtimeOrderList" class="fy-scroll-list runtime-list"></div>
+      </section>
+
+      <section class="fy-panel details-panel">
+        <div class="fy-panel-header">
+          <h2>Run details</h2>
+        </div>
+        <dl id="runFacts" class="facts"></dl>
+        <div id="runLog" class="run-log"></div>
+      </section>
+    </main>
+
+    <script src="/runtime/app.js?v=runtime-ui-9"></script>
+  </body>
+</html>

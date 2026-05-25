@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Show Control V2</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/shared/ui/foryou-v2.css">
+    <link rel="stylesheet" href="/show-control/styles.css?v=show-control-hub-1">
+  </head>
+  <body class="fy-page">
+    <header class="fy-topbar">
+      <div class="fy-bar">
+        <div class="fy-brand">
+          <span class="fy-brand-mark">FY</span>
+          <div class="fy-brand-text">
+            <strong>Show Control</strong>
+            <span id="topMeta">Laden...</span>
+          </div>
+        </div>
+        <div class="fy-actions">
+          <button id="refreshBtn" class="fy-button" type="button">Refresh</button>
+          <button id="startRunBtn" class="fy-button fy-button-primary" type="button">Start run</button>
+          <button id="startSituationBtn" class="fy-button fy-button-dark" type="button">Start situatie</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="fy-main show-main">
+      <nav id="tabs" class="tab-strip" aria-label="Show Control tabs"></nav>
+
+      <section id="tab-hub" class="tab-panel active">
+        <section class="fy-grid-3">
+          <article class="fy-panel">
+            <div class="fy-panel-header">
+              <h2>Cue Hub</h2>
+              <span id="serviceBadge" class="fy-badge">offline</span>
+            </div>
+            <div class="metric-grid">
+              <div class="metric"><span>Cues</span><strong id="cueCount">0</strong></div>
+              <div class="metric"><span>Warnings</span><strong id="warningCount">0</strong></div>
+              <div class="metric"><span>Commands</span><strong id="commandCount">0</strong></div>
+            </div>
+            <div id="latestCue" class="latest-cue"></div>
+          </article>
+          <article class="fy-panel">
+            <div class="fy-panel-header">
+              <h2>Live status</h2>
+            </div>
+            <div id="targetStatus" class="target-grid"></div>
+          </article>
+          <article class="fy-panel">
+            <div class="fy-panel-header">
+              <h2>Warnings</h2>
+              <span id="warningBadge" class="fy-badge">0</span>
+            </div>
+            <div id="warningList" class="fy-scroll-list compact-list"></div>
+          </article>
+        </section>
+      </section>
+
+      <section id="tab-builder" class="tab-panel">
+        <section class="builder-grid">
+          <article class="fy-panel">
+            <div class="fy-panel-header">
+              <h2>Cue Builder</h2>
+              <button id="runBuilderBtn" class="fy-button fy-button-primary" type="button">Run cue</button>
+            </div>
+            <label class="fy-label">
+              Cue naam
+              <input id="cueNameInput" class="fy-input" value="Start situation fan-out">
+            </label>
+            <div id="builderActions" class="action-list"></div>
+            <div class="fy-actions">
+              <button id="addActionBtn" class="fy-button" type="button">Action</button>
+              <button id="addParallelBtn" class="fy-button" type="button">Parallel</button>
+            </div>
+            <div id="builderMessage" class="message" role="status"></div>
+          </article>
+          <article class="fy-panel">
+            <div class="fy-panel-header">
+              <h2>Payload</h2>
+              <span id="payloadBadge" class="fy-badge">JSON</span>
+            </div>
+            <textarea id="payloadPreview" class="fy-textarea payload-preview" spellcheck="false"></textarea>
+          </article>
+        </section>
+      </section>
+
+      <section id="tab-library" class="tab-panel">
+        <article class="fy-panel">
+          <div class="fy-panel-header">
+            <h2>Cue Library</h2>
+            <span id="libraryCount" class="fy-badge">0</span>
+          </div>
+          <div id="cueLibrary" class="fy-scroll-list library-list"></div>
+        </article>
+      </section>
+
+      <section id="tab-runtime" class="tab-panel">
+        <section class="fy-grid-2">
+          <article class="fy-panel">
+            <div class="fy-panel-header">
+              <h2>Runtime</h2>
+            </div>
+            <div class="command-stack runtime-stack"></div>
+          </article>
+          <article class="fy-panel">
+            <div class="fy-panel-header">
+              <h2>Runtime response</h2>
+            </div>
+            <pre id="runtimeOutput" class="json-output"></pre>
+          </article>
+        </section>
+      </section>
+
+      <section id="tab-td" class="tab-panel">
+        <article class="fy-panel">
+          <div class="fy-panel-header">
+            <h2>TouchDesigner</h2>
+          </div>
+          <div class="command-grid" data-target="touchdesigner"></div>
+        </article>
+      </section>
+
+      <section id="tab-audio" class="tab-panel">
+        <article class="fy-panel">
+          <div class="fy-panel-header">
+            <h2>Audio / SQ5</h2>
+          </div>
+          <div class="command-grid" data-target="sq5"></div>
+        </article>
+      </section>
+
+      <section id="tab-cameras" class="tab-panel">
+        <article class="fy-panel">
+          <div class="fy-panel-header">
+            <h2>Cameras</h2>
+          </div>
+          <div class="command-grid" data-target="camera"></div>
+        </article>
+      </section>
+
+      <section id="tab-deck" class="tab-panel">
+        <article class="fy-panel">
+          <div class="fy-panel-header">
+            <h2>Stream Deck / Perfect Cue</h2>
+          </div>
+          <div class="command-grid" data-target="deck"></div>
+        </article>
+      </section>
+
+      <section id="tab-logs" class="tab-panel">
+        <section class="fy-grid-2">
+          <article class="fy-panel">
+            <div class="fy-panel-header">
+              <h2>Logs</h2>
+            </div>
+            <div id="executionLog" class="fy-scroll-list log-list"></div>
+          </article>
+          <article class="fy-panel">
+            <div class="fy-panel-header">
+              <h2>Warnings</h2>
+            </div>
+            <div id="warningsFull" class="fy-scroll-list log-list"></div>
+          </article>
+        </section>
+      </section>
+    </main>
+
+    <script src="/show-control/app.js?v=show-control-hub-1"></script>
+  </body>
+</html>

@@ -1,0 +1,1575 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>For You - Audience Admin V2</title>
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --card: #fff;
+        --ink: #16202b;
+        --muted: #5f6b7a;
+        --line: #d9e2ec;
+        --danger: #b42318;
+        --accent: #0b6bcb;
+        --field: #fff;
+        --subtle: #f8fbff;
+        --badge-active-bg: #e9f8ee;
+        --badge-active-ink: #146c2f;
+        --badge-closed-bg: #f3f4f6;
+        --badge-closed-ink: #4b5563;
+      }
+      body.theme-dark {
+        --bg: #0f1722;
+        --card: #152233;
+        --ink: #e6edf5;
+        --muted: #9fb0c3;
+        --line: #26384c;
+        --danger: #ff6b6b;
+        --accent: #6cb8ff;
+        --field: #1a2b3f;
+        --subtle: #1a2b3f;
+        --badge-active-bg: #1a3a28;
+        --badge-active-ink: #96f2b4;
+        --badge-closed-bg: #1e2e42;
+        --badge-closed-ink: #c2d1df;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .wrap {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 18px;
+        display: grid;
+        gap: 12px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .span2 { grid-column: 1 / -1; }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+        min-height: 0;
+      }
+      .cardHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .cardHeader h2 { min-width: 0; }
+      .sectionToggle {
+        flex: 0 0 auto;
+        width: 30px;
+        min-width: 30px;
+        height: 30px;
+        padding: 0;
+        border-radius: 8px;
+        display: inline-grid;
+        place-items: center;
+        color: var(--muted);
+      }
+      .sectionToggle::before { content: "▾"; font-size: 14px; line-height: 1; }
+      .card.isCollapsed .sectionToggle::before { content: "▸"; }
+      .cardBody {
+        display: grid;
+        gap: 10px;
+        min-height: 0;
+      }
+      .cardBody.scrollArea {
+        max-height: var(--card-body-max, min(52vh, 420px));
+        overflow: auto;
+        padding-right: 2px;
+        overscroll-behavior: contain;
+      }
+      .card.isCollapsed {
+        gap: 0;
+      }
+      .card.isCollapsed .cardBody {
+        display: none;
+      }
+      .tableScrollArea {
+        max-height: var(--table-scroll-max, 360px);
+        overflow: auto;
+        overscroll-behavior: contain;
+      }
+      .tableScrollArea table {
+        min-width: 760px;
+      }
+      .tableScrollArea thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: var(--card);
+        box-shadow: 0 1px 0 var(--line);
+      }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: 20px; }
+      h2 { font-size: 16px; }
+      h3 { font-size: 13px; }
+      .muted { color: var(--muted); font-size: 13px; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      .row > * { flex: 1 1 140px; min-width: 120px; }
+      .row > button, .row > .fit { flex: 0 0 auto; min-width: auto; }
+      .adminTop {
+        align-items: flex-start;
+        justify-content: space-between;
+      }
+      .adminTop > div { flex: 1 1 320px; }
+      .serviceNav {
+        display: flex;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+        min-width: 0;
+      }
+      .serviceNav a {
+        min-height: 32px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--field);
+        color: var(--muted);
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 11px;
+        text-decoration: none;
+        font-size: 12px;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+      .serviceNav a:hover,
+      .serviceNav a[aria-current="page"] {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: var(--subtle);
+      }
+      input, textarea, select, button {
+        font: inherit;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        box-sizing: border-box;
+      }
+      input, textarea, select {
+        background: var(--field);
+        color: var(--ink);
+      }
+      button { cursor: pointer; background: var(--field); color: var(--ink); }
+      button.primary { border-color: var(--accent); color: var(--accent); }
+      button.danger { border-color: var(--danger); color: var(--danger); }
+      button:disabled {
+        cursor: wait;
+        opacity: 0.65;
+      }
+      button.simToggle {
+        min-width: 160px;
+      }
+      textarea { width: 100%; min-height: 74px; resize: vertical; }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .badge.active { background: var(--badge-active-bg); color: var(--badge-active-ink); }
+      .badge.closed { background: var(--badge-closed-bg); color: var(--badge-closed-ink); }
+      .pillRow { display: flex; gap: 8px; flex-wrap: wrap; }
+      .pill { background: var(--subtle); border: 1px solid var(--line); border-radius: 999px; padding: 6px 9px; font-size: 12px; }
+      .pill.active { background: var(--badge-active-bg); color: var(--badge-active-ink); font-weight: 700; }
+      .pill.closed { background: var(--badge-closed-bg); color: var(--badge-closed-ink); }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td {
+        text-align: left;
+        border-bottom: 1px solid var(--line);
+        padding: 6px 4px;
+        vertical-align: top;
+      }
+      th { color: var(--muted); font-weight: 700; }
+      .smallbtns { display: flex; gap: 4px; flex-wrap: wrap; }
+      .smallbtns button { padding: 5px 7px; border-radius: 7px; font-size: 12px; }
+      .compactActions {
+        flex-wrap: wrap;
+        align-items: center;
+        min-width: 0;
+        max-width: 100%;
+      }
+      .compactActions button {
+        flex: 0 0 auto;
+        min-width: 0;
+        text-align: center;
+      }
+      .compactActions .detailsAction { width: 64px; }
+      .compactActions .muteMinuteAction { width: 76px; }
+      .compactActions .unmuteAction { width: 74px; }
+      .compactActions .blockToggleAction { width: 82px; }
+      .compactActions .kickAction { width: 52px; }
+      .usersTable {
+        table-layout: fixed;
+        min-width: 0;
+      }
+      .tableScrollArea table.usersTable { min-width: 0; }
+      .usersNameCol { width: clamp(92px, 12vw, 120px); }
+      .usersClientCol { width: clamp(140px, 22vw, 220px); }
+      .usersStatusCol { width: clamp(64px, 8vw, 80px); }
+      .usersTable td:nth-child(2) {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .userStatusCell {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .usersSearchRow > input { flex: 1 1 260px; min-width: 200px; }
+      .usersSearchRow > button { flex: 0 0 auto; min-width: auto; }
+      .historyCell {
+        background: var(--subtle);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
+      }
+      .historyLog {
+        margin: 0;
+        max-height: 170px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      #liveChatLog {
+        min-height: 140px;
+        height: 220px;
+        max-height: min(70vh, 720px);
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--subtle);
+        padding: 8px;
+      }
+      #liveChatLog .chatLine {
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      #liveChatLog .chatLine + .chatLine { margin-top: 6px; }
+      #liveChatLog .chatTime { color: var(--muted); }
+      #liveChatResizeHandle {
+        height: 9px;
+        cursor: ns-resize;
+        border-radius: 999px;
+        background: linear-gradient(90deg, transparent, var(--line), transparent);
+      }
+      #qrBox {
+        background: var(--subtle);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px;
+        display: grid;
+        place-items: center;
+        min-height: 164px;
+      }
+      #qrBox img, #qrBox table { background: #fff; padding: 8px; border-radius: 8px; }
+      .pollOptionRow { display: flex; gap: 8px; align-items: center; }
+      .pollOptionRow input { flex: 1; min-width: 0; }
+      .pollOptionRow button { flex: 0 0 auto; min-width: auto; }
+      .pollResultRow {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+      }
+      .pollBar {
+        height: 8px;
+        border-radius: 999px;
+        background: var(--line);
+        overflow: hidden;
+        margin-top: 3px;
+      }
+      .pollBar > span { display: block; height: 100%; background: var(--accent); }
+      input[type="range"] { padding: 0; }
+      .sliderField { display: grid; gap: 4px; }
+      .sliderField { min-width: 0; }
+      .sliderField > input,
+      .sliderField > select {
+        width: 100%;
+        min-width: 0;
+      }
+      .sliderLabel { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+      .sliderLabel > span:first-child { min-width: 0; }
+      .sliderValue { color: var(--muted); }
+      .fieldHint {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.25;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .simControls {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        min-width: 0;
+      }
+      .simControls + .simControls { margin-top: 10px; }
+      details.stageGroup {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--subtle);
+        padding: 8px 10px;
+      }
+      details.stageGroup > summary {
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 700;
+        list-style: none;
+      }
+      details.stageGroup > summary::-webkit-details-marker { display: none; }
+      .stageControls {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .rememberRow {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .rememberRow input { min-width: auto; }
+      .emojiLeaderboardRank { width: 52px; font-weight: 800; }
+      .emojiLeaderboardRowTop { background: var(--subtle); }
+      .userNameColor { font-weight: 700; }
+      @media (max-width: 820px) {
+        .grid, .simControls, .stageControls { grid-template-columns: 1fr; }
+        .span2 { grid-column: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <div class="row adminTop">
+          <div>
+            <h1>Audience Admin V2</h1>
+            <p class="muted">Legacy audience-flow op V2 sessies, opslag en realtime.</p>
+          </div>
+          <nav class="serviceNav" aria-label="V2 service links">
+            <a href="http://127.0.0.1:3026/admin" aria-current="page">Audience Admin</a>
+            <a href="http://127.0.0.1:3024/runtime/" target="_blank" rel="noopener">Runtime</a>
+            <a href="http://127.0.0.1:3023/algorithm/" target="_blank" rel="noopener">Algorithm</a>
+          </nav>
+        </div>
+        <div class="pillRow">
+          <span class="pill closed" id="runtimePill">Geen actieve sessie</span>
+          <span class="pill" id="usersPill">0 live</span>
+          <span class="pill" id="pollPill">Poll: nee</span>
+          <span class="pill" id="reactionsPill">0 hearts · 0 bored</span>
+          <span class="pill" id="simPill">Sim uit</span>
+        </div>
+        <div id="actionMessage" class="muted"></div>
+      </div>
+
+      <div class="grid">
+        <section class="card">
+          <h2>Sessie & QR</h2>
+          <div class="row">
+            <input id="sessionName" placeholder="Naam sessie" />
+            <input id="tokenTtl" type="number" min="5" max="10080" value="720" />
+          </div>
+          <div class="row">
+            <button id="startSessionBtn" class="primary" type="button">Nieuwe sessie + QR</button>
+            <button id="newTokenBtn" type="button">Nieuwe join-token</button>
+            <button id="endSessionBtn" class="danger" type="button">Sessie beëindigen</button>
+          </div>
+          <div id="qrBox"><span class="muted">(Nog geen QR-code)</span></div>
+          <div class="row">
+            <input id="joinUrl" readonly placeholder="Join link" />
+            <button id="copyJoinBtn" type="button">Kopieer</button>
+          </div>
+          <div class="muted">Nieuwe sessie sluit huidige audience-sessie af, reset mutes/blocks/kicks en maakt een nieuwe QR.</div>
+        </section>
+
+        <section class="card">
+          <h2>Top Chatters</h2>
+          <div id="emojiLeaderboardMeta" class="muted">Nog geen puntenactiviteit.</div>
+          <div class="row">
+            <label class="sliderField">
+              <span class="sliderLabel"><span>Comment-punten</span><span id="engagementCommentPointsValue" class="sliderValue">75</span></span>
+              <input id="engagementCommentPoints" type="range" min="2" max="150" value="75" />
+            </label>
+          </div>
+          <div id="engagementRulesMeta" class="muted">Emoji = 1 punt, comments = 75 punten, duplicate/te korte comments tellen niet mee.</div>
+          <table>
+            <thead>
+              <tr><th>#</th><th>Naam</th><th>Bijdrage</th><th>Punten</th><th>Laatst</th></tr>
+            </thead>
+            <tbody id="emojiLeaderboardBody">
+              <tr><td colspan="5" class="muted">Nog geen puntenactiviteit in deze sessie.</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+
+      <div class="grid">
+        <section class="card">
+          <h2>Poll (multiple choice)</h2>
+          <input id="pollQuestion" placeholder="Vraag" />
+          <div id="pollOptionsList"></div>
+          <div class="row">
+            <input id="pollDurationSeconds" type="number" min="5" max="3600" step="1" value="60" />
+            <button id="addPollOptionBtn" type="button">+ Optie</button>
+            <button id="startPollBtn" class="primary" type="button">Start poll</button>
+            <button id="closePollBtn" type="button">Sluit actieve poll</button>
+          </div>
+          <div id="pollState" class="muted">Geen poll.</div>
+        </section>
+
+        <section class="card">
+          <h2>Live chat (recent)</h2>
+          <div id="liveChatLog" class="mono">(nog leeg)</div>
+          <div id="liveChatResizeHandle" aria-label="Sleep om live chat hoger of lager te maken" title="Sleep omhoog/omlaag"></div>
+        </section>
+      </div>
+
+      <div class="grid">
+        <section class="card span2">
+          <h2>Live gebruikers</h2>
+          <div class="muted">Moderatie werkt op IP voor normale users, en per bot-client voor simulatiebots.</div>
+          <div class="row usersSearchRow">
+            <input id="usersSearchInput" type="search" placeholder="Zoek op naam, IP of chattekst..." />
+            <button id="usersSearchClearBtn" type="button">Reset</button>
+          </div>
+          <div id="usersSearchState" class="muted"></div>
+          <table class="usersTable">
+            <colgroup>
+              <col class="usersNameCol" />
+              <col class="usersClientCol" />
+              <col class="usersStatusCol" />
+              <col class="usersActionsCol" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Naam</th>
+                <th>Client key</th>
+                <th>Status</th>
+                <th>Acties</th>
+              </tr>
+            </thead>
+            <tbody id="usersBody"></tbody>
+          </table>
+        </section>
+
+        <section class="card">
+          <h2>Actieve maatregelen</h2>
+          <table>
+            <thead>
+              <tr><th>Doel</th><th>Type</th><th>Einde</th><th>Actie</th></tr>
+            </thead>
+            <tbody id="enforcementBody"></tbody>
+          </table>
+        </section>
+
+        <section class="card">
+          <h2>Recente moderatie-acties</h2>
+          <pre id="actionsLog" class="mono historyLog">(nog leeg)</pre>
+        </section>
+      </div>
+
+      <div class="grid">
+        <section class="card">
+          <h2>Moderatie tools</h2>
+          <div class="sliderField">
+            <div class="sliderLabel">
+              <span>Bericht slowdown</span>
+              <span id="messageSlowdownValue" class="sliderValue">850ms</span>
+            </div>
+            <input id="messageSlowdownMs" type="range" min="500" max="8000" step="50" value="850" />
+          </div>
+          <div class="row">
+            <button id="saveMessageSlowdownBtn" type="button">Bewaar slowdown</button>
+          </div>
+          <div class="muted">Hard minimum blijft altijd actief om spam te voorkomen, ook als je de slider lager probeert te zetten.</div>
+        </section>
+
+        <section class="card">
+          <h2>Bot Simulatie</h2>
+          <div class="simControls">
+            <label class="sliderField">
+              <span class="sliderLabel"><span>Bot-deelnemers</span><span id="simClientsValue" class="sliderValue">20 bots</span></span>
+              <input id="simClients" type="range" min="1" max="200" step="1" value="20" />
+              <span class="fieldHint">Aantal nepdeelnemers dat joint en signalen stuurt.</span>
+            </label>
+            <label class="sliderField">
+              <span class="sliderLabel"><span>Gedrag</span></span>
+              <select id="simMode"></select>
+              <span class="fieldHint">Basistoon van de gesimuleerde crowd.</span>
+            </label>
+            <label class="sliderField">
+              <span class="sliderLabel"><span>Topic</span></span>
+              <input id="simTopic" placeholder="Waar praten bots over?" />
+              <span class="fieldHint">Optioneel onderwerp voor bot-chat.</span>
+            </label>
+          </div>
+          <div class="simControls">
+            <label class="sliderField">
+              <span class="sliderLabel"><span>Chatkans per bot</span><span id="simMsgRateValue" class="sliderValue">0,025</span></span>
+              <input id="simMsgRate" type="range" min="0" max="0.1" step="0.005" value="0.025" />
+              <span class="fieldHint">Kans dat een bot iets zegt per schrijfmoment.</span>
+            </label>
+            <label class="sliderField">
+              <span class="sliderLabel"><span>Reactiesnelheid</span><span id="simReactionRateValue" class="sliderValue">0,25</span></span>
+              <input id="simReactionRate" type="range" min="0" max="4" step="0.05" value="0.25" />
+              <span class="fieldHint">Hoe vaak bots hearts of bored-signalen sturen.</span>
+            </label>
+            <label class="sliderField">
+              <span class="sliderLabel"><span>Crowd cue</span></span>
+              <select id="simCue"></select>
+              <span class="fieldHint">Een tijdelijke richting voor het botgedrag.</span>
+            </label>
+          </div>
+          <div class="row">
+            <button id="simToggleBtn" class="primary simToggle" type="button" aria-pressed="false">Start simulatie</button>
+            <button id="updateSimBtn" type="button">Update</button>
+            <button id="sendCueBtn" type="button">Cue</button>
+          </div>
+          <div id="simState" class="muted">Simulatie uit.</div>
+        </section>
+      </div>
+
+      <section class="card">
+        <h2>Stage output</h2>
+        <div class="row">
+          <input id="stageUrl" readonly placeholder="Stage-link verschijnt na laden..." />
+          <button id="copyStageBtn" type="button">Kopieer stage-link</button>
+          <button id="openStageBtn" type="button">Open stage</button>
+          <button id="testEmojiBtn" type="button">Test emoji</button>
+        </div>
+        <div class="row">
+          <label class="rememberRow"><input id="stageShowQr" type="checkbox" />QR</label>
+          <label class="rememberRow"><input id="stageShowChat" type="checkbox" />Chat</label>
+          <label class="rememberRow"><input id="stageShowEmojis" type="checkbox" />Emoji</label>
+          <label class="rememberRow"><input id="stageShowLeaderboard" type="checkbox" />Top Chatters</label>
+          <select id="stageBackground">
+            <option value="transparent">Transparant</option>
+            <option value="black">Zwart</option>
+          </select>
+        </div>
+        <details class="stageGroup" open>
+          <summary>Chat, QR, emoji en leaderboard styling</summary>
+          <div class="stageControls">
+            <label class="sliderField"><span class="sliderLabel"><span>Chat schaal</span><span id="stageChatScaleValue" class="sliderValue">1.00x</span></span><input id="stageChatScale" type="range" min="0.6" max="2.2" step="0.01" value="1" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Chat hoogte</span><span id="stageChatHeightValue" class="sliderValue">940px</span></span><input id="stageChatHeight" type="range" min="180" max="1800" step="10" value="940" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Chat onder</span><span id="stageChatBottomValue" class="sliderValue">36px</span></span><input id="stageChatBottom" type="range" min="0" max="700" step="1" value="36" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Chat X</span><span id="stageChatXValue" class="sliderValue">0%</span></span><input id="stageChatX" type="range" min="-50" max="50" step="1" value="0" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Chat fade start</span><span id="stageChatFadeValue" class="sliderValue">52%</span></span><input id="stageChatFade" type="range" min="0" max="90" step="1" value="52" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>QR schaal</span><span id="stageQrScaleValue" class="sliderValue">1.00x</span></span><input id="stageQrScale" type="range" min="0.35" max="2.5" step="0.01" value="1" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>QR X</span><span id="stageQrXValue" class="sliderValue">86%</span></span><input id="stageQrX" type="range" min="0" max="100" step="1" value="86" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>QR Y</span><span id="stageQrYValue" class="sliderValue">10%</span></span><input id="stageQrY" type="range" min="0" max="100" step="1" value="10" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Emoji schaal</span><span id="stageEmojiScaleValue" class="sliderValue">1.00x</span></span><input id="stageEmojiScale" type="range" min="0.4" max="2.8" step="0.01" value="1" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Emoji burst</span><span id="stageEmojiBurstValue" class="sliderValue">1</span></span><input id="stageEmojiBurst" type="range" min="1" max="6" step="1" value="1" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Emoji spreiding</span><span id="stageEmojiSpreadValue" class="sliderValue">6%</span></span><input id="stageEmojiSpread" type="range" min="0" max="30" step="1" value="6" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Emoji X hart</span><span id="stageEmojiHeartXValue" class="sliderValue">50%</span></span><input id="stageEmojiHeartX" type="range" min="0" max="100" step="1" value="50" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Emoji X bored</span><span id="stageEmojiBoredXValue" class="sliderValue">50%</span></span><input id="stageEmojiBoredX" type="range" min="0" max="100" step="1" value="50" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Top Chatters schaal</span><span id="stageLeaderboardScaleValue" class="sliderValue">1.00x</span></span><input id="stageLeaderboardScale" type="range" min="0.45" max="2.4" step="0.01" value="1" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Top Chatters breedte</span><span id="stageLeaderboardWidthValue" class="sliderValue">360px</span></span><input id="stageLeaderboardWidth" type="range" min="220" max="760" step="10" value="360" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Top Chatters X</span><span id="stageLeaderboardXValue" class="sliderValue">98%</span></span><input id="stageLeaderboardX" type="range" min="0" max="100" step="1" value="98" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Top Chatters Y</span><span id="stageLeaderboardYValue" class="sliderValue">18%</span></span><input id="stageLeaderboardY" type="range" min="0" max="100" step="1" value="18" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Top Chatters fade start</span><span id="stageLeaderboardFadeValue" class="sliderValue">74%</span></span><input id="stageLeaderboardFade" type="range" min="30" max="100" step="1" value="74" /></label>
+          </div>
+        </details>
+      </section>
+    </div>
+
+    <script src="/v2/audience/vendor/qrcode-generator.min.js"></script>
+    <script>
+      const LIVE_CHAT_HEIGHT_PREF_KEY = "audience_admin_live_chat_height_v2";
+      const SECTION_OPEN_PREF_PREFIX = "audience_admin_section_open_v2:";
+      const SECTION_MAX_HEIGHTS = {
+        "Sessie & QR": "440px",
+        "Top Chatters": "340px",
+        "Poll (multiple choice)": "360px",
+        "Live chat (recent)": "340px",
+        "Live gebruikers": "430px",
+        "Actieve maatregelen": "260px",
+        "Recente moderatie-acties": "260px",
+        "Moderatie tools": "220px",
+        "Bot Simulatie": "320px",
+        "Stage output": "620px",
+      };
+      const SECTION_TABLE_SCROLL_MAX_HEIGHTS = {
+        "Top Chatters": "300px",
+        "Live gebruikers": "430px",
+      };
+      const api = (path, options = {}) => fetch(path, {
+        headers: { "content-type": "application/json" },
+        ...options,
+      }).then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.message || body.error || res.status);
+        return body;
+      });
+      const post = (path, body = {}) => api(path, { method: "POST", body: JSON.stringify(body) });
+
+      const els = {};
+      for (const id of [
+        "runtimePill", "usersPill", "pollPill", "reactionsPill", "simPill", "actionMessage",
+        "sessionName", "tokenTtl", "qrBox", "joinUrl", "usersSearchInput", "usersSearchClearBtn", "usersSearchState",
+        "usersBody", "enforcementBody", "actionsLog", "liveChatLog", "liveChatResizeHandle", "emojiLeaderboardMeta",
+        "emojiLeaderboardBody", "engagementCommentPoints", "engagementCommentPointsValue", "engagementRulesMeta",
+        "pollQuestion", "pollOptionsList", "pollDurationSeconds", "pollState", "messageSlowdownMs",
+        "messageSlowdownValue", "simClients", "simClientsValue", "simMode", "simTopic", "simMsgRate", "simMsgRateValue",
+        "simReactionRate", "simReactionRateValue", "simCue",
+        "simToggleBtn", "simState", "stageUrl", "stageShowQr", "stageShowChat", "stageShowEmojis", "stageShowLeaderboard",
+        "stageBackground", "stageChatScale", "stageChatHeight", "stageChatBottom", "stageChatX", "stageChatFade", "stageQrScale",
+        "stageQrX", "stageQrY", "stageEmojiScale", "stageEmojiBurst", "stageEmojiSpread", "stageEmojiHeartX",
+        "stageEmojiBoredX", "stageLeaderboardScale", "stageLeaderboardWidth", "stageLeaderboardX",
+        "stageLeaderboardY", "stageLeaderboardFade", "stageChatScaleValue", "stageChatHeightValue", "stageChatBottomValue", "stageChatXValue",
+        "stageChatFadeValue", "stageEmojiSpreadValue", "stageEmojiHeartXValue", "stageEmojiBoredXValue", "stageLeaderboardScaleValue",
+        "stageQrScaleValue", "stageQrXValue", "stageQrYValue", "stageEmojiScaleValue", "stageEmojiBurstValue",
+        "stageLeaderboardWidthValue", "stageLeaderboardXValue", "stageLeaderboardYValue", "stageLeaderboardFadeValue",
+      ]) {
+        els[id] = document.getElementById(id);
+      }
+
+      let lastState = null;
+      let lastJoinUrl = "";
+      let usersSearchText = "";
+      let usersSearchQuery = "";
+      let usersSearchBusy = false;
+      let usersSearchRunId = 0;
+      let usersSearchInputDebounceTimer = null;
+      let usersSearchDeepMatches = new Set();
+      let expandedUserKeys = new Set();
+      let userHistoryCache = new Map();
+      let stageHydratingControls = false;
+      let stageSettingsSaveTimer = null;
+      let engagementSaveTimer = null;
+      let simulationTogglePending = false;
+      let simulationDraft = null;
+      let simulationDraftDirty = false;
+      let simulationUpdateTimer = null;
+      let simulationUpdatePending = false;
+
+      function esc(value) {
+        return String(value === null || value === undefined ? "" : value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      function clampInt(value, min, max, fallback) {
+        const n = Number.parseInt(String(value), 10);
+        return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+      }
+      function clampFloat(value, min, max, fallback) {
+        const n = Number(value);
+        return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+      }
+      function formatDecimal(value, maxDigits = 3) {
+        const n = Number(value);
+        return Number.isFinite(n)
+          ? n.toLocaleString("nl-NL", { maximumFractionDigits: maxDigits })
+          : "0";
+      }
+      function formatTs(value) {
+        if (!value) return "-";
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return String(value);
+        return d.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      }
+      function formatRemainingMs(ms) {
+        const total = Math.max(0, Number(ms || 0));
+        const seconds = Math.ceil(total / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const rest = seconds % 60;
+        return minutes > 0 ? `${minutes}:${String(rest).padStart(2, "0")}` : `${rest}s`;
+      }
+      function setActionMessage(message, isError = false) {
+        els.actionMessage.textContent = message || "";
+        els.actionMessage.style.color = isError ? "var(--danger)" : "var(--muted)";
+      }
+      function sectionStorageKey(title) {
+        return SECTION_OPEN_PREF_PREFIX + String(title || "")
+          .toLowerCase()
+          .normalize("NFKC")
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+      }
+      function setupCollapsibleSections() {
+        for (const section of document.querySelectorAll("section.card")) {
+          if (section.dataset.collapsibleReady === "1") continue;
+          const heading = section.querySelector(":scope > h2");
+          if (!heading) continue;
+          const title = heading.textContent.trim();
+          const header = document.createElement("div");
+          header.className = "cardHeader";
+          const toggle = document.createElement("button");
+          toggle.type = "button";
+          toggle.className = "sectionToggle";
+          toggle.setAttribute("aria-label", `${title} inklappen of uitklappen`);
+          header.appendChild(heading);
+          header.appendChild(toggle);
+
+          const body = document.createElement("div");
+          body.className = "cardBody scrollArea";
+          const maxHeight = SECTION_MAX_HEIGHTS[title];
+          if (maxHeight) body.style.setProperty("--card-body-max", maxHeight);
+          while (section.firstChild) body.appendChild(section.firstChild);
+          if (SECTION_TABLE_SCROLL_MAX_HEIGHTS[title]) {
+            body.classList.remove("scrollArea");
+            body.style.removeProperty("--card-body-max");
+            const table = body.querySelector("table");
+            if (table) {
+              const tableScroll = document.createElement("div");
+              tableScroll.className = "tableScrollArea";
+              tableScroll.style.setProperty("--table-scroll-max", SECTION_TABLE_SCROLL_MAX_HEIGHTS[title]);
+              table.parentNode.insertBefore(tableScroll, table);
+              tableScroll.appendChild(table);
+            }
+          }
+          section.appendChild(header);
+          section.appendChild(body);
+          section.dataset.collapsibleReady = "1";
+
+          const key = sectionStorageKey(title);
+          const stored = localStorage.getItem(key);
+          const isOpen = stored === null ? true : stored === "1";
+          section.classList.toggle("isCollapsed", !isOpen);
+          toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+          toggle.addEventListener("click", () => {
+            const nextOpen = section.classList.contains("isCollapsed");
+            section.classList.toggle("isCollapsed", !nextOpen);
+            localStorage.setItem(key, nextOpen ? "1" : "0");
+            toggle.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+          });
+        }
+      }
+      function sanitizeNameColor(value) {
+        const raw = String(value || "").trim();
+        return /^#[0-9a-f]{6}$/i.test(raw) ? raw : "";
+      }
+      function normalizeSearch(value) {
+        return String(value || "").trim().toLowerCase();
+      }
+      function copyText(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
+        }
+        return Promise.resolve(false);
+      }
+      function drawQr(url) {
+        lastJoinUrl = url || lastJoinUrl || "";
+        els.joinUrl.value = lastJoinUrl;
+        els.qrBox.textContent = "";
+        if (!lastJoinUrl || typeof qrcode !== "function") {
+          els.qrBox.innerHTML = `<span class="muted">${lastJoinUrl ? "QR library ontbreekt." : "(Nog geen QR-code)"}</span>`;
+          return;
+        }
+        try {
+          const qr = qrcode(0, "M");
+          qr.addData(lastJoinUrl);
+          qr.make();
+          els.qrBox.innerHTML = qr.createImgTag(6, 8);
+        } catch (err) {
+          els.qrBox.innerHTML = `<span class="muted">QR genereren mislukt: ${esc(err.message)}</span>`;
+        }
+      }
+      function fillSelect(select, items, selected) {
+        const signature = JSON.stringify(items || []);
+        const current = selected || select.value;
+        if (select.dataset.signature !== signature) {
+          select.textContent = "";
+          for (const item of items || []) {
+            const option = document.createElement("option");
+            option.value = item.id;
+            option.textContent = item.label;
+            select.appendChild(option);
+          }
+          select.dataset.signature = signature;
+        }
+        if (current) select.value = current;
+      }
+
+      function renderLiveChat(messages) {
+        const rows = Array.isArray(messages) ? messages.slice().reverse() : [];
+        if (!rows.length) {
+          els.liveChatLog.textContent = "(nog leeg)";
+          return;
+        }
+        els.liveChatLog.innerHTML = rows.map((message) => {
+          const detail = String(message.detail || "");
+          const isNotice = detail.startsWith("moderation_notice:");
+          const label = message.name || "Anoniem";
+          const color = sanitizeNameColor(message.nameColor);
+          if (isNotice) {
+            return `<div class="chatLine"><span class="chatTime">${esc(formatTs(message.time))}</span> ${esc(message.text || "")}</div>`;
+          }
+          const nameStyle = color ? ` style="color:${color}"` : "";
+          return `<div class="chatLine"><span class="chatTime">${esc(formatTs(message.time))}</span> <span class="userNameColor"${nameStyle}>${esc(label)}</span>: ${esc(message.text || "")}</div>`;
+        }).join("");
+      }
+
+      function historyLinesToText(messages) {
+        if (!Array.isArray(messages) || !messages.length) return "(geen chatgeschiedenis)";
+        return messages.slice().reverse().map((message) => {
+          const status = String(message.status || "");
+          const suffix = status && status !== "accepted" ? ` [${status}]` : "";
+          return `${formatTs(message.time)} ${message.name || "Anoniem"}: ${message.text || ""}${suffix}`;
+        }).join("\n");
+      }
+      async function loadUserHistory(clientKey, ip, targetKind) {
+        const query = new URLSearchParams();
+        if (clientKey) query.set("clientKey", clientKey);
+        if (ip) query.set("ip", ip);
+        query.set("targetKind", targetKind);
+        query.set("limit", "80");
+        const data = await api("/v2/audience/admin/user-history?" + query.toString());
+        const cacheKey = clientKey || ip || "";
+        userHistoryCache.set(cacheKey, {
+          ip,
+          targetKind,
+          messages: Array.isArray(data.messages) ? data.messages : [],
+        });
+        return userHistoryCache.get(cacheKey).messages;
+      }
+      function messageMatchesSearch(message, query) {
+        const haystack = [
+          message && message.name,
+          message && message.text,
+          message && message.ip,
+          message && message.clientKey,
+          message && message.status,
+        ].map((v) => String(v || "").toLowerCase()).join(" ");
+        return haystack.includes(query);
+      }
+      function userMatchesSearch(user, query, recentByClientKey) {
+        if (!query) return true;
+        const clientKey = String(user.clientKey || "");
+        const haystack = [
+          user.name,
+          user.ip,
+          user.clientKey,
+          user.clientTag,
+          user.isBot ? "bot" : "mens",
+          user.isMuted ? "muted" : "",
+          user.isBlocked ? "blocked" : "",
+        ].map((v) => String(v || "").toLowerCase()).join(" ");
+        if (haystack.includes(query)) return true;
+        const recent = recentByClientKey.get(clientKey) || [];
+        if (recent.some((message) => messageMatchesSearch(message, query))) return true;
+        const history = userHistoryCache.get(clientKey);
+        if (history && Array.isArray(history.messages) && history.messages.some((message) => messageMatchesSearch(message, query))) return true;
+        return usersSearchDeepMatches.has(clientKey);
+      }
+      function filterUsersBySearch(users, recentMessages) {
+        const list = Array.isArray(users) ? users : [];
+        if (!usersSearchQuery) return list.slice();
+        const recentByClientKey = new Map();
+        for (const message of recentMessages || []) {
+          const key = String(message.clientKey || "");
+          if (!key) continue;
+          if (!recentByClientKey.has(key)) recentByClientKey.set(key, []);
+          recentByClientKey.get(key).push(message);
+        }
+        return list.filter((user) => userMatchesSearch(user, usersSearchQuery, recentByClientKey));
+      }
+      function updateUsersSearchState(total, visible) {
+        if (!usersSearchQuery) {
+          els.usersSearchState.textContent = `Live gebruikers: ${visible}`;
+          return;
+        }
+        const base = `Zoek "${usersSearchText}": ${visible} van ${total}`;
+        els.usersSearchState.textContent = usersSearchBusy ? `${base} (chatgeschiedenis laden...)` : base;
+      }
+      async function queueDeepUserSearch() {
+        if (!usersSearchQuery || !lastState || usersSearchBusy) return;
+        const users = Array.isArray(lastState.users) ? lastState.users : [];
+        const recentByClientKey = new Map();
+        for (const message of lastState.recentMessages || []) {
+          const key = String(message.clientKey || "");
+          if (!key) continue;
+          if (!recentByClientKey.has(key)) recentByClientKey.set(key, []);
+          recentByClientKey.get(key).push(message);
+        }
+        const queue = [];
+        for (const user of users) {
+          const clientKey = String(user.clientKey || "");
+          if (!clientKey || userHistoryCache.has(clientKey)) continue;
+          if (userMatchesSearch(user, usersSearchQuery, recentByClientKey)) continue;
+          const targetKind = String(user.moderationTargetKind || (user.isBot ? "client" : "ip")).toLowerCase() === "client" ? "client" : "ip";
+          queue.push({ clientKey, ip: String(user.ip || ""), targetKind });
+        }
+        if (!queue.length) return;
+        usersSearchBusy = true;
+        updateUsersSearchState(users.length, filterUsersBySearch(users, lastState.recentMessages).length);
+        const runId = usersSearchRunId;
+        try {
+          for (const target of queue.slice(0, 12)) {
+            if (runId !== usersSearchRunId || !usersSearchQuery) return;
+            const messages = await loadUserHistory(target.clientKey, target.ip, target.targetKind);
+            if (messages.some((message) => messageMatchesSearch(message, usersSearchQuery))) {
+              usersSearchDeepMatches.add(target.clientKey);
+            }
+          }
+        } finally {
+          if (runId === usersSearchRunId) {
+            usersSearchBusy = false;
+            if (lastState) renderUsersTable(lastState);
+          }
+        }
+      }
+      function applyUsersSearch(text) {
+        usersSearchText = String(text || "");
+        usersSearchQuery = normalizeSearch(usersSearchText);
+        usersSearchDeepMatches = new Set();
+        usersSearchBusy = false;
+        usersSearchRunId += 1;
+        if (lastState) renderUsersTable(lastState);
+        queueDeepUserSearch();
+      }
+      function renderUsersTable(data) {
+        const users = Array.isArray(data.users) ? data.users : [];
+        const filtered = filterUsersBySearch(users, data.recentMessages);
+        updateUsersSearchState(users.length, filtered.length);
+        if (!filtered.length) {
+          const msg = usersSearchQuery ? `Geen live gebruikers gevonden voor "${usersSearchText}".` : "Geen live gebruikers.";
+          els.usersBody.innerHTML = `<tr><td colspan="4" class="muted">${esc(msg)}</td></tr>`;
+          return;
+        }
+        els.usersBody.innerHTML = filtered.map((u) => {
+          const targetKind = String(u.moderationTargetKind || (u.isBot ? "client" : "ip")).toLowerCase() === "client" ? "client" : "ip";
+          const targetKey = targetKind === "client" ? String(u.clientKey || "") : String(u.ip || "");
+          const subLabel = targetKind === "client" ? "bot-simulatie" : String(u.ip || "");
+          const status = [
+            u.isBot ? "bot" : "",
+            u.isMuted ? ("muted" + (u.mutedUntil ? " tot " + formatTs(u.mutedUntil) : "")) : "",
+            u.isBlocked ? ("blocked" + (u.blockedUntil ? " tot " + formatTs(u.blockedUntil) : "")) : "",
+          ].filter(Boolean).join(" | ") || "ok";
+          const safeName = esc(u.name || "Anoniem");
+          const nameColor = sanitizeNameColor(u.nameColor);
+          const nameHtml = nameColor ? `<span class="userNameColor" style="color:${nameColor}">${safeName}</span>` : `<span class="userNameColor">${safeName}</span>`;
+          const expandedKey = String(u.clientKey || targetKey);
+          const isExpanded = expandedUserKeys.has(expandedKey);
+          const historyEntry = userHistoryCache.get(expandedKey);
+          const historyText = historyEntry ? historyLinesToText(historyEntry.messages) : "Laden...";
+          const detailsLabel = isExpanded ? "Verberg" : "Details";
+          const blockAct = u.isBlocked ? "unblock" : "block";
+          const blockLabel = u.isBlocked ? "Unblock" : "Block";
+          const blockClass = u.isBlocked ? "" : "danger";
+          return `<tr>
+            <td>${nameHtml}<div class="muted">${esc(subLabel)}</div></td>
+            <td class="mono">${esc(u.clientKey || "")}</td>
+            <td class="userStatusCell" title="${esc(status)}">${esc(status)}</td>
+            <td>
+              <div class="smallbtns compactActions">
+                <button class="detailsAction" data-act="details" data-key="${esc(targetKey)}" data-client-key="${esc(u.clientKey || "")}" data-ip="${esc(u.ip || "")}" data-target-kind="${targetKind}">${detailsLabel}</button>
+                <button class="muteMinuteAction" data-act="mute1" data-key="${esc(targetKey)}" data-ip="${esc(u.ip || "")}" data-target-kind="${targetKind}">Mute 1m</button>
+                <button class="muteMinuteAction" data-act="mute2" data-key="${esc(targetKey)}" data-ip="${esc(u.ip || "")}" data-target-kind="${targetKind}">Mute 2m</button>
+                <button class="muteMinuteAction" data-act="mute5" data-key="${esc(targetKey)}" data-ip="${esc(u.ip || "")}" data-target-kind="${targetKind}">Mute 5m</button>
+                <button class="unmuteAction" data-act="unmute" data-key="${esc(targetKey)}" data-ip="${esc(u.ip || "")}" data-target-kind="${targetKind}">Unmute</button>
+                <button class="blockToggleAction ${blockClass}" data-act="${blockAct}" data-key="${esc(targetKey)}" data-ip="${esc(u.ip || "")}" data-target-kind="${targetKind}">${blockLabel}</button>
+                <button class="kickAction danger" data-act="kick" data-key="${esc(targetKey)}" data-ip="${esc(u.ip || "")}" data-target-kind="${targetKind}">Kick</button>
+              </div>
+            </td>
+          </tr>${isExpanded ? `<tr><td colspan="4"><div class="historyCell"><div class="muted">Recente berichten van ${safeName}</div><pre class="mono historyLog">${esc(historyText)}</pre></div></td></tr>` : ""}`;
+        }).join("");
+        queueDeepUserSearch();
+      }
+
+      function renderEnforcement(data) {
+        const muted = data.enforcement && Array.isArray(data.enforcement.muted) ? data.enforcement.muted : [];
+        const blocked = data.enforcement && Array.isArray(data.enforcement.blocked) ? data.enforcement.blocked : [];
+        const rows = muted.map((entry) => ({ ...entry, type: "Muted", until: entry.mutedUntil, action: "unmute" }))
+          .concat(blocked.map((entry) => ({ ...entry, type: "Blocked", until: entry.blockedUntil, action: "unblock" })))
+          .filter((entry) => entry.targetKey || entry.targetIp || entry.targetClientKey);
+        els.enforcementBody.innerHTML = rows.length ? rows.map((entry) => {
+          const targetKind = String(entry.targetKind || "").toLowerCase() === "client" ? "client" : "ip";
+          const targetKey = String(entry.targetKey || (targetKind === "client" ? entry.targetClientKey : entry.targetIp) || "");
+          const targetIp = String(entry.targetIp || "");
+          const label = String(entry.targetLabel || targetKey || targetIp || "-");
+          return `<tr>
+            <td class="mono">${esc(label)}<div class="muted">${esc(targetKind)}</div></td>
+            <td>${esc(entry.type)}</td>
+            <td>${entry.until ? esc(formatTs(entry.until)) : "geen eindtijd"}</td>
+            <td><button data-act="${entry.action}" data-key="${esc(targetKey)}" data-ip="${esc(targetIp)}" data-target-kind="${targetKind}">${entry.action === "unmute" ? "Unmute" : "Unblock"}</button></td>
+          </tr>`;
+        }).join("") : '<tr><td colspan="4" class="muted">Geen actieve maatregelen.</td></tr>';
+      }
+      function renderActions(data) {
+        const actions = Array.isArray(data.recentActions) ? data.recentActions : [];
+        els.actionsLog.textContent = actions.length ? actions.map((action) => {
+          const label = action.clientLabel || action.targetKey || action.scopeKey || "";
+          return `${formatTs(action.time)}  ${action.actionType}  ${label}${action.reason ? "  (" + action.reason + ")" : ""}`;
+        }).join("\n") : "(nog leeg)";
+      }
+      function renderLeaderboard(data) {
+        const leaderboard = data.engagementLeaderboard || data.emojiLeaderboard || {};
+        const top = Array.isArray(leaderboard.top) ? leaderboard.top : [];
+        const totalPoints = Math.max(0, Number(leaderboard.totalPoints || 0));
+        const totalComments = Math.max(0, Number(leaderboard.totalComments || 0));
+        const totalEmojis = Math.max(0, Number(leaderboard.totalReactions || 0));
+        const uniqueSenders = Math.max(0, Number(leaderboard.uniqueSenders || 0));
+        els.emojiLeaderboardMeta.textContent = uniqueSenders > 0
+          ? `Totaal punten: ${totalPoints} | comments: ${totalComments} | emoji's: ${totalEmojis} | unieke deelnemers: ${uniqueSenders} | scroll voor alle posities`
+          : "Nog geen puntenactiviteit.";
+        els.emojiLeaderboardBody.innerHTML = top.length ? top.map((entry, index) => {
+          const rank = index + 1;
+          const safeName = esc(entry.name || "Anoniem");
+          const nameColor = sanitizeNameColor(entry.nameColor);
+          const nameHtml = nameColor ? `<span class="userNameColor" style="color:${nameColor}">${safeName}</span>` : `<span class="userNameColor">${safeName}</span>`;
+          const statusText = `${entry.online ? "online" : "offline"}${entry.isBot ? " | bot" : ""}`;
+          const contributionText = `comments ${Number(entry.commentCount || 0)} | emoji ${Number(entry.emojiCount || 0)}`;
+          const subLabel = entry.isBot ? "bot-simulatie" : String(entry.ip || "-");
+          const rankBadge = rank === 1 ? "*" : rank === 2 ? "2" : rank === 3 ? "3" : "";
+          return `<tr${rank === 1 ? ' class="emojiLeaderboardRowTop"' : ""}>
+            <td class="emojiLeaderboardRank">${rankBadge ? `${rank} ${rankBadge}` : rank}</td>
+            <td>${nameHtml}<div class="muted">${esc(subLabel)}</div></td>
+            <td>${esc(contributionText)}<div class="muted">${esc(statusText)}</div></td>
+            <td class="mono">${Number(entry.score || entry.total || 0)}</td>
+            <td class="mono">${esc(formatTs(entry.lastActivityAt || entry.lastReactionAt))}</td>
+          </tr>`;
+        }).join("") : '<tr><td colspan="5" class="muted">Nog geen puntenactiviteit in deze sessie.</td></tr>';
+      }
+      function ensurePollOptionRows() {
+        if (els.pollOptionsList.children.length >= 2) return;
+        addPollOptionRow("Ja");
+        addPollOptionRow("Nee");
+      }
+      function addPollOptionRow(value = "", focus = false) {
+        const row = document.createElement("div");
+        row.className = "pollOptionRow";
+        row.innerHTML = `<input type="text" placeholder="Optie" value="${esc(value)}" /><button type="button">-</button>`;
+        row.querySelector("button").addEventListener("click", () => {
+          row.remove();
+          ensurePollOptionRows();
+        });
+        els.pollOptionsList.appendChild(row);
+        if (focus) row.querySelector("input").focus();
+      }
+      function pollOptionsPayload() {
+        return Array.from(els.pollOptionsList.querySelectorAll("input"))
+          .map((input) => input.value.trim())
+          .filter(Boolean);
+      }
+      function renderPollState(data) {
+        const poll = data.activePoll || data.lastPoll || null;
+        els.pollPill.textContent = data.activePoll ? "Poll: actief" : "Poll: nee";
+        if (!poll) {
+          els.pollState.innerHTML = '<div class="muted">Geen poll.</div>';
+          return;
+        }
+        const total = Math.max(0, Number(poll.totalVotes || 0));
+        const remaining = data.activePoll ? formatRemainingMs(poll.remainingMs) : "gesloten";
+        const rows = (poll.options || []).map((option, index) => {
+          const count = Number((poll.counts || [])[index] || 0);
+          const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+          return `<div class="pollResultRow"><div><strong>${esc(option)}</strong><div class="pollBar"><span style="width:${pct}%"></span></div></div><div class="mono">${count} (${pct}%)</div></div>`;
+        }).join("");
+        els.pollState.innerHTML = `<div><strong>${esc(poll.question)}</strong></div><div class="muted">Resterend: ${esc(remaining)} | totaal ${total}</div>${rows}`;
+      }
+      function renderSettings(data) {
+        const runtime = data.runtime || {};
+        const min = Math.max(500, Number(runtime.messageSlowdownMinMs || 500));
+        const max = Math.max(min, Number(runtime.messageSlowdownMaxMs || 8000));
+        els.messageSlowdownMs.min = String(min);
+        els.messageSlowdownMs.max = String(max);
+        if (document.activeElement !== els.messageSlowdownMs) {
+          els.messageSlowdownMs.value = String(clampInt(runtime.messageSlowdownMs, min, max, 850));
+        }
+        els.messageSlowdownValue.textContent = `${clampInt(els.messageSlowdownMs.value, min, max, 850)}ms`;
+        const commentMin = Math.max(2, Number(runtime.engagementCommentPointsMin || 2));
+        const commentMax = Math.max(commentMin, Number(runtime.engagementCommentPointsMax || 150));
+        els.engagementCommentPoints.min = String(commentMin);
+        els.engagementCommentPoints.max = String(commentMax);
+        if (document.activeElement !== els.engagementCommentPoints) {
+          els.engagementCommentPoints.value = String(clampInt(runtime.engagementCommentPoints, commentMin, commentMax, 75));
+        }
+        els.engagementCommentPointsValue.textContent = String(clampInt(els.engagementCommentPoints.value, commentMin, commentMax, 75));
+        els.engagementRulesMeta.textContent = `Emoji = ${Number(runtime.engagementEmojiPoints || 1)} punt, comments = ${els.engagementCommentPointsValue.textContent} punten, duplicate binnen ${Math.round(Number(runtime.engagementDuplicateWindowMs || 0) / 1000)}s en comments korter dan ${Number(runtime.engagementCommentMinChars || 4)} tekens tellen niet mee.`;
+      }
+      function updateSimulationValueLabels() {
+        els.simClientsValue.textContent = `${clampInt(els.simClients.value, 1, 200, 20)} bots`;
+        els.simMsgRateValue.textContent = formatDecimal(clampFloat(els.simMsgRate.value, 0, 0.1, 0.025), 3);
+        els.simReactionRateValue.textContent = formatDecimal(clampFloat(els.simReactionRate.value, 0, 4, 0.25), 2);
+      }
+      function normalizeSimulationUiConfig(config = {}) {
+        return {
+          clients: clampInt(config.clients, 1, 200, 20),
+          crowdMode: String(config.crowdMode || "normal"),
+          topic: String(config.topic || ""),
+          msgRate: clampFloat(config.msgRate, 0, 0.1, 0.025),
+          reactionRate: clampFloat(config.reactionRate, 0, 4, 0.25),
+        };
+      }
+      function simulationConfigsMatch(a = {}, b = {}) {
+        const left = normalizeSimulationUiConfig(a);
+        const right = normalizeSimulationUiConfig(b);
+        return left.clients === right.clients
+          && left.crowdMode === right.crowdMode
+          && left.topic === right.topic
+          && Math.abs(left.msgRate - right.msgRate) < 0.000001
+          && Math.abs(left.reactionRate - right.reactionRate) < 0.000001;
+      }
+      function markSimulationDraftDirty() {
+        simulationDraft = normalizeSimulationUiConfig(simConfig());
+        simulationDraftDirty = true;
+      }
+      function clearSimulationDraftIfMatched(serverConfig = {}) {
+        if (!simulationDraftDirty || !simulationDraft) return;
+        if (!simulationConfigsMatch(serverConfig, simulationDraft)) return;
+        simulationDraft = null;
+        simulationDraftDirty = false;
+      }
+      function visibleSimulationConfig(serverConfig = {}) {
+        clearSimulationDraftIfMatched(serverConfig);
+        return simulationDraftDirty && simulationDraft
+          ? simulationDraft
+          : normalizeSimulationUiConfig(serverConfig);
+      }
+      function syncSimulationControls(config = {}) {
+        if (document.activeElement !== els.simMode) {
+          els.simMode.value = String(config.crowdMode || "normal");
+        }
+        if (document.activeElement !== els.simClients) {
+          els.simClients.value = String(clampInt(config.clients, 1, 200, 20));
+        }
+        if (document.activeElement !== els.simMsgRate) {
+          els.simMsgRate.value = String(clampFloat(config.msgRate, 0, 0.1, 0.025));
+        }
+        if (document.activeElement !== els.simReactionRate) {
+          els.simReactionRate.value = String(clampFloat(config.reactionRate, 0, 4, 0.25));
+        }
+        if (document.activeElement !== els.simTopic && Object.prototype.hasOwnProperty.call(config, "topic")) {
+          els.simTopic.value = String(config.topic || "");
+        }
+        updateSimulationValueLabels();
+      }
+      function queueSimulationUpdate(delay = 300) {
+        if (simulationUpdateTimer) clearTimeout(simulationUpdateTimer);
+        simulationUpdateTimer = setTimeout(() => {
+          simulationUpdateTimer = null;
+          submitSimulationUpdate({ quiet: true }).catch(() => {});
+        }, delay);
+      }
+      async function submitSimulationUpdate({ quiet = false } = {}) {
+        if (simulationUpdateTimer) {
+          clearTimeout(simulationUpdateTimer);
+          simulationUpdateTimer = null;
+        }
+        markSimulationDraftDirty();
+        if (simulationUpdatePending) {
+          queueSimulationUpdate(180);
+          return null;
+        }
+        simulationUpdatePending = true;
+        let succeeded = false;
+        try {
+          const result = await post("/v2/audience/admin/simulation/update", simConfig());
+          succeeded = true;
+          if (result.simulation && lastState) {
+            lastState.simulation = result.simulation;
+            clearSimulationDraftIfMatched(result.simulation.config || {});
+            renderSimulation(lastState);
+          }
+          if (!quiet) setActionMessage("Simulatie bijgewerkt.");
+          return result;
+        } catch (err) {
+          setActionMessage("Simulatie bijwerken mislukt: " + err.message, true);
+          throw err;
+        } finally {
+          simulationUpdatePending = false;
+          if (succeeded && simulationDraftDirty && !simulationUpdateTimer) queueSimulationUpdate(250);
+        }
+      }
+      function renderSimulation(data) {
+        const sim = data.simulation || {};
+        const displayConfig = visibleSimulationConfig(sim.config || {});
+        if (data.simulationCatalog) {
+          fillSelect(els.simMode, data.simulationCatalog.crowdModes || [], displayConfig.crowdMode);
+          fillSelect(els.simCue, data.simulationCatalog.crowdCues || []);
+        }
+        syncSimulationControls(displayConfig);
+        const stats = sim.stats || {};
+        els.simPill.textContent = sim.running ? "Sim aan" : "Sim uit";
+        els.simToggleBtn.textContent = simulationTogglePending
+          ? sim.running ? "Stoppen..." : "Starten..."
+          : sim.running ? "Stop simulatie" : "Start simulatie";
+        els.simToggleBtn.classList.toggle("primary", !sim.running);
+        els.simToggleBtn.classList.toggle("danger", !!sim.running);
+        els.simToggleBtn.disabled = simulationTogglePending;
+        els.simToggleBtn.setAttribute("aria-pressed", sim.running ? "true" : "false");
+        const pendingText = simulationUpdatePending || simulationUpdateTimer ? " | wijzigingen opslaan..." : "";
+        els.simState.textContent = `${sim.running ? "aan" : "uit"} | comments ${Number(stats.sentComments || 0)} | reactions ${Number(stats.sentReactions || 0)} | votes ${Number(stats.sentVotes || 0)}${pendingText}`;
+      }
+      function stageSettingsFromControls() {
+        return {
+          showQr: !!els.stageShowQr.checked,
+          showChat: !!els.stageShowChat.checked,
+          showEmojis: !!els.stageShowEmojis.checked,
+          showLeaderboard: !!els.stageShowLeaderboard.checked,
+          background: els.stageBackground.value || "transparent",
+          chatScale: els.stageChatScale.value,
+          chatHeight: els.stageChatHeight.value,
+          chatBottom: els.stageChatBottom.value,
+          chatX: els.stageChatX.value,
+          chatFadeStart: els.stageChatFade.value,
+          qrScale: els.stageQrScale.value,
+          qrX: els.stageQrX.value,
+          qrY: els.stageQrY.value,
+          emojiScale: els.stageEmojiScale.value,
+          emojiBurst: els.stageEmojiBurst.value,
+          emojiSpread: els.stageEmojiSpread.value,
+          emojiHeartX: els.stageEmojiHeartX.value,
+          emojiBoredX: els.stageEmojiBoredX.value,
+          leaderboardScale: els.stageLeaderboardScale.value,
+          leaderboardWidth: els.stageLeaderboardWidth.value,
+          leaderboardX: els.stageLeaderboardX.value,
+          leaderboardY: els.stageLeaderboardY.value,
+          leaderboardFadeStart: els.stageLeaderboardFade.value,
+        };
+      }
+      function updateStageLabels() {
+        els.stageChatScaleValue.textContent = Number(els.stageChatScale.value || 1).toFixed(2) + "x";
+        els.stageChatHeightValue.textContent = `${Math.round(Number(els.stageChatHeight.value || 0))}px`;
+        els.stageChatBottomValue.textContent = `${Math.round(Number(els.stageChatBottom.value || 0))}px`;
+        els.stageChatXValue.textContent = `${Math.round(Number(els.stageChatX.value || 0))}%`;
+        els.stageChatFadeValue.textContent = `${Math.round(Number(els.stageChatFade.value || 0))}%`;
+        els.stageQrScaleValue.textContent = Number(els.stageQrScale.value || 1).toFixed(2) + "x";
+        els.stageQrXValue.textContent = `${Math.round(Number(els.stageQrX.value || 0))}%`;
+        els.stageQrYValue.textContent = `${Math.round(Number(els.stageQrY.value || 0))}%`;
+        els.stageEmojiScaleValue.textContent = Number(els.stageEmojiScale.value || 1).toFixed(2) + "x";
+        els.stageEmojiBurstValue.textContent = String(Math.round(Number(els.stageEmojiBurst.value || 0)));
+        els.stageEmojiSpreadValue.textContent = `${Math.round(Number(els.stageEmojiSpread.value || 0))}%`;
+        els.stageEmojiHeartXValue.textContent = `${Math.round(Number(els.stageEmojiHeartX.value || 0))}%`;
+        els.stageEmojiBoredXValue.textContent = `${Math.round(Number(els.stageEmojiBoredX.value || 0))}%`;
+        els.stageLeaderboardScaleValue.textContent = Number(els.stageLeaderboardScale.value || 1).toFixed(2) + "x";
+        els.stageLeaderboardWidthValue.textContent = `${Math.round(Number(els.stageLeaderboardWidth.value || 0))}px`;
+        els.stageLeaderboardXValue.textContent = `${Math.round(Number(els.stageLeaderboardX.value || 0))}%`;
+        els.stageLeaderboardYValue.textContent = `${Math.round(Number(els.stageLeaderboardY.value || 0))}%`;
+        els.stageLeaderboardFadeValue.textContent = `${Math.round(Number(els.stageLeaderboardFade.value || 0))}%`;
+      }
+      function renderStage(data) {
+        const stage = data.stage || {};
+        const settings = stage.settings || {};
+        if (stage.url) els.stageUrl.value = stage.url;
+        stageHydratingControls = true;
+        try {
+          els.stageShowQr.checked = !!settings.showQr;
+          els.stageShowChat.checked = !!settings.showChat;
+          els.stageShowEmojis.checked = !!settings.showEmojis;
+          els.stageShowLeaderboard.checked = !!settings.showLeaderboard;
+          els.stageBackground.value = settings.background || "transparent";
+          for (const [key, el] of Object.entries({
+            chatScale: els.stageChatScale,
+            chatHeight: els.stageChatHeight,
+            chatBottom: els.stageChatBottom,
+            chatX: els.stageChatX,
+            chatFadeStart: els.stageChatFade,
+            qrScale: els.stageQrScale,
+            qrX: els.stageQrX,
+            qrY: els.stageQrY,
+            emojiScale: els.stageEmojiScale,
+            emojiBurst: els.stageEmojiBurst,
+            emojiSpread: els.stageEmojiSpread,
+            emojiHeartX: els.stageEmojiHeartX,
+            emojiBoredX: els.stageEmojiBoredX,
+            leaderboardScale: els.stageLeaderboardScale,
+            leaderboardWidth: els.stageLeaderboardWidth,
+            leaderboardX: els.stageLeaderboardX,
+            leaderboardY: els.stageLeaderboardY,
+            leaderboardFadeStart: els.stageLeaderboardFade,
+          })) {
+            if (settings[key] !== undefined && document.activeElement !== el) el.value = String(settings[key]);
+          }
+        } finally {
+          stageHydratingControls = false;
+        }
+        updateStageLabels();
+      }
+      function scheduleStageSettingsSave(delay = 120) {
+        if (stageHydratingControls) return;
+        updateStageLabels();
+        if (stageSettingsSaveTimer) clearTimeout(stageSettingsSaveTimer);
+        stageSettingsSaveTimer = setTimeout(async () => {
+          stageSettingsSaveTimer = null;
+          try {
+            const body = await post("/v2/audience/admin/stage/settings", stageSettingsFromControls());
+            if (body.stage && lastState) {
+              lastState.stage = body.stage;
+              renderStage(lastState);
+            }
+          } catch (err) {
+            setActionMessage("Stage-instellingen opslaan mislukt: " + err.message, true);
+          }
+        }, delay);
+      }
+
+      function renderState(data) {
+        lastState = data;
+        const session = data.session;
+        const active = !!(session && session.isActive);
+        const runtime = data.runtime || {};
+        const runtimeText = runtime.runtimeAvailable
+          ? (runtime.activeSituation ? "Runtime actief" : "Runtime zonder situatie")
+          : "Runtime niet beschikbaar";
+        els.runtimePill.textContent = `${active ? "Actief: " + (session.name || "audience-sessie") : "Geen actieve sessie"} · ${runtimeText}`;
+        els.runtimePill.className = "pill " + (active ? "active" : "closed");
+        els.usersPill.textContent = `${session ? session.onlineCount : 0} live · ${session ? session.onlineBotCount : 0} bots`;
+        els.reactionsPill.textContent = `${Number(data.reactionCounts && data.reactionCounts.heart || 0)} hearts · ${Number(data.reactionCounts && data.reactionCounts.bored || 0)} bored`;
+        if (data.sessionJoin && data.sessionJoin.joinUrl) drawQr(data.sessionJoin.joinUrl);
+        renderSettings(data);
+        renderLeaderboard(data);
+        renderPollState(data);
+        renderLiveChat(data.recentMessages || []);
+        renderUsersTable(data);
+        renderEnforcement(data);
+        renderActions(data);
+        renderSimulation(data);
+        renderStage(data);
+      }
+      async function refresh() {
+        try {
+          renderState(await api("/v2/audience/admin/state?ts=" + Date.now(), { cache: "no-store" }));
+        } catch (err) {
+          setActionMessage("Admin state fout: " + err.message, true);
+        }
+      }
+      async function runAction(path, body) {
+        try {
+          const result = await post(path, body);
+          setActionMessage("");
+          await refresh();
+          return result;
+        } catch (err) {
+          setActionMessage("Actie mislukt: " + err.message, true);
+          throw err;
+        }
+      }
+      function moderationPayload(button) {
+        const targetKind = String(button.getAttribute("data-target-kind") || "").toLowerCase() === "client" ? "client" : "ip";
+        const targetKey = String(button.getAttribute("data-key") || "");
+        const targetIp = String(button.getAttribute("data-ip") || "");
+        return {
+          targetKind,
+          clientKey: targetKind === "client" ? targetKey : "",
+          ip: targetKind === "ip" ? (targetKey || targetIp) : targetIp,
+        };
+      }
+      async function handleModerationClick(event) {
+        const button = event.target.closest("button[data-act]");
+        if (!button) return;
+        const act = button.getAttribute("data-act");
+        const targetKind = String(button.getAttribute("data-target-kind") || "").toLowerCase() === "client" ? "client" : "ip";
+        const targetKey = String(button.getAttribute("data-key") || "");
+        const targetIp = String(button.getAttribute("data-ip") || "");
+        const clientKey = String(button.getAttribute("data-client-key") || (targetKind === "client" ? targetKey : ""));
+        const expandedKey = clientKey || targetKey || targetIp;
+        if (act === "details") {
+          if (!expandedKey) return;
+          if (expandedUserKeys.has(expandedKey)) {
+            expandedUserKeys.delete(expandedKey);
+            if (lastState) renderUsersTable(lastState);
+            return;
+          }
+          expandedUserKeys.add(expandedKey);
+          if (lastState) renderUsersTable(lastState);
+          try {
+            await loadUserHistory(clientKey, targetIp || targetKey, targetKind);
+          } catch (err) {
+            userHistoryCache.set(expandedKey, {
+              ip: targetIp,
+              targetKind,
+              messages: [{ time: new Date().toISOString(), name: "", text: "Kon historie niet laden: " + err.message, status: "error" }],
+            });
+          }
+          if (expandedUserKeys.has(expandedKey) && lastState) renderUsersTable(lastState);
+          return;
+        }
+        const payload = moderationPayload(button);
+        if (act === "mute1") await runAction("/v2/audience/admin/users/mute", { ...payload, minutes: 1 }, "Gebruiker gemute (1m).");
+        if (act === "mute2") await runAction("/v2/audience/admin/users/mute", { ...payload, minutes: 2 }, "Gebruiker gemute (2m).");
+        if (act === "mute5") await runAction("/v2/audience/admin/users/mute", { ...payload, minutes: 5 }, "Gebruiker gemute (5m).");
+        if (act === "unmute") await runAction("/v2/audience/admin/users/unmute", payload, "Gebruiker unmuted.");
+        if (act === "block") await runAction("/v2/audience/admin/users/block", payload, "Gebruiker geblokkeerd.");
+        if (act === "unblock") await runAction("/v2/audience/admin/users/unblock", payload, "Gebruiker unblocked.");
+        if (act === "kick") await runAction("/v2/audience/admin/users/kick", payload, "Gebruiker verwijderd.");
+      }
+      function simConfig() {
+        return {
+          clients: Number(els.simClients.value || 20),
+          crowdMode: els.simMode.value || "normal",
+          topic: els.simTopic.value,
+          msgRate: Number(els.simMsgRate.value || 0.025),
+          reactionRate: Number(els.simReactionRate.value || 0.25),
+        };
+      }
+      function setupLiveChatResize() {
+        const saved = Number(localStorage.getItem(LIVE_CHAT_HEIGHT_PREF_KEY) || 0);
+        if (saved > 120) els.liveChatLog.style.height = `${saved}px`;
+        let startY = 0;
+        let startHeight = 0;
+        function onMove(event) {
+          const next = Math.max(140, Math.min(window.innerHeight * 0.75, startHeight + event.clientY - startY));
+          els.liveChatLog.style.height = `${Math.round(next)}px`;
+        }
+        function onUp() {
+          localStorage.setItem(LIVE_CHAT_HEIGHT_PREF_KEY, String(els.liveChatLog.getBoundingClientRect().height));
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+        }
+        els.liveChatResizeHandle.addEventListener("pointerdown", (event) => {
+          startY = event.clientY;
+          startHeight = els.liveChatLog.getBoundingClientRect().height;
+          window.addEventListener("pointermove", onMove);
+          window.addEventListener("pointerup", onUp);
+        });
+      }
+
+      document.getElementById("startSessionBtn").addEventListener("click", async () => {
+        const result = await runAction("/v2/audience/admin/sessions/start", {
+          name: els.sessionName.value,
+          tokenTtlMinutes: Number(els.tokenTtl.value || 720),
+        }, "Nieuwe sessie gestart. QR klaar.");
+        if (result.join && result.join.joinUrl) drawQr(result.join.joinUrl);
+      });
+      document.getElementById("newTokenBtn").addEventListener("click", async () => {
+        const result = await runAction("/v2/audience/admin/sessions/join-token", {
+          ttlMinutes: Number(els.tokenTtl.value || 720),
+        }, "Nieuwe join-token gemaakt.");
+        if (result.join && result.join.joinUrl) drawQr(result.join.joinUrl);
+      });
+      document.getElementById("endSessionBtn").addEventListener("click", () => {
+        runAction("/v2/audience/admin/sessions/stop", {}, "Sessie beëindigd.");
+      });
+      document.getElementById("copyJoinBtn").addEventListener("click", async () => {
+        const ok = await copyText(els.joinUrl.value);
+        setActionMessage(ok ? "" : "Kopieren mislukt.", !ok);
+      });
+      els.usersSearchClearBtn.addEventListener("click", () => {
+        if (usersSearchInputDebounceTimer) clearTimeout(usersSearchInputDebounceTimer);
+        els.usersSearchInput.value = "";
+        applyUsersSearch("");
+        els.usersSearchInput.focus();
+      });
+      els.usersSearchInput.addEventListener("input", () => {
+        if (usersSearchInputDebounceTimer) clearTimeout(usersSearchInputDebounceTimer);
+        usersSearchInputDebounceTimer = setTimeout(() => applyUsersSearch(els.usersSearchInput.value), 120);
+      });
+      els.usersSearchInput.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        if (usersSearchInputDebounceTimer) clearTimeout(usersSearchInputDebounceTimer);
+        applyUsersSearch(els.usersSearchInput.value);
+      });
+      els.usersBody.addEventListener("click", handleModerationClick);
+      els.enforcementBody.addEventListener("click", handleModerationClick);
+      document.getElementById("addPollOptionBtn").addEventListener("click", () => addPollOptionRow("", true));
+      document.getElementById("startPollBtn").addEventListener("click", () => {
+        runAction("/v2/audience/admin/polls/start", {
+          question: els.pollQuestion.value,
+          options: pollOptionsPayload(),
+          durationSeconds: Number(els.pollDurationSeconds.value || 60),
+        }, "Poll gestart.");
+      });
+      document.getElementById("closePollBtn").addEventListener("click", () => {
+        runAction("/v2/audience/admin/polls/close", {}, "Poll gesloten.");
+      });
+      els.messageSlowdownMs.addEventListener("input", () => {
+        els.messageSlowdownValue.textContent = `${els.messageSlowdownMs.value}ms`;
+      });
+      document.getElementById("saveMessageSlowdownBtn").addEventListener("click", () => {
+        runAction("/v2/audience/admin/settings/message-slowdown", { ms: Number(els.messageSlowdownMs.value || 850) }, `Slowdown bewaard (${els.messageSlowdownMs.value}ms).`);
+      });
+      els.engagementCommentPoints.addEventListener("input", () => {
+        els.engagementCommentPointsValue.textContent = String(els.engagementCommentPoints.value);
+        if (engagementSaveTimer) clearTimeout(engagementSaveTimer);
+        engagementSaveTimer = setTimeout(() => {
+          runAction("/v2/audience/admin/settings/engagement-comment-points", { points: Number(els.engagementCommentPoints.value || 75) }, "Comment-punten bijgewerkt.");
+        }, 180);
+      });
+      els.simToggleBtn.addEventListener("click", async () => {
+        if (simulationTogglePending) return;
+        const running = !!(lastState && lastState.simulation && lastState.simulation.running);
+        if (simulationUpdateTimer) {
+          clearTimeout(simulationUpdateTimer);
+          simulationUpdateTimer = null;
+        }
+        simulationTogglePending = true;
+        if (lastState) renderSimulation(lastState);
+        try {
+          await runAction(
+            running ? "/v2/audience/admin/simulation/stop" : "/v2/audience/admin/simulation/start",
+            running ? {} : simConfig()
+          );
+        } finally {
+          simulationTogglePending = false;
+          if (lastState) renderSimulation(lastState);
+        }
+      });
+      document.getElementById("updateSimBtn").addEventListener("click", () => submitSimulationUpdate({ quiet: false }));
+      document.getElementById("sendCueBtn").addEventListener("click", () => runAction("/v2/audience/admin/simulation/cue", { cue: els.simCue.value }, "Crowd cue verstuurd."));
+      for (const control of [els.simClients, els.simMsgRate, els.simReactionRate]) {
+        control.addEventListener("input", () => {
+          updateSimulationValueLabels();
+          markSimulationDraftDirty();
+          queueSimulationUpdate();
+          if (lastState) renderSimulation(lastState);
+        });
+      }
+      els.simMode.addEventListener("change", () => {
+        markSimulationDraftDirty();
+        queueSimulationUpdate();
+        if (lastState) renderSimulation(lastState);
+      });
+      els.simTopic.addEventListener("input", () => {
+        markSimulationDraftDirty();
+        queueSimulationUpdate(500);
+        if (lastState) renderSimulation(lastState);
+      });
+      document.getElementById("copyStageBtn").addEventListener("click", async () => {
+        const ok = await copyText(els.stageUrl.value);
+        setActionMessage(ok ? "" : "Kopieren mislukt.", !ok);
+      });
+      document.getElementById("openStageBtn").addEventListener("click", () => {
+        if (!els.stageUrl.value) return setActionMessage("Stage-link nog niet beschikbaar.", true);
+        window.open(els.stageUrl.value, "_blank", "noopener");
+      });
+      document.getElementById("testEmojiBtn").addEventListener("click", () => runAction("/v2/audience/admin/stage/test-emoji", {}, "Test emoji verstuurd."));
+      for (const control of [
+        els.stageShowQr, els.stageShowChat, els.stageShowEmojis, els.stageShowLeaderboard, els.stageBackground,
+        els.stageChatScale, els.stageChatHeight, els.stageChatBottom, els.stageChatX, els.stageChatFade,
+        els.stageQrScale, els.stageQrX, els.stageQrY, els.stageEmojiScale, els.stageEmojiBurst,
+        els.stageEmojiSpread, els.stageEmojiHeartX, els.stageEmojiBoredX, els.stageLeaderboardScale,
+        els.stageLeaderboardWidth, els.stageLeaderboardX, els.stageLeaderboardY, els.stageLeaderboardFade,
+      ]) {
+        control.addEventListener("input", () => scheduleStageSettingsSave(120));
+        control.addEventListener("change", () => scheduleStageSettingsSave(0));
+      }
+
+      setupCollapsibleSections();
+      ensurePollOptionRows();
+      setupLiveChatResize();
+      refresh();
+      setInterval(refresh, 1200);
+      setInterval(() => lastState && renderPollState(lastState), 1000);
+    </script>
+  </body>
+</html>

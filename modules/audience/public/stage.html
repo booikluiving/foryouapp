@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>For You - Audience Stage V2</title>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        color: #fff;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      body.black { background: #000; }
+      .stage {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+      }
+      .qr {
+        position: absolute;
+        transform: translate(-50%, -50%);
+        transform-origin: center;
+        background: rgba(255,255,255,0.94);
+        border-radius: 18px;
+        padding: 14px;
+        box-shadow: 0 20px 80px rgba(0,0,0,0.26);
+      }
+      .qr img { display: block; width: 180px; height: 180px; }
+      .chat {
+        position: absolute;
+        left: 50%;
+        bottom: 36px;
+        width: min(86vw, 860px);
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        gap: 10px;
+        overflow: hidden;
+        text-shadow: 0 3px 20px rgba(0,0,0,0.9);
+      }
+      .line {
+        font-size: 30px;
+        line-height: 1.16;
+        font-weight: 750;
+      }
+      .line .name { font-weight: 900; }
+      .leaderboard {
+        position: absolute;
+        transform: translate(-100%, -50%);
+        background: rgba(0,0,0,0.42);
+        border: 1px solid rgba(255,255,255,0.24);
+        border-radius: 18px;
+        padding: 14px;
+        text-shadow: 0 2px 16px rgba(0,0,0,0.8);
+      }
+      .leaderboard h2 {
+        margin: 0 0 10px;
+        font-size: 18px;
+      }
+      .rank {
+        display: grid;
+        grid-template-columns: 32px minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+        font-size: 16px;
+      }
+      .rank + .rank { margin-top: 6px; }
+      .emojiLayer {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        overflow: hidden;
+      }
+      .emoji {
+        position: absolute;
+        bottom: -8vh;
+        font-size: 56px;
+        animation: floatUp 1600ms ease-out forwards;
+      }
+      @keyframes floatUp {
+        from { transform: translateY(0) scale(0.92); opacity: 0; }
+        15% { opacity: 1; }
+        to { transform: translateY(-88vh) scale(1.12); opacity: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div id="qr" class="qr"></div>
+      <div id="chat" class="chat"></div>
+      <div id="leaderboard" class="leaderboard"></div>
+      <div id="emojiLayer" class="emojiLayer"></div>
+    </div>
+    <script src="/v2/audience/vendor/qrcode-generator.min.js"></script>
+    <script>
+      const els = {
+        qr: document.getElementById("qr"),
+        chat: document.getElementById("chat"),
+        leaderboard: document.getElementById("leaderboard"),
+        emojiLayer: document.getElementById("emojiLayer"),
+      };
+      let lastCounts = { heart: 0, bored: 0 };
+      function esc(value) {
+        return String(value === null || value === undefined ? "" : value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      function qrHtml(url) {
+        if (!url || typeof qrcode !== "function") return "";
+        const qr = qrcode(0, "M");
+        qr.addData(url);
+        qr.make();
+        return qr.createImgTag(5, 0);
+      }
+      function reactionGlyph(type) {
+        return type === "bored" ? "..." : "<3";
+      }
+      function burst(type, count, settings) {
+        if (!settings.showEmojis) return;
+        const burstCount = Math.max(1, Math.min(6, Number(settings.emojiBurst || count || 1)));
+        const spread = Math.max(0, Math.min(30, Number(settings.emojiSpread || 6)));
+        for (let i = 0; i < burstCount; i += 1) {
+          const node = document.createElement("div");
+          node.className = "emoji";
+          node.textContent = reactionGlyph(type);
+          const baseX = type === "bored" ? Number(settings.emojiBoredX || 50) : Number(settings.emojiHeartX || 50);
+          node.style.left = `${Math.max(0, Math.min(100, baseX + (Math.random() - 0.5) * spread * 2))}%`;
+          node.style.fontSize = `${Math.round(48 * Number(settings.emojiScale || 1))}px`;
+          node.style.animationDelay = `${i * 70}ms`;
+          els.emojiLayer.appendChild(node);
+          setTimeout(() => node.remove(), 2200);
+        }
+      }
+      async function refresh() {
+        const data = await fetch("/v2/audience/admin/state?stage=1&ts=" + Date.now(), { cache: "no-store" }).then((res) => res.json());
+        const stage = data.stage || {};
+        const settings = stage.settings || {};
+        document.body.className = settings.background === "black" ? "black" : "";
+        els.qr.style.display = settings.showQr ? "" : "none";
+        els.qr.style.left = `${Number(settings.qrX || 86)}%`;
+        els.qr.style.top = `${Number(settings.qrY || 10)}%`;
+        els.qr.style.scale = String(Number(settings.qrScale || 1));
+        els.qr.innerHTML = qrHtml(data.sessionJoin && data.sessionJoin.joinUrl);
+        els.chat.style.display = settings.showChat ? "" : "none";
+        els.chat.style.bottom = `${Number(settings.chatBottom || 36)}px`;
+        els.chat.style.height = `${Number(settings.chatHeight || 940)}px`;
+        els.chat.style.transform = `translateX(calc(-50% + ${Number(settings.chatX || 0)}vw)) scale(${Number(settings.chatScale || 1)})`;
+        els.chat.style.maskImage = `linear-gradient(to top, black 0%, black ${Number(settings.chatFadeStart || 52)}%, transparent 100%)`;
+        els.chat.style.webkitMaskImage = els.chat.style.maskImage;
+        const messages = Array.isArray(data.recentMessages) ? data.recentMessages.slice(0, 12).reverse() : [];
+        els.chat.innerHTML = messages.map((message) => {
+          if (String(message.detail || "").startsWith("moderation_notice:")) return "";
+          const color = /^#[0-9a-f]{6}$/i.test(String(message.nameColor || "")) ? message.nameColor : "#fff";
+          return `<div class="line"><span class="name" style="color:${color}">${esc(message.name || "Anoniem")}</span>: ${esc(message.text || "")}</div>`;
+        }).join("");
+        const top = data.engagementLeaderboard && Array.isArray(data.engagementLeaderboard.top)
+          ? data.engagementLeaderboard.top.slice(0, 5)
+          : [];
+        els.leaderboard.style.display = settings.showLeaderboard ? "" : "none";
+        els.leaderboard.style.width = `${Number(settings.leaderboardWidth || 360)}px`;
+        els.leaderboard.style.left = `${Number(settings.leaderboardX || 98)}%`;
+        els.leaderboard.style.top = `${Number(settings.leaderboardY || 18)}%`;
+        els.leaderboard.style.scale = String(Number(settings.leaderboardScale || 1));
+        els.leaderboard.style.maskImage = `linear-gradient(to top, black 0%, black ${Number(settings.leaderboardFadeStart || 74)}%, transparent 100%)`;
+        els.leaderboard.style.webkitMaskImage = els.leaderboard.style.maskImage;
+        els.leaderboard.innerHTML = `<h2>Top Chatters</h2>` + (top.length ? top.map((entry, index) => (
+          `<div class="rank"><strong>${index + 1}</strong><span>${esc(entry.name || "Anoniem")}</span><strong>${Number(entry.score || 0)}</strong></div>`
+        )).join("") : `<div class="rank"><span></span><span>Geen activiteit</span><span></span></div>`);
+        const counts = data.reactionCounts || {};
+        if (Number(counts.heart || 0) > Number(lastCounts.heart || 0)) burst("heart", Number(counts.heart) - Number(lastCounts.heart || 0), settings);
+        if (Number(counts.bored || 0) > Number(lastCounts.bored || 0)) burst("bored", Number(counts.bored) - Number(lastCounts.bored || 0), settings);
+        lastCounts = { heart: Number(counts.heart || 0), bored: Number(counts.bored || 0) };
+      }
+      refresh().catch(() => {});
+      setInterval(() => refresh().catch(() => {}), 900);
+    </script>
+  </body>
+</html>
