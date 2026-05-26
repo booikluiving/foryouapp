@@ -206,6 +206,15 @@ async function waitForHttp(baseUrl, pathname, timeoutMs = 5000) {
   throw lastError || new Error(`Timed out waiting for ${baseUrl}${pathname}`);
 }
 
+async function waitForCondition(check, timeoutMs = 1500) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (check()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert(check(), "condition did not become true before timeout");
+}
+
 function startCameraSidecarProcess() {
   const script = path.join(V2_ROOT, "modules", "show-control", "hardware", "camera-control", "server.js");
   const cameraHardwareHost = `127.0.0.1:${PORTS.cameraHardware}`;
@@ -368,14 +377,63 @@ async function main() {
     const html = await (await fetch(`${showBase}/show-control/`)).text();
     assert(html.includes("Cue Builder"), "Show Control UI should expose Cue Builder tab");
     const uiJs = await (await fetch(`${showBase}/show-control/app.js`)).text();
-    assert(uiJs.includes("Logs/Warnings"), "Show Control UI should expose warnings tab");
+    assert(html.includes("Trigger Bindings"), "Show Control UI should expose trigger bindings");
     assert(uiJs.includes("/v0/show-control/cues"), "UI should create cues through Show Control API");
     assert(uiJs.includes("/v0/show-control/status"), "UI should show status and warnings");
+    assert(uiJs.includes("/v0/show-control/cues/dry-run"), "UI should support dry run without firing hardware");
+    assert(uiJs.includes("/v0/show-control/trigger-bindings"), "UI should manage trigger bindings");
 
     const commandList = await fetchJson(showBase, "/v0/show-control/commands");
     assert(commandList.commands.some((command) => command.name === "sq5.input.mute"));
     assert(commandList.commands.some((command) => command.name === "camera.focus"));
     assert(commandList.commands.some((command) => command.name === "td.camera.set"));
+
+    const dryRun = await fetchJson(showBase, "/v0/show-control/cues/dry-run", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Dry camera cue",
+        actions: [
+          { command: "td.camera.set", ackMode: "fire-and-forget", payload: { camera: "2", cameraId: "camera:2" } },
+        ],
+      }),
+    });
+    assert.equal(dryRun.cue.status.stage, "dry-run");
+    assert.equal(dryRun.cue.actions[0].command, "td.camera.set");
+
+    const savedCameraCue = await fetchJson(showBase, "/v0/show-control/cues/save", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Stream Deck camera 2",
+        actions: [
+          { command: "td.camera.set", ackMode: "fire-and-forget", timeoutMs: 250, payload: { camera: "2", cameraId: "camera:2" } },
+          { command: "streamdeck.status", ackMode: "fire-and-forget", timeoutMs: 300, payload: { button: "cam-2", state: "active", label: "CAM 2" } },
+        ],
+      }),
+    });
+    assert.equal(savedCameraCue.cue.status.state, "saved");
+    const cameraBinding = await fetchJson(showBase, "/v0/show-control/trigger-bindings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        source: "streamdeck",
+        triggerId: "cam-2",
+        page: "camera",
+        label: "CAM 2",
+        cueId: savedCameraCue.cue.cueId,
+      }),
+    });
+    assert.equal(cameraBinding.binding.triggerId, "cam-2");
+    const streamDeckTrigger = await fetchJson(`http://127.0.0.1:${PORTS.streamdeck}`, "/api/trigger", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ button: "cam-2" }),
+    });
+    assert.equal(streamDeckTrigger.showControl.body.binding.triggerId, "cam-2");
+    await waitForCondition(() => calls.some((call) => call.service === "touchdesigner" && call.command === "td.camera.set"));
+    const streamDeckAfterTrigger = await fetchJson(`http://127.0.0.1:${PORTS.streamdeck}`, "/api/state");
+    assert.equal(streamDeckAfterTrigger.buttons["cam-2"].state, "active");
 
     const startRun = await fetchJson(showBase, "/v0/show-control/cues/start-run", {
       method: "POST",
@@ -466,6 +524,7 @@ async function main() {
       sq5Routes: sq5Status.activity.map((entry) => `${entry.source || "unknown"} ${entry.channel || entry.action || ""} ${entry.action || ""}`.trim()),
       cameraHardwareRoutes: calls.filter((call) => call.service === "camera-hardware").map((call) => `${call.method} ${call.path}`),
       streamDeckButtons: Object.keys(streamDeckState.buttons),
+      streamDeckBindings: [cameraBinding.binding.bindingId],
       perfectCueTriggers: perfectCueState.triggers.map((trigger) => `${trigger.source}:${trigger.key}`),
       hardwareStatus: status.hardware,
       tdCommands: calls.filter((call) => call.service === "touchdesigner").map((call) => ({
@@ -484,6 +543,7 @@ async function main() {
         H5: "SQ5/Camera adapters called V2 sidecar HTTP contracts copied from the legacy API shape",
         H6: "TD fetched HTTP payloads and sent acks; timeout warning stored",
         H7: "UI assets expose cue create/run/status/warning surfaces",
+        H7b: "Stream Deck trigger binding fires a saved cue and reaches TD camera switch",
         H8: "V1 app files and legacy/data/live.sqlite* hashes unchanged",
         H9: "smoke ran in explicit test mode with V2 hardware sidecars and fake downstream hardware",
         H10: "Show Control delegated Runtime/SQ5/Camera/TD/Stream Deck/Perfect Cue work through adapters",

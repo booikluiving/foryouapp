@@ -10,11 +10,12 @@ const { spawn } = require("node:child_process");
 const TEST_DIR = __dirname;
 const APP_ROOT = path.resolve(TEST_DIR, "../../..");
 const PORTS = {
-  catalog: 3021,
-  paths: 3022,
-  runtime: 3024,
-  scriptAgent: 3027,
+  catalog: 4121,
+  paths: 4122,
+  runtime: 4124,
+  scriptAgent: 4127,
 };
+const SCRIPT_AGENT_DB_DIR = path.join(TEST_DIR, ".tmp-smoke-db");
 const PROTECTED_V1_FILES = [
   path.join(APP_ROOT, "legacy", "data", "live.sqlite"),
   path.join(APP_ROOT, "legacy", "data", "live.sqlite-wal"),
@@ -53,6 +54,13 @@ async function fetchJson(baseUrl, pathname, options) {
   const response = await fetch(`${baseUrl}${pathname}`, options);
   const body = await response.json();
   if (!response.ok) throw new Error(`${pathname} returned ${response.status}: ${JSON.stringify(body)}`);
+  return body;
+}
+
+async function fetchText(baseUrl, pathname) {
+  const response = await fetch(`${baseUrl}${pathname}`);
+  const body = await response.text();
+  if (!response.ok) throw new Error(`${pathname} returned ${response.status}: ${body.slice(0, 200)}`);
   return body;
 }
 
@@ -118,6 +126,7 @@ function runtimeOrderSnapshot(runtimeState) {
 }
 
 async function main() {
+  await fs.rm(SCRIPT_AGENT_DB_DIR, { recursive: true, force: true });
   for (const port of Object.values(PORTS)) await assertPortFree(port);
   const beforeHashes = await protectedHashes();
   const services = [];
@@ -150,6 +159,7 @@ async function main() {
     services.push(spawnService("script-agent", scriptAgentScript, {
       SCRIPT_AGENT_PORT: String(PORTS.scriptAgent),
       V2_SCRIPT_AGENT_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
+      V2_SCRIPT_AGENT_DB_DIR: SCRIPT_AGENT_DB_DIR,
     }));
     await waitForHealth(services[3].child, `http://127.0.0.1:${PORTS.scriptAgent}`, "script-agent", services[3].logs);
 
@@ -160,6 +170,12 @@ async function main() {
 
     const runtimeBefore = await fetchJson(runtimeBase, "/v0/runtime/runs/current");
     const orderBefore = runtimeOrderSnapshot(runtimeBefore);
+
+    const operatorHtml = await fetchText(scriptAgentBase, "/script-agent/operator");
+    assert(operatorHtml.includes("Script Agent Operator"));
+    assert(operatorHtml.includes("DeepSeek"));
+    const stageHtml = await fetchText(scriptAgentBase, "/script-agent/operator/stage");
+    assert(stageHtml.includes("Operator Stage"));
 
     const promptResponse = await fetchJson(scriptAgentBase, "/v0/script-agent/prompt-inputs", {
       method: "POST",
@@ -172,6 +188,27 @@ async function main() {
     assert(promptInput.contentHash);
     assert(promptInput.performerSlots.length > 0, "prompt input should expose performer slots");
     assertNoRuntimeOrderFields(promptInput);
+
+    const operatorDraftResponse = await fetchJson(scriptAgentBase, "/v0/script-agent/operator/draft/from-runtime", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ force: true }),
+    });
+    assert.equal(operatorDraftResponse.draft.showRunId, started.showRunId);
+    assert.equal(operatorDraftResponse.draft.situationId, started.resolvedPreparedNext.situationId);
+    assert(operatorDraftResponse.draft.text.includes(operatorDraftResponse.draft.situationTitle));
+    assertNoRuntimeOrderFields(operatorDraftResponse.draft);
+
+    const secretResponse = await fetchJson(scriptAgentBase, "/v0/script-agent/operator/secrets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deepSeekApiKey: "sk-smoke-secret" }),
+    });
+    assert.equal(secretResponse.deepseek.configured, true);
+    assert(!JSON.stringify(secretResponse).includes("sk-smoke-secret"));
+    const operatorStatus = await fetchJson(scriptAgentBase, "/v0/script-agent/operator/status");
+    assert.equal(operatorStatus.provider, "deepseek");
+    assert(!JSON.stringify(operatorStatus).includes("sk-smoke-secret"));
 
     const slot = promptInput.performerSlots[0];
     const scriptResponse = await fetchJson(scriptAgentBase, "/v0/script-agent/scripts", {
@@ -205,6 +242,7 @@ async function main() {
     await stopServices(services);
     const afterHashes = await protectedHashes();
     assertHashesEqual(beforeHashes, afterHashes);
+    await fs.rm(SCRIPT_AGENT_DB_DIR, { recursive: true, force: true });
 
     process.stdout.write(JSON.stringify({
       ok: true,
@@ -215,6 +253,9 @@ async function main() {
       situationId: promptInput.situation.situationId,
       teleprompterSlots: teleprompter.performerSlots.length,
       captionSegments: captions.segments.length,
+      operatorUiAvailable: true,
+      operatorDraftSituationId: operatorDraftResponse.draft.situationId,
+      deepSeekSecretRedacted: true,
       runtimeOrderStateUnchanged: true,
       protectedV1HashesUnchanged: true,
     }, null, 2));
@@ -223,6 +264,7 @@ async function main() {
     await stopServices(services);
     const afterHashes = await protectedHashes();
     assertHashesEqual(beforeHashes, afterHashes);
+    await fs.rm(SCRIPT_AGENT_DB_DIR, { recursive: true, force: true });
     err.message = `${err.message}\nService logs:\n${services.map((service) => `${service.name}:\n${service.logs.join("")}`).join("\n")}`;
     throw err;
   }

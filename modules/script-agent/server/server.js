@@ -1,5 +1,6 @@
 "use strict";
 
+const { attachOperatorStageRealtime } = require("../operator/realtime");
 const { createScriptAgentApp } = require("./app");
 
 function scriptAgentPort() {
@@ -11,6 +12,10 @@ function startScriptAgentServer(options = {}) {
   const app = createScriptAgentApp({ ...options, port });
   const server = app.listen(port, () => {
     process.stdout.write(`Script Agent Service V0 listening on ${port}\n`);
+  });
+  attachOperatorStageRealtime(server, app.locals.operatorService);
+  server.on("close", () => {
+    if (typeof app.locals.stopOperatorDraftSync === "function") app.locals.stopOperatorDraftSync();
   });
   return server;
 }

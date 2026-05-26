@@ -6,7 +6,7 @@
     <title>Show Control V2</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="/shared/ui/foryou-v2.css">
-    <link rel="stylesheet" href="/show-control/styles.css?v=show-control-hub-1">
+    <link rel="stylesheet" href="/show-control/styles.css?v=show-control-human-1">
   </head>
   <body class="fy-page">
     <header class="fy-topbar">
@@ -38,8 +38,8 @@
             </div>
             <div class="metric-grid">
               <div class="metric"><span>Cues</span><strong id="cueCount">0</strong></div>
+              <div class="metric"><span>Bindings</span><strong id="bindingCount">0</strong></div>
               <div class="metric"><span>Warnings</span><strong id="warningCount">0</strong></div>
-              <div class="metric"><span>Commands</span><strong id="commandCount">0</strong></div>
             </div>
             <div id="latestCue" class="latest-cue"></div>
           </article>
@@ -61,29 +61,68 @@
 
       <section id="tab-builder" class="tab-panel">
         <section class="builder-grid">
-          <article class="fy-panel">
+          <article class="fy-panel builder-panel">
             <div class="fy-panel-header">
               <h2>Cue Builder</h2>
-              <button id="runBuilderBtn" class="fy-button fy-button-primary" type="button">Run cue</button>
+              <span id="builderCueBadge" class="fy-badge">nieuw</span>
             </div>
-            <label class="fy-label">
-              Cue naam
-              <input id="cueNameInput" class="fy-input" value="Start situation fan-out">
-            </label>
+            <div class="builder-toolbar">
+              <label class="fy-label grow">
+                Cue naam
+                <input id="cueNameInput" class="fy-input" value="Camera 2 switch">
+              </label>
+              <div class="fy-actions fy-actions-end">
+                <button id="dryRunBtn" class="fy-button" type="button">Dry run</button>
+                <button id="saveCueBtn" class="fy-button" type="button">Save</button>
+                <button id="runBuilderBtn" class="fy-button fy-button-primary" type="button">Fire live</button>
+              </div>
+            </div>
+            <div class="template-row">
+              <button class="template-button" data-template="camera2" type="button">Camera 2</button>
+              <button class="template-button" data-template="startStop" type="button">Start/stop situatie</button>
+              <button class="template-button" data-template="tdGo" type="button">TD go</button>
+              <button class="template-button" data-template="sq5Mic" type="button">Mic aan/uit</button>
+              <button class="template-button" data-template="streamDeckStatus" type="button">Deck status</button>
+            </div>
             <div id="builderActions" class="action-list"></div>
             <div class="fy-actions">
-              <button id="addActionBtn" class="fy-button" type="button">Action</button>
+              <button id="addActionBtn" class="fy-button" type="button">Actie</button>
               <button id="addParallelBtn" class="fy-button" type="button">Parallel</button>
+              <button id="clearBuilderBtn" class="fy-button fy-button-danger" type="button">Leeg</button>
             </div>
             <div id="builderMessage" class="message" role="status"></div>
           </article>
-          <article class="fy-panel">
-            <div class="fy-panel-header">
-              <h2>Payload</h2>
-              <span id="payloadBadge" class="fy-badge">JSON</span>
-            </div>
-            <textarea id="payloadPreview" class="fy-textarea payload-preview" spellcheck="false"></textarea>
-          </article>
+
+          <aside class="side-stack">
+            <article class="fy-panel">
+              <div class="fy-panel-header">
+                <h2>Stream Deck koppeling</h2>
+                <span id="bindingBadge" class="fy-badge">geen</span>
+              </div>
+              <div class="binding-form">
+                <label class="fy-label">
+                  Knop
+                  <input id="bindingButtonInput" class="fy-input" value="cam-2">
+                </label>
+                <label class="fy-label">
+                  Pagina
+                  <input id="bindingPageInput" class="fy-input" value="camera">
+                </label>
+                <label class="fy-label">
+                  Label
+                  <input id="bindingLabelInput" class="fy-input" value="CAM 2">
+                </label>
+                <button id="saveBindingBtn" class="fy-button fy-button-primary" type="button">Koppel knop</button>
+              </div>
+            </article>
+            <article class="fy-panel">
+              <div class="fy-panel-header">
+                <h2>Cue sheet</h2>
+                <span id="sheetBadge" class="fy-badge">0</span>
+              </div>
+              <div id="cueSheet" class="cue-sheet"></div>
+            </article>
+          </aside>
         </section>
       </section>
 
@@ -97,6 +136,16 @@
         </article>
       </section>
 
+      <section id="tab-triggers" class="tab-panel">
+        <article class="fy-panel">
+          <div class="fy-panel-header">
+            <h2>Trigger Bindings</h2>
+            <span id="triggerCount" class="fy-badge">0</span>
+          </div>
+          <div id="triggerBindings" class="fy-scroll-list library-list"></div>
+        </article>
+      </section>
+
       <section id="tab-runtime" class="tab-panel">
         <section class="fy-grid-2">
           <article class="fy-panel">
@@ -107,7 +156,7 @@
           </article>
           <article class="fy-panel">
             <div class="fy-panel-header">
-              <h2>Runtime response</h2>
+              <h2>Response</h2>
             </div>
             <pre id="runtimeOutput" class="json-output"></pre>
           </article>
@@ -160,14 +209,14 @@
           </article>
           <article class="fy-panel">
             <div class="fy-panel-header">
-              <h2>Warnings</h2>
+              <h2>Debug</h2>
             </div>
-            <div id="warningsFull" class="fy-scroll-list log-list"></div>
+            <pre id="debugOutput" class="json-output"></pre>
           </article>
         </section>
       </section>
     </main>
 
-    <script src="/show-control/app.js?v=show-control-hub-1"></script>
+    <script src="/show-control/app.js?v=show-control-human-1"></script>
   </body>
 </html>

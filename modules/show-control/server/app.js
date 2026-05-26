@@ -9,14 +9,17 @@ const {
 } = require("../../../shared/contracts/show-control-v0");
 const { listCommands } = require("../command-registry/command-registry");
 const { fetchCurrentRuntimeState } = require("../client/runtime-client");
-const { applyAck, executeCue } = require("../cue-engine/cue-engine");
+const { applyAck, executeCue, normalizeCue } = require("../cue-engine/cue-engine");
 const { recordAck } = require("../cue-engine/ack-tracker");
 const { findCachedPayload } = require("../cue-engine/payload-cache");
 const {
   findCuePayload,
   readCue,
   readCues,
+  readTriggerBinding,
+  readTriggerBindings,
   saveCue,
+  saveTriggerBinding,
 } = require("../cue-engine/state-store");
 const {
   buildCompoundCue,
@@ -200,6 +203,39 @@ function createShowControlApp(options = {}) {
     res.status(201).json({ ok: true, cue });
   }));
 
+  app.post("/v0/show-control/cues/save", asyncRoute(async (req, res) => {
+    const cue = buildCompoundCue({
+      name: req.body ? req.body.name : null,
+      actions: req.body && Array.isArray(req.body.actions) ? req.body.actions : [],
+      steps: req.body && Array.isArray(req.body.steps) ? req.body.steps : null,
+    });
+    normalizeCue(cue);
+    cue.status.stage = "saved";
+    cue.status.state = "saved";
+    cue.status.updatedAt = new Date().toISOString();
+    await saveCue(cue);
+    res.status(201).json({ ok: true, cue });
+  }));
+
+  app.post("/v0/show-control/cues/dry-run", asyncRoute(async (req, res) => {
+    const cue = buildCompoundCue({
+      name: req.body ? req.body.name : null,
+      actions: req.body && Array.isArray(req.body.actions) ? req.body.actions : [],
+      steps: req.body && Array.isArray(req.body.steps) ? req.body.steps : null,
+    });
+    normalizeCue(cue);
+    cue.status.stage = "dry-run";
+    cue.status.state = "ok";
+    cue.status.updatedAt = new Date().toISOString();
+    cue.executionLog = [{
+      at: cue.status.updatedAt,
+      type: "dry-run",
+      message: "Cue validated without firing hardware.",
+      actionCount: cue.actions.length,
+    }];
+    res.status(200).json({ ok: true, cue });
+  }));
+
   app.post("/v0/show-control/cues/start-run", asyncRoute(async (req, res) => {
     const cue = buildStartRunCue({
       name: req.body ? req.body.name : null,
@@ -233,6 +269,36 @@ function createShowControlApp(options = {}) {
 
   app.get("/v0/show-control/cues/:cueId", asyncRoute(async (req, res) => {
     res.json(await readCue(req.params.cueId));
+  }));
+
+  app.get("/v0/show-control/trigger-bindings", asyncRoute(async (req, res) => {
+    const bindings = await readTriggerBindings({
+      source: req.query.source ? String(req.query.source) : null,
+      cueId: req.query.cueId ? String(req.query.cueId) : null,
+    });
+    res.json({ ok: true, count: bindings.length, bindings });
+  }));
+
+  app.post("/v0/show-control/trigger-bindings", asyncRoute(async (req, res) => {
+    const body = req.body || {};
+    await readCue(String(body.cueId || ""));
+    const binding = await saveTriggerBinding(body);
+    res.status(201).json({ ok: true, binding });
+  }));
+
+  app.post("/v0/show-control/triggers/fire", asyncRoute(async (req, res) => {
+    const body = req.body || {};
+    const source = String(body.source || "streamdeck").trim().toLowerCase();
+    const triggerId = String(body.triggerId || body.button || body.buttonId || "").trim();
+    if (!triggerId) throw httpError(400, "show_control_missing_trigger_id");
+    const binding = await readTriggerBinding(source, triggerId);
+    const cue = await readCue(binding.cueId);
+    await executeCue(cue, {
+      ...executeOptions,
+      nonBlocking: body.nonBlocking !== false,
+    });
+    await saveCue(cue);
+    res.status(cue.status && cue.status.nonBlocking ? 202 : 200).json({ ok: true, binding, cue });
   }));
 
   app.get("/v0/show-control/cues/:cueId/payload/:payloadId", asyncRoute(async (req, res) => {
@@ -290,6 +356,7 @@ function createShowControlApp(options = {}) {
 
   app.get("/v0/show-control/status", asyncRoute(async (_req, res) => {
     const cues = await readCues();
+    const bindings = await readTriggerBindings();
     const warnings = cues.flatMap((cue) => (cue.status && cue.status.warnings ? cue.status.warnings : []));
     const latestCue = cues[cues.length - 1] || null;
     const hardware = await hardwareStatus(executeOptions.adapterOptions);
@@ -298,6 +365,7 @@ function createShowControlApp(options = {}) {
       schemaVersion: SHOW_CONTROL_STATUS_SCHEMA_VERSION,
       service: "show-control",
       cueCount: cues.length,
+      bindingCount: bindings.length,
       warningCount: warnings.length,
       warnings,
       commandCount: listCommands().length,

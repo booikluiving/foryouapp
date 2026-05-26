@@ -23,6 +23,10 @@ function cuesFilePath() {
   return assertPathUnderV2(path.join(showControlDbDir(), "cues.json"));
 }
 
+function triggerBindingsFilePath() {
+  return assertPathUnderV2(path.join(showControlDbDir(), "trigger-bindings.json"));
+}
+
 async function readJsonArray(filePath) {
   try {
     const text = await fs.readFile(filePath, "utf8");
@@ -47,6 +51,54 @@ async function saveCue(cue) {
   else cues.push(cue);
   await writeJsonArray(filePath, cues);
   return cue;
+}
+
+function triggerBindingId(source, triggerId) {
+  return `${String(source || "manual").trim().toLowerCase()}:${String(triggerId || "").trim().toLowerCase()}`;
+}
+
+async function readTriggerBindings(filter = {}) {
+  const bindings = await readJsonArray(triggerBindingsFilePath());
+  return bindings.filter((binding) => {
+    if (filter.source && binding.source !== filter.source) return false;
+    if (filter.cueId && binding.cueId !== filter.cueId) return false;
+    return true;
+  });
+}
+
+async function saveTriggerBinding(binding) {
+  const now = new Date().toISOString();
+  const source = String(binding.source || "streamdeck").trim().toLowerCase();
+  const triggerId = String(binding.triggerId || binding.button || "").trim();
+  if (!triggerId) throw new Error("show_control_missing_trigger_id");
+  if (!binding.cueId) throw new Error("show_control_missing_trigger_cue_id");
+  const item = {
+    bindingId: binding.bindingId || triggerBindingId(source, triggerId),
+    source,
+    triggerId,
+    cueId: String(binding.cueId),
+    label: binding.label || "",
+    page: binding.page || "",
+    color: binding.color || "",
+    mode: binding.mode || "execute-cue",
+    createdAt: binding.createdAt || now,
+    updatedAt: now,
+  };
+  const filePath = triggerBindingsFilePath();
+  const bindings = await readJsonArray(filePath);
+  const index = bindings.findIndex((entry) => entry.bindingId === item.bindingId);
+  if (index >= 0) bindings[index] = item;
+  else bindings.push(item);
+  await writeJsonArray(filePath, bindings);
+  return item;
+}
+
+async function readTriggerBinding(source, triggerId) {
+  const bindingId = triggerBindingId(source, triggerId);
+  const bindings = await readJsonArray(triggerBindingsFilePath());
+  const binding = bindings.find((entry) => entry.bindingId === bindingId);
+  if (!binding) throw new Error(`show_control_trigger_binding_not_found:${bindingId}`);
+  return binding;
 }
 
 async function readCues(filter = {}) {
@@ -79,6 +131,10 @@ module.exports = {
   findCuePayload,
   readCue,
   readCues,
+  readTriggerBinding,
+  readTriggerBindings,
   saveCue,
+  saveTriggerBinding,
   showControlDbDir,
+  triggerBindingsFilePath,
 };

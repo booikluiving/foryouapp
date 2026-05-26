@@ -117,6 +117,20 @@ async function triggerShowControl(options, body) {
     const text = await response.text();
     return { status: response.status, body: text ? JSON.parse(text) : {} };
   }
+  if (body.button || body.buttonId || body.triggerId) {
+    const response = await fetch(`${showControlUrl(options)}/v0/show-control/triggers/fire`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        source: body.source || "streamdeck",
+        triggerId: body.triggerId || body.button || body.buttonId,
+        button: body.button || body.buttonId || body.triggerId,
+        nonBlocking: body.nonBlocking !== false,
+      }),
+    });
+    const text = await response.text();
+    return { status: response.status, body: text ? JSON.parse(text) : {} };
+  }
   return null;
 }
 

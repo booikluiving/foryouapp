@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Operator Stage</title>
+    <link rel="stylesheet" href="/script-agent/operator/assets/styles.css">
+  </head>
+  <body class="stage-body">
+    <header class="stage-topbar">
+      <div>
+        <p class="eyebrow">Script Agent</p>
+        <h1>Operator Stage</h1>
+      </div>
+      <nav class="toplinks">
+        <a href="/script-agent/operator">Operator</a>
+        <a href="http://127.0.0.1:3024/runtime" target="_blank" rel="noreferrer">Runtime</a>
+      </nav>
+    </header>
+
+    <main class="stage-layout">
+      <section class="stage-console">
+        <div id="stageMessages" class="stage-messages"></div>
+      </section>
+      <section class="stage-input">
+        <textarea id="stageDraft" spellcheck="false"></textarea>
+        <div class="button-row">
+          <button id="stageRefresh" type="button">Refresh draft</button>
+          <button id="stageClear" type="button">Clear</button>
+          <button id="stageSubmit" class="primary" type="button">Send</button>
+        </div>
+        <p id="stageStatus" class="meta-line">Verbinden...</p>
+      </section>
+    </main>
+
+    <script src="/script-agent/operator/assets/stage.js" defer></script>
+  </body>
+</html>

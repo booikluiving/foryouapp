@@ -1,5 +1,7 @@
 "use strict";
 
+const path = require("node:path");
+
 const {
   SCRIPT_AGENT_CAPTIONS_SCHEMA_VERSION,
   SCRIPT_AGENT_PROMPT_INPUT_SCHEMA_VERSION,
@@ -7,6 +9,7 @@ const {
   SCRIPT_AGENT_TELEPROMPTER_SCHEMA_VERSION,
 } = require("../../../shared/contracts/script-agent-v0");
 const { fetchCurrentRuntimeState } = require("../client/runtime-client");
+const { createOperatorService } = require("../operator/operator-service");
 const { buildPromptInput } = require("../prompt-builder/prompt-builder");
 const { createScriptOutput } = require("../script-output/script-service");
 const {
@@ -21,6 +24,7 @@ const {
 const { loadExpress } = require("./express-loader");
 
 const express = loadExpress();
+const OPERATOR_UI_DIR = path.resolve(__dirname, "../operator-ui");
 
 function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -32,9 +36,49 @@ function httpError(statusCode, message) {
   return err;
 }
 
+function sanitizeError(err, fallback = "script_agent_operator_error") {
+  return err && err.message
+    ? String(err.message).replace(/sk-[A-Za-z0-9_-]+/g, "sk-...")
+    : fallback;
+}
+
+function booleanQuery(value, fallback = false) {
+  if (value == null) return fallback;
+  return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
+}
+
 function scriptAgentClients() {
   return {
     fetchCurrentRuntimeState,
+  };
+}
+
+function startOperatorDraftSync(operatorService, options = {}) {
+  const intervalMs = Math.max(1000, Number(options.intervalMs || 2500) || 2500);
+  let inflight = false;
+  let stopped = false;
+
+  async function tick() {
+    if (stopped || inflight) return;
+    inflight = true;
+    try {
+      await operatorService.currentDraft({ refreshRuntime: true });
+    } catch {
+      // Runtime can be offline during local development; explicit UI refresh will surface the error.
+    } finally {
+      inflight = false;
+    }
+  }
+
+  const timer = setInterval(tick, intervalMs);
+  if (typeof timer.unref === "function") timer.unref();
+  const initialTimer = setTimeout(tick, 250);
+  if (typeof initialTimer.unref === "function") initialTimer.unref();
+
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+    clearTimeout(initialTimer);
   };
 }
 
@@ -42,7 +86,20 @@ function createScriptAgentApp(options = {}) {
   const app = express();
   const startedAt = new Date();
   const clients = options.clients || scriptAgentClients();
+  const operatorService = options.operatorService || createOperatorService({
+    clients,
+    env: options.env || process.env,
+    fetchImpl: options.fetchImpl,
+  });
+  app.locals.operatorService = operatorService;
+  app.locals.stopOperatorDraftSync = null;
+  if (options.operatorAutoDraftSync !== false) {
+    app.locals.stopOperatorDraftSync = startOperatorDraftSync(operatorService, {
+      intervalMs: options.operatorDraftSyncIntervalMs,
+    });
+  }
   app.use(express.json({ limit: "512kb" }));
+  app.use("/script-agent/operator/assets", express.static(OPERATOR_UI_DIR));
 
   app.get("/health", (_req, res) => {
     const port = Number(process.env.SCRIPT_AGENT_PORT || process.env.PORT || options.port || 3027);
@@ -58,6 +115,94 @@ function createScriptAgentApp(options = {}) {
       startedAt: startedAt.toISOString(),
       uptimeSeconds: Math.round(process.uptime()),
     });
+  });
+
+  app.get("/script-agent/operator", (_req, res) => {
+    res.sendFile(path.join(OPERATOR_UI_DIR, "index.html"));
+  });
+
+  app.get("/script-agent/operator/stage", (_req, res) => {
+    res.sendFile(path.join(OPERATOR_UI_DIR, "stage.html"));
+  });
+
+  app.get("/v0/script-agent/operator/status", asyncRoute(async (_req, res) => {
+    res.json(await operatorService.status());
+  }));
+
+  app.get("/v0/script-agent/operator/settings", asyncRoute(async (_req, res) => {
+    res.json({ ok: true, settings: await operatorService.readSettings() });
+  }));
+
+  app.patch("/v0/script-agent/operator/settings", asyncRoute(async (req, res) => {
+    res.json({ ok: true, settings: await operatorService.saveSettings(req.body || {}) });
+  }));
+
+  app.get("/v0/script-agent/operator/secrets/status", asyncRoute(async (_req, res) => {
+    res.json(await operatorService.secretsStatus());
+  }));
+
+  app.post("/v0/script-agent/operator/secrets", asyncRoute(async (req, res) => {
+    res.json(await operatorService.saveSecrets(req.body || {}));
+  }));
+
+  app.get("/v0/script-agent/operator/draft", asyncRoute(async (req, res) => {
+    const draft = await operatorService.currentDraft({
+      refreshRuntime: booleanQuery(req.query.refreshRuntime, true),
+    });
+    res.json({ ok: true, draft });
+  }));
+
+  app.post("/v0/script-agent/operator/draft/from-runtime", asyncRoute(async (req, res) => {
+    const draft = await operatorService.createDraftFromRuntime(req.body ? req.body.runtimeState || null : null, {
+      force: !!(req.body && req.body.force),
+    });
+    res.status(201).json({ ok: true, draft });
+  }));
+
+  app.patch("/v0/script-agent/operator/draft", asyncRoute(async (req, res) => {
+    const draft = operatorService.updateStageDraft(req.body ? req.body.text : "");
+    res.json({ ok: true, draft, stage: operatorService.snapshotStage() });
+  }));
+
+  app.get("/v0/script-agent/operator/session/:sessionId", (req, res) => {
+    res.json(operatorService.sessionInfo(req.params.sessionId));
+  });
+
+  app.post("/v0/script-agent/operator/session/:sessionId/undo", (req, res, next) => {
+    try {
+      res.json(operatorService.undo(req.params.sessionId));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.delete("/v0/script-agent/operator/session/:sessionId", (req, res) => {
+    res.json(operatorService.clearSession(req.params.sessionId));
+  });
+
+  app.post("/v0/script-agent/operator/chat/stream", (req, res) => {
+    let closed = false;
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    });
+    if (typeof res.flushHeaders === "function") res.flushHeaders();
+    res.on("close", () => {
+      closed = true;
+    });
+    const emit = (event) => {
+      if (closed) return;
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+    operatorService.streamChat(req.body || {}, emit)
+      .catch((err) => {
+        emit({ type: "error", error: sanitizeError(err) });
+      })
+      .finally(() => {
+        if (!closed) res.end();
+      });
   });
 
   app.post("/v0/script-agent/prompt-inputs", asyncRoute(async (req, res) => {

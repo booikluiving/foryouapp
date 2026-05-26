@@ -1,11 +1,18 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs/promises");
+const path = require("node:path");
+const { Readable } = require("node:stream");
+
+const TMP_DB_DIR = path.join(__dirname, ".tmp-unit-db");
+process.env.V2_SCRIPT_AGENT_DB_DIR = TMP_DB_DIR;
 
 const {
   validatePromptInputShape,
   validateScriptOutputShape,
 } = require("../../../shared/contracts/script-agent-v0");
+const { createOperatorService } = require("../operator/operator-service");
 const { buildPromptInput } = require("../prompt-builder/prompt-builder");
 const { createScriptOutput } = require("../script-output/script-service");
 const { parseScriptText } = require("../text-parser/text-parser");
@@ -76,7 +83,35 @@ function assertNoRuntimeOrderFields(value) {
   }
 }
 
+function fakeDeepSeekFetch(expectedApiKey) {
+  return async (url, options = {}) => {
+    assert.equal(url, "https://api.deepseek.com/chat/completions");
+    assert.equal(options.method, "POST");
+    assert.equal(options.headers.authorization, `Bearer ${expectedApiKey}`);
+    const body = JSON.parse(options.body);
+    assert.equal(body.model, "deepseek-chat");
+    assert.equal(body.stream, true);
+    assert.equal(body.messages[0].role, "system");
+    assert.equal(body.messages.at(-1).role, "user");
+    const chunks = [
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "Ada: Live regel\\n" } }] })}\n\n`,
+      `data: ${JSON.stringify({
+        choices: [{ delta: { content: "Ben: Tegenregel" } }],
+        usage: { prompt_tokens: 30, completion_tokens: 12, prompt_cache_hit_tokens: 4 },
+      })}\n\n`,
+      "data: [DONE]\n\n",
+    ];
+    return {
+      ok: true,
+      body: Readable.from(chunks.map((chunk) => Buffer.from(chunk))),
+      text: async () => "",
+    };
+  };
+}
+
 async function main() {
+  await fs.rm(TMP_DB_DIR, { recursive: true, force: true });
+
   const promptInput = buildPromptInput(runtimeState, new Date("2026-05-24T18:00:01.000Z"));
   assert.equal(validatePromptInputShape(promptInput).length, 0);
   assert.equal(promptInput.showRunId, runtimeState.showRunId);
@@ -113,6 +148,51 @@ async function main() {
   assert.deepEqual(scriptOutput.captions.segments.map((segment) => segment.speaker), ["Ada", "Ben"]);
   assertNoRuntimeOrderFields(scriptOutput);
 
+  const operatorService = createOperatorService({
+    clients: {
+      fetchCurrentRuntimeState: async () => ({ ok: true, state: cloneJson(runtimeState) }),
+    },
+    env: {},
+    fetchImpl: fakeDeepSeekFetch("sk-test-deepseek"),
+  });
+  assert.equal((await operatorService.secretsStatus()).deepseek.configured, false);
+  await operatorService.saveSecrets({ deepSeekApiKey: "sk-test-deepseek" });
+  const secretsStatus = await operatorService.secretsStatus();
+  assert.equal(secretsStatus.deepseek.configured, true);
+  assert.equal(secretsStatus.deepseek.source, "local");
+  assert(!JSON.stringify(secretsStatus).includes("sk-test-deepseek"));
+
+  const settings = await operatorService.saveSettings({
+    model: "deepseek-chat",
+    maxTokens: 512,
+    temperature: 0.4,
+  });
+  assert.equal(settings.provider, "deepseek");
+  assert.equal(settings.model, "deepseek-chat");
+
+  const operatorDraft = await operatorService.createDraftFromRuntime(null, { force: true });
+  assert.equal(operatorDraft.showRunId, runtimeState.showRunId);
+  assert.equal(operatorDraft.situationId, "situation:1");
+  assert(operatorDraft.text.includes("Open Scene"));
+  assert(operatorDraft.text.includes("Ada"));
+  assert(operatorDraft.text.includes("Studio"));
+  assertNoRuntimeOrderFields(operatorDraft);
+
+  const streamEvents = [];
+  const generated = await operatorService.streamChat({
+    sessionId: runtimeState.showRunId,
+    message: operatorDraft.text,
+    promptInput: operatorDraft.promptInput,
+  }, (event) => streamEvents.push(event));
+  assert.equal(generated.provider, "deepseek");
+  assert.equal(generated.scriptOutput.parserOutput.verified, true);
+  assert.equal(generated.scriptOutput.teleprompter.performerSlots.length, 2);
+  assert(streamEvents.some((event) => event.type === "delta"));
+  assert(streamEvents.some((event) => event.type === "done"));
+  assertNoRuntimeOrderFields(generated.scriptOutput);
+  const operatorStatus = await operatorService.status();
+  assert(!JSON.stringify(operatorStatus).includes("sk-test-deepseek"));
+
   process.stdout.write(JSON.stringify({
     ok: true,
     showRunId: promptInput.showRunId,
@@ -124,9 +204,14 @@ async function main() {
       "parser verifies characters and flags unknown roles against snapshot",
       "teleprompter shows performer slots from runtime output",
       "Script Agent output contains no Runtime order state",
+      "Operator migrates preparedNext to editable DeepSeek prompt draft",
+      "Operator secrets are managed in UI API without plaintext status leaks",
+      "DeepSeek stream is converted to Script Agent output and teleprompter data",
     ],
   }, null, 2));
   process.stdout.write("\n");
+
+  await fs.rm(TMP_DB_DIR, { recursive: true, force: true });
 }
 
 main().catch((err) => {

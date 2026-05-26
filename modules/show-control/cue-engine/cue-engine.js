@@ -169,8 +169,12 @@ function flattenSteps(cue) {
   });
 }
 
+function hasRawStepActions(cue) {
+  return Array.isArray(cue.steps) && cue.steps.some((step) => Array.isArray(step.actions) || step.action);
+}
+
 function actionStepsFromCue(cue) {
-  if (Array.isArray(cue.steps) && cue.steps.length) {
+  if (hasRawStepActions(cue)) {
     let actionIndex = 0;
     return cue.steps.map((step, stepIndex) => {
       const stepActions = Array.isArray(step.actions)
@@ -225,7 +229,7 @@ function actionStepsFromCue(cue) {
 }
 
 function normalizeCue(cue) {
-  if (!Array.isArray(cue.actions) && Array.isArray(cue.steps)) {
+  if (!Array.isArray(cue.actions) && hasRawStepActions(cue)) {
     cue.actions = flattenSteps(cue);
   }
   const issues = validateCueShape(cue);
