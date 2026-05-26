@@ -1,0 +1,217 @@
+(function () {
+  "use strict";
+
+  const root = document.getElementById("captionRoot");
+  const card = document.getElementById("captionCard");
+  const debug = document.getElementById("captionDebug");
+  const CAPTION_WIDTH = 1080;
+  const CAPTION_HEIGHT = 1920;
+  const params = new URLSearchParams(window.location.search);
+  const debugEnabled = params.get("debug") === "1";
+  const browserPreviewEnabled = params.get("preview") === "1";
+
+  const DEFAULT_CAPTION_STYLE = Object.freeze({
+    fontSizeScale: 1,
+    verticalPosition: 66,
+    widthPercent: 86,
+    outlineScale: 1,
+  });
+
+  let teleprompt = null;
+  let preparedScene = null;
+  let showState = null;
+  let cue = { index: 0, version: -1, deckLength: 0 };
+  let captionStyle = { ...DEFAULT_CAPTION_STYLE };
+  let endSceneInFlight = false;
+
+  function clampNumber(value, min, max, fallback) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.max(min, Math.min(max, numeric));
+  }
+
+  function normalizeCaptionStyle(style = {}) {
+    return {
+      fontSizeScale: clampNumber(style.fontSizeScale, 0.45, 1.25, DEFAULT_CAPTION_STYLE.fontSizeScale),
+      verticalPosition: clampNumber(style.verticalPosition, 50, 84, DEFAULT_CAPTION_STYLE.verticalPosition),
+      widthPercent: clampNumber(style.widthPercent, 56, 96, DEFAULT_CAPTION_STYLE.widthPercent),
+      outlineScale: clampNumber(style.outlineScale, 0.45, 1.25, DEFAULT_CAPTION_STYLE.outlineScale),
+    };
+  }
+
+  function applyCaptionStyle(style = {}) {
+    captionStyle = normalizeCaptionStyle(style);
+    root.style.setProperty("--caption-size-scale", captionStyle.fontSizeScale.toFixed(3));
+    root.style.setProperty("--caption-top", `${captionStyle.verticalPosition.toFixed(1)}%`);
+    root.style.setProperty("--caption-width", `${captionStyle.widthPercent.toFixed(1)}%`);
+    root.style.setProperty("--caption-stroke", `${Math.max(1, Math.round(7 * captionStyle.outlineScale))}px`);
+  }
+
+  function updateCaptionScale() {
+    if (debugEnabled || browserPreviewEnabled) {
+      root.style.setProperty("--caption-scale", "1");
+      return;
+    }
+    const viewport = window.visualViewport;
+    const width = viewport && viewport.width ? viewport.width : window.innerWidth;
+    const height = viewport && viewport.height ? viewport.height : window.innerHeight;
+    const scale = Math.max(0.1, Math.min(width / CAPTION_WIDTH, height / CAPTION_HEIGHT, 1));
+    root.style.setProperty("--caption-scale", scale.toFixed(5));
+  }
+
+  function deckLength() {
+    const lines = teleprompt && Array.isArray(teleprompt.lines) ? teleprompt.lines : [];
+    return lines.length ? lines.length + 2 : 0;
+  }
+
+  function captionsAreLive() {
+    return !!(
+      showState &&
+      showState.active === true &&
+      preparedScene &&
+      preparedScene.status === "playing"
+    );
+  }
+
+  function clampIndex(index) {
+    return Math.max(0, Math.min(Number.parseInt(index, 10) || 0, Math.max(deckLength() - 1, 0)));
+  }
+
+  function clearCard() {
+    while (card.firstChild) card.removeChild(card.firstChild);
+  }
+
+  function appendFormattedText(target, input) {
+    const text = String(input || "");
+    const pattern = /\*([^*\n]+)\*/g;
+    let cursor = 0;
+    let match;
+    while ((match = pattern.exec(text))) {
+      if (match.index > cursor) target.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+      const direction = document.createElement("span");
+      direction.className = "caption-inline-direction";
+      direction.textContent = match[1].trim();
+      target.appendChild(direction);
+      cursor = match.index + match[0].length;
+    }
+    if (cursor < text.length) target.appendChild(document.createTextNode(text.slice(cursor)));
+  }
+
+  function captionForIndex(index) {
+    const lines = teleprompt && Array.isArray(teleprompt.lines) ? teleprompt.lines : [];
+    if (!lines.length || index <= 0) return null;
+    if (index >= lines.length + 1) return { type: "end", text: "Einde" };
+    const line = lines[index - 1];
+    if (!line || !line.text) return null;
+    if (line.type === "dialogue") return { type: "dialogue", text: line.text };
+    return { type: "direction", text: line.text };
+  }
+
+  function atEndCard() {
+    return captionsAreLive() && deckLength() > 0 && clampIndex(cue.index) >= deckLength() - 1;
+  }
+
+  function isOverflowing(element) {
+    return element.scrollHeight > element.clientHeight + 1 || element.scrollWidth > element.clientWidth + 1;
+  }
+
+  function fitCaption() {
+    if (card.classList.contains("end")) return;
+    card.style.removeProperty("font-size");
+    const baseFontSize = Number.parseFloat(window.getComputedStyle(card).fontSize);
+    if (!Number.isFinite(baseFontSize) || !isOverflowing(card)) return;
+    const minFontSize = 58 * captionStyle.fontSizeScale;
+    for (let size = baseFontSize - 4; size >= minFontSize; size -= 4) {
+      card.style.fontSize = `${size}px`;
+      if (!isOverflowing(card)) return;
+    }
+    card.style.fontSize = `${Math.max(26, Math.round(minFontSize))}px`;
+  }
+
+  function render() {
+    const activeCaption = captionsAreLive() ? captionForIndex(clampIndex(cue.index)) : null;
+    clearCard();
+    root.dataset.cueIndex = String(cue.index || 0);
+    root.dataset.captionText = activeCaption ? activeCaption.text : "";
+    root.dataset.live = captionsAreLive() ? "1" : "0";
+    if (debugEnabled && debug) {
+      const title = teleprompt && teleprompt.title ? teleprompt.title : "geen scene";
+      debug.hidden = false;
+      const status = captionsAreLive() ? "live" : "verborgen";
+      debug.textContent = `Live captions ${status} | cue ${cue.index || 0}/${Math.max(deckLength() - 1, 0)} | ${title}`;
+    }
+    if (!activeCaption) {
+      card.hidden = true;
+      card.className = "caption-card";
+      return;
+    }
+    card.hidden = false;
+    card.className = `caption-card ${activeCaption.type}`;
+    appendFormattedText(card, activeCaption.text);
+    fitCaption();
+  }
+
+  function applyCurrentPayload(payload) {
+    if (!payload || !payload.ok) return;
+    showState = payload.show || null;
+    preparedScene = payload.preparedScene || null;
+    teleprompt = payload.teleprompt || null;
+    cue = payload.cue || { index: 0, version: -1, deckLength: 0 };
+    applyCaptionStyle(payload.captionStyle || DEFAULT_CAPTION_STYLE);
+    render();
+  }
+
+  async function triggerEndSceneFromEndCard() {
+    if (!atEndCard() || endSceneInFlight) return;
+    endSceneInFlight = true;
+    try {
+      const response = await fetch("/v0/script-agent/teleprompter-parser/end-scene", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const payload = await response.json();
+      if (response.ok && payload && payload.ok) applyCurrentPayload(payload);
+    } catch {
+    } finally {
+      endSceneInFlight = false;
+    }
+  }
+
+  function handleAdvanceKey(event) {
+    if (event.key !== "PageDown" && event.key !== "ArrowRight" && event.key !== " ") return;
+    if (!atEndCard()) return;
+    event.preventDefault();
+    triggerEndSceneFromEndCard();
+  }
+
+  async function pollCurrent() {
+    try {
+      const response = await fetch("/v0/script-agent/teleprompter-parser/current", { cache: "no-store" });
+      const payload = await response.json();
+      if (response.ok && payload.ok) applyCurrentPayload(payload);
+    } catch {}
+  }
+
+  function connectEvents() {
+    if (!window.EventSource) return;
+    const events = new EventSource("/v0/script-agent/teleprompter-parser/events");
+    events.onmessage = (event) => {
+      try {
+        applyCurrentPayload(JSON.parse(event.data));
+      } catch {}
+    };
+  }
+
+  window.addEventListener("resize", updateCaptionScale);
+  window.addEventListener("keydown", handleAdvanceKey);
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", updateCaptionScale);
+
+  if (debugEnabled) document.body.classList.add("caption-debug-mode");
+  else if (browserPreviewEnabled) document.body.classList.add("caption-browser-preview-mode");
+  applyCaptionStyle(DEFAULT_CAPTION_STYLE);
+  updateCaptionScale();
+  connectEvents();
+  pollCurrent();
+  window.setInterval(pollCurrent, 500);
+})();

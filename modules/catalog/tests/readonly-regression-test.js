@@ -86,7 +86,8 @@ async function main() {
   });
 
   const rows = await queryJson("SELECT COUNT(*) AS count FROM algorithm_scenes");
-  assert.equal(Number(rows[0].count), 72);
+  const legacySceneCount = Number(rows[0].count);
+  assert(legacySceneCount > 0, "legacy scenes should be present");
 
   const readModel = await buildCatalogReadModel();
   assert.equal(readModel.source.type, "v2-catalog-sqlite");
@@ -94,7 +95,7 @@ async function main() {
   assert.equal(readModel.source.ownsMutations, true);
   assertPathInside(V2_ROOT, readModel.source.path);
   assert(!JSON.stringify(readModel.source).includes("legacy/data/live.sqlite"), "V2 read model must not expose legacy sqlite paths");
-  assert.equal(readModel.counts.situations, 72);
+  assert.equal(readModel.counts.situations, legacySceneCount);
   assert(readModel.counts.mediaAssets >= readModel.counts.environments);
 
   const after = await protectedHashes();

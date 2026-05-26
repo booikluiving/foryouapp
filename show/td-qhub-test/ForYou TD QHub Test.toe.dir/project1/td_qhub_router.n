@@ -1,0 +1,5 @@
+DAT:text
+tile -140 360 130 90
+flags =  current on parlanguage 0
+color 0.55 0.55 0.55 
+end

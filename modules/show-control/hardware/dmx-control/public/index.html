@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>VANGO Art-Net Control</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <strong>VANGO Art-Net Control</strong>
+        <span id="statusLine">Laden...</span>
+      </div>
+      <div class="actions">
+        <button id="refreshBtn" type="button">Refresh</button>
+        <button id="liveBtn" class="primary" type="button">Live aan</button>
+        <button id="stopBtn" type="button">Stop</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel config-panel">
+        <div class="panel-head">
+          <h1>Art-Net Output</h1>
+          <span id="activeBadge" class="badge">idle</span>
+        </div>
+        <div class="config-grid">
+          <label>Target IP
+            <input id="targetIpInput" value="192.168.1.230" inputmode="numeric">
+          </label>
+          <label>Art-Net universe
+            <input id="universeInput" type="number" min="0" max="32767" value="1">
+          </label>
+          <label>Startadres
+            <input id="addressInput" type="number" min="1" max="512" value="1">
+          </label>
+          <label>Frame rate
+            <input id="frameRateInput" type="number" min="1" max="44" value="35">
+          </label>
+          <label>DMX profiel
+            <select id="fixtureModeInput">
+              <option value="hsi" selected>HSI</option>
+              <option value="cct">CCT</option>
+              <option value="rgb">RGB</option>
+              <option value="raw">Raw</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel fixture-panel">
+        <div class="panel-head">
+          <h2>Fixtures</h2>
+          <span class="badge">per lamp zelfde Art-Net universe</span>
+        </div>
+        <div class="fixture-toolbar">
+          <label>Actieve lamp
+            <select id="activeFixtureInput">
+              <option value="0">Lamp 1</option>
+              <option value="1">Lamp 2</option>
+              <option value="2">Lamp 3</option>
+              <option value="3">Lamp 4</option>
+              <option value="4">Lamp 5</option>
+              <option value="5">Lamp 6</option>
+              <option value="6">Lamp 7</option>
+              <option value="7">Lamp 8</option>
+              <option value="8">Lamp 9</option>
+            </select>
+          </label>
+          <button id="syncFixtureBtn" type="button">Neem adres/profiel over</button>
+          <button id="allFixturesBtn" type="button">Alle lampen meesturen</button>
+          <button id="soloFixtureBtn" type="button">Solo actieve lamp</button>
+        </div>
+        <div class="fixture-grid" id="fixtureGrid"></div>
+      </section>
+
+      <section class="quick-grid">
+        <button id="blackoutBtn" class="danger big" type="button">Uit</button>
+        <button id="hsiWhiteBtn" class="success big" type="button">HSI wit</button>
+        <button id="hsiAmberBtn" class="big" type="button">Amber</button>
+        <button id="hsiBlueBtn" class="big" type="button">Blauw</button>
+        <button id="cycleBtn" class="big" type="button">Color cycle</button>
+        <button id="cctFullBtn" type="button">CCT 5600K</button>
+        <button id="cctWarmBtn" type="button">Warm dim</button>
+        <button id="rgbWhiteBtn" type="button">RGB wit</button>
+      </section>
+
+      <section class="panel environment-panel">
+        <div class="panel-head">
+          <h2>Omgevingen</h2>
+          <span class="badge">look presets</span>
+        </div>
+        <div class="environment-grid">
+          <button class="environment-button" data-look="auto" type="button">Auto</button>
+          <button class="environment-button" data-look="bioscoop" type="button">Bioscoop</button>
+          <button class="environment-button" data-look="podcast" type="button">Podcast</button>
+          <button class="environment-button" data-look="nacht" type="button">Nacht</button>
+        </div>
+      </section>
+
+      <section class="mode-grid">
+        <article class="panel mode-panel" data-mode-panel="cct">
+          <div class="panel-head">
+            <h2>CCT</h2>
+            <span class="badge">CH N/N+1/N+2</span>
+          </div>
+          <div class="slider-stack">
+            <label>Intensity <output id="cctIntensityOut">255</output>
+              <input id="cctIntensityInput" type="range" min="0" max="255" value="255">
+            </label>
+            <label>Color temperature <output id="cctTempOut">128</output>
+              <input id="cctTempInput" type="range" min="0" max="255" value="128">
+            </label>
+            <label>Green/Magenta <output id="cctGmOut">128</output>
+              <input id="cctGmInput" type="range" min="0" max="255" value="128">
+            </label>
+          </div>
+          <button id="sendCctBtn" class="primary" type="button">Stuur CCT</button>
+        </article>
+
+        <article class="panel mode-panel" data-mode-panel="rgb">
+          <div class="panel-head">
+            <h2>RGB</h2>
+            <span class="badge">CH N/N+1/N+2</span>
+          </div>
+          <label>Kleur
+            <input id="colorInput" class="color-input" type="color" value="#ff4f3d">
+          </label>
+          <div class="slider-stack">
+            <label>Brightness <output id="rgbBrightnessOut">255</output>
+              <input id="rgbBrightnessInput" type="range" min="0" max="255" value="255">
+            </label>
+            <label>Red <output id="redOut">255</output>
+              <input id="redInput" type="range" min="0" max="255" value="255">
+            </label>
+            <label>Green <output id="greenOut">79</output>
+              <input id="greenInput" type="range" min="0" max="255" value="79">
+            </label>
+            <label>Blue <output id="blueOut">61</output>
+              <input id="blueInput" type="range" min="0" max="255" value="61">
+            </label>
+          </div>
+          <button id="sendRgbBtn" class="primary" type="button">Stuur RGB</button>
+        </article>
+
+        <article class="panel mode-panel" data-mode-panel="hsi">
+          <div class="panel-head">
+            <h2>HSI</h2>
+            <span class="badge">CH N/N+1/N+2</span>
+          </div>
+          <div class="hsi-control">
+            <canvas id="hsiWheelCanvas" class="color-wheel" width="360" height="360" aria-label="HSI kleurcirkel"></canvas>
+            <div class="hsi-readout">
+              <span id="hsiColorSwatch"></span>
+              <strong id="hsiColorLabel">Hue 0 · Sat 255</strong>
+              <label>HEX
+                <input id="hsiHexInput" class="mono-input" value="#ff0000" spellcheck="false">
+              </label>
+              <label>DMX
+                <input id="hsiDmxInput" class="mono-input" value="1:255 2:0 3:255" spellcheck="false" readonly>
+              </label>
+            </div>
+          </div>
+          <div class="slider-stack">
+            <label>Intensity <output id="hsiIntensityOut">255</output>
+              <input id="hsiIntensityInput" type="range" min="0" max="255" value="255">
+            </label>
+            <label>Hue <output id="hueOut">0</output>
+              <input id="hueInput" type="range" min="0" max="360" value="0">
+            </label>
+            <label>Hue offset <output id="hueOffsetOut">0</output>
+              <input id="hueOffsetInput" type="range" min="-180" max="180" value="0">
+            </label>
+            <label>Saturation <output id="saturationOut">255</output>
+              <input id="saturationInput" type="range" min="0" max="255" value="255">
+            </label>
+          </div>
+          <button id="sendHsiBtn" class="primary" type="button">Stuur HSI</button>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Raw Kanalen 1-12</h2>
+          <span class="badge">fallback</span>
+        </div>
+        <div id="rawGrid" class="raw-grid"></div>
+        <div class="actions">
+          <button id="sendRawBtn" class="primary" type="button">Stuur raw</button>
+          <button id="allChannelBtn" type="button">Alle kanalen 45%</button>
+          <button id="clearRawBtn" type="button">Raw nul</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Log</h2>
+          <span id="lastSentBadge" class="badge">nog niets</span>
+        </div>
+        <pre id="logOutput">{}</pre>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

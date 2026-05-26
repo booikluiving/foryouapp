@@ -6,6 +6,7 @@ const fs = require("node:fs/promises");
 const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const WebSocket = require("ws");
 
 const TEST_DIR = __dirname;
 const APP_ROOT = path.resolve(TEST_DIR, "../../..");
@@ -107,6 +108,45 @@ async function stopServices(services) {
   }
 }
 
+function connectWebSocket(url) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(url);
+    ws.once("open", () => resolve(ws));
+    ws.once("error", reject);
+  });
+}
+
+function waitForWebSocketEvent(ws, predicate, label) {
+  return new Promise((resolve, reject) => {
+    const deadline = setTimeout(() => {
+      cleanup();
+      reject(new Error(`websocket timeout waiting for ${label}`));
+    }, 5000);
+    function cleanup() {
+      clearTimeout(deadline);
+      ws.off("message", onMessage);
+      ws.off("error", onError);
+    }
+    function onError(err) {
+      cleanup();
+      reject(err);
+    }
+    function onMessage(raw) {
+      let payload = null;
+      try {
+        payload = JSON.parse(String(raw || "{}"));
+      } catch {
+        return;
+      }
+      if (!predicate(payload)) return;
+      cleanup();
+      resolve(payload);
+    }
+    ws.on("message", onMessage);
+    ws.on("error", onError);
+  });
+}
+
 function assertNoRuntimeOrderFields(value) {
   const text = JSON.stringify(value);
   for (const key of ["preparedNext", "resolvedPreparedNext", "eligiblePool", "pathAvailable", "pathLocked", "order"]) {
@@ -159,6 +199,7 @@ async function main() {
     services.push(spawnService("script-agent", scriptAgentScript, {
       SCRIPT_AGENT_PORT: String(PORTS.scriptAgent),
       V2_SCRIPT_AGENT_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
+      V2_SCRIPT_AGENT_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
       V2_SCRIPT_AGENT_DB_DIR: SCRIPT_AGENT_DB_DIR,
     }));
     await waitForHealth(services[3].child, `http://127.0.0.1:${PORTS.scriptAgent}`, "script-agent", services[3].logs);
@@ -174,8 +215,34 @@ async function main() {
     const operatorHtml = await fetchText(scriptAgentBase, "/script-agent/operator");
     assert(operatorHtml.includes("Script Agent Operator"));
     assert(operatorHtml.includes("DeepSeek"));
+    assert(operatorHtml.includes("Situatie"));
+    assert(operatorHtml.includes("Personage toevoegen"));
+    assert(operatorHtml.includes("Systeeminstellingen"));
+    assert(operatorHtml.includes("Prompt instellingen"));
+    assert(operatorHtml.includes("systemPrompt"));
+    assert(operatorHtml.includes("Terminal styling"));
     const stageHtml = await fetchText(scriptAgentBase, "/script-agent/operator/stage");
     assert(stageHtml.includes("Operator Stage"));
+    assert(stageHtml.includes("stageWrap"));
+    assert(stageHtml.includes("hiddenInput"));
+    assert(stageHtml.includes("ENTER SEND"));
+    assert(stageHtml.includes("ESC CLEAR"));
+    const parserHtml = await fetchText(scriptAgentBase, "/script-agent/teleprompter-parser");
+    assert(parserHtml.includes("Tekstparser"));
+    assert(parserHtml.includes("titleInput"));
+    assert(parserHtml.includes("rawTextInput"));
+    const telepromptStageHtml = await fetchText(scriptAgentBase, "/script-agent/teleprompter-parser/stage");
+    assert(telepromptStageHtml.includes("stageRoot"));
+    const liveCaptionsHtml = await fetchText(scriptAgentBase, "/script-agent/teleprompter-parser/live-captions");
+    assert(liveCaptionsHtml.includes("captionRoot"));
+
+    const manualParse = await fetchJson(scriptAgentBase, "/v0/script-agent/teleprompter-parser/parse", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Smoke parse", rawText: "Ada: Een. Twee.\nRegie: Stilte.", source: "smoke" }),
+    });
+    assert.equal(manualParse.teleprompt.title, "Smoke parse");
+    assert.equal(manualParse.teleprompt.lines.length, 3);
 
     const promptResponse = await fetchJson(scriptAgentBase, "/v0/script-agent/prompt-inputs", {
       method: "POST",
@@ -198,6 +265,54 @@ async function main() {
     assert.equal(operatorDraftResponse.draft.situationId, started.resolvedPreparedNext.situationId);
     assert(operatorDraftResponse.draft.text.includes(operatorDraftResponse.draft.situationTitle));
     assertNoRuntimeOrderFields(operatorDraftResponse.draft);
+
+    const catalogIndex = await fetchJson(scriptAgentBase, "/v0/script-agent/operator/catalog/index");
+    assert(catalogIndex.situaties.length > 0, "operator catalog index should expose situations");
+    assert(catalogIndex.personages.length > 0, "operator catalog index should expose characters");
+    assert(catalogIndex.omgevingen.length > 0, "operator catalog index should expose environments");
+
+    const manualDraftResponse = await fetchJson(scriptAgentBase, "/v0/script-agent/operator/draft/manual", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sessionId: started.showRunId,
+        situationId: started.resolvedPreparedNext.situationId,
+        characterIds: (started.resolvedPreparedNext.characters || []).map((item) => item.id).slice(0, 2),
+        environmentId: started.resolvedPreparedNext.environment && started.resolvedPreparedNext.environment.id,
+        extra: "Smoke manual draft.",
+        sourceId: "smoke-manual",
+      }),
+    });
+    assert.equal(manualDraftResponse.promptInput.source.type, "manual-catalog-selection");
+    assert(manualDraftResponse.draft.text.includes("Smoke manual draft."));
+    assertNoRuntimeOrderFields(manualDraftResponse.promptInput);
+    const operatorStatusAfterDraft = await fetchJson(scriptAgentBase, "/v0/script-agent/operator/status");
+    assert.equal(operatorStatusAfterDraft.stage.draft, "", "prepared Operator drafts should not render as live stage input");
+    assert.equal(operatorStatusAfterDraft.stage.draftInfo.situationId, started.resolvedPreparedNext.situationId);
+
+    const stageStyle = await fetchJson(scriptAgentBase, "/v0/script-agent/operator/stage-style", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ style: { font: "courier", cursor: "block", fontSize: 38 } }),
+    });
+    assert.deepEqual(stageStyle.style, { font: "courier", cursor: "block", fontSize: 38 });
+
+    const promptSettings = await fetchJson(scriptAgentBase, "/v0/script-agent/operator/settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ systemPrompt: "Smoke system prompt.", promptTemplate: "Smoke {{situationTitle}}", temperature: 0.4, maxTokens: 2048 }),
+    });
+    assert.equal(promptSettings.settings.systemPrompt, "Smoke system prompt.");
+    assert.equal(promptSettings.settings.promptTemplate, "Smoke {{situationTitle}}");
+    assert.equal(promptSettings.settings.temperature, 0.4);
+    assert.equal(promptSettings.settings.maxTokens, 2048);
+
+    const ws = await connectWebSocket(`ws://127.0.0.1:${PORTS.scriptAgent}/v0/script-agent/operator/stage/ws`);
+    await waitForWebSocketEvent(ws, (event) => event.type === "operator_stage_hello", "hello");
+    ws.send(JSON.stringify({ type: "operator_stage_draft", sourceId: "smoke-ws", text: "Live smoke typing", revision: 999 }));
+    const draftEvent = await waitForWebSocketEvent(ws, (event) => event.type === "operator_stage_draft" && event.sourceId === "smoke-ws", "draft update");
+    assert.equal(draftEvent.draft, "Live smoke typing");
+    ws.close();
 
     const secretResponse = await fetchJson(scriptAgentBase, "/v0/script-agent/operator/secrets", {
       method: "POST",
@@ -222,6 +337,12 @@ async function main() {
     const scriptOutput = scriptResponse.scriptOutput;
     assert.equal(scriptOutput.parserOutput.verified, true);
     assertNoRuntimeOrderFields(scriptOutput);
+
+    const legacyTeleprompterState = await fetchJson(scriptAgentBase, "/v0/script-agent/teleprompter-parser/current");
+    assert.equal(legacyTeleprompterState.teleprompt.title, promptInput.situation.title);
+    assert(legacyTeleprompterState.teleprompt.lines.length > 0);
+    assert.equal(legacyTeleprompterState.preparedScene.title, promptInput.situation.title);
+    assert.equal(legacyTeleprompterState.cue.index, 0);
 
     const teleprompter = await fetchJson(
       scriptAgentBase,
@@ -255,6 +376,9 @@ async function main() {
       captionSegments: captions.segments.length,
       operatorUiAvailable: true,
       operatorDraftSituationId: operatorDraftResponse.draft.situationId,
+      manualDraftSituationId: manualDraftResponse.draft.situationId,
+      legacyTeleprompterParserAvailable: true,
+      stageWebSocketDraftSync: true,
       deepSeekSecretRedacted: true,
       runtimeOrderStateUnchanged: true,
       protectedV1HashesUnchanged: true,

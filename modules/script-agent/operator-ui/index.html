@@ -10,116 +10,175 @@
     <header class="topbar">
       <div>
         <p class="eyebrow">Script Agent</p>
-        <h1>Operator</h1>
+        <h1>Operator Chat</h1>
+        <p class="topline" id="operatorStatusText">Laden...</p>
       </div>
       <nav class="toplinks" aria-label="Snelle links">
-        <a href="/script-agent/operator/stage" target="_blank" rel="noreferrer">Stage</a>
+        <a href="/script-agent/operator/stage" target="_blank" rel="noreferrer">Stage output</a>
         <a href="http://127.0.0.1:3024/runtime" target="_blank" rel="noreferrer">Runtime</a>
         <a href="http://127.0.0.1:3026/audience/admin" target="_blank" rel="noreferrer">Audience</a>
-        <a href="http://127.0.0.1:3023/health" target="_blank" rel="noreferrer">Algorithm</a>
       </nav>
     </header>
 
-    <main class="layout">
-      <section class="panel status-panel">
-        <div>
-          <p class="eyebrow">Provider</p>
-          <h2>DeepSeek</h2>
+    <main class="operator-shell">
+      <section class="panel operator-left">
+        <div class="section-head compact">
+          <h2>Regie</h2>
+          <button id="reloadCatalog" type="button">Herlaad</button>
         </div>
-        <dl class="status-grid">
-          <div>
-            <dt>Model</dt>
-            <dd id="statusModel">-</dd>
-          </div>
-          <div>
-            <dt>API key</dt>
-            <dd id="secretStatus">-</dd>
-          </div>
-          <div>
-            <dt>Draft</dt>
-            <dd id="draftStatus">-</dd>
-          </div>
-          <div>
-            <dt>Laatste output</dt>
-            <dd id="outputStatus">-</dd>
-          </div>
-        </dl>
-      </section>
 
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Prepared next</p>
-            <h2>Prompt draft</h2>
-          </div>
-          <div class="button-row">
-            <button id="refreshDraft" type="button">Refresh</button>
-            <button id="saveDraft" type="button">Bewaar draft</button>
-            <button id="sendDraft" class="primary" type="button">Send naar chat</button>
-          </div>
+        <label>Sessie
+          <input id="sessionId" maxlength="120" value="show_default">
+        </label>
+
+        <label>Situatie
+          <select id="situation"></select>
+        </label>
+        <div id="situationPreview" class="preview-text"></div>
+
+        <label>Personage toevoegen
+          <select id="character"></select>
+        </label>
+        <div id="characterChips" class="chips"></div>
+
+        <label>Omgeving
+          <select id="environment"></select>
+        </label>
+        <div id="environmentPreview" class="preview-text"></div>
+
+        <label>Regie vooraf
+          <textarea id="starterExtra" class="small-area" maxlength="2000" placeholder="optioneel"></textarea>
+        </label>
+
+        <div class="button-row">
+          <button id="sceneToChat" class="primary" type="button">Scene naar chat</button>
+          <button id="refreshRuntimeDraft" type="button">Runtime draft</button>
         </div>
-        <textarea id="draftText" class="draft-area" spellcheck="false"></textarea>
-        <p id="draftMeta" class="meta-line">Geen draft geladen.</p>
+        <p id="operatorMsg" class="meta-line"></p>
       </section>
 
-      <section class="split">
-        <form id="settingsForm" class="panel">
-          <div class="section-head compact">
-            <h2>Prompt instellingen</h2>
-            <button type="submit">Opslaan</button>
-          </div>
-          <label>
-            Model
-            <input id="model" name="model" autocomplete="off" value="deepseek-chat">
-          </label>
-          <label>
-            Max tokens
-            <input id="maxTokens" name="maxTokens" type="number" min="256" max="16000" step="256">
-          </label>
-          <label>
-            Temperature
-            <input id="temperature" name="temperature" type="number" min="0" max="2" step="0.05">
-          </label>
-          <label>
-            System prompt
-            <textarea id="systemPrompt" name="systemPrompt" class="small-area" spellcheck="false"></textarea>
-          </label>
-          <label>
-            Prompt template
-            <textarea id="promptTemplate" name="promptTemplate" class="small-area template-area" spellcheck="false"></textarea>
-          </label>
-        </form>
-
-        <section class="panel">
-          <div class="section-head compact">
-            <h2>Secrets</h2>
-          </div>
-          <form id="secretForm" class="secret-form">
-            <label>
-              DeepSeek API key
-              <input id="deepSeekApiKey" name="deepSeekApiKey" type="password" autocomplete="new-password" placeholder="sk-...">
-            </label>
-            <div class="button-row">
-              <button type="submit">Bewaar key</button>
-              <button id="clearSecret" class="danger" type="button">Verwijder key</button>
-            </div>
-          </form>
-        </section>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Chat</p>
-            <h2>Operator sessie</h2>
-          </div>
+      <section class="panel operator-center">
+        <div class="section-head compact">
+          <h2>Live chat</h2>
           <div class="button-row">
             <button id="undoTurn" type="button">Undo</button>
-            <button id="clearSession" class="danger" type="button">Reset sessie</button>
+            <button id="clearChat" type="button">Wis chat</button>
+            <button id="resetSession" class="danger" type="button">Reset sessie</button>
           </div>
         </div>
-        <div id="chatLog" class="chat-log" aria-live="polite"></div>
-        <p id="chatMeta" class="meta-line">Klaar.</p>
+        <div id="chatLog" class="operator-chat-log" aria-live="polite"></div>
+        <form id="chatForm" class="operator-form">
+          <textarea id="chatInput" maxlength="12000" rows="3" placeholder="Typ een opdracht of feedback"></textarea>
+          <button id="sendChat" class="primary" type="submit">Stuur</button>
+        </form>
+        <p id="chatMeta" class="meta-line">Verbinden...</p>
+      </section>
+
+      <aside class="panel operator-right">
+        <section class="side-section">
+          <h2>Stats</h2>
+          <div class="operator-stats">
+            <div class="stat-box">
+              <span>Beurten</span>
+              <strong id="statTurns">0</strong>
+            </div>
+            <div class="stat-box">
+              <span>Tokens</span>
+              <strong id="statTokens">0</strong>
+            </div>
+            <div class="stat-box">
+              <span>Kosten</span>
+              <strong id="statCost">$0.0000</strong>
+            </div>
+            <div class="stat-box">
+              <span>Sessies</span>
+              <strong id="statSessions">0</strong>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <section class="panel system-settings">
+        <div class="section-head compact">
+          <div>
+            <h2>Systeeminstellingen</h2>
+            <p class="meta-line">Prompt, terminal en DeepSeek-configuratie.</p>
+          </div>
+        </div>
+
+        <div class="settings-grid">
+          <section class="terminal-style-box">
+            <div class="section-head compact">
+              <h2>Terminal styling</h2>
+              <span id="styleStatus" class="side-status"></span>
+            </div>
+            <label>Font
+              <select id="stageFont">
+                <option value="jetbrains">JetBrains Mono</option>
+                <option value="ibm">IBM Plex Mono</option>
+                <option value="system">System mono</option>
+                <option value="courier">Courier</option>
+              </select>
+            </label>
+            <div class="two">
+              <label>Cursor
+                <select id="stageCursor">
+                  <option value="underscore">Streepje</option>
+                  <option value="bar">Staand</option>
+                  <option value="block">Blok</option>
+                </select>
+              </label>
+              <label>Grootte
+                <select id="stageFontSize">
+                  <option value="26">Klein</option>
+                  <option value="30">Normaal</option>
+                  <option value="34">Groot</option>
+                  <option value="38">Extra</option>
+                </select>
+              </label>
+            </div>
+            <button id="saveStageStyle" type="button">Bewaar instellingen</button>
+          </section>
+
+          <section class="prompt-settings-box">
+            <div class="section-head compact">
+              <h2>Prompt instellingen</h2>
+              <span id="promptSettingsStatus" class="side-status"></span>
+            </div>
+            <label>DeepSeek model
+              <input id="model" maxlength="120" value="deepseek-chat">
+            </label>
+            <label>System prompt
+              <textarea id="systemPrompt" class="settings-area" maxlength="12000"></textarea>
+            </label>
+            <label>Prompt template
+              <textarea id="promptTemplate" class="settings-area tall" maxlength="12000"></textarea>
+            </label>
+            <div class="two">
+              <label>Temperatuur
+                <input id="temperature" type="number" min="0" max="2" step="0.1">
+              </label>
+              <label>Max tokens
+                <input id="maxTokens" type="number" min="256" max="16000" step="256">
+              </label>
+            </div>
+            <button id="savePromptSettings" type="button">Bewaar prompt</button>
+          </section>
+
+          <section class="side-section settings-card">
+            <h2>DeepSeek API key</h2>
+            <p id="secretStatus" class="side-status">-</p>
+            <form id="secretForm" class="secret-form">
+              <label>API key
+                <input id="deepSeekApiKey" type="password" autocomplete="new-password" placeholder="sk-...">
+              </label>
+              <div class="button-row">
+                <button type="submit">Bewaar key</button>
+                <button id="clearSecret" class="danger" type="button">Verwijder</button>
+              </div>
+            </form>
+          </section>
+        </div>
       </section>
     </main>
 

@@ -57,7 +57,7 @@ async function findFreePort() {
 
 async function allocatePorts() {
   const out = {};
-  for (const name of ["gateway", "catalog", "paths", "algorithm", "runtime", "showControl", "audience", "scriptAgent"]) {
+  for (const name of ["gateway", "catalog", "paths", "algorithm", "runtime", "showControl", "showControlTdAck", "audience", "scriptAgent"]) {
     out[name] = await findFreePort();
   }
   return out;
@@ -169,6 +169,7 @@ async function main() {
     services.push(spawnService("show-control", scripts.showControl, {
       SHOW_CONTROL_PORT: String(PORTS.showControl),
       V2_SHOW_CONTROL_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
+      V2_SHOW_CONTROL_TD_ACK_PORT: String(PORTS.showControlTdAck),
     }));
     await waitForHealth(services.at(-1).child, `http://127.0.0.1:${PORTS.showControl}`, "show-control", services.at(-1).logs);
 

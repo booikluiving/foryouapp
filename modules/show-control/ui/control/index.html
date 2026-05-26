@@ -6,7 +6,7 @@
     <title>Show Control V2</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="/shared/ui/foryou-v2.css">
-    <link rel="stylesheet" href="/show-control/styles.css?v=show-control-human-1">
+    <link rel="stylesheet" href="/show-control/styles.css?v=show-control-active-cues-1">
   </head>
   <body class="fy-page">
     <header class="fy-topbar">
@@ -59,6 +59,22 @@
         </section>
       </section>
 
+      <section id="tab-active-cues" class="tab-panel">
+        <article class="fy-panel">
+          <div class="fy-panel-header">
+            <h2>Actieve cue-definities</h2>
+            <span id="activeCueDefinitionCount" class="fy-badge">0</span>
+          </div>
+          <div class="library-summary">
+            <span>Stream Deck knoppen</span>
+            <strong id="streamDeckCueCount">0</strong>
+            <span>Command checks</span>
+            <strong id="activeCueCommandState">...</strong>
+          </div>
+          <div id="activeCueList" class="active-cue-list"></div>
+        </article>
+      </section>
+
       <section id="tab-builder" class="tab-panel">
         <section class="builder-grid">
           <article class="fy-panel builder-panel">
@@ -82,6 +98,9 @@
               <button class="template-button" data-template="startStop" type="button">Start/stop situatie</button>
               <button class="template-button" data-template="tdGo" type="button">TD go</button>
               <button class="template-button" data-template="sq5Mic" type="button">Mic aan/uit</button>
+              <button class="template-button" data-template="dmxWarm" type="button">DMX warm</button>
+              <button class="template-button" data-template="dmxPreset" type="button">DMX preset</button>
+              <button class="template-button" data-template="dmxBlackout" type="button">DMX uit</button>
               <button class="template-button" data-template="streamDeckStatus" type="button">Deck status</button>
             </div>
             <div id="builderActions" class="action-list"></div>
@@ -132,7 +151,18 @@
             <h2>Cue Library</h2>
             <span id="libraryCount" class="fy-badge">0</span>
           </div>
+          <div class="library-summary">
+            <span>Actief</span>
+            <strong id="activeCueCount">0</strong>
+            <span>Archief</span>
+            <strong id="archivedCueCount">0</strong>
+          </div>
           <div id="cueLibrary" class="fy-scroll-list library-list"></div>
+          <div class="fy-panel-header archive-header">
+            <h2>Archief</h2>
+            <span id="archiveCount" class="fy-badge">0</span>
+          </div>
+          <div id="cueArchive" class="fy-scroll-list library-list archive-list"></div>
         </article>
       </section>
 
@@ -190,6 +220,15 @@
         </article>
       </section>
 
+      <section id="tab-dmx" class="tab-panel">
+        <article class="fy-panel">
+          <div class="fy-panel-header">
+            <h2>DMX / Art-Net</h2>
+          </div>
+          <div class="command-grid" data-target="dmx"></div>
+        </article>
+      </section>
+
       <section id="tab-deck" class="tab-panel">
         <article class="fy-panel">
           <div class="fy-panel-header">
@@ -217,6 +256,6 @@
       </section>
     </main>
 
-    <script src="/show-control/app.js?v=show-control-human-1"></script>
+    <script src="/show-control/app.js?v=show-control-active-cues-1"></script>
   </body>
 </html>

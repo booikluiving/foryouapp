@@ -8,6 +8,7 @@ const {
   SCRIPT_AGENT_SCRIPT_OUTPUT_SCHEMA_VERSION,
   SCRIPT_AGENT_TELEPROMPTER_SCHEMA_VERSION,
 } = require("../../../shared/contracts/script-agent-v0");
+const { fetchCatalogSnapshot } = require("../client/catalog-client");
 const { fetchCurrentRuntimeState } = require("../client/runtime-client");
 const { createOperatorService } = require("../operator/operator-service");
 const { buildPromptInput } = require("../prompt-builder/prompt-builder");
@@ -21,6 +22,7 @@ const {
   readScriptOutput,
   readScriptOutputs,
 } = require("../script-output/state-store");
+const { createTeleprompterParserBridge } = require("../teleprompter-parser/src/integration/script-agent-bridge");
 const { loadExpress } = require("./express-loader");
 
 const express = loadExpress();
@@ -49,6 +51,7 @@ function booleanQuery(value, fallback = false) {
 
 function scriptAgentClients() {
   return {
+    fetchCatalogSnapshot,
     fetchCurrentRuntimeState,
   };
 }
@@ -86,12 +89,21 @@ function createScriptAgentApp(options = {}) {
   const app = express();
   const startedAt = new Date();
   const clients = options.clients || scriptAgentClients();
+  const teleprompterParser = options.teleprompterParser || createTeleprompterParserBridge({
+    clients,
+    env: options.env || process.env,
+  });
   const operatorService = options.operatorService || createOperatorService({
     clients,
     env: options.env || process.env,
     fetchImpl: options.fetchImpl,
+    onScriptOutput: (payload) => teleprompterParser.ingestScriptOutput({
+      ...payload,
+      source: "operator_chat",
+    }),
   });
   app.locals.operatorService = operatorService;
+  app.locals.teleprompterParser = teleprompterParser;
   app.locals.stopOperatorDraftSync = null;
   if (options.operatorAutoDraftSync !== false) {
     app.locals.stopOperatorDraftSync = startOperatorDraftSync(operatorService, {
@@ -100,6 +112,7 @@ function createScriptAgentApp(options = {}) {
   }
   app.use(express.json({ limit: "512kb" }));
   app.use("/script-agent/operator/assets", express.static(OPERATOR_UI_DIR));
+  teleprompterParser.mount(app, express);
 
   app.get("/health", (_req, res) => {
     const port = Number(process.env.SCRIPT_AGENT_PORT || process.env.PORT || options.port || 3027);
@@ -141,6 +154,10 @@ function createScriptAgentApp(options = {}) {
     res.json(await operatorService.secretsStatus());
   }));
 
+  app.get("/v0/script-agent/operator/secrets", asyncRoute(async (_req, res) => {
+    res.json(await operatorService.secretsStatus());
+  }));
+
   app.post("/v0/script-agent/operator/secrets", asyncRoute(async (req, res) => {
     res.json(await operatorService.saveSecrets(req.body || {}));
   }));
@@ -155,13 +172,35 @@ function createScriptAgentApp(options = {}) {
   app.post("/v0/script-agent/operator/draft/from-runtime", asyncRoute(async (req, res) => {
     const draft = await operatorService.createDraftFromRuntime(req.body ? req.body.runtimeState || null : null, {
       force: !!(req.body && req.body.force),
+      sourceId: req.body && req.body.sourceId,
+      previewStage: !!(req.body && (req.body.previewStage === true || req.body.stagePreview === true)),
     });
     res.status(201).json({ ok: true, draft });
   }));
 
+  app.post("/v0/script-agent/operator/draft/manual", asyncRoute(async (req, res) => {
+    const result = await operatorService.createManualDraft(req.body || {});
+    res.status(201).json({ ok: true, ...result, stage: operatorService.snapshotStage() });
+  }));
+
   app.patch("/v0/script-agent/operator/draft", asyncRoute(async (req, res) => {
-    const draft = operatorService.updateStageDraft(req.body ? req.body.text : "");
+    const draft = operatorService.updateStageDraft(req.body ? req.body.text : "", {
+      sourceId: req.body && req.body.sourceId,
+      revision: req.body && req.body.revision,
+    });
     res.json({ ok: true, draft, stage: operatorService.snapshotStage() });
+  }));
+
+  app.get("/v0/script-agent/operator/catalog/index", asyncRoute(async (_req, res) => {
+    res.json(await operatorService.catalogIndex());
+  }));
+
+  app.get("/v0/script-agent/operator/stage-style", asyncRoute(async (_req, res) => {
+    res.json({ ok: true, style: await operatorService.readStageStyle() });
+  }));
+
+  app.patch("/v0/script-agent/operator/stage-style", asyncRoute(async (req, res) => {
+    res.json({ ok: true, style: await operatorService.saveStageStyle(req.body ? req.body.style || req.body : {}) });
   }));
 
   app.get("/v0/script-agent/operator/session/:sessionId", (req, res) => {
@@ -205,6 +244,14 @@ function createScriptAgentApp(options = {}) {
       });
   });
 
+  app.post("/v0/script-agent/operator/scene-to-chat", asyncRoute(async (req, res) => {
+    const events = [];
+    const result = await operatorService.sceneToChat(req.body || {}, (event) => {
+      if (event && event.type !== "delta") events.push(event);
+    });
+    res.status(201).json({ ok: true, ...result, events });
+  }));
+
   app.post("/v0/script-agent/prompt-inputs", asyncRoute(async (req, res) => {
     const runtimeResult = req.body && req.body.runtimeState
       ? { ok: true, state: req.body.runtimeState }
@@ -235,6 +282,7 @@ function createScriptAgentApp(options = {}) {
       scriptText: req.body ? req.body.scriptText : "",
     });
     await appendScriptOutput(scriptOutput);
+    await teleprompterParser.ingestScriptOutput({ promptInput, scriptOutput, source: "script-agent" });
     res.status(201).json({ ok: true, scriptOutput });
   }));
 

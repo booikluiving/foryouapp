@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const V2_ROOT = path.resolve(__dirname, "../../..");
 const DEFAULT_SHOW_CONTROL_DB_DIR = path.join(V2_ROOT, "modules", "show-control", "db");
+const writeQueues = new Map();
 
 function showControlDbDir() {
   return path.resolve(process.env.V2_SHOW_CONTROL_DB_DIR || DEFAULT_SHOW_CONTROL_DB_DIR);
@@ -38,19 +39,40 @@ async function readJsonArray(filePath) {
   }
 }
 
+async function withFileQueue(filePath, work) {
+  const previous = writeQueues.get(filePath) || Promise.resolve();
+  let release = null;
+  const current = new Promise((resolve) => {
+    release = resolve;
+  });
+  const currentQueue = previous.then(() => current, () => current);
+  writeQueues.set(filePath, currentQueue);
+  await previous.catch(() => undefined);
+  try {
+    return await work();
+  } finally {
+    release();
+    if (writeQueues.get(filePath) === currentQueue) writeQueues.delete(filePath);
+  }
+}
+
 async function writeJsonArray(filePath, items) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, `${JSON.stringify(items, null, 2)}\n`, "utf8");
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  await fs.writeFile(tempPath, `${JSON.stringify(items, null, 2)}\n`, "utf8");
+  await fs.rename(tempPath, filePath);
 }
 
 async function saveCue(cue) {
   const filePath = cuesFilePath();
-  const cues = await readJsonArray(filePath);
-  const index = cues.findIndex((item) => item.cueId === cue.cueId);
-  if (index >= 0) cues[index] = cue;
-  else cues.push(cue);
-  await writeJsonArray(filePath, cues);
-  return cue;
+  return withFileQueue(filePath, async () => {
+    const cues = await readJsonArray(filePath);
+    const index = cues.findIndex((item) => item.cueId === cue.cueId);
+    if (index >= 0) cues[index] = cue;
+    else cues.push(cue);
+    await writeJsonArray(filePath, cues);
+    return cue;
+  });
 }
 
 function triggerBindingId(source, triggerId) {
@@ -85,12 +107,14 @@ async function saveTriggerBinding(binding) {
     updatedAt: now,
   };
   const filePath = triggerBindingsFilePath();
-  const bindings = await readJsonArray(filePath);
-  const index = bindings.findIndex((entry) => entry.bindingId === item.bindingId);
-  if (index >= 0) bindings[index] = item;
-  else bindings.push(item);
-  await writeJsonArray(filePath, bindings);
-  return item;
+  return withFileQueue(filePath, async () => {
+    const bindings = await readJsonArray(filePath);
+    const index = bindings.findIndex((entry) => entry.bindingId === item.bindingId);
+    if (index >= 0) bindings[index] = item;
+    else bindings.push(item);
+    await writeJsonArray(filePath, bindings);
+    return item;
+  });
 }
 
 async function readTriggerBinding(source, triggerId) {
@@ -104,9 +128,27 @@ async function readTriggerBinding(source, triggerId) {
 async function readCues(filter = {}) {
   const cues = await readJsonArray(cuesFilePath());
   return cues.filter((cue) => {
+    const archived = !!cue.archivedAt;
+    if (filter.archived === "only" && !archived) return false;
+    if (filter.archived !== "only" && !filter.includeArchived && archived) return false;
     if (filter.cueType && cue.cueType !== filter.cueType) return false;
     if (filter.showRunId && (!cue.runtimeRef || cue.runtimeRef.showRunId !== filter.showRunId)) return false;
     return true;
+  });
+}
+
+async function archiveCue(cueId, options = {}) {
+  const filePath = cuesFilePath();
+  return withFileQueue(filePath, async () => {
+    const cues = await readJsonArray(filePath);
+    const cue = cues.find((item) => item.cueId === cueId);
+    if (!cue) throw new Error(`show_control_cue_not_found:${cueId}`);
+    const now = new Date().toISOString();
+    cue.archivedAt = cue.archivedAt || now;
+    cue.archivedReason = options.reason || cue.archivedReason || "manual_archive";
+    cue.archivedBy = options.archivedBy || cue.archivedBy || "show-control";
+    await writeJsonArray(filePath, cues);
+    return cue;
   });
 }
 
@@ -127,6 +169,7 @@ function findCuePayload(cue, payloadId) {
 module.exports = {
   V2_ROOT,
   assertPathUnderV2,
+  archiveCue,
   cuesFilePath,
   findCuePayload,
   readCue,

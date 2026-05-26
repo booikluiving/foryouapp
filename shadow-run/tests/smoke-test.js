@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
+const fsSync = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
@@ -29,6 +30,10 @@ const PROTECTED_V1_FILES = [
   path.join(APP_ROOT, "legacy", "data", "live.sqlite-shm"),
 ];
 const EXPRESS_FALLBACK = "/opt/homebrew/lib/node_modules/node-red/node_modules/express";
+
+function optionalExpressFallback(envKey) {
+  return fsSync.existsSync(EXPRESS_FALLBACK) ? { [envKey]: EXPRESS_FALLBACK } : {};
+}
 
 async function sha256(filePath) {
   const data = await fs.readFile(filePath);
@@ -118,19 +123,19 @@ async function main() {
 
     services.push(spawnService("catalog", catalogScript, {
       CATALOG_PORT: String(PORTS.catalog),
-      V2_CATALOG_EXPRESS_MODULE: EXPRESS_FALLBACK,
+      ...optionalExpressFallback("V2_CATALOG_EXPRESS_MODULE"),
     }));
     await waitForHealth(services.at(-1).child, `http://127.0.0.1:${PORTS.catalog}`, "catalog", services.at(-1).logs);
 
     services.push(spawnService("paths", pathsScript, {
       PATHS_PORT: String(PORTS.paths),
-      V2_PATHS_EXPRESS_MODULE: EXPRESS_FALLBACK,
+      ...optionalExpressFallback("V2_PATHS_EXPRESS_MODULE"),
     }));
     await waitForHealth(services.at(-1).child, `http://127.0.0.1:${PORTS.paths}`, "paths", services.at(-1).logs);
 
     services.push(spawnService("runtime", runtimeScript, {
       RUNTIME_PORT: String(PORTS.runtime),
-      V2_RUNTIME_EXPRESS_MODULE: EXPRESS_FALLBACK,
+      ...optionalExpressFallback("V2_RUNTIME_EXPRESS_MODULE"),
       V2_RUNTIME_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
       V2_RUNTIME_PATHS_URL: `http://127.0.0.1:${PORTS.paths}`,
       V2_SHADOW_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,

@@ -17,10 +17,12 @@ const PORTS = {
   showControl: 19325,
   sq5: 19305,
   camera: 19310,
+  dmx: 19329,
   cameraHardware: 19311,
   cameraOsc: 19312,
   streamdeck: 19327,
   perfectCue: 19328,
+  scriptAgent: 19337,
   tdOsc: 19300,
   tdAck: 19301,
 };
@@ -167,6 +169,78 @@ function startFakeRuntime(port, calls) {
       state.updatedAt = new Date().toISOString();
       state.runLog.push({ type: "situation_stopped", at: state.updatedAt });
       sendJson(res, 200, state);
+      return;
+    }
+    const resetMatch = url.pathname.match(/^\/v0\/runtime\/runs\/([^/]+)\/reset$/);
+    if (req.method === "POST" && resetMatch) {
+      state = {
+        showRunId: null,
+        status: "idle",
+        preparedNext: null,
+        resolvedPreparedNext: null,
+        activeSituation: null,
+        runLog: [{ type: "run_reset", at: new Date().toISOString(), showRunId: resetMatch[1] }],
+      };
+      sendJson(res, 200, state);
+      return;
+    }
+    sendJson(res, 404, { ok: false, error: "not_found" });
+  });
+}
+
+function startFakeScriptAgent(port, calls) {
+  const state = {
+    preparedScene: null,
+    operatorDraft: null,
+    ready: false,
+    revealed: false,
+  };
+  return startHttpServer(port, async (req, res) => {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const body = req.method === "POST" ? await readJson(req) : {};
+    calls.push({ service: "script-agent", method: req.method, path: url.pathname, body, at: Date.now() });
+    if (req.method === "GET" && url.pathname === "/health") {
+      sendJson(res, 200, { ok: true, service: "script-agent", version: "v0", port });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/v0/script-agent/teleprompter-parser/prepare") {
+      state.preparedScene = body;
+      state.ready = false;
+      state.revealed = false;
+      sendJson(res, 200, { ok: true, preparedScene: body, cue: { index: 0 } });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/v0/script-agent/operator/draft/from-runtime") {
+      state.operatorDraft = body;
+      sendJson(res, 201, {
+        ok: true,
+        draft: {
+          showRunId: body.runtimeState && body.runtimeState.showRunId || "show-run-fake-001",
+          situationId: body.runtimeState && body.runtimeState.resolvedPreparedNext && body.runtimeState.resolvedPreparedNext.situationId || "situation:fake",
+        },
+      });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/v0/script-agent/teleprompter-parser/ready") {
+      state.ready = body.ready !== false;
+      sendJson(res, 200, { ok: true, preparedScene: state.preparedScene, ready: state.ready });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/v0/script-agent/teleprompter-parser/reveal") {
+      state.revealed = true;
+      sendJson(res, 200, { ok: true, preparedScene: state.preparedScene, revealed: true, cue: { index: 0 } });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/v0/script-agent/operator/scene-to-chat") {
+      sendJson(res, 201, {
+        ok: true,
+        sessionId: body.sessionId || body.showRunId || "show-run-fake-001",
+        draft: {
+          showRunId: body.runtimeState && body.runtimeState.showRunId || "show-run-fake-001",
+          situationId: body.runtimeState && body.runtimeState.resolvedPreparedNext && body.runtimeState.resolvedPreparedNext.situationId || "situation:fake",
+        },
+        done: { type: "done", text: "Fake scene text" },
+      });
       return;
     }
     sendJson(res, 404, { ok: false, error: "not_found" });
@@ -321,8 +395,10 @@ async function main() {
   process.env.V2_SHOW_CONTROL_RUNTIME_URL = `http://127.0.0.1:${PORTS.runtime}`;
   process.env.V2_SHOW_CONTROL_SQ5_URL = `http://127.0.0.1:${PORTS.sq5}`;
   process.env.V2_SHOW_CONTROL_CAMERA_URL = `http://127.0.0.1:${PORTS.camera}`;
+  process.env.V2_SHOW_CONTROL_DMX_URL = `http://127.0.0.1:${PORTS.dmx}`;
   process.env.V2_SHOW_CONTROL_STREAMDECK_URL = `http://127.0.0.1:${PORTS.streamdeck}`;
   process.env.V2_SHOW_CONTROL_PERFECT_CUE_URL = `http://127.0.0.1:${PORTS.perfectCue}`;
+  process.env.V2_SHOW_CONTROL_SCRIPT_AGENT_URL = `http://127.0.0.1:${PORTS.scriptAgent}`;
   process.env.V2_SHOW_CONTROL_TD_OSC_HOST = "127.0.0.1";
   process.env.V2_SHOW_CONTROL_TD_OSC_PORT = String(PORTS.tdOsc);
   process.env.V2_SHOW_CONTROL_TD_ACK_PORT = String(PORTS.tdAck);
@@ -336,11 +412,14 @@ async function main() {
 
   try {
     const { createServer: createSq5Server } = require("../hardware/sq5-control/server");
+    const { createDmxApp } = require("../hardware/dmx-control/server");
     const { createStreamDeckApp } = require("../hardware/streamdeck-control/server");
     const { createPerfectCueApp } = require("../hardware/perfect-cue-control/server");
 
     servers.push(await startFakeRuntime(PORTS.runtime, calls));
+    servers.push(await startFakeScriptAgent(PORTS.scriptAgent, calls));
     servers.push(await listenExpress(createSq5Server(), PORTS.sq5));
+    servers.push(await listenExpress(createDmxApp({ targetIp: "127.0.0.1", universe: 1 }), PORTS.dmx));
     servers.push(await startFakeCameraHardware(PORTS.cameraHardware, calls));
     cameraSidecar = startCameraSidecarProcess();
     await waitForHttp(`http://127.0.0.1:${PORTS.camera}`, "/api/state");
@@ -360,8 +439,10 @@ async function main() {
         runtimeBaseUrl: `http://127.0.0.1:${PORTS.runtime}`,
         sq5BaseUrl: `http://127.0.0.1:${PORTS.sq5}`,
         cameraBaseUrl: `http://127.0.0.1:${PORTS.camera}`,
+        dmxBaseUrl: `http://127.0.0.1:${PORTS.dmx}`,
         streamDeckBaseUrl: `http://127.0.0.1:${PORTS.streamdeck}`,
         perfectCueBaseUrl: `http://127.0.0.1:${PORTS.perfectCue}`,
+        scriptAgentBaseUrl: `http://127.0.0.1:${PORTS.scriptAgent}`,
         tdOscHost: "127.0.0.1",
         tdOscPort: PORTS.tdOsc,
         tdAckPort: PORTS.tdAck,
@@ -376,17 +457,37 @@ async function main() {
     assert.equal(health.adapterMode, "test");
     const html = await (await fetch(`${showBase}/show-control/`)).text();
     assert(html.includes("Cue Builder"), "Show Control UI should expose Cue Builder tab");
+    assert(html.includes("Actieve cue-definities"), "Show Control UI should expose active cue definitions");
+    assert(html.includes("DMX / Art-Net"), "Show Control UI should expose DMX tab");
     const uiJs = await (await fetch(`${showBase}/show-control/app.js`)).text();
     assert(html.includes("Trigger Bindings"), "Show Control UI should expose trigger bindings");
     assert(uiJs.includes("/v0/show-control/cues"), "UI should create cues through Show Control API");
+    assert(uiJs.includes("/v0/show-control/active-cues"), "UI should load active cue definitions");
     assert(uiJs.includes("/v0/show-control/status"), "UI should show status and warnings");
     assert(uiJs.includes("/v0/show-control/cues/dry-run"), "UI should support dry run without firing hardware");
     assert(uiJs.includes("/v0/show-control/trigger-bindings"), "UI should manage trigger bindings");
 
     const commandList = await fetchJson(showBase, "/v0/show-control/commands");
+    assert(commandList.commands.some((command) => command.name === "runtime.resetRun"));
+    assert(commandList.commands.some((command) => command.name === "runtime.stopSituation"));
     assert(commandList.commands.some((command) => command.name === "sq5.input.mute"));
+    assert(commandList.commands.some((command) => command.name === "dmx.look"));
+    assert(commandList.commands.some((command) => command.name === "dmx.preset"));
+    assert(commandList.commands.some((command) => command.name === "dmx.blackout"));
     assert(commandList.commands.some((command) => command.name === "camera.focus"));
     assert(commandList.commands.some((command) => command.name === "td.camera.set"));
+
+    const activeCueDefinitions = await fetchJson(showBase, "/v0/show-control/active-cues");
+    assert.equal(activeCueDefinitions.count, 12);
+    assert(activeCueDefinitions.cues.some((cue) => cue.id === "streamdeck-run-toggle"));
+    assert(activeCueDefinitions.cues.some((cue) => cue.id === "streamdeck-situation-toggle"));
+    assert(activeCueDefinitions.cues.some((cue) => cue.id === "streamdeck-teleprompter-ready"));
+    assert(activeCueDefinitions.cues.some((cue) => cue.id === "td-camera-1"));
+    assert(activeCueDefinitions.cues.some((cue) => cue.id === "td-camera-2"));
+    assert(activeCueDefinitions.cues.some((cue) => cue.id === "td-camera-3"));
+    assert(activeCueDefinitions.cues.every((cue) => (
+      cue.states || []
+    ).every((state) => state.commandsAvailable === true)), "all active cue commands should exist in the registry");
 
     const dryRun = await fetchJson(showBase, "/v0/show-control/cues/dry-run", {
       method: "POST",
@@ -443,9 +544,43 @@ async function main() {
     assert.equal(startRun.cue.status.state, "ok");
     assert(startRun.cue.actions.some((action) => action.command === "runtime.startRun"));
     assert(startRun.cue.actions.some((action) => action.command === "td.environment.prepare" && action.generatedByActionId));
+    assert(startRun.cue.actions.some((action) => action.command === "teleprompter.prepare" && action.generatedByActionId));
+    assert(startRun.cue.actions.some((action) => action.command === "script-agent.operator.prepareDraft" && action.generatedByActionId));
+    assert(startRun.cue.actions.findIndex((action) => action.command === "teleprompter.prepare") < startRun.cue.actions.findIndex((action) => action.command === "td.environment.prepare"));
+    assert(startRun.cue.actions.findIndex((action) => action.command === "script-agent.operator.prepareDraft") < startRun.cue.actions.findIndex((action) => action.command === "td.environment.prepare"));
     assert(startRun.cue.acks.some((ack) => ack.command === "td.environment.prepare" && ack.stage === "loaded"));
     assert(calls.some((call) => call.service === "runtime" && call.path === "/v0/runtime/runs/start"));
     assert(calls.some((call) => call.service === "touchdesigner" && call.command === "td.environment.prepare" && call.payloadFetched));
+    assert(calls.some((call) => call.service === "script-agent" && call.path === "/v0/script-agent/teleprompter-parser/prepare"));
+    assert(calls.some((call) => call.service === "script-agent" && call.path === "/v0/script-agent/operator/draft/from-runtime"));
+    const startRunPrepareCall = calls.find((call) => call.service === "touchdesigner" && call.command === "td.environment.prepare" && call.payloadFetched);
+    assert.equal(startRunPrepareCall.payload.assetId, "asset:bg");
+    assert.equal(startRunPrepareCall.payload.filePath, "/tmp/fake-background.jpg");
+    assert.equal(startRunPrepareCall.payload.backgroundAsset.assetId, "asset:bg");
+
+    const autoStartSituation = await fetchJson(showBase, "/v0/show-control/cues/start-situation", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        showRunId: "show-run-fake-001",
+        name: "Stream Deck auto TD GO start situation",
+      }),
+    });
+    assert.equal(autoStartSituation.cue.status.state, "ok");
+    assert(autoStartSituation.cue.actions.some((action) => action.command === "td.environment.go" && action.generatedByActionId));
+    assert(autoStartSituation.cue.actions.some((action) => action.command === "teleprompter.reveal" && action.generatedByActionId));
+    await waitForCondition(() => calls.some((call) => call.service === "touchdesigner" && call.command === "td.environment.go" && call.payloadFetched));
+    assert(calls.some((call) => call.service === "script-agent" && call.path === "/v0/script-agent/teleprompter-parser/reveal"));
+
+    const sceneToChat = await fetchJson(showBase, "/v0/show-control/cues/scene-to-chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Stream Deck scene naar chat" }),
+    });
+    assert.equal(sceneToChat.cue.status.state, "ok");
+    assert(sceneToChat.cue.actions.some((action) => action.command === "script-agent.operator.sceneToChat"));
+    assert(!sceneToChat.cue.actions.some((action) => action.command === "teleprompter.prepare"));
+    assert(calls.some((call) => call.service === "script-agent" && call.path === "/v0/script-agent/operator/scene-to-chat"));
 
     const startSituation = await fetchJson(showBase, "/v0/show-control/cues/start-situation", {
       method: "POST",
@@ -474,6 +609,40 @@ async function main() {
     assert(startSituation.cue.actions.some((action) => action.command === "streamdeck.status" && action.adapterResult));
     assert(startSituation.cue.actions.some((action) => action.command === "perfectCue.trigger" && action.adapterResult));
 
+    const stopSituation = await fetchJson(showBase, "/v0/show-control/cues", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Stream Deck stop situation",
+        actions: [
+          { command: "runtime.stopSituation", ackMode: "acknowledged-async", payload: { showRunId: "show-run-fake-001", autoPrepareNext: true } },
+        ],
+      }),
+    });
+    assert.equal(stopSituation.cue.status.state, "ok");
+    assert(calls.some((call) => call.service === "runtime" && call.path === "/v0/runtime/runs/show-run-fake-001/stop-situation"));
+    assert(stopSituation.cue.actions.some((action) => action.command === "td.environment.prepare" && action.generatedByActionId));
+    assert(stopSituation.cue.actions.some((action) => action.command === "teleprompter.prepare" && action.generatedByActionId));
+    assert(stopSituation.cue.actions.some((action) => action.command === "script-agent.operator.prepareDraft" && action.generatedByActionId));
+    assert(stopSituation.cue.actions.findIndex((action) => action.command === "teleprompter.prepare") < stopSituation.cue.actions.findIndex((action) => action.command === "td.environment.prepare"));
+    assert(stopSituation.cue.actions.findIndex((action) => action.command === "script-agent.operator.prepareDraft") < stopSituation.cue.actions.findIndex((action) => action.command === "td.environment.prepare"));
+    assert(stopSituation.cue.acks.some((ack) => ack.command === "td.environment.prepare" && ack.stage === "loaded"));
+    assert(calls.some((call) => call.service === "script-agent" && call.path === "/v0/script-agent/teleprompter-parser/prepare"));
+    assert(calls.some((call) => call.service === "script-agent" && call.path === "/v0/script-agent/operator/draft/from-runtime"));
+
+    const resetRun = await fetchJson(showBase, "/v0/show-control/cues", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Stream Deck reset run",
+        actions: [
+          { command: "runtime.resetRun", ackMode: "acknowledged-async", payload: { showRunId: "show-run-fake-001" } },
+        ],
+      }),
+    });
+    assert.equal(resetRun.cue.status.state, "ok");
+    assert(calls.some((call) => call.service === "runtime" && call.path === "/v0/runtime/runs/show-run-fake-001/reset"));
+
     const bad = await fetch(`${showBase}/v0/show-control/cues`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -501,6 +670,7 @@ async function main() {
     assert(status.latestCue);
     assert.equal(status.hardware.sq5.ok, true);
     assert.equal(status.hardware.camera.ok, true);
+    assert.equal(status.hardware.dmx.ok, true);
     assert.equal(status.hardware.streamdeck.ok, true);
     assert.equal(status.hardware.perfectCue.ok, true);
     const cues = await fetchJson(showBase, "/v0/show-control/cues");
@@ -525,6 +695,7 @@ async function main() {
       cameraHardwareRoutes: calls.filter((call) => call.service === "camera-hardware").map((call) => `${call.method} ${call.path}`),
       streamDeckButtons: Object.keys(streamDeckState.buttons),
       streamDeckBindings: [cameraBinding.binding.bindingId],
+      activeCueDefinitions: activeCueDefinitions.count,
       perfectCueTriggers: perfectCueState.triggers.map((trigger) => `${trigger.source}:${trigger.key}`),
       hardwareStatus: status.hardware,
       tdCommands: calls.filter((call) => call.service === "touchdesigner").map((call) => ({
@@ -538,11 +709,12 @@ async function main() {
       },
       hypotheses: {
         H1: "runtime.startRun changed fake Runtime state and generated td.environment.prepare for preparedNext",
-        H2: "runtime.startSituation fanned out to TD GO, SQ5 mic, Camera focus, Stream Deck status and Perfect Cue trigger",
+        H2: "runtime.startSituation generated TD GO by default and can fan out to SQ5, Camera, Stream Deck status and Perfect Cue trigger",
         H4: "unknown commands fail through command registry",
         H5: "SQ5/Camera adapters called V2 sidecar HTTP contracts copied from the legacy API shape",
         H6: "TD fetched HTTP payloads and sent acks; timeout warning stored",
         H7: "UI assets expose cue create/run/status/warning surfaces",
+        H7a: "UI exposes active Stream Deck cue definitions separately from historical cue records",
         H7b: "Stream Deck trigger binding fires a saved cue and reaches TD camera switch",
         H8: "V1 app files and legacy/data/live.sqlite* hashes unchanged",
         H9: "smoke ran in explicit test mode with V2 hardware sidecars and fake downstream hardware",

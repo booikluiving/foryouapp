@@ -152,6 +152,30 @@ function environmentMap(readModel) {
   return new Map((readModel.environments || []).map((environment) => [environment.name, environment]));
 }
 
+function canonicalEnvironmentKey(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function environmentCanonicalMap(readModel) {
+  const buckets = new Map();
+  for (const environment of readModel.environments || []) {
+    const key = canonicalEnvironmentKey(environment.name);
+    if (!key) continue;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(environment);
+  }
+  return new Map(Array.from(buckets.entries())
+    .filter(([, matches]) => matches.length === 1)
+    .map(([key, matches]) => [key, matches[0]]));
+}
+
 function candidateSort(a, b) {
   return a.groupName.localeCompare(b.groupName, "nl")
     || TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type)
@@ -166,6 +190,7 @@ function pushGroup(map, groupName, item) {
 async function scanSourceDirectory(sourceDir, readModel) {
   const resolvedSource = path.resolve(sourceDir);
   const envByName = environmentMap(readModel);
+  const envByCanonicalName = environmentCanonicalMap(readModel);
   const entries = await fs.readdir(resolvedSource, { withFileTypes: true });
   entries.sort((a, b) => a.name.localeCompare(b.name, "nl"));
 
@@ -219,7 +244,8 @@ async function scanSourceDirectory(sourceDir, readModel) {
       continue;
     }
 
-    const environment = envByName.get(classification.groupName);
+    const environment = envByName.get(classification.groupName)
+      || envByCanonicalName.get(canonicalEnvironmentKey(classification.groupName));
     if (!environment) {
       pushGroup(unmatchedGroups, classification.groupName, {
         ...item,

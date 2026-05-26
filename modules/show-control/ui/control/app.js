@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 
 const tabs = [
   ["hub", "Cue Hub"],
+  ["active-cues", "Active Cues"],
   ["builder", "Cue Builder"],
   ["library", "Cue Library"],
   ["triggers", "Triggers"],
@@ -11,6 +12,7 @@ const tabs = [
   ["td", "TouchDesigner"],
   ["audio", "Audio/SQ5"],
   ["cameras", "Cameras"],
+  ["dmx", "DMX"],
   ["deck", "Deck/Cue"],
   ["logs", "Logs"],
 ];
@@ -29,6 +31,10 @@ const humanCommands = [
   "td.blackout",
   "sq5.input.mute",
   "sq5.input.level",
+  "dmx.look",
+  "dmx.preset",
+  "dmx.blackout",
+  "dmx.stop",
   "camera.focus",
   "camera.iris",
   "camera.zoom",
@@ -43,6 +49,8 @@ let commands = [];
 let commandMap = new Map();
 let status = null;
 let cues = [];
+let archivedCues = [];
+let activeCueDefinitions = [];
 let bindings = [];
 let builderActions = [];
 let currentCueId = null;
@@ -119,6 +127,10 @@ function actionTitle(action) {
   if (action.command === "runtime.startRun") return "Start run";
   if (action.command === "td.environment.go") return "TD go omgeving";
   if (action.command === "td.environment.prepare") return "TD prepare omgeving";
+  if (action.command === "dmx.look") return `DMX ${payload.label || payload.name || "look"}`;
+  if (action.command === "dmx.preset") return `DMX preset ${payload.preset || payload.name || "auto"}`;
+  if (action.command === "dmx.blackout") return "DMX blackout";
+  if (action.command === "dmx.stop") return "DMX stop live";
   if (action.command === "sq5.input.mute") return `Mic ${payload.channel || "?"} ${payload.muted ? "uit" : "aan"}`;
   if (action.command === "streamdeck.status") return `Deck ${payload.button || "status"} ${payload.label || payload.state || ""}`.trim();
   if (action.command === "camera.focus") return `Camera ${payload.camera || "?"} focus`;
@@ -253,6 +265,33 @@ function commandFields(action) {
       <label class="fy-label">Waarde
         <input class="fy-input payload-field" data-field="normalised" type="number" min="0" max="1" step="0.01" value="${fieldValue(action, "normalised", "0.5")}">
       </label>
+    `;
+  }
+  if (command === "dmx.blackout") {
+    return `
+      <label class="fy-label">Hold ms
+        <input class="fy-input payload-field" data-field="holdMs" type="number" min="1" value="${fieldValue(action, "holdMs", "900")}">
+      </label>
+    `;
+  }
+  if (command === "dmx.preset") {
+    return `
+      <label class="fy-label">Preset
+        <select class="fy-select payload-field" data-field="preset">
+          ${["auto", "bioscoop", "podcast", "nacht"].map((preset) => `<option value="${preset}" ${String(action.payload.preset || action.payload.name || "") === preset ? "selected" : ""}>${preset}</option>`).join("")}
+        </select>
+      </label>
+      <label class="fy-label">Hold ms
+        <input class="fy-input payload-field" data-field="holdMs" type="number" min="1" value="${fieldValue(action, "holdMs", "900")}">
+      </label>
+    `;
+  }
+  if (command === "dmx.look") {
+    return `
+      <details class="payload-details" open>
+        <summary>DMX payload</summary>
+        <textarea class="fy-textarea raw-payload" spellcheck="false">${esc(JSON.stringify(action.payload || {}, null, 2))}</textarea>
+      </details>
     `;
   }
   return `
@@ -411,6 +450,10 @@ function defaultPayload(command) {
   if (command === "td.phase.set") return { phase: "cams" };
   if (command === "sq5.input.mute") return { channel: "brent", muted: false };
   if (command === "sq5.input.level") return { channel: "brent", db: 0 };
+  if (command === "dmx.look") return { label: "HSI lamp 1 wit", channels: { 1: 255, 2: 0, 3: 0 }, holdMs: 900 };
+  if (command === "dmx.preset") return { preset: "auto", holdMs: 900 };
+  if (command === "dmx.blackout") return { holdMs: 900 };
+  if (command === "dmx.stop") return {};
   if (command === "camera.focus" || command === "camera.iris" || command === "camera.zoom") return { camera: "cam1", normalised: 0.5 };
   if (command === "streamdeck.status" || command === "streamdeck.button") return { button: "start-stop", state: "active", label: "STOP" };
   if (command === "perfectCue.trigger") return { key: "Space" };
@@ -445,6 +488,19 @@ function loadTemplate(name) {
   } else if (name === "sq5Mic") {
     $("cueNameInput").value = "Mic brent aan";
     builderActions = [baseAction("sq5.input.mute", { channel: "brent", muted: false }, { ackMode: "acknowledged-async", timeoutMs: 800 })];
+  } else if (name === "dmxBlackout") {
+    $("cueNameInput").value = "Licht uit";
+    builderActions = [baseAction("dmx.blackout", { holdMs: 900 }, { ackMode: "acknowledged-async", timeoutMs: 1800 })];
+  } else if (name === "dmxPreset") {
+    $("cueNameInput").value = "Licht preset bioscoop";
+    builderActions = [baseAction("dmx.preset", { preset: "bioscoop", holdMs: 900 }, { ackMode: "acknowledged-async", timeoutMs: 1800 })];
+  } else if (name === "dmxWarm") {
+    $("cueNameInput").value = "Licht warm key";
+    builderActions = [baseAction("dmx.look", {
+      label: "warm-key-lamp-1",
+      channels: { 1: 220, 2: 24, 3: 190 },
+      holdMs: 900,
+    }, { ackMode: "acknowledged-async", timeoutMs: 1800 })];
   } else if (name === "streamDeckStatus") {
     $("cueNameInput").value = "Deck feedback";
     builderActions = [baseAction("streamdeck.status", { button: "start-stop", state: "active", label: "ACTIVE" }, { ackMode: "fire-and-forget", timeoutMs: 300 })];
@@ -552,6 +608,8 @@ function renderHub() {
 
 function renderLibrary() {
   $("libraryCount").textContent = String(cues.length);
+  $("activeCueCount").textContent = String(cues.length);
+  $("archivedCueCount").textContent = String(archivedCues.length);
   $("cueLibrary").innerHTML = cues.length ? cues.slice().reverse().map((cue) => `
     <div class="fy-list-item library-row">
       <div>
@@ -568,6 +626,21 @@ function renderLibrary() {
       </div>
     </div>
   `).join("") : '<div class="fy-small">Geen cues.</div>';
+  $("archiveCount").textContent = String(archivedCues.length);
+  $("cueArchive").innerHTML = archivedCues.length ? archivedCues.slice().reverse().map((cue) => `
+    <div class="fy-list-item library-row">
+      <div>
+        <strong>${esc(cue.name || cue.cueId)}</strong>
+        <div class="fy-small">${esc(cue.cueId)} · ${esc(cue.status && cue.status.state || "queued")} · ${(cue.actions || []).length} acties · ${esc(cue.archivedReason || "archief")}</div>
+        <div class="mini-sheet">
+          ${(cue.actions || []).slice(0, 4).map((action, index) => `<span>${index + 1}. ${esc(actionTitle(action))}</span>`).join("")}
+        </div>
+      </div>
+      <div class="fy-actions">
+        <button class="fy-button duplicate-cue" data-cue-id="${esc(cue.cueId)}" data-archived="true" type="button">Dupliceer</button>
+      </div>
+    </div>
+  `).join("") : '<div class="fy-small">Geen gearchiveerde cues.</div>';
   document.querySelectorAll(".execute-cue").forEach((button) => {
     button.addEventListener("click", async () => {
       await post(`/v0/show-control/cues/${encodeURIComponent(button.dataset.cueId)}/execute`, { nonBlocking: true });
@@ -579,8 +652,58 @@ function renderLibrary() {
     button.addEventListener("click", () => editCue(cues.find((cue) => cue.cueId === button.dataset.cueId), false));
   });
   document.querySelectorAll(".duplicate-cue").forEach((button) => {
-    button.addEventListener("click", () => editCue(cues.find((cue) => cue.cueId === button.dataset.cueId), true));
+    button.addEventListener("click", () => {
+      const source = button.dataset.archived ? archivedCues : cues;
+      editCue(source.find((cue) => cue.cueId === button.dataset.cueId), true);
+    });
   });
+}
+
+function renderActiveCues() {
+  const root = $("activeCueList");
+  if (!root) return;
+  const total = activeCueDefinitions.length;
+  const commandStates = activeCueDefinitions.flatMap((cue) => cue.states || []).filter((state) => (state.commands || []).length);
+  const allCommandsAvailable = commandStates.every((state) => state.commandsAvailable !== false);
+  $("activeCueDefinitionCount").textContent = String(total);
+  $("streamDeckCueCount").textContent = String(total);
+  $("activeCueCommandState").textContent = commandStates.length && allCommandsAvailable ? "ok" : commandStates.length ? "mist" : "n.v.t.";
+  root.innerHTML = total ? activeCueDefinitions.map((cue) => {
+    const states = cue.states || [];
+    const cueOk = states.every((state) => state.commandsAvailable !== false);
+    return `
+      <div class="active-cue-card">
+        <header>
+          <div>
+            <strong>${esc(cue.label || cue.id)}</strong>
+            <span>${esc(cue.page || "Stream Deck")} · rij ${Number(cue.row || 0) + 1}, knop ${Number(cue.column || 0) + 1}</span>
+          </div>
+          <span class="${cueOk ? "fy-badge fy-badge-good" : "fy-badge fy-badge-bad"}">${cueOk ? "geregistreerd" : "check nodig"}</span>
+        </header>
+        <p>${esc(cue.summary || "")}</p>
+        <div class="active-cue-states">
+          ${states.map((state) => {
+            const commands = state.commands || [];
+            const hasCommands = commands.length > 0;
+            const stateOk = state.commandsAvailable !== false;
+            return `
+              <div class="active-cue-state ${hasCommands ? "" : "is-disabled"}">
+                <div class="state-head">
+                  <strong>${esc(state.label || "STATE")}</strong>
+                  <span class="${!hasCommands ? "fy-badge" : stateOk ? "fy-badge fy-badge-good" : "fy-badge fy-badge-bad"}">${!hasCommands ? "geen cue" : stateOk ? "commands ok" : "command mist"}</span>
+                </div>
+                <div class="fy-small">Wanneer: ${esc(state.when || "")}</div>
+                <div class="fy-small">Doet: ${esc(state.effect || "")}</div>
+                <div class="command-pills">
+                  ${hasCommands ? commands.map((command) => `<span>${esc(command)}</span>`).join("") : "<span>disabled/no-op</span>"}
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  }).join("") : '<div class="fy-small">Geen actieve cue-definities.</div>';
 }
 
 function renderBindings() {
@@ -635,6 +758,7 @@ function renderCommands() {
   renderCards('[data-target="touchdesigner"]', targetCommands("touchdesigner"));
   renderCards('[data-target="sq5"]', targetCommands("sq5"));
   renderCards('[data-target="camera"]', targetCommands("camera"));
+  renderCards('[data-target="dmx"]', targetCommands("dmx"));
   renderCards('[data-target="deck"]', targetCommands("deck"));
 }
 
@@ -652,22 +776,27 @@ function renderLogs() {
 }
 
 async function refresh(options = {}) {
-  const [commandData, statusData, cueData, bindingData] = await Promise.all([
+  const [commandData, statusData, activeCueData, cueData, archivedCueData, bindingData] = await Promise.all([
     api("/v0/show-control/commands"),
     api("/v0/show-control/status"),
+    api("/v0/show-control/active-cues"),
     api("/v0/show-control/cues"),
+    api("/v0/show-control/cues?archived=only"),
     api("/v0/show-control/trigger-bindings"),
   ]);
   commands = commandData.commands || [];
   commandMap = new Map(commands.map((command) => [command.name, command]));
   status = statusData;
+  activeCueDefinitions = activeCueData.cues || [];
   cues = cueData.cues || [];
+  archivedCues = archivedCueData.cues || [];
   bindings = bindingData.bindings || [];
   renderAll(options);
 }
 
 function renderAll(options = {}) {
   renderHub();
+  renderActiveCues();
   if (!options.skipBuilder) renderBuilder();
   renderLibrary();
   renderBindings();

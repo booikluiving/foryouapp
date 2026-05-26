@@ -6,32 +6,31 @@
     <title>Operator Stage</title>
     <link rel="stylesheet" href="/script-agent/operator/assets/styles.css">
   </head>
-  <body class="stage-body">
-    <header class="stage-topbar">
-      <div>
-        <p class="eyebrow">Script Agent</p>
-        <h1>Operator Stage</h1>
-      </div>
-      <nav class="toplinks">
-        <a href="/script-agent/operator">Operator</a>
-        <a href="http://127.0.0.1:3024/runtime" target="_blank" rel="noreferrer">Runtime</a>
-      </nav>
-    </header>
-
-    <main class="stage-layout">
-      <section class="stage-console">
-        <div id="stageMessages" class="stage-messages"></div>
-      </section>
-      <section class="stage-input">
-        <textarea id="stageDraft" spellcheck="false"></textarea>
-        <div class="button-row">
-          <button id="stageRefresh" type="button">Refresh draft</button>
-          <button id="stageClear" type="button">Clear</button>
-          <button id="stageSubmit" class="primary" type="button">Send</button>
+  <body class="terminal-stage-body">
+    <div id="stageWrap">
+      <div id="stage" data-cursor="block">
+        <main class="terminal-stage" id="terminal">
+          <div class="stage-hint">
+            <span>ENTER SEND</span>
+            <span>ESC CLEAR</span>
+          </div>
+          <section class="stage-log" id="log" aria-live="polite">
+            <div id="logInner"></div>
+          </section>
+          <section class="prompt-row">
+            <div class="prompt-inner">
+              <span class="sigil">&gt;</span>
+              <span id="typing"><span class="cursor"></span></span>
+            </div>
+          </section>
+        </main>
+        <div id="stageStatus" aria-live="polite">
+          <span id="connectionStatus">connecting</span>
+          <span id="usageStatus">0 tokens - $0.0000</span>
         </div>
-        <p id="stageStatus" class="meta-line">Verbinden...</p>
-      </section>
-    </main>
+        <textarea id="hiddenInput" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+      </div>
+    </div>
 
     <script src="/script-agent/operator/assets/stage.js" defer></script>
   </body>

@@ -13,8 +13,12 @@ const {
   validateScriptOutputShape,
 } = require("../../../shared/contracts/script-agent-v0");
 const { createOperatorService } = require("../operator/operator-service");
+const { fetchCatalogSnapshot } = require("../client/catalog-client");
 const { buildPromptInput } = require("../prompt-builder/prompt-builder");
 const { createScriptOutput } = require("../script-output/script-service");
+const { parseTeleprompt } = require("../teleprompter-parser/src/domain/parse-teleprompt");
+const { createTelepromptStore } = require("../teleprompter-parser/src/runtime/teleprompt-store");
+const { createTeleprompterParserBridge } = require("../teleprompter-parser/src/integration/script-agent-bridge");
 const { parseScriptText } = require("../text-parser/text-parser");
 
 const runtimeState = {
@@ -127,6 +131,18 @@ async function main() {
   const promptInputAgain = buildPromptInput(mutatedOrderState, new Date("2026-05-24T18:00:02.000Z"));
   assert.equal(promptInputAgain.contentHash, promptInput.contentHash, "prompt content should be stable from resolved output");
 
+  const previousCatalogUrl = process.env.V2_SCRIPT_AGENT_CATALOG_URL;
+  process.env.V2_SCRIPT_AGENT_CATALOG_URL = "http://127.0.0.1:1";
+  const fallbackCatalog = await fetchCatalogSnapshot();
+  if (previousCatalogUrl == null) {
+    delete process.env.V2_SCRIPT_AGENT_CATALOG_URL;
+  } else {
+    process.env.V2_SCRIPT_AGENT_CATALOG_URL = previousCatalogUrl;
+  }
+  assert.equal(fallbackCatalog.ok, true);
+  assert.equal(fallbackCatalog.source, "local-catalog-read-model");
+  assert((fallbackCatalog.catalog.situations || []).length > 0, "local catalog fallback should expose situations");
+
   const parserOutput = parseScriptText({
     promptInput,
     scriptText: "Ada: Hallo Ben\nBen: Hallo Ada\nOnbekend: dit moet falen",
@@ -148,9 +164,48 @@ async function main() {
   assert.deepEqual(scriptOutput.captions.segments.map((segment) => segment.speaker), ["Ada", "Ben"]);
   assertNoRuntimeOrderFields(scriptOutput);
 
+  const legacyParsed = parseTeleprompt({
+    rawText: "Mark moet winnen\nAda: Hallo Ben. Tweede zin.\nRegie: Ze wachten.",
+    source: "unit",
+  });
+  assert.equal(legacyParsed.title, "Mark moet winnen");
+  assert.equal(legacyParsed.lines.length, 3);
+  assert.deepEqual(legacyParsed.lines.map((line) => line.type), ["dialogue", "dialogue", "stage_direction"]);
+  assert.equal(legacyParsed.characters[0].color, "#4cc9f0");
+
+  const legacyStore = createTelepromptStore();
+  legacyStore.prepareScene({
+    sceneId: 1,
+    title: "Open Scene",
+    environment: { id: 1, name: "Studio", imageUrl: "http://127.0.0.1:3021/v0/catalog/media-assets/file/bg" },
+    characters: [{ id: 1, name: "Ada", slot: 1 }, { id: 2, name: "Ben", slot: 2 }],
+  });
+  legacyStore.ingest({ sceneId: 1, rawText: "Ada: Eerste.\nBen: Tweede.", source: "unit" });
+  assert.equal(legacyStore.getCue().deckLength, 4);
+  assert.equal(legacyStore.getPreparedScene().status, "prepared");
+  legacyStore.revealPreparedScene();
+  assert.equal(legacyStore.getPreparedScene().status, "playing");
+  assert.equal(legacyStore.setCaptionStyle({ fontSizeScale: 9, verticalPosition: 10 }).captionStyle.fontSizeScale, 1.25);
+
+  const bridge = createTeleprompterParserBridge({
+    env: { V2_SCRIPT_AGENT_CATALOG_URL: "http://catalog.test" },
+  });
+  const preparedFromPrompt = bridge.preparedSceneFromPromptInput(promptInput);
+  assert.equal(preparedFromPrompt.sceneId, 1);
+  assert.deepEqual(preparedFromPrompt.characters.map((character) => [character.name, character.slot]), [["Ada", 1], ["Ben", 2]]);
+  const preparedFromPayload = bridge.preparedSceneFromPayload({
+    situation: { situationId: "situation:1", legacySituationId: 1, title: "Open Scene" },
+    environment: { id: "environment:1", legacyId: 1, name: "Studio" },
+    backgroundAsset: { url: "/v0/catalog/media-assets/file/bg" },
+    performerSlots: [{ characterId: "character:1", legacyCharacterId: 1, characterName: "Ada", slotIndex: 1 }],
+  });
+  assert.equal(preparedFromPayload.environment.imageUrl, "http://catalog.test/v0/catalog/media-assets/file/bg");
+  assert.equal(preparedFromPayload.characters[0].slot, 1);
+
   const operatorService = createOperatorService({
     clients: {
       fetchCurrentRuntimeState: async () => ({ ok: true, state: cloneJson(runtimeState) }),
+      fetchCatalogSnapshot: async () => ({ ok: true, catalog: cloneJson(runtimeState.showRunSnapshot.catalog) }),
     },
     env: {},
     fetchImpl: fakeDeepSeekFetch("sk-test-deepseek"),
@@ -176,7 +231,38 @@ async function main() {
   assert(operatorDraft.text.includes("Open Scene"));
   assert(operatorDraft.text.includes("Ada"));
   assert(operatorDraft.text.includes("Studio"));
+  assert.equal(operatorService.snapshotStage().draftInfo.situationId, "situation:1");
+  assert.deepEqual(operatorService.snapshotStage().draftInfo.characterIds, ["character:1", "character:2"]);
+  assert.equal(operatorService.snapshotStage().draftInfo.environmentId, "environment:1");
+  assert.equal(operatorService.snapshotStage().draft, "");
   assertNoRuntimeOrderFields(operatorDraft);
+
+  const savedStyle = await operatorService.saveStageStyle({ font: "ibm", cursor: "not-real", fontSize: 99 });
+  assert.deepEqual(savedStyle, { font: "ibm", cursor: "block", fontSize: 42 });
+  const stageEvents = [];
+  operatorService.emitter.on("stage", (event) => stageEvents.push(event));
+  operatorService.updateStageDraft("live typing", { sourceId: "unit-source", revision: 99 });
+  assert(stageEvents.some((event) => event.type === "operator_stage_draft" && event.sourceId === "unit-source" && event.revision === 99));
+
+  const index = await operatorService.catalogIndex();
+  assert.equal(index.situaties.length, 1);
+  assert.equal(index.personages.length, 2);
+  const manual = await operatorService.createManualDraft({
+    sessionId: "manual_session",
+    situationId: "situation:1",
+    characterIds: ["character:2"],
+    environmentId: "environment:1",
+    extra: "Maak het compacter.",
+    sourceId: "unit-manual",
+  });
+  assert.equal(validatePromptInputShape(manual.promptInput).length, 0);
+  assert.equal(manual.promptInput.source.type, "manual-catalog-selection");
+  assert.equal(manual.promptInput.situation.situationId, "situation:1");
+  assert.deepEqual(manual.promptInput.characters.map((item) => item.characterId), ["character:2"]);
+  assert.deepEqual(operatorService.snapshotStage().draftInfo.characterIds, ["character:2"]);
+  assert.equal(operatorService.snapshotStage().draft, "");
+  assert(manual.draft.text.includes("Maak het compacter."));
+  assertNoRuntimeOrderFields(manual.promptInput);
 
   const streamEvents = [];
   const generated = await operatorService.streamChat({
@@ -190,6 +276,13 @@ async function main() {
   assert(streamEvents.some((event) => event.type === "delta"));
   assert(streamEvents.some((event) => event.type === "done"));
   assertNoRuntimeOrderFields(generated.scriptOutput);
+
+  const sceneChatEvents = [];
+  const sceneChat = await operatorService.sceneToChat({ sourceId: "unit-scene-chat" }, (event) => sceneChatEvents.push(event));
+  assert.equal(sceneChat.sessionId, runtimeState.showRunId);
+  assert.equal(sceneChat.draft.source.type, "runtime-prepared-next");
+  assert.equal(sceneChat.done.provider, "deepseek");
+  assert(sceneChatEvents.some((event) => event.type === "done"));
   const operatorStatus = await operatorService.status();
   assert(!JSON.stringify(operatorStatus).includes("sk-test-deepseek"));
 
@@ -201,12 +294,18 @@ async function main() {
     performerSlots: scriptOutput.teleprompter.performerSlots.length,
     assertions: [
       "resolvedPreparedNext yields stable prompt input",
+      "Catalog client falls back to local V2 read model when the service URL is unavailable",
       "parser verifies characters and flags unknown roles against snapshot",
       "teleprompter shows performer slots from runtime output",
       "Script Agent output contains no Runtime order state",
       "Operator migrates preparedNext to editable DeepSeek prompt draft",
+      "Operator builds manual catalog drafts with stage source tracking",
+      "Operator stage style normalizes legacy terminal settings",
       "Operator secrets are managed in UI API without plaintext status leaks",
       "DeepSeek stream is converted to Script Agent output and teleprompter data",
+      "Scene naar chat uses the Runtime prepared draft and DeepSeek stream",
+      "Legacy teleprompter parser/store behavior is preserved under Script Agent",
+      "Teleprompter bridge maps Script Agent prompt input to legacy prepared scene payloads",
     ],
   }, null, 2));
   process.stdout.write("\n");

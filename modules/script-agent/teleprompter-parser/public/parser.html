@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>For You - Tekstparser</title>
+    <link rel="stylesheet" href="/script-agent/teleprompter-parser/styles.css" />
+  </head>
+  <body class="parser-body">
+    <header class="parser-header">
+      <div>
+        <h1>Tekstparser</h1>
+        <p>Rule-based parser voor teleprompter-kaarten.</p>
+      </div>
+      <div class="parser-actions">
+        <a class="stage-link" href="/script-agent/teleprompter-parser/stage" target="_blank" rel="noreferrer">Stage</a>
+        <a class="stage-link" href="/script-agent/teleprompter-parser/live-captions" target="_blank" rel="noreferrer">Live captions</a>
+        <a class="stage-link" href="/script-agent/teleprompter-parser/live-captions?preview=1" target="_blank" rel="noreferrer">Caption preview</a>
+        <label class="toggle-control">
+          <input id="autoCameraSwitchInput" type="checkbox" />
+          <span>AUTO CAMS</span>
+        </label>
+        <label class="toggle-control">
+          <input id="reactionCameraSwitchInput" type="checkbox" />
+          <span>AUTO REACTIES</span>
+        </label>
+        <button id="parseButton" class="primary" type="button">Parse</button>
+      </div>
+    </header>
+
+    <main class="parser-layout">
+      <section class="parser-panel input-panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Input</h2>
+            <p>Plak ruwe scène-output of wacht op Operator/API-output.</p>
+          </div>
+        </div>
+        <div class="input-stack">
+          <label>
+            Titel
+            <input id="titleInput" autocomplete="off" placeholder="optioneel" />
+          </label>
+          <label>
+            Ruwe tekst
+            <textarea id="rawTextInput" spellcheck="false" placeholder="PERSONAGE: tekst..."></textarea>
+          </label>
+        </div>
+        <section class="caption-style-panel" aria-labelledby="captionStyleTitle">
+          <div class="panel-heading compact">
+            <div>
+              <h2 id="captionStyleTitle">Live captions</h2>
+              <p>Styling voor de verticale overlay.</p>
+            </div>
+            <button id="captionStyleReset" type="button">Reset</button>
+          </div>
+          <div class="caption-style-controls">
+            <label>
+              <span>Tekstgrootte <output id="captionSizeValue">100%</output></span>
+              <input id="captionSizeInput" type="range" min="45" max="125" step="5" value="100" />
+            </label>
+            <label>
+              <span>Hoogte <output id="captionPositionValue">66%</output></span>
+              <input id="captionPositionInput" type="range" min="50" max="84" step="1" value="66" />
+            </label>
+            <label>
+              <span>Breedte <output id="captionWidthValue">86%</output></span>
+              <input id="captionWidthInput" type="range" min="56" max="96" step="1" value="86" />
+            </label>
+            <label>
+              <span>Zwarte rand <output id="captionOutlineValue">100%</output></span>
+              <input id="captionOutlineInput" type="range" min="45" max="125" step="5" value="100" />
+            </label>
+          </div>
+          <p id="captionStyleStatus" class="status-text">Captionstijl klaar.</p>
+        </section>
+        <p id="statusText" class="status-text">Nog geen parse.</p>
+      </section>
+
+      <section class="parser-panel preview-panel">
+        <div class="panel-heading">
+          <div>
+            <h2 id="previewTitle">Teleprompt</h2>
+            <p id="previewMeta">Geen regels.</p>
+          </div>
+        </div>
+        <p class="status-text">Preview van de huidige stage-state.</p>
+        <div id="linePreview" class="line-preview">
+          <p class="empty-preview">Nog geen teleprompt.</p>
+        </div>
+      </section>
+    </main>
+
+    <script src="/script-agent/teleprompter-parser/parser-app.js"></script>
+  </body>
+</html>

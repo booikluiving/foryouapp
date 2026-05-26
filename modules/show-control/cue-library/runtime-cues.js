@@ -4,13 +4,51 @@ const {
   SHOW_CONTROL_CUE_SCHEMA_VERSION,
   createShowControlId,
 } = require("../../../shared/contracts/show-control-v0");
+const { enrichPayloadWithEnvironmentAssets } = require("./environment-assets");
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function byId(items = []) {
+  return new Map((Array.isArray(items) ? items : []).map((item) => [item.id, item]));
+}
+
+function performerSlotsFromResolved(runtimeState = {}, resolved = {}) {
+  const catalog = runtimeState.showRunSnapshot && runtimeState.showRunSnapshot.catalog
+    ? runtimeState.showRunSnapshot.catalog
+    : {};
+  const performers = byId(catalog.performers || []);
+  const slots = [];
+  const seen = new Set();
+  for (const character of resolved.characters || []) {
+    const performerIds = character.performerIds && character.performerIds.length ? character.performerIds : [null];
+    for (const performerId of performerIds) {
+      const performer = performerId ? performers.get(performerId) : null;
+      const slotIndex = performer && Number.isFinite(Number(performer.performerSlot))
+        ? Number(performer.performerSlot)
+        : slots.length + 1;
+      const key = `${slotIndex}:${performerId || "unassigned"}:${character.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      slots.push({
+        slotIndex,
+        performerId,
+        performerName: performer ? performer.name : null,
+        characterId: character.id,
+        legacyCharacterId: character.legacyId || null,
+        characterName: character.name,
+      });
+    }
+  }
+  return slots.sort((a, b) => {
+    if (a.slotIndex !== b.slotIndex) return a.slotIndex - b.slotIndex;
+    return String(a.characterName).localeCompare(String(b.characterName), "nl-NL");
+  });
+}
+
 function basePayloadFromResolved(runtimeState, resolved, sourceType) {
-  return {
+  const basePayload = {
     source: {
       type: sourceType,
       readOnly: true,
@@ -29,8 +67,10 @@ function basePayloadFromResolved(runtimeState, resolved, sourceType) {
       name: character.name,
       performerIds: character.performerIds || [],
     })),
+    performerSlots: performerSlotsFromResolved(runtimeState, resolved),
     labelIds: resolved.labelIds || [],
   };
+  return enrichPayloadWithEnvironmentAssets(basePayload, runtimeState, resolved);
 }
 
 function actionPayloadId(cueId, actionIndex) {
@@ -100,15 +140,20 @@ function buildPrepareCue(runtimeState, options = {}) {
   const cueId = createShowControlId("show-cue", createdAtDate);
   const payload = basePayloadFromResolved(runtimeState, cloneJson(runtimeState.resolvedPreparedNext), "runtime.resolved-output");
   const actions = [
-    action(cueId, 0, "touchdesigner", "td.environment.prepare", "required-ready", {
+    action(cueId, 0, "teleprompter", "teleprompter.prepare", "fire-and-forget", {
+      ...payload,
+      cueIntent: "prepare_text_display",
+    }, { timeoutMs: 900 }),
+    action(cueId, 1, "script-agent", "script-agent.operator.prepareDraft", "fire-and-forget", {
+      runtimeState,
+      force: true,
+      sourceId: "show-control-prepare",
+      cueIntent: "prepare_operator_draft",
+    }, { timeoutMs: 900 }),
+    action(cueId, 2, "touchdesigner", "td.environment.prepare", "required-ready", {
       ...payload,
       cueIntent: "prepare_environment",
     }, { simulate: options.simulateTargetTimeout ? "timeout" : null }),
-    action(cueId, 1, "teleprompter", "teleprompter.prepare", "acknowledged-async", {
-      showRunId: runtimeState.showRunId,
-      situation: payload.situation,
-      cueIntent: "prepare_text_display",
-    }),
   ];
   return makeCue({
     cueType: "prepare",
@@ -140,6 +185,12 @@ function buildGoCue(runtimeState, options = {}) {
       situationRunId: runtimeState.activeSituation.situationRunId,
       situation: payload.situation,
       cueIntent: "operator_feedback",
+    }),
+    action(cueId, 2, "teleprompter", "teleprompter.reveal", "fire-and-forget", {
+      showRunId: runtimeState.showRunId,
+      situationRunId: runtimeState.activeSituation.situationRunId,
+      situation: payload.situation,
+      cueIntent: "reveal_text_display",
     }),
   ];
   return makeCue({
@@ -201,9 +252,12 @@ function buildStartRunCue({ name, autoPrepareNext = true, createdAtDate = new Da
 
 function buildStartSituationCue({ name, showRunId, actions: technicalActions = [], createdAtDate = new Date() } = {}) {
   const cueId = createShowControlId("show-cue", createdAtDate);
+  const hasExplicitTdGo = technicalActions.some((item) => String(item.command || "") === "td.environment.go");
   const actions = [
     action(cueId, 0, "runtime", "runtime.startSituation", "acknowledged-async", {
       showRunId,
+      autoGoEnvironment: !hasExplicitTdGo,
+      autoRevealTeleprompter: true,
     }, { parallelGroup: "start-situation", timeoutMs: 4000 }),
     ...technicalActions.map((item, index) => action(
       cueId,
@@ -230,11 +284,38 @@ function buildStartSituationCue({ name, showRunId, actions: technicalActions = [
   });
 }
 
+function buildSceneToChatCue(runtimeState, options = {}) {
+  if (!runtimeState || typeof runtimeState !== "object") throw new Error("show_control_missing_runtime_state");
+  if (!runtimeState.resolvedPreparedNext) throw new Error("show_control_missing_runtime_resolved_output");
+  const createdAtDate = options.createdAtDate || new Date();
+  const cueId = createShowControlId("show-cue", createdAtDate);
+  const payload = basePayloadFromResolved(runtimeState, cloneJson(runtimeState.resolvedPreparedNext), "runtime.resolved-output");
+  return makeCue({
+    cueType: "compound",
+    name: options.name || "Scene naar Script Agent chat",
+    runtimeState,
+    runtimeSelection: "runtime.resolvedPreparedNext",
+    actions: [
+      action(cueId, 0, "script-agent", "script-agent.operator.sceneToChat", "acknowledged-async", {
+        runtimeState,
+        sessionId: options.sessionId || runtimeState.showRunId || null,
+        sourceId: options.sourceId || "show-control-scene-chat",
+        force: true,
+        cueIntent: "operator_scene_to_chat",
+        situation: payload.situation,
+      }, { timeoutMs: options.timeoutMs || 90000 }),
+    ],
+    createdAtDate,
+    cueId,
+  });
+}
+
 module.exports = {
   actionPayloadId,
   buildCompoundCue,
   buildGoCue,
   buildPrepareCue,
+  buildSceneToChatCue,
   buildStartRunCue,
   buildStartSituationCue,
 };

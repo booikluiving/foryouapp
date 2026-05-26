@@ -9,11 +9,13 @@ const {
 } = require("../../../shared/contracts/show-control-v0");
 const { listCommands } = require("../command-registry/command-registry");
 const { fetchCurrentRuntimeState } = require("../client/runtime-client");
+const { listActiveStreamDeckCues } = require("../streamdeck-active-cues");
 const { applyAck, executeCue, normalizeCue } = require("../cue-engine/cue-engine");
 const { recordAck } = require("../cue-engine/ack-tracker");
 const { findCachedPayload } = require("../cue-engine/payload-cache");
 const {
   findCuePayload,
+  archiveCue,
   readCue,
   readCues,
   readTriggerBinding,
@@ -25,10 +27,12 @@ const {
   buildCompoundCue,
   buildGoCue,
   buildPrepareCue,
+  buildSceneToChatCue,
   buildStartRunCue,
   buildStartSituationCue,
 } = require("../cue-library/runtime-cues");
 const { cameraBaseUrl } = require("../target-adapters/camera-adapter");
+const { dmxBaseUrl } = require("../target-adapters/dmx-adapter");
 const { perfectCueBaseUrl } = require("../target-adapters/perfect-cue-adapter");
 const { sq5BaseUrl } = require("../target-adapters/sq5-adapter");
 const { streamDeckBaseUrl } = require("../target-adapters/streamdeck-adapter");
@@ -57,8 +61,10 @@ function showControlAdapterOptions(options = {}) {
     runtimeBaseUrl: process.env.V2_SHOW_CONTROL_RUNTIME_URL,
     sq5BaseUrl: process.env.V2_SHOW_CONTROL_SQ5_URL,
     cameraBaseUrl: process.env.V2_SHOW_CONTROL_CAMERA_URL,
+    dmxBaseUrl: process.env.V2_SHOW_CONTROL_DMX_URL,
     streamDeckBaseUrl: process.env.V2_SHOW_CONTROL_STREAMDECK_URL,
     perfectCueBaseUrl: process.env.V2_SHOW_CONTROL_PERFECT_CUE_URL,
+    scriptAgentBaseUrl: process.env.V2_SHOW_CONTROL_SCRIPT_AGENT_URL,
     tdOscHost: process.env.V2_SHOW_CONTROL_TD_OSC_HOST,
     tdOscPort: process.env.V2_SHOW_CONTROL_TD_OSC_PORT,
     tdAckPort: process.env.V2_SHOW_CONTROL_TD_ACK_PORT,
@@ -126,6 +132,7 @@ async function hardwareStatus(adapterOptions = {}) {
   const probes = await Promise.all([
     fetchHardwareProbe("sq5", sq5BaseUrl(adapterOptions), "/api/status"),
     fetchHardwareProbe("camera", cameraBaseUrl(adapterOptions), "/api/state"),
+    fetchHardwareProbe("dmx", dmxBaseUrl(adapterOptions), "/api/state"),
     fetchHardwareProbe("streamdeck", streamDeckBaseUrl(adapterOptions), "/api/state"),
     fetchHardwareProbe("perfectCue", perfectCueBaseUrl(adapterOptions), "/api/state"),
   ]);
@@ -174,6 +181,18 @@ function createShowControlApp(options = {}) {
     res.json({ ok: true, count: commands.length, commands });
   });
 
+  app.get("/v0/show-control/active-cues", (_req, res) => {
+    const commandNames = new Set(listCommands().map((command) => command.name));
+    const cues = listActiveStreamDeckCues().map((cue) => ({
+      ...cue,
+      states: cue.states.map((state) => ({
+        ...state,
+        commandsAvailable: state.commands.every((command) => commandNames.has(command)),
+      })),
+    }));
+    res.json({ ok: true, count: cues.length, cues });
+  });
+
   app.post("/v0/show-control/cues/prepare", asyncRoute(async (req, res) => {
     const runtimeState = await runtimeStateForRequest(req, clients);
     const cue = buildPrepareCue(runtimeState, {
@@ -190,6 +209,19 @@ function createShowControlApp(options = {}) {
     await executeCue(cue, { ...executeOptions, nonBlocking: true });
     await saveCue(cue);
     res.status(202).json({ ok: true, cue });
+  }));
+
+  app.post("/v0/show-control/cues/scene-to-chat", asyncRoute(async (req, res) => {
+    const runtimeState = await runtimeStateForRequest(req, clients);
+    const cue = buildSceneToChatCue(runtimeState, {
+      name: req.body ? req.body.name : null,
+      sessionId: req.body && req.body.sessionId,
+      sourceId: req.body && req.body.sourceId,
+      timeoutMs: req.body && req.body.timeoutMs,
+    });
+    await executeCue(cue, executeOptions);
+    await saveCue(cue);
+    res.status(201).json({ ok: true, cue });
   }));
 
   app.post("/v0/show-control/cues", asyncRoute(async (req, res) => {
@@ -260,15 +292,26 @@ function createShowControlApp(options = {}) {
   }));
 
   app.get("/v0/show-control/cues", asyncRoute(async (req, res) => {
+    const archivedMode = req.query.archived === "only" ? "only" : null;
     const cues = await readCues({
       cueType: req.query.cueType ? String(req.query.cueType) : null,
       showRunId: req.query.showRunId ? String(req.query.showRunId) : null,
+      includeArchived: req.query.archived === "all",
+      archived: archivedMode,
     });
     res.json({ ok: true, count: cues.length, cues });
   }));
 
   app.get("/v0/show-control/cues/:cueId", asyncRoute(async (req, res) => {
     res.json(await readCue(req.params.cueId));
+  }));
+
+  app.post("/v0/show-control/cues/:cueId/archive", asyncRoute(async (req, res) => {
+    const cue = await archiveCue(req.params.cueId, {
+      reason: req.body && req.body.reason ? String(req.body.reason) : "manual_archive",
+      archivedBy: req.body && req.body.archivedBy ? String(req.body.archivedBy) : "show-control-ui",
+    });
+    res.json({ ok: true, cue });
   }));
 
   app.get("/v0/show-control/trigger-bindings", asyncRoute(async (req, res) => {
@@ -356,6 +399,7 @@ function createShowControlApp(options = {}) {
 
   app.get("/v0/show-control/status", asyncRoute(async (_req, res) => {
     const cues = await readCues();
+    const archivedCues = await readCues({ archived: "only" });
     const bindings = await readTriggerBindings();
     const warnings = cues.flatMap((cue) => (cue.status && cue.status.warnings ? cue.status.warnings : []));
     const latestCue = cues[cues.length - 1] || null;
@@ -365,6 +409,7 @@ function createShowControlApp(options = {}) {
       schemaVersion: SHOW_CONTROL_STATUS_SCHEMA_VERSION,
       service: "show-control",
       cueCount: cues.length,
+      archivedCueCount: archivedCues.length,
       bindingCount: bindings.length,
       warningCount: warnings.length,
       warnings,

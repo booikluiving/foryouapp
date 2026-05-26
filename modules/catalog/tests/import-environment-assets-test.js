@@ -101,10 +101,14 @@ async function createSourceFixture() {
   await writeFixture(path.join(SOURCE_ROOT, "Bioscoop.fx.png"), "fake png fx");
   await writeFixture(path.join(SOURCE_ROOT, "Festival.mp4"), "fake mp4 background");
   await writeFixture(path.join(SOURCE_ROOT, "Festival.fx.mp4"), "fake mp4 fx");
+  await writeFixture(path.join(SOURCE_ROOT, "Lingo_studio.png"), "canonical lingo background");
+  await writeFixture(path.join(SOURCE_ROOT, "Lingo_studio.mp3"), "canonical lingo soundscape");
+  await writeFixture(path.join(SOURCE_ROOT, "The_Voice_of_Holland.png"), "canonical voice background");
+  await writeFixture(path.join(SOURCE_ROOT, "The_Voice_of_Holland.mp3"), "canonical voice soundscape");
   await writeFixture(path.join(SOURCE_ROOT, "Cradam.txt"), "legacy prompt text");
   await writeFixture(path.join(SOURCE_ROOT, ".DS_Store"), "hidden");
   await writeFixture(path.join(SOURCE_ROOT, "._Bioscoop.jpg"), "appledouble");
-  await writeFixture(path.join(SOURCE_ROOT, "Auto.jpg"), "unmatched");
+  await writeFixture(path.join(SOURCE_ROOT, "NietBestaandVoorTest.jpg"), "unmatched");
   await writeFixture(path.join(SOURCE_ROOT, "Leesmij.md"), "unsupported");
   await writeFixture(path.join(SOURCE_ROOT, "NOS_Studio", "NOS_Studio.jpg"), "nested ignored");
   await writeFixture(path.join(SOURCE_ROOT, "Losse tiktoks", "Apple_Dance.mp3"), "nested ignored");
@@ -152,12 +156,16 @@ async function main() {
 
     assert.equal(dryRun.mode, "dry-run");
     assert.equal(dryRun.importedAssets.length, 0);
-    assert.equal(dryRun.wouldImportAssets.length, 5);
+    assert.equal(dryRun.wouldImportAssets.length, 9);
     assert(dryRun.wouldImportAssets.some((item) => item.filename === "Bioscoop.jpg" && item.type === "background"));
     assert(dryRun.wouldImportAssets.some((item) => item.filename === "Bioscoop.mp3" && item.type === "soundscape"));
     assert(dryRun.wouldImportAssets.some((item) => item.filename === "Bioscoop.fx.png" && item.type === "fx"));
     assert(dryRun.wouldImportAssets.some((item) => item.filename === "Festival.mp4" && item.type === "background"));
     assert(dryRun.wouldImportAssets.some((item) => item.filename === "Festival.fx.mp4" && item.type === "fx"));
+    assert(dryRun.wouldImportAssets.some((item) => item.filename === "Lingo_studio.png" && item.environmentId === "environment:29"));
+    assert(dryRun.wouldImportAssets.some((item) => item.filename === "Lingo_studio.mp3" && item.environmentId === "environment:29"));
+    assert(dryRun.wouldImportAssets.some((item) => item.filename === "The_Voice_of_Holland.png" && item.environmentId === "environment:28"));
+    assert(dryRun.wouldImportAssets.some((item) => item.filename === "The_Voice_of_Holland.mp3" && item.environmentId === "environment:28"));
     assert(dryRun.skippedTextFiles.some((item) => item.filename === "Cradam.txt"));
     assert(dryRun.skippedHiddenFiles.some((item) => item.filename === ".DS_Store"));
     assert(dryRun.skippedHiddenFiles.some((item) => item.filename === "._Bioscoop.jpg"));
@@ -166,8 +174,8 @@ async function main() {
     assert(dryRun.skippedAssetBackups.some((item) => item.dirname === "_asset-backups"));
     assert(dryRun.skippedUploadTmp.some((item) => item.dirname === "_asset-upload-tmp"));
     assert(dryRun.skippedUnsupportedFiles.some((item) => item.filename === "Leesmij.md"));
-    assert(dryRun.unmatchedGroups.some((group) => group.groupName === "Auto"));
-    assert(dryRun.environmentsWithoutSourceAssets.some((item) => item.environmentName === "Ballenbak"));
+    assert(dryRun.unmatchedGroups.some((group) => group.groupName === "NietBestaandVoorTest"));
+    assert(dryRun.environmentsWithoutSourceAssets.some((item) => item.environmentName === "Cradam"));
     assert(await pathExists(dryRun.reportPath));
     assert.deepEqual(await hashPathState(TEST_DB_PATH), dryStoreBefore, "dry-run changed temporary V2 catalog db");
     assert.deepEqual(await hashPathState(TEST_MEDIA_ROOT), dryMediaBefore, "dry-run wrote temporary media");
@@ -180,7 +188,7 @@ async function main() {
       apply: true,
     });
     assert.equal(applyRun.mode, "apply");
-    assert.equal(applyRun.importedAssets.length, 5);
+    assert.equal(applyRun.importedAssets.length, 9);
     assert.equal(applyRun.failedImports.length, 0);
     assert(await pathExists(applyRun.reportPath));
     const validationAfterImport = validateCatalogReadModel(await buildCatalogReadModel({

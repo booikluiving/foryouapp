@@ -55,7 +55,8 @@ function attachOperatorStageRealtime(server, operatorService, options = {}) {
     }
     if (payload.type === "operator_stage_refresh") {
       try {
-        await operatorService.currentDraft({ refreshRuntime: true });
+        const snapshot = operatorService.snapshotStage();
+        if (!snapshot.draft) await operatorService.currentDraft({ refreshRuntime: true });
         send(ws, { type: "operator_stage_state", reason: "manual_refresh", stage: operatorService.snapshotStage() });
       } catch (err) {
         send(ws, {
@@ -66,11 +67,27 @@ function attachOperatorStageRealtime(server, operatorService, options = {}) {
       return;
     }
     if (payload.type === "operator_stage_draft") {
-      operatorService.updateStageDraft(payload.text || "");
+      operatorService.updateStageDraft(payload.text || "", {
+        sourceId: payload.sourceId,
+        revision: payload.revision,
+      });
       return;
     }
     if (payload.type === "operator_stage_clear_draft") {
-      operatorService.updateStageDraft("");
+      operatorService.updateStageDraft("", {
+        sourceId: payload.sourceId,
+        revision: payload.revision,
+      });
+      return;
+    }
+    if (payload.type === "operator_stage_control") {
+      operatorService.updateStageControl(payload);
+      return;
+    }
+    if (payload.type === "operator_stage_style") {
+      operatorService.updateStageStyle(payload.style || payload, {
+        sourceId: payload.sourceId,
+      });
       return;
     }
     if (payload.type === "operator_stage_submit") {
@@ -78,6 +95,7 @@ function attachOperatorStageRealtime(server, operatorService, options = {}) {
         await operatorService.streamChat({
           sessionId: payload.sessionId,
           message: payload.text,
+          sourceId: payload.sourceId,
         }, (event) => send(ws, { type: "operator_stage_chat_event", event }));
       } catch (err) {
         send(ws, {
