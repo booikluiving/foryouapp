@@ -27,6 +27,8 @@ modules/runtime/db/current-run.json
 modules/runtime/db/runs/
 modules/script-agent/db/*.json
 modules/show-control/db/*.json
+modules/show-control/db/*.backup-*
+modules/show-control/db/payloads/
 modules/catalog/media/**
 !modules/catalog/media/
 !modules/catalog/media/**/

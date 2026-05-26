@@ -17,6 +17,7 @@ const {
   registerAction,
   waitForAck,
 } = require("./ack-tracker");
+const { compactAdapterResult } = require("./compact-results");
 const { registerPayload } = require("./payload-cache");
 
 function delay(ms) {
@@ -355,7 +356,7 @@ async function executeAction(cue, action, context, options) {
       throw new Error(`show_control_ack_timeout:${action.actionId}`);
     }
     const result = await adapter(action, context);
-    action.adapterResult = result && result.data ? result.data : null;
+    action.adapterResult = result && result.data ? compactAdapterResult(result.data) : null;
     setActionStatus(cue, action, publicResultStatus(result));
     log(cue, {
       type: "adapter-result",

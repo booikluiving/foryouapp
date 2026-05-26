@@ -32,6 +32,8 @@
     "show-control:start": "node modules/show-control/server/server.js",
     "show-control:smoke": "node modules/show-control/tests/smoke-test.js",
     "show-control:test": "node modules/show-control/tests/unit-test.js",
+    "show-control:cues:compact": "node modules/show-control/tools/compact-cue-history.js",
+    "show-control:payload-index:rebuild": "node modules/show-control/tools/rebuild-payload-index.js",
     "show-control:td-qhub:test": "node show/td-qhub-test/protocol-test.js",
     "show-control:hardware:sq5:start": "node modules/show-control/hardware/sq5-control/server.js",
     "show-control:hardware:camera:start": "node modules/show-control/hardware/camera-control/server.js",

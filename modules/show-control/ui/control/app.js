@@ -120,7 +120,7 @@ function baseAction(command, payload = {}, overrides = {}) {
 }
 
 function actionTitle(action) {
-  const payload = action.payload || {};
+  const payload = action.payload || action.payloadSummary || {};
   if (action.command === "td.camera.set") return `TD camera ${payload.camera || payload.cameraId || "?"}`;
   if (action.command === "runtime.startSituation") return "Start situatie";
   if (action.command === "runtime.stopSituation") return "Stop situatie";
@@ -135,6 +135,10 @@ function actionTitle(action) {
   if (action.command === "streamdeck.status") return `Deck ${payload.button || "status"} ${payload.label || payload.state || ""}`.trim();
   if (action.command === "camera.focus") return `Camera ${payload.camera || "?"} focus`;
   return commandInfo(action.command).title || action.command;
+}
+
+async function loadCueDetail(cueId) {
+  return api(`/v0/show-control/cues/${encodeURIComponent(cueId)}`);
 }
 
 function actionSummary(action) {
@@ -519,6 +523,7 @@ function addAction(parallel = false) {
 }
 
 function editCue(cue, duplicate = false) {
+  if (!cue) return;
   currentCueId = duplicate ? null : cue.cueId;
   $("cueNameInput").value = duplicate ? `${cue.name || cue.cueId} kopie` : (cue.name || cue.cueId);
   builderActions = (cue.actions || []).map((action) => ({
@@ -576,7 +581,7 @@ async function saveBindingForCurrentCue() {
 }
 
 function renderHub() {
-  const latest = status && status.latestCue ? status.latestCue : null;
+  const latest = status && (status.latestCueSummary || status.latestCue) ? (status.latestCueSummary || status.latestCue) : null;
   $("topMeta").textContent = status ? `${status.cueCount} cues · ${status.bindingCount || 0} bindings · ${status.warningCount} warnings` : "offline";
   $("serviceBadge").textContent = status && status.ok ? "online" : "offline";
   $("serviceBadge").className = status && status.ok ? "fy-badge fy-badge-good" : "fy-badge fy-badge-bad";
@@ -614,9 +619,10 @@ function renderLibrary() {
     <div class="fy-list-item library-row">
       <div>
         <strong>${esc(cue.name || cue.cueId)}</strong>
-        <div class="fy-small">${esc(cue.cueId)} · ${esc(cue.status && cue.status.state || "queued")} · ${(cue.actions || []).length} acties</div>
+        <div class="fy-small">${esc(cue.cueId)} · ${esc(cue.status && cue.status.state || "queued")} · ${Number(cue.actionCount || (cue.actions || []).length)} acties</div>
         <div class="mini-sheet">
           ${(cue.actions || []).slice(0, 4).map((action, index) => `<span>${index + 1}. ${esc(actionTitle(action))}</span>`).join("")}
+          ${Number(cue.actionOverflow || 0) > 0 ? `<span>+${Number(cue.actionOverflow)} meer</span>` : ""}
         </div>
       </div>
       <div class="fy-actions">
@@ -631,9 +637,10 @@ function renderLibrary() {
     <div class="fy-list-item library-row">
       <div>
         <strong>${esc(cue.name || cue.cueId)}</strong>
-        <div class="fy-small">${esc(cue.cueId)} · ${esc(cue.status && cue.status.state || "queued")} · ${(cue.actions || []).length} acties · ${esc(cue.archivedReason || "archief")}</div>
+        <div class="fy-small">${esc(cue.cueId)} · ${esc(cue.status && cue.status.state || "queued")} · ${Number(cue.actionCount || (cue.actions || []).length)} acties · ${esc(cue.archivedReason || "archief")}</div>
         <div class="mini-sheet">
           ${(cue.actions || []).slice(0, 4).map((action, index) => `<span>${index + 1}. ${esc(actionTitle(action))}</span>`).join("")}
+          ${Number(cue.actionOverflow || 0) > 0 ? `<span>+${Number(cue.actionOverflow)} meer</span>` : ""}
         </div>
       </div>
       <div class="fy-actions">
@@ -649,12 +656,15 @@ function renderLibrary() {
     });
   });
   document.querySelectorAll(".edit-cue").forEach((button) => {
-    button.addEventListener("click", () => editCue(cues.find((cue) => cue.cueId === button.dataset.cueId), false));
+    button.addEventListener("click", async () => {
+      const cue = await loadCueDetail(button.dataset.cueId);
+      editCue(cue, false);
+    });
   });
   document.querySelectorAll(".duplicate-cue").forEach((button) => {
-    button.addEventListener("click", () => {
-      const source = button.dataset.archived ? archivedCues : cues;
-      editCue(source.find((cue) => cue.cueId === button.dataset.cueId), true);
+    button.addEventListener("click", async () => {
+      const cue = await loadCueDetail(button.dataset.cueId);
+      editCue(cue, true);
     });
   });
 }
@@ -763,7 +773,7 @@ function renderCommands() {
 }
 
 function renderLogs() {
-  const latest = status && status.latestCue ? status.latestCue : null;
+  const latest = status && (status.latestCueSummary || status.latestCue) ? (status.latestCueSummary || status.latestCue) : null;
   const logRows = latest && Array.isArray(latest.executionLog) ? latest.executionLog.slice().reverse() : [];
   $("executionLog").innerHTML = logRows.length ? logRows.map((item) => `
     <div class="log-row">
@@ -771,7 +781,7 @@ function renderLogs() {
       <span>${esc(item.targetId || "")} ${esc(item.stage || "")} ${esc(item.state || "")}</span>
     </div>
   `).join("") : '<div class="fy-small">Geen logs.</div>';
-  $("runtimeOutput").textContent = latest ? JSON.stringify(latest.adapterResult || latest.status || latest, null, 2) : "{}";
+  $("runtimeOutput").textContent = latest ? JSON.stringify(latest.status || latest, null, 2) : "{}";
   $("debugOutput").textContent = latest ? JSON.stringify(latest, null, 2) : "{}";
 }
 

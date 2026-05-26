@@ -13,8 +13,10 @@ const { listActiveStreamDeckCues } = require("../streamdeck-active-cues");
 const { applyAck, executeCue, normalizeCue } = require("../cue-engine/cue-engine");
 const { recordAck } = require("../cue-engine/ack-tracker");
 const { findCachedPayload } = require("../cue-engine/payload-cache");
+const { summarizeCue, summarizeCues } = require("../cue-engine/cue-summary");
 const {
   findCuePayload,
+  readIndexedPayload,
   archiveCue,
   readCue,
   readCues,
@@ -70,6 +72,10 @@ function showControlAdapterOptions(options = {}) {
     tdAckPort: process.env.V2_SHOW_CONTROL_TD_ACK_PORT,
     ...(options.adapterOptions || {}),
   };
+}
+
+function wantsFullDetail(req) {
+  return req.query.detail === "full" || req.query.full === "1" || req.query.full === "true";
 }
 
 async function runtimeStateForRequest(req, clients) {
@@ -299,7 +305,13 @@ function createShowControlApp(options = {}) {
       includeArchived: req.query.archived === "all",
       archived: archivedMode,
     });
-    res.json({ ok: true, count: cues.length, cues });
+    const full = wantsFullDetail(req);
+    res.json({
+      ok: true,
+      detail: full ? "full" : "summary",
+      count: cues.length,
+      cues: full ? cues : summarizeCues(cues),
+    });
   }));
 
   app.get("/v0/show-control/cues/:cueId", asyncRoute(async (req, res) => {
@@ -365,6 +377,11 @@ function createShowControlApp(options = {}) {
       res.json(cachedPayload);
       return;
     }
+    const indexedPayload = await readIndexedPayload(req.params.payloadId);
+    if (indexedPayload) {
+      res.json(indexedPayload);
+      return;
+    }
     const cues = await readCues();
     for (const cue of cues) {
       try {
@@ -397,25 +414,29 @@ function createShowControlApp(options = {}) {
     res.status(result.statusCode).json(result.body);
   }));
 
-  app.get("/v0/show-control/status", asyncRoute(async (_req, res) => {
+  app.get("/v0/show-control/status", asyncRoute(async (req, res) => {
     const cues = await readCues();
     const archivedCues = await readCues({ archived: "only" });
     const bindings = await readTriggerBindings();
     const warnings = cues.flatMap((cue) => (cue.status && cue.status.warnings ? cue.status.warnings : []));
     const latestCue = cues[cues.length - 1] || null;
+    const full = wantsFullDetail(req);
+    const latestCueSummary = latestCue ? summarizeCue(latestCue, { actionLimit: 10, logLimit: 24 }) : null;
     const hardware = await hardwareStatus(executeOptions.adapterOptions);
     res.json({
       ok: true,
       schemaVersion: SHOW_CONTROL_STATUS_SCHEMA_VERSION,
       service: "show-control",
+      detail: full ? "full" : "summary",
       cueCount: cues.length,
       archivedCueCount: archivedCues.length,
       bindingCount: bindings.length,
       warningCount: warnings.length,
       warnings,
       commandCount: listCommands().length,
-      latestCue,
-      targetStatus: latestCue && latestCue.status ? latestCue.status.targetStatus || {} : {},
+      latestCue: full ? latestCue : null,
+      latestCueSummary,
+      targetStatus: latestCueSummary && latestCueSummary.status ? latestCueSummary.status.targetStatus || {} : {},
       hardware,
     });
   }));

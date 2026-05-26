@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>For You Oud / Nieuw</title>
+  <title>For You Nieuwe Architectuur</title>
   <style>
     :root {
       color-scheme: light;
@@ -39,7 +39,7 @@
 
     .bar {
       display: grid;
-      grid-template-columns: minmax(200px, 1fr) auto;
+      grid-template-columns: 1fr;
       align-items: center;
       gap: 10px 18px;
       max-width: 1440px;
@@ -52,31 +52,6 @@
       font-size: 22px;
       font-weight: 760;
       letter-spacing: 0;
-    }
-
-    .tabs {
-      display: inline-flex;
-      gap: 4px;
-      padding: 4px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.72);
-    }
-
-    .tab {
-      border: 0;
-      border-radius: 999px;
-      background: transparent;
-      color: var(--ink);
-      cursor: pointer;
-      font: inherit;
-      font-weight: 720;
-      padding: 9px 18px;
-    }
-
-    .tab[aria-selected="true"] {
-      background: var(--accent);
-      color: #ffffff;
     }
 
     nav {
@@ -217,15 +192,6 @@
         font-size: 20px;
       }
 
-      .tabs {
-        width: 100%;
-      }
-
-      .tab {
-        flex: 1;
-        padding: 10px 12px;
-      }
-
       nav {
         gap: 6px;
         margin: 0 -14px;
@@ -251,10 +217,6 @@
   <header>
     <div class="bar">
       <h1>For You Architectuur</h1>
-      <div class="tabs" role="tablist" aria-label="Versie">
-        <button class="tab" id="tab-oud" type="button" role="tab" aria-selected="true" data-version="oud">Oud</button>
-        <button class="tab" id="tab-nieuw" type="button" role="tab" aria-selected="false" data-version="nieuw">Nieuw</button>
-      </div>
       <nav id="nav" aria-label="Diagrammen"></nav>
     </div>
   </header>
@@ -266,59 +228,45 @@
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
 
-    const baseDiagrams = [
-      ["System Context", "architecture/diagrams/system-context.mmd"],
-      ["Audience Session Flow", "architecture/diagrams/audience-session-flow.mmd"],
-      ["Algorithm Scene Flow", "architecture/diagrams/algorithm-scene-flow.mmd"],
-      ["Teleprompter And Camera Flow", "architecture/diagrams/teleprompter-camera-flow.mmd"],
-      ["Integration Sidecars", "architecture/diagrams/integration-sidecars.mmd"],
-      ["Database Model", "architecture/diagrams/database-model.mmd"],
-      ["Code Dependencies", "architecture/generated/code-deps.mmd"]
-    ];
-
-    const versions = {
-      oud: {
-        label: "Oud",
-        root: "oud",
-        intro: "Huidige architectuur als vaste referentie. Deze kant gebruiken we om niets kwijt te raken.",
-        badge: "referentie"
-      },
-      nieuw: {
-        label: "Nieuw",
-        root: "nieuw",
-        intro: "Werkversie voor de nieuwe architectuur. Oud blijft de referentie; hier werken we de opschoning uit.",
-        badge: "werkversie",
-        includeBase: false,
-        includeGeneratedReferences: false,
-        references: [
-          ["Catalogus bronmodel", "nieuw/architecture/01-catalogus-bronmodel.md"],
-          ["Runtime / volgorde contract", "nieuw/architecture/02-runtime-volgorde-contract.md"],
-          ["Losgekoppelde services", "nieuw/architecture/03-losgekoppelde-services.md"],
-          ["Show Control cue protocol", "nieuw/architecture/04-show-control-cue-protocol.md"],
-          ["TouchDesigner command surface", "nieuw/architecture/05-touchdesigner-command-surface.md"],
-          ["TouchDesigner cheat sheet", "nieuw/architecture/06-touchdesigner-cheat-sheet.md"],
-          ["Algorithm service contract", "nieuw/architecture/07-algorithm-service-contract.md"],
-          ["V2 implementatieplan", "nieuw/architecture/08-v2-implementatieplan.md"]
-        ],
-        diagrams: [
-          ["Module Map", "architecture/diagrams/service-module-map.mmd"],
-          ["Doelarchitectuur Services", "architecture/diagrams/doelarchitectuur-services.mmd"],
-          ["Verantwoordelijkheidsgrenzen", "architecture/diagrams/verantwoordelijkheidsgrenzen.mmd"],
-          ["Start Run Snapshot Flow", "architecture/diagrams/start-run-snapshot-flow.mmd"],
-          ["Prepared Next Service Flow", "architecture/diagrams/prepared-next-service-flow.mmd"],
-          ["Live Consumers Flow", "architecture/diagrams/live-consumers-flow.mmd"],
-          ["Catalogus Bronmodel", "architecture/diagrams/catalogus-bronmodel.mmd"],
-          ["Runtime / Volgorde Contract", "architecture/diagrams/runtime-volgorde-contract.mmd"],
-          ["Algorithm Service Contract", "architecture/diagrams/algorithm-service-contract.mmd"],
-          ["Show Control Service", "architecture/diagrams/show-control-service.mmd"]
-        ]
-      }
+    const architecture = {
+      root: "nieuw",
+      intro: "Actuele doelarchitectuur. Oude route- en dependency-kaarten zijn verwijderd zodat legacy niet opnieuw als waarheid wordt gebruikt.",
+      badge: "actueel",
+      references: [
+        ["00-overzicht.md", "nieuw/architecture/00-overzicht.md"],
+        ["Catalogus bronmodel", "nieuw/architecture/01-catalogus-bronmodel.md"],
+        ["Runtime / volgorde contract", "nieuw/architecture/02-runtime-volgorde-contract.md"],
+        ["Losgekoppelde services", "nieuw/architecture/03-losgekoppelde-services.md"],
+        ["Show Control cue protocol", "nieuw/architecture/04-show-control-cue-protocol.md"],
+        ["TouchDesigner command surface", "nieuw/architecture/05-touchdesigner-command-surface.md"],
+        ["TouchDesigner cheat sheet", "nieuw/architecture/06-touchdesigner-cheat-sheet.md"],
+        ["Algorithm service contract", "nieuw/architecture/07-algorithm-service-contract.md"],
+        ["V2 implementatieplan", "nieuw/architecture/08-v2-implementatieplan.md"],
+        ["Reality check 2026-05-26", "nieuw/architecture/09-repo-reality-check-2026-05-26.md"]
+      ],
+      diagrams: [
+        ["Module Map", "architecture/diagrams/service-module-map.mmd"],
+        ["Doelarchitectuur Services", "architecture/diagrams/doelarchitectuur-services.mmd"],
+        ["Verantwoordelijkheidsgrenzen", "architecture/diagrams/verantwoordelijkheidsgrenzen.mmd"],
+        ["Start Run Snapshot Flow", "architecture/diagrams/start-run-snapshot-flow.mmd"],
+        ["Prepared Next Service Flow", "architecture/diagrams/prepared-next-service-flow.mmd"],
+        ["Live Consumers Flow", "architecture/diagrams/live-consumers-flow.mmd"],
+        ["Catalogus Bronmodel", "architecture/diagrams/catalogus-bronmodel.mmd"],
+        ["Catalogus / Algoritme Grens", "architecture/diagrams/catalogus-algoritme-grens.mmd"],
+        ["Runtime / Volgorde Contract", "architecture/diagrams/runtime-volgorde-contract.mmd"],
+        ["Algorithm Runtime Boundary", "architecture/diagrams/algorithm-runtime-boundary.mmd"],
+        ["Algorithm Service Contract", "architecture/diagrams/algorithm-service-contract.mmd"],
+        ["Audience Signals To Score", "architecture/diagrams/audience-signals-to-score.mmd"],
+        ["Show Control Service", "architecture/diagrams/show-control-service.mmd"],
+        ["Cue Lifecycle Ack", "architecture/diagrams/cue-lifecycle-ack.mmd"],
+        ["TouchDesigner Command Surface", "architecture/diagrams/touchdesigner-command-surface.mmd"],
+        ["TouchDesigner Cue Protocol", "architecture/diagrams/td-cue-protocol.mmd"]
+      ]
     };
 
     const slug = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     const app = document.querySelector("#app");
     const nav = document.querySelector("#nav");
-    const tabs = [...document.querySelectorAll(".tab")];
 
     mermaid.initialize({
       startOnLoad: false,
@@ -347,33 +295,18 @@
       return mermaid.render(`diagram-${index}-${Date.now()}`, source);
     }
 
-    async function load(versionKey) {
-      const version = versions[versionKey];
+    async function load() {
       app.textContent = "";
       nav.textContent = "";
 
-      tabs.forEach((tab) => {
-        tab.setAttribute("aria-selected", String(tab.dataset.version === versionKey));
-      });
-
       const intro = document.createElement("p");
       intro.className = "intro";
-      intro.textContent = version.intro;
+      intro.textContent = architecture.intro;
       app.append(intro);
 
       const references = document.createElement("div");
       references.className = "references";
-      const referenceItems = [
-        ...(version.references || []),
-        ["00-overzicht.md", `${version.root}/architecture/00-overzicht.md`]
-      ];
-      if (version.includeGeneratedReferences !== false) {
-        referenceItems.push(
-          ["Routes", `${version.root}/architecture/generated/routes.md`],
-          ["SQLite schema", `${version.root}/architecture/generated/sqlite-schema.md`]
-        );
-      }
-      referenceItems.forEach(([label, href]) => {
+      architecture.references.forEach(([label, href]) => {
         const link = document.createElement("a");
         link.href = href;
         link.textContent = label;
@@ -381,12 +314,10 @@
       });
       app.append(references);
 
-      const diagrams = [...(version.diagrams || []), ...(version.includeBase === false ? [] : baseDiagrams)];
-
-      for (const [index, item] of diagrams.entries()) {
+      for (const [index, item] of architecture.diagrams.entries()) {
         const [title, relativePath] = item;
-        const id = slug(`${versionKey}-${title}`);
-        const path = `${version.root}/${relativePath}`;
+        const id = slug(title);
+        const path = `${architecture.root}/${relativePath}`;
 
         const navLink = document.createElement("a");
         navLink.href = `#${id}`;
@@ -401,7 +332,7 @@
 
         const badge = document.createElement("span");
         badge.className = "badge";
-        badge.textContent = version.badge;
+        badge.textContent = architecture.badge;
         heading.append(badge);
 
         const shell = document.createElement("div");
@@ -421,16 +352,9 @@
         section.append(shell);
         app.append(section);
       }
-
-      window.location.hash = versionKey;
     }
 
-    tabs.forEach((tab) => {
-      tab.addEventListener("click", () => load(tab.dataset.version));
-    });
-
-    const initial = window.location.hash.replace("#", "") === "nieuw" ? "nieuw" : "oud";
-    load(initial).catch((error) => {
+    load().catch((error) => {
       app.innerHTML = `<section><h2>Preview kon niet laden</h2><p class="error">${error.stack || error.message}</p></section>`;
     });
   </script>

@@ -1,32 +1,17 @@
 # For You Systeemopschoning
 
-Dit dossier heeft twee kanten:
+Dit dossier gebruikt nog maar een bron van waarheid:
 
-- [oud/architecture](oud/architecture): de huidige architectuur als referentie.
-- [nieuw/architecture](nieuw/architecture): een directe kopie waarmee we samen de nieuwe versie gaan ontwerpen.
+- [nieuw/architecture](nieuw/architecture): de actuele doelarchitectuur en de Mermaid-diagrammen waar nieuwe implementatiebeslissingen tegen worden gehouden.
 
-De browser-preview heeft daarom ook precies twee tabs:
+De oude architectuurmirror is bewust verwijderd. Die beschreef legacy-routes en oude modulekaarten die niet meer als waarheid gebruikt mogen worden.
 
-```text
-Oud
-Nieuw
-```
-
-Op dit moment zijn `oud` en `nieuw` inhoudelijk hetzelfde. Dat is bewust. We beginnen met een volledige mirror, zodat er geen context verdwijnt. Vanaf hier passen we alleen de `nieuw`-kant aan.
-
-Open:
+Open de diagram-preview:
 
 [preview.html](preview.html)
 
 ## Werkregel
 
-`oud` blijft de referentie. `nieuw` is de werkplaats.
+Pas alleen de documentatie onder `nieuw/architecture` aan wanneer het doelbeeld verandert.
 
-Als we iets in `nieuw` verwijderen, versimpelen of hertekenen, moeten we kunnen aanwijzen welk onderdeel uit `oud` daardoor:
-
-- blijft bestaan;
-- een andere eigenaar krijgt;
-- read-only wordt;
-- een command input wordt;
-- een side effect adapter wordt;
-- bewust verdwijnt.
+Generated route-, database- en dependency-kaarten zijn verwijderd totdat er een nieuwe V2-generator bestaat. Handmatig bijgewerkte Mermaid-diagrammen zijn voorlopig leidend.

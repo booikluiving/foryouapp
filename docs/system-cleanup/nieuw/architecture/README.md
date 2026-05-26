@@ -1,4 +1,4 @@
-# Architecture Maps
+# Nieuwe Architecture Maps
 
 Deze map is een losse documentatielaag voor de dataflow en projectstructuur van For You. Het is bewust geen extra webpagina in de app.
 
@@ -13,12 +13,11 @@ Open eerst:
 - [06-touchdesigner-cheat-sheet.md](06-touchdesigner-cheat-sheet.md)
 - [07-algorithm-service-contract.md](07-algorithm-service-contract.md)
 - [08-v2-implementatieplan.md](08-v2-implementatieplan.md)
+- [09-repo-reality-check-2026-05-26.md](09-repo-reality-check-2026-05-26.md)
 
-De Mermaid-bronbestanden staan in `diagrams/`. De afgeleide kaarten staan in `generated/` en worden opnieuw opgebouwd met:
+De Mermaid-bronbestanden staan in `diagrams/`.
 
-```bash
-npm run docs:architecture
-```
+Er is bewust geen `generated/` map meer. De oude generated route-, SQLite- en dependency-kaarten verwezen nog naar legacy-routes en oude serverstructuur. Totdat er een V2-generator is, zijn de handgeschreven Mermaid-diagrammen en Markdown-contracten leidend.
 
 ## Wat zit hierin
 
@@ -28,9 +27,6 @@ npm run docs:architecture
 - `diagrams/teleprompter-camera-flow.mmd`: teleprompter, ready/reveal en camera-pulsen.
 - `diagrams/integration-sidecars.mmd`: Show Control, TouchDesigner, SQ5, Camera Control, DMX/licht en Stream Deck.
 - `diagrams/database-model.mmd`: vereenvoudigd datamodel.
-- `generated/routes.md`: actuele Express-routes uit de code.
-- `generated/sqlite-schema.md`: SQLite-tabellen uit de code.
-- `generated/code-deps.mmd`: module-dependency kaart uit `require(...)`.
 - `diagrams/catalogus-bronmodel.mmd`: werkkaart voor catalogus als bron van het systeem.
 - `diagrams/catalogus-algoritme-grens.mmd`: werkkaart voor de grens tussen catalogus en algoritme.
 - `diagrams/catalogus-entiteiten.mmd`: werkkaart voor catalogustabellen en runtime-grens.
@@ -52,4 +48,4 @@ npm run docs:architecture
 
 ## Werkwijze
 
-Pas de handgeschreven diagrammen in `diagrams/` aan wanneer het conceptuele systeem verandert. Draai daarna `npm run docs:architecture`; dat werkt `00-overzicht.md` en de gegenereerde kaarten bij.
+Pas de handgeschreven diagrammen in `diagrams/` aan wanneer het conceptuele systeem verandert. Voeg geen generated architectuurkaarten toe zonder actuele V2-generator, zodat oude routes niet opnieuw als bron van waarheid binnenkomen.

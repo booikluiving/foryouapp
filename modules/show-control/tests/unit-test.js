@@ -1,9 +1,19 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs/promises");
+const path = require("node:path");
 
 const { listCommands, resolveCommand } = require("../command-registry/command-registry");
 const { executeCue } = require("../cue-engine/cue-engine");
+const { compactCueForStorage } = require("../cue-engine/compact-results");
+const { summarizeCue } = require("../cue-engine/cue-summary");
+const {
+  payloadIndexFilePath,
+  readIndexedPayload,
+  rebuildPayloadIndex,
+  saveCue,
+} = require("../cue-engine/state-store");
 const {
   buildPrepareCue,
   buildCompoundCue,
@@ -175,6 +185,85 @@ async function main() {
   assert(Buffer.byteLength(JSON.stringify(oversizedRuntimeState)) > 300000, "fixture should be large enough to catch regressions");
   assert(Buffer.byteLength(JSON.stringify(compactRuntimeOutput)) < 25000, "Script Agent runtimeOutput should stay compact");
   assert(!JSON.stringify(compactRuntimeOutput).includes("\"showRunSnapshot\":"), "runtimeOutput should not contain full showRunSnapshot");
+
+  const runtimeStatusCue = buildCompoundCue({
+    name: "Compact runtime adapter result",
+    actions: [{ command: "runtime.status", ackMode: "fire-and-forget" }],
+  });
+  await executeCue(runtimeStatusCue, {
+    adapters: {
+      runtime: async () => ({
+        stage: "applied",
+        state: "ok",
+        data: {
+          route: "GET /v0/runtime/runs/current",
+          runtimeState: oversizedRuntimeState,
+        },
+      }),
+    },
+  });
+  const runtimeStatusAction = runtimeStatusCue.actions[0];
+  assert(runtimeStatusAction.adapterResult.runtimeStateRef, "runtime adapter result should keep a compact reference");
+  assert(!runtimeStatusAction.adapterResult.runtimeState, "runtime adapter result should not store full runtimeState");
+  assert.equal(runtimeStatusAction.adapterResult.runtimeStateRef.showRunId, "show-run-assets");
+  assert.equal(runtimeStatusAction.adapterResult.runtimeStateRef.resolvedPreparedNext.situationId, "situation:assets");
+  assert(Buffer.byteLength(JSON.stringify(runtimeStatusAction.adapterResult)) < 10000, "stored runtime adapter result should stay compact");
+
+  const compactedCue = compactCueForStorage({
+    cueId: "cue-compact-unit",
+    actions: [{
+      actionId: "cue-compact-unit:action:01",
+      adapterResult: {
+        route: "POST /v0/runtime/runs/start",
+        runtimeState: oversizedRuntimeState,
+      },
+    }],
+  });
+  assert(compactedCue.actions[0].adapterResult.runtimeStateRef, "storage compaction should keep runtimeStateRef");
+  assert(!compactedCue.actions[0].adapterResult.runtimeState, "storage compaction should remove full runtimeState");
+  const summarizedCue = summarizeCue({
+    cueId: "cue-summary-unit",
+    name: "Summary fixture",
+    status: { state: "ok", warnings: [] },
+    actions: [{
+      command: "script-agent.operator.sceneToChat",
+      targetId: "script-agent",
+      payload: {
+        runtimeOutput: compactRuntimeOutput,
+        extraText: "x".repeat(50000),
+      },
+    }],
+    executionLog: Array.from({ length: 40 }, (_, index) => ({ type: "row", index })),
+  }, { actionLimit: 4, logLimit: 5 });
+  assert.equal(summarizedCue.actionCount, 1);
+  assert.equal(summarizedCue.actions[0].payload, undefined, "cue summary should not expose full action payload");
+  assert.equal(summarizedCue.actions[0].payloadSummary.runtimeOutput.situationId, "situation:assets");
+  assert.equal(summarizedCue.executionLog.length, 5, "cue summary should keep only recent log rows");
+  assert(Buffer.byteLength(JSON.stringify(summarizedCue)) < 12000, "cue summary should stay compact");
+
+  const previousDbDir = process.env.V2_SHOW_CONTROL_DB_DIR;
+  const tempDbDir = path.join(__dirname, "..", `.tmp-unit-db-${process.pid}`);
+  process.env.V2_SHOW_CONTROL_DB_DIR = tempDbDir;
+  try {
+    const indexedCue = buildCompoundCue({
+      name: "Payload index fixture",
+      actions: [{ command: "td.camera.set", payload: { camera: "2", cameraId: "camera:2", marker: "indexed-payload" } }],
+    });
+    await executeCue(indexedCue, { adapters: makeAdapters([]) });
+    await saveCue(indexedCue);
+    const indexedPayload = await readIndexedPayload(indexedCue.actions[0].payloadId);
+    assert.equal(indexedPayload.marker, "indexed-payload", "saveCue should update payload-index lookup");
+    const rebuilt = await rebuildPayloadIndex();
+    assert(rebuilt.entries[indexedCue.actions[0].payloadId].payloadFile, "payload-index rebuild should store payload file refs");
+    const rebuiltPayload = await readIndexedPayload(indexedCue.actions[0].payloadId);
+    assert.equal(rebuiltPayload.marker, "indexed-payload", "payload-index rebuild should preserve payload lookup");
+    const indexText = await fs.readFile(payloadIndexFilePath(), "utf8");
+    assert(!indexText.includes("indexed-payload"), "payload-index file should not inline payload data");
+  } finally {
+    if (previousDbDir == null) delete process.env.V2_SHOW_CONTROL_DB_DIR;
+    else process.env.V2_SHOW_CONTROL_DB_DIR = previousDbDir;
+    await fs.rm(tempDbDir, { recursive: true, force: true });
+  }
 
   const sq5Input = requestForSq5Action({ command: "sq5.input.mute", payload: { channel: "brent", muted: true } });
   assert.equal(sq5Input.method, "POST");

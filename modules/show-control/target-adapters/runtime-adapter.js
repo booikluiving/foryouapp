@@ -6,6 +6,7 @@ const {
   resolvedPayloadFromRuntimeState,
   runtimeOutputFromRuntimeState,
 } = require("../cue-library/runtime-output");
+const { compactRuntimeStateForCue } = require("../cue-engine/compact-results");
 
 const DEFAULT_RUNTIME_BASE_URL = "http://127.0.0.1:3024";
 
@@ -26,6 +27,14 @@ function showRunIdFrom(action, context) {
   if (context.lastRuntimeState && context.lastRuntimeState.showRunId) return context.lastRuntimeState.showRunId;
   if (context.runtimeState && context.runtimeState.showRunId) return context.runtimeState.showRunId;
   return null;
+}
+
+function runtimeResultData(route, runtimeState) {
+  return {
+    route,
+    runtimeStateRef: compactRuntimeStateForCue(runtimeState),
+    runtimeStateOmitted: true,
+  };
 }
 
 function generatedPrepareAction(action, runtimeState) {
@@ -130,7 +139,7 @@ async function sendRuntimeCommand(action, context = {}) {
       stage: "applied",
       state: "ok",
       message: "runtime status fetched",
-      data: { route: "GET /v0/runtime/runs/current", runtimeState: state },
+      data: runtimeResultData("GET /v0/runtime/runs/current", state),
     };
   }
 
@@ -152,7 +161,7 @@ async function sendRuntimeCommand(action, context = {}) {
       stage: "applied",
       state: "ok",
       message: `runtime startRun called: ${result.body.showRunId || "unknown-run"}`,
-      data: { route: "POST /v0/runtime/runs/start", runtimeState: result.body },
+      data: runtimeResultData("POST /v0/runtime/runs/start", result.body),
       generatedActions,
     };
   }
@@ -177,7 +186,7 @@ async function sendRuntimeCommand(action, context = {}) {
       stage: "applied",
       state: "ok",
       message: `runtime resetRun called: ${showRunId || "current"}`,
-      data: { route: `POST ${route}`, runtimeState: result.body },
+      data: runtimeResultData(`POST ${route}`, result.body),
     };
   }
 
@@ -190,7 +199,7 @@ async function sendRuntimeCommand(action, context = {}) {
       stage: "applied",
       state: "ok",
       message: `preparedNext resolved: ${runtimeState.preparedNext ? runtimeState.preparedNext.situationId : "none"}`,
-      data: { route: "GET /v0/runtime/runs/current", runtimeState },
+      data: runtimeResultData("GET /v0/runtime/runs/current", runtimeState),
       generatedActions: [
         generatedTeleprompterPrepareAction(action, runtimeState),
         generatedOperatorPrepareDraftAction(action, runtimeState),
@@ -231,7 +240,7 @@ async function sendRuntimeCommand(action, context = {}) {
       stage: "applied",
       state: "ok",
       message: `runtime ${endpoint} called`,
-      data: { route: `POST ${route}`, runtimeState: result.body },
+      data: runtimeResultData(`POST ${route}`, result.body),
       generatedActions,
     };
   }

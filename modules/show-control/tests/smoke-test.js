@@ -516,6 +516,8 @@ async function main() {
       }),
     });
     assert.equal(savedCameraCue.cue.status.state, "saved");
+    const indexedPayload = await fetchJson(showBase, `/api/show-control/payloads/${encodeURIComponent(savedCameraCue.cue.actions[0].payloadId)}`);
+    assert.equal(indexedPayload.camera, "2", "payload endpoint should find saved cue payload via persistent index");
     const cameraBinding = await fetchJson(showBase, "/v0/show-control/trigger-bindings", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -545,6 +547,9 @@ async function main() {
     });
     assert.equal(startRun.cue.status.state, "ok");
     assert(startRun.cue.actions.some((action) => action.command === "runtime.startRun"));
+    const startRunRuntimeAction = startRun.cue.actions.find((action) => action.command === "runtime.startRun");
+    assert(startRunRuntimeAction.adapterResult.runtimeStateRef, "runtime.startRun adapterResult should keep compact runtimeStateRef");
+    assert(!startRunRuntimeAction.adapterResult.runtimeState, "runtime.startRun adapterResult should not store full runtimeState");
     assert(startRun.cue.actions.some((action) => action.command === "td.environment.prepare" && action.generatedByActionId));
     assert(startRun.cue.actions.some((action) => action.command === "teleprompter.prepare" && action.generatedByActionId));
     assert(startRun.cue.actions.some((action) => action.command === "script-agent.operator.prepareDraft" && action.generatedByActionId));
@@ -630,6 +635,9 @@ async function main() {
       }),
     });
     assert.equal(stopSituation.cue.status.state, "ok");
+    const stopRuntimeAction = stopSituation.cue.actions.find((action) => action.command === "runtime.stopSituation");
+    assert(stopRuntimeAction.adapterResult.runtimeStateRef, "runtime.stopSituation adapterResult should keep compact runtimeStateRef");
+    assert(!stopRuntimeAction.adapterResult.runtimeState, "runtime.stopSituation adapterResult should not store full runtimeState");
     assert(calls.some((call) => call.service === "runtime" && call.path === "/v0/runtime/runs/show-run-fake-001/stop-situation"));
     assert(stopSituation.cue.actions.some((action) => action.command === "td.environment.prepare" && action.generatedByActionId));
     assert(stopSituation.cue.actions.some((action) => action.command === "teleprompter.prepare" && action.generatedByActionId));
@@ -682,7 +690,9 @@ async function main() {
 
     const status = await fetchJson(showBase, "/v0/show-control/status");
     assert(status.warningCount >= 1);
-    assert(status.latestCue);
+    assert.equal(status.latestCue, null, "status should not include full latest cue by default");
+    assert(status.latestCueSummary);
+    assert(status.latestCueSummary.actionCount >= 1);
     assert.equal(status.hardware.sq5.ok, true);
     assert.equal(status.hardware.camera.ok, true);
     assert.equal(status.hardware.dmx.ok, true);
@@ -690,6 +700,14 @@ async function main() {
     assert.equal(status.hardware.perfectCue.ok, true);
     const cues = await fetchJson(showBase, "/v0/show-control/cues");
     assert(cues.count >= 3);
+    assert.equal(cues.detail, "summary");
+    assert(cues.cues[0].actionCount >= 1);
+    assert(!cues.cues[0].actions[0].payload, "cue list summaries should omit full action payload");
+    const fullCues = await fetchJson(showBase, "/v0/show-control/cues?detail=full");
+    assert.equal(fullCues.detail, "full");
+    assert(fullCues.cues.some((cue) => (cue.actions || []).some((action) => action.payload)));
+    const cueDetail = await fetchJson(showBase, `/v0/show-control/cues/${encodeURIComponent(fullCues.cues[0].cueId)}`);
+    assert(Array.isArray(cueDetail.actions), "cue detail endpoint should keep full cue shape");
 
     await closeServer(showServer);
     if (tdAckServer) tdAckServer.close();
