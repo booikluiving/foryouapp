@@ -16,6 +16,7 @@ const { requestForDmxAction } = require("../target-adapters/dmx-adapter");
 const { requestForPerfectCueAction } = require("../target-adapters/perfect-cue-adapter");
 const { resolvedPayloadFromRuntimeState } = require("../target-adapters/runtime-adapter");
 const { requestForScriptAgentAction } = require("../target-adapters/script-agent-adapter");
+const { runtimeOutputFromRuntimeState } = require("../cue-library/runtime-output");
 const { requestForSq5Action } = require("../target-adapters/sq5-adapter");
 const { requestForStreamDeckAction } = require("../target-adapters/streamdeck-adapter");
 const { requestForTeleprompterAction } = require("../target-adapters/teleprompter-adapter");
@@ -150,6 +151,30 @@ async function main() {
   const prepareCue = buildPrepareCue(assetRuntimeState, { createdAtDate: new Date("2026-05-25T10:00:00.000Z") });
   const prepareAction = prepareCue.actions.find((action) => action.command === "td.environment.prepare");
   assert.equal(prepareAction.payload.assetId, "media-asset:environment:assets:background:hero");
+  const operatorPrepareAction = prepareCue.actions.find((action) => action.command === "script-agent.operator.prepareDraft");
+  assert(operatorPrepareAction.payload.runtimeOutput, "operator prepare should use compact runtimeOutput");
+  assert(!operatorPrepareAction.payload.runtimeState, "operator prepare should not inline full runtimeState");
+  assert.equal(operatorPrepareAction.payload.runtimeOutput.resolvedPreparedNext.situationId, "situation:assets");
+
+  const oversizedRuntimeState = {
+    ...assetRuntimeState,
+    showRunSnapshot: {
+      catalog: {
+        ...assetRuntimeState.showRunSnapshot.catalog,
+        situations: Array.from({ length: 250 }, (_, index) => ({
+          id: `situation:${index}`,
+          title: `Large fixture ${index}`,
+          promptText: "x".repeat(1200),
+        })),
+      },
+    },
+    pathEvaluation: { items: Array.from({ length: 250 }, (_, index) => ({ situationId: `situation:${index}`, status: "available" })) },
+    lastScoreFeed: { scores: Array.from({ length: 250 }, (_, index) => ({ situationId: `situation:${index}`, score: index })) },
+  };
+  const compactRuntimeOutput = runtimeOutputFromRuntimeState(oversizedRuntimeState);
+  assert(Buffer.byteLength(JSON.stringify(oversizedRuntimeState)) > 300000, "fixture should be large enough to catch regressions");
+  assert(Buffer.byteLength(JSON.stringify(compactRuntimeOutput)) < 25000, "Script Agent runtimeOutput should stay compact");
+  assert(!JSON.stringify(compactRuntimeOutput).includes("\"showRunSnapshot\":"), "runtimeOutput should not contain full showRunSnapshot");
 
   const sq5Input = requestForSq5Action({ command: "sq5.input.mute", payload: { channel: "brent", muted: true } });
   assert.equal(sq5Input.method, "POST");

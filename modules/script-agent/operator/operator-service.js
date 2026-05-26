@@ -1074,7 +1074,7 @@ function createOperatorService(options = {}) {
 
   async function sceneToChat(body = {}, emit = () => {}) {
     const sourceId = normalizeSourceId(body.sourceId || "show-control-scene-chat");
-    const nextDraft = await createDraftFromRuntime(body.runtimeState || null, {
+    const nextDraft = await createDraftFromRuntime(body.runtimeState || body.runtimeOutput || null, {
       force: body.force !== false,
       sourceId,
     });

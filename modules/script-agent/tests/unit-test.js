@@ -124,6 +124,21 @@ async function main() {
   assert.equal(promptInput.performerSlots[0].performerName, "Performer A");
   assertNoRuntimeOrderFields(promptInput);
 
+  const compactRuntimeOutput = {
+    schemaVersion: "runtime.resolved-output.v0",
+    showRunId: runtimeState.showRunId,
+    status: runtimeState.status,
+    updatedAt: runtimeState.updatedAt,
+    showRunSnapshotCreatedAt: runtimeState.showRunSnapshot.createdAt,
+    resolvedPreparedNext: {
+      ...cloneJson(runtimeState.resolvedPreparedNext),
+      performerSlots: promptInput.performerSlots,
+    },
+  };
+  const promptInputFromCompact = buildPromptInput(compactRuntimeOutput, new Date("2026-05-24T18:00:01.500Z"));
+  assert.equal(promptInputFromCompact.contentHash, promptInput.contentHash, "compact runtimeOutput should build the same prompt");
+  assert.equal(promptInputFromCompact.performerSlots[0].performerName, "Performer A");
+
   const mutatedOrderState = cloneJson(runtimeState);
   mutatedOrderState.preparedNext = { situationId: "situation:999" };
   mutatedOrderState.eligiblePool = [{ situationId: "situation:999" }];
@@ -236,6 +251,10 @@ async function main() {
   assert.equal(operatorService.snapshotStage().draftInfo.environmentId, "environment:1");
   assert.equal(operatorService.snapshotStage().draft, "");
   assertNoRuntimeOrderFields(operatorDraft);
+
+  const compactOperatorDraft = await operatorService.createDraftFromRuntime(compactRuntimeOutput, { force: true });
+  assert.equal(compactOperatorDraft.situationId, "situation:1");
+  assert.equal(compactOperatorDraft.promptInput.contentHash, promptInput.contentHash);
 
   const savedStyle = await operatorService.saveStageStyle({ font: "ibm", cursor: "not-real", fontSize: 99 });
   assert.deepEqual(savedStyle, { font: "ibm", cursor: "block", fontSize: 42 });

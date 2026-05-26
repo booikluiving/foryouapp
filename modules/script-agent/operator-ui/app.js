@@ -62,6 +62,7 @@ let applyingDraft = false;
 let statusTimer = null;
 let pendingDraftInfo = null;
 let currentDraftInfo = null;
+let manualSelectionDirty = false;
 
 function sourceId() {
   try {
@@ -357,6 +358,7 @@ function applyDraftInfo(info = {}) {
     els.environment.value = selectedSituation.environmentId;
   }
   updateEnvironmentPreview();
+  if (info.sourceType !== "manual-catalog-selection") manualSelectionDirty = false;
 }
 
 function applyStageState(stage = {}, remoteSourceId = "") {
@@ -626,15 +628,32 @@ function sendManualDraftPreview() {
 }
 
 async function sceneToChat() {
-  if (!els.situation.value) {
-    setMsg("Kies eerst een situatie.", true);
+  if (manualSelectionDirty) {
+    if (!els.situation.value) {
+      setMsg("Kies eerst een situatie.", true);
+      return;
+    }
+    const body = await api("/v0/script-agent/operator/draft/manual", {
+      method: "POST",
+      body: JSON.stringify(manualDraftBody()),
+    });
+    await submitChat({ text: body.draft ? body.draft.text || "" : "", promptInput: body.promptInput });
+    manualSelectionDirty = false;
     return;
   }
-  const body = await api("/v0/script-agent/operator/draft/manual", {
+  setStreaming(true);
+  setMeta("Scene naar chat...");
+  const body = await api("/v0/script-agent/operator/scene-to-chat", {
     method: "POST",
-    body: JSON.stringify(manualDraftBody()),
+    body: JSON.stringify({
+      sessionId: currentSessionId(),
+      sourceId: SCENE_SOURCE_ID,
+      force: true,
+    }),
   });
-  await submitChat({ text: body.draft ? body.draft.text || "" : "", promptInput: body.promptInput });
+  if (body.stage) applyStageState(body.stage, SCENE_SOURCE_ID);
+  setStreaming(false);
+  setMsg(`Scene verstuurd: ${body.draft && body.draft.situationTitle || "runtime draft"}`);
 }
 
 async function refreshRuntimeDraft() {
@@ -793,6 +812,7 @@ els.sessionId.addEventListener("change", () => {
 });
 els.model.addEventListener("change", () => withUiError(saveModel));
 els.situation.addEventListener("change", () => {
+  manualSelectionDirty = true;
   updateSituationSelection({ preserveManualCharacters: false });
   sendManualDraftPreview();
 });
@@ -800,6 +820,7 @@ els.character.addEventListener("change", () => {
   const id = String(els.character.value || "");
   const character = (catalogIndex.personages || []).find((item) => String(item.id) === id);
   if (character) {
+    manualSelectionDirty = true;
     selectedCharacters.set(String(character.id), character.naam);
     renderCharacterChips();
     sendManualDraftPreview();
@@ -807,10 +828,14 @@ els.character.addEventListener("change", () => {
   els.character.value = "";
 });
 els.environment.addEventListener("change", () => {
+  manualSelectionDirty = true;
   updateEnvironmentPreview();
   sendManualDraftPreview();
 });
-els.starterExtra.addEventListener("input", sendManualDraftPreview);
+els.starterExtra.addEventListener("input", () => {
+  manualSelectionDirty = true;
+  sendManualDraftPreview();
+});
 els.sceneToChat.addEventListener("click", () => withUiError(sceneToChat));
 els.refreshRuntimeDraft.addEventListener("click", () => withUiError(refreshRuntimeDraft));
 els.chatForm.addEventListener("submit", (event) => {

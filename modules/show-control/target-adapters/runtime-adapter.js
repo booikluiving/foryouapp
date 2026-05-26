@@ -1,84 +1,16 @@
 "use strict";
 
 const { fetchJson, joinUrl } = require("./http-json");
-const { enrichPayloadWithEnvironmentAssets } = require("../cue-library/environment-assets");
+const {
+  performerSlotsFromRuntimeState,
+  resolvedPayloadFromRuntimeState,
+  runtimeOutputFromRuntimeState,
+} = require("../cue-library/runtime-output");
 
 const DEFAULT_RUNTIME_BASE_URL = "http://127.0.0.1:3024";
 
 function runtimeBaseUrl(options = {}) {
   return String(options.runtimeBaseUrl || process.env.V2_SHOW_CONTROL_RUNTIME_URL || DEFAULT_RUNTIME_BASE_URL).replace(/\/+$/, "");
-}
-
-function cloneJson(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
-function resolvedPayloadFromRuntimeState(runtimeState, sourceKey = "resolvedPreparedNext") {
-  if (!runtimeState || typeof runtimeState !== "object") throw new Error("show_control_missing_runtime_state");
-  const resolved = sourceKey === "activeSituation"
-    ? runtimeState.activeSituation && runtimeState.activeSituation.resolved
-    : runtimeState.resolvedPreparedNext;
-  if (!resolved) throw new Error(`show_control_missing_runtime_${sourceKey}`);
-  const copy = cloneJson(resolved);
-  const basePayload = {
-    source: {
-      type: sourceKey === "activeSituation" ? "runtime.active-situation" : "runtime.resolved-prepared-next",
-      readOnly: true,
-    },
-    showRunId: runtimeState.showRunId,
-    situationRunId: runtimeState.activeSituation ? runtimeState.activeSituation.situationRunId : null,
-    situation: {
-      situationId: copy.situationId,
-      legacySituationId: copy.legacySituationId || null,
-      title: copy.title || "",
-    },
-    environment: copy.environment || null,
-    characterIds: copy.characterIds || (copy.characters || []).map((character) => character.id),
-    characters: (copy.characters || []).map((character) => ({
-      characterId: character.id,
-      legacyCharacterId: character.legacyId || null,
-      name: character.name,
-      performerIds: character.performerIds || [],
-    })),
-    labelIds: copy.labelIds || [],
-  };
-  return enrichPayloadWithEnvironmentAssets(basePayload, runtimeState, copy);
-}
-
-function performerSlotsFromRuntimeState(runtimeState = {}, sourceKey = "resolvedPreparedNext") {
-  const resolved = sourceKey === "activeSituation"
-    ? runtimeState.activeSituation && runtimeState.activeSituation.resolved
-    : runtimeState.resolvedPreparedNext;
-  const catalog = runtimeState.showRunSnapshot && runtimeState.showRunSnapshot.catalog
-    ? runtimeState.showRunSnapshot.catalog
-    : {};
-  const performers = new Map((catalog.performers || []).map((item) => [item.id, item]));
-  const slots = [];
-  const seen = new Set();
-  for (const character of resolved && resolved.characters || []) {
-    const performerIds = character.performerIds && character.performerIds.length ? character.performerIds : [null];
-    for (const performerId of performerIds) {
-      const performer = performerId ? performers.get(performerId) : null;
-      const slotIndex = performer && Number.isFinite(Number(performer.performerSlot))
-        ? Number(performer.performerSlot)
-        : slots.length + 1;
-      const key = `${slotIndex}:${performerId || "unassigned"}:${character.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      slots.push({
-        slotIndex,
-        performerId,
-        performerName: performer ? performer.name : null,
-        characterId: character.id,
-        legacyCharacterId: character.legacyId || null,
-        characterName: character.name,
-      });
-    }
-  }
-  return slots.sort((a, b) => {
-    if (a.slotIndex !== b.slotIndex) return a.slotIndex - b.slotIndex;
-    return String(a.characterName).localeCompare(String(b.characterName), "nl-NL");
-  });
 }
 
 async function getCurrentRuntimeState(options = {}) {
@@ -129,17 +61,19 @@ function generatedTeleprompterPrepareAction(action, runtimeState) {
 }
 
 function generatedOperatorPrepareDraftAction(action, runtimeState) {
+  const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext");
   return {
     command: "script-agent.operator.prepareDraft",
     targetId: "script-agent",
     ackMode: "fire-and-forget",
     timeoutMs: Math.min(Number(action.timeoutMs || 1500), 900),
     payload: {
-      runtimeState,
+      runtimeOutput: runtimeOutputFromRuntimeState(runtimeState, "resolvedPreparedNext"),
       force: true,
       sourceId: "show-control-prepare",
       cueIntent: "prepare_operator_draft",
       generatedBy: action.command,
+      situation: payload.situation,
     },
   };
 }

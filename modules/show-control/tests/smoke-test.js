@@ -212,11 +212,12 @@ function startFakeScriptAgent(port, calls) {
     }
     if (req.method === "POST" && url.pathname === "/v0/script-agent/operator/draft/from-runtime") {
       state.operatorDraft = body;
+      const runtimeOutput = body.runtimeOutput || body.runtimeState || {};
       sendJson(res, 201, {
         ok: true,
         draft: {
-          showRunId: body.runtimeState && body.runtimeState.showRunId || "show-run-fake-001",
-          situationId: body.runtimeState && body.runtimeState.resolvedPreparedNext && body.runtimeState.resolvedPreparedNext.situationId || "situation:fake",
+          showRunId: runtimeOutput.showRunId || "show-run-fake-001",
+          situationId: runtimeOutput.resolvedPreparedNext && runtimeOutput.resolvedPreparedNext.situationId || "situation:fake",
         },
       });
       return;
@@ -232,12 +233,13 @@ function startFakeScriptAgent(port, calls) {
       return;
     }
     if (req.method === "POST" && url.pathname === "/v0/script-agent/operator/scene-to-chat") {
+      const runtimeOutput = body.runtimeOutput || body.runtimeState || {};
       sendJson(res, 201, {
         ok: true,
         sessionId: body.sessionId || body.showRunId || "show-run-fake-001",
         draft: {
-          showRunId: body.runtimeState && body.runtimeState.showRunId || "show-run-fake-001",
-          situationId: body.runtimeState && body.runtimeState.resolvedPreparedNext && body.runtimeState.resolvedPreparedNext.situationId || "situation:fake",
+          showRunId: runtimeOutput.showRunId || "show-run-fake-001",
+          situationId: runtimeOutput.resolvedPreparedNext && runtimeOutput.resolvedPreparedNext.situationId || "situation:fake",
         },
         done: { type: "done", text: "Fake scene text" },
       });
@@ -553,6 +555,9 @@ async function main() {
     assert(calls.some((call) => call.service === "touchdesigner" && call.command === "td.environment.prepare" && call.payloadFetched));
     assert(calls.some((call) => call.service === "script-agent" && call.path === "/v0/script-agent/teleprompter-parser/prepare"));
     assert(calls.some((call) => call.service === "script-agent" && call.path === "/v0/script-agent/operator/draft/from-runtime"));
+    const startRunOperatorCall = calls.find((call) => call.service === "script-agent" && call.path === "/v0/script-agent/operator/draft/from-runtime");
+    assert(startRunOperatorCall.body.runtimeOutput, "operator prepare should receive compact runtimeOutput");
+    assert(!startRunOperatorCall.body.runtimeState, "operator prepare should not receive full runtimeState");
     const startRunPrepareCall = calls.find((call) => call.service === "touchdesigner" && call.command === "td.environment.prepare" && call.payloadFetched);
     assert.equal(startRunPrepareCall.payload.assetId, "asset:bg");
     assert.equal(startRunPrepareCall.payload.filePath, "/tmp/fake-background.jpg");
@@ -581,6 +586,11 @@ async function main() {
     assert(sceneToChat.cue.actions.some((action) => action.command === "script-agent.operator.sceneToChat"));
     assert(!sceneToChat.cue.actions.some((action) => action.command === "teleprompter.prepare"));
     assert(calls.some((call) => call.service === "script-agent" && call.path === "/v0/script-agent/operator/scene-to-chat"));
+    const sceneToChatCall = calls.findLast
+      ? calls.findLast((call) => call.service === "script-agent" && call.path === "/v0/script-agent/operator/scene-to-chat")
+      : calls.slice().reverse().find((call) => call.service === "script-agent" && call.path === "/v0/script-agent/operator/scene-to-chat");
+    assert(sceneToChatCall.body.runtimeOutput, "sceneToChat should receive compact runtimeOutput");
+    assert(!sceneToChatCall.body.runtimeState, "sceneToChat should not receive full runtimeState");
 
     const startSituation = await fetchJson(showBase, "/v0/show-control/cues/start-situation", {
       method: "POST",
@@ -629,6 +639,11 @@ async function main() {
     assert(stopSituation.cue.acks.some((ack) => ack.command === "td.environment.prepare" && ack.stage === "loaded"));
     assert(calls.some((call) => call.service === "script-agent" && call.path === "/v0/script-agent/teleprompter-parser/prepare"));
     assert(calls.some((call) => call.service === "script-agent" && call.path === "/v0/script-agent/operator/draft/from-runtime"));
+    const stopOperatorCall = calls.findLast
+      ? calls.findLast((call) => call.service === "script-agent" && call.path === "/v0/script-agent/operator/draft/from-runtime")
+      : calls.slice().reverse().find((call) => call.service === "script-agent" && call.path === "/v0/script-agent/operator/draft/from-runtime");
+    assert(stopOperatorCall.body.runtimeOutput, "stop prepare should receive compact runtimeOutput");
+    assert(!stopOperatorCall.body.runtimeState, "stop prepare should not receive full runtimeState");
 
     const resetRun = await fetchJson(showBase, "/v0/show-control/cues", {
       method: "POST",

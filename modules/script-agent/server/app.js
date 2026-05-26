@@ -170,7 +170,8 @@ function createScriptAgentApp(options = {}) {
   }));
 
   app.post("/v0/script-agent/operator/draft/from-runtime", asyncRoute(async (req, res) => {
-    const draft = await operatorService.createDraftFromRuntime(req.body ? req.body.runtimeState || null : null, {
+    const runtimeInput = req.body ? req.body.runtimeState || req.body.runtimeOutput || null : null;
+    const draft = await operatorService.createDraftFromRuntime(runtimeInput, {
       force: !!(req.body && req.body.force),
       sourceId: req.body && req.body.sourceId,
       previewStage: !!(req.body && (req.body.previewStage === true || req.body.stagePreview === true)),
@@ -253,8 +254,9 @@ function createScriptAgentApp(options = {}) {
   }));
 
   app.post("/v0/script-agent/prompt-inputs", asyncRoute(async (req, res) => {
-    const runtimeResult = req.body && req.body.runtimeState
-      ? { ok: true, state: req.body.runtimeState }
+    const runtimeInput = req.body ? req.body.runtimeState || req.body.runtimeOutput || null : null;
+    const runtimeResult = runtimeInput
+      ? { ok: true, state: runtimeInput }
       : await clients.fetchCurrentRuntimeState();
     if (!runtimeResult.ok) throw httpError(502, `script_agent_runtime_unavailable:${runtimeResult.error || "unknown"}`);
     const promptInput = buildPromptInput(runtimeResult.state);

@@ -32,6 +32,14 @@ function situationFromCatalog(catalog, situationId) {
 }
 
 function performerSlotsForResolved(resolved, catalog) {
+  if (Array.isArray(resolved.performerSlots) && resolved.performerSlots.length) {
+    return cloneJson(resolved.performerSlots).sort((a, b) => {
+      if (Number(a.slotIndex || 0) !== Number(b.slotIndex || 0)) {
+        return Number(a.slotIndex || 0) - Number(b.slotIndex || 0);
+      }
+      return String(a.characterName || "").localeCompare(String(b.characterName || ""));
+    });
+  }
   const performers = byId(catalog.performers || []);
   const seen = new Set();
   const slots = [];
@@ -119,7 +127,9 @@ function buildPromptInput(runtimeState, createdAtDate = new Date()) {
     runtimeContext: {
       status: runtimeState.status || null,
       runtimeUpdatedAt: runtimeState.updatedAt || null,
-      showRunSnapshotCreatedAt: runtimeState.showRunSnapshot ? runtimeState.showRunSnapshot.createdAt || null : null,
+      showRunSnapshotCreatedAt: runtimeState.showRunSnapshot
+        ? runtimeState.showRunSnapshot.createdAt || null
+        : runtimeState.showRunSnapshotCreatedAt || null,
     },
     situation: stableInput.situation,
     environment: stableInput.environment,
