@@ -42,14 +42,14 @@ const ACTIVE_CUES = Object.freeze([
       {
         label: "START SIT",
         when: "Er is een run en er is geen actieve situatie",
-        commands: ["runtime.startSituation", "td.phase.set", "td.environment.go", "teleprompter.reveal"],
-        effect: "Start de voorbereide Runtime-situatie, zet TD op fase 2, stuurt automatisch TD GO en revealt de voorbereide teleprompter-scene.",
+        commands: ["runtime.startSituation", "td.phase.set", "dmx.look", "td.environment.go", "teleprompter.reveal"],
+        effect: "Start de voorbereide Runtime-situatie, zet TD op fase 2, stuurt de Catalog-lichtstand naar DMX, stuurt automatisch TD GO en revealt de voorbereide teleprompter-scene.",
       },
       {
         label: "STOP SIT",
         when: "Er is een actieve situatie",
-        commands: ["runtime.stopSituation", "td.phase.set", "teleprompter.prepare", "script-agent.operator.prepareDraft", "td.environment.prepare"],
-        effect: "Stopt de actieve situatie, zet TD op fase 1 en zet direct de volgende situatie klaar in teleprompter, Operator en TouchDesigner.",
+        commands: ["runtime.stopSituation", "td.phase.set", "dmx.look", "teleprompter.prepare", "script-agent.operator.prepareDraft", "td.environment.prepare"],
+        effect: "Stopt de actieve situatie, zet TD op fase 1, zet DMX terug naar neutraal gedimd en zet direct de volgende situatie klaar in teleprompter, Operator en TouchDesigner.",
       },
     ],
   },

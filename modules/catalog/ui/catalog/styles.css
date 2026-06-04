@@ -632,6 +632,119 @@ details[open] > .catalogWindowSummary::before {
   font-size: 14px;
 }
 
+.lightingPanel {
+  background: var(--fy-panel-2);
+}
+
+.lightingPresetRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.lightingPresetRow label:not(.check),
+.lightingFixtureControls label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.lightingPresetRow span,
+.lightingFixtureControls span {
+  color: var(--fy-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.lightingPresetRow select,
+.lightingFixtureControls input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--fy-line);
+  border-radius: 8px;
+  background: var(--fy-surface);
+  color: var(--fy-text);
+  padding: 7px 9px;
+  outline: none;
+}
+
+.lightingPresetRow select:focus,
+.lightingFixtureControls input:focus {
+  border-color: var(--fy-line-strong);
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.45);
+}
+
+.lightingCustomToggle {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.lightingHint,
+.lightingBaseNote {
+  color: var(--fy-muted);
+}
+
+.lightingFixtureList {
+  display: grid;
+  gap: 6px;
+}
+
+.lightingFixtureRow {
+  border: 1px solid var(--fy-line);
+  border-radius: var(--fy-radius);
+  background: var(--fy-surface);
+  padding: 7px 8px;
+  display: grid;
+  grid-template-columns: 22px minmax(58px, auto) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.lightingFixtureRow.is-editable {
+  grid-template-columns: 22px minmax(58px, auto) minmax(0, 1fr);
+}
+
+.lightingFixtureRow strong,
+.lightingValues {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lightingFixtureRow strong {
+  font-size: 12px;
+}
+
+.lightingValues {
+  color: var(--fy-muted);
+  font-size: 12px;
+  font-weight: 750;
+  justify-self: end;
+}
+
+.lightingSwatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--fy-line-strong);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+
+.lightingFixtureControls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(54px, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.lightingFixtureControls input {
+  padding: 6px 7px;
+}
+
 .layerList {
   display: grid;
   gap: 6px;
@@ -971,6 +1084,8 @@ audio {
 @media (max-width: 1240px) {
   .transformGrid,
   .controlChecks,
+  .lightingPresetRow,
+  .lightingFixtureControls,
   .layerControls .fy-actions,
   .editorUploadStrip {
     grid-template-columns: 1fr;

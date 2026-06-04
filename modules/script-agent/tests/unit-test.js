@@ -242,6 +242,43 @@ async function main() {
   assert.equal(preparedFromPayload.characters[0].slot, 1);
   assert.equal(preparedFromPayload.characters[0].performerName, "Performer A");
 
+  const previousFetch = global.fetch;
+  const bridgeStopCalls = [];
+  global.fetch = async (url, options = {}) => {
+    const body = options.body ? JSON.parse(String(options.body)) : {};
+    bridgeStopCalls.push({ url: String(url), method: options.method || "GET", body });
+    assert.equal(String(url), "http://show-control.test/v0/show-control/cues/stop-situation");
+    assert.equal(body.name, "Teleprompter end scene");
+    assert.equal(body.showRunId, runtimeState.showRunId);
+    assert.equal(body.runtimeState.showRunId, runtimeState.showRunId);
+    return {
+      ok: true,
+      text: async () => JSON.stringify({
+        ok: true,
+        cue: {
+          actions: [
+            { command: "runtime.stopSituation" },
+            { command: "td.phase.set", payload: { phase: 1 } },
+          ],
+        },
+      }),
+    };
+  };
+  try {
+    const stopBridge = createTeleprompterParserBridge({
+      env: { V2_SCRIPT_AGENT_SHOW_CONTROL_URL: "http://show-control.test" },
+      clients: {
+        fetchCurrentRuntimeState: async () => ({ ok: true, state: cloneJson(runtimeState) }),
+      },
+    });
+    const endScene = await stopBridge.endSceneFromStage();
+    assert.equal(endScene.mode, "show-control");
+    assert.equal(bridgeStopCalls.length, 1);
+    assert(endScene.cue.cue.actions.some((action) => action.command === "td.phase.set" && action.payload.phase === 1));
+  } finally {
+    global.fetch = previousFetch;
+  }
+
   const operatorService = createOperatorService({
     clients: {
       fetchCurrentRuntimeState: async () => ({ ok: true, state: cloneJson(runtimeState) }),
@@ -350,6 +387,7 @@ async function main() {
       "Scene naar chat uses the Runtime prepared draft and DeepSeek stream",
       "Legacy teleprompter parser/store behavior is preserved under Script Agent",
       "Teleprompter bridge maps Script Agent prompt input to legacy prepared scene payloads",
+      "Teleprompter end scene uses the shared Show Control stop-situation cue",
     ],
   }, null, 2));
   process.stdout.write("\n");

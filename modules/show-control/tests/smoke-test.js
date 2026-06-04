@@ -720,6 +720,10 @@ async function main() {
     assert(perfectCueState.triggers.some((trigger) => trigger.key === "Space" && trigger.source === "smoke-cue"));
     assert(startSituation.cue.actions.some((action) => action.command === "streamdeck.status" && action.adapterResult));
     assert(startSituation.cue.actions.some((action) => action.command === "perfectCue.trigger" && action.adapterResult));
+    assert(startSituation.cue.actions.some((action) => action.command === "dmx.look" && action.generatedByActionId));
+    const dmxStateAfterStart = await fetchJson(`http://127.0.0.1:${PORTS.dmx}`, "/api/state");
+    assert.equal(dmxStateAfterStart.state.lastLook.channels["1"], 160, "startSituation should send default studio lighting to DMX");
+    assert.equal(dmxStateAfterStart.state.lastLook.channels["11"], 190, "startSituation should send lamp 2 studio lighting to DMX");
 
     const stopSituation = await fetchJson(showBase, "/v0/show-control/cues/stop-situation", {
       method: "POST",
@@ -734,6 +738,10 @@ async function main() {
     assert(stopRuntimeAction.adapterResult.runtimeStateRef, "runtime.stopSituation adapterResult should keep compact runtimeStateRef");
     assert(!stopRuntimeAction.adapterResult.runtimeState, "runtime.stopSituation adapterResult should not store full runtimeState");
     assert(stopSituation.cue.actions.some((action) => action.command === "td.phase.set" && action.payload.phase === 1));
+    assert(stopSituation.cue.actions.some((action) => action.command === "dmx.look" && action.payload.presetId === "neutral-dim"));
+    const dmxStateAfterStop = await fetchJson(`http://127.0.0.1:${PORTS.dmx}`, "/api/state");
+    assert.equal(dmxStateAfterStop.state.lastLook.label, "neutral-dim-between-situations");
+    assert.equal(dmxStateAfterStop.state.lastLook.channels["1"], 30, "stopSituation should dim lamp 1");
     assert(calls.some((call) => call.service === "runtime" && call.path === "/v0/runtime/runs/show-run-fake-001/stop-situation"));
     await waitForCondition(() => calls.some((call) => (
       call.service === "touchdesigner" &&
@@ -844,7 +852,7 @@ async function main() {
       },
       hypotheses: {
         H1: "runtime.startRun changed fake Runtime state and generated td.environment.prepare for preparedNext",
-        H2: "runtime.startSituation generated TD GO by default and can fan out to SQ5, Camera, Stream Deck status and Perfect Cue trigger",
+        H2: "runtime.startSituation generated DMX lighting and TD GO by default and can fan out to SQ5, Camera, Stream Deck status and Perfect Cue trigger",
         H4: "unknown commands fail through command registry",
         H5: "SQ5/Camera adapters called V2 sidecar HTTP contracts copied from the legacy API shape",
         H6: "TD fetched HTTP payloads and sent acks; timeout warning stored",

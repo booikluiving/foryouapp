@@ -141,6 +141,7 @@ async function main() {
     assert(readModel.situations.length > 0, "situations should be present");
     assert(readModel.labels.length > 0, "labels should be present");
     assert(readModel.mediaAssets.length >= readModel.environments.length, "media asset metadata should be present");
+    assert(readModel.lightingPresets.some((preset) => preset.id === "studio-neutral"), "lighting presets should be present");
     assert.equal(readModel.source.type, "v2-catalog-sqlite");
     assert.equal(readModel.source.readOnly, false);
     assert.equal(readModel.source.ownsMutations, true);
@@ -151,6 +152,9 @@ async function main() {
     assert.equal(validation.schemaVersion, CATALOG_SCHEMA_VERSION);
     assert(validation.counts && Number.isInteger(validation.counts.errors));
     assert(Array.isArray(validation.issues), "validation issues should be an array");
+
+    const lightingPresets = await fetchJson("/v0/catalog/lighting-presets");
+    assert(lightingPresets.lightingPresets.some((preset) => preset.id === "neutral-dim"), "lighting preset API should expose neutral-dim");
 
     const snapshotResult = await fetchJson("/v0/catalog/snapshots", { method: "POST" });
     assert(snapshotResult.snapshotId, "snapshotId should be returned");
@@ -171,6 +175,7 @@ async function main() {
     assert.equal(snapshot.schemaVersion, CATALOG_SNAPSHOT_SCHEMA_VERSION);
     assert(snapshot.catalog && Array.isArray(snapshot.catalog.situations));
     assert.equal(snapshot.catalog.situations.length, readModel.situations.length);
+    assert(snapshot.catalog.lightingPresets.some((preset) => preset.id === "studio-neutral"), "snapshot should include lighting presets");
 
     await stopChild(child);
     const afterHashes = await protectedHashes();

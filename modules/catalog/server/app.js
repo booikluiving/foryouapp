@@ -12,12 +12,14 @@ const { validateCatalogReadModel } = require("../validation/validate-catalog");
 const {
   listMediaAssets,
   listEnvironmentCompositions,
+  listLightingPresets,
   deleteMediaAsset,
   mediaAssetFilePath,
   saveMediaAssetUpload,
   upsertCharacter,
   upsertEnvironment,
   upsertEnvironmentComposition,
+  upsertLightingPreset,
   upsertPerformer,
   upsertSituation,
 } = require("../write-model/catalog-store");
@@ -129,12 +131,37 @@ function createCatalogApp(options = {}) {
       environments: readModel.environments,
       mediaAssets: readModel.mediaAssets,
       environmentCompositions: readModel.environmentCompositions || await listEnvironmentCompositions(options),
+      lightingPresets: readModel.lightingPresets || await listLightingPresets(options),
+      baseLighting: {
+        fixtureGroup: "front",
+        fixtureIds: ["lamp4", "lamp5", "lamp6", "lamp7", "lamp8", "lamp9"],
+        look: "neutral-soft-white",
+      },
       v2MediaAssets: await listMediaAssets(options),
       counts: {
         environments: readModel.environments.length,
         mediaAssets: readModel.mediaAssets.length,
         environmentCompositions: (readModel.environmentCompositions || []).length,
+        lightingPresets: (readModel.lightingPresets || []).length,
       },
+    });
+  }));
+
+  app.get("/v0/catalog/lighting-presets", asyncRoute(async (_req, res) => {
+    res.json({
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      lightingPresets: await listLightingPresets(options),
+    });
+  }));
+
+  app.put("/v0/catalog/lighting-presets/:presetId", asyncRoute(async (req, res) => {
+    const preset = await upsertLightingPreset(req.params.presetId, req.body || {}, options);
+    const updatedReadModel = await buildCatalogReadModel(options);
+    res.json({
+      ok: true,
+      preset,
+      readModelCounts: updatedReadModel.counts,
     });
   }));
 

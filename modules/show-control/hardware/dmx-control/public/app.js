@@ -10,6 +10,15 @@ let liveDebounce = null;
 let wheelImageData = null;
 let wheelPointerDown = false;
 let activeFixtureIndex = 0;
+let lightingPresets = [];
+let selectedLightingPresetId = "";
+let lightingPresetSource = "";
+
+const accentFixtures = [
+  { id: "lamp1", fixtureIndex: 0, label: "Lamp 1" },
+  { id: "lamp2", fixtureIndex: 1, label: "Lamp 2" },
+  { id: "lamp3", fixtureIndex: 2, label: "Lamp 3" },
+];
 
 const fixtures = [
   createFixture("Lamp 1", 1, "hsi", true),
@@ -73,6 +82,14 @@ function post(pathname, body = {}) {
   });
 }
 
+function put(pathname, body = {}) {
+  return api(pathname, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 function configBody() {
   return {
     targetIp: $("targetIpInput").value.trim(),
@@ -99,6 +116,10 @@ function correctedHue(hue) {
 
 function hueToDmx(hue) {
   return Math.round((correctedHue(hue) / 360) * 255);
+}
+
+function presetHueToDmx(hue) {
+  return Math.round((clamp(hue, 0, 360) / 360) * 255);
 }
 
 function setMessage(text, isError = false) {
@@ -347,62 +368,137 @@ function sendHsiLook(label, hue, saturation, intensity, holdMs = 1200) {
   sendLook(label, channels, { holdMs }).catch((err) => setMessage(err.message, true));
 }
 
-const environmentLooks = {
-  auto: [
-    ["hsi", { hue: 204, saturation: 54, intensity: 120 }],
-    ["hsi", { hue: 0, saturation: 0, intensity: 190 }],
-    ["hsi", { hue: 0, saturation: 0, intensity: 125 }],
-    ["hsi", { hue: 28, saturation: 142, intensity: 75 }],
-    ["hsi", { hue: 214, saturation: 180, intensity: 55 }],
-    ["rgb", { red: 20, green: 70, blue: 255, brightness: 62 }],
-    ["rgb", { red: 255, green: 116, blue: 36, brightness: 50 }],
-    ["cct", { intensity: 95, temp: 30, gm: 128 }],
-    ["hsi", { hue: 198, saturation: 90, intensity: 40 }],
-  ],
-  bioscoop: [
-    ["hsi", { hue: 224, saturation: 210, intensity: 55 }],
-    ["hsi", { hue: 0, saturation: 0, intensity: 45 }],
-    ["hsi", { hue: 0, saturation: 0, intensity: 35 }],
-    ["hsi", { hue: 28, saturation: 240, intensity: 42 }],
-    ["hsi", { hue: 348, saturation: 190, intensity: 30 }],
-    ["rgb", { red: 18, green: 28, blue: 255, brightness: 42 }],
-    ["rgb", { red: 255, green: 48, blue: 24, brightness: 30 }],
-    ["cct", { intensity: 25, temp: 0, gm: 128 }],
-    ["hsi", { hue: 240, saturation: 180, intensity: 28 }],
-  ],
-  podcast: [
-    ["hsi", { hue: 32, saturation: 110, intensity: 140 }],
-    ["hsi", { hue: 0, saturation: 0, intensity: 210 }],
-    ["hsi", { hue: 0, saturation: 0, intensity: 180 }],
-    ["hsi", { hue: 195, saturation: 170, intensity: 80 }],
-    ["hsi", { hue: 300, saturation: 115, intensity: 55 }],
-    ["rgb", { red: 40, green: 190, blue: 255, brightness: 58 }],
-    ["rgb", { red: 255, green: 84, blue: 190, brightness: 40 }],
-    ["cct", { intensity: 130, temp: 100, gm: 128 }],
-    ["hsi", { hue: 210, saturation: 105, intensity: 50 }],
-  ],
-  nacht: [
-    ["hsi", { hue: 230, saturation: 230, intensity: 35 }],
-    ["hsi", { hue: 0, saturation: 0, intensity: 18 }],
-    ["hsi", { hue: 0, saturation: 0, intensity: 12 }],
-    ["hsi", { hue: 260, saturation: 200, intensity: 25 }],
-    ["hsi", { hue: 200, saturation: 210, intensity: 24 }],
-    ["rgb", { red: 10, green: 14, blue: 120, brightness: 35 }],
-    ["rgb", { red: 75, green: 0, blue: 120, brightness: 20 }],
-    ["cct", { intensity: 10, temp: 0, gm: 128 }],
-    ["hsi", { hue: 215, saturation: 160, intensity: 18 }],
-  ],
-};
+function lightingPresetById(presetId = selectedLightingPresetId) {
+  return lightingPresets.find((preset) => preset.id === presetId)
+    || lightingPresets.find((preset) => preset.id === "studio-neutral")
+    || lightingPresets[0]
+    || null;
+}
 
-function applyEnvironmentLook(name) {
-  const look = environmentLooks[name];
-  if (!look) return;
-  fixtures.forEach((fixture, index) => {
-    const entry = look[index];
-    if (!entry) return;
-    setFixtureProfileValues(fixture, entry[0], entry[1]);
-  });
+function normalizeHsi(values = {}) {
+  return {
+    hue: clamp(values.hue, 0, 360),
+    saturation: clamp(values.saturation, 0, 255),
+    intensity: clamp(values.intensity, 0, 255),
+  };
+}
+
+function hsiCss(values = {}) {
+  const hsi = normalizeHsi(values);
+  const saturation = Math.round((hsi.saturation / 255) * 100);
+  const lightness = hsi.saturation <= 2
+    ? Math.round(18 + (hsi.intensity / 255) * 74)
+    : Math.round(20 + (hsi.intensity / 255) * 50);
+  return `hsl(${hsi.hue}deg ${saturation}% ${lightness}%)`;
+}
+
+function renderLightingPresetSummary() {
+  const root = $("lightingPresetSummary");
+  const preset = lightingPresetById();
+  $("lightingPresetBadge").textContent = lightingPresetSource === "defaults" ? "Defaults" : "Catalog";
+  if (!preset) {
+    root.innerHTML = `<div class="muted-note">Geen presets geladen.</div>`;
+    return;
+  }
+  root.innerHTML = accentFixtures.map((fixture) => {
+    const values = normalizeHsi(preset.fixtures && preset.fixtures[fixture.id]);
+    return `
+      <div class="preset-fixture-row">
+        <span class="preset-swatch" style="background:${esc(hsiCss(values))}"></span>
+        <strong>${esc(fixture.label)}</strong>
+        <span>H ${values.hue} · S ${values.saturation} · I ${values.intensity}</span>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderLightingPresetSelect() {
+  const select = $("lightingPresetInput");
+  const current = selectedLightingPresetId || select.value || "studio-neutral";
+  selectedLightingPresetId = lightingPresetById(current)?.id || "";
+  select.innerHTML = lightingPresets.map((preset) => `
+    <option value="${esc(preset.id)}" ${preset.id === selectedLightingPresetId ? "selected" : ""}>${esc(preset.name || preset.id)}</option>
+  `).join("");
+  select.disabled = lightingPresets.length === 0;
+  $("loadLightingPresetBtn").disabled = lightingPresets.length === 0;
+  $("testLightingPresetBtn").disabled = lightingPresets.length === 0;
+  $("saveLightingPresetBtn").disabled = lightingPresets.length === 0;
+  renderLightingPresetSummary();
+}
+
+async function loadLightingPresets() {
+  const result = await api("/api/lighting-presets");
+  lightingPresetSource = result.source || "catalog";
+  lightingPresets = Array.isArray(result.lightingPresets) ? result.lightingPresets : [];
+  if (!selectedLightingPresetId) selectedLightingPresetId = lightingPresetById("studio-neutral")?.id || "";
+  renderLightingPresetSelect();
+  return result;
+}
+
+function applyLightingPresetToFixtures(preset = lightingPresetById()) {
+  if (!preset) return;
+  for (const fixtureRef of accentFixtures) {
+    const fixture = fixtures[fixtureRef.fixtureIndex];
+    if (!fixture) continue;
+    const values = normalizeHsi(preset.fixtures && preset.fixtures[fixtureRef.id]);
+    fixture.enabled = true;
+    setFixtureProfileValues(fixture, "hsi", values);
+  }
   applyFixtureToControls(activeFixtureIndex);
+}
+
+function channelsForLightingPreset(preset = lightingPresetById()) {
+  const channels = {};
+  if (!preset) return channels;
+  for (const fixtureRef of accentFixtures) {
+    const fixture = fixtures[fixtureRef.fixtureIndex];
+    if (!fixture) continue;
+    const values = normalizeHsi(preset.fixtures && preset.fixtures[fixtureRef.id]);
+    const address = clamp(fixture.address, 1, 512);
+    channels[address] = values.intensity;
+    channels[address + 1] = presetHueToDmx(values.hue);
+    channels[address + 2] = values.saturation;
+  }
+  return channels;
+}
+
+function currentAccentPresetPayload(basePreset = lightingPresetById()) {
+  saveActiveFixtureFromControls();
+  const fixturesPayload = {};
+  for (const fixtureRef of accentFixtures) {
+    const fixture = fixtures[fixtureRef.fixtureIndex];
+    fixturesPayload[fixtureRef.id] = normalizeHsi(fixture && fixture.values && fixture.values.hsi);
+  }
+  return {
+    ...(basePreset || {}),
+    id: basePreset && basePreset.id || selectedLightingPresetId,
+    name: basePreset && basePreset.name || selectedLightingPresetId,
+    category: basePreset && basePreset.category || "Custom",
+    fixtureGroup: "accent",
+    fixtures: fixturesPayload,
+  };
+}
+
+async function saveCurrentLightingPreset() {
+  const preset = lightingPresetById();
+  if (!preset) return;
+  const result = await put(`/api/lighting-presets/${encodeURIComponent(preset.id)}`, currentAccentPresetPayload(preset));
+  const updated = result.preset;
+  lightingPresets = lightingPresets.map((item) => (item.id === updated.id ? updated : item));
+  selectedLightingPresetId = updated.id;
+  renderLightingPresetSelect();
+  logBody(result);
+  setMessage(`Preset opgeslagen: ${updated.name || updated.id}`);
+}
+
+async function testLightingPreset() {
+  const preset = lightingPresetById();
+  if (!preset) return;
+  stopEffect();
+  live = true;
+  $("liveBtn").textContent = "Live uit";
+  applyLightingPresetToFixtures(preset);
+  await sendLook(`lighting-preset-${preset.id}`, channelsForLightingPreset(preset), { continuous: true, clearFirst: false });
 }
 
 function currentChannels(options = {}) {
@@ -752,13 +848,13 @@ function bindEvents() {
   });
   $("allFixturesBtn").addEventListener("click", () => setAllFixturesEnabled(true));
   $("soloFixtureBtn").addEventListener("click", () => setAllFixturesEnabled(false));
-  document.querySelectorAll(".environment-button").forEach((button) => {
-    button.addEventListener("click", () => {
-      stopEffect();
-      applyEnvironmentLook(button.dataset.look);
-      sendLook(`environment-${button.dataset.look}`, currentChannels({ propagate: false }), { holdMs: 1200 }).catch((err) => setMessage(err.message, true));
-    });
+  $("lightingPresetInput").addEventListener("change", () => {
+    selectedLightingPresetId = $("lightingPresetInput").value;
+    renderLightingPresetSummary();
   });
+  $("loadLightingPresetBtn").addEventListener("click", () => applyLightingPresetToFixtures(lightingPresetById()));
+  $("testLightingPresetBtn").addEventListener("click", () => testLightingPreset().catch((err) => setMessage(err.message, true)));
+  $("saveLightingPresetBtn").addEventListener("click", () => saveCurrentLightingPreset().catch((err) => setMessage(err.message, true)));
   $("fixtureModeInput").addEventListener("change", () => {
     stopEffect();
     activeFixture().profile = $("fixtureModeInput").value;
@@ -772,7 +868,9 @@ function bindEvents() {
     renderFixtureGrid();
     queueLiveSend();
   });
-  $("refreshBtn").addEventListener("click", () => refresh().catch((err) => setMessage(err.message, true)));
+  $("refreshBtn").addEventListener("click", () => {
+    Promise.all([refresh(), loadLightingPresets()]).catch((err) => setMessage(err.message, true));
+  });
   $("liveBtn").addEventListener("click", () => toggleLive().catch((err) => setMessage(err.message, true)));
   $("stopBtn").addEventListener("click", async () => {
     live = false;
@@ -879,7 +977,9 @@ function bindEvents() {
 function init() {
   renderRawGrid();
   applyFixtureToControls(0);
+  renderLightingPresetSelect();
   bindEvents();
+  loadLightingPresets().catch((err) => setMessage(err.message, true));
   refresh().catch((err) => {
     setMessage(err.message, true);
     logBody({ ok: false, error: err.message });

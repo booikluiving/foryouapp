@@ -8,6 +8,10 @@ const {
   resolvedPayloadFromRuntimeState,
   runtimeOutputFromRuntimeState,
 } = require("./runtime-output");
+const {
+  DEFAULT_STOP_PRESET_ID,
+  channelsForPreset,
+} = require("../../../shared/lighting/environment-lighting-v0");
 
 function actionPayloadId(cueId, actionIndex) {
   return `${cueId}:payload:${String(actionIndex + 1).padStart(2, "0")}`;
@@ -222,10 +226,12 @@ function buildStartRunCue({ name, autoPrepareNext = true, createdAtDate = new Da
 function buildStartSituationCue({ name, showRunId, actions: technicalActions = [], createdAtDate = new Date() } = {}) {
   const cueId = createShowControlId("show-cue", createdAtDate);
   const hasExplicitTdGo = technicalActions.some((item) => String(item.command || "") === "td.environment.go");
+  const hasExplicitDmxLighting = technicalActions.some((item) => String(item.command || "").startsWith("dmx."));
   const actions = [
     action(cueId, 0, "runtime", "runtime.startSituation", "acknowledged-async", {
       showRunId,
       autoGoEnvironment: !hasExplicitTdGo,
+      autoGoLighting: !hasExplicitDmxLighting,
       autoRevealTeleprompter: true,
     }, { parallelGroup: "start-situation", timeoutMs: 4000 }),
     action(cueId, 1, "touchdesigner", "td.phase.set", "acknowledged-async", phasePayload(
@@ -275,6 +281,14 @@ function buildStopSituationCue({ name, showRunId, createdAtDate = new Date() } =
         "loading",
         "phase_loading_after_stop"
       ), { parallelGroup: "stop-situation", timeoutMs: 1200 }),
+      action(cueId, 2, "dmx", "dmx.look", "fire-and-forget", {
+        label: "neutral-dim-between-situations",
+        channels: channelsForPreset(DEFAULT_STOP_PRESET_ID),
+        clearFirst: false,
+        continuous: true,
+        cueIntent: "environment_lighting_stop",
+        presetId: DEFAULT_STOP_PRESET_ID,
+      }, { parallelGroup: "stop-situation", timeoutMs: 900 }),
     ],
     createdAtDate,
     cueId,

@@ -29,6 +29,7 @@ function emptyReadModel(source) {
       presentMediaAssets: 0,
       legacySituationFragments: 0,
       environmentCompositions: 0,
+      lightingPresets: 0,
     },
     performers: [],
     characters: [],
@@ -37,6 +38,7 @@ function emptyReadModel(source) {
     labels: [],
     mediaAssets: [],
     environmentCompositions: [],
+    lightingPresets: [],
     legacy: {
       algorithmSituations: [],
     },

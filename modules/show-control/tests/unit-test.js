@@ -33,6 +33,10 @@ const { runtimeOutputFromRuntimeState } = require("../cue-library/runtime-output
 const { requestForSq5Action } = require("../target-adapters/sq5-adapter");
 const { requestForStreamDeckAction } = require("../target-adapters/streamdeck-adapter");
 const { requestForTeleprompterAction } = require("../target-adapters/teleprompter-adapter");
+const {
+  DEFAULT_STOP_PRESET_ID,
+  channelsForPreset,
+} = require("../../../shared/lighting/environment-lighting-v0");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -199,6 +203,10 @@ async function main() {
           environmentId: "environment:assets",
           fxVideoLayer: { assetId: "media-asset:environment:assets:fxVideo:glitch", zIndex: 10 },
           imageLayers: [{ assetId: "media-asset:environment:assets:fxImage:overlay", zIndex: 20 }],
+          lighting: {
+            mode: "preset",
+            presetId: "festival-color",
+          },
         }],
       },
     },
@@ -215,6 +223,8 @@ async function main() {
   assert.equal(enrichedPayload.assetFilePaths.soundscape, "/tmp/foryou-room.mp3");
   assert.equal(enrichedPayload.hasFxOverlay, true);
   assert.equal(enrichedPayload.fxOverlayFilePath, "/tmp/foryou-output.png");
+  assert.equal(enrichedPayload.environmentLighting.presetId, "festival-color");
+  assert.equal(enrichedPayload.environmentLighting.fixtures.lamp1.saturation, 170);
   const liveCatalog = {
     mediaAssets: [
       {
@@ -260,6 +270,15 @@ async function main() {
       environmentId: "environment:assets",
       backgroundLayer: { assetId: "media-asset:environment:assets:background:festival-jpg", zIndex: 1 },
       imageLayers: [{ assetId: "media-asset:environment:assets:fxImage:output-live", zIndex: 20 }],
+      lighting: {
+        mode: "custom",
+        presetId: "studio-neutral",
+        fixtures: {
+          lamp1: { hue: 12, saturation: 0, intensity: 111 },
+          lamp2: { hue: 22, saturation: 10, intensity: 122 },
+          lamp3: { hue: 32, saturation: 20, intensity: 133 },
+        },
+      },
     }],
   };
   const livePayload = resolvedPayloadFromRuntimeState(assetRuntimeState, "resolvedPreparedNext", "", { liveCatalog });
@@ -269,6 +288,8 @@ async function main() {
   assert.equal(livePayload.backgroundAsset.filePath, "/tmp/foryou-festival.jpg");
   assert.equal(livePayload.filePath, "/tmp/foryou-festival.jpg");
   assert.deepEqual(livePayload.fxFilePaths, ["/tmp/foryou-live-output.png"]);
+  assert.equal(livePayload.environmentLighting.mode, "custom");
+  assert.equal(livePayload.environmentLighting.fixtures.lamp2.intensity, 122);
   const preparedRefreshCue = buildEnvironmentMediaRefreshCue(assetRuntimeState, {
     environmentId: "environment:assets",
     liveCatalog,
@@ -591,6 +612,7 @@ async function main() {
 
   const autoGoStartSituationCue = buildStartSituationCue({ showRunId: "show-run-unit" });
   assert.equal(autoGoStartSituationCue.actions[0].payload.autoGoEnvironment, true, "startSituation should auto-generate TD GO by default");
+  assert.equal(autoGoStartSituationCue.actions[0].payload.autoGoLighting, true, "startSituation should auto-generate DMX lighting by default");
   const autoGoPhaseAction = autoGoStartSituationCue.actions.find((action) => action.command === "td.phase.set");
   assert(autoGoPhaseAction, "startSituation should set TD phase");
   assert.equal(autoGoPhaseAction.payload.phase, 2, "startSituation should set TD phase 2");
@@ -602,6 +624,13 @@ async function main() {
   });
   assert.equal(explicitGoStartSituationCue.actions[0].payload.autoGoEnvironment, false, "explicit TD GO should disable generated TD GO");
   assert.equal(explicitGoStartSituationCue.actions[1].command, "td.phase.set", "phase action should not disable explicit TD GO detection");
+  const explicitDmxStartSituationCue = buildStartSituationCue({
+    showRunId: "show-run-unit",
+    actions: [
+      { command: "dmx.look", ackMode: "fire-and-forget", payload: { label: "manual", channels: { 1: 80 } } },
+    ],
+  });
+  assert.equal(explicitDmxStartSituationCue.actions[0].payload.autoGoLighting, false, "explicit DMX should disable generated DMX lighting");
 
   const inloopPhaseCue = buildPhaseCue({ phase: 0, phaseName: "inloop" });
   assert.equal(inloopPhaseCue.actions.length, 1);
@@ -613,6 +642,11 @@ async function main() {
   const stopPhaseAction = stopSituationCue.actions.find((action) => action.command === "td.phase.set");
   assert(stopPhaseAction, "stopSituation should set TD phase");
   assert.equal(stopPhaseAction.payload.phase, 1, "stopSituation should set TD phase 1");
+  const stopDmxAction = stopSituationCue.actions.find((action) => action.command === "dmx.look");
+  assert(stopDmxAction, "stopSituation should set neutral DMX look");
+  assert.deepEqual(stopDmxAction.payload.channels, channelsForPreset(DEFAULT_STOP_PRESET_ID));
+  assert.equal(stopDmxAction.payload.clearFirst, false);
+  assert.equal(stopDmxAction.payload.continuous, true);
 
   const fanoutCalls = [];
   const fanoutCue = buildStartSituationCue({

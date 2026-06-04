@@ -7,6 +7,13 @@ const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 
 const { canAssignCast: canAssignCastByPerformerChoice } = require("../../../shared/casting/performer-slots");
+const {
+  DEFAULT_LIGHTING_PRESETS,
+  LIGHTING_PRESET_SCHEMA_VERSION,
+  mergeLightingPresets,
+  normalizeEnvironmentLighting,
+  normalizeLightingPreset,
+} = require("../../../shared/lighting/environment-lighting-v0");
 
 const STORE_SCHEMA_VERSION = "catalog.write-store.v0";
 const COMPOSITION_SCHEMA_VERSION = "catalog.environment-composition.v0";
@@ -141,6 +148,7 @@ function emptyStore() {
     situations: [],
     mediaAssets: [],
     environmentCompositions: [],
+    lightingPresets: [],
   };
 }
 
@@ -160,6 +168,7 @@ function normalizeStore(raw) {
     situations: Array.isArray(store.situations) ? store.situations : [],
     mediaAssets: Array.isArray(store.mediaAssets) ? store.mediaAssets : [],
     environmentCompositions: Array.isArray(store.environmentCompositions) ? store.environmentCompositions : [],
+    lightingPresets: Array.isArray(store.lightingPresets) ? store.lightingPresets : [],
   };
 }
 
@@ -264,6 +273,10 @@ function ensureCatalogDbSchema(db) {
       environment_id TEXT PRIMARY KEY,
       record_json TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS lighting_presets (
+      id TEXT PRIMARY KEY,
+      record_json TEXT NOT NULL
+    );
   `);
 }
 
@@ -300,6 +313,7 @@ async function readCatalogStore(options = {}) {
       situations: readRecordTable(db, "situations", "ORDER BY sort_order, title COLLATE NOCASE, id"),
       mediaAssets: readRecordTable(db, "media_assets", "ORDER BY environment_id, type, id"),
       environmentCompositions: readRecordTable(db, "environment_compositions", "ORDER BY environment_id"),
+      lightingPresets: readRecordTable(db, "lighting_presets", "ORDER BY id"),
     };
     return normalizeStore(store);
   } finally {
@@ -324,6 +338,7 @@ async function writeCatalogStore(store, options = {}) {
       DELETE FROM situations;
       DELETE FROM media_assets;
       DELETE FROM environment_compositions;
+      DELETE FROM lighting_presets;
     `);
 
     const insertMetadata = db.prepare("INSERT INTO import_metadata (key, value) VALUES (?, ?)");
@@ -460,6 +475,14 @@ async function writeCatalogStore(store, options = {}) {
     `);
     for (const item of normalized.environmentCompositions) {
       insertComposition.run(item.environmentId || item.id, JSON.stringify(item));
+    }
+
+    const insertLightingPreset = db.prepare(`
+      INSERT INTO lighting_presets (id, record_json)
+      VALUES (?, ?)
+    `);
+    for (const item of normalized.lightingPresets) {
+      insertLightingPreset.run(item.id, JSON.stringify(item));
     }
 
     db.exec("COMMIT");
@@ -953,13 +976,14 @@ function normalizeCompositionLayer(layer, role, index = 0) {
   };
 }
 
-function normalizeEnvironmentCompositionRecord(record) {
+function normalizeEnvironmentCompositionRecord(record, lightingPresets = DEFAULT_LIGHTING_PRESETS) {
   const at = nowIso();
   const backgroundLayer = normalizeCompositionLayer(record && record.backgroundLayer, "background", 0);
   const fxVideoLayer = normalizeCompositionLayer(record && record.fxVideoLayer, "fxVideo", 0);
   const imageLayers = Array.isArray(record && record.imageLayers)
     ? record.imageLayers.map((layer, index) => normalizeCompositionLayer(layer, "fxImage", index)).filter(Boolean)
     : [];
+  const lighting = normalizeEnvironmentLighting(record && record.lighting, lightingPresets);
   return {
     schemaVersion: COMPOSITION_SCHEMA_VERSION,
     id: String(record && record.environmentId || "").trim(),
@@ -969,6 +993,7 @@ function normalizeEnvironmentCompositionRecord(record) {
     backgroundLayer,
     fxVideoLayer,
     imageLayers,
+    lighting,
     createdAt: record && record.createdAt || at,
     updatedAt: record && record.updatedAt || record && record.createdAt || at,
     source: { type: "v2-composition-store" },
@@ -985,8 +1010,9 @@ function applyCatalogStore(readModel, store, options = {}) {
     ...(readModel.mediaAssets || []),
     ...(store.mediaAssets || []).map(normalizeMediaAssetRecord),
   ];
+  const lightingPresets = mergeLightingPresets(store.lightingPresets || []);
   const environmentCompositions = (store.environmentCompositions || [])
-    .map(normalizeEnvironmentCompositionRecord)
+    .map((composition) => normalizeEnvironmentCompositionRecord(composition, lightingPresets))
     .filter((composition) => composition.environmentId);
 
   return {
@@ -1018,11 +1044,13 @@ function applyCatalogStore(readModel, store, options = {}) {
       mediaAssets: mediaAssets.length,
       presentMediaAssets: mediaAssets.filter((asset) => asset.status === "present").length,
       environmentCompositions: environmentCompositions.length,
+      lightingPresets: lightingPresets.length,
       v2Performers: store.performers.length,
       v2Characters: store.characters.length,
       v2Environments: store.environments.length,
       v2Situations: store.situations.length,
       v2MediaAssets: store.mediaAssets.length,
+      v2LightingPresets: store.lightingPresets.length,
     },
     performers,
     characters,
@@ -1031,6 +1059,7 @@ function applyCatalogStore(readModel, store, options = {}) {
     labels,
     mediaAssets,
     environmentCompositions,
+    lightingPresets,
   };
 }
 
@@ -1571,6 +1600,7 @@ async function upsertEnvironmentComposition(environmentId, body, readModel, opti
   }
 
   const store = await readCatalogStore(options);
+  const lightingPresets = mergeLightingPresets(store.lightingPresets || []);
   const normalizedAssets = (store.mediaAssets || []).map(normalizeMediaAssetRecord);
   const assetMap = new Map(normalizedAssets.map((asset) => [asset.id, asset]));
   const mediaRoot = catalogMediaRoot(options);
@@ -1605,6 +1635,7 @@ async function upsertEnvironmentComposition(environmentId, body, readModel, opti
   if (imageLayers.length > 100) {
     issues.push(issue("composition_too_many_layers", "A composition can contain at most 100 image layers."));
   }
+  const lighting = normalizeEnvironmentLighting(body && body.lighting, lightingPresets);
   if (issues.length) throw new CatalogInputError("invalid_environment_composition", issues);
 
   const existing = (store.environmentCompositions || []).find((item) => item.environmentId === id);
@@ -1616,9 +1647,10 @@ async function upsertEnvironmentComposition(environmentId, body, readModel, opti
     backgroundLayer,
     fxVideoLayer,
     imageLayers,
+    lighting,
     createdAt: existing ? existing.createdAt : at,
     updatedAt: at,
-  });
+  }, lightingPresets);
   const index = store.environmentCompositions.findIndex((item) => item.environmentId === id);
   if (index >= 0) store.environmentCompositions[index] = record;
   else store.environmentCompositions.push(record);
@@ -1628,7 +1660,35 @@ async function upsertEnvironmentComposition(environmentId, body, readModel, opti
 
 async function listEnvironmentCompositions(options = {}) {
   const store = await readCatalogStore(options);
-  return (store.environmentCompositions || []).map(normalizeEnvironmentCompositionRecord);
+  const lightingPresets = mergeLightingPresets(store.lightingPresets || []);
+  return (store.environmentCompositions || []).map((composition) => normalizeEnvironmentCompositionRecord(composition, lightingPresets));
+}
+
+async function listLightingPresets(options = {}) {
+  const store = await readCatalogStore(options);
+  return mergeLightingPresets(store.lightingPresets || []);
+}
+
+async function upsertLightingPreset(presetId, body, options = {}) {
+  const id = String(presetId || body && body.id || "").trim();
+  const current = await listLightingPresets(options);
+  const existing = current.find((item) => item.id === id) || null;
+  const normalized = normalizeLightingPreset({
+    ...(body || {}),
+    id,
+    updatedAt: nowIso(),
+  }, existing);
+  const issues = [];
+  if (!normalized) issues.push(issue("lighting_preset_invalid", "A valid lighting preset is required.", { presetId: id }));
+  if (normalized && !normalized.name) issues.push(issue("lighting_preset_name_required", "Preset name is required.", { presetId: id }));
+  if (issues.length) throw new CatalogInputError("invalid_lighting_preset", issues);
+
+  const store = await readCatalogStore(options);
+  const index = store.lightingPresets.findIndex((item) => item.id === normalized.id);
+  if (index >= 0) store.lightingPresets[index] = normalized;
+  else store.lightingPresets.push(normalized);
+  await writeCatalogStore(store, options);
+  return normalized;
 }
 
 module.exports = {
@@ -1641,6 +1701,7 @@ module.exports = {
   MEDIA_ASSET_ROLES,
   MEDIA_ASSET_TYPES,
   MEDIA_ASSET_CONFIG,
+  LIGHTING_PRESET_SCHEMA_VERSION,
   STORE_SCHEMA_VERSION,
   applyCatalogStore,
   canAssignCast,
@@ -1649,6 +1710,7 @@ module.exports = {
   catalogStorePath,
   listMediaAssets,
   listEnvironmentCompositions,
+  listLightingPresets,
   deleteMediaAsset,
   mediaAssetFilePath,
   mimeTypeFromExtension,
@@ -1658,6 +1720,7 @@ module.exports = {
   saveMediaAssetFile,
   saveMediaAssetUpload,
   upsertEnvironmentComposition,
+  upsertLightingPreset,
   upsertCharacter,
   upsertEnvironment,
   upsertPerformer,

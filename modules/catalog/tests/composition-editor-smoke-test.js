@@ -285,6 +285,9 @@ async function main() {
     assert(mediaJs.includes("data-layer-row"));
     assert(mediaJs.includes("layerDragHandle"));
     assert(mediaJs.includes("layerLockIcon"));
+    assert(mediaJs.includes("renderLightingPanel"));
+    assert(mediaJs.includes("data-lighting-field"));
+    assert(mediaJs.includes("Lamp 4-9 blijven frontlicht"));
     assert(mediaJs.includes("reorderLayer"));
     assert(mediaJs.includes("imageDimensionsFromFile"));
     assert(mediaJs.includes("event.shiftKey"));
@@ -308,12 +311,28 @@ async function main() {
     assert(catalogCss.includes(".inactiveAssetList"));
     assert(catalogCss.includes(".inactiveAssetItem"));
     assert(catalogCss.includes(".inactiveAssetsPanel summary"));
+    assert(catalogCss.includes(".lightingPanel"));
+    assert(catalogCss.includes(".lightingFixtureRow"));
     assert(!catalogCss.includes(".layerLockIcon::before"));
     assert(!catalogCss.includes(".layerLockIcon::after"));
 
     const initial = await fetchJson("/v0/catalog/read-model");
     const environment = initial.environments.find((item) => item.active && !item.archivedAt);
     assert(environment, "fixture requires an active environment");
+    assert(initial.lightingPresets.some((preset) => preset.id === "studio-neutral"), "read-model should include default lighting presets");
+    const lightingPresets = await fetchJson("/v0/catalog/lighting-presets");
+    assert(lightingPresets.lightingPresets.some((preset) => preset.id === "neutral-dim"), "lighting preset API should expose neutral-dim");
+    const festivalPreset = (await fetchJson("/v0/catalog/lighting-presets/festival-color", jsonOptions("PUT", {
+      name: "Festival / kleur",
+      category: "Kleur",
+      fixtures: {
+        lamp1: { hue: 315, saturation: 170, intensity: 131 },
+        lamp2: { hue: 34, saturation: 180, intensity: 144 },
+        lamp3: { hue: 205, saturation: 170, intensity: 121 },
+      },
+    }))).preset;
+    assert.equal(festivalPreset.id, "festival-color");
+    assert.equal(festivalPreset.fixtures.lamp2.intensity, 144);
 
     const bgVideo = (await uploadAsset({
       environmentId: environment.id,
@@ -474,12 +493,19 @@ async function main() {
           visible: true,
         },
       ],
+      lighting: {
+        mode: "preset",
+        presetId: "festival-color",
+        stopBehavior: "neutral-dim",
+      },
     };
     const saved = await fetchJson(`/v0/catalog/media-compositions/${encodeURIComponent(environment.id)}`, jsonOptions("PUT", compositionPayload));
     assert.equal(saved.composition.canvas.canvasWidth, 6480);
     assert.equal(saved.composition.canvas.canvasHeight, 3840);
     assert.equal(saved.composition.canvas.aspectRatio, "27:16");
     assert.equal(saved.composition.imageLayers.length, 2);
+    assert.equal(saved.composition.lighting.presetId, "festival-color");
+    assert.equal(saved.composition.lighting.stopBehavior, "neutral-dim");
 
     await expectBadRequest(`/v0/catalog/media-compositions/${encodeURIComponent(environment.id)}`, jsonOptions("PUT", {
       backgroundLayer: { assetId: imageOne.id },
@@ -487,11 +513,14 @@ async function main() {
 
     const mediaResponse = await fetchJson("/v0/catalog/media-assets");
     assert(mediaResponse.environmentCompositions.some((item) => item.environmentId === environment.id));
+    assert(mediaResponse.lightingPresets.some((preset) => preset.id === "festival-color" && preset.fixtures.lamp2.intensity === 144));
     const readModel = await fetchJson("/v0/catalog/read-model");
-    assert(readModel.environmentCompositions.some((item) => item.environmentId === environment.id));
+    assert(readModel.environmentCompositions.some((item) => item.environmentId === environment.id && item.lighting.presetId === "festival-color"));
+    assert(readModel.lightingPresets.some((preset) => preset.id === "festival-color" && preset.fixtures.lamp2.intensity === 144));
     const snapshotResult = await fetchJson("/v0/catalog/snapshots", { method: "POST" });
     const snapshot = JSON.parse(await fs.readFile(snapshotResult.filePath, "utf8"));
-    assert(snapshot.catalog.environmentCompositions.some((item) => item.environmentId === environment.id));
+    assert(snapshot.catalog.environmentCompositions.some((item) => item.environmentId === environment.id && item.lighting.presetId === "festival-color"));
+    assert(snapshot.catalog.lightingPresets.some((preset) => preset.id === "festival-color" && preset.fixtures.lamp2.intensity === 144));
 
     await stopChild(child);
     const afterHashes = await protectedHashes();

@@ -7,6 +7,7 @@ const {
   runtimeOutputFromRuntimeState,
 } = require("../cue-library/runtime-output");
 const { compactRuntimeStateForCue } = require("../cue-engine/compact-results");
+const { channelsForAccentFixtures } = require("../../../shared/lighting/environment-lighting-v0");
 
 const DEFAULT_RUNTIME_BASE_URL = "http://127.0.0.1:3024";
 
@@ -108,6 +109,29 @@ function generatedGoAction(action, runtimeState, context = {}) {
       ...payload,
       cueIntent: "go_environment",
       generatedBy: action.command,
+    },
+  };
+}
+
+function generatedDmxLightingAction(action, runtimeState, context = {}) {
+  const payload = resolvedPayloadFromRuntimeState(runtimeState, "activeSituation", "", runtimePayloadOptions(context));
+  const lighting = payload.environmentLighting || null;
+  return {
+    command: "dmx.look",
+    targetId: "dmx",
+    ackMode: "fire-and-forget",
+    timeoutMs: 900,
+    payload: {
+      label: `environment-${payload.environmentId || "unknown"}-${lighting && lighting.presetId || "lighting"}`,
+      channels: channelsForAccentFixtures(lighting && lighting.fixtures || {}),
+      clearFirst: false,
+      continuous: true,
+      cueIntent: "environment_lighting_go",
+      generatedBy: action.command,
+      environmentId: payload.environmentId || null,
+      presetId: lighting && lighting.presetId || null,
+      presetName: lighting && lighting.presetName || null,
+      mode: lighting && lighting.mode || null,
     },
   };
 }
@@ -234,13 +258,17 @@ async function sendRuntimeCommand(action, context = {}) {
     });
     context.lastRuntimeState = result.body;
     const generatedActions = [];
-    if (command === "runtime.startSituation" && action.payload.autoGoEnvironment !== false && canGenerateGo(result.body)) {
+    const payload = action.payload || {};
+    if (command === "runtime.startSituation" && payload.autoGoLighting !== false && canGenerateGo(result.body)) {
+      generatedActions.push(generatedDmxLightingAction(action, result.body, context));
+    }
+    if (command === "runtime.startSituation" && payload.autoGoEnvironment !== false && canGenerateGo(result.body)) {
       generatedActions.push(generatedGoAction(action, result.body, context));
     }
-    if (command === "runtime.startSituation" && action.payload.autoRevealTeleprompter !== false && canGenerateGo(result.body)) {
+    if (command === "runtime.startSituation" && payload.autoRevealTeleprompter !== false && canGenerateGo(result.body)) {
       generatedActions.push(generatedTeleprompterRevealAction(action, result.body, context));
     }
-    if (command === "runtime.stopSituation" && action.payload.autoPrepareNext !== false && canGeneratePrepare(result.body)) {
+    if (command === "runtime.stopSituation" && payload.autoPrepareNext !== false && canGeneratePrepare(result.body)) {
       generatedActions.push(generatedTeleprompterPrepareAction(action, result.body, context));
       generatedActions.push(generatedOperatorPrepareDraftAction(action, result.body, context));
       generatedActions.push(generatedPrepareAction(action, result.body, context));

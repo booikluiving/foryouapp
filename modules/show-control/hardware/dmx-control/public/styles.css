@@ -266,14 +266,52 @@ label {
   gap: 10px;
 }
 
-.environment-grid {
+.preset-toolbar {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(220px, 1fr) repeat(3, auto);
+  gap: 10px;
+  align-items: end;
+}
+
+.lighting-preset-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
-.environment-button {
-  min-height: 54px;
+.preset-fixture-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfbf8;
+  padding: 9px;
+  display: grid;
+  grid-template-columns: 24px minmax(58px, auto) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.preset-fixture-row strong,
+.preset-fixture-row span:last-child {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preset-fixture-row span:last-child,
+.muted-note {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.preset-swatch {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.44);
 }
 
 .content-grid,
@@ -412,7 +450,8 @@ pre {
 
   .config-grid,
   .quick-grid,
-  .environment-grid,
+  .preset-toolbar,
+  .lighting-preset-summary,
   .fixture-grid,
   .hsi-control,
   .raw-grid {
@@ -427,7 +466,8 @@ pre {
 
   .config-grid,
   .quick-grid,
-  .environment-grid,
+  .preset-toolbar,
+  .lighting-preset-summary,
   .fixture-toolbar,
   .fixture-grid,
   .hsi-control,

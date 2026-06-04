@@ -2,6 +2,10 @@
 
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
+const {
+  mergeLightingPresets,
+  resolveEnvironmentLighting,
+} = require("../../../shared/lighting/environment-lighting-v0");
 
 const DEFAULT_CATALOG_DB_PATH = path.resolve(__dirname, "../../catalog/db/catalog.sqlite");
 
@@ -116,7 +120,20 @@ function liveCatalogFromOption(environmentId, liveCatalog) {
       .filter((asset) => String(asset.environmentId || "") === environmentId),
     environmentCompositions: (liveCatalog.environmentCompositions || [])
       .filter((composition) => String(composition.environmentId || "") === environmentId),
+    lightingPresets: Array.isArray(liveCatalog.lightingPresets) ? liveCatalog.lightingPresets : [],
   };
+}
+
+function readOptionalRecords(db, sql, ...params) {
+  try {
+    return db
+      .prepare(sql)
+      .all(...params)
+      .map(parseRecordJson)
+      .filter(Boolean);
+  } catch (_err) {
+    return [];
+  }
 }
 
 function liveCatalogFromDisk(environmentId, options = {}) {
@@ -125,16 +142,9 @@ function liveCatalogFromDisk(environmentId, options = {}) {
   let db = null;
   try {
     db = new DatabaseSync(dbPath, { readOnly: true });
-    const mediaAssets = db
-      .prepare("SELECT record_json FROM media_assets WHERE environment_id = ? ORDER BY id")
-      .all(environmentId)
-      .map(parseRecordJson)
-      .filter(Boolean);
-    const environmentCompositions = db
-      .prepare("SELECT record_json FROM environment_compositions WHERE environment_id = ?")
-      .all(environmentId)
-      .map(parseRecordJson)
-      .filter(Boolean);
+    const mediaAssets = readOptionalRecords(db, "SELECT record_json FROM media_assets WHERE environment_id = ? ORDER BY id", environmentId);
+    const environmentCompositions = readOptionalRecords(db, "SELECT record_json FROM environment_compositions WHERE environment_id = ?", environmentId);
+    const lightingPresets = readOptionalRecords(db, "SELECT record_json FROM lighting_presets ORDER BY id");
     const environment = db
       .prepare("SELECT id FROM environments WHERE id = ? LIMIT 1")
       .get(environmentId);
@@ -152,6 +162,7 @@ function liveCatalogFromDisk(environmentId, options = {}) {
       dbPath,
       mediaAssets,
       environmentCompositions,
+      lightingPresets,
     };
   } catch (err) {
     return {
@@ -175,11 +186,22 @@ function liveCatalogForEnvironment(environmentId, options = {}) {
 
 function catalogWithLiveEnvironmentAssets(runtimeState = {}, environmentId = "", options = {}) {
   const snapshotCatalog = catalogFromRuntimeState(runtimeState);
-  if (!environmentId) return { catalog: snapshotCatalog, resolution: { source: "runtime-snapshot", live: false } };
+  if (!environmentId) {
+    return {
+      catalog: {
+        ...snapshotCatalog,
+        lightingPresets: mergeLightingPresets(snapshotCatalog.lightingPresets || []),
+      },
+      resolution: { source: "runtime-snapshot", live: false },
+    };
+  }
   const live = liveCatalogForEnvironment(environmentId, options);
   if (!live || live.ok !== true) {
     return {
-      catalog: snapshotCatalog,
+      catalog: {
+        ...snapshotCatalog,
+        lightingPresets: mergeLightingPresets(snapshotCatalog.lightingPresets || []),
+      },
       resolution: {
         source: "runtime-snapshot",
         live: false,
@@ -198,6 +220,9 @@ function catalogWithLiveEnvironmentAssets(runtimeState = {}, environmentId = "",
         ...(snapshotCatalog.environmentCompositions || []).filter((composition) => String(composition.environmentId || "") !== environmentId),
         ...live.environmentCompositions,
       ],
+      lightingPresets: mergeLightingPresets(live.lightingPresets && live.lightingPresets.length
+        ? live.lightingPresets
+        : snapshotCatalog.lightingPresets || []),
       _liveAssetOverlay: true,
     },
     resolution: {
@@ -205,6 +230,7 @@ function catalogWithLiveEnvironmentAssets(runtimeState = {}, environmentId = "",
       live: true,
       mediaAssetCount: live.mediaAssets.length,
       compositionCount: live.environmentCompositions.length,
+      lightingPresetCount: (live.lightingPresets || []).length,
       dbPath: live.dbPath || null,
     },
   };
@@ -328,6 +354,7 @@ function existingFxAssets(resolved = {}) {
 function resolvedEnvironmentAssets(runtimeState, resolved, options = {}) {
   const environmentId = environmentIdFromResolved(resolved);
   const { catalog, resolution } = catalogWithLiveEnvironmentAssets(runtimeState, environmentId, options);
+  const composition = compositionForEnvironment(catalog, environmentId);
   const existingAssets = asObject(resolved.assets) || {};
   const preferCatalogAssets = !!catalog._liveAssetOverlay;
   const background = normalizeAsset(
@@ -354,6 +381,7 @@ function resolvedEnvironmentAssets(runtimeState, resolved, options = {}) {
   const fx = preferTdOutputAssets(fxSource)
     .map((asset) => normalizeAsset(asset, { environmentId, role: assetRoleOf(asset) || "fx" }))
     .filter(Boolean);
+  const lighting = resolveEnvironmentLighting(composition && composition.lighting, catalog.lightingPresets || []);
   return {
     environmentId,
     resolution,
@@ -366,6 +394,7 @@ function resolvedEnvironmentAssets(runtimeState, resolved, options = {}) {
     background,
     soundscape,
     fx,
+    lighting,
   };
 }
 
@@ -382,6 +411,12 @@ function enrichPayloadWithEnvironmentAssets(payload, runtimeState, resolved, opt
     ...(environmentAssets.soundscape ? { soundscape: environmentAssets.soundscape } : {}),
     fx: environmentAssets.fx || [],
   };
+  enriched.environmentLighting = environmentAssets.lighting || null;
+  if (environmentAssets.lighting) {
+    enriched.lightingPresetId = environmentAssets.lighting.presetId || null;
+    enriched.lightingPresetName = environmentAssets.lighting.presetName || null;
+    enriched.lightingMode = environmentAssets.lighting.mode || null;
+  }
   if (environmentAssets.background) {
     enriched.backgroundAsset = environmentAssets.background;
     enriched.assetId = environmentAssets.background.assetId;

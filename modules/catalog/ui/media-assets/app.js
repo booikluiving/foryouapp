@@ -49,6 +49,13 @@ const UPLOADS = {
 
 const CARD_UPLOAD_ORDER = ["background", "soundscape", "fx"];
 const EDITOR_UPLOAD_ORDER = ["background", "soundscape", "fxVideo", "fxImage"];
+const ACCENT_FIXTURES = [
+  { id: "lamp1", label: "Lamp 1" },
+  { id: "lamp2", label: "Lamp 2" },
+  { id: "lamp3", label: "Lamp 3" },
+];
+const DEFAULT_LIGHTING_PRESET_ID = "studio-neutral";
+const DEFAULT_STOP_PRESET_ID = "neutral-dim";
 
 const state = {
   data: null,
@@ -236,6 +243,84 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function clampInteger(value, min, max, fallback = min) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.round(clamp(number, min, max));
+}
+
+function lightingPresets() {
+  return Array.isArray(state.data && state.data.lightingPresets) ? state.data.lightingPresets : [];
+}
+
+function lightingPresetById(presetId) {
+  const presets = lightingPresets();
+  return presets.find((preset) => preset.id === presetId)
+    || presets.find((preset) => preset.id === DEFAULT_LIGHTING_PRESET_ID)
+    || presets[0]
+    || null;
+}
+
+function defaultLighting() {
+  return {
+    schemaVersion: "catalog.environment-lighting.v0",
+    mode: "preset",
+    presetId: DEFAULT_LIGHTING_PRESET_ID,
+    stopBehavior: DEFAULT_STOP_PRESET_ID,
+    fixtures: {},
+  };
+}
+
+function normalizeHsiForUi(value = {}, fallback = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const base = fallback && typeof fallback === "object" && !Array.isArray(fallback) ? fallback : {};
+  return {
+    hue: clampInteger(source.hue, 0, 360, clampInteger(base.hue, 0, 360, 0)),
+    saturation: clampInteger(source.saturation, 0, 255, clampInteger(base.saturation, 0, 255, 0)),
+    intensity: clampInteger(source.intensity, 0, 255, clampInteger(base.intensity, 0, 255, 0)),
+  };
+}
+
+function normalizeFixtureMapForUi(fixtures = {}, fallback = {}) {
+  const source = fixtures && typeof fixtures === "object" && !Array.isArray(fixtures) ? fixtures : {};
+  const base = fallback && typeof fallback === "object" && !Array.isArray(fallback) ? fallback : {};
+  const result = {};
+  for (const fixture of ACCENT_FIXTURES) {
+    result[fixture.id] = normalizeHsiForUi(source[fixture.id], base[fixture.id]);
+  }
+  return result;
+}
+
+function normalizeLighting(input = {}) {
+  const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const preset = lightingPresetById(source.presetId) || { id: DEFAULT_LIGHTING_PRESET_ID, fixtures: {} };
+  const mode = source.mode === "custom" ? "custom" : "preset";
+  return {
+    schemaVersion: "catalog.environment-lighting.v0",
+    mode,
+    presetId: preset.id,
+    stopBehavior: source.stopBehavior === "off" ? "off" : DEFAULT_STOP_PRESET_ID,
+    fixtures: mode === "custom" ? normalizeFixtureMapForUi(source.fixtures, preset.fixtures) : {},
+  };
+}
+
+function resolvedLightingFixtures(lighting) {
+  const normalized = normalizeLighting(lighting);
+  const preset = lightingPresetById(normalized.presetId) || { fixtures: {} };
+  return normalized.mode === "custom"
+    ? normalizeFixtureMapForUi(normalized.fixtures, preset.fixtures)
+    : normalizeFixtureMapForUi(preset.fixtures);
+}
+
+function hsiCss(values) {
+  const hsi = normalizeHsiForUi(values);
+  const saturation = Math.round((hsi.saturation / 255) * 100);
+  const lightness = hsi.saturation <= 2
+    ? Math.round(18 + (hsi.intensity / 255) * 74)
+    : Math.round(20 + (hsi.intensity / 255) * 50);
+  return `hsl(${hsi.hue}deg ${saturation}% ${lightness}%)`;
+}
+
 function defaultComposition(environmentId) {
   const background = singletonAsset(environmentId, "background");
   const fxVideo = singletonAsset(environmentId, "fxVideo");
@@ -248,6 +333,7 @@ function defaultComposition(environmentId) {
     backgroundLayer: background ? defaultLayer(background, "background") : null,
     fxVideoLayer: fxVideo ? defaultLayer(fxVideo, "fxVideo") : null,
     imageLayers: imageAssets.map((asset, index) => defaultLayer(asset, "fxImage", index)),
+    lighting: defaultLighting(),
   };
 }
 
@@ -264,6 +350,7 @@ function normalizedComposition(environmentId) {
     canvas: { ...CANVAS },
     guidesVisible: saved.guidesVisible !== false,
     imageLayers: editableImageLayers,
+    lighting: normalizeLighting(saved.lighting || fallback.lighting),
   };
 }
 
@@ -778,6 +865,59 @@ function renderLayerControls() {
   `;
 }
 
+function renderLightingFixtureRow(fixture, values, editable = false) {
+  const hsi = normalizeHsiForUi(values);
+  if (!editable) {
+    return `
+      <div class="lightingFixtureRow">
+        <span class="lightingSwatch" style="background:${esc(hsiCss(hsi))}"></span>
+        <strong>${esc(fixture.label)}</strong>
+        <span class="lightingValues">H ${hsi.hue} · S ${hsi.saturation} · I ${hsi.intensity}</span>
+      </div>
+    `;
+  }
+  return `
+    <div class="lightingFixtureRow is-editable">
+      <span class="lightingSwatch" style="background:${esc(hsiCss(hsi))}"></span>
+      <strong>${esc(fixture.label)}</strong>
+      <div class="lightingFixtureControls">
+        <label><span>H</span><input type="number" min="0" max="360" step="1" value="${hsi.hue}" data-fixture-id="${esc(fixture.id)}" data-lighting-fixture-field="hue"></label>
+        <label><span>S</span><input type="number" min="0" max="255" step="1" value="${hsi.saturation}" data-fixture-id="${esc(fixture.id)}" data-lighting-fixture-field="saturation"></label>
+        <label><span>I</span><input type="number" min="0" max="255" step="1" value="${hsi.intensity}" data-fixture-id="${esc(fixture.id)}" data-lighting-fixture-field="intensity"></label>
+      </div>
+    </div>
+  `;
+}
+
+function renderLightingPanel(composition) {
+  const lighting = normalizeLighting(composition && composition.lighting);
+  const presets = lightingPresets();
+  const selectedPreset = lightingPresetById(lighting.presetId);
+  const fixtures = resolvedLightingFixtures(lighting);
+  const custom = lighting.mode === "custom";
+  return `
+    <section class="layerPanel lightingPanel">
+      <h3>Licht</h3>
+      <div class="lightingPresetRow">
+        <label>
+          <span>Preset</span>
+          <select data-lighting-field="presetId">
+            ${presets.map((preset) => `
+              <option value="${esc(preset.id)}" ${preset.id === lighting.presetId ? "selected" : ""}>${esc(preset.name || preset.id)}</option>
+            `).join("")}
+          </select>
+        </label>
+        <label class="check lightingCustomToggle"><input type="checkbox" ${custom ? "checked" : ""} data-lighting-custom> Custom</label>
+      </div>
+      <div class="fy-small lightingHint">${custom ? "Deze omgeving gebruikt eigen waarden voor lamp 1-3." : `Gebruikt preset ${esc(selectedPreset && selectedPreset.name || lighting.presetId)}.`}</div>
+      <div class="lightingFixtureList">
+        ${ACCENT_FIXTURES.map((fixture) => renderLightingFixtureRow(fixture, fixtures[fixture.id], custom)).join("")}
+      </div>
+      <div class="fy-small lightingBaseNote">Lamp 4-9 blijven frontlicht en bewegen niet mee met deze omgeving.</div>
+    </section>
+  `;
+}
+
 function renderEditor(environment) {
   const composition = state.draftComposition || defaultComposition(environment.id);
   const status = state.editorStatus ? `<div class="fy-small editorStatus">${esc(state.editorStatus)}</div>` : "";
@@ -811,6 +951,7 @@ function renderEditor(environment) {
             <h3>Positie</h3>
             ${renderLayerControls()}
           </section>
+          ${renderLightingPanel(composition)}
           <section class="layerPanel">
             <h3>Lagen</h3>
             <div class="layerList">${renderLayerList()}</div>
@@ -973,6 +1114,61 @@ function setLayerField(target) {
   else if (["x", "y", "width", "height", "rotationDeg", "opacity"].includes(field)) value = Number(target.value);
   else value = target.value;
   updateLayer(layer.id, { [field]: value });
+  markCompositionDirty();
+  renderCards();
+}
+
+function ensureDraftLighting() {
+  if (!state.draftComposition) return null;
+  state.draftComposition.lighting = normalizeLighting(state.draftComposition.lighting || defaultLighting());
+  return state.draftComposition.lighting;
+}
+
+function setLightingCustom(target) {
+  const lighting = ensureDraftLighting();
+  if (!lighting) return;
+  if (target.checked) {
+    lighting.mode = "custom";
+    lighting.fixtures = resolvedLightingFixtures(lighting);
+  } else {
+    lighting.mode = "preset";
+    lighting.fixtures = {};
+  }
+  state.draftComposition.lighting = normalizeLighting(lighting);
+  markCompositionDirty();
+  renderCards();
+}
+
+function setLightingField(target) {
+  const lighting = ensureDraftLighting();
+  if (!lighting) return;
+  const field = target.getAttribute("data-lighting-field");
+  if (field === "presetId") {
+    lighting.presetId = target.value;
+    const preset = lightingPresetById(lighting.presetId) || { fixtures: {} };
+    lighting.fixtures = lighting.mode === "custom" ? normalizeFixtureMapForUi({}, preset.fixtures) : {};
+  }
+  state.draftComposition.lighting = normalizeLighting(lighting);
+  markCompositionDirty();
+  renderCards();
+}
+
+function setLightingFixtureField(target) {
+  const lighting = ensureDraftLighting();
+  if (!lighting) return;
+  const fixtureId = target.getAttribute("data-fixture-id");
+  const field = target.getAttribute("data-lighting-fixture-field");
+  if (!fixtureId || !field) return;
+  if (lighting.mode !== "custom") {
+    lighting.mode = "custom";
+    lighting.fixtures = resolvedLightingFixtures(lighting);
+  }
+  lighting.fixtures = normalizeFixtureMapForUi(lighting.fixtures, resolvedLightingFixtures(lighting));
+  const current = lighting.fixtures[fixtureId] || normalizeHsiForUi();
+  const max = field === "hue" ? 360 : 255;
+  current[field] = clampInteger(target.value, 0, max, current[field]);
+  lighting.fixtures[fixtureId] = current;
+  state.draftComposition.lighting = normalizeLighting(lighting);
   markCompositionDirty();
   renderCards();
 }
@@ -1315,6 +1511,7 @@ function bindEvents() {
   });
   $("environmentCards").addEventListener("input", (event) => {
     if (event.target.matches("[data-layer-field]")) setLayerField(event.target);
+    if (event.target.matches("[data-lighting-fixture-field]")) setLightingFixtureField(event.target);
     if (event.target.matches("[data-toggle-guides]")) {
       state.draftComposition.guidesVisible = event.target.checked;
       state.guidesVisible = event.target.checked;
@@ -1326,6 +1523,14 @@ function bindEvents() {
     }
   });
   $("environmentCards").addEventListener("change", (event) => {
+    if (event.target.matches("[data-lighting-custom]")) {
+      setLightingCustom(event.target);
+      return;
+    }
+    if (event.target.matches("[data-lighting-field]")) {
+      setLightingField(event.target);
+      return;
+    }
     if (event.target.matches("input[type='file']")) {
       const dropZone = event.target.closest(".fy-drop-zone");
       uploadFile(dropZone, event.target.files[0]).catch(() => {});

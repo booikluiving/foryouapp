@@ -19,6 +19,7 @@ const REQUIRED_READ_MODEL_ARRAYS = Object.freeze([
   "situations",
   "labels",
   "mediaAssets",
+  "lightingPresets",
 ]);
 
 function toCatalogId(entityType, legacyId) {

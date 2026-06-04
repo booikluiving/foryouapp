@@ -87,17 +87,20 @@
         <button id="rgbWhiteBtn" type="button">RGB wit</button>
       </section>
 
-      <section class="panel environment-panel">
+      <section class="panel lighting-preset-panel">
         <div class="panel-head">
-          <h2>Omgevingen</h2>
-          <span class="badge">look presets</span>
+          <h2>Lichtpresets</h2>
+          <span id="lightingPresetBadge" class="badge">Catalog</span>
         </div>
-        <div class="environment-grid">
-          <button class="environment-button" data-look="auto" type="button">Auto</button>
-          <button class="environment-button" data-look="bioscoop" type="button">Bioscoop</button>
-          <button class="environment-button" data-look="podcast" type="button">Podcast</button>
-          <button class="environment-button" data-look="nacht" type="button">Nacht</button>
+        <div class="preset-toolbar">
+          <label>Preset
+            <select id="lightingPresetInput"></select>
+          </label>
+          <button id="loadLightingPresetBtn" type="button">Laad naar lampen</button>
+          <button id="testLightingPresetBtn" class="primary" type="button">Test preset</button>
+          <button id="saveLightingPresetBtn" type="button">Sla huidige lamp 1-3 op</button>
         </div>
+        <div id="lightingPresetSummary" class="lighting-preset-summary"></div>
       </section>
 
       <section class="mode-grid">

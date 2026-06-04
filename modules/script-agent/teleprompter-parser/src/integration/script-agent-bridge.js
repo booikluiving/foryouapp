@@ -338,18 +338,10 @@ function createTeleprompterParserBridge(options = {}) {
     const showRunId = runtimeState && runtimeState.showRunId ? runtimeState.showRunId : null;
     if (!showRunId) throw new Error("script_agent_teleprompter_no_show_run");
     try {
-      const cue = await postJson(joinUrl(showControlBaseUrl(env), "/v0/show-control/cues"), {
+      const cue = await postJson(joinUrl(showControlBaseUrl(env), "/v0/show-control/cues/stop-situation"), {
         name: "Teleprompter end scene",
-        actions: [{
-          targetId: "runtime",
-          command: "runtime.stopSituation",
-          ackMode: "acknowledged-async",
-          timeoutMs: 4000,
-          payload: {
-            showRunId,
-            autoPrepareNext: true,
-          },
-        }],
+        showRunId,
+        runtimeState,
       }, 5000);
       await refreshRuntimeState();
       return { mode: "show-control", cue };

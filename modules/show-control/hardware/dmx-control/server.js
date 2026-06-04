@@ -5,11 +5,17 @@ const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
 const { URL } = require("node:url");
-const { channelsForPreset, listPresets } = require("./look-presets");
+const { channelsForPreset: channelsForLegacyPreset, listPresets } = require("./look-presets");
+const {
+  DEFAULT_LIGHTING_PRESETS,
+  mergeLightingPresets,
+  normalizeLightingPreset,
+} = require("../../../../shared/lighting/environment-lighting-v0");
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3229;
 const DEFAULT_TARGET_IP = "192.168.1.230";
+const DEFAULT_CATALOG_URL = "http://127.0.0.1:3021";
 const ARTNET_PORT = 6454;
 const STATIC_DIR = path.join(__dirname, "public");
 
@@ -173,6 +179,7 @@ function startContinuous(state, source = "http") {
       addActivity(state, { type: "send-error", message: err.message || String(err) });
     });
   }, intervalMs);
+  if (typeof state.interval.unref === "function") state.interval.unref();
   sendFrame(state, "start").catch((err) => {
     addActivity(state, { type: "send-error", message: err.message || String(err) });
   });
@@ -230,6 +237,69 @@ function applyConfig(state, body = {}) {
   if (body.frameRate !== undefined) state.config.frameRate = clampInt(body.frameRate, 1, 44, 35);
 }
 
+function catalogBaseUrl(options = {}) {
+  return String(
+    options.catalogUrl
+    || process.env.V2_CATALOG_URL
+    || process.env.V2_SHOW_CONTROL_CATALOG_URL
+    || DEFAULT_CATALOG_URL
+  ).replace(/\/+$/, "");
+}
+
+async function catalogJson(pathname, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), clampInt(options.timeoutMs, 50, 10000, 1200));
+  try {
+    const response = await fetch(`${catalogBaseUrl(options)}${pathname}`, {
+      method: options.method || "GET",
+      headers: options.body ? { "content-type": "application/json" } : undefined,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: controller.signal,
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || body.message || `catalog_${response.status}`);
+    return body;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readLightingPresets(options = {}) {
+  try {
+    const body = await catalogJson("/v0/catalog/lighting-presets", options);
+    return {
+      ok: true,
+      source: "catalog",
+      catalogUrl: catalogBaseUrl(options),
+      lightingPresets: mergeLightingPresets(body.lightingPresets || []),
+    };
+  } catch (err) {
+    return {
+      ok: true,
+      source: "defaults",
+      catalogUrl: catalogBaseUrl(options),
+      warning: err.message || String(err),
+      lightingPresets: mergeLightingPresets(DEFAULT_LIGHTING_PRESETS),
+    };
+  }
+}
+
+async function writeLightingPreset(presetId, body = {}, options = {}) {
+  const preset = normalizeLightingPreset({
+    ...(body || {}),
+    id: presetId,
+    updatedAt: nowIso(),
+  });
+  if (!preset) throw new Error("lighting_preset_invalid");
+  const result = await catalogJson(`/v0/catalog/lighting-presets/${encodeURIComponent(preset.id)}`, {
+    ...options,
+    method: "PUT",
+    body: preset,
+    timeoutMs: options.timeoutMs || 1800,
+  });
+  return result.preset || preset;
+}
+
 async function applyLookAndMaybeSend(state, body = {}, source = "http") {
   applyConfig(state, body);
   if (body.fill !== undefined) {
@@ -270,6 +340,26 @@ function createDmxApp(options = {}) {
         return;
       }
 
+      if (req.method === "GET" && url.pathname === "/api/lighting-presets") {
+        const result = await readLightingPresets(options);
+        sendJson(res, 200, result);
+        return;
+      }
+
+      const lightingPresetMatch = url.pathname.match(/^\/api\/lighting-presets\/([^/]+)$/);
+      if (req.method === "PUT" && lightingPresetMatch) {
+        const body = await readJson(req);
+        const presetId = decodeURIComponent(lightingPresetMatch[1]);
+        const preset = await writeLightingPreset(presetId, body, options);
+        sendJson(res, 200, {
+          ok: true,
+          source: "catalog",
+          catalogUrl: catalogBaseUrl(options),
+          preset,
+        });
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === "/health") {
         sendJson(res, 200, { ok: true, service: "dmx-control", state: publicState(state) });
         return;
@@ -298,7 +388,7 @@ function createDmxApp(options = {}) {
         const result = await applyLookAndMaybeSend(state, {
           ...body,
           label: body.label || `preset-${preset}`,
-          channels: channelsForPreset(preset),
+          channels: channelsForLegacyPreset(preset),
           clearFirst: body.clearFirst !== false,
         }, "preset");
         addActivity(state, { type: "preset", preset, ...result });
