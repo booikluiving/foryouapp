@@ -28,12 +28,34 @@ function createState() {
     service: "perfect-cue-control",
     startedAt: nowIso(),
     mappings: {
-      ArrowRight: { label: "Next / GO", command: "runtime.startSituation" },
-      ArrowLeft: { label: "Stop", command: "runtime.stopSituation" },
-      Space: { label: "GO", command: "runtime.startSituation" },
+      PageDown: { label: "Next", command: "teleprompter.cue", ackMode: "acknowledged-async", payload: { direction: "next" } },
+      ArrowRight: { label: "Next", command: "teleprompter.cue", ackMode: "acknowledged-async", payload: { direction: "next" } },
+      Space: { label: "Next", command: "teleprompter.cue", ackMode: "acknowledged-async", payload: { direction: "next" } },
+      PageUp: { label: "Previous", command: "teleprompter.cue", ackMode: "acknowledged-async", payload: { direction: "prev" } },
+      ArrowLeft: { label: "Previous", command: "teleprompter.cue", ackMode: "acknowledged-async", payload: { direction: "prev" } },
     },
     triggers: [],
   };
+}
+
+function normalizeKeyAlias(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw === " ") return "Space";
+  const compact = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (["pagedown", "next", "down", "f18"].includes(compact)) return "PageDown";
+  if (["pageup", "prev", "previous", "back", "up", "f19"].includes(compact)) return "PageUp";
+  if (["arrowright", "right"].includes(compact)) return "ArrowRight";
+  if (["arrowleft", "left"].includes(compact)) return "ArrowLeft";
+  if (["space", "spacebar"].includes(compact)) return "Space";
+  return raw;
+}
+
+function keyFromDirection(direction) {
+  const value = String(direction || "").trim().toLowerCase();
+  if (["prev", "previous", "back", "left", "up", "pageup", "page_up"].includes(value)) return "PageUp";
+  if (value) return "PageDown";
+  return "";
 }
 
 async function readJson(req) {
@@ -113,11 +135,19 @@ async function triggerShowControl(options, trigger) {
 }
 
 async function handleTrigger(state, options, rawTrigger = {}) {
-  const key = String(rawTrigger.key || rawTrigger.code || rawTrigger.button || "").trim();
+  const key = normalizeKeyAlias(rawTrigger.key || rawTrigger.code || rawTrigger.button || keyFromDirection(rawTrigger.direction));
   const mapping = key && state.mappings[key] ? state.mappings[key] : {};
+  const payload = {
+    ...(mapping.payload || {}),
+    ...(rawTrigger.payload || {}),
+  };
+  if (rawTrigger.direction && !payload.direction) payload.direction = String(rawTrigger.direction);
+  if (key && !payload.key) payload.key = key;
+  if (!payload.source) payload.source = rawTrigger.source || "perfect-cue";
   const trigger = {
     ...mapping,
     ...rawTrigger,
+    payload,
     key,
     at: nowIso(),
   };
@@ -127,6 +157,7 @@ async function handleTrigger(state, options, rawTrigger = {}) {
     source: trigger.source || "http",
     cueId: trigger.cueId || null,
     command: trigger.command || null,
+    direction: payload.direction || null,
     showControlStatus: showControl ? showControl.status : null,
     at: trigger.at,
   };

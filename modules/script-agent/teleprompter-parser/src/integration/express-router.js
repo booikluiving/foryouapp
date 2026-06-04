@@ -60,6 +60,12 @@ function shouldEndSceneFromCueAdvance({ cue, requestedIndex, preparedScene }) {
   return atEndCard && wantsPastEnd && (!preparedStatus || preparedStatus === "playing");
 }
 
+function cueDeltaFromDirection(input) {
+  const value = String(input || "next").trim().toLowerCase();
+  if (["prev", "previous", "back", "left", "up", "pageup", "page_up", "arrowleft"].includes(value)) return -1;
+  return 1;
+}
+
 function preparedCharacterForSpeaker(preparedScene, speakerLabel) {
   const speakerKey = normalizeAutoCameraText(speakerLabel);
   if (!speakerKey) return null;
@@ -265,6 +271,7 @@ function mountTeleprompterParser(app, options = {}) {
     ? options.getShowState
     : () => ({ active: true, sessionId: 0, name: "", endedAt: null });
   const endSceneFromStage = typeof options.endSceneFromStage === "function" ? options.endSceneFromStage : null;
+  const startSceneFromStage = typeof options.startSceneFromStage === "function" ? options.startSceneFromStage : null;
   const onAutoCameraSwitch = typeof options.onAutoCameraSwitch === "function" ? options.onAutoCameraSwitch : null;
   const getAutoCameraScene = typeof options.getAutoCameraScene === "function" ? options.getAutoCameraScene : null;
   const normalizePrepareInput = typeof options.normalizePrepareInput === "function" ? options.normalizePrepareInput : (input) => input;
@@ -449,6 +456,14 @@ function mountTeleprompterParser(app, options = {}) {
     res.sendFile(path.join(publicDir, "stage.html"));
   });
 
+  app.get(`${publicPrefix}/stage/:slotIndex`, (req, res, next) => {
+    if (!["1", "2", "3"].includes(String(req.params.slotIndex || ""))) {
+      next();
+      return;
+    }
+    res.sendFile(path.join(publicDir, "stage.html"));
+  });
+
   app.get(`${publicPrefix}/live-captions`, (_req, res) => {
     res.sendFile(path.join(publicDir, "live-captions.html"));
   });
@@ -481,6 +496,113 @@ function mountTeleprompterParser(app, options = {}) {
     sendEvent(res, currentPayload("hello"));
     req.on("close", () => {
       eventClients.delete(res);
+    });
+  });
+
+  app.post(`${apiPrefix}/cue/advance`, async (req, res) => {
+    const show = getShowState();
+    if (show && show.active === false) {
+      clearAutoCameraReactionTimers();
+      res.json({
+        ...currentPayload("cue_locked"),
+        cueLocked: true,
+        cueAction: { action: "locked", reason: "show_inactive" },
+      });
+      return;
+    }
+
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const delta = cueDeltaFromDirection(body.direction || body.key || body.code || body.button);
+    const cue = store.getCue();
+    const preparedScene = store.getPreparedScene();
+    const preparedStatus = preparedScene ? String(preparedScene.status || "") : "";
+
+    if (preparedStatus === "prepared") {
+      const canStartPrepared = delta > 0
+        && preparedScene.ready
+        && startSceneFromStage
+        && show
+        && show.active !== false
+        && !show.activeSituationId;
+      if (!canStartPrepared) {
+        clearAutoCameraReactionTimers();
+        res.json({
+          ...currentPayload("cue_locked"),
+          cueLocked: true,
+          cueAction: {
+            action: "locked",
+            reason: preparedScene && preparedScene.ready ? "prepared_ready_waiting_for_start" : "prepared_not_ready",
+            direction: delta > 0 ? "next" : "prev",
+          },
+        });
+        return;
+      }
+
+      try {
+        const startScene = await Promise.resolve(startSceneFromStage({
+          reason: "teleprompter_cue_ready_start",
+          source: body.source || "teleprompter_cue_advance",
+        }));
+        res.json({
+          ...currentPayload("start_scene"),
+          startScene,
+          cueAction: { action: "start_scene", direction: "next" },
+        });
+      } catch (err) {
+        res.status(409).json({
+          ok: false,
+          error: err && err.message ? String(err.message) : "start_scene_failed",
+          show: getShowState(),
+          cue: store.getCue(),
+          preparedScene: store.getPreparedScene(),
+        });
+      }
+      return;
+    }
+
+    const requestedIndex = Number(cue && cue.index || 0) + delta;
+    if (endSceneFromStage && shouldEndSceneFromCueAdvance({ cue, requestedIndex, preparedScene })) {
+      clearAutoCameraReactionTimers();
+      try {
+        const endScene = await Promise.resolve(endSceneFromStage({ reason: "teleprompter_cue_end_card" }));
+        res.json({
+          ...currentPayload("end_scene"),
+          cueLocked: true,
+          endScene,
+          cueAction: { action: "end_scene", direction: "next" },
+        });
+      } catch (err) {
+        res.status(409).json({
+          ok: false,
+          error: err && err.message ? String(err.message) : "end_scene_failed",
+          show: getShowState(),
+          cue: store.getCue(),
+          preparedScene: store.getPreparedScene(),
+        });
+      }
+      return;
+    }
+
+    const result = store.setCueIndex(requestedIndex);
+    const autoCameraSwitchResult = result.changed ? maybeAutoCameraSwitch(show, result.cue, "cue") : null;
+    const autoCameraReactionPlan = result.changed ? scheduleAutoCameraReactionShot(show, result.cue, "cue") : null;
+    if (result.changed) broadcast("cue");
+    res.json({
+      ok: true,
+      cue: result.cue,
+      cueLocked: !!result.locked,
+      cueAction: {
+        action: "cue",
+        direction: delta > 0 ? "next" : "prev",
+        requestedIndex,
+      },
+      autoCameraSwitchResult,
+      autoCameraReactionPlan,
+      show,
+      teleprompt: store.getCurrent(),
+      captionStyle: store.getCaptionStyle(),
+      autoCameraSwitch: store.getAutoCameraSwitch(),
+      preparedScene: store.getPreparedScene(),
     });
   });
 

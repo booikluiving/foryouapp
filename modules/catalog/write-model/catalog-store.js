@@ -6,6 +6,8 @@ const fsSync = require("node:fs");
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 
+const { canAssignCast: canAssignCastByPerformerChoice } = require("../../../shared/casting/performer-slots");
+
 const STORE_SCHEMA_VERSION = "catalog.write-store.v0";
 const COMPOSITION_SCHEMA_VERSION = "catalog.environment-composition.v0";
 const COMPOSITION_CANVAS = Object.freeze({
@@ -660,30 +662,8 @@ function normalizeLabelRecord(record, base = null) {
   };
 }
 
-function performerChoicesForCharacter(character, activePerformers) {
-  const performerMap = mapById(activePerformers);
-  const explicit = normalizeIds(character && character.performerIds);
-  if (!explicit.length) return activePerformers.map((item) => item.id);
-  return explicit.filter((id) => performerMap.has(id));
-}
-
 function canAssignCast(characters, activePerformers) {
-  const performerIds = activePerformers.map((item) => item.id);
-  const choices = characters.map((character) => performerChoicesForCharacter(character, activePerformers));
-  if (choices.some((item) => item.length === 0)) return false;
-
-  function search(index, used) {
-    if (index >= choices.length) return true;
-    for (const performerId of choices[index]) {
-      if (used.has(performerId)) continue;
-      used.add(performerId);
-      if (search(index + 1, used)) return true;
-      used.delete(performerId);
-    }
-    return false;
-  }
-
-  return performerIds.length >= characters.length && search(0, new Set());
+  return canAssignCastByPerformerChoice(characters, activePerformers);
 }
 
 function validateCharacterInput(body, readModel) {
@@ -734,8 +714,6 @@ function validateSituationInput(body, readModel) {
   const characterIds = normalizeIds(body.characterIds);
   const characterMap = mapById(readModel.characters || []);
   const environmentMap = mapById(readModel.environments || []);
-  const activePerformers = activeItems(readModel.performers || []);
-  const characters = characterIds.map((id) => characterMap.get(id)).filter(Boolean);
   if (!String(body.title || "").trim()) issues.push(issue("situation_title_required", "Title is required."));
   if (!body.environmentId || !environmentMap.has(body.environmentId)) {
     issues.push(issue("situation_environment_required", "A valid environment is required.", { environmentId: body.environmentId || null }));
@@ -753,13 +731,6 @@ function validateSituationInput(body, readModel) {
     } else if (character.active === false || character.archivedAt) {
       issues.push(issue("situation_character_inactive", `Character ${character.name || characterId} is inactive.`, { characterId }));
     }
-  }
-  if (characters.length === characterIds.length && characterIds.length > 0 && !canAssignCast(characters, activePerformers)) {
-    issues.push(issue(
-      "situation_cast_performer_conflict",
-      "Selected characters cannot be played at the same time by the available performer slots.",
-      { characterIds }
-    ));
   }
   return issues;
 }

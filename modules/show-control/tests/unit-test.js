@@ -17,9 +17,12 @@ const {
 const {
   buildPrepareCue,
   buildCompoundCue,
+  buildEnvironmentMediaRefreshCue,
+  buildPhaseCue,
   buildSceneToChatCue,
   buildStartRunCue,
   buildStartSituationCue,
+  buildStopSituationCue,
 } = require("../cue-library/runtime-cues");
 const { requestForCameraAction } = require("../target-adapters/camera-adapter");
 const { requestForDmxAction } = require("../target-adapters/dmx-adapter");
@@ -118,6 +121,7 @@ async function main() {
     "teleprompter.prepare",
     "teleprompter.ready",
     "teleprompter.reveal",
+    "teleprompter.cue",
     "script-agent.operator.prepareDraft",
     "script-agent.operator.sceneToChat",
     "perfectCue.trigger",
@@ -149,8 +153,53 @@ async function main() {
             filePath: "/tmp/foryou-hero.jpg",
             url: "/v0/catalog/media-assets/file/media-asset%3Aenvironment%3Aassets%3Abackground%3Ahero",
           },
+          {
+            id: "media-asset:environment:assets:soundscape:room",
+            environmentId: "environment:assets",
+            type: "soundscape",
+            role: "soundscape",
+            status: "present",
+            filename: "room.mp3",
+            filePath: "/tmp/foryou-room.mp3",
+            url: "/v0/catalog/media-assets/file/media-asset%3Aenvironment%3Aassets%3Asoundscape%3Aroom",
+          },
+          {
+            id: "media-asset:environment:assets:fxVideo:glitch",
+            environmentId: "environment:assets",
+            type: "fx",
+            role: "fxVideo",
+            status: "present",
+            filename: "glitch.mp4",
+            filePath: "/tmp/foryou-glitch.mp4",
+            url: "/v0/catalog/media-assets/file/media-asset%3Aenvironment%3Aassets%3AfxVideo%3Aglitch",
+          },
+          {
+            id: "media-asset:environment:assets:fxImage:overlay",
+            environmentId: "environment:assets",
+            type: "fx",
+            role: "fxImage",
+            status: "present",
+            filename: "overlay.png",
+            filePath: "/tmp/foryou-overlay.png",
+            url: "/v0/catalog/media-assets/file/media-asset%3Aenvironment%3Aassets%3AfxImage%3Aoverlay",
+          },
+          {
+            id: "media-asset:environment:assets:fxImage:output",
+            environmentId: "environment:assets",
+            type: "fx",
+            role: "fxImage",
+            status: "present",
+            filename: "foryou-output.png",
+            filePath: "/tmp/foryou-output.png",
+            tags: ["fx", "image", "rendered-output", "td-output"],
+            url: "/v0/catalog/media-assets/file/media-asset%3Aenvironment%3Aassets%3AfxImage%3Aoutput",
+          },
         ],
-        environmentCompositions: [],
+        environmentCompositions: [{
+          environmentId: "environment:assets",
+          fxVideoLayer: { assetId: "media-asset:environment:assets:fxVideo:glitch", zIndex: 10 },
+          imageLayers: [{ assetId: "media-asset:environment:assets:fxImage:overlay", zIndex: 20 }],
+        }],
       },
     },
   };
@@ -158,6 +207,195 @@ async function main() {
   assert.equal(enrichedPayload.environmentId, "environment:assets");
   assert.equal(enrichedPayload.assetId, "media-asset:environment:assets:background:hero");
   assert.equal(enrichedPayload.backgroundAsset.filePath, "/tmp/foryou-hero.jpg");
+  assert.equal(enrichedPayload.soundscapeAsset.filePath, "/tmp/foryou-room.mp3");
+  assert.equal(enrichedPayload.soundscapeFilePath, "/tmp/foryou-room.mp3");
+  assert.equal(enrichedPayload.fxAssets.length, 1);
+  assert.deepEqual(enrichedPayload.fxFilePaths, ["/tmp/foryou-output.png"]);
+  assert.equal(enrichedPayload.assetFilePaths.background, "/tmp/foryou-hero.jpg");
+  assert.equal(enrichedPayload.assetFilePaths.soundscape, "/tmp/foryou-room.mp3");
+  assert.equal(enrichedPayload.hasFxOverlay, true);
+  assert.equal(enrichedPayload.fxOverlayFilePath, "/tmp/foryou-output.png");
+  const liveCatalog = {
+    mediaAssets: [
+      {
+        id: "media-asset:environment:assets:background:hero",
+        environmentId: "environment:assets",
+        type: "background",
+        role: "background",
+        status: "replaced",
+        filename: "hero.mp4",
+        filePath: "/tmp/foryou-old-hero.mp4",
+      },
+      {
+        id: "media-asset:environment:assets:background:festival-jpg",
+        environmentId: "environment:assets",
+        type: "background",
+        role: "background",
+        status: "present",
+        filename: "festival.jpg",
+        filePath: "/tmp/foryou-festival.jpg",
+        url: "/v0/catalog/media-assets/file/media-asset%3Aenvironment%3Aassets%3Abackground%3Afestival-jpg",
+      },
+      {
+        id: "media-asset:environment:assets:soundscape:room",
+        environmentId: "environment:assets",
+        type: "soundscape",
+        role: "soundscape",
+        status: "present",
+        filename: "room.mp3",
+        filePath: "/tmp/foryou-room.mp3",
+      },
+      {
+        id: "media-asset:environment:assets:fxImage:output-live",
+        environmentId: "environment:assets",
+        type: "fx",
+        role: "fxImage",
+        status: "present",
+        filename: "foryou-live-output.png",
+        filePath: "/tmp/foryou-live-output.png",
+        tags: ["rendered-output", "td-output"],
+      },
+    ],
+    environmentCompositions: [{
+      environmentId: "environment:assets",
+      backgroundLayer: { assetId: "media-asset:environment:assets:background:festival-jpg", zIndex: 1 },
+      imageLayers: [{ assetId: "media-asset:environment:assets:fxImage:output-live", zIndex: 20 }],
+    }],
+  };
+  const livePayload = resolvedPayloadFromRuntimeState(assetRuntimeState, "resolvedPreparedNext", "", { liveCatalog });
+  assert.equal(livePayload.mediaAssetResolution.live, true);
+  assert.equal(livePayload.mediaAssetResolution.source, "option");
+  assert.equal(livePayload.backgroundAsset.assetId, "media-asset:environment:assets:background:festival-jpg");
+  assert.equal(livePayload.backgroundAsset.filePath, "/tmp/foryou-festival.jpg");
+  assert.equal(livePayload.filePath, "/tmp/foryou-festival.jpg");
+  assert.deepEqual(livePayload.fxFilePaths, ["/tmp/foryou-live-output.png"]);
+  const preparedRefreshCue = buildEnvironmentMediaRefreshCue(assetRuntimeState, {
+    environmentId: "environment:assets",
+    liveCatalog,
+    assetId: "media-asset:environment:assets:background:festival-jpg",
+    reason: "media_composition_save",
+    source: "unit",
+    createdAtDate: new Date("2026-05-25T10:00:02.000Z"),
+  });
+  assert.equal(preparedRefreshCue.actions.length, 1);
+  assert.equal(preparedRefreshCue.actions[0].command, "td.environment.prepare");
+  assert.equal(preparedRefreshCue.actions[0].payload.cueIntent, "live_media_refresh_prepared");
+  assert.equal(preparedRefreshCue.actions[0].payload.backgroundAsset.filePath, "/tmp/foryou-festival.jpg");
+  assert.equal(preparedRefreshCue.actions[0].payload.mediaRefresh.assetId, "media-asset:environment:assets:background:festival-jpg");
+  const activeRefreshCue = buildEnvironmentMediaRefreshCue({
+    ...assetRuntimeState,
+    activeSituation: {
+      situationRunId: "situation-run:assets",
+      resolved: assetRuntimeState.resolvedPreparedNext,
+    },
+  }, {
+    environmentId: "environment:assets",
+    liveCatalog,
+    createdAtDate: new Date("2026-05-25T10:00:03.000Z"),
+  });
+  assert.equal(activeRefreshCue.actions.length, 1);
+  assert.equal(activeRefreshCue.actions[0].command, "td.environment.go");
+  assert.equal(activeRefreshCue.actions[0].payload.cueIntent, "live_media_refresh_active");
+  assert.equal(activeRefreshCue.actions[0].payload.backgroundAsset.filePath, "/tmp/foryou-festival.jpg");
+  const skippedRefreshCue = buildEnvironmentMediaRefreshCue(assetRuntimeState, {
+    environmentId: "environment:missing",
+    liveCatalog,
+  });
+  assert.equal(skippedRefreshCue.actions.length, 0);
+  const noFxPayload = resolvedPayloadFromRuntimeState({
+    showRunId: "show-run-no-fx",
+    resolvedPreparedNext: {
+      situationId: "situation:no-fx",
+      title: "No FX fixture",
+      environment: { id: "environment:no-fx", legacyId: 12, name: "Ziekenhuis" },
+    },
+    showRunSnapshot: {
+      catalog: {
+        mediaAssets: [
+          {
+            id: "media-asset:environment:no-fx:background:hero",
+            environmentId: "environment:no-fx",
+            type: "background",
+            role: "background",
+            status: "present",
+            filePath: "/tmp/no-fx-background.jpg",
+          },
+          {
+            id: "media-asset:environment:no-fx:soundscape:room",
+            environmentId: "environment:no-fx",
+            type: "soundscape",
+            role: "soundscape",
+            status: "present",
+            filePath: "/tmp/no-fx-room.mp3",
+          },
+        ],
+        environmentCompositions: [],
+      },
+    },
+  });
+  assert.equal(noFxPayload.hasFxOverlay, false);
+  assert.equal(noFxPayload.fxOverlayAsset, null);
+  assert.equal(noFxPayload.fxOverlayFilePath, "");
+  assert.deepEqual(noFxPayload.fxAssets, []);
+  assert.deepEqual(noFxPayload.fxFilePaths, []);
+  assert.deepEqual(noFxPayload.assetFilePaths.fx, []);
+  const castPayload = resolvedPayloadFromRuntimeState({
+    showRunId: "show-run-cast",
+    resolvedPreparedNext: {
+      situationId: "situation:cast",
+      title: "Cast fixture",
+      characters: [
+        { id: "character:flex", legacyId: 10, name: "Zwangere vrouw", performerIds: [] },
+        { id: "character:bobby", legacyId: 11, name: "Bobby", performerIds: ["performer:1"] },
+        { id: "character:adolf", legacyId: 12, name: "Adolf", performerIds: ["performer:2"] },
+      ],
+    },
+    showRunSnapshot: {
+      catalog: {
+        performers: [
+          { id: "performer:1", name: "Performer 1", performerSlot: 1, active: true, archivedAt: null },
+          { id: "performer:2", name: "Performer 2", performerSlot: 2, active: true, archivedAt: null },
+          { id: "performer:3", name: "Performer 3", performerSlot: 3, active: true, archivedAt: null },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(
+    castPayload.performerSlots.map((slot) => [slot.slotIndex, slot.performerId, slot.characterId]),
+    [
+      [1, "performer:1", "character:bobby"],
+      [1, null, "character:flex"],
+      [2, "performer:2", "character:adolf"],
+    ],
+    "Show Control fallback should reflect catalog performer choices without redistributing roles"
+  );
+  const castWarningPayload = resolvedPayloadFromRuntimeState({
+    showRunId: "show-run-cast-warning",
+    resolvedPreparedNext: {
+      situationId: "situation:cast-warning",
+      title: "Cast warning fixture",
+      characters: [
+        { id: "character:conflict-a", name: "Conflict A", performerIds: ["performer:1"] },
+        { id: "character:conflict-b", name: "Conflict B", performerIds: ["performer:1"] },
+      ],
+    },
+    showRunSnapshot: {
+      catalog: {
+        performers: [
+          { id: "performer:1", name: "Performer 1", performerSlot: 1, active: true, archivedAt: null },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(
+    castWarningPayload.performerSlots.map((slot) => [slot.slotIndex, slot.performerId, slot.characterId]),
+    [
+      [1, "performer:1", "character:conflict-a"],
+      [1, "performer:1", "character:conflict-b"],
+    ],
+    "Show Control should keep catalog performer choices when roles share one performer"
+  );
+  assert(castWarningPayload.castWarnings.some((issue) => issue.code === "situation_cast_performer_conflict"));
   const prepareCue = buildPrepareCue(assetRuntimeState, { createdAtDate: new Date("2026-05-25T10:00:00.000Z") });
   const prepareAction = prepareCue.actions.find((action) => action.command === "td.environment.prepare");
   assert.equal(prepareAction.payload.assetId, "media-asset:environment:assets:background:hero");
@@ -293,6 +531,9 @@ async function main() {
   assert.equal(teleprompterPrepare.path, "/v0/script-agent/teleprompter-parser/prepare");
   const teleprompterReveal = requestForTeleprompterAction({ command: "teleprompter.reveal", payload: {} });
   assert.equal(teleprompterReveal.path, "/v0/script-agent/teleprompter-parser/reveal");
+  const teleprompterCue = requestForTeleprompterAction({ command: "teleprompter.cue", payload: { direction: "prev", source: "unit" } });
+  assert.equal(teleprompterCue.path, "/v0/script-agent/teleprompter-parser/cue/advance");
+  assert.deepEqual(teleprompterCue.body, { direction: "prev", source: "unit" });
   const prepareDraftRequest = requestForScriptAgentAction({ command: "script-agent.operator.prepareDraft", payload: { sourceId: "unit" } });
   assert.equal(prepareDraftRequest.path, "/v0/script-agent/operator/draft/from-runtime");
   assert.equal(prepareDraftRequest.body.sourceId, "unit");
@@ -350,6 +591,9 @@ async function main() {
 
   const autoGoStartSituationCue = buildStartSituationCue({ showRunId: "show-run-unit" });
   assert.equal(autoGoStartSituationCue.actions[0].payload.autoGoEnvironment, true, "startSituation should auto-generate TD GO by default");
+  const autoGoPhaseAction = autoGoStartSituationCue.actions.find((action) => action.command === "td.phase.set");
+  assert(autoGoPhaseAction, "startSituation should set TD phase");
+  assert.equal(autoGoPhaseAction.payload.phase, 2, "startSituation should set TD phase 2");
   const explicitGoStartSituationCue = buildStartSituationCue({
     showRunId: "show-run-unit",
     actions: [
@@ -357,6 +601,18 @@ async function main() {
     ],
   });
   assert.equal(explicitGoStartSituationCue.actions[0].payload.autoGoEnvironment, false, "explicit TD GO should disable generated TD GO");
+  assert.equal(explicitGoStartSituationCue.actions[1].command, "td.phase.set", "phase action should not disable explicit TD GO detection");
+
+  const inloopPhaseCue = buildPhaseCue({ phase: 0, phaseName: "inloop" });
+  assert.equal(inloopPhaseCue.actions.length, 1);
+  assert.equal(inloopPhaseCue.actions[0].command, "td.phase.set");
+  assert.equal(inloopPhaseCue.actions[0].payload.phase, 0);
+
+  const stopSituationCue = buildStopSituationCue({ showRunId: "show-run-unit" });
+  assert(stopSituationCue.actions.some((action) => action.command === "runtime.stopSituation"));
+  const stopPhaseAction = stopSituationCue.actions.find((action) => action.command === "td.phase.set");
+  assert(stopPhaseAction, "stopSituation should set TD phase");
+  assert.equal(stopPhaseAction.payload.phase, 1, "stopSituation should set TD phase 1");
 
   const fanoutCalls = [];
   const fanoutCue = buildStartSituationCue({
@@ -369,7 +625,7 @@ async function main() {
     ],
   });
   await executeCue(fanoutCue, { adapters: makeAdapters(fanoutCalls) });
-  for (const command of ["runtime.startSituation", "td.environment.go", "sq5.input.mute", "camera.zoom", "streamdeck.status"]) {
+  for (const command of ["runtime.startSituation", "td.phase.set", "td.environment.go", "sq5.input.mute", "camera.zoom", "streamdeck.status"]) {
     assert(fanoutCalls.some((call) => call.command === command), `${command} should be called`);
   }
   const fanoutStartTimes = fanoutCalls.filter((call) => call.command !== "runtime.startRun").map((call) => call.at);

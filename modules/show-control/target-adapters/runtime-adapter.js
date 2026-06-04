@@ -37,8 +37,17 @@ function runtimeResultData(route, runtimeState) {
   };
 }
 
-function generatedPrepareAction(action, runtimeState) {
-  const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext");
+function runtimePayloadOptions(context = {}) {
+  const options = context.adapterOptions || {};
+  return {
+    liveCatalog: options.liveCatalog || null,
+    catalogDbPath: options.catalogDbPath || null,
+    disableLiveCatalog: options.disableLiveCatalog === true,
+  };
+}
+
+function generatedPrepareAction(action, runtimeState, context = {}) {
+  const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext", "", runtimePayloadOptions(context));
   payload.performerSlots = performerSlotsFromRuntimeState(runtimeState, "resolvedPreparedNext");
   return {
     command: "td.environment.prepare",
@@ -53,8 +62,8 @@ function generatedPrepareAction(action, runtimeState) {
   };
 }
 
-function generatedTeleprompterPrepareAction(action, runtimeState) {
-  const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext");
+function generatedTeleprompterPrepareAction(action, runtimeState, context = {}) {
+  const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext", "", runtimePayloadOptions(context));
   payload.performerSlots = performerSlotsFromRuntimeState(runtimeState, "resolvedPreparedNext");
   return {
     command: "teleprompter.prepare",
@@ -69,15 +78,15 @@ function generatedTeleprompterPrepareAction(action, runtimeState) {
   };
 }
 
-function generatedOperatorPrepareDraftAction(action, runtimeState) {
-  const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext");
+function generatedOperatorPrepareDraftAction(action, runtimeState, context = {}) {
+  const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext", "", runtimePayloadOptions(context));
   return {
     command: "script-agent.operator.prepareDraft",
     targetId: "script-agent",
     ackMode: "fire-and-forget",
     timeoutMs: Math.min(Number(action.timeoutMs || 1500), 900),
     payload: {
-      runtimeOutput: runtimeOutputFromRuntimeState(runtimeState, "resolvedPreparedNext"),
+      runtimeOutput: runtimeOutputFromRuntimeState(runtimeState, "resolvedPreparedNext", runtimePayloadOptions(context)),
       force: true,
       sourceId: "show-control-prepare",
       cueIntent: "prepare_operator_draft",
@@ -87,8 +96,8 @@ function generatedOperatorPrepareDraftAction(action, runtimeState) {
   };
 }
 
-function generatedGoAction(action, runtimeState) {
-  const payload = resolvedPayloadFromRuntimeState(runtimeState, "activeSituation");
+function generatedGoAction(action, runtimeState, context = {}) {
+  const payload = resolvedPayloadFromRuntimeState(runtimeState, "activeSituation", "", runtimePayloadOptions(context));
   payload.performerSlots = performerSlotsFromRuntimeState(runtimeState, "activeSituation");
   return {
     command: "td.environment.go",
@@ -103,8 +112,8 @@ function generatedGoAction(action, runtimeState) {
   };
 }
 
-function generatedTeleprompterRevealAction(action, runtimeState) {
-  const payload = resolvedPayloadFromRuntimeState(runtimeState, "activeSituation");
+function generatedTeleprompterRevealAction(action, runtimeState, context = {}) {
+  const payload = resolvedPayloadFromRuntimeState(runtimeState, "activeSituation", "", runtimePayloadOptions(context));
   payload.performerSlots = performerSlotsFromRuntimeState(runtimeState, "activeSituation");
   return {
     command: "teleprompter.reveal",
@@ -152,9 +161,9 @@ async function sendRuntimeCommand(action, context = {}) {
     context.lastRuntimeState = result.body;
     const generatedActions = action.payload && action.payload.autoPrepareNext
       ? [
-        generatedTeleprompterPrepareAction(action, result.body),
-        generatedOperatorPrepareDraftAction(action, result.body),
-        generatedPrepareAction(action, result.body),
+        generatedTeleprompterPrepareAction(action, result.body, context),
+        generatedOperatorPrepareDraftAction(action, result.body, context),
+        generatedPrepareAction(action, result.body, context),
       ]
       : [];
     return {
@@ -201,9 +210,9 @@ async function sendRuntimeCommand(action, context = {}) {
       message: `preparedNext resolved: ${runtimeState.preparedNext ? runtimeState.preparedNext.situationId : "none"}`,
       data: runtimeResultData("GET /v0/runtime/runs/current", runtimeState),
       generatedActions: [
-        generatedTeleprompterPrepareAction(action, runtimeState),
-        generatedOperatorPrepareDraftAction(action, runtimeState),
-        generatedPrepareAction(action, runtimeState),
+        generatedTeleprompterPrepareAction(action, runtimeState, context),
+        generatedOperatorPrepareDraftAction(action, runtimeState, context),
+        generatedPrepareAction(action, runtimeState, context),
       ],
     };
   }
@@ -226,15 +235,15 @@ async function sendRuntimeCommand(action, context = {}) {
     context.lastRuntimeState = result.body;
     const generatedActions = [];
     if (command === "runtime.startSituation" && action.payload.autoGoEnvironment !== false && canGenerateGo(result.body)) {
-      generatedActions.push(generatedGoAction(action, result.body));
+      generatedActions.push(generatedGoAction(action, result.body, context));
     }
     if (command === "runtime.startSituation" && action.payload.autoRevealTeleprompter !== false && canGenerateGo(result.body)) {
-      generatedActions.push(generatedTeleprompterRevealAction(action, result.body));
+      generatedActions.push(generatedTeleprompterRevealAction(action, result.body, context));
     }
     if (command === "runtime.stopSituation" && action.payload.autoPrepareNext !== false && canGeneratePrepare(result.body)) {
-      generatedActions.push(generatedTeleprompterPrepareAction(action, result.body));
-      generatedActions.push(generatedOperatorPrepareDraftAction(action, result.body));
-      generatedActions.push(generatedPrepareAction(action, result.body));
+      generatedActions.push(generatedTeleprompterPrepareAction(action, result.body, context));
+      generatedActions.push(generatedOperatorPrepareDraftAction(action, result.body, context));
+      generatedActions.push(generatedPrepareAction(action, result.body, context));
     }
     return {
       stage: "applied",

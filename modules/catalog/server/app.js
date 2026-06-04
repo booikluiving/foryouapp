@@ -23,6 +23,7 @@ const {
 } = require("../write-model/catalog-store");
 
 const express = loadExpress();
+const DEFAULT_SHOW_CONTROL_URL = "http://127.0.0.1:3025";
 
 function asyncRoute(handler) {
   return (req, res, next) => {
@@ -30,9 +31,59 @@ function asyncRoute(handler) {
   };
 }
 
+function showControlUrl(options = {}) {
+  return String(
+    options.showControlUrl
+    || process.env.V2_CATALOG_SHOW_CONTROL_URL
+    || process.env.V2_SHOW_CONTROL_URL
+    || DEFAULT_SHOW_CONTROL_URL
+  ).replace(/\/+$/, "");
+}
+
+function createMediaRefreshScheduler(options = {}) {
+  const timers = new Map();
+  const debounceMs = Math.max(0, Number(
+    options.mediaRefreshDebounceMs
+    || process.env.V2_CATALOG_MEDIA_REFRESH_DEBOUNCE_MS
+    || 150
+  ));
+  return function scheduleMediaRefresh(input = {}) {
+    const environmentId = String(input.environmentId || "").trim();
+    if (!environmentId) return;
+    const previous = timers.get(environmentId);
+    if (previous) clearTimeout(previous);
+    const timer = setTimeout(async () => {
+      timers.delete(environmentId);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), Number(options.mediaRefreshTimeoutMs || 1200));
+      try {
+        await fetch(`${showControlUrl(options)}/v0/show-control/media-assets/refresh`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            environmentId,
+            roles: Array.isArray(input.roles) ? input.roles : [],
+            reason: input.reason || "catalog_media_changed",
+            source: input.source || "catalog",
+            assetId: input.assetId || null,
+          }),
+          signal: controller.signal,
+        });
+      } catch (_err) {
+        // Saving media in Catalog must not depend on Show Control being reachable.
+      } finally {
+        clearTimeout(timeout);
+      }
+    }, debounceMs);
+    if (typeof timer.unref === "function") timer.unref();
+    timers.set(environmentId, timer);
+  };
+}
+
 function createCatalogApp(options = {}) {
   const app = express();
   const startedAt = new Date();
+  const scheduleMediaRefresh = createMediaRefreshScheduler(options);
   const uiRoot = path.resolve(__dirname, "../ui");
   const sharedUiRoot = path.resolve(__dirname, "../../../shared/ui");
 
@@ -114,6 +165,13 @@ function createCatalogApp(options = {}) {
     const readModel = await buildCatalogReadModel(options);
     const asset = await saveMediaAssetUpload(req, readModel, options);
     const updatedReadModel = await buildCatalogReadModel(options);
+    scheduleMediaRefresh({
+      environmentId: asset.environmentId,
+      roles: [asset.role || asset.type].filter(Boolean),
+      reason: "media_asset_upload",
+      source: "catalog-upload",
+      assetId: asset.id,
+    });
     res.status(201).json({
       ok: true,
       asset,
@@ -124,6 +182,13 @@ function createCatalogApp(options = {}) {
   app.delete("/v0/catalog/media-assets/:assetId", asyncRoute(async (req, res) => {
     const asset = await deleteMediaAsset(req.params.assetId, options);
     const updatedReadModel = await buildCatalogReadModel(options);
+    scheduleMediaRefresh({
+      environmentId: asset.environmentId,
+      roles: [asset.role || asset.type].filter(Boolean),
+      reason: "media_asset_delete",
+      source: "catalog-delete",
+      assetId: asset.id,
+    });
     res.json({
       ok: true,
       asset,
@@ -135,6 +200,16 @@ function createCatalogApp(options = {}) {
     const readModel = await buildCatalogReadModel(options);
     const composition = await upsertEnvironmentComposition(req.params.environmentId, req.body || {}, readModel, options);
     const updatedReadModel = await buildCatalogReadModel(options);
+    const roles = [];
+    if (composition.backgroundLayer) roles.push("background");
+    if (composition.fxVideoLayer) roles.push("fxVideo");
+    if ((composition.imageLayers || []).length) roles.push("fxImage");
+    scheduleMediaRefresh({
+      environmentId: composition.environmentId,
+      roles,
+      reason: "media_composition_save",
+      source: "catalog-composition",
+    });
     res.json({
       ok: true,
       composition,

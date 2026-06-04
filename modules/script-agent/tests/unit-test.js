@@ -146,6 +146,29 @@ async function main() {
   const promptInputAgain = buildPromptInput(mutatedOrderState, new Date("2026-05-24T18:00:02.000Z"));
   assert.equal(promptInputAgain.contentHash, promptInput.contentHash, "prompt content should be stable from resolved output");
 
+  const flexibleCastState = cloneJson(runtimeState);
+  flexibleCastState.showRunSnapshot.catalog.performers = [
+    { id: "performer:1", legacyId: 1, name: "Performer A", performerSlot: 1 },
+    { id: "performer:2", legacyId: 2, name: "Performer B", performerSlot: 2 },
+    { id: "performer:3", legacyId: 3, name: "Performer C", performerSlot: 3 },
+  ];
+  flexibleCastState.resolvedPreparedNext.characters = [
+    { id: "character:flex", legacyId: 10, name: "Zwangere vrouw", performerIds: [] },
+    { id: "character:bobby", legacyId: 11, name: "Bobby", performerIds: ["performer:1"] },
+    { id: "character:adolf", legacyId: 12, name: "Adolf", performerIds: ["performer:2"] },
+  ];
+  delete flexibleCastState.resolvedPreparedNext.performerSlots;
+  const flexiblePromptInput = buildPromptInput(flexibleCastState, new Date("2026-05-24T18:00:02.500Z"));
+  assert.deepEqual(
+    flexiblePromptInput.performerSlots.map((slot) => [slot.slotIndex, slot.performerId, slot.characterId]),
+    [
+      [1, "performer:1", "character:bobby"],
+      [1, null, "character:flex"],
+      [2, "performer:2", "character:adolf"],
+    ],
+    "Script Agent fallback should reflect catalog performer choices without redistributing roles"
+  );
+
   const previousCatalogUrl = process.env.V2_SCRIPT_AGENT_CATALOG_URL;
   process.env.V2_SCRIPT_AGENT_CATALOG_URL = "http://127.0.0.1:1";
   const fallbackCatalog = await fetchCatalogSnapshot();
@@ -208,14 +231,16 @@ async function main() {
   const preparedFromPrompt = bridge.preparedSceneFromPromptInput(promptInput);
   assert.equal(preparedFromPrompt.sceneId, 1);
   assert.deepEqual(preparedFromPrompt.characters.map((character) => [character.name, character.slot]), [["Ada", 1], ["Ben", 2]]);
+  assert.equal(preparedFromPrompt.characters[0].performerName, "Performer A");
   const preparedFromPayload = bridge.preparedSceneFromPayload({
     situation: { situationId: "situation:1", legacySituationId: 1, title: "Open Scene" },
     environment: { id: "environment:1", legacyId: 1, name: "Studio" },
     backgroundAsset: { url: "/v0/catalog/media-assets/file/bg" },
-    performerSlots: [{ characterId: "character:1", legacyCharacterId: 1, characterName: "Ada", slotIndex: 1 }],
+    performerSlots: [{ characterId: "character:1", legacyCharacterId: 1, characterName: "Ada", slotIndex: 1, performerName: "Performer A" }],
   });
   assert.equal(preparedFromPayload.environment.imageUrl, "http://catalog.test/v0/catalog/media-assets/file/bg");
   assert.equal(preparedFromPayload.characters[0].slot, 1);
+  assert.equal(preparedFromPayload.characters[0].performerName, "Performer A");
 
   const operatorService = createOperatorService({
     clients: {

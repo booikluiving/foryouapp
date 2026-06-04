@@ -15,6 +15,7 @@ const PORTS = {
   paths: 4122,
   runtime: 4124,
   scriptAgent: 4127,
+  showControlUnavailable: 4199,
 };
 const SCRIPT_AGENT_DB_DIR = path.join(TEST_DIR, ".tmp-smoke-db");
 const PROTECTED_V1_FILES = [
@@ -200,6 +201,7 @@ async function main() {
       SCRIPT_AGENT_PORT: String(PORTS.scriptAgent),
       V2_SCRIPT_AGENT_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
       V2_SCRIPT_AGENT_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
+      V2_SCRIPT_AGENT_SHOW_CONTROL_URL: `http://127.0.0.1:${PORTS.showControlUnavailable}`,
       V2_SCRIPT_AGENT_DB_DIR: SCRIPT_AGENT_DB_DIR,
     }));
     await waitForHealth(services[3].child, `http://127.0.0.1:${PORTS.scriptAgent}`, "script-agent", services[3].logs);
@@ -233,6 +235,9 @@ async function main() {
     assert(parserHtml.includes("rawTextInput"));
     const telepromptStageHtml = await fetchText(scriptAgentBase, "/script-agent/teleprompter-parser/stage");
     assert(telepromptStageHtml.includes("stageRoot"));
+    const telepromptStageOneHtml = await fetchText(scriptAgentBase, "/script-agent/teleprompter-parser/stage/1");
+    assert(telepromptStageOneHtml.includes("stageRoot"));
+    assert(parserHtml.includes("Stage 1"));
     const liveCaptionsHtml = await fetchText(scriptAgentBase, "/script-agent/teleprompter-parser/live-captions");
     assert(liveCaptionsHtml.includes("captionRoot"));
 
@@ -243,6 +248,13 @@ async function main() {
     });
     assert.equal(manualParse.teleprompt.title, "Smoke parse");
     assert.equal(manualParse.teleprompt.lines.length, 3);
+    const manualAdvance = await fetchJson(scriptAgentBase, "/v0/script-agent/teleprompter-parser/cue/advance", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ direction: "next", source: "smoke-perfect-cue" }),
+    });
+    assert.equal(manualAdvance.cue.index, 1);
+    assert.equal(manualAdvance.cueAction.direction, "next");
 
     const promptResponse = await fetchJson(scriptAgentBase, "/v0/script-agent/prompt-inputs", {
       method: "POST",
@@ -343,6 +355,10 @@ async function main() {
     assert(legacyTeleprompterState.teleprompt.lines.length > 0);
     assert.equal(legacyTeleprompterState.preparedScene.title, promptInput.situation.title);
     assert.equal(legacyTeleprompterState.cue.index, 0);
+    const preparedStageCharacter = legacyTeleprompterState.preparedScene.characters.find((character) => (
+      Number(character.slot || 0) === Number(slot.slotIndex || 0)
+    ));
+    assert.equal(preparedStageCharacter && preparedStageCharacter.performerName, slot.performerName);
 
     const teleprompter = await fetchJson(
       scriptAgentBase,
@@ -359,6 +375,20 @@ async function main() {
 
     const runtimeAfter = await fetchJson(runtimeBase, "/v0/runtime/runs/current");
     assert.deepEqual(runtimeOrderSnapshot(runtimeAfter), orderBefore, "Script Agent must not mutate Runtime order state");
+
+    await fetchJson(scriptAgentBase, "/v0/script-agent/teleprompter-parser/ready", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ready: true }),
+    });
+    const readyStart = await fetchJson(scriptAgentBase, "/v0/script-agent/teleprompter-parser/cue/advance", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ direction: "next", source: "smoke-perfect-cue-ready" }),
+    });
+    assert.equal(readyStart.cueAction.action, "start_scene");
+    assert.equal(readyStart.preparedScene.status, "playing");
+    assert(["show-control", "runtime-fallback"].includes(readyStart.startScene.mode));
 
     await stopServices(services);
     const afterHashes = await protectedHashes();

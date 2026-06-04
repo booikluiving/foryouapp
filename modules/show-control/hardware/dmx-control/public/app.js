@@ -13,14 +13,14 @@ let activeFixtureIndex = 0;
 
 const fixtures = [
   createFixture("Lamp 1", 1, "hsi", true),
-  createFixture("Lamp 2", 11, "cct", true),
-  createFixture("Lamp 3", 21, "cct", true),
-  createFixture("Lamp 4", 31, "hsi", true),
-  createFixture("Lamp 5", 41, "hsi", true),
-  createFixture("Lamp 6", 51, "rgb", true),
-  createFixture("Lamp 7", 61, "rgb", true),
-  createFixture("Lamp 8", 71, "cct", true),
-  createFixture("Lamp 9", 81, "hsi", true),
+  createFixture("Lamp 2", 11, "hsi", true),
+  createFixture("Lamp 3", 21, "hsi", true),
+  createFixture("Lamp 4", 31, "hsi", false),
+  createFixture("Lamp 5", 41, "hsi", false),
+  createFixture("Lamp 6", 51, "rgb", false),
+  createFixture("Lamp 7", 61, "rgb", false),
+  createFixture("Lamp 8", 71, "cct", false),
+  createFixture("Lamp 9", 81, "hsi", false),
 ];
 
 function createFixture(name, address, profile, enabled) {
@@ -30,7 +30,7 @@ function createFixture(name, address, profile, enabled) {
     profile,
     enabled,
     values: {
-      hsi: { hue: 0, saturation: 255, intensity: 255 },
+      hsi: { hue: 0, saturation: 0, intensity: 220 },
       cct: { intensity: 255, temp: 128, gm: 128 },
       rgb: { red: 255, green: 79, blue: 61, brightness: 255 },
       raw: {},
@@ -319,11 +319,39 @@ function setFixtureProfileValues(fixture, profile, values) {
   };
 }
 
+function setCurrentProfile(profile) {
+  $("fixtureModeInput").value = profile;
+  activeFixture().profile = profile;
+  renderModePanels();
+  renderFixtureGrid();
+}
+
+function applyCurrentControlsToEnabledFixtures() {
+  const profile = $("fixtureModeInput").value;
+  const values = readCurrentValues(profile);
+  const selected = activeFixture();
+  selected.address = startAddress();
+  setFixtureProfileValues(selected, profile, values);
+  for (const fixture of fixtures) {
+    if (!fixture.enabled || fixture === selected) continue;
+    setFixtureProfileValues(fixture, profile, values);
+  }
+}
+
+function sendHsiLook(label, hue, saturation, intensity, holdMs = 1200) {
+  stopEffect();
+  setCurrentProfile("hsi");
+  setHsiValues(hue, saturation, intensity);
+  const channels = currentChannels();
+  renderFixtureGrid();
+  sendLook(label, channels, { holdMs }).catch((err) => setMessage(err.message, true));
+}
+
 const environmentLooks = {
   auto: [
     ["hsi", { hue: 204, saturation: 54, intensity: 120 }],
-    ["cct", { intensity: 190, temp: 90, gm: 128 }],
-    ["cct", { intensity: 125, temp: 42, gm: 128 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 190 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 125 }],
     ["hsi", { hue: 28, saturation: 142, intensity: 75 }],
     ["hsi", { hue: 214, saturation: 180, intensity: 55 }],
     ["rgb", { red: 20, green: 70, blue: 255, brightness: 62 }],
@@ -333,8 +361,8 @@ const environmentLooks = {
   ],
   bioscoop: [
     ["hsi", { hue: 224, saturation: 210, intensity: 55 }],
-    ["cct", { intensity: 45, temp: 10, gm: 128 }],
-    ["cct", { intensity: 35, temp: 0, gm: 128 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 45 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 35 }],
     ["hsi", { hue: 28, saturation: 240, intensity: 42 }],
     ["hsi", { hue: 348, saturation: 190, intensity: 30 }],
     ["rgb", { red: 18, green: 28, blue: 255, brightness: 42 }],
@@ -344,8 +372,8 @@ const environmentLooks = {
   ],
   podcast: [
     ["hsi", { hue: 32, saturation: 110, intensity: 140 }],
-    ["cct", { intensity: 210, temp: 118, gm: 128 }],
-    ["cct", { intensity: 180, temp: 95, gm: 128 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 210 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 180 }],
     ["hsi", { hue: 195, saturation: 170, intensity: 80 }],
     ["hsi", { hue: 300, saturation: 115, intensity: 55 }],
     ["rgb", { red: 40, green: 190, blue: 255, brightness: 58 }],
@@ -355,8 +383,8 @@ const environmentLooks = {
   ],
   nacht: [
     ["hsi", { hue: 230, saturation: 230, intensity: 35 }],
-    ["cct", { intensity: 18, temp: 0, gm: 128 }],
-    ["cct", { intensity: 12, temp: 0, gm: 128 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 18 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 12 }],
     ["hsi", { hue: 260, saturation: 200, intensity: 25 }],
     ["hsi", { hue: 200, saturation: 210, intensity: 24 }],
     ["rgb", { red: 10, green: 14, blue: 120, brightness: 35 }],
@@ -373,13 +401,16 @@ function applyEnvironmentLook(name) {
     const entry = look[index];
     if (!entry) return;
     setFixtureProfileValues(fixture, entry[0], entry[1]);
-    fixture.enabled = true;
   });
   applyFixtureToControls(activeFixtureIndex);
 }
 
-function currentChannels() {
-  saveActiveFixtureFromControls();
+function currentChannels(options = {}) {
+  if (options.propagate === false) {
+    saveActiveFixtureFromControls();
+    return combineFixtureChannels();
+  }
+  applyCurrentControlsToEnabledFixtures();
   return combineFixtureChannels();
 }
 
@@ -725,7 +756,7 @@ function bindEvents() {
     button.addEventListener("click", () => {
       stopEffect();
       applyEnvironmentLook(button.dataset.look);
-      sendLook(`environment-${button.dataset.look}`, currentChannels(), { holdMs: 1200 }).catch((err) => setMessage(err.message, true));
+      sendLook(`environment-${button.dataset.look}`, currentChannels({ propagate: false }), { holdMs: 1200 }).catch((err) => setMessage(err.message, true));
     });
   });
   $("fixtureModeInput").addEventListener("change", () => {
@@ -753,55 +784,31 @@ function bindEvents() {
   });
   $("blackoutBtn").addEventListener("click", () => blackout(1200).catch((err) => setMessage(err.message, true)));
   $("hsiWhiteBtn").addEventListener("click", () => {
-    $("fixtureModeInput").value = "hsi";
-    activeFixture().profile = "hsi";
-    renderModePanels();
-    setHsiValues($("hueInput").value, 0, 255);
-    sendLook("hsi-white", currentChannels(), { holdMs: 1200 }).catch((err) => setMessage(err.message, true));
+    sendHsiLook("hsi-white", $("hueInput").value, 0, 255);
   });
   $("hsiAmberBtn").addEventListener("click", () => {
-    $("fixtureModeInput").value = "hsi";
-    activeFixture().profile = "hsi";
-    renderModePanels();
-    setHsiValues(34, 255, 220);
-    sendLook("hsi-amber", currentChannels(), { holdMs: 1200 }).catch((err) => setMessage(err.message, true));
+    sendHsiLook("hsi-amber", 34, 255, 220);
   });
   $("hsiBlueBtn").addEventListener("click", () => {
-    $("fixtureModeInput").value = "hsi";
-    activeFixture().profile = "hsi";
-    renderModePanels();
-    setHsiValues(220, 255, 220);
-    sendLook("hsi-blue", currentChannels(), { holdMs: 1200 }).catch((err) => setMessage(err.message, true));
+    sendHsiLook("hsi-blue", 220, 255, 220);
   });
   $("cctFullBtn").addEventListener("click", () => {
-    $("fixtureModeInput").value = "cct";
-    activeFixture().profile = "cct";
-    renderModePanels();
-    setCctValues(255, 128, 128);
-    sendLook("cct-5600k", currentChannels(), { holdMs: 1200 }).catch((err) => setMessage(err.message, true));
+    sendHsiLook("cct-5600k-as-hsi-white", 0, 0, 255);
   });
   $("cctWarmBtn").addEventListener("click", () => {
-    $("fixtureModeInput").value = "cct";
-    activeFixture().profile = "cct";
-    renderModePanels();
-    setCctValues(80, 0, 128);
-    sendLook("cct-warm-dim", currentChannels(), { holdMs: 1200 }).catch((err) => setMessage(err.message, true));
+    sendHsiLook("cct-warm-dim-as-hsi", 34, 150, 80);
   });
   $("rgbWhiteBtn").addEventListener("click", () => {
-    $("fixtureModeInput").value = "rgb";
-    activeFixture().profile = "rgb";
-    renderModePanels();
-    setRgbValues(255, 255, 255, 255);
-    sendLook("rgb-white", currentChannels(), { holdMs: 1200 }).catch((err) => setMessage(err.message, true));
+    sendHsiLook("rgb-white-as-hsi-white", 0, 0, 255);
   });
   document.querySelectorAll(".swatch").forEach((button) => {
     button.addEventListener("click", () => {
       const [red, green, blue] = button.dataset.rgb.split(",").map((value) => clamp(value));
-      $("fixtureModeInput").value = "rgb";
-      activeFixture().profile = "rgb";
-      renderModePanels();
+      const hsv = rgbToHsv(red, green, blue);
+      setCurrentProfile("hsi");
       setRgbValues(red, green, blue, 255);
-      sendLook(`rgb-${button.textContent.trim().toLowerCase()}`, currentChannels(), { holdMs: 1200 }).catch((err) => setMessage(err.message, true));
+      setHsiValues(hsv.hue, hsv.saturation, hsv.intensity);
+      sendLook(`hsi-${button.textContent.trim().toLowerCase()}`, currentChannels(), { holdMs: 1200 }).catch((err) => setMessage(err.message, true));
     });
   });
   $("cycleBtn").addEventListener("click", () => startCycle());

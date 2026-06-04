@@ -356,7 +356,7 @@ label {
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 34px;
+  gap: 24px;
   text-align: center;
 }
 
@@ -448,6 +448,41 @@ label {
   letter-spacing: 0;
 }
 
+.stage-prep-focus {
+  width: min(920px, 86%);
+  display: grid;
+  gap: 8px;
+  border: 2px solid rgba(128, 237, 153, 0.8);
+  border-radius: 8px;
+  background: rgba(22, 163, 74, 0.24);
+  padding: 18px 24px 20px;
+}
+
+.stage-prep-focus.is-empty {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.stage-prep-focus-kicker {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 25px;
+  font-weight: 950;
+  line-height: 1.08;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.stage-prep-focus-character {
+  min-width: 0;
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 56px;
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+}
+
 .stage-prep-environment {
   width: min(920px, 86%);
   display: grid;
@@ -508,6 +543,16 @@ label {
   text-align: left;
 }
 
+.stage-prep-characters li.is-stage-slot {
+  border-color: rgba(128, 237, 153, 0.82);
+  background: rgba(22, 163, 74, 0.22);
+}
+
+.stage-prep-characters li.is-stage-slot .stage-prep-character-slot {
+  background: rgba(22, 163, 74, 0.9);
+  color: #ffffff;
+}
+
 .stage-prep-character-slot {
   display: grid;
   place-items: center;
@@ -519,9 +564,25 @@ label {
   font-weight: 920;
 }
 
+.stage-prep-character-label {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
 .stage-prep-character-name {
   min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage-prep-character-performer {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 22px;
+  font-weight: 850;
+  line-height: 1.05;
   text-overflow: ellipsis;
 }
 

@@ -1,5 +1,7 @@
 "use strict";
 
+const { assignPerformerSlots } = require("../../../shared/casting/performer-slots");
+
 function situationById(catalog, situationId) {
   return (catalog.situations || []).find((item) => item.id === situationId) || null;
 }
@@ -27,6 +29,10 @@ function materializePreparedNext({ catalog, preparedNext, seed = "" }) {
   if (!environment && situation.environmentMode === "random") {
     environment = activeEnvironments(catalog)[0] || null;
   }
+  const castAssignment = assignPerformerSlots({
+    characters,
+    performers: catalog.performers || [],
+  });
   return {
     situationId: situation.id,
     legacySituationId: situation.legacyId,
@@ -39,6 +45,8 @@ function materializePreparedNext({ catalog, preparedNext, seed = "" }) {
       name: item.name,
       performerIds: item.performerIds || [],
     })),
+    performerSlots: castAssignment.performerSlots,
+    ...(castAssignment.issues.length ? { castWarnings: castAssignment.issues } : {}),
     environmentId: environment ? environment.id : null,
     environment: environment ? {
       id: environment.id,

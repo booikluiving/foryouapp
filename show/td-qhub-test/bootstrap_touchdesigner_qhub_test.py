@@ -112,6 +112,13 @@ def _create_asset_manager(base):
     _create_table(manager, "selected_asset", ["key", "value"], x=600, y=0)
     _create_table(
         manager,
+        "asset_bundle",
+        ["role", "type", "assetId", "environmentId", "filePath", "url", "updatedAt"],
+        x=600,
+        y=-220,
+    )
+    _create_table(
+        manager,
         "asset_prepare_log",
         ["at", "cueId", "command", "payloadId", "assetId", "environmentId", "type", "filePath"],
         x=0,
@@ -138,6 +145,56 @@ def _create_prepared_background_preview(base):
     return preview
 
 
+def _create_prepared_soundscape_preview(base):
+    try:
+        soundscape = base.create(audiofileinCHOP, "prepared_soundscape")
+        soundscape.nodeX = 1150
+        soundscape.nodeY = -430
+    except Exception:
+        soundscape = None
+    _create_text(base, "prepared_soundscape_status", "waiting for soundscape", x=1150, y=-570)
+    return soundscape
+
+
+def _create_prepared_fx_preview(base):
+    try:
+        fx_overlay = base.create(moviefileinTOP, "prepared_fx_overlay")
+        fx_overlay.nodeX = 1450
+        fx_overlay.nodeY = -120
+    except Exception:
+        fx_overlay = None
+    _create_text(base, "prepared_fx_status", "waiting for fx assets", x=1450, y=-570)
+    return fx_overlay
+
+
+def _create_phase_value_chop(base):
+    try:
+        chop = base.create(constantCHOP, "phase_value")
+        chop.nodeX = 1750
+        chop.nodeY = -120
+        _set_par(chop, ["numchans", "nchans"], 1)
+        _set_par(chop, ["name0", "chan0name", "chan1name"], "phase")
+        _set_par(chop, ["value0", "chan0value", "chan1value"], 0)
+    except Exception:
+        chop = None
+    _create_text(base, "phase_value_status", "phase value: 0", x=1750, y=-260)
+    return chop
+
+
+def _create_camera_value_chop(base):
+    try:
+        chop = base.create(constantCHOP, "camera_value")
+        chop.nodeX = 1750
+        chop.nodeY = -430
+        _set_par(chop, ["numchans", "nchans"], 1)
+        _set_par(chop, ["name0", "chan0name", "chan1name"], "camera")
+        _set_par(chop, ["value0", "chan0value", "chan1value"], 1)
+    except Exception:
+        chop = None
+    _create_text(base, "camera_value_status", "camera value: 1", x=1750, y=-570)
+    return chop
+
+
 def build_qhub_test():
     project_root = op("/project1")
     if project_root is None:
@@ -156,6 +213,14 @@ def build_qhub_test():
         "status_view",
         "prepared_background",
         "prepared_background_status",
+        "prepared_soundscape",
+        "prepared_soundscape_status",
+        "prepared_fx_overlay",
+        "prepared_fx_status",
+        "phase_value",
+        "phase_value_status",
+        "camera_value",
+        "camera_value_status",
         "asset_manager_demo",
         "start_qhub_bridge",
     ]:
@@ -200,6 +265,10 @@ def build_qhub_test():
 
     _create_triggers(project_root)
     _create_prepared_background_preview(project_root)
+    _create_prepared_soundscape_preview(project_root)
+    _create_prepared_fx_preview(project_root)
+    _create_phase_value_chop(project_root)
+    _create_camera_value_chop(project_root)
     _create_asset_manager(project_root)
 
     startup = project_root.create(executeDAT, "start_qhub_bridge")

@@ -138,8 +138,12 @@ function preparedCharactersFromPromptInput(promptInput = {}) {
     seen.add(`${slotIndex}:${name.toLowerCase()}`);
     characters.push({
       id: numericLegacyId(sourceCharacter.legacyCharacterId, slot.legacyCharacterId, slot.characterId, sourceCharacter.characterId),
+      characterId: String(slot.characterId || sourceCharacter.characterId || "").trim(),
+      legacyCharacterId: numericLegacyId(sourceCharacter.legacyCharacterId, slot.legacyCharacterId, slot.characterId, sourceCharacter.characterId) || null,
       name,
       slot: slotIndex,
+      performerId: String(slot.performerId || "").trim(),
+      performerName: String(slot.performerName || "").trim(),
     });
   }
   if (characters.length) return characters;
@@ -159,14 +163,22 @@ function preparedCharactersFromPayload(payload = {}) {
   if (slotSources.length) {
     return slotSources.slice(0, 3).map((slot, index) => ({
       id: numericLegacyId(slot.legacyCharacterId, slot.characterId, slot.id),
+      characterId: String(slot.characterId || slot.catalogCharacterId || "").trim(),
+      legacyCharacterId: numericLegacyId(slot.legacyCharacterId, slot.characterId, slot.id) || null,
       name: characterName(slot),
       slot: Number(slot.slotIndex || slot.slot || index + 1),
+      performerId: String(slot.performerId || "").trim(),
+      performerName: String(slot.performerName || "").trim(),
     })).filter((character) => character.name);
   }
   return (payload.characters || []).slice(0, 3).map((character, index) => ({
     id: numericLegacyId(character.legacyCharacterId, character.characterId, character.id),
+    characterId: String(character.characterId || character.id || "").trim(),
+    legacyCharacterId: numericLegacyId(character.legacyCharacterId, character.characterId, character.id) || null,
     name: characterName(character),
     slot: Number(character.slot || index + 1),
+    performerId: String(character.performerId || "").trim(),
+    performerName: String(character.performerName || "").trim(),
   })).filter((character) => character.name);
 }
 
@@ -295,6 +307,7 @@ function createTeleprompterParserBridge(options = {}) {
         source: event.source || "teleprompter_auto_camera",
       }),
       endSceneFromStage,
+      startSceneFromStage,
     });
     refreshRuntimeState().catch(() => {});
     return parser;
@@ -353,6 +366,40 @@ function createTeleprompterParserBridge(options = {}) {
     }
   }
 
+  async function startSceneFromStage() {
+    await refreshRuntimeState();
+    const showRunId = runtimeState && runtimeState.showRunId ? runtimeState.showRunId : null;
+    if (!showRunId) throw new Error("script_agent_teleprompter_no_show_run");
+    if (activeSituationId(runtimeState)) {
+      return {
+        mode: "skipped",
+        reason: "runtime_active_situation_exists",
+        activeSituationId: activeSituationId(runtimeState),
+      };
+    }
+    try {
+      const cue = await postJson(joinUrl(showControlBaseUrl(env), "/v0/show-control/cues/start-situation"), {
+        name: "Teleprompter ready start scene",
+        showRunId,
+        runtimeState,
+      }, 5000);
+      await refreshRuntimeState();
+      return { mode: "show-control", cue };
+    } catch (err) {
+      const result = await postJson(joinUrl(runtimeBaseUrl(env), `/v0/runtime/runs/${encodeURIComponent(showRunId)}/start-situation`), {
+        autoGoEnvironment: true,
+        autoRevealTeleprompter: true,
+      }, 4000);
+      if (parser && typeof parser.reveal === "function") parser.reveal();
+      await refreshRuntimeState();
+      return {
+        mode: "runtime-fallback",
+        runtime: result,
+        warning: err && err.message ? String(err.message) : "show_control_unavailable",
+      };
+    }
+  }
+
   return {
     currentRuntimeState: () => (runtimeState ? cloneJson(runtimeState) : null),
     endSceneFromStage,
@@ -363,6 +410,7 @@ function createTeleprompterParserBridge(options = {}) {
     preparedSceneFromPromptInput: (promptInput) => preparedSceneFromPromptInput(promptInput, env),
     refreshRuntimeState,
     showState: () => showStateFromRuntime(runtimeState, runtimeAvailable),
+    startSceneFromStage,
   };
 }
 

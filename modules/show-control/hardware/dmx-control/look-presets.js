@@ -25,8 +25,8 @@ const FIXTURES = Object.freeze([
 const ENVIRONMENT_LOOKS = Object.freeze({
   auto: [
     ["hsi", { hue: 204, saturation: 54, intensity: 120 }],
-    ["cct", { intensity: 190, temp: 90, gm: 128 }],
-    ["cct", { intensity: 125, temp: 42, gm: 128 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 190 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 125 }],
     ["hsi", { hue: 28, saturation: 142, intensity: 75 }],
     ["hsi", { hue: 214, saturation: 180, intensity: 55 }],
     ["rgb", { red: 20, green: 70, blue: 255, brightness: 62 }],
@@ -36,8 +36,8 @@ const ENVIRONMENT_LOOKS = Object.freeze({
   ],
   bioscoop: [
     ["hsi", { hue: 224, saturation: 210, intensity: 55 }],
-    ["cct", { intensity: 45, temp: 10, gm: 128 }],
-    ["cct", { intensity: 35, temp: 0, gm: 128 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 45 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 35 }],
     ["hsi", { hue: 28, saturation: 240, intensity: 42 }],
     ["hsi", { hue: 348, saturation: 190, intensity: 30 }],
     ["rgb", { red: 18, green: 28, blue: 255, brightness: 42 }],
@@ -47,8 +47,8 @@ const ENVIRONMENT_LOOKS = Object.freeze({
   ],
   podcast: [
     ["hsi", { hue: 32, saturation: 110, intensity: 140 }],
-    ["cct", { intensity: 210, temp: 118, gm: 128 }],
-    ["cct", { intensity: 180, temp: 95, gm: 128 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 210 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 180 }],
     ["hsi", { hue: 195, saturation: 170, intensity: 80 }],
     ["hsi", { hue: 300, saturation: 115, intensity: 55 }],
     ["rgb", { red: 40, green: 190, blue: 255, brightness: 58 }],
@@ -58,8 +58,8 @@ const ENVIRONMENT_LOOKS = Object.freeze({
   ],
   nacht: [
     ["hsi", { hue: 230, saturation: 230, intensity: 35 }],
-    ["cct", { intensity: 18, temp: 0, gm: 128 }],
-    ["cct", { intensity: 12, temp: 0, gm: 128 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 18 }],
+    ["hsi", { hue: 0, saturation: 0, intensity: 12 }],
     ["hsi", { hue: 260, saturation: 200, intensity: 25 }],
     ["hsi", { hue: 200, saturation: 210, intensity: 24 }],
     ["rgb", { red: 10, green: 14, blue: 120, brightness: 35 }],

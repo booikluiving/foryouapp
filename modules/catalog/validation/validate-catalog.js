@@ -142,11 +142,11 @@ function validateCatalogReadModel(readModel) {
       && !canAssignCast(selectedCharacters, activePerformerItems)
     ) {
       issues.push(issue(
-        "error",
+        "warning",
         "situation_cast_performer_conflict",
         "situation",
         situation.id,
-        "Selected characters cannot be assigned to distinct active performer slots.",
+        "Selected characters may require the same performer; runtime can continue with a warning.",
         { relationType: "performer", characterIds: situation.characterIds || [] }
       ));
     }

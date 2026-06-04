@@ -27,11 +27,14 @@ const {
 } = require("../cue-engine/state-store");
 const {
   buildCompoundCue,
+  buildEnvironmentMediaRefreshCue,
   buildGoCue,
+  buildPhaseCue,
   buildPrepareCue,
   buildSceneToChatCue,
   buildStartRunCue,
   buildStartSituationCue,
+  buildStopSituationCue,
 } = require("../cue-library/runtime-cues");
 const { cameraBaseUrl } = require("../target-adapters/camera-adapter");
 const { dmxBaseUrl } = require("../target-adapters/dmx-adapter");
@@ -274,6 +277,20 @@ function createShowControlApp(options = {}) {
     res.status(200).json({ ok: true, cue });
   }));
 
+  app.post("/v0/show-control/cues/phase", asyncRoute(async (req, res) => {
+    const body = req.body || {};
+    const numericPhase = Number(body.phase);
+    if (!Number.isInteger(numericPhase) || numericPhase < 0) throw httpError(400, "show_control_invalid_phase");
+    const cue = buildPhaseCue({
+      name: body.name || null,
+      phase: numericPhase,
+      phaseName: body.phaseName || null,
+    });
+    await executeCue(cue, executeOptions);
+    await saveCue(cue);
+    res.status(201).json({ ok: true, cue });
+  }));
+
   app.post("/v0/show-control/cues/start-run", asyncRoute(async (req, res) => {
     const cue = buildStartRunCue({
       name: req.body ? req.body.name : null,
@@ -295,6 +312,55 @@ function createShowControlApp(options = {}) {
     await executeCue(cue, { ...executeOptions, runtimeState });
     await saveCue(cue);
     res.status(201).json({ ok: true, cue });
+  }));
+
+  app.post("/v0/show-control/cues/stop-situation", asyncRoute(async (req, res) => {
+    const runtimeState = req.body && req.body.runtimeState ? req.body.runtimeState : null;
+    const showRunId = (req.body && req.body.showRunId) || (runtimeState && runtimeState.showRunId) || null;
+    const cue = buildStopSituationCue({
+      name: req.body ? req.body.name : null,
+      showRunId,
+    });
+    await executeCue(cue, { ...executeOptions, runtimeState });
+    await saveCue(cue);
+    res.status(201).json({ ok: true, cue });
+  }));
+
+  app.post("/v0/show-control/media-assets/refresh", asyncRoute(async (req, res) => {
+    const body = req.body || {};
+    const environmentId = String(body.environmentId || "").trim();
+    if (!environmentId) throw httpError(400, "show_control_missing_environment_id");
+    const runtimeState = await runtimeStateForRequest(req, clients);
+    const cue = buildEnvironmentMediaRefreshCue(runtimeState, {
+      environmentId,
+      roles: Array.isArray(body.roles) ? body.roles : [],
+      reason: body.reason || "catalog_media_changed",
+      source: body.source || "catalog",
+      assetId: body.assetId || null,
+      name: body.name || `Catalog media refresh ${environmentId}`,
+    });
+    if (!cue.actions.length) {
+      res.status(200).json({
+        ok: true,
+        skipped: true,
+        reason: "environment_not_active_or_prepared",
+        environmentId,
+        runtimeRef: {
+          showRunId: runtimeState && runtimeState.showRunId || null,
+          status: runtimeState && runtimeState.status || null,
+          activeEnvironmentId: runtimeState && runtimeState.activeSituation && runtimeState.activeSituation.resolved
+            ? runtimeState.activeSituation.resolved.environmentId || runtimeState.activeSituation.resolved.environment && runtimeState.activeSituation.resolved.environment.id || null
+            : null,
+          preparedEnvironmentId: runtimeState && runtimeState.resolvedPreparedNext
+            ? runtimeState.resolvedPreparedNext.environmentId || runtimeState.resolvedPreparedNext.environment && runtimeState.resolvedPreparedNext.environment.id || null
+            : null,
+        },
+      });
+      return;
+    }
+    await executeCue(cue, { ...executeOptions, nonBlocking: true, runtimeState });
+    await saveCue(cue);
+    res.status(202).json({ ok: true, cue });
   }));
 
   app.get("/v0/show-control/cues", asyncRoute(async (req, res) => {

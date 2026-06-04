@@ -58,7 +58,7 @@ function preparedCharacterName(item) {
 }
 
 function sanitizePreparedCharacterSlot(item, fallbackSlot) {
-  const numeric = Number.parseInt(String(item && item.slot || fallbackSlot || 0), 10);
+  const numeric = Number.parseInt(String(item && (item.slot ?? item.slotIndex) || fallbackSlot || 0), 10);
   if (!Number.isFinite(numeric)) return 0;
   return Math.max(0, Math.min(3, numeric));
 }
@@ -90,8 +90,12 @@ function sanitizePreparedScene(input = {}, base = null) {
     seen.add(key);
     characters.push({
       id: Number(item && item.id || 0),
+      characterId: cleanPreparedText(item && (item.characterId || item.catalogCharacterId) || "", 120),
+      legacyCharacterId: Number(item && (item.legacyCharacterId || item.id) || 0) || null,
       name,
       slot: sanitizePreparedCharacterSlot(item, characters.length + 1),
+      performerId: cleanPreparedText(item && item.performerId || "", 120),
+      performerName: cleanPreparedText(item && item.performerName || "", 100),
     });
     if (characters.length >= 3) break;
   }

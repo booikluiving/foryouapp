@@ -69,13 +69,44 @@ function makeCue({ cueId, cueType, name, runtimeState, runtimeSelection, actions
   };
 }
 
+function phasePayload(phase, phaseName, cueIntent) {
+  return {
+    phase,
+    phaseName,
+    source: "show-control",
+    cueIntent,
+  };
+}
+
+function buildPhaseCue({ phase, phaseName, name, createdAtDate = new Date() } = {}) {
+  const numericPhase = Number(phase);
+  if (!Number.isInteger(numericPhase) || numericPhase < 0) throw new Error("show_control_invalid_phase");
+  const safePhaseName = phaseName ? String(phaseName) : `phase-${numericPhase}`;
+  const cueId = createShowControlId("show-cue", createdAtDate);
+  return makeCue({
+    cueType: "compound",
+    name: name || `Set TD phase ${numericPhase}`,
+    runtimeState: null,
+    runtimeSelection: null,
+    actions: [
+      action(cueId, 0, "touchdesigner", "td.phase.set", "acknowledged-async", phasePayload(
+        numericPhase,
+        safePhaseName,
+        `phase_${safePhaseName}`
+      ), { timeoutMs: 1200 }),
+    ],
+    createdAtDate,
+    cueId,
+  });
+}
+
 function buildPrepareCue(runtimeState, options = {}) {
   if (!runtimeState || typeof runtimeState !== "object") throw new Error("show_control_missing_runtime_state");
   if (!runtimeState.resolvedPreparedNext) throw new Error("show_control_missing_runtime_resolved_output");
   const createdAtDate = options.createdAtDate || new Date();
   const cueId = createShowControlId("show-cue", createdAtDate);
-  const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext", "runtime.resolved-output");
-  const runtimeOutput = runtimeOutputFromRuntimeState(runtimeState, "resolvedPreparedNext");
+  const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext", "runtime.resolved-output", options);
+  const runtimeOutput = runtimeOutputFromRuntimeState(runtimeState, "resolvedPreparedNext", options);
   const actions = [
     action(cueId, 0, "teleprompter", "teleprompter.prepare", "fire-and-forget", {
       ...payload,
@@ -111,7 +142,7 @@ function buildGoCue(runtimeState, options = {}) {
   }
   const createdAtDate = options.createdAtDate || new Date();
   const cueId = createShowControlId("show-cue", createdAtDate);
-  const payload = resolvedPayloadFromRuntimeState(runtimeState, "activeSituation", "runtime.active-situation");
+  const payload = resolvedPayloadFromRuntimeState(runtimeState, "activeSituation", "runtime.active-situation", options);
   const actions = [
     action(cueId, 0, "touchdesigner", "td.environment.go", "fire-and-forget", {
       ...payload,
@@ -197,9 +228,14 @@ function buildStartSituationCue({ name, showRunId, actions: technicalActions = [
       autoGoEnvironment: !hasExplicitTdGo,
       autoRevealTeleprompter: true,
     }, { parallelGroup: "start-situation", timeoutMs: 4000 }),
+    action(cueId, 1, "touchdesigner", "td.phase.set", "acknowledged-async", phasePayload(
+      2,
+      "situation",
+      "phase_situation_start"
+    ), { parallelGroup: "start-situation", timeoutMs: 1200 }),
     ...technicalActions.map((item, index) => action(
       cueId,
-      index + 1,
+      index + 2,
       item.targetId ? String(item.targetId) : null,
       String(item.command || "debug.noop"),
       String(item.ackMode || "acknowledged-async"),
@@ -222,13 +258,36 @@ function buildStartSituationCue({ name, showRunId, actions: technicalActions = [
   });
 }
 
+function buildStopSituationCue({ name, showRunId, createdAtDate = new Date() } = {}) {
+  const cueId = createShowControlId("show-cue", createdAtDate);
+  return makeCue({
+    cueType: "compound",
+    name: name || "Stop situation and set loading phase",
+    runtimeState: null,
+    runtimeSelection: null,
+    actions: [
+      action(cueId, 0, "runtime", "runtime.stopSituation", "acknowledged-async", {
+        ...(showRunId ? { showRunId } : {}),
+        autoPrepareNext: true,
+      }, { parallelGroup: "stop-situation", timeoutMs: 4000 }),
+      action(cueId, 1, "touchdesigner", "td.phase.set", "acknowledged-async", phasePayload(
+        1,
+        "loading",
+        "phase_loading_after_stop"
+      ), { parallelGroup: "stop-situation", timeoutMs: 1200 }),
+    ],
+    createdAtDate,
+    cueId,
+  });
+}
+
 function buildSceneToChatCue(runtimeState, options = {}) {
   if (!runtimeState || typeof runtimeState !== "object") throw new Error("show_control_missing_runtime_state");
   if (!runtimeState.resolvedPreparedNext) throw new Error("show_control_missing_runtime_resolved_output");
   const createdAtDate = options.createdAtDate || new Date();
   const cueId = createShowControlId("show-cue", createdAtDate);
-  const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext", "runtime.resolved-output");
-  const runtimeOutput = runtimeOutputFromRuntimeState(runtimeState, "resolvedPreparedNext");
+  const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext", "runtime.resolved-output", options);
+  const runtimeOutput = runtimeOutputFromRuntimeState(runtimeState, "resolvedPreparedNext", options);
   return makeCue({
     cueType: "compound",
     name: options.name || "Scene naar Script Agent chat",
@@ -249,12 +308,70 @@ function buildSceneToChatCue(runtimeState, options = {}) {
   });
 }
 
+function environmentIdForResolved(resolved = {}) {
+  return String(
+    resolved.environmentId
+    || (resolved.environment && resolved.environment.id)
+    || ""
+  ).trim();
+}
+
+function buildEnvironmentMediaRefreshCue(runtimeState, options = {}) {
+  if (!runtimeState || typeof runtimeState !== "object") throw new Error("show_control_missing_runtime_state");
+  const environmentId = String(options.environmentId || "").trim();
+  if (!environmentId) throw new Error("show_control_missing_environment_id");
+  const createdAtDate = options.createdAtDate || new Date();
+  const cueId = createShowControlId("show-cue", createdAtDate);
+  const refresh = {
+    environmentId,
+    roles: Array.isArray(options.roles) ? options.roles.map((role) => String(role)).filter(Boolean) : [],
+    reason: options.reason || "catalog_media_changed",
+    source: options.source || "catalog",
+    assetId: options.assetId || null,
+    requestedAt: createdAtDate.toISOString(),
+  };
+  const actions = [];
+  const activeResolved = runtimeState.activeSituation && runtimeState.activeSituation.resolved;
+  if (activeResolved && environmentIdForResolved(activeResolved) === environmentId) {
+    const payload = resolvedPayloadFromRuntimeState(runtimeState, "activeSituation", "runtime.active-situation", options);
+    actions.push(action(cueId, actions.length, "touchdesigner", "td.environment.go", "acknowledged-async", {
+      ...payload,
+      mediaRefresh: refresh,
+      situationRunId: runtimeState.activeSituation ? runtimeState.activeSituation.situationRunId : null,
+      cueIntent: "live_media_refresh_active",
+    }, { timeoutMs: options.timeoutMs || 1200 }));
+  }
+
+  const preparedResolved = runtimeState.resolvedPreparedNext;
+  if (!actions.length && preparedResolved && environmentIdForResolved(preparedResolved) === environmentId) {
+    const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext", "runtime.resolved-output", options);
+    actions.push(action(cueId, actions.length, "touchdesigner", "td.environment.prepare", "acknowledged-async", {
+      ...payload,
+      mediaRefresh: refresh,
+      cueIntent: "live_media_refresh_prepared",
+    }, { timeoutMs: options.timeoutMs || 1200 }));
+  }
+
+  return makeCue({
+    cueType: "compound",
+    name: options.name || `Refresh media for ${environmentId}`,
+    runtimeState,
+    runtimeSelection: "runtime.media-refresh",
+    actions,
+    createdAtDate,
+    cueId,
+  });
+}
+
 module.exports = {
   actionPayloadId,
   buildCompoundCue,
+  buildEnvironmentMediaRefreshCue,
   buildGoCue,
+  buildPhaseCue,
   buildPrepareCue,
   buildSceneToChatCue,
   buildStartRunCue,
   buildStartSituationCue,
+  buildStopSituationCue,
 };

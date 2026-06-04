@@ -6,6 +6,7 @@ const {
   SCRIPT_AGENT_PROMPT_INPUT_SCHEMA_VERSION,
   createScriptAgentId,
 } = require("../../../shared/contracts/script-agent-v0");
+const { assignPerformerSlots } = require("../../../shared/casting/performer-slots");
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -23,10 +24,6 @@ function hashContent(value) {
   return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
 }
 
-function byId(items = []) {
-  return new Map(items.map((item) => [item.id, item]));
-}
-
 function situationFromCatalog(catalog, situationId) {
   return (catalog.situations || []).find((item) => item.id === situationId) || null;
 }
@@ -40,34 +37,10 @@ function performerSlotsForResolved(resolved, catalog) {
       return String(a.characterName || "").localeCompare(String(b.characterName || ""));
     });
   }
-  const performers = byId(catalog.performers || []);
-  const seen = new Set();
-  const slots = [];
-  for (const character of resolved.characters || []) {
-    const performerIds = character.performerIds && character.performerIds.length
-      ? character.performerIds
-      : [null];
-    for (const performerId of performerIds) {
-      const performer = performerId ? performers.get(performerId) : null;
-      const slotIndex = performer && Number.isFinite(Number(performer.performerSlot))
-        ? Number(performer.performerSlot)
-        : slots.length + 1;
-      const key = `${slotIndex}:${performerId || "unassigned"}:${character.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      slots.push({
-        slotIndex,
-        performerId,
-        performerName: performer ? performer.name : null,
-        characterId: character.id,
-        characterName: character.name,
-      });
-    }
-  }
-  return slots.sort((a, b) => {
-    if (a.slotIndex !== b.slotIndex) return a.slotIndex - b.slotIndex;
-    return String(a.characterName).localeCompare(String(b.characterName));
-  });
+  return assignPerformerSlots({
+    characters: resolved.characters || [],
+    performers: catalog.performers || [],
+  }).performerSlots;
 }
 
 function promptTextFor({ resolved, situation, performerSlots }) {

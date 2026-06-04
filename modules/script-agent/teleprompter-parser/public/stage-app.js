@@ -11,6 +11,10 @@
   const STAGE_HEIGHT = 1080;
   const params = new URLSearchParams(window.location.search);
   const isTouchDesignerRender = params.has("td") || document.body.classList.contains("stage-td-render-mode");
+  const stageSlotIndex = normalizeStageSlot(
+    params.get("slot") || params.get("performerSlot") || params.get("stage") || stageSlotFromPath()
+  );
+  const isPerformerStage = stageSlotIndex >= 1 && stageSlotIndex <= 3;
 
   let teleprompt = null;
   let preparedScene = null;
@@ -19,6 +23,23 @@
   let currentCueVersion = -1;
   let currentIndex = 0;
   let endSceneInFlight = false;
+
+  function normalizeStageSlot(value) {
+    const numeric = Number.parseInt(String(value || ""), 10);
+    if (!Number.isFinite(numeric) || numeric < 1 || numeric > 3) return 0;
+    return numeric;
+  }
+
+  function stageSlotFromPath() {
+    const match = window.location.pathname.match(/\/stage\/([1-3])\/?$/);
+    return match ? match[1] : "";
+  }
+
+  if (isPerformerStage) {
+    document.body.classList.add("performer-stage-body");
+    root.classList.add("is-performer-stage");
+    root.dataset.stageSlot = String(stageSlotIndex);
+  }
 
   function updateStageScale() {
     if (isTouchDesignerRender) {
@@ -96,6 +117,29 @@
 
   function showIsInactive() {
     return !!(showState && showState.active === false);
+  }
+
+  function stageTitleText(text) {
+    const title = String(text || "");
+    return isPerformerStage ? `P${stageSlotIndex} · ${title}` : title;
+  }
+
+  function setSceneTitle(text) {
+    sceneTitle.textContent = stageTitleText(text);
+  }
+
+  function preparedCharacters() {
+    return Array.isArray(preparedScene && preparedScene.characters) ? preparedScene.characters : [];
+  }
+
+  function preparedCharacterForStageSlot() {
+    if (!isPerformerStage) return null;
+    return preparedCharacters().find((character) => Number(character && character.slot || 0) === stageSlotIndex) || null;
+  }
+
+  function performerLabel(character) {
+    const explicit = String(character && character.performerName || "").trim();
+    return explicit || `Performer ${stageSlotIndex}`;
   }
 
   function deckLength() {
@@ -219,7 +263,7 @@
     card.className = "stage-card title-card";
     clearCard();
     appendTextElement("h1", "stage-title", "Wacht op teleprompt");
-    sceneTitle.textContent = "Teleprompt";
+    setSceneTitle("Teleprompt");
     progress.textContent = "0 / 0";
   }
 
@@ -231,7 +275,7 @@
     clearCard();
     appendTextElement("p", "stage-no-show-kicker", "GEEN ACTIEVE SHOW");
     appendTextElement("h1", "stage-no-show-title", "Wacht op start show");
-    sceneTitle.textContent = "Geen actieve show";
+    setSceneTitle("Geen actieve show");
     progress.textContent = "UIT";
   }
 
@@ -249,13 +293,33 @@
     clearCard();
     const title = activeTitle();
     appendTextElement("h1", "stage-title", title);
-    sceneTitle.textContent = title;
+    setSceneTitle(title);
     progress.textContent = `${currentIndex + 1} / ${deckLength()}`;
+  }
+
+  function appendStageSlotFocus() {
+    if (!isPerformerStage) return;
+    const character = preparedCharacterForStageSlot();
+    const focus = document.createElement("section");
+    focus.className = "stage-prep-focus";
+    if (!character) focus.classList.add("is-empty");
+
+    const kicker = document.createElement("p");
+    kicker.className = "stage-prep-focus-kicker";
+    kicker.textContent = character ? performerLabel(character) : `Performer ${stageSlotIndex}`;
+    focus.appendChild(kicker);
+
+    const title = document.createElement("h2");
+    title.className = "stage-prep-focus-character";
+    title.textContent = character && character.name ? character.name : "Geen rol in deze scene";
+    focus.appendChild(title);
+
+    card.appendChild(focus);
   }
 
   function renderPrepCard() {
     clearNoShowState();
-    const characters = Array.isArray(preparedScene && preparedScene.characters) ? preparedScene.characters : [];
+    const characters = preparedCharacters();
     root.classList.remove("is-title-card", "is-end-card");
     root.classList.add("is-prep-card");
     root.classList.toggle("is-ready", !!(preparedScene && preparedScene.ready));
@@ -264,6 +328,7 @@
     clearCard();
     appendTextElement("p", "stage-prep-kicker", preparedScene && preparedScene.ready ? "READY" : "VOLGENDE SCENE");
     appendTextElement("h1", "stage-prep-title", (preparedScene && preparedScene.title) || "Volgende scene");
+    appendStageSlotFocus();
     appendPrepEnvironment();
     const list = document.createElement("ul");
     list.className = "stage-prep-characters";
@@ -271,12 +336,22 @@
       const item = document.createElement("li");
       const slot = Number(character && character.slot || 0) || list.children.length + 1;
       const name = character && character.name ? character.name : "Personage";
+      if (isPerformerStage && slot === stageSlotIndex) item.classList.add("is-stage-slot");
       const number = document.createElement("span");
       number.className = "stage-prep-character-slot";
       number.textContent = String(slot);
       const label = document.createElement("span");
-      label.className = "stage-prep-character-name";
-      label.textContent = name;
+      label.className = "stage-prep-character-label";
+      const nameText = document.createElement("span");
+      nameText.className = "stage-prep-character-name";
+      nameText.textContent = name;
+      label.appendChild(nameText);
+      if (character && character.performerName) {
+        const performer = document.createElement("span");
+        performer.className = "stage-prep-character-performer";
+        performer.textContent = character.performerName;
+        label.appendChild(performer);
+      }
       item.appendChild(number);
       item.appendChild(label);
       list.appendChild(item);
@@ -287,7 +362,7 @@
       list.appendChild(item);
     }
     card.appendChild(list);
-    sceneTitle.textContent = (preparedScene && preparedScene.title) || "Volgende scene";
+    setSceneTitle((preparedScene && preparedScene.title) || "Volgende scene");
     progress.textContent = preparedScene && preparedScene.ready ? "READY" : "PREP";
   }
 
@@ -340,7 +415,7 @@
       return;
     }
     currentIndex = clampIndex(currentIndex);
-    sceneTitle.textContent = activeTitle();
+    setSceneTitle(activeTitle());
     progress.textContent = `${currentIndex + 1} / ${deckLength()}`;
 
     if (currentIndex === 0) {

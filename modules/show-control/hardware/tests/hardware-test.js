@@ -119,10 +119,14 @@ async function testPerfectCueSidecar() {
     const result = await fetchJson(perfectCue.baseUrl, "/api/key", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ key: "Space", source: "hardware-test" }),
+      body: JSON.stringify({ key: "PageDown", source: "hardware-test" }),
     });
-    assert.equal(result.trigger.command, "runtime.startSituation");
+    assert.equal(result.trigger.command, "teleprompter.cue");
+    assert.equal(result.trigger.direction, "next");
     assert(received.some((call) => call.path === "/v0/show-control/cues"));
+    const cueCall = received.find((call) => call.path === "/v0/show-control/cues");
+    assert.equal(cueCall.body.actions[0].command, "teleprompter.cue");
+    assert.equal(cueCall.body.actions[0].payload.direction, "next");
     return { trigger: result.trigger, showControlRoutes: received.map((call) => `${call.method} ${call.path}`) };
   } finally {
     await perfectCue.close();

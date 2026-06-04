@@ -19,6 +19,7 @@ const {
   stopSituation,
   updateOrderSettings,
 } = require("../run-control/runtime-engine");
+const { materializePreparedNext } = require("../materialization/materialize");
 const {
   readCurrentRunState,
   readRunState,
@@ -82,6 +83,12 @@ const catalogFixture = {
   labels: [
     { id: "label:warm", legacyId: 1, name: "Warm" },
     { id: "label:cold", legacyId: 2, name: "Cold" },
+  ],
+  performers: [
+    { id: "performer:1", legacyId: 1, name: "Performer 1", performerSlot: 1, active: true, archivedAt: null },
+    { id: "performer:2", legacyId: 2, name: "Performer 2", performerSlot: 2, active: true, archivedAt: null },
+    { id: "performer:3", legacyId: 3, name: "Performer 3", performerSlot: 3, active: true, archivedAt: null },
+    { id: "performer:4", legacyId: 4, name: "Unslotted Performer", performerSlot: 0, active: true, archivedAt: null },
   ],
   characters: [
     { id: "character:1", legacyId: 1, name: "A", performerIds: ["performer:1"] },
@@ -258,6 +265,73 @@ async function main() {
     Math.random = originalRandom;
   }
   assert.deepEqual(stableRandomizedSecond, stableRandomizedFirst, "Runtime tie randomization should stay stable while equal-score group is unchanged");
+  const castResolved = materializePreparedNext({
+    catalog: {
+      performers: [
+        { id: "performer:1", name: "Performer 1", performerSlot: 1, active: true, archivedAt: null },
+        { id: "performer:2", name: "Performer 2", performerSlot: 2, active: true, archivedAt: null },
+        { id: "performer:3", name: "Performer 3", performerSlot: 3, active: true, archivedAt: null },
+      ],
+      characters: [
+        { id: "character:flex", legacyId: 10, name: "Zwangere vrouw", performerIds: [] },
+        { id: "character:bobby", legacyId: 11, name: "Bobby", performerIds: ["performer:1"] },
+        { id: "character:adolf", legacyId: 12, name: "Adolf", performerIds: ["performer:2"] },
+      ],
+      environments: [{ id: "environment:cast", name: "Cast Room", active: true, archivedAt: null }],
+      situations: [{
+        id: "situation:cast",
+        legacyId: 10,
+        title: "Cast fixture",
+        promptText: "Assign constrained roles first.",
+        characterIds: ["character:flex", "character:bobby", "character:adolf"],
+        environmentId: "environment:cast",
+        labelIds: [],
+      }],
+    },
+    preparedNext: { situationId: "situation:cast" },
+    seed: "cast-fixture",
+  });
+  assert.deepEqual(
+    castResolved.performerSlots.map((slot) => [slot.slotIndex, slot.performerId, slot.characterId]),
+    [
+      [1, "performer:1", "character:bobby"],
+      [1, null, "character:flex"],
+      [2, "performer:2", "character:adolf"],
+    ],
+    "resolved performer slots should reflect catalog performer choices without redistributing roles"
+  );
+  const conflictResolved = materializePreparedNext({
+    catalog: {
+      performers: [
+        { id: "performer:1", name: "Performer 1", performerSlot: 1, active: true, archivedAt: null },
+      ],
+      characters: [
+        { id: "character:conflict-a", legacyId: 13, name: "Conflict A", performerIds: ["performer:1"] },
+        { id: "character:conflict-b", legacyId: 14, name: "Conflict B", performerIds: ["performer:1"] },
+      ],
+      environments: [{ id: "environment:cast", name: "Cast Room", active: true, archivedAt: null }],
+      situations: [{
+        id: "situation:cast-conflict",
+        legacyId: 11,
+        title: "Cast conflict fixture",
+        promptText: "Two roles may need the same performer.",
+        characterIds: ["character:conflict-a", "character:conflict-b"],
+        environmentId: "environment:cast",
+        labelIds: [],
+      }],
+    },
+    preparedNext: { situationId: "situation:cast-conflict" },
+    seed: "cast-conflict-fixture",
+  });
+  assert.deepEqual(
+    conflictResolved.performerSlots.map((slot) => [slot.slotIndex, slot.performerId, slot.characterId]),
+    [
+      [1, "performer:1", "character:conflict-a"],
+      [1, "performer:1", "character:conflict-b"],
+    ],
+    "runtime should still expose catalog performer choices when roles share one performer"
+  );
+  assert(conflictResolved.castWarnings.some((issue) => issue.code === "situation_cast_performer_conflict"));
   const anchoredPool = buildEligiblePool({
     catalog: catalogFixture,
     pathEvaluation: initialPathEvaluation,
@@ -301,6 +375,11 @@ async function main() {
   assert.equal(state.showRunSnapshot.algorithmConfig.schemaVersion, "algorithm.config.v0");
   assert.equal(state.preparedNext.situationId, "situation:1");
   assert.equal(state.resolvedPreparedNext.situationId, "situation:1");
+  assert.deepEqual(
+    state.resolvedPreparedNext.performerSlots.map((slot) => [slot.slotIndex, slot.performerId, slot.characterId]),
+    [[1, "performer:1", "character:1"]],
+    "resolvedPreparedNext should carry performer slot display records"
+  );
   assert.equal(state.orderSettings.randomizeEqualScores, false);
   assert(state.rankingRevision > 0, "Runtime should track ranking revisions");
 

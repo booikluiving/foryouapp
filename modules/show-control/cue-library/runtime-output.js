@@ -1,5 +1,6 @@
 "use strict";
 
+const { assignPerformerSlots } = require("../../../shared/casting/performer-slots");
 const { enrichPayloadWithEnvironmentAssets } = require("./environment-assets");
 
 const RUNTIME_RESOLVED_OUTPUT_SCHEMA_VERSION = "runtime.resolved-output.v0";
@@ -8,14 +9,22 @@ function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function byId(items = []) {
-  return new Map((Array.isArray(items) ? items : []).map((item) => [item.id, item]));
-}
-
 function resolvedForSource(runtimeState = {}, sourceKey = "resolvedPreparedNext") {
   return sourceKey === "activeSituation"
     ? runtimeState.activeSituation && runtimeState.activeSituation.resolved
     : runtimeState.resolvedPreparedNext;
+}
+
+function castAssignmentFromRuntimeState(runtimeState = {}, sourceKey = "resolvedPreparedNext") {
+  const resolved = resolvedForSource(runtimeState, sourceKey);
+  const catalog = runtimeState.showRunSnapshot && runtimeState.showRunSnapshot.catalog
+    ? runtimeState.showRunSnapshot.catalog
+    : {};
+  if (!resolved) return { ok: true, performerSlots: [], issues: [] };
+  return assignPerformerSlots({
+    characters: resolved.characters || [],
+    performers: catalog.performers || [],
+  });
 }
 
 function performerSlotsFromRuntimeState(runtimeState = {}, sourceKey = "resolvedPreparedNext") {
@@ -23,36 +32,13 @@ function performerSlotsFromRuntimeState(runtimeState = {}, sourceKey = "resolved
   if (resolved && Array.isArray(resolved.performerSlots) && resolved.performerSlots.length) {
     return cloneJson(resolved.performerSlots);
   }
-  const catalog = runtimeState.showRunSnapshot && runtimeState.showRunSnapshot.catalog
-    ? runtimeState.showRunSnapshot.catalog
-    : {};
-  const performers = byId(catalog.performers || []);
-  const slots = [];
-  const seen = new Set();
-  for (const character of resolved && resolved.characters || []) {
-    const performerIds = character.performerIds && character.performerIds.length ? character.performerIds : [null];
-    for (const performerId of performerIds) {
-      const performer = performerId ? performers.get(performerId) : null;
-      const slotIndex = performer && Number.isFinite(Number(performer.performerSlot))
-        ? Number(performer.performerSlot)
-        : slots.length + 1;
-      const key = `${slotIndex}:${performerId || "unassigned"}:${character.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      slots.push({
-        slotIndex,
-        performerId,
-        performerName: performer ? performer.name : null,
-        characterId: character.id,
-        legacyCharacterId: character.legacyId || null,
-        characterName: character.name,
-      });
-    }
-  }
-  return slots.sort((a, b) => {
-    if (a.slotIndex !== b.slotIndex) return a.slotIndex - b.slotIndex;
-    return String(a.characterName).localeCompare(String(b.characterName), "nl-NL");
-  });
+  return castAssignmentFromRuntimeState(runtimeState, sourceKey).performerSlots;
+}
+
+function castWarningsFromRuntimeState(runtimeState = {}, sourceKey = "resolvedPreparedNext") {
+  const resolved = resolvedForSource(runtimeState, sourceKey);
+  if (resolved && Array.isArray(resolved.castWarnings)) return cloneJson(resolved.castWarnings);
+  return castAssignmentFromRuntimeState(runtimeState, sourceKey).issues;
 }
 
 function sourceTypeFor(sourceKey = "resolvedPreparedNext", override = "") {
@@ -60,7 +46,7 @@ function sourceTypeFor(sourceKey = "resolvedPreparedNext", override = "") {
   return sourceKey === "activeSituation" ? "runtime.active-situation" : "runtime.resolved-prepared-next";
 }
 
-function resolvedPayloadFromRuntimeState(runtimeState, sourceKey = "resolvedPreparedNext", sourceType = "") {
+function resolvedPayloadFromRuntimeState(runtimeState, sourceKey = "resolvedPreparedNext", sourceType = "", options = {}) {
   if (!runtimeState || typeof runtimeState !== "object") throw new Error("show_control_missing_runtime_state");
   const resolved = resolvedForSource(runtimeState, sourceKey);
   if (!resolved) throw new Error(`show_control_missing_runtime_${sourceKey}`);
@@ -88,10 +74,11 @@ function resolvedPayloadFromRuntimeState(runtimeState, sourceKey = "resolvedPrep
       performerIds: character.performerIds || [],
     })),
     performerSlots: performerSlotsFromRuntimeState(runtimeState, sourceKey),
+    castWarnings: castWarningsFromRuntimeState(runtimeState, sourceKey),
     labelIds: copy.labelIds || [],
     seed: copy.seed || null,
   };
-  return enrichPayloadWithEnvironmentAssets(basePayload, runtimeState, copy);
+  return enrichPayloadWithEnvironmentAssets(basePayload, runtimeState, copy, options);
 }
 
 function compactResolvedFromPayload(payload = {}) {
@@ -111,12 +98,13 @@ function compactResolvedFromPayload(payload = {}) {
     environment: payload.environment || null,
     labelIds: Array.isArray(payload.labelIds) ? payload.labelIds.slice() : [],
     performerSlots: cloneJson(payload.performerSlots || []),
+    castWarnings: cloneJson(payload.castWarnings || []),
     seed: payload.seed || null,
   };
 }
 
-function runtimeOutputFromRuntimeState(runtimeState, sourceKey = "resolvedPreparedNext") {
-  const payload = resolvedPayloadFromRuntimeState(runtimeState, sourceKey, "runtime.resolved-output");
+function runtimeOutputFromRuntimeState(runtimeState, sourceKey = "resolvedPreparedNext", options = {}) {
+  const payload = resolvedPayloadFromRuntimeState(runtimeState, sourceKey, "runtime.resolved-output", options);
   const resolved = compactResolvedFromPayload(payload);
   return {
     schemaVersion: RUNTIME_RESOLVED_OUTPUT_SCHEMA_VERSION,
@@ -134,6 +122,7 @@ function runtimeOutputFromRuntimeState(runtimeState, sourceKey = "resolvedPrepar
     characterIds: payload.characterIds,
     characters: payload.characters,
     performerSlots: payload.performerSlots,
+    castWarnings: payload.castWarnings,
     labelIds: payload.labelIds,
     seed: payload.seed || null,
     resolvedPreparedNext: resolved,
@@ -142,6 +131,7 @@ function runtimeOutputFromRuntimeState(runtimeState, sourceKey = "resolvedPrepar
 
 module.exports = {
   RUNTIME_RESOLVED_OUTPUT_SCHEMA_VERSION,
+  castWarningsFromRuntimeState,
   performerSlotsFromRuntimeState,
   resolvedPayloadFromRuntimeState,
   runtimeOutputFromRuntimeState,

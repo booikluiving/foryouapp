@@ -129,11 +129,20 @@ It fills:
 - `asset_registry`
 - `asset_filter_state`
 - `selected_asset`
+- `asset_bundle`
 - `prepared_background` (Movie File In TOP preview)
 - `prepared_background_status`
+- `prepared_soundscape` (Audio File In CHOP)
+- `prepared_soundscape_status`
+- `prepared_fx_overlay` (Movie File In TOP preview for image or video)
+- `prepared_fx_status`
 - `asset_prepare_log`
 
 `td.asset.prepare` updates `selected_asset`. `td.environment.prepare` and
-`td.environment.go` also select and preview the payload background asset when
-Show Control includes one. This is a wiring demo only; no Audio File In,
-DeckLink, or hardware outputs are created.
+`td.environment.go` select the payload asset bundle when Show Control includes
+one. The bundle contains background, soundscape, and fx assets. The router
+loads the background into `prepared_background`, the mp3/soundscape into
+`prepared_soundscape`, and the first fx overlay image/video into
+`prepared_fx_overlay`. When a scene has no fx overlay, `prepared_fx_overlay`
+is explicitly cleared so the previous overlay cannot remain visible.
+This is a wiring demo only; DeckLink or hardware outputs are not created.

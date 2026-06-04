@@ -474,6 +474,15 @@ const DEFINITIONS = Object.freeze([
     request: { method: "POST", path: "/v0/script-agent/teleprompter-parser/reveal" },
   }),
   command({
+    name: "teleprompter.cue",
+    title: "Teleprompter cue advance",
+    targetId: "teleprompter",
+    adapter: "teleprompter",
+    transport: "v2-http-script-agent",
+    request: { method: "POST", path: "/v0/script-agent/teleprompter-parser/cue/advance" },
+    description: "Advances the shared teleprompter cue state from physical inputs such as Perfect Cue.",
+  }),
+  command({
     name: "script-agent.operator.prepareDraft",
     title: "Script Agent prepare operator draft",
     targetId: "script-agent",

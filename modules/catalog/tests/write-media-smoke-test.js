@@ -365,11 +365,18 @@ async function main() {
     }))).environment;
     assert.equal(updatedEnvironment.description, "Bijgewerkte V2 omgeving");
 
-    await expectBadRequest("/v0/catalog/situations", jsonOptions("POST", {
+    const conflictSituation = (await fetchJson("/v0/catalog/situations", jsonOptions("POST", {
       title: "Ongeldige cast",
       environmentId: updatedEnvironment.id,
       characterIds: [conflictA.id, conflictB.id],
-    }), "situation_cast_performer_conflict");
+    }))).situation;
+    assert.deepEqual(conflictSituation.characterIds, [conflictA.id, conflictB.id]);
+    const validationWithConflict = await fetchJson("/v0/catalog/validation");
+    assert(validationWithConflict.issues.some((issue) => (
+      issue.code === "situation_cast_performer_conflict"
+      && issue.severity === "warning"
+      && issue.entityId === conflictSituation.id
+    )), "cast conflict should validate as a warning, not block save");
 
     const createdSituation = (await fetchJson("/v0/catalog/situations", jsonOptions("POST", {
       title: "V2 Test Situatie",

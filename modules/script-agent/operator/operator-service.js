@@ -8,6 +8,7 @@ const {
   SCRIPT_AGENT_PROMPT_INPUT_SCHEMA_VERSION,
   createScriptAgentId,
 } = require("../../../shared/contracts/script-agent-v0");
+const { assignPerformerSlots } = require("../../../shared/casting/performer-slots");
 const { buildPromptInput, hashContent } = require("../prompt-builder/prompt-builder");
 const { createScriptOutput } = require("../script-output/script-service");
 const {
@@ -192,32 +193,7 @@ function catalogIndexFromCatalog(catalog = {}, runtimeState = null) {
 }
 
 function performerSlotsForManual(characters = [], performers = []) {
-  const performerById = new Map(activeCatalogItems(performers).map((item) => [normalizeId(item.id), item]));
-  const slots = [];
-  const seen = new Set();
-  for (const character of characters) {
-    const performerIds = uniqueIds(character.performerIds).length ? uniqueIds(character.performerIds) : [null];
-    for (const performerId of performerIds) {
-      const performer = performerId ? performerById.get(performerId) : null;
-      const slotIndex = performer && Number.isFinite(Number(performer.performerSlot))
-        ? Number(performer.performerSlot)
-        : slots.length + 1;
-      const key = `${slotIndex}:${performerId || "unassigned"}:${character.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      slots.push({
-        slotIndex,
-        performerId,
-        performerName: performer ? displayTitle(performer) : null,
-        characterId: character.id,
-        characterName: displayTitle(character),
-      });
-    }
-  }
-  return slots.sort((a, b) => {
-    if (a.slotIndex !== b.slotIndex) return a.slotIndex - b.slotIndex;
-    return String(a.characterName).localeCompare(String(b.characterName), "nl-NL");
-  });
+  return assignPerformerSlots({ characters, performers }).performerSlots;
 }
 
 function buildManualPromptText({ situation, environment, characters, extra }) {

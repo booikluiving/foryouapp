@@ -28,6 +28,17 @@ function requestForTeleprompterAction(action) {
   if (action.command === "teleprompter.reveal") {
     return { method: "POST", path: "/v0/script-agent/teleprompter-parser/reveal", body: payload };
   }
+  if (action.command === "teleprompter.cue") {
+    return {
+      method: "POST",
+      path: "/v0/script-agent/teleprompter-parser/cue/advance",
+      body: {
+        ...payload,
+        direction: payload.direction || payload.action || "next",
+        source: payload.source || "show-control",
+      },
+    };
+  }
   throw new Error(`show_control_teleprompter_command_not_supported:${action.command}`);
 }
 

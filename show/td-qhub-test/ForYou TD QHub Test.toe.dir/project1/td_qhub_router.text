@@ -10,6 +10,7 @@ COMPs so a work session can attach real TD behavior to each incoming cue.
 """
 
 import json
+import os
 import time
 import urllib.error
 import urllib.parse
@@ -19,6 +20,12 @@ import urllib.request
 SHOW_CONTROL_HTTP = "http://127.0.0.1:3025"
 CATALOG_HTTP = "http://127.0.0.1:3021"
 ACK_ADDRESS = "/td/ack"
+EMPTY_ALPHA_FILENAME = "empty-alpha-1920x1080.png"
+EMPTY_ALPHA_FALLBACK_PATH = "/Users/for_you/ForYou/main/show/td-qhub-test/empty-alpha-1920x1080.png"
+PHASE_VALUE_CHOP = "phase_value"
+PHASE_VALUE_STATUS = "phase_value_status"
+CAMERA_VALUE_CHOP = "camera_value"
+CAMERA_VALUE_STATUS = "camera_value_status"
 
 SUPPORTED_COMMANDS = {
     "td.status.heartbeat",
@@ -100,16 +107,26 @@ def _path_op(path):
         return None
 
 
+def _root_path(*parts):
+    base = _base()
+    if base is None:
+        return ""
+    suffix = "/".join(_text(part).strip("/") for part in parts if _text(part).strip("/"))
+    return "%s/%s" % (base.path, suffix) if suffix else base.path
+
+
 def _trigger_op(trigger_name, child_name):
-    return _path_op("/project1/%s/%s" % (trigger_name, child_name))
+    trigger = _trigger_base(trigger_name)
+    return trigger.op(child_name) if trigger is not None else None
 
 
 def _trigger_base(trigger_name):
-    return _path_op("/project1/%s" % trigger_name)
+    return _op(trigger_name)
 
 
 def _asset_op(child_name):
-    return _path_op("/project1/asset_manager_demo/%s" % child_name)
+    manager = _op("asset_manager_demo")
+    return manager.op(child_name) if manager is not None else None
 
 
 def _text(value):
@@ -471,7 +488,7 @@ def update_trigger(trigger_name, cue_id, command, payload_id, payload, stage, st
     }
     _write_kv_table(status_table, status_items)
     _append_row_at(
-        "/project1/%s/trigger_log" % trigger_name,
+        _root_path(trigger_name, "trigger_log"),
         ["at", "cueId", "command", "payloadId", "stage", "status", "message"],
         [_now(), cue_id, command, payload_id, stage, status, message],
     )
@@ -523,6 +540,44 @@ def _dict_child(value, key):
     return {}
 
 
+def _list_child(value, key):
+    if isinstance(value, dict) and isinstance(value.get(key), list):
+        return [item for item in value.get(key) if isinstance(item, dict)]
+    return []
+
+
+def _asset_id(asset):
+    if not isinstance(asset, dict):
+        return ""
+    return _text(asset.get("assetId") or asset.get("id") or "")
+
+
+def _asset_role(asset):
+    if not isinstance(asset, dict):
+        return ""
+    return _text(asset.get("role") or asset.get("type") or "")
+
+
+def _copy_asset_with_environment(asset, payload):
+    copied = dict(asset)
+    if not copied.get("environmentId"):
+        copied["environmentId"] = payload.get("environmentId") or ""
+    return copied
+
+
+def _dedupe_assets(assets):
+    seen = set()
+    result = []
+    for asset in assets:
+        asset_id = _asset_id(asset)
+        key = asset_id or _asset_file_path(asset)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(asset)
+    return result
+
+
 def asset_from_payload(payload):
     if not isinstance(payload, dict):
         return {}
@@ -534,11 +589,38 @@ def asset_from_payload(payload):
         _dict_child(_dict_child(payload, "assets"), "background"),
     ]:
         if candidate.get("assetId") or candidate.get("id"):
-            asset = dict(candidate)
-            if not asset.get("environmentId"):
-                asset["environmentId"] = payload.get("environmentId") or ""
-            return asset
+            return _copy_asset_with_environment(candidate, payload)
     return {}
+
+
+def assets_from_payload(payload):
+    if not isinstance(payload, dict):
+        return []
+    environment_assets = _dict_child(payload, "environmentAssets")
+    assets = _dict_child(payload, "assets")
+    result = []
+    for candidate in [
+        _dict_child(payload, "backgroundAsset"),
+        _dict_child(environment_assets, "background"),
+        _dict_child(assets, "background"),
+    ]:
+        if _asset_id(candidate):
+            result.append(_copy_asset_with_environment(candidate, payload))
+            break
+    for candidate in [
+        _dict_child(payload, "soundscapeAsset"),
+        _dict_child(environment_assets, "soundscape"),
+        _dict_child(assets, "soundscape"),
+    ]:
+        if _asset_id(candidate):
+            result.append(_copy_asset_with_environment(candidate, payload))
+            break
+    for candidate in _list_child(payload, "fxAssets") + _list_child(environment_assets, "fx") + _list_child(assets, "fx"):
+        if _asset_id(candidate):
+            result.append(_copy_asset_with_environment(candidate, payload))
+    if not result and (payload.get("assetId") or payload.get("id")):
+        result.append(payload)
+    return _dedupe_assets(result)
 
 
 def refresh_asset_registry():
@@ -574,23 +656,23 @@ def refresh_asset_registry():
 
 
 def _ensure_asset_preview_ops():
-    manager = _path_op("/project1/asset_manager_demo")
-    if manager is None:
+    root = _base()
+    if root is None:
         return None, None
-    preview = _asset_op("prepared_background")
-    status = _asset_op("prepared_background_status")
+    preview = _op("prepared_background")
+    status = _op("prepared_background_status")
     if preview is None:
         try:
-            preview = manager.create(moviefileinTOP, "prepared_background")
-            preview.nodeX = 600
-            preview.nodeY = -220
+            preview = root.create(moviefileinTOP, "prepared_background")
+            preview.nodeX = 1150
+            preview.nodeY = -120
         except Exception:
             preview = None
     if status is None:
         try:
-            status = manager.create(textDAT, "prepared_background_status")
-            status.nodeX = 920
-            status.nodeY = -220
+            status = root.create(textDAT, "prepared_background_status")
+            status.nodeX = 1150
+            status.nodeY = -260
             status.text = "waiting for environment background"
         except Exception:
             status = None
@@ -621,26 +703,338 @@ def update_asset_preview(selected_items):
     )
 
 
-def select_asset_from_payload(cue_id, command, payload_id, payload):
-    selected = _asset_op("selected_asset")
-    prepare_log = _asset_op("asset_prepare_log")
-    asset_payload = asset_from_payload(payload)
-    asset_id = _text(asset_payload.get("assetId") or asset_payload.get("id") or "")
-    selected_items = {
+def _ensure_asset_table(name, headers, x=0, y=0):
+    table = _asset_op(name)
+    if table is None:
+        manager = _op("asset_manager_demo")
+        if manager is None:
+            return None
+        try:
+            table = manager.create(tableDAT, name)
+            table.nodeX = x
+            table.nodeY = y
+        except Exception:
+            return None
+    _clear_table(table)
+    try:
+        table.appendRow(headers)
+    except Exception:
+        pass
+    return table
+
+
+def _ensure_text_at_root(name, initial_text, x=0, y=0):
+    root = _base()
+    if root is None:
+        return None
+    dat = _op(name)
+    if dat is not None:
+        return dat
+    try:
+        dat = root.create(textDAT, name)
+        dat.text = initial_text
+        dat.nodeX = x
+        dat.nodeY = y
+        return dat
+    except Exception:
+        return None
+
+
+def _set_file_parameter(op_obj, file_path):
+    if op_obj is None or not file_path:
+        return False
+    did_set = _set_par_value(op_obj, ["file", "filein", "filename"], file_path)
+    try:
+        reload_par = getattr(op_obj.par, "reloadpulse", None)
+        if reload_par is not None:
+            reload_par.pulse()
+    except Exception:
+        pass
+    return did_set
+
+
+def _clear_file_parameter(op_obj):
+    if op_obj is None:
+        return False
+    did_set = _set_par_value(op_obj, ["file", "filein", "filename"], "")
+    try:
+        reload_par = getattr(op_obj.par, "reloadpulse", None)
+        if reload_par is not None:
+            reload_par.pulse()
+    except Exception:
+        pass
+    return did_set
+
+
+def _project_file_path(filename):
+    try:
+        folder = project.folder
+        if folder:
+            return os.path.join(folder, filename)
+    except Exception:
+        pass
+    return ""
+
+
+def _empty_alpha_path():
+    for candidate in [_project_file_path(EMPTY_ALPHA_FILENAME), EMPTY_ALPHA_FALLBACK_PATH]:
+        if candidate and os.path.exists(candidate):
+            return candidate
+    return ""
+
+
+def _set_empty_alpha_parameter(op_obj):
+    empty_alpha_path = _empty_alpha_path()
+    if empty_alpha_path:
+        return _set_file_parameter(op_obj, empty_alpha_path)
+    return _clear_file_parameter(op_obj)
+
+
+def _ensure_soundscape_ops():
+    root = _base()
+    if root is None:
+        return None, None
+    soundscape = _op("prepared_soundscape")
+    if soundscape is None:
+        try:
+            soundscape = root.create(audiofileinCHOP, "prepared_soundscape")
+            soundscape.nodeX = 1150
+            soundscape.nodeY = -430
+        except Exception:
+            soundscape = None
+    status = _ensure_text_at_root("prepared_soundscape_status", "waiting for soundscape", x=1150, y=-570)
+    return soundscape, status
+
+
+def _ensure_fx_ops():
+    root = _base()
+    if root is None:
+        return None, None
+    fx_overlay = _op("prepared_fx_overlay")
+    if fx_overlay is None:
+        try:
+            fx_overlay = root.create(moviefileinTOP, "prepared_fx_overlay")
+            fx_overlay.nodeX = 1450
+            fx_overlay.nodeY = -120
+        except Exception:
+            fx_overlay = None
+    status = _ensure_text_at_root("prepared_fx_status", "waiting for fx assets", x=1450, y=-570)
+    return fx_overlay, status
+
+
+def _phase_number_from_payload(payload):
+    raw = payload.get("phase") if isinstance(payload, dict) else None
+    if raw is None or raw == "":
+        raw = payload.get("phaseName") if isinstance(payload, dict) else None
+    if raw is None:
+        return None
+    phase_names = {
+        "inloop": 0,
+        "intro": 0,
+        "pre": 0,
+        "loading": 1,
+        "load": 1,
+        "wait": 1,
+        "waiting": 1,
+        "situation": 2,
+        "scene": 2,
+        "live": 2,
+        "cams": 2,
+        "camera": 2,
+    }
+    key = _text(raw).strip().lower()
+    if key in phase_names:
+        return phase_names[key]
+    try:
+        numeric = int(float(key))
+    except Exception:
+        return None
+    if numeric in [0, 1, 2]:
+        return numeric
+    return None
+
+
+def _set_constant_chop_channel(chop, channel_name, value):
+    if chop is None:
+        return False
+    did_set = False
+    did_set = _set_par_value(chop, ["numchans", "nchans"], 1) or did_set
+    did_set = _set_par_value(chop, ["name0", "chan0name", "chan1name"], channel_name) or did_set
+    did_set = _set_par_value(chop, ["value0", "chan0value", "chan1value"], float(value)) or did_set
+    try:
+        chop.cook(force=True)
+    except Exception:
+        pass
+    return did_set
+
+
+def _ensure_phase_value_chop(initial_value=0):
+    root = _base()
+    if root is None:
+        return None
+    chop = _op(PHASE_VALUE_CHOP)
+    if chop is None:
+        try:
+            chop = root.create(constantCHOP, PHASE_VALUE_CHOP)
+            chop.nodeX = 1750
+            chop.nodeY = -120
+        except Exception:
+            chop = None
+    _set_constant_chop_channel(chop, "phase", initial_value)
+    _ensure_text_at_root(PHASE_VALUE_STATUS, "phase value: %s" % initial_value, x=1750, y=-260)
+    return chop
+
+
+def update_phase_value_chop(payload):
+    phase = _phase_number_from_payload(payload)
+    if phase is None:
+        return None
+    chop = _ensure_phase_value_chop(phase)
+    _set_constant_chop_channel(chop, "phase", phase)
+    status = _op(PHASE_VALUE_STATUS)
+    _set_dat_text(status, "phase value: %s\nupdatedAt: %s\nsource: td.phase.set" % (phase, _now()))
+    return phase
+
+
+def _ensure_camera_value_chop(initial_value=1):
+    root = _base()
+    if root is None:
+        return None
+    chop = _op(CAMERA_VALUE_CHOP)
+    if chop is None:
+        try:
+            chop = root.create(constantCHOP, CAMERA_VALUE_CHOP)
+            chop.nodeX = 1750
+            chop.nodeY = -430
+        except Exception:
+            chop = None
+    _set_constant_chop_channel(chop, "camera", initial_value)
+    _ensure_text_at_root(CAMERA_VALUE_STATUS, "camera value: %s" % initial_value, x=1750, y=-570)
+    return chop
+
+
+def update_camera_value_chop(payload):
+    camera = _camera_number(payload)
+    if camera not in ["1", "2", "3"]:
+        return None
+    camera_value = int(camera)
+    chop = _ensure_camera_value_chop(camera_value)
+    _set_constant_chop_channel(chop, "camera", camera_value)
+    status = _op(CAMERA_VALUE_STATUS)
+    _set_dat_text(status, "camera value: %s\nupdatedAt: %s\nsource: td.camera.set" % (camera_value, _now()))
+    return camera_value
+
+
+def _asset_selected_items(asset, cue_id, command, payload_id, payload):
+    asset_id = _asset_id(asset)
+    return {
         "assetId": asset_id,
-        "environmentId": asset_payload.get("environmentId") or payload.get("environmentId") or "",
-        "type": asset_payload.get("type") or asset_payload.get("role") or "",
-        "role": asset_payload.get("role") or asset_payload.get("type") or "",
-        "filePath": asset_payload.get("filePath") or asset_payload.get("absolutePath") or asset_payload.get("file") or "",
-        "url": asset_payload.get("url") or ("/v0/catalog/media-assets/file/" + urllib.parse.quote(asset_id) if asset_id else ""),
+        "environmentId": asset.get("environmentId") or payload.get("environmentId") or "",
+        "type": asset.get("type") or asset.get("role") or "",
+        "role": asset.get("role") or asset.get("type") or "",
+        "filePath": asset.get("filePath") or asset.get("absolutePath") or asset.get("file") or _asset_file_path(asset),
+        "url": asset.get("url") or ("/v0/catalog/media-assets/file/" + urllib.parse.quote(asset_id) if asset_id else ""),
         "cueId": cue_id,
         "command": command,
         "payloadId": payload_id,
         "updatedAt": _now(),
     }
+
+
+def _write_asset_bundle_table(asset_items):
+    table = _ensure_asset_table(
+        "asset_bundle",
+        ["role", "type", "assetId", "environmentId", "filePath", "url", "updatedAt"],
+        x=600,
+        y=-440,
+    )
+    if table is None:
+        return
+    for item in asset_items:
+        try:
+            table.appendRow([
+                _text(item.get("role") or ""),
+                _text(item.get("type") or ""),
+                _text(item.get("assetId") or ""),
+                _text(item.get("environmentId") or ""),
+                _text(item.get("filePath") or ""),
+                _text(item.get("url") or ""),
+                _text(item.get("updatedAt") or ""),
+            ])
+        except Exception:
+            pass
+
+
+def update_asset_bundle_outputs(asset_items):
+    background = None
+    soundscape = None
+    fx_overlay = None
+    fx_items = []
+    for item in asset_items:
+        role = _text(item.get("role") or item.get("type") or "")
+        file_path = _text(item.get("filePath") or "")
+        lower_path = file_path.lower()
+        if role == "background" and background is None:
+            background = item
+        elif role == "soundscape" and soundscape is None:
+            soundscape = item
+        elif role in ["fx", "fxVideo", "fxImage"] or lower_path.endswith((".mp4", ".mov", ".m4v", ".webm", ".jpg", ".jpeg", ".png", ".webp")):
+            fx_items.append(item)
+            if fx_overlay is None:
+                fx_overlay = item
+
+    if background is not None:
+        update_asset_preview(background)
+
+    soundscape_op, soundscape_status = _ensure_soundscape_ops()
+    if soundscape is not None:
+        soundscape_path = _text(soundscape.get("filePath") or "")
+        _set_file_parameter(soundscape_op, soundscape_path)
+        _set_dat_text(
+            soundscape_status,
+            "\n".join([
+                "PREPARED SOUNDSCAPE",
+                "assetId: %s" % soundscape.get("assetId", ""),
+                "environmentId: %s" % soundscape.get("environmentId", ""),
+                "filePath: %s" % soundscape_path,
+                "updatedAt: %s" % soundscape.get("updatedAt", ""),
+            ]),
+        )
+
+    fx_overlay_op, fx_status = _ensure_fx_ops()
+    if fx_overlay is not None:
+        _set_file_parameter(fx_overlay_op, _text(fx_overlay.get("filePath") or ""))
+        _set_dat_text(
+            fx_status,
+            "\n".join([
+                "PREPARED FX",
+                "count: %s" % len(fx_items),
+                "overlay: %s" % fx_overlay.get("filePath", ""),
+                "updatedAt: %s" % _now(),
+            ]),
+        )
+    else:
+        _set_empty_alpha_parameter(fx_overlay_op)
+        _set_dat_text(
+            fx_status,
+            "\n".join([
+                "NO FX OVERLAY",
+                "count: 0",
+                "overlay: empty alpha",
+                "filePath: %s" % _empty_alpha_path(),
+                "updatedAt: %s" % _now(),
+            ]),
+        )
+
+
+def select_asset_from_payload(cue_id, command, payload_id, payload):
+    selected = _asset_op("selected_asset")
+    prepare_log = _asset_op("asset_prepare_log")
+    asset_payload = asset_from_payload(payload)
+    selected_items = _asset_selected_items(asset_payload, cue_id, command, payload_id, payload)
     _write_kv_table(selected, selected_items)
     _append_row_at(
-        "/project1/asset_manager_demo/asset_prepare_log",
+        _root_path("asset_manager_demo", "asset_prepare_log"),
         ["at", "cueId", "command", "payloadId", "assetId", "environmentId", "type", "filePath"],
         [
             _now(),
@@ -653,8 +1047,50 @@ def select_asset_from_payload(cue_id, command, payload_id, payload):
             selected_items["filePath"],
         ],
     )
-    update_asset_preview(selected_items)
+    try:
+        update_asset_preview(selected_items)
+    except Exception as err:
+        selected_items["previewError"] = _text(err)
     return selected_items
+
+
+def select_assets_from_payload(cue_id, command, payload_id, payload):
+    prepare_log = _asset_op("asset_prepare_log")
+    asset_items = [
+        _asset_selected_items(asset, cue_id, command, payload_id, payload)
+        for asset in assets_from_payload(payload)
+    ]
+    if not asset_items:
+        update_asset_bundle_outputs([])
+        return []
+    _write_asset_bundle_table(asset_items)
+    for item in asset_items:
+        _append_row_at(
+            _root_path("asset_manager_demo", "asset_prepare_log"),
+            ["at", "cueId", "command", "payloadId", "assetId", "environmentId", "type", "filePath"],
+            [
+                _now(),
+                cue_id,
+                command,
+                payload_id,
+                item["assetId"],
+                item["environmentId"],
+                item["type"],
+                item["filePath"],
+            ],
+        )
+    try:
+        update_asset_bundle_outputs(asset_items)
+    except Exception as err:
+        if prepare_log is not None:
+            try:
+                prepare_log.appendRow([_now(), cue_id, command, payload_id, "asset_bundle_error", "", "", _text(err)])
+            except Exception:
+                pass
+    selected = _asset_op("selected_asset")
+    first_background = next((item for item in asset_items if item.get("role") == "background"), asset_items[0])
+    _write_kv_table(selected, first_background)
+    return asset_items
 
 
 def handle_td_cue(cue_id, command, payload_id="-"):
@@ -710,14 +1146,41 @@ def handle_td_cue(cue_id, command, payload_id="-"):
         return False
 
     selected_asset = None
-    if command == "td.asset.prepare":
-        selected_asset = select_asset_from_payload(cue_id, command, payload_id, payload)
-    if command in ["td.environment.prepare", "td.environment.go"] and asset_from_payload(payload).get("assetId"):
-        selected_asset = select_asset_from_payload(cue_id, command, payload_id, payload)
+    selected_assets = []
+    try:
+        if command == "td.asset.prepare":
+            selected_assets = select_assets_from_payload(cue_id, command, payload_id, payload)
+            if selected_assets:
+                selected_asset = selected_assets[0]
+        if command in ["td.environment.prepare", "td.environment.go"] and assets_from_payload(payload):
+            selected_assets = select_assets_from_payload(cue_id, command, payload_id, payload)
+            if selected_assets:
+                selected_asset = selected_assets[0]
+    except Exception as err:
+        _append_row(
+            "cue_log",
+            ["at", "cueId", "command", "payloadId", "trigger", "stage", "status", "message"],
+            [_now(), cue_id, command, payload_id, trigger_name, "asset_select_warning", "warning", err],
+        )
 
     stage = _final_stage(command)
     message = "%s:%s_ok" % (trigger_name, command.replace(".", "_"))
-    if selected_asset and selected_asset.get("assetId"):
+    if command == "td.phase.set":
+        phase_value = update_phase_value_chop(payload)
+        if phase_value is None:
+            message = "%s phase:ignored" % message
+        else:
+            message = "%s phase:%s" % (message, phase_value)
+    if command == "td.camera.set":
+        camera_value = update_camera_value_chop(payload)
+        if camera_value is None:
+            message = "%s camera:ignored" % message
+        else:
+            message = "%s camera:%s" % (message, camera_value)
+    if selected_assets:
+        fx_count = len([item for item in selected_assets if _text(item.get("role") or item.get("type") or "") in ["fx", "fxVideo", "fxImage"]])
+        message = "%s assets:%s fx:%s" % (message, len(selected_assets), "loaded" if fx_count else "empty")
+    elif selected_asset and selected_asset.get("assetId"):
         message = "%s asset:%s" % (message, selected_asset.get("assetId"))
     update_trigger(trigger_name, cue_id, command, payload_id, payload, stage, "ok", message)
     _append_row(
@@ -778,6 +1241,8 @@ def start():
             status_items = _table_to_dict(status_table)
             _apply_trigger_visual(trigger_name, status_items, {})
             _update_trigger_overview(trigger_name, status_items)
+    _ensure_phase_value_chop(0)
+    _ensure_camera_value_chop(1)
     refresh_asset_registry()
     _set_status(lastCue="-", lastCommand="-", lastPayloadId="-", lastTrigger="-", lastStage="ready", lastStatus="ok", message="listening on udp 9100")
     return True

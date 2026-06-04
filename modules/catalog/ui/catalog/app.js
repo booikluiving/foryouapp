@@ -374,8 +374,16 @@ function selectedSituationCharacters() {
   return selected;
 }
 
+function activePerformersForCast() {
+  return active(state.catalog.performers)
+    .sort((a, b) => {
+      const slot = Number(a.performerSlot || 0) - Number(b.performerSlot || 0);
+      return slot || String(a.name || "").localeCompare(String(b.name || ""), "nl-NL");
+    });
+}
+
 function performerChoices(character) {
-  const performers = active(state.catalog.performers);
+  const performers = activePerformersForCast();
   const explicit = character && Array.isArray(character.performerIds) ? character.performerIds : [];
   if (!explicit.length) return performers.map((item) => item.id);
   const performerIds = new Set(performers.map((item) => item.id));
@@ -383,21 +391,24 @@ function performerChoices(character) {
 }
 
 function canAssignCast(characters) {
-  const choices = characters.map(performerChoices);
-  if (choices.some((item) => item.length === 0)) return false;
+  const performers = activePerformersForCast();
+  const choices = characters
+    .map((character, index) => ({ index, choices: performerChoices(character) }))
+    .sort((a, b) => a.choices.length - b.choices.length || a.index - b.index);
+  if (choices.some((item) => item.choices.length === 0)) return false;
 
-  function search(index, used) {
+  function search(index, usedPerformers) {
     if (index >= choices.length) return true;
-    for (const performerId of choices[index]) {
-      if (used.has(performerId)) continue;
-      used.add(performerId);
-      if (search(index + 1, used)) return true;
-      used.delete(performerId);
+    for (const performerId of choices[index].choices) {
+      if (usedPerformers.has(performerId)) continue;
+      usedPerformers.add(performerId);
+      if (search(index + 1, usedPerformers)) return true;
+      usedPerformers.delete(performerId);
     }
     return false;
   }
 
-  return search(0, new Set());
+  return performers.length >= characters.length && search(0, new Set());
 }
 
 function renderCastPreview() {
@@ -408,7 +419,7 @@ function renderCastPreview() {
   const issues = [];
   if (new Set(ids).size !== ids.length) issues.push({ message: "Kies elk personage maximaal een keer." });
   if (ids.length > 0 && !canAssignCast(characters)) {
-    issues.push({ message: "Deze combinatie past niet op de actieve performer slots." });
+    issues.push({ message: "Deze combinatie kan dezelfde performer nodig hebben en speelt dan met waarschuwing." });
   }
   $("sceneCharacterSlotsHint").textContent = ids.length ? `${ids.length} van 3 personages gekozen` : "Kies 1 tot 3 personages.";
   $("situationIssues").innerHTML = issues.map(issueHtml).join("");

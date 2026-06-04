@@ -126,6 +126,11 @@ function startFakeRuntime(port, calls) {
       labelIds: ["label:fake"],
       assets: {
         background: { assetId: "asset:bg", file: "/tmp/fake-background.jpg" },
+        soundscape: { assetId: "asset:mp3", type: "soundscape", role: "soundscape", file: "/tmp/fake-soundscape.mp3" },
+        fx: [
+          { assetId: "asset:fx-video", type: "fx", role: "fxVideo", file: "/tmp/fake-fx-video.mp4" },
+          { assetId: "asset:fx-image", type: "fx", role: "fxImage", file: "/tmp/fake-fx-image.png" },
+        ],
       },
     };
   }
@@ -194,6 +199,7 @@ function startFakeScriptAgent(port, calls) {
     operatorDraft: null,
     ready: false,
     revealed: false,
+    cue: { index: 0, deckLength: 4 },
   };
   return startHttpServer(port, async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -230,6 +236,17 @@ function startFakeScriptAgent(port, calls) {
     if (req.method === "POST" && url.pathname === "/v0/script-agent/teleprompter-parser/reveal") {
       state.revealed = true;
       sendJson(res, 200, { ok: true, preparedScene: state.preparedScene, revealed: true, cue: { index: 0 } });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/v0/script-agent/teleprompter-parser/cue/advance") {
+      const delta = String(body.direction || "next") === "prev" ? -1 : 1;
+      state.cue.index = Math.max(0, Math.min(Number(state.cue.deckLength || 1) - 1, Number(state.cue.index || 0) + delta));
+      sendJson(res, 200, {
+        ok: true,
+        cue: state.cue,
+        cueAction: { action: "cue", direction: delta < 0 ? "prev" : "next" },
+        preparedScene: state.preparedScene,
+      });
       return;
     }
     if (req.method === "POST" && url.pathname === "/v0/script-agent/operator/scene-to-chat") {
@@ -478,12 +495,18 @@ async function main() {
     assert(commandList.commands.some((command) => command.name === "dmx.blackout"));
     assert(commandList.commands.some((command) => command.name === "camera.focus"));
     assert(commandList.commands.some((command) => command.name === "td.camera.set"));
+    assert(commandList.commands.some((command) => command.name === "td.phase.set"));
 
     const activeCueDefinitions = await fetchJson(showBase, "/v0/show-control/active-cues");
-    assert.equal(activeCueDefinitions.count, 12);
+    assert.equal(activeCueDefinitions.count, 17);
     assert(activeCueDefinitions.cues.some((cue) => cue.id === "streamdeck-run-toggle"));
     assert(activeCueDefinitions.cues.some((cue) => cue.id === "streamdeck-situation-toggle"));
+    assert(activeCueDefinitions.cues.some((cue) => cue.id === "streamdeck-phase-inloop"));
+    assert(activeCueDefinitions.cues.some((cue) => cue.id === "streamdeck-phase-loading"));
+    assert(activeCueDefinitions.cues.some((cue) => cue.id === "streamdeck-teleprompter-prev"));
+    assert(activeCueDefinitions.cues.some((cue) => cue.id === "streamdeck-teleprompter-next"));
     assert(activeCueDefinitions.cues.some((cue) => cue.id === "streamdeck-teleprompter-ready"));
+    assert(activeCueDefinitions.cues.some((cue) => cue.id === "streamdeck-muziek"));
     assert(activeCueDefinitions.cues.some((cue) => cue.id === "td-camera-1"));
     assert(activeCueDefinitions.cues.some((cue) => cue.id === "td-camera-2"));
     assert(activeCueDefinitions.cues.some((cue) => cue.id === "td-camera-3"));
@@ -503,6 +526,69 @@ async function main() {
     });
     assert.equal(dryRun.cue.status.stage, "dry-run");
     assert.equal(dryRun.cue.actions[0].command, "td.camera.set");
+
+    const inloopPhase = await fetchJson(showBase, "/v0/show-control/cues/phase", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Stream Deck inloop phase", phase: 0, phaseName: "inloop" }),
+    });
+    assert.equal(inloopPhase.cue.status.state, "ok");
+    assert.equal(inloopPhase.cue.actions[0].command, "td.phase.set");
+    assert.equal(inloopPhase.cue.actions[0].payload.phase, 0);
+    await waitForCondition(() => calls.some((call) => (
+      call.service === "touchdesigner" &&
+      call.command === "td.phase.set" &&
+      call.payloadFetched &&
+      call.payload.phase === 0
+    )));
+
+    const streamDeckCuePrev = await fetchJson(showBase, "/v0/show-control/cues", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Stream Deck Perfect Cue prev",
+        actions: [
+          {
+            command: "teleprompter.cue",
+            ackMode: "acknowledged-async",
+            timeoutMs: 2500,
+            payload: { direction: "prev", key: "PageUp", source: "streamdeck-perfect-cue" },
+          },
+        ],
+      }),
+    });
+    assert.equal(streamDeckCuePrev.cue.status.state, "ok");
+    assert(streamDeckCuePrev.cue.actions.some((action) => action.command === "teleprompter.cue"));
+    const prevCueCall = calls.findLast
+      ? calls.findLast((call) => call.service === "script-agent" && call.path === "/v0/script-agent/teleprompter-parser/cue/advance")
+      : calls.slice().reverse().find((call) => call.service === "script-agent" && call.path === "/v0/script-agent/teleprompter-parser/cue/advance");
+    assert.equal(prevCueCall.body.direction, "prev");
+    assert.equal(prevCueCall.body.key, "PageUp");
+    assert.equal(prevCueCall.body.source, "streamdeck-perfect-cue");
+
+    const streamDeckCueNext = await fetchJson(showBase, "/v0/show-control/cues", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Stream Deck Perfect Cue next",
+        actions: [
+          {
+            command: "teleprompter.cue",
+            ackMode: "acknowledged-async",
+            timeoutMs: 2500,
+            payload: { direction: "next", key: "PageDown", source: "streamdeck-perfect-cue" },
+          },
+        ],
+      }),
+    });
+    assert.equal(streamDeckCueNext.cue.status.state, "ok");
+    assert(streamDeckCueNext.cue.actions.some((action) => action.command === "teleprompter.cue"));
+    const nextCueCall = calls.findLast
+      ? calls.findLast((call) => call.service === "script-agent" && call.path === "/v0/script-agent/teleprompter-parser/cue/advance")
+      : calls.slice().reverse().find((call) => call.service === "script-agent" && call.path === "/v0/script-agent/teleprompter-parser/cue/advance");
+    assert.equal(nextCueCall.body.direction, "next");
+    assert.equal(nextCueCall.body.key, "PageDown");
+    assert.equal(nextCueCall.body.source, "streamdeck-perfect-cue");
 
     const savedCameraCue = await fetchJson(showBase, "/v0/show-control/cues/save", {
       method: "POST",
@@ -567,6 +653,9 @@ async function main() {
     assert.equal(startRunPrepareCall.payload.assetId, "asset:bg");
     assert.equal(startRunPrepareCall.payload.filePath, "/tmp/fake-background.jpg");
     assert.equal(startRunPrepareCall.payload.backgroundAsset.assetId, "asset:bg");
+    assert.equal(startRunPrepareCall.payload.soundscapeAsset.assetId, "asset:mp3");
+    assert.equal(startRunPrepareCall.payload.soundscapeFilePath, "/tmp/fake-soundscape.mp3");
+    assert.deepEqual(startRunPrepareCall.payload.fxFilePaths, ["/tmp/fake-fx-video.mp4", "/tmp/fake-fx-image.png"]);
 
     const autoStartSituation = await fetchJson(showBase, "/v0/show-control/cues/start-situation", {
       method: "POST",
@@ -577,9 +666,16 @@ async function main() {
       }),
     });
     assert.equal(autoStartSituation.cue.status.state, "ok");
+    assert(autoStartSituation.cue.actions.some((action) => action.command === "td.phase.set" && action.payload.phase === 2));
     assert(autoStartSituation.cue.actions.some((action) => action.command === "td.environment.go" && action.generatedByActionId));
     assert(autoStartSituation.cue.actions.some((action) => action.command === "teleprompter.reveal" && action.generatedByActionId));
     await waitForCondition(() => calls.some((call) => call.service === "touchdesigner" && call.command === "td.environment.go" && call.payloadFetched));
+    await waitForCondition(() => calls.some((call) => (
+      call.service === "touchdesigner" &&
+      call.command === "td.phase.set" &&
+      call.payloadFetched &&
+      call.payload.phase === 2
+    )));
     assert(calls.some((call) => call.service === "script-agent" && call.path === "/v0/script-agent/teleprompter-parser/reveal"));
 
     const sceneToChat = await fetchJson(showBase, "/v0/show-control/cues/scene-to-chat", {
@@ -613,6 +709,7 @@ async function main() {
     });
     assert.equal(startSituation.cue.status.state, "ok");
     assert(calls.some((call) => call.service === "runtime" && call.path === "/v0/runtime/runs/show-run-fake-001/start-situation"));
+    assert(calls.some((call) => call.service === "touchdesigner" && call.command === "td.phase.set"));
     assert(calls.some((call) => call.service === "touchdesigner" && call.command === "td.environment.go"));
     const sq5Status = await fetchJson(`http://127.0.0.1:${PORTS.sq5}`, "/api/status");
     assert(sq5Status.activity.some((entry) => entry.source === "http" && entry.channelKey === "brent" && entry.action === "mute"));
@@ -624,21 +721,26 @@ async function main() {
     assert(startSituation.cue.actions.some((action) => action.command === "streamdeck.status" && action.adapterResult));
     assert(startSituation.cue.actions.some((action) => action.command === "perfectCue.trigger" && action.adapterResult));
 
-    const stopSituation = await fetchJson(showBase, "/v0/show-control/cues", {
+    const stopSituation = await fetchJson(showBase, "/v0/show-control/cues/stop-situation", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: "Stream Deck stop situation",
-        actions: [
-          { command: "runtime.stopSituation", ackMode: "acknowledged-async", payload: { showRunId: "show-run-fake-001", autoPrepareNext: true } },
-        ],
+        showRunId: "show-run-fake-001",
       }),
     });
     assert.equal(stopSituation.cue.status.state, "ok");
     const stopRuntimeAction = stopSituation.cue.actions.find((action) => action.command === "runtime.stopSituation");
     assert(stopRuntimeAction.adapterResult.runtimeStateRef, "runtime.stopSituation adapterResult should keep compact runtimeStateRef");
     assert(!stopRuntimeAction.adapterResult.runtimeState, "runtime.stopSituation adapterResult should not store full runtimeState");
+    assert(stopSituation.cue.actions.some((action) => action.command === "td.phase.set" && action.payload.phase === 1));
     assert(calls.some((call) => call.service === "runtime" && call.path === "/v0/runtime/runs/show-run-fake-001/stop-situation"));
+    await waitForCondition(() => calls.some((call) => (
+      call.service === "touchdesigner" &&
+      call.command === "td.phase.set" &&
+      call.payloadFetched &&
+      call.payload.phase === 1
+    )));
     assert(stopSituation.cue.actions.some((action) => action.command === "td.environment.prepare" && action.generatedByActionId));
     assert(stopSituation.cue.actions.some((action) => action.command === "teleprompter.prepare" && action.generatedByActionId));
     assert(stopSituation.cue.actions.some((action) => action.command === "script-agent.operator.prepareDraft" && action.generatedByActionId));
