@@ -9,13 +9,17 @@ LOG_DIR="${FORYOU_LOG_DIR:-$HOME/Library/Logs/ForYouApp}"
 PREVIEW_PORT="${FORYOU_PREVIEW_PORT:-3311}"
 PREVIEW_HOST="${FORYOU_PREVIEW_HOST:-127.0.0.1}"
 ADMIN_AUTH_DISABLED="${FORYOU_ADMIN_AUTH_DISABLED:-1}"
-ADMIN_BOOTSTRAP_PASSWORD="${FORYOU_PREVIEW_ADMIN_PASSWORD:-${FORYOU_ADMIN_PASSWORD:-***REMOVED***}}"
+ADMIN_BOOTSTRAP_PASSWORD="${FORYOU_PREVIEW_ADMIN_PASSWORD:-${FORYOU_ADMIN_PASSWORD:-}}"
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 fail() {
   echo "FOUT: $*" >&2
   exit 1
 }
+
+if [[ "$ADMIN_AUTH_DISABLED" == "0" && -z "$ADMIN_BOOTSTRAP_PASSWORD" ]]; then
+  fail "Admin-auth staat aan (FORYOU_ADMIN_AUTH_DISABLED=0), maar er is geen wachtwoord. Zet FORYOU_ADMIN_PASSWORD."
+fi
 
 info() {
   echo "==> $*" >&2
