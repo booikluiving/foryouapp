@@ -121,6 +121,7 @@ async function fetchHardwareProbe(name, baseUrl, pathName) {
       status: response.status,
       url,
       service: body.service || name,
+      ...(body.summary && typeof body.summary === "object" ? { summary: body.summary } : {}),
       checkedAt: new Date().toISOString(),
     };
   } catch (err) {

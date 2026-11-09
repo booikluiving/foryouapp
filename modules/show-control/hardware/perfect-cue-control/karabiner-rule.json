@@ -1,0 +1,53 @@
+{
+  "description": "For_You: PerfectCue -> perfect-cue-control (:3228), alle toetsen van de ontvanger ingeslikt",
+  "manipulators": [
+    {
+      "type": "basic",
+      "from": { "key_code": "right_arrow", "modifiers": { "optional": ["any"] } },
+      "to": [{ "shell_command": "__TRIGGER__ next right_arrow" }],
+      "conditions": [{ "type": "device_if", "identifiers": [{ "vendor_id": 1155, "product_id": 42046 }] }]
+    },
+    {
+      "type": "basic",
+      "from": { "key_code": "page_down", "modifiers": { "optional": ["any"] } },
+      "to": [{ "shell_command": "__TRIGGER__ next page_down" }],
+      "conditions": [{ "type": "device_if", "identifiers": [{ "vendor_id": 1155, "product_id": 42046 }] }]
+    },
+    {
+      "type": "basic",
+      "from": { "key_code": "down_arrow", "modifiers": { "optional": ["any"] } },
+      "to": [{ "shell_command": "__TRIGGER__ next down_arrow" }],
+      "conditions": [{ "type": "device_if", "identifiers": [{ "vendor_id": 1155, "product_id": 42046 }] }]
+    },
+    {
+      "type": "basic",
+      "from": { "key_code": "left_arrow", "modifiers": { "optional": ["any"] } },
+      "to": [{ "shell_command": "__TRIGGER__ prev left_arrow" }],
+      "conditions": [{ "type": "device_if", "identifiers": [{ "vendor_id": 1155, "product_id": 42046 }] }]
+    },
+    {
+      "type": "basic",
+      "from": { "key_code": "page_up", "modifiers": { "optional": ["any"] } },
+      "to": [{ "shell_command": "__TRIGGER__ prev page_up" }],
+      "conditions": [{ "type": "device_if", "identifiers": [{ "vendor_id": 1155, "product_id": 42046 }] }]
+    },
+    {
+      "type": "basic",
+      "from": { "key_code": "up_arrow", "modifiers": { "optional": ["any"] } },
+      "to": [{ "shell_command": "__TRIGGER__ prev up_arrow" }],
+      "conditions": [{ "type": "device_if", "identifiers": [{ "vendor_id": 1155, "product_id": 42046 }] }]
+    },
+    {
+      "type": "basic",
+      "from": { "any": "key_code", "modifiers": { "optional": ["any"] } },
+      "to": [{ "key_code": "vk_none" }],
+      "conditions": [{ "type": "device_if", "identifiers": [{ "vendor_id": 1155, "product_id": 42046 }] }]
+    },
+    {
+      "type": "basic",
+      "from": { "any": "consumer_key_code", "modifiers": { "optional": ["any"] } },
+      "to": [{ "key_code": "vk_none" }],
+      "conditions": [{ "type": "device_if", "identifiers": [{ "vendor_id": 1155, "product_id": 42046 }] }]
+    }
+  ]
+}
