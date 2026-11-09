@@ -30,6 +30,7 @@
         { "plek": [0, 1], "key": "sit",       "label": "SIT",          "actie": { "cue": "toggle-situation" } },
         { "plek": [0, 2], "key": "scenechat", "label": "SCENE\nCHAT",  "actie": { "cue": "scene-chat" } },
         { "plek": [0, 3], "key": "ready",     "label": "READY",        "actie": { "cue": "teleprompter-ready" } },
+        { "plek": [0, 4], "key": "qr",        "label": "QR",           "actie": { "osc": { "adres": "/osc/osc10", "poort": 8008 } } },
         { "plek": [0, 5], "key": "inloop",    "label": "INLOOP",       "actie": { "cue": "phase-inloop" } },
         { "plek": [0, 6], "key": "loading",   "label": "LOADING",      "actie": { "cue": "phase-loading" } },
         { "plek": [0, 7], "key": "overzicht", "label": "STATUS",       "actie": { "pagina": "systeem" }, "status": true },

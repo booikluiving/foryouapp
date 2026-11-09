@@ -71,7 +71,7 @@ async function gather() {
     fetchJson(`${CONFIG.runtimeUrl}/v0/runtime/runs/current`, { timeoutMs: 1000 }),
     fetchJson(`${CONFIG.sq5Url}/api/streamdeck/state`, { timeoutMs: 1000 }),
     fetchJson(`${CONFIG.scriptAgentUrl}/v0/script-agent/teleprompter-parser/current`, { timeoutMs: 1000 }),
-    udpPorts([9100, 9101]),
+    udpPorts([9100, 9101, 8008]),
     tdLabel(),
   ]);
   return { core: Object.fromEntries(coreEntries), hw: Object.fromEntries(hwEntries), showStatus, runtime, sq5, teleprompter, ports, tdText };
@@ -138,6 +138,7 @@ function compute(deck, g) {
         s = all ? "ok" : n ? "warn" : "fout";
       }
       else if (knop.actie && knop.actie.stack === "restart") { s = showOk || runtimeOk ? "warn" : "uit"; }
+      else if (knop.actie && knop.actie.osc) { s = g.ports[knop.actie.osc.poort || 8008] ? "klaar" : "uit"; }
       else if (knop.actie && knop.actie.td) { t = g.tdText; s = tdOsc ? "ok" : "klaar"; }
       else if (k === "tdosc" || k === "tdack") {
         const ok = k === "tdosc" ? tdOsc : tdAck;

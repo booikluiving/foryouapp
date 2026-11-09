@@ -155,6 +155,8 @@ toepassen() {
   mkdir -p "$bk"
   say "1/7 Companion stoppen"
   companion_quit
+  # wat er ook misgaat: Companion komt weer aan
+  trap 'pgrep -x Companion >/dev/null || open -a Companion' EXIT
   say "2/7 back-up naar $bk"
   tar -C "$(dirname "$LIVE_CFG")" -czf "$bk/companion.tgz" "$(basename "$LIVE_CFG")"
   [[ -f "$ELGATO_PLIST" ]] && cp -p "$ELGATO_PLIST" "$bk/"
@@ -177,8 +179,8 @@ toepassen() {
   say "6/7 oude scripts naar archief"
   local arch="$OLD_SCRIPTS/archief-deck-$ts"
   mkdir -p "$arch"
-  (cd "$OLD_SCRIPTS" && setopt null_glob && for p in $OLD_PATTERNS; do for f in ${~p}; do mv "$f" "$arch/"; done; done)
-  echo "$arch" >"$bk/archief-pad"
+  (cd "$OLD_SCRIPTS" && setopt null_glob && for p in $OLD_PATTERNS; do for f in ${~p}; do [[ -e "$f" ]] && mv "$f" "$arch/"; done; done) || true
+  if rmdir "$arch" 2>/dev/null; then say "   (niets meer te archiveren)"; else echo "$arch" >"$bk/archief-pad"; fi
   say "7/7 statusdienst en Companion starten"
   launchctl bootout "gui/$UID_NUM/$STATUS_LABEL" 2>/dev/null || true
   status_agent_write

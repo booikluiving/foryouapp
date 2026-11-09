@@ -212,6 +212,37 @@ async function doStack(knop) {
   }
 }
 
+// Directe OSC naar TD (V1-route, UDP 8008): /adres 1 bij indrukken, 0 erna, zoals de oude Companion-knop.
+function oscInt(address, value) {
+  const pad = (b) => Buffer.concat([b, Buffer.alloc(4 - (b.length % 4))]);
+  const n = Buffer.alloc(4);
+  n.writeInt32BE(value);
+  return Buffer.concat([pad(Buffer.from(address)), pad(Buffer.from(",i")), n]);
+}
+
+async function doOsc(knop) {
+  const { adres, poort = 8008, host = "127.0.0.1" } = knop.actie.osc;
+  if (CONFIG.droog) {
+    await flash(knop.key, `${firstLine(knop.label)}\nOK`, "gelukt");
+    return { ok: true, droog: true, osc: `${host}:${poort}${adres}` };
+  }
+  const dgram = require("node:dgram");
+  const socket = dgram.createSocket("udp4");
+  const send = (value) => new Promise((resolve, reject) => socket.send(oscInt(adres, value), poort, host, (err) => (err ? reject(err) : resolve())));
+  try {
+    await send(1);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    await send(0);
+    await flash(knop.key, `${firstLine(knop.label)}\nOK`, "gelukt");
+    return { ok: true, osc: `${host}:${poort}${adres}` };
+  } catch (err) {
+    await flash(knop.key, `${firstLine(knop.label)}\nFAIL`, "mislukt");
+    return { ok: false, fout: String(err.message || err) };
+  } finally {
+    socket.close();
+  }
+}
+
 async function doTd(knop) {
   await flash(knop.key, "TD\n...", "bezig", 20000);
   const launcher = path.join(CONFIG.mainDir, "scripts", "open-current-showcontrol-td.command");
@@ -229,6 +260,7 @@ async function perform(key) {
     if (actie.link) return await doLink(knop);
     if (actie.stack) return await doStack(knop);
     if (actie.td) return await doTd(knop);
+    if (actie.osc) return await doOsc(knop);
     throw new Error(`actie onbekend voor ${key}`);
   } finally {
     // na de flits geeft deck-status.js de knop weer zijn echte staat
