@@ -7,7 +7,11 @@ const { createDeviceStatus, startDeviceMonitor } = require("./device-monitor");
 const DEFAULT_PORT = 3228;
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_SHOW_CONTROL_URL = "http://127.0.0.1:3025";
-const SHOW_CONTROL_TIMEOUT_MS = 3000;
+const SHOW_CONTROL_TIMEOUT_MS = 15000;
+// Show-control voert een cue binnen enkele ms uit, maar antwoordt pas na het
+// wegschrijven van de cue-opslag (soms seconden). De rij wacht daarom hooguit
+// ORDER_GUARD_MS op het antwoord en stuurt dan de volgende druk.
+const ORDER_GUARD_MS = 250;
 const STALE_TRIGGER_MS = 3000;
 
 function nowIso() {
@@ -175,7 +179,7 @@ async function handleTrigger(state, options, rawTrigger = {}, receivedAtMs = Dat
     ...rawTrigger,
     payload,
     key,
-    at: nowIso(),
+    at: new Date(receivedAtMs).toISOString(),
   };
   let showControl = null;
   let error = null;
@@ -202,6 +206,7 @@ async function handleTrigger(state, options, rawTrigger = {}, receivedAtMs = Dat
     ok,
     error: error || (ok ? null : `show_control_http_${showControlStatus}`),
     at: trigger.at,
+    latencyMs: Date.now() - receivedAtMs,
   };
   state.triggers.push(record);
   state.triggers = state.triggers.slice(-120);
@@ -261,9 +266,14 @@ function createPerfectCueApp(options = {}) {
   let queue = Promise.resolve();
   function enqueue(body) {
     const receivedAtMs = Date.now();
-    const run = queue.then(() => handleTrigger(state, options, body, receivedAtMs));
-    queue = run.catch(() => {});
-    return run;
+    let result;
+    const started = queue.then(() => {
+      result = handleTrigger(state, options, body, receivedAtMs);
+      const guard = new Promise((resolve) => setTimeout(resolve, ORDER_GUARD_MS));
+      return Promise.race([result.catch(() => {}), guard]);
+    });
+    queue = started.catch(() => {});
+    return started.then(() => result);
   }
   const server = http.createServer(async (req, res) => {
     try {
