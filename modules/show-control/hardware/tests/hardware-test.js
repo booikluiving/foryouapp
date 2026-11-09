@@ -114,7 +114,7 @@ async function testPerfectCueSidecar() {
   });
   const fake = await startServer(fakeShowControl);
   const { createPerfectCueApp } = require("../perfect-cue-control/server");
-  const perfectCue = await startServer(createPerfectCueApp({ showControlUrl: fake.baseUrl }));
+  const perfectCue = await startServer(createPerfectCueApp({ showControlUrl: fake.baseUrl, monitor: false }));
   try {
     const result = await fetchJson(perfectCue.baseUrl, "/api/key", {
       method: "POST",
@@ -127,6 +127,25 @@ async function testPerfectCueSidecar() {
     const cueCall = received.find((call) => call.path === "/v0/show-control/cues");
     assert.equal(cueCall.body.actions[0].command, "teleprompter.cue");
     assert.equal(cueCall.body.actions[0].payload.direction, "next");
+    assert.equal(result.state.summary.lastPressDirection, "next");
+    assert.equal(result.state.summary.lastPressOk, true);
+    const trigger = await fetchJson(perfectCue.baseUrl, "/api/trigger", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ direction: "prev", source: "perfectcue-usb", deviceKey: "left_arrow" }),
+    });
+    assert.equal(trigger.trigger.direction, "prev");
+    assert.equal(trigger.trigger.deviceKey, "left_arrow");
+    const { applyRule, buildRule } = require("../perfect-cue-control/karabiner-install");
+    const config = { profiles: [{ name: "p", selected: true, complex_modifications: { rules: [
+      { description: "For You: PerfectCue Page Up/Down controls teleprompter only", manipulators: [] },
+      { description: "andere regel", manipulators: [] },
+    ] }, devices: [] }] };
+    applyRule(config, buildRule("/tmp/perfectcue-test.log"));
+    const rules = config.profiles[0].complex_modifications.rules;
+    assert.equal(rules.length, 2);
+    assert(rules[0].description.startsWith("For_You: PerfectCue"));
+    assert(rules[0].manipulators.every((m) => m.conditions[0].identifiers[0].vendor_id === 1155 && m.conditions[0].identifiers[0].product_id === 42046));
     return { trigger: result.trigger, showControlRoutes: received.map((call) => `${call.method} ${call.path}`) };
   } finally {
     await perfectCue.close();

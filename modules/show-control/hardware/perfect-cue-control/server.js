@@ -2,6 +2,7 @@
 
 const http = require("node:http");
 const { URL } = require("node:url");
+const { createDeviceStatus, startDeviceMonitor } = require("./device-monitor");
 
 const DEFAULT_PORT = 3228;
 const DEFAULT_HOST = "127.0.0.1";
@@ -35,6 +36,9 @@ function createState() {
       ArrowLeft: { label: "Previous", command: "teleprompter.cue", ackMode: "acknowledged-async", payload: { direction: "prev" } },
     },
     triggers: [],
+    lastPress: null,
+    lastError: null,
+    status: createDeviceStatus(),
   };
 }
 
@@ -87,12 +91,30 @@ function htmlPage() {
 <body>
   <main>
     <h1>Perfect Cue Control V2</h1>
-    <p>Focus deze pagina en druk een Perfect Cue/keyboard toets. De key wordt naar deze V2 sidecar gestuurd.</p>
+    <pre id="status">Status laden...</pre>
+    <p>Reserve: focus deze pagina en druk een toets. De key wordt naar deze V2 sidecar gestuurd.</p>
     <button id="arm">Keyboard capture actief</button>
     <pre id="log">Wachten op input...</pre>
   </main>
   <script>
     const log = document.getElementById("log");
+    const statusEl = document.getElementById("status");
+    async function refreshStatus() {
+      try {
+        const s = (await (await fetch("/api/state", { cache: "no-store" })).json()).summary;
+        statusEl.textContent = [
+          "Ontvanger: " + (s.connected === true ? "verbonden" : s.connected === false ? "NIET verbonden" : "onbekend"),
+          "Karabiner: " + (s.karabinerRunning ? "draait" : "DRAAIT NIET") + ", regel " + (s.karabinerRuleInstalled ? "aanwezig" : "ONTBREEKT"),
+          "Laatste druk: " + (s.lastPressAt ? s.lastPressAt + " " + s.lastPressDirection + " (" + s.lastPressSource + ")" + (s.lastPressOk ? "" : " MISLUKT") : "nog geen"),
+          s.warnings.length ? "Let op: " + s.warnings.join("; ") : "Alles in orde",
+        ].join("\n");
+        statusEl.style.borderColor = s.ok ? "#2f7d32" : "#b3261e";
+      } catch (_err) {
+        statusEl.textContent = "Status niet bereikbaar";
+      }
+    }
+    refreshStatus();
+    setInterval(refreshStatus, 1000);
     window.addEventListener("keydown", async (event) => {
       event.preventDefault();
       const body = { key: event.key, code: event.code, source: "browser-keyboard", at: new Date().toISOString() };
@@ -151,25 +173,74 @@ async function handleTrigger(state, options, rawTrigger = {}) {
     key,
     at: nowIso(),
   };
-  const showControl = await triggerShowControl(options, trigger);
+  let showControl = null;
+  let error = null;
+  try {
+    showControl = await triggerShowControl(options, trigger);
+  } catch (err) {
+    error = err && err.message ? err.message : String(err);
+  }
+  const showControlStatus = showControl ? showControl.status : null;
+  const ok = !error && (!showControl || (showControlStatus >= 200 && showControlStatus < 300));
   const record = {
     key,
+    deviceKey: rawTrigger.deviceKey ? String(rawTrigger.deviceKey) : null,
     source: trigger.source || "http",
     cueId: trigger.cueId || null,
     command: trigger.command || null,
     direction: payload.direction || null,
-    showControlStatus: showControl ? showControl.status : null,
+    showControlStatus,
+    ok,
+    error: error || (ok ? null : `show_control_http_${showControlStatus}`),
     at: trigger.at,
   };
   state.triggers.push(record);
   state.triggers = state.triggers.slice(-120);
-  return { trigger: record, showControl };
+  state.lastPress = record;
+  if (!ok) state.lastError = record;
+  return { ok, trigger: record, showControl };
+}
+
+function statusSummary(state) {
+  const status = state.status || createDeviceStatus();
+  const lastPress = state.lastPress;
+  const warnings = [];
+  if (status.device.connected === false) warnings.push("ontvanger niet verbonden");
+  if (status.karabiner.running === false) warnings.push("Karabiner draait niet");
+  if (status.karabiner.ruleInstalled === false) warnings.push("Karabiner-regel ontbreekt");
+  if (status.session.onConsole === false) warnings.push(`ander account vooraan: ${status.session.consoleUser}`);
+  if (lastPress && lastPress.ok === false) warnings.push("laatste druk niet aangekomen bij show-control");
+  return {
+    ok: status.device.connected === true
+      && status.karabiner.running === true
+      && status.karabiner.ruleInstalled === true
+      && status.session.onConsole !== false
+      && !(lastPress && lastPress.ok === false),
+    connected: status.device.connected,
+    connectedSince: status.device.connectedSince,
+    disconnectedAt: status.device.disconnectedAt,
+    karabinerRunning: status.karabiner.running,
+    karabinerRuleInstalled: status.karabiner.ruleInstalled,
+    onConsole: status.session.onConsole,
+    lastPressAt: lastPress ? lastPress.at : null,
+    lastPressDirection: lastPress ? lastPress.direction : null,
+    lastPressSource: lastPress ? lastPress.source : null,
+    lastPressOk: lastPress ? lastPress.ok : null,
+    checkedAt: status.checkedAt,
+    warnings,
+  };
 }
 
 function publicState(state) {
   return {
     service: state.service,
     startedAt: state.startedAt,
+    summary: statusSummary(state),
+    device: state.status ? state.status.device : null,
+    karabiner: state.status ? state.status.karabiner : null,
+    session: state.status ? state.status.session : null,
+    lastPress: state.lastPress || null,
+    lastError: state.lastError || null,
     mappings: state.mappings,
     triggers: state.triggers.slice(-80),
   };
@@ -177,7 +248,7 @@ function publicState(state) {
 
 function createPerfectCueApp(options = {}) {
   const state = options.state || createState();
-  return http.createServer(async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
       if (req.method === "GET" && url.pathname === "/") {
@@ -186,7 +257,7 @@ function createPerfectCueApp(options = {}) {
         return;
       }
       if (req.method === "GET" && url.pathname === "/health") {
-        sendJson(res, 200, { ok: true, service: "perfect-cue-control", state: publicState(state) });
+        sendJson(res, 200, { ok: true, service: "perfect-cue-control", summary: statusSummary(state), state: publicState(state) });
         return;
       }
       if (req.method === "GET" && url.pathname === "/api/state") {
@@ -206,7 +277,7 @@ function createPerfectCueApp(options = {}) {
       if (req.method === "POST" && (url.pathname === "/api/key" || url.pathname === "/api/trigger")) {
         const body = await readJson(req);
         const result = await handleTrigger(state, options, body);
-        sendJson(res, 200, { ok: true, ...result, state: publicState(state) });
+        sendJson(res, result.ok ? 200 : 502, { ...result, state: publicState(state) });
         return;
       }
       sendJson(res, 404, { ok: false, error: "not_found", path: url.pathname });
@@ -214,6 +285,17 @@ function createPerfectCueApp(options = {}) {
       sendJson(res, 500, { ok: false, error: err.message || String(err) });
     }
   });
+  if (options.monitor !== false) {
+    let monitor = null;
+    server.on("listening", () => {
+      if (!monitor) monitor = startDeviceMonitor(state.status, options.monitorOptions || {});
+    });
+    server.on("close", () => {
+      if (monitor) monitor.stop();
+      monitor = null;
+    });
+  }
+  return server;
 }
 
 function startPerfectCueServer(options = {}) {
@@ -238,4 +320,5 @@ module.exports = {
   perfectCuePort,
   publicState,
   startPerfectCueServer,
+  statusSummary,
 };
