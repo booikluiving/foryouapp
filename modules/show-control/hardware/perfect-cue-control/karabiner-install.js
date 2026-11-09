@@ -13,7 +13,7 @@ const { RULE_DESCRIPTION_PREFIX, VENDOR_ID, PRODUCT_ID } = require("./device-mon
 const OLD_RULE_DESCRIPTIONS = ["For You: PerfectCue Page Up/Down controls teleprompter only"];
 const OLD_AGENT_LABEL = "com.foryou.perfectcue-remap";
 const OLD_AGENT_DISABLED_SUFFIX = ".uit-perfectcue-karabiner";
-const TRIGGER_URL = process.env.V2_SHOW_CONTROL_PERFECT_CUE_TRIGGER_URL || "http://127.0.0.1:3228/api/trigger";
+const TRIGGER_URL = process.env.V2_SHOW_CONTROL_PERFECT_CUE_TRIGGER_URL || "http://127.0.0.1:3228/api/trigger?async=1";
 
 function parseArgs(argv) {
   const args = { action: argv[0] || "status", dryRun: false, launchctl: true };
@@ -41,7 +41,7 @@ function shellQuote(value) {
 function triggerCommand(direction, deviceKey, logFile) {
   const body = JSON.stringify({ direction, source: "perfectcue-usb", deviceKey });
   return [
-    "/usr/bin/curl -fsS -m 2 -H 'content-type: application/json'",
+    "/usr/bin/curl -fsS -m 3 -H 'content-type: application/json'",
     `-d ${shellQuote(body)}`,
     `${shellQuote(TRIGGER_URL)} >/dev/null 2>&1`,
     `|| echo "$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ) ${direction} ${deviceKey} niet aangekomen" >> ${shellQuote(logFile)}`,
@@ -216,7 +216,7 @@ async function status(args) {
   report.oldAgent = fs.existsSync(plist) ? "actief (plist aanwezig)"
     : fs.existsSync(plist + OLD_AGENT_DISABLED_SUFFIX) ? "uitgezet" : "niet aanwezig";
   try {
-    const response = await fetch(TRIGGER_URL.replace(/\/api\/trigger$/, "/api/state"), { signal: AbortSignal.timeout(1000) });
+    const response = await fetch(TRIGGER_URL.replace(/\/api\/trigger(\?.*)?$/, "/api/state"), { signal: AbortSignal.timeout(1000) });
     const body = await response.json();
     report.sidecar = body.summary || "sidecar heeft nog geen statusveld (oude versie)";
   } catch (err) {
