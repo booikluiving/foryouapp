@@ -7,6 +7,8 @@ const { createDeviceStatus, startDeviceMonitor } = require("./device-monitor");
 const DEFAULT_PORT = 3228;
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_SHOW_CONTROL_URL = "http://127.0.0.1:3025";
+const SHOW_CONTROL_TIMEOUT_MS = 3000;
+const STALE_TRIGGER_MS = 3000;
 
 function nowIso() {
   return new Date().toISOString();
@@ -133,6 +135,7 @@ async function triggerShowControl(options, trigger) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(trigger.execute || {}),
+      signal: AbortSignal.timeout(SHOW_CONTROL_TIMEOUT_MS),
     });
     const text = await response.text();
     return { status: response.status, body: text ? JSON.parse(text) : {} };
@@ -149,6 +152,7 @@ async function triggerShowControl(options, trigger) {
           payload: trigger.payload || {},
         }],
       }),
+      signal: AbortSignal.timeout(SHOW_CONTROL_TIMEOUT_MS),
     });
     const text = await response.text();
     return { status: response.status, body: text ? JSON.parse(text) : {} };
@@ -156,7 +160,7 @@ async function triggerShowControl(options, trigger) {
   return null;
 }
 
-async function handleTrigger(state, options, rawTrigger = {}) {
+async function handleTrigger(state, options, rawTrigger = {}, receivedAtMs = Date.now()) {
   const key = normalizeKeyAlias(rawTrigger.key || rawTrigger.code || rawTrigger.button || keyFromDirection(rawTrigger.direction));
   const mapping = key && state.mappings[key] ? state.mappings[key] : {};
   const payload = {
@@ -175,10 +179,15 @@ async function handleTrigger(state, options, rawTrigger = {}) {
   };
   let showControl = null;
   let error = null;
-  try {
-    showControl = await triggerShowControl(options, trigger);
-  } catch (err) {
-    error = err && err.message ? err.message : String(err);
+  const waitedMs = Date.now() - receivedAtMs;
+  if (waitedMs > STALE_TRIGGER_MS) {
+    error = `verlopen_na_${waitedMs}ms`;
+  } else {
+    try {
+      showControl = await triggerShowControl(options, trigger);
+    } catch (err) {
+      error = err && err.message ? err.message : String(err);
+    }
   }
   const showControlStatus = showControl ? showControl.status : null;
   const ok = !error && (!showControl || (showControlStatus >= 200 && showControlStatus < 300));
@@ -248,6 +257,14 @@ function publicState(state) {
 
 function createPerfectCueApp(options = {}) {
   const state = options.state || createState();
+  // Eén rij: drukken gaan op volgorde naar show-control, ook als ze tegelijk binnenkomen.
+  let queue = Promise.resolve();
+  function enqueue(body) {
+    const receivedAtMs = Date.now();
+    const run = queue.then(() => handleTrigger(state, options, body, receivedAtMs));
+    queue = run.catch(() => {});
+    return run;
+  }
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
@@ -276,7 +293,12 @@ function createPerfectCueApp(options = {}) {
       }
       if (req.method === "POST" && (url.pathname === "/api/key" || url.pathname === "/api/trigger")) {
         const body = await readJson(req);
-        const result = await handleTrigger(state, options, body);
+        if (url.searchParams.get("async") === "1") {
+          enqueue(body);
+          sendJson(res, 202, { ok: true, queued: true });
+          return;
+        }
+        const result = await enqueue(body);
         sendJson(res, result.ok ? 200 : 502, { ...result, state: publicState(state) });
         return;
       }
