@@ -1,0 +1,114 @@
+{
+  "versie": 1,
+  "deck": {
+    "serial": "A00NA5493LJWNJ",
+    "kolommen": 8,
+    "rijen": 4,
+    "helderheid": 100
+  },
+  "staten": {
+    "uit":     { "bg": 0,        "tekst": 8421504 },
+    "klaar":   { "bg": 33792,    "tekst": 16777215 },
+    "actief":  { "bg": 13107200, "tekst": 16777215 },
+    "ok":      { "bg": 51200,    "tekst": 16777215 },
+    "aan":     { "bg": 20480,    "tekst": 16777215 },
+    "mute":    { "bg": 13107200, "tekst": 16777215 },
+    "warn":    { "bg": 16753920, "tekst": 0 },
+    "fout":    { "bg": 13107200, "tekst": 16777215 },
+    "camera":  { "bg": 22456,    "tekst": 16777215 },
+    "bezig":   { "bg": 16753920, "tekst": 0 },
+    "gelukt":  { "bg": 51200,    "tekst": 16777215 },
+    "mislukt": { "bg": 13107200, "tekst": 16777215 },
+    "nav":     { "bg": 4210752,  "tekst": 16777215 }
+  },
+  "paginas": [
+    {
+      "id": "show",
+      "naam": "SHOW",
+      "knoppen": [
+        { "plek": [0, 0], "key": "run",       "label": "RUN",          "actie": { "cue": "toggle-run" } },
+        { "plek": [0, 1], "key": "sit",       "label": "SIT",          "actie": { "cue": "toggle-situation" } },
+        { "plek": [0, 2], "key": "scenechat", "label": "SCENE\nCHAT",  "actie": { "cue": "scene-chat" } },
+        { "plek": [0, 3], "key": "ready",     "label": "READY",        "actie": { "cue": "teleprompter-ready" } },
+        { "plek": [0, 5], "key": "inloop",    "label": "INLOOP",       "actie": { "cue": "phase-inloop" } },
+        { "plek": [0, 6], "key": "loading",   "label": "LOADING",      "actie": { "cue": "phase-loading" } },
+        { "plek": [0, 7], "key": "overzicht", "label": "STATUS",       "actie": { "pagina": "systeem" }, "status": true },
+
+        { "plek": [1, 0], "key": "prev",      "label": "PREV",         "actie": { "cue": "teleprompter-prev" } },
+        { "plek": [1, 1], "key": "next",      "label": "NEXT",         "actie": { "cue": "teleprompter-next" } },
+        { "plek": [1, 3], "key": "cam1",      "label": "CAM 1",        "actie": { "cue": "td-camera-1" } },
+        { "plek": [1, 4], "key": "cam2",      "label": "CAM 2",        "actie": { "cue": "td-camera-2" } },
+        { "plek": [1, 5], "key": "cam3",      "label": "CAM 3",        "actie": { "cue": "td-camera-3" } },
+
+        { "plek": [2, 0], "key": "brent",     "label": "BRENT",        "actie": { "cue": "sq5-brent" } },
+        { "plek": [2, 1], "key": "megan",     "label": "MEGAN",        "actie": { "cue": "sq5-megan" } },
+        { "plek": [2, 2], "key": "booi",      "label": "BOOI",         "actie": { "cue": "sq5-booi" } },
+        { "plek": [2, 3], "key": "mics",      "label": "MICS",         "actie": { "cue": "sq5-mics" } },
+        { "plek": [2, 4], "key": "muziek",    "label": "MUZIEK",       "actie": { "cue": "sq5-muziek" } },
+        { "plek": [2, 5], "key": "main",      "label": "MAIN",         "actie": { "cue": "sq5-main" } },
+
+        { "plek": [3, 6], "key": "nav_show_schermen", "label": "SCHERMEN", "actie": { "pagina": "schermen" } },
+        { "plek": [3, 7], "key": "nav_show_systeem",  "label": "SYSTEEM",  "actie": { "pagina": "systeem" } }
+      ]
+    },
+    {
+      "id": "schermen",
+      "naam": "SCHERMEN",
+      "knoppen": [
+        { "plek": [0, 0], "key": "l_show",       "label": "SHOW\nQ",       "actie": { "link": "http://127.0.0.1:3025/show-control/" } },
+        { "plek": [0, 1], "key": "l_runtime",    "label": "RUNTIME",       "actie": { "link": "http://127.0.0.1:3024/runtime/" } },
+        { "plek": [0, 2], "key": "l_scriptop",   "label": "SCRIPT\nOP",    "actie": { "link": "http://127.0.0.1:3027/script-agent/operator" } },
+        { "plek": [0, 3], "key": "l_scriptstage","label": "SCRIPT\nSTAGE", "actie": { "link": "http://127.0.0.1:3027/script-agent/operator/stage" } },
+        { "plek": [0, 4], "key": "l_parser",     "label": "TEXT\nPARSER",  "actie": { "link": "http://127.0.0.1:3027/script-agent/teleprompter-parser" } },
+        { "plek": [0, 5], "key": "l_tele",       "label": "TELE\nPROMPT",  "actie": { "link": "http://127.0.0.1:3027/script-agent/teleprompter-parser/stage" } },
+
+        { "plek": [1, 0], "key": "l_audstage",   "label": "AUD\nSTAGE",    "actie": { "link": "http://127.0.0.1:3026/v2/audience/stage" } },
+        { "plek": [1, 1], "key": "l_audadmin",   "label": "AUD\nADMIN",    "actie": { "link": "http://127.0.0.1:3026/admin" } },
+        { "plek": [1, 2], "key": "l_audpublic",  "label": "AUD\nPUBLIC",   "actie": { "link": "http://127.0.0.1:3026/" } },
+        { "plek": [1, 4], "key": "l_gate",       "label": "GATE",          "actie": { "link": "http://127.0.0.1:3020/dashboard/" } },
+        { "plek": [1, 5], "key": "l_catalog",    "label": "CATALOG",       "actie": { "link": "http://127.0.0.1:3021/catalog/" } },
+        { "plek": [1, 6], "key": "l_media",      "label": "MEDIA",         "actie": { "link": "http://127.0.0.1:3021/catalog/media-assets/" } },
+        { "plek": [1, 7], "key": "l_algo",       "label": "ALGO",          "actie": { "link": "http://127.0.0.1:3023/algorithm/" } },
+
+        { "plek": [2, 0], "key": "l_sq5",        "label": "SQ5",           "actie": { "link": "http://127.0.0.1:3225/" } },
+        { "plek": [2, 1], "key": "l_camera",     "label": "CAMERA",        "actie": { "link": "http://127.0.0.1:3226/" } },
+        { "plek": [2, 2], "key": "l_pcue",       "label": "PCUE",          "actie": { "link": "http://127.0.0.1:3228/" } },
+        { "plek": [2, 3], "key": "l_dmx",        "label": "DMX",           "actie": { "link": "http://127.0.0.1:3229/" } },
+        { "plek": [2, 5], "key": "l_paths",      "label": "PATHS",         "actie": { "link": "http://127.0.0.1:3022/editor/" } },
+        { "plek": [2, 6], "key": "l_universe",   "label": "UNIVERSE",      "actie": { "link": "http://127.0.0.1:3022/universe/" } },
+
+        { "plek": [3, 0], "key": "nav_schermen_show",    "label": "SHOW",    "actie": { "pagina": "show" } },
+        { "plek": [3, 7], "key": "nav_schermen_systeem", "label": "SYSTEEM", "actie": { "pagina": "systeem" } }
+      ]
+    },
+    {
+      "id": "systeem",
+      "naam": "SYSTEEM",
+      "knoppen": [
+        { "plek": [0, 0], "key": "stack",     "label": "STACK",      "actie": { "stack": "toggle" } },
+        { "plek": [0, 1], "key": "restart",   "label": "RESTART",    "actie": { "stack": "restart" } },
+        { "plek": [0, 3], "key": "td",        "label": "TD",         "actie": { "td": "open" } },
+        { "plek": [0, 4], "key": "tdosc",     "label": "TD OSC" },
+        { "plek": [0, 5], "key": "tdack",     "label": "TD ACK" },
+
+        { "plek": [1, 0], "key": "d_gateway",     "label": "GATE" },
+        { "plek": [1, 1], "key": "d_catalog",     "label": "CAT" },
+        { "plek": [1, 2], "key": "d_paths",       "label": "PATHS" },
+        { "plek": [1, 3], "key": "d_algorithm",   "label": "ALGO" },
+        { "plek": [1, 4], "key": "d_runtime",     "label": "RUN" },
+        { "plek": [1, 5], "key": "d_showcontrol", "label": "SHOW" },
+        { "plek": [1, 6], "key": "d_audience",    "label": "AUD" },
+        { "plek": [1, 7], "key": "d_scriptagent", "label": "SCRIPT" },
+
+        { "plek": [2, 0], "key": "d_sq5",         "label": "SQ5" },
+        { "plek": [2, 1], "key": "d_camera",      "label": "CAM" },
+        { "plek": [2, 2], "key": "d_streamdeck",  "label": "SDECK" },
+        { "plek": [2, 3], "key": "d_perfectcue",  "label": "PCUE" },
+        { "plek": [2, 4], "key": "d_dmx",         "label": "DMX" },
+
+        { "plek": [3, 0], "key": "nav_systeem_show",     "label": "SHOW",     "actie": { "pagina": "show" } },
+        { "plek": [3, 1], "key": "nav_systeem_schermen", "label": "SCHERMEN", "actie": { "pagina": "schermen" } }
+      ]
+    }
+  ]
+}
