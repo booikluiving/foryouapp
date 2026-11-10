@@ -219,7 +219,18 @@ function addMeta(bubble, meta = {}) {
   bubble.appendChild(div);
 }
 
+// Alleen meescrollen als de operator al (bijna) onderaan staat.
+function chatIsNearBottom() {
+  const log = els.chatLog;
+  return log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+}
+
+function scrollChatToBottom() {
+  els.chatLog.scrollTop = els.chatLog.scrollHeight;
+}
+
 function appendBubble(role, text, options = {}) {
+  const stick = options.forceScroll || chatIsNearBottom();
   if (els.chatLog.querySelector(".empty-state")) els.chatLog.innerHTML = "";
   const bubble = document.createElement("div");
   bubble.className = `operator-bubble ${role}${options.streaming ? " streaming" : ""}`;
@@ -231,7 +242,7 @@ function appendBubble(role, text, options = {}) {
   else bubble.textContent = text || "";
   els.chatLog.appendChild(bubble);
   if (options.meta && role === "assistant") addMeta(bubble, options.meta);
-  els.chatLog.scrollTop = els.chatLog.scrollHeight;
+  if (!options.noScroll && stick) scrollChatToBottom();
   return bubble;
 }
 
@@ -242,6 +253,8 @@ function emptyChat() {
 }
 
 function renderMessages(messages = []) {
+  const stick = chatIsNearBottom();
+  const previousScrollTop = els.chatLog.scrollTop;
   stageMessages = Array.isArray(messages) ? messages.slice() : [];
   stageBubbles = new Map();
   els.chatLog.innerHTML = "";
@@ -255,8 +268,11 @@ function renderMessages(messages = []) {
       id: message.id,
       streaming: !!message.streaming,
       meta: role === "assistant" ? message.meta : null,
+      noScroll: true,
     });
   }
+  if (stick) scrollChatToBottom();
+  else els.chatLog.scrollTop = previousScrollTop;
 }
 
 function latestMeta() {
@@ -292,13 +308,14 @@ function applyDelta(payload = {}) {
   message.content = typeof payload.fullText === "string"
     ? payload.fullText
     : String(message.content || "") + String(payload.text || "");
+  const stick = chatIsNearBottom();
   let bubble = stageBubbles.get(id);
   if (!bubble) {
     bubble = appendBubble("assistant", "", { id, streaming: true });
   }
   renderAssistantContent(bubble, message.content);
   bubble.classList.add("streaming");
-  els.chatLog.scrollTop = els.chatLog.scrollHeight;
+  if (stick) scrollChatToBottom();
 }
 
 function shouldSyncDraftToChatInput(remoteSourceId = "") {
@@ -691,8 +708,8 @@ async function readSse(response, onEvent) {
 }
 
 async function fallbackHttpSubmit(text, promptInput = null) {
-  appendBubble("user", text || els.chatInput.value);
-  const assistant = appendBubble("assistant", "", { id: `assistant_${Date.now()}`, streaming: true });
+  appendBubble("user", text || els.chatInput.value, { forceScroll: true });
+  const assistant = appendBubble("assistant", "", { id: `assistant_${Date.now()}`, streaming: true, forceScroll: true });
   const response = await fetch("/v0/script-agent/operator/chat/stream", {
     method: "POST",
     headers: { "content-type": "application/json" },

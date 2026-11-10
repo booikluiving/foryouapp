@@ -43,15 +43,25 @@ function performerSlotsForResolved(resolved, catalog) {
   }).performerSlots;
 }
 
-function promptTextFor({ resolved, situation, performerSlots }) {
+// Zelfde bron als de handmatige operatorroute: promptText, anders description.
+function characterDescription(character, catalog) {
+  const fromCatalog = (catalog.characters || []).find((item) => item.id === character.id) || {};
+  return String(
+    character.promptText || character.description || fromCatalog.promptText || fromCatalog.description || ""
+  ).replace(/\s+/g, " ").trim();
+}
+
+function promptTextFor({ resolved, situation, catalog = {} }) {
+  // Rollen staan al in de Performer-slots van het operatorsjabloon.
+  const characters = (resolved.characters || [])
+    .map((character) => ({ name: character.name, description: characterDescription(character, catalog) }));
   const lines = [
-    `Situation: ${resolved.title || ""}`,
-    `Environment: ${resolved.environment ? resolved.environment.name : "none"}`,
-    "Roles:",
-    ...performerSlots.map((slot) => {
-      const performer = slot.performerName || `slot ${slot.slotIndex}`;
-      return `- Performer ${slot.slotIndex} (${performer}) plays ${slot.characterName}`;
-    }),
+    `Situatie: ${resolved.title || ""}`,
+    `Omgeving: ${resolved.environment ? resolved.environment.name : "geen"}`,
+    "Personages:",
+    ...(characters.length
+      ? characters.map((item) => `- ${item.name}${item.description ? `: ${item.description}` : ""}`)
+      : ["- geen personages"]),
     "Prompt:",
     resolved.promptText || (situation && situation.promptText) || "",
   ];
@@ -108,7 +118,7 @@ function buildPromptInput(runtimeState, createdAtDate = new Date()) {
     environment: stableInput.environment,
     characters: stableInput.characters,
     performerSlots: stableInput.performerSlots,
-    promptText: promptTextFor({ resolved, situation, performerSlots }),
+    promptText: promptTextFor({ resolved, situation, catalog }),
   };
 }
 

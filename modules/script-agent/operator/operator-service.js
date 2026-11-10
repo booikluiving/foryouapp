@@ -3,6 +3,9 @@
 const EventEmitter = require("node:events");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const AnthropicModule = require("@anthropic-ai/sdk");
+
+const Anthropic = AnthropicModule.default || AnthropicModule.Anthropic || AnthropicModule;
 
 const {
   SCRIPT_AGENT_PROMPT_INPUT_SCHEMA_VERSION,
@@ -25,10 +28,30 @@ const OPERATOR_DRAFT_SCHEMA_VERSION = "script-agent.operator-draft.v0";
 const OPERATOR_STAGE_SCHEMA_VERSION = "script-agent.operator-stage.v0";
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
 const MAX_STAGE_MESSAGES = 20;
+const DEFAULT_FALLBACK_MODEL = "deepseek-v4-pro";
+const CLAUDE_MAX_TOKENS = 16000;
+// $ per 1M tokens. DeepSeek V4: piektarief (buiten piek is het de helft).
 const DEEPSEEK_PRICING = {
   "deepseek-chat": { input: 0.27, cachedInput: 0.07, output: 1.10 },
   "deepseek-reasoner": { input: 0.55, cachedInput: 0.14, output: 2.19 },
+  "deepseek-flash": { input: 0.30, cachedInput: 0.30, output: 1.20 },
+  "deepseek-v4-pro": { input: 1.32, cachedInput: 1.32, output: 3.96 },
 };
+const CLAUDE_PRICING = {
+  "claude-opus-5-5": { input: 4.00, cachedInput: 0.20, output: 20.00 },
+  "claude-sonnet-5-5": { input: 2.00, cachedInput: 0.10, output: 10.00 },
+  "claude-haiku-5-5": { input: 0.10, cachedInput: 0.01, output: 0.50 },
+};
+
+function isClaudeModel(model) {
+  return /^claude-/i.test(String(model || "").trim());
+}
+
+// Claude Opus 5.5 kan niet zonder nadenken: "off" wordt daar "low".
+function claudeEffort(effort) {
+  const value = normalizeReasoningEffort(effort);
+  return value === "off" ? "low" : value;
+}
 
 const DEFAULT_SYSTEM_PROMPT = `
 Je bent de schrijver voor de live theaterinstallatie "For You".
@@ -37,27 +60,23 @@ Werk snel en direct met de operator.
 Schrijf alleen scene-tekst wanneer de operator daarom vraagt of wanneer er een voorbereide scene-prompt wordt gestuurd.
 Gebruik de opgegeven situatie, personages en omgeving als harde context.
 Begin een scene met "# Titel" en schrijf dialoog als "Personage: zin.".
+Gebruik de personagenamen precies zoals ze in de lijst staan.
+Geen regieaanwijzingen, alleen dialoog.
+Maximaal 2500 tekens per scene.
 Geen uitleg vooraf, geen nabrander.
 `.trim();
 
 const DEFAULT_PROMPT_TEMPLATE = `
 Schrijf een speelbare scene voor de volgende klaargezette situatie.
 
-Situatie: {situationTitle}
-Omgeving: {environmentName}
-Personages:
-{characters}
+{runtimePrompt}
 
 Performer-slots:
 {performerSlots}
 
-Situatieprompt:
-{runtimePrompt}
-
 Regie:
 - Houd het bruikbaar voor live spel.
 - Gebruik alleen genoemde personages tenzij de operator anders vraagt.
-- Eindig op een duidelijke wending of speelbare impuls.
 `.trim();
 
 function nowIso() {
@@ -197,10 +216,11 @@ function performerSlotsForManual(characters = [], performers = []) {
 }
 
 function buildManualPromptText({ situation, environment, characters, extra }) {
+  const environmentDescription = environment ? displayDescription(environment) : "";
   const lines = [
-    `Situation: ${displayTitle(situation)}`,
-    `Environment: ${environment ? displayTitle(environment) : "none"}`,
-    "Characters:",
+    `Situatie: ${displayTitle(situation)}`,
+    `Omgeving: ${environment ? `${displayTitle(environment)}${environmentDescription ? `: ${environmentDescription}` : ""}` : "geen"}`,
+    "Personages:",
     ...(characters.length
       ? characters.map((item) => `- ${displayTitle(item)}${displayDescription(item) ? `: ${displayDescription(item)}` : ""}`)
       : ["- geen personages"]),
@@ -209,9 +229,6 @@ function buildManualPromptText({ situation, environment, characters, extra }) {
   ];
   const regie = normalizeText(extra || "", 2000);
   if (regie) lines.push("", "Regie vooraf:", regie);
-  if (environment && displayDescription(environment)) {
-    lines.push("", "Omgeving:", `${displayTitle(environment)}: ${displayDescription(environment)}`);
-  }
   return compactPromptText(lines.join("\n"));
 }
 
@@ -343,6 +360,8 @@ function defaultOperatorSettings() {
     model: DEFAULT_DEEPSEEK_MODEL,
     maxTokens: 4096,
     temperature: 0.8,
+    reasoningEffort: "low",
+    fallbackModel: DEFAULT_FALLBACK_MODEL,
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     promptTemplate: DEFAULT_PROMPT_TEMPLATE,
     stageStyle: {
@@ -363,11 +382,24 @@ function normalizeOperatorSettings(input = {}, base = defaultOperatorSettings())
     model,
     maxTokens: Math.max(256, Math.min(16000, Number(source.maxTokens || base.maxTokens || 4096) || 4096)),
     temperature: Math.max(0, Math.min(2, Number(source.temperature ?? base.temperature ?? 0.8) || 0.8)),
+    reasoningEffort: normalizeReasoningEffort(source.reasoningEffort ?? base.reasoningEffort),
+    fallbackModel: normalizeText(source.fallbackModel || base.fallbackModel || DEFAULT_FALLBACK_MODEL, 120) || DEFAULT_FALLBACK_MODEL,
     systemPrompt: normalizeText(source.systemPrompt || base.systemPrompt || DEFAULT_SYSTEM_PROMPT, 12000),
     promptTemplate: normalizeText(source.promptTemplate || base.promptTemplate || DEFAULT_PROMPT_TEMPLATE, 12000),
     stageStyle: normalizeStageStyle(source.stageStyle || base.stageStyle || {}),
     updatedAt: source.updatedAt || base.updatedAt || nowIso(),
   };
+}
+
+// DeepSeek V4: "off" = thinking uit, "low"/"high"/"max" = reasoning_effort.
+function normalizeReasoningEffort(value) {
+  const effort = String(value ?? "low").trim().toLowerCase();
+  return ["off", "low", "high", "max"].includes(effort) ? effort : "low";
+}
+
+function reasoningRequestFields(effort) {
+  if (effort === "off") return { thinking: { type: "disabled" } };
+  return { reasoning_effort: effort };
 }
 
 function normalizeStageStyle(input = {}) {
@@ -415,6 +447,25 @@ function providerUsageEmpty() {
       tokens_totaal: 0,
       kosten_totaal: 0,
     },
+    claude: {
+      tokens_totaal: 0,
+      kosten_totaal: 0,
+    },
+  };
+}
+
+function calculateClaudeCost(model, usage = {}) {
+  const price = CLAUDE_PRICING[model] || CLAUDE_PRICING["claude-opus-5-5"];
+  const uncached = Number(usage.input_tokens || 0) || 0;
+  const cacheRead = Number(usage.cache_read_input_tokens || 0) || 0;
+  const cacheWrite = Number(usage.cache_creation_input_tokens || 0) || 0;
+  const completion = Number(usage.output_tokens || 0) || 0;
+  const cost = (uncached * price.input) + (cacheWrite * price.input * 1.25) + (cacheRead * price.cachedInput) + (completion * price.output);
+  return {
+    input: uncached + cacheRead + cacheWrite,
+    output: completion,
+    cached: cacheRead,
+    cost: Number((cost / 1_000_000).toFixed(6)),
   };
 }
 
@@ -588,6 +639,17 @@ function createOperatorService(options = {}) {
     if (patch.clearDeepSeekApiKey === true) {
       delete next.DEEPSEEK_API_KEY;
     }
+    if (Object.prototype.hasOwnProperty.call(patch, "anthropicApiKey")) {
+      const apiKey = typeof patch.anthropicApiKey === "string" ? patch.anthropicApiKey.trim() : "";
+      if (apiKey) {
+        next.ANTHROPIC_API_KEY = apiKey;
+      } else {
+        delete next.ANTHROPIC_API_KEY;
+      }
+    }
+    if (patch.clearAnthropicApiKey === true) {
+      delete next.ANTHROPIC_API_KEY;
+    }
     next.updatedAt = nowIso();
     await writeJsonObject(operatorSecretsFilePath(), next, 0o600);
     return secretsStatusFrom(next);
@@ -600,15 +662,28 @@ function createOperatorService(options = {}) {
     );
   }
 
+  function anthropicApiKeyFrom(secrets = {}) {
+    return normalizeText(
+      secrets.ANTHROPIC_API_KEY || env.FORYOU_ANTHROPIC_API_KEY || "",
+      1000
+    );
+  }
+
   function secretsStatusFrom(secrets = {}) {
     const localConfigured = !!normalizeText(secrets.DEEPSEEK_API_KEY || "", 1000);
     const envConfigured = !!normalizeText(env.DEEPSEEK_API_KEY || env.FORYOU_DEEPSEEK_API_KEY || "", 1000);
+    const claudeLocal = !!normalizeText(secrets.ANTHROPIC_API_KEY || "", 1000);
+    const claudeEnv = !!normalizeText(env.FORYOU_ANTHROPIC_API_KEY || "", 1000);
     return {
       ok: true,
       provider: "deepseek",
       deepseek: {
         configured: localConfigured || envConfigured,
         source: localConfigured ? "local" : envConfigured ? "env" : null,
+      },
+      claude: {
+        configured: claudeLocal || claudeEnv,
+        source: claudeLocal ? "local" : claudeEnv ? "env" : null,
       },
       updatedAt: secrets.updatedAt || null,
     };
@@ -721,6 +796,26 @@ function createOperatorService(options = {}) {
     return normalizeStageStyle(settings.stageStyle);
   }
 
+  // Een compacte runtime-output van show-control heeft geen catalogus; zonder catalogus
+  // vallen de personagebeschrijvingen uit de prompt. Haal hem dan los op.
+  async function withCatalogForDescriptions(state) {
+    const snapshot = state && state.showRunSnapshot;
+    if (snapshot && snapshot.catalog && Array.isArray(snapshot.catalog.characters) && snapshot.catalog.characters.length) {
+      return state;
+    }
+    if (typeof clients.fetchCatalogSnapshot !== "function") return state;
+    try {
+      const result = await clients.fetchCatalogSnapshot();
+      if (!result || !result.ok || !result.catalog) return state;
+      return {
+        ...state,
+        showRunSnapshot: { ...(snapshot || {}), catalog: result.catalog },
+      };
+    } catch {
+      return state;
+    }
+  }
+
   async function createDraftFromRuntime(runtimeState = null, options = {}) {
     const settings = await readSettings();
     if (draft && draft.source && draft.source.type === "manual-catalog-selection" && !options.force) return draft;
@@ -730,7 +825,7 @@ function createOperatorService(options = {}) {
     if (!runtimeResult || !runtimeResult.ok) {
       throw new Error(`script_agent_runtime_unavailable:${runtimeResult && runtimeResult.error || "unknown"}`);
     }
-    const promptInput = buildPromptInput(runtimeResult.state);
+    const promptInput = buildPromptInput(await withCatalogForDescriptions(runtimeResult.state));
     if (draft && draft.contentHash === promptInput.contentHash && !options.force) {
       const hasVisiblePreparedDraft = !!stageState.draft && !isInteractiveDraftSource(stageState.draftSourceId);
       const currentDraftInfoId = stageState.draftInfo && stageState.draftInfo.promptInputId;
@@ -871,21 +966,84 @@ function createOperatorService(options = {}) {
     return sessionInfo(sessionId);
   }
 
-  function recordUsage(session, priced) {
+  function recordUsage(session, priced, provider = "deepseek") {
     const tokens = Number(priced.input || 0) + Number(priced.output || 0);
     session.tokensTotal += tokens;
     session.costTotal = Number((session.costTotal + Number(priced.cost || 0)).toFixed(6));
-    session.providerUsage.deepseek.tokens_totaal += tokens;
-    session.providerUsage.deepseek.kosten_totaal = Number(
-      (session.providerUsage.deepseek.kosten_totaal + Number(priced.cost || 0)).toFixed(6)
-    );
+    if (!session.providerUsage[provider]) session.providerUsage[provider] = { tokens_totaal: 0, kosten_totaal: 0 };
+    const bucket = session.providerUsage[provider];
+    bucket.tokens_totaal += tokens;
+    bucket.kosten_totaal = Number((bucket.kosten_totaal + Number(priced.cost || 0)).toFixed(6));
+  }
+
+  async function streamDeepSeekText({ apiKey, model, settings, effort, history, userText, onText }) {
+    const response = await fetchImpl("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: settings.systemPrompt },
+          ...history,
+          { role: "user", content: userText },
+        ],
+        max_tokens: settings.maxTokens,
+        temperature: settings.temperature,
+        ...reasoningRequestFields(normalizeReasoningEffort(effort)),
+        stream: true,
+        stream_options: { include_usage: true },
+      }),
+    });
+    if (!response.ok) throw await responseError(response, "deepseek_api_error");
+    let usage = {};
+    await readSseStream(response.body, async (data) => {
+      if (data.error) {
+        const message = data.error && data.error.message ? data.error.message : "deepseek_stream_error";
+        throw new Error(message);
+      }
+      if (data.usage) usage = { ...usage, ...data.usage };
+      const choices = Array.isArray(data.choices) ? data.choices : [];
+      for (const choice of choices) {
+        const delta = choice && choice.delta ? choice.delta.content : "";
+        if (delta) onText(String(delta));
+      }
+    });
+    return { priced: calculateDeepSeekCost(model, usage), stopReason: "end_turn" };
+  }
+
+  async function streamClaudeText({ apiKey, model, settings, effort, history, userText, onText }) {
+    const client = new Anthropic({ apiKey, baseURL: "https://api.anthropic.com" });
+    // Claude wil afwisselend user/assistant, beginnend met user, zonder lege berichten.
+    const messages = [...history, { role: "user", content: userText }]
+      .filter((message) => message.content);
+    while (messages.length && messages[0].role !== "user") messages.shift();
+    const stream = client.messages.stream({
+      model,
+      max_tokens: Math.max(CLAUDE_MAX_TOKENS, settings.maxTokens),
+      system: settings.systemPrompt,
+      output_config: { effort: claudeEffort(effort) },
+      messages,
+    });
+    for await (const event of stream) {
+      if (event.type === "content_block_delta" && event.delta && event.delta.type === "text_delta") {
+        onText(String(event.delta.text || ""));
+      }
+    }
+    const final = await stream.finalMessage();
+    return { priced: calculateClaudeCost(model, final.usage || {}), stopReason: final.stop_reason };
   }
 
   async function streamChat(body = {}, emit = () => {}) {
     const settings = await readSettings();
     const secrets = await readSecrets();
-    const apiKey = deepSeekApiKeyFrom(secrets);
-    if (!apiKey) throw new Error("deepseek_api_key_missing");
+    const deepSeekKey = deepSeekApiKeyFrom(secrets);
+    const anthropicKey = anthropicApiKeyFrom(secrets);
+    const wantsClaude = isClaudeModel(settings.model);
+    if (!wantsClaude && !deepSeekKey) throw new Error("deepseek_api_key_missing");
+    if (wantsClaude && !anthropicKey && !deepSeekKey) throw new Error("anthropic_api_key_missing");
     if (typeof fetchImpl !== "function") throw new Error("fetch_unavailable");
     const sessionId = normalizeSessionId(body.sessionId || body.sessie_id || stageState.sessionId);
     const session = getSession(sessionId);
@@ -904,6 +1062,11 @@ function createOperatorService(options = {}) {
     if (!userText) throw new Error("script_agent_operator_message_required");
     if (!promptInput) throw new Error("script_agent_operator_prompt_input_missing");
 
+    // Eerste keus; valt terug op DeepSeek als Claude weigert, faalt of geen sleutel heeft.
+    let provider = wantsClaude && anthropicKey ? "claude" : "deepseek";
+    let model = wantsClaude && !anthropicKey ? settings.fallbackModel : settings.model;
+    let fallback = wantsClaude && !anthropicKey ? "anthropic_api_key_missing" : null;
+
     const assistantId = `assistant_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     const userMessage = {
       id: `user_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
@@ -916,8 +1079,8 @@ function createOperatorService(options = {}) {
       role: "assistant",
       content: "",
       streaming: true,
-      provider: "deepseek",
-      model: settings.model,
+      provider,
+      model,
       at: nowIso(),
     };
     stageState.sessionId = sessionId;
@@ -927,8 +1090,8 @@ function createOperatorService(options = {}) {
       promptInputId: promptInput.promptInputId,
       situationId: promptInput.situation.situationId,
       startedAt: assistantMessage.at,
-      provider: "deepseek",
-      model: settings.model,
+      provider,
+      model,
     };
     stageState.draft = "";
     stageState.draftSourceId = normalizeSourceId(body.sourceId || "submit");
@@ -938,61 +1101,61 @@ function createOperatorService(options = {}) {
     stageState.messages = stageState.messages.slice(-MAX_STAGE_MESSAGES);
     stageState.updatedAt = nowIso();
     emitStage("chat_started");
-    emit({ type: "start", assistantId, provider: "deepseek", model: settings.model });
+    emit({ type: "start", assistantId, provider, model });
 
-    const messages = [
-      { role: "system", content: settings.systemPrompt },
-      ...session.messages.slice(-8).map((message) => ({
-        role: message.role === "assistant" ? "assistant" : "user",
-        content: normalizeText(message.content, 12000),
-      })),
-      { role: "user", content: userText },
-    ];
+    const history = session.messages.slice(-8).map((message) => ({
+      role: message.role === "assistant" ? "assistant" : "user",
+      content: normalizeText(message.content, 12000),
+    }));
     let fullText = "";
-    let usage = {};
-    try {
-      const response = await fetchImpl("https://api.deepseek.com/chat/completions", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: settings.model,
-          messages,
-          max_tokens: settings.maxTokens,
-          temperature: settings.temperature,
-          stream: true,
-          stream_options: { include_usage: true },
-        }),
+    const publish = (delta, replace = false) => {
+      fullText = replace ? delta : fullText + delta;
+      assistantMessage.content = fullText;
+      stageState.updatedAt = nowIso();
+      emitter.emit("stage", {
+        type: "operator_stage_delta",
+        assistantId,
+        text: delta,
+        fullText,
+        updatedAt: stageState.updatedAt,
       });
-      if (!response.ok) throw await responseError(response, "deepseek_api_error");
+      emit({ type: "delta", assistantId, text: delta, fullText });
+    };
+    const runDeepSeek = (deepSeekModel, effort) => streamDeepSeekText({
+      apiKey: deepSeekKey, model: deepSeekModel, settings, effort, history, userText, onText: (text) => publish(text),
+    });
 
-      await readSseStream(response.body, async (data) => {
-        if (data.error) {
-          const message = data.error && data.error.message ? data.error.message : "deepseek_stream_error";
-          throw new Error(message);
-        }
-        if (data.usage) usage = { ...usage, ...data.usage };
-        const choices = Array.isArray(data.choices) ? data.choices : [];
-        for (const choice of choices) {
-          const delta = choice && choice.delta ? choice.delta.content : "";
-          if (!delta) continue;
-          fullText += String(delta);
-          assistantMessage.content = fullText;
-          stageState.updatedAt = nowIso();
-          emitter.emit("stage", {
-            type: "operator_stage_delta",
-            assistantId,
-            text: String(delta),
-            fullText,
-            updatedAt: stageState.updatedAt,
+    let result;
+    try {
+      if (provider === "claude") {
+        let claudeError = null;
+        try {
+          result = await streamClaudeText({
+            apiKey: anthropicKey, model, settings, effort: settings.reasoningEffort, history, userText, onText: (text) => publish(text),
           });
-          emit({ type: "delta", assistantId, text: String(delta), fullText });
+        } catch (err) {
+          claudeError = err;
         }
-      });
+        const refused = result && result.stopReason === "refusal";
+        if ((claudeError || refused) && deepSeekKey) {
+          if (result) recordUsage(session, result.priced, "claude");
+          fallback = refused ? "claude_refusal" : `claude_error: ${normalizeText(claudeError && claudeError.message, 200)}`;
+          provider = "deepseek";
+          model = settings.fallbackModel;
+          assistantMessage.provider = provider;
+          assistantMessage.model = model;
+          if (stageState.active) Object.assign(stageState.active, { provider, model });
+          publish("", true);
+          emit({ type: "fallback", assistantId, provider, model, reason: fallback });
+          result = await runDeepSeek(model, "off");
+        } else if (claudeError) {
+          throw claudeError;
+        }
+      } else {
+        result = await runDeepSeek(model, wantsClaude ? "off" : settings.reasoningEffort);
+      }
     } catch (err) {
-      const message = err && err.message ? String(err.message) : "deepseek_stream_error";
+      const message = err && err.message ? String(err.message) : `${provider}_stream_error`;
       assistantMessage.streaming = false;
       assistantMessage.error = normalizeText(message, 300);
       stageState.streaming = false;
@@ -1008,21 +1171,23 @@ function createOperatorService(options = {}) {
       throw err;
     }
 
-    const priced = calculateDeepSeekCost(settings.model, usage);
-    recordUsage(session, priced);
+    const priced = result.priced;
+    recordUsage(session, priced, provider);
     session.messages.push({ role: "user", content: userText, at: userMessage.at });
     session.messages.push({ role: "assistant", content: fullText, at: nowIso() });
     assistantMessage.streaming = false;
+    const bucket = session.providerUsage[provider];
     assistantMessage.meta = {
-      provider: "deepseek",
-      model: settings.model,
+      provider,
+      model,
+      fallback,
       tokens_input: priced.input,
       tokens_output: priced.output,
       cached_tokens: priced.cached,
       kosten_dollar: priced.cost,
       provider_usage: cloneJson(session.providerUsage),
-      provider_tokens_totaal: session.providerUsage.deepseek.tokens_totaal,
-      provider_kosten_totaal: session.providerUsage.deepseek.kosten_totaal,
+      provider_tokens_totaal: bucket.tokens_totaal,
+      provider_kosten_totaal: bucket.kosten_totaal,
       sessie_tokens_totaal: session.tokensTotal,
       sessie_kosten_totaal: Number(Number(session.costTotal || 0).toFixed(4)),
       turn_count: Math.floor(session.messages.length / 2),
@@ -1036,8 +1201,6 @@ function createOperatorService(options = {}) {
     const done = {
       type: "done",
       assistantId,
-      provider: "deepseek",
-      model: settings.model,
       text: fullText,
       promptInputId: promptInput.promptInputId,
       scriptOutput,
