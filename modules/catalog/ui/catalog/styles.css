@@ -1163,3 +1163,22 @@ audio {
   max-height: 180px;
   border-radius: var(--fy-radius);
 }
+
+/* Geluidsniveaus */
+.levelInfo { font-size: 13px; }
+.levelVerdict { display: inline-block; padding: 1px 6px; border-radius: 999px; font-weight: 600; font-size: 12px; background: var(--fy-line); }
+.levelVerdict.is-te-hard { background: #ffd9d9; color: #8a1010; }
+.levelVerdict.is-te-zacht { background: #fff0c2; color: #6b4e00; }
+.levelVerdict.is-ok { background: #d8f5df; color: #0f5a26; }
+.levelProposal { display: grid; gap: 4px; }
+.levelProposal .levelTake { justify-self: start; }
+.levelNotes { margin: 0; padding-left: 18px; }
+.levelsScroll { overflow-x: auto; }
+.levelsTable { border-collapse: collapse; width: 100%; font-size: 13px; }
+.levelsTable th, .levelsTable td { padding: 4px 6px; border-bottom: 1px solid var(--fy-line); text-align: left; vertical-align: middle; }
+.levelsTable .levelInput { width: 72px; }
+.levelsTable .levelInput.is-dirty { outline: 2px solid #ff2fa0; }
+.levelsTable .levelPlay { min-width: 36px; padding: 4px 8px; }
+.levelsTable .levelPlay.is-playing { background: #ff2fa0; color: #fff; }
+.levelsTable .levelTake { padding: 2px 8px; font-size: 12px; }
+.levelInfoCell { white-space: nowrap; }

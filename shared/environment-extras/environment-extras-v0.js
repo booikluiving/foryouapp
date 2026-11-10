@@ -60,12 +60,22 @@ function normalizeSound(input) {
   };
 }
 
+// Niveau van het sfeergeluid (soundscape) van de omgeving: 0-1, TD zet het als
+// volume op prepared_soundscape. Harder dan het bestand kan niet.
+function normalizeSfeer(input) {
+  const source = input && typeof input === "object" ? input : {};
+  return {
+    volume: clampNumber(source.volume, 0, 1, 1),
+  };
+}
+
 function normalizeEnvironmentExtras(input) {
   const source = input && typeof input === "object" ? input : {};
   return {
     schemaVersion: ENVIRONMENT_EXTRAS_SCHEMA_VERSION,
     shot: normalizeShot(source.shot),
     geluid: normalizeSound(source.geluid),
+    sfeer: normalizeSfeer(source.sfeer),
   };
 }
 
@@ -96,6 +106,7 @@ module.exports = {
   describeAction,
   isEmptyExtra,
   normalizeEnvironmentExtras,
+  normalizeSfeer,
   normalizeShot,
   normalizeSound,
 };

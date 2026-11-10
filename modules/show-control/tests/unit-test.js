@@ -218,6 +218,7 @@ async function main() {
   assert.equal(enrichedPayload.backgroundAsset.filePath, "/tmp/foryou-hero.jpg");
   assert.equal(enrichedPayload.soundscapeAsset.filePath, "/tmp/foryou-room.mp3");
   assert.equal(enrichedPayload.soundscapeFilePath, "/tmp/foryou-room.mp3");
+  assert.equal(enrichedPayload.soundscapeAsset.volume, 1);
   assert.equal(enrichedPayload.fxAssets.length, 1);
   assert.deepEqual(enrichedPayload.fxFilePaths, ["/tmp/foryou-output.png"]);
   assert.equal(enrichedPayload.assetFilePaths.background, "/tmp/foryou-hero.jpg");
@@ -227,6 +228,7 @@ async function main() {
   assert.equal(enrichedPayload.environmentLighting.presetId, "festival-color");
   assert.equal(enrichedPayload.environmentLighting.fixtures.lamp1.saturation, 170);
   const liveCatalog = {
+    environments: [{ id: "environment:assets", extras: { sfeer: { volume: 0.5 } } }],
     mediaAssets: [
       {
         id: "media-asset:environment:assets:background:hero",
@@ -288,6 +290,8 @@ async function main() {
   assert.equal(livePayload.backgroundAsset.assetId, "media-asset:environment:assets:background:festival-jpg");
   assert.equal(livePayload.backgroundAsset.filePath, "/tmp/foryou-festival.jpg");
   assert.equal(livePayload.filePath, "/tmp/foryou-festival.jpg");
+  assert.equal(livePayload.soundscapeAsset.volume, 0.5);
+  assert.equal(livePayload.environmentAssets.soundscape.volume, 0.5);
   assert.deepEqual(livePayload.fxFilePaths, ["/tmp/foryou-live-output.png"]);
   assert.equal(livePayload.environmentLighting.mode, "custom");
   assert.equal(livePayload.environmentLighting.fixtures.lamp2.intensity, 122);
