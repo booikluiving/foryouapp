@@ -36,3 +36,8 @@ modules/catalog/media/**
 !modules/catalog/media/**/.gitkeep
 !modules/catalog/media/README.md
 modules/runtime/.tmp-ui-db/
+
+# Greenscreen in TouchDesigner: status wordt doorlopend herschreven; de modelgewichten
+# blijven lokaal (model van derden, wordt opnieuw gemaakt vanuit de greenscreen-bron).
+show/greenscreen/status/
+show/greenscreen/models/*.mlpackage/
