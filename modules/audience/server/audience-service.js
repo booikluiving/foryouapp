@@ -24,6 +24,7 @@ const {
   CROWD_MODE_PRESETS,
   ChatSimulator,
 } = require("../simulation/chat-simulator");
+const { createWordFilter } = require("./word-filter");
 
 const SERVICE_VERSION = "v2-audience.0";
 const ACCESS_COOKIE = "fy_audience_access";
@@ -154,6 +155,20 @@ function sanitizeText(input) {
   return text.slice(0, 140);
 }
 
+function normalizePublicJoinBase(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return "";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
 function buildClientKey(ip, clientTag) {
   return `${normalizeIp(ip)}|${sanitizeClientTag(clientTag)}`;
 }
@@ -242,6 +257,10 @@ function serializeCookie(name, value, options = {}) {
 function isHttpsRequest(req) {
   if (req && req.secure) return true;
   return String(req && req.headers && req.headers["x-forwarded-proto"] || "").toLowerCase().includes("https");
+}
+
+function isPublicRequest(req) {
+  return !!(req && req.fyPublic === true);
 }
 
 function isLoopbackIp(ip) {
@@ -349,6 +368,11 @@ class AudienceService extends EventEmitter {
       sendScoreFeedToRuntime,
     };
     this.port = Number(options.port || process.env.AUDIENCE_PORT || process.env.PORT || 3026);
+    // Publieke join-link (bv. https://www.foryouniverse.nl/live). Leeg = QR wijst naar het LAN-adres.
+    this.publicJoinBase = normalizePublicJoinBase(
+      options.publicJoinBase !== undefined ? options.publicJoinBase : process.env.AUDIENCE_PUBLIC_JOIN_URL
+    );
+    this.wordFilter = options.wordFilter || createWordFilter({ watch: options.watchWordFilter !== false });
     this.startedAt = new Date();
     this.serverInstanceId = `audience-${this.startedAt.getTime().toString(36)}-${crypto.randomBytes(3).toString("hex")}`;
     this.nextClientId = 1;
@@ -592,13 +616,17 @@ class AudienceService extends EventEmitter {
   buildJoinPayload(req, tokenInfo) {
     if (!tokenInfo || !tokenInfo.token) return null;
     const token = normalizeToken(tokenInfo.token);
+    const lanJoinUrl = `${buildBaseUrl(req, this.port)}/join?token=${encodeURIComponent(token)}`;
+    const publicJoinUrl = this.publicJoinBase ? `${this.publicJoinBase}?t=${encodeURIComponent(token)}` : "";
     return {
       sessionId: Number(tokenInfo.sessionId || 0),
       token,
       expiresAt: tokenInfo.expiresAt || null,
       ttlMinutes: Number(tokenInfo.ttlMinutes || JOIN_TOKEN_TTL_MINUTES),
       joinPath: `/join?token=${encodeURIComponent(token)}`,
-      joinUrl: `${buildBaseUrl(req, this.port)}/join?token=${encodeURIComponent(token)}`,
+      joinUrl: publicJoinUrl || lanJoinUrl,
+      lanJoinUrl,
+      publicJoinUrl,
     };
   }
 
@@ -652,16 +680,17 @@ class AudienceService extends EventEmitter {
     if (!joined || Number(joined.sessionId || 0) !== active.id) {
       return { ok: false, status: 410, error: "join_token_invalid" };
     }
-    const ip = normalizeIp(req.socket && req.socket.remoteAddress || "unknown");
-    const ua = String(req.headers["user-agent"] || "unknown");
+    const isPublic = isPublicRequest(req);
+    const ip = isPublic ? "" : normalizeIp(req.socket && req.socket.remoteAddress || "unknown");
+    const ua = isPublic ? "" : String(req.headers["user-agent"] || "unknown");
     this.store.touchJoinToken(joined.id);
-    this.store.insertJoinEvent({ sessionId: active.id, token, ip, userAgent: ua, source: "join_qr" });
+    this.store.insertJoinEvent({ sessionId: active.id, token, ip, userAgent: ua, source: isPublic ? "join_public" : "join_qr" });
     const grant = this.store.issueAccessGrant({
       sessionId: active.id,
       token,
       ip,
       userAgent: ua,
-      source: "join_qr",
+      source: isPublic ? "join_public" : "join_qr",
       maxExpiresAt: joined.expiresAt,
       ttlMinutes: ACCESS_TTL_MINUTES,
     });
@@ -701,7 +730,7 @@ class AudienceService extends EventEmitter {
     if (!grant || Number(grant.sessionId || 0) !== active.id) {
       return { ok: false, reason: "session_join_required" };
     }
-    this.store.touchAccessGrant(grant.id, { ip: normalizeIp(ip || "") });
+    this.store.touchAccessGrant(grant.id, { ip: isPublicRequest(req) ? "" : normalizeIp(ip || "") });
     return { ok: true, reason: "grant", grant, session: active };
   }
 
@@ -715,9 +744,22 @@ class AudienceService extends EventEmitter {
     }
   }
 
+  // Adres waarmee een client in moderatie en opslag wordt aangeduid.
+  // Publieke verzoeken (via de tunnel) hebben voor iedereen hetzelfde socketadres; daarom krijgen ze
+  // een schuilnaam per toegangspas. Er wordt geen IP-adres of apparaat opgeslagen.
+  requestAddress(req) {
+    if (isPublicRequest(req)) {
+      const cookies = parseCookieHeader(req && req.headers ? req.headers.cookie : "");
+      const grantId = String(cookies[ACCESS_COOKIE] || "");
+      if (!grantId) return "pub-nieuw";
+      return `pub-${crypto.createHash("sha256").update(grantId).digest("hex").slice(0, 12)}`;
+    }
+    return normalizeIp(req && req.socket && req.socket.remoteAddress || "unknown");
+  }
+
   createClientMeta(req, access) {
     const clientId = this.nextClientId++;
-    const ip = normalizeIp(req.socket && req.socket.remoteAddress || "unknown");
+    const ip = this.requestAddress(req);
     const clientTag = "anon";
     const session = access && access.session ? access.session : this.getActiveSession();
     return {
@@ -725,7 +767,7 @@ class AudienceService extends EventEmitter {
       sessionPublicId: session ? session.publicId : "",
       clientId,
       ip,
-      ua: String(req.headers["user-agent"] || "unknown"),
+      ua: isPublicRequest(req) ? "" : String(req.headers["user-agent"] || "unknown"),
       connectedAt: nowIso(),
       clientTag,
       name: "Anoniem",
@@ -750,6 +792,7 @@ class AudienceService extends EventEmitter {
     if (!isSimulatorBotIdentity(meta, nextName, meta.clientTag)) {
       if (containsLink(nextName)) return { ok: false, error: { code: "name_link_blocked", message: "Gebruikersnaam mag geen links bevatten." } };
       if (containsPhoneNumber(nextName)) return { ok: false, error: { code: "name_phone_blocked", message: "Gebruikersnaam mag geen telefoonnummers bevatten." } };
+      if (this.wordFilter.match(nextName, { allowSubword: true })) return { ok: false, error: { code: "name_word_blocked", message: "Kies een andere naam." } };
     }
     meta.name = nextName;
     meta.clientKey = buildClientKey(meta.ip, meta.clientTag);
@@ -1219,6 +1262,21 @@ class AudienceService extends EventEmitter {
       if (containsPhoneNumber(cleanName)) return { error: { code: "name_phone_blocked", message: "Gebruikersnaam mag geen telefoonnummers bevatten." } };
       if (containsLink(cleanText)) return { error: { code: "link_blocked", message: "Bericht verwijderd: links zijn niet toegestaan." } };
       if (containsPhoneNumber(cleanText)) return { error: { code: "phone_blocked", message: "Bericht verwijderd: telefoonnummers zijn niet toegestaan." } };
+      if (this.wordFilter.match(cleanName, { allowSubword: true })) return { error: { code: "name_word_blocked", message: "Kies een andere naam." } };
+      if (this.wordFilter.match(cleanText)) {
+        this.store.insertChatMessage({
+          sessionId: session.id,
+          clientId: meta.clientId,
+          clientKey: meta.clientKey,
+          ip: meta.ip,
+          name: cleanName,
+          text: cleanText,
+          status: "blocked_word",
+          detail: "word_filter",
+          isBot,
+        });
+        return { error: { code: "moderation_blocked", message: "Bericht verwijderd vanwege ongewenst taalgebruik." } };
+      }
     }
     const messageSlowdownMs = this.getAdminSettings().messageSlowdownMs;
     if (!skipRateLimit && !isBot && !this.allowRate(this.messageRate, meta.clientKey, messageSlowdownMs)) {
@@ -1665,6 +1723,7 @@ class AudienceService extends EventEmitter {
 
 module.exports = {
   ACCESS_COOKIE,
+  isPublicRequest,
   AudienceService,
   SERVICE_VERSION,
   buildClientKey,

@@ -116,7 +116,10 @@ function matchesScope(meta, scope) {
   return normalizeIp(meta.ip || "") === String(scope.ip || "");
 }
 
-function attachAudienceRealtime(server, service) {
+function attachAudienceRealtime(server, service, options = {}) {
+  // publicMode: deze server hangt achter de publieke tunnel. Verzoeken worden als publiek gemarkeerd,
+  // zodat de service geen IP-adres of apparaat opslaat en per toegangspas modereert.
+  const publicMode = options.publicMode === true;
   const chatClients = new Set();
   const wss = new WebSocket.Server({
     server,
@@ -188,7 +191,8 @@ function attachAudienceRealtime(server, service) {
   }
 
   function handleConnection(client, req) {
-    const ip = normalizeIp(req.socket && req.socket.remoteAddress || "unknown");
+    if (publicMode) req.fyPublic = true;
+    const ip = service.requestAddress(req);
     const access = service.ensureSessionAccessForRequest(req, ip);
     if (!access.ok) {
       const inactive = access.reason === "session_inactive";
