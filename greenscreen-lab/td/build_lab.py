@@ -64,8 +64,9 @@ _start = os.path.join(OUT, "startbron.txt")
 if os.path.exists(_start):
     p.val = open(_start).read().strip()
 p = page.appendMenu("Weergave", label="Weergave")[0]
-p.menuNames = ["rvm", "combi", "vergelijking"]
-p.menuLabels = ["Alleen RVM (groot)", "GPU-key + RVM (groot)", "Vergelijking (6 beelden, zwaar)"]
+p.menuNames = ["rvm", "combi", "vergelijking", "component", "tox"]
+p.menuLabels = ["Alleen RVM (groot)", "GPU-key + RVM (groot)", "Vergelijking (6 beelden, zwaar)",
+                "Component FY Greenscreen (groot)", "Component uit .tox (groot)"]
 p.val = "rvm"
 p = page.appendMenu("Visionkwaliteit", label="Vision-kwaliteit")[0]
 p.menuNames = ["Fast", "Balanced", "Accurate"]
@@ -239,10 +240,34 @@ raster.nodeX, raster.nodeY = 1000, 225
 solo_bg = lab.create(constantTOP, "solo_achtergrond")
 setp(solo_bg, outputresolution="custom", resolutionw=1920, resolutionh=1080, colorr=0.0, colorg=0.6, colorb=0.2)
 solo_bg.nodeX, solo_bg.nodeY = 800, -300
+# --- de component zoals hij in het show-TD komt, en dezelfde component geladen uit de .tox ---
+SHOW_ASSETS = os.path.expanduser("~/ForYou/main/show/greenscreen")
+TOX = os.path.join(SHOW_ASSETS, "fy_greenscreen.tox")
+exec(open(os.path.join(LAB_DIR, "td", "fy_greenscreen.py")).read(), globals())
+gs = build(lab, "fy_greenscreen", SHOW_ASSETS, SHADERS, x=400, y=-700)
+gs.inputConnectors[0].connect(bron)
+gs.par.Actief.expr = "parent().par.Weergave.eval() == 'component'"
+gst = lab.create(baseCOMP, "fy_greenscreen_tox")
+gst.nodeX, gst.nodeY = 400, -900
+
+
+def _tox_aansluiten():
+    t = op("/project1/lab/fy_greenscreen_tox")
+    if t is not None and t.inputConnectors:
+        t.inputConnectors[0].connect(op("/project1/lab/bron"))
+        op("/project1/lab/solo_keuze").inputConnectors[3].connect(t.outputConnectors[0])
+
+
+if os.path.exists(TOX):
+    setp(gst, externaltox=TOX, enableexternaltox=True)
+    gst.par.reinitnet.pulse()
+
 solo_keuze = lab.create(switchTOP, "solo_keuze")
 solo_keuze.inputConnectors[0].connect(rvm)
 solo_keuze.inputConnectors[1].connect(gk_ai)
-setp(solo_keuze, index="=1 if parent().par.Weergave.eval() == 'combi' else 0")
+solo_keuze.inputConnectors[2].connect(gs.outputConnectors[0])
+run(_tox_aansluiten, delayFrames=10)
+setp(solo_keuze, index="={'combi': 1, 'component': 2, 'tox': 3}.get(parent().par.Weergave.eval(), 0)")
 solo_keuze.nodeX, solo_keuze.nodeY = 650, -150
 solo_fit = lab.create(fitTOP, "solo_fit")
 solo_fit.inputConnectors[0].connect(solo_keuze)
@@ -353,6 +378,20 @@ def _control(lab):
             tmp = os.path.join(OUT, "bron_tmp.png")
             lab.op("bron").save(tmp)
             os.replace(tmp, os.path.join(OUT, "bron_" + lab.par.Bron.eval() + ".png"))
+    if cfg.get("export") and cfg.get("export") != me.fetch("export", None):
+        me.store("export", cfg.get("export"))
+        tox = os.path.expanduser("~/ForYou/main/show/greenscreen/fy_greenscreen.tox")
+        g = lab.op("fy_greenscreen")
+        _e = g.par.Actief.expr
+        g.par.Actief.expr = ""
+        g.par.Actief.val = True
+        g.save(tox)
+        g.par.Actief.expr = _e
+        t = lab.op("fy_greenscreen_tox")
+        t.par.externaltox = tox
+        t.par.enableexternaltox = True
+        t.par.reinitnet.pulse()
+        run("op('/project1/lab/fy_greenscreen_tox').inputConnectors[0].connect(op('/project1/lab/bron')); op('/project1/lab/solo_keuze').inputConnectors[3].connect(op('/project1/lab/fy_greenscreen_tox').outputConnectors[0])", delayFrames=10)
     if cfg.get("cookrate"):
         project.cookRate = cfg["cookrate"]
 
@@ -390,6 +429,10 @@ def onFrameStart(frame):
         "rvm_dropped": _chan(rvm, "dropped"),
         "weergave": lab.par.Weergave.eval(),
         "key_vast": bool(lab.par.Keyvast.eval()),
+        "tox_rvm_infer": _chan(lab.op("fy_greenscreen_tox/info_rvm"), "infer_ms"),
+        "tox_rvm_processed": _chan(lab.op("fy_greenscreen_tox/info_rvm"), "processed"),
+        "tox_kal_processed": _chan(lab.op("fy_greenscreen_tox/info_kalibratie"), "processed"),
+        "tox_fouten": {o.name: (o.errors() or o.warnings()) for o in (lab.op("fy_greenscreen_tox").children if lab.op("fy_greenscreen_tox") else []) if (o.errors() or o.warnings())},
         "calib_resets": _chan(lab.op("info_calib"), "resets"),
         "teleprompters": bool(lab.par.Teleprompters.eval()),
         "rvm_actief": bool(lab.op("route3_rvm").par.Active.eval()) if getattr(lab.op("route3_rvm").par, "Active", None) is not None else None,
@@ -443,7 +486,7 @@ def _na_laden(poging=0):
     for _o in (v, ck):
         _o.cook(force=True)
     setp(v, Quality="=parent().par.Visionkwaliteit.menuIndex", Output="=min(parent().par.Uitvoer.menuIndex, 1)")
-    setp(r, Output=0, Model=model_expr)
+    setp(r, Output=0, Model=model_expr, Active="=parent().par.Weergave.eval() in ('rvm', 'combi', 'vergelijking')")
     setp(ck, Adapt=0.15, Active="=parent().par.Weergave.eval() != 'rvm'", Lock="=parent().par.Keyvast")
     setp(v, Active="=parent().par.Weergave.eval() == 'vergelijking'")
     log("na laden, poging", poging, [(p.name, p.eval()) for p in v.pars() if p.name in ("Quality", "Output", "Active")])
