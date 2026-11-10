@@ -63,6 +63,10 @@ p.menuLabels = [b[1] for b in BRONNEN] + [c[1] for c in CAMS] + ["Live (Syphon f
 _start = os.path.join(OUT, "startbron.txt")
 if os.path.exists(_start):
     p.val = open(_start).read().strip()
+p = page.appendMenu("Weergave", label="Weergave")[0]
+p.menuNames = ["rvm", "vergelijking"]
+p.menuLabels = ["Alleen RVM (groot)", "Vergelijking (6 beelden, zwaar)"]
+p.val = "rvm"
 p = page.appendMenu("Visionkwaliteit", label="Vision-kwaliteit")[0]
 p.menuNames = ["Fast", "Balanced", "Accurate"]
 p.menuLabels = ["Fast", "Balanced", "Accurate"]
@@ -70,6 +74,38 @@ p.val = "Balanced"
 p = page.appendMenu("Uitvoer", label="Uitvoer")[0]
 p.menuNames = ["Cutout", "Matte", "Debug"]
 p.menuLabels = ["Over achtergrond", "Alleen matte", "Debug (auto-key: blauw key, groen AI, rood rand)"]
+
+gp = lab.appendCustomPage("GPU-key")
+for _n, _l, _d, _mx in (("Keyonder", "Key onder (voorgrond)", 0.25, 1), ("Keyboven", "Key boven (papier)", 0.70, 1),
+                       ("Tint", "Tint-tolerantie", 0.06, 0.3), ("Despill", "Despill", 0.8, 1),
+                       ("Aifill", "AI vult vanaf", 0.85, 1), ("Dichten", "Gaatjes dichten (straal px)", 2, 6),
+                       ("Randlinks", "Rand links", 0, 0.5), ("Randrechts", "Rand rechts", 0, 0.5),
+                       ("Randboven", "Rand boven", 0, 0.5), ("Randonder", "Rand onder", 0, 0.5)):
+    _p = gp.appendFloat(_n, label=_l)[0]
+    _p.default = _d
+    _p.val = _d
+    _p.normMin, _p.normMax = 0, _mx
+SHADERS = os.path.join(LAB_DIR, "td", "shaders")
+
+
+def glsl(name, shader, inputs, x, y, uniforms=()):
+    dat = lab.create(textDAT, name + "_code")
+    setp(dat, file=os.path.join(SHADERS, shader), syncfile=True)
+    dat.nodeX, dat.nodeY = x, y - 120
+    g = lab.create(glslTOP, name)
+    setp(g, pixeldat=dat.path)
+    for i, src in enumerate(inputs):
+        g.inputConnectors[i].connect(src)
+    for i, (uname, vals) in enumerate(uniforms):
+        setp(g, **{"vec%dname" % i: uname})
+        for comp, v in zip("xyzw", vals):
+            setp(g, **{"vec%dvalue%s" % (i, comp): v})
+    g.nodeX, g.nodeY = x, y
+    return g
+
+
+# de camera's leveren nu 24p: het lab laten meelopen voorkomt herhaalde/overgeslagen frames
+project.cookRate = 24
 
 # --- bronnen ---
 ins = []
@@ -104,10 +140,16 @@ for i, m in enumerate(ins):
 setp(bron, index="=parent().par.Bron.menuIndex")
 bron.nodeX, bron.nodeY = -600, 150
 
+# CPU-plug-ins krijgen een 8-bit kopie: de download van 10-bit (RGB10A2) naar BGRA8 gaf verkeerde kleuren
+bron8 = lab.create(resolutionTOP, "bron8")
+bron8.inputConnectors[0].connect(bron)
+setp(bron8, outputresolution="useinput", format="rgba8fixed")
+bron8.nodeX, bron8.nodeY = -450, 150
+
 # --- route 1: Apple Vision C++ TOP ---
 vision = lab.create(cplusplusTOP, "route1_vision")
 setp(vision, plugin=plugin("FYVisionMatte"))
-vision.inputConnectors[0].connect(bron)
+vision.inputConnectors[0].connect(bron8)
 vision.nodeX, vision.nodeY = -350, 300
 
 # --- standaard keyer: Chroma Key TOP van TD, vast blauw bereik (zoals de show-kalibratie, hue ± 210-240) ---
@@ -117,21 +159,32 @@ std.nodeX, std.nodeY = -350, 150
 setp(std, huemin=205, huemax=245, satmin=0.25, satmax=1, valmin=0.12, valmax=1, hsoftlow=10, hsofthigh=10,
      ssoftlow=0.1, vsoftlow=0.08, invert=True)
 
-# --- auto-key (FY) en auto-key + RVM ---
-autokey = lab.create(cplusplusTOP, "autokey")
-setp(autokey, plugin=plugin("FYKeyMatte"))
-autokey.inputConnectors[0].connect(bron)
-autokey.nodeX, autokey.nodeY = -350, -150
-combi = lab.create(cplusplusTOP, "combi_rvm")
-setp(combi, plugin=plugin("FYKeyMatte"))
-combi.inputConnectors[0].connect(bron)
-combi.nodeX, combi.nodeY = -350, -300
-
 # --- route 3: RVM C++ TOP (CoreML) ---
 rvm = lab.create(cplusplusTOP, "route3_rvm")
 setp(rvm, plugin=plugin("FYRvmMatte"))
-rvm.inputConnectors[0].connect(bron)
+rvm.inputConnectors[0].connect(bron8)
 rvm.nodeX, rvm.nodeY = -350, 0
+
+# --- GPU auto-key: kalibratie op kwart resolutie (C++), key/dichten/samenvoegen in GLSL op volle resolutie ---
+klein = lab.create(resolutionTOP, "gk_klein")
+klein.inputConnectors[0].connect(bron8)
+setp(klein, outputresolution="quarter", format="rgba8fixed")
+log("bron format:", bron.par.format.eval() if hasattr(bron.par, "format") else "?", "klein format menu:", klein.par.format.menuNames[:12])
+klein.nodeX, klein.nodeY = -350, -300
+calib = lab.create(cplusplusTOP, "gk_calib")
+setp(calib, plugin=plugin("FYKeyCalib"))
+calib.inputConnectors[0].connect(klein)
+calib.nodeX, calib.nodeY = -200, -300
+P = "parent().par."
+ga = glsl("gk_alpha", "gk_alpha.glsl", [bron, calib], -50, -300,
+          [("uKey", ["=" + P + "Keyonder", "=" + P + "Keyboven", "=" + P + "Tint", 0])])
+gmax = glsl("gk_dilate", "gk_morph.glsl", [ga], 100, -300, [("uMorph", ["=" + P + "Dichten", 1, 0, 0])])
+gmin = glsl("gk_erode", "gk_morph.glsl", [gmax], 250, -300, [("uMorph", ["=" + P + "Dichten", 0, 0, 0])])
+crop = ("uCrop", ["=" + P + "Randlinks", "=" + P + "Randrechts", "=" + P + "Randboven", "=" + P + "Randonder"])
+gk = glsl("gpu_key", "gk_final.glsl", [bron, gmin, rvm], 400, -300,
+          [("uMix", ["=" + P + "Despill", "=" + P + "Aifill", 0, "=" + P + "Uitvoer.menuIndex"]), crop])
+gk_ai = glsl("gpu_key_rvm", "gk_final.glsl", [bron, gmin, rvm], 400, -450,
+             [("uMix", ["=" + P + "Despill", "=" + P + "Aifill", 1, "=" + P + "Uitvoer.menuIndex"]), crop])
 
 # --- achtergrond, tegels en raster ---
 bg = lab.create(constantTOP, "achtergrond")
@@ -170,8 +223,8 @@ def tegel(name, src, titel, x, y, cutout=True):
 tegels = [
     tegel("t0", bron, "Bron", 100, 600, cutout=False),
     tegel("t1", std, "Standaard key (Chroma Key TOP)", 100, 450),
-    tegel("t2", autokey, "Auto-key (FY)", 100, 300),
-    tegel("t3", combi, "Auto-key + RVM", 100, 150),
+    tegel("t2", gk, "GPU auto-key", 100, 300),
+    tegel("t3", gk_ai, "GPU auto-key + RVM", 100, 150),
     tegel("t4", vision, "Apple Vision", 100, 0),
     tegel("t5", rvm, "RVM", 100, -150),
 ]
@@ -180,10 +233,43 @@ for i, t in enumerate(tegels):
     raster.inputConnectors[i].connect(t)
 setp(raster, align="gridrows", maxcols=3, maxrows=2, outputresolution="custom", resolutionw=3 * TILE_W, resolutionh=2 * TILE_H)
 raster.nodeX, raster.nodeY = 1000, 225
+solo_bg = lab.create(constantTOP, "solo_achtergrond")
+setp(solo_bg, outputresolution="custom", resolutionw=1920, resolutionh=1080, colorr=0.0, colorg=0.6, colorb=0.2)
+solo_bg.nodeX, solo_bg.nodeY = 800, -300
+solo_fit = lab.create(fitTOP, "solo_fit")
+solo_fit.inputConnectors[0].connect(rvm)
+setp(solo_fit, outputresolution="custom", resolutionw=1920, resolutionh=1080, fit="fitbest")
+solo_fit.nodeX, solo_fit.nodeY = 800, -150
+solo = lab.create(overTOP, "solo")
+solo.inputConnectors[0].connect(solo_fit)
+solo.inputConnectors[1].connect(solo_bg)
+solo.nodeX, solo.nodeY = 1000, -150
+weergave = lab.create(switchTOP, "weergave")
+weergave.inputConnectors[0].connect(solo)
+weergave.inputConnectors[1].connect(raster)
+setp(weergave, index="=parent().par.Weergave.menuIndex")
+weergave.nodeX, weergave.nodeY = 1150, 225
 uit = lab.create(nullTOP, "uit")
-uit.inputConnectors[0].connect(raster)
+uit.inputConnectors[0].connect(weergave)
 uit.nodeX, uit.nodeY = 1200, 225
 root.par.opviewer = uit.path if hasattr(root.par, "opviewer") else None
+
+# --- testbeeld naar de drie teleprompters (zelfde DeckLink-uitgangen als het show-TD, 1080p25).
+#     NIET naar het Main TV (videodevout4). Alleen veilig als het show-TD dicht is. ---
+_tp = page.appendToggle("Teleprompters", label="Testbeeld op teleprompters")[0]
+_tp.val = True
+TP = [("teleprompter_1", "V1|||3767264291|||7|||0|||DeckLink 8K Pro (4) - 2"),
+      ("teleprompter_2", "V1|||3767264289|||5|||0|||DeckLink 8K Pro (2) - 2"),
+      ("teleprompter_3", "V1|||3767264290|||6|||0|||DeckLink 8K Pro (3) - 2")]
+tp_fit = lab.create(fitTOP, "teleprompter_fit")
+tp_fit.inputConnectors[0].connect(uit)
+setp(tp_fit, outputresolution="custom", resolutionw=1920, resolutionh=1080, fit="fitbest")
+tp_fit.nodeX, tp_fit.nodeY = 1400, 50
+for _j, (_n, _dev) in enumerate(TP):
+    o = lab.create(videodeviceoutTOP, _n)
+    o.inputConnectors[0].connect(tp_fit)
+    setp(o, driver="blackmagic", device=_dev, signalformat="f1920x1080p-25.00hz", active="=parent().par.Teleprompters")
+    o.nodeX, o.nodeY = 1600, 50 - _j * 120
 
 # --- venster op de hoofdmonitor (regie-Dell), NOOIT op de LG ---
 win = lab.create(windowCOMP, "venster")
@@ -199,7 +285,10 @@ if _mon is not None:
 win.nodeX, win.nodeY = 1400, 225
 
 # --- info en monitor ---
-for o, n in ((vision, "info_vision"), (rvm, "info_rvm"), (autokey, "info_autokey"), (combi, "info_combi")):
+_ci = lab.create(infoCHOP, "cam1_caminfo")
+setp(_ci, op=lab.op("cam1_in").path)
+_ci.nodeX, _ci.nodeY = -1200, -900
+for o, n in ((vision, "info_vision"), (rvm, "info_rvm"), (calib, "info_calib")):
     ic = lab.create(infoCHOP, n)
     setp(ic, op=o.path)
     ic.nodeX, ic.nodeY = o.nodeX, o.nodeY - 80
@@ -218,7 +307,12 @@ def onFrameStart(frame):
     if frame % 90:
         return
     lab = parent()
+    now = time.time()
+    last = me.fetch("last", None)
+    me.store("last", (absTime.frame, now))
+    echte = round((absTime.frame - last[0]) / (now - last[1]), 1) if last else None
     stats = {
+        "echte_fps": echte,
         "tijd": time.strftime("%H:%M:%S"),
         "td_fps": round(float(project.cookRate), 1),
         "td_frame_ms": round(float(lab.op("uit").cookTime or 0), 2),
@@ -227,12 +321,30 @@ def onFrameStart(frame):
         "vision": _vals(lab.op("info_vision")),
         "rvm_cpp": _vals(lab.op("info_rvm")),
         "cams": {k: [lab.op(k + "_in").width, lab.op(k + "_in").height, bool(lab.op(k + "_in").par.active.eval())] for k in ("cam1", "cam2", "cam3")},
-        "autokey": _vals(lab.op("info_autokey")),
-        "combi": _vals(lab.op("info_combi")),
+        "calib": _vals(lab.op("info_calib")),
+        "teleprompters": {n: (lab.op(n).errors() or lab.op(n).warnings() or "ok") for n in ("teleprompter_1", "teleprompter_2", "teleprompter_3")},
+        "probe": {
+            "calib_mid": [round(v, 3) for v in lab.op("gk_calib").sample(u=0.5, v=0.5)],
+            "klein_mid": [round(v, 3) for v in lab.op("gk_klein").sample(u=0.9, v=0.9)],
+            "cam1_info": [(c.name, round(float(c.eval()), 2)) for c in op("/project1/lab/cam1_caminfo").chans() if c.name in ("signal_fps", "capture_fps", "frames_dropped", "frames_repeated", "frames_skipped", "resx", "resy")] if op("/project1/lab/cam1_caminfo") else None,
+            "bron_fmt": [lab.op("bron").pixelFormat, lab.op("gk_klein").pixelFormat, lab.op("cam1_rechtop").pixelFormat],
+            "calib_topright": [round(v, 3) for v in lab.op("gk_calib").sample(u=0.9, v=0.9)],
+            "bron_topright": [round(v, 3) for v in lab.op("bron").sample(u=0.9, v=0.9)],
+            "bron_trui": [round(v, 3) for v in lab.op("bron").sample(u=0.5, v=0.2)],
+            "alpha_topright": [round(v, 3) for v in lab.op("gk_alpha").sample(u=0.9, v=0.9)],
+            "alpha_trui": [round(v, 3) for v in lab.op("gk_alpha").sample(u=0.5, v=0.2)],
+            "uKey": [lab.op("gk_alpha").par.vec0name.eval()] + [round(float(getattr(lab.op("gk_alpha").par, "vec0value" + c).eval()), 3) for c in "xyzw"],
+        },
+        "gpu_ms": {n: [round(float(getattr(lab.op(n), "cookTime", 0) or 0), 3), round(float(getattr(lab.op(n), "gpuCookTime", 0) or 0), 3)]
+                   for n in ("gk_alpha", "gk_dilate", "gk_erode", "gpu_key", "gpu_key_rvm", "std_key")},
         "fouten": {o.name: (o.errors() or "") + (o.warnings() or "") for o in lab.children if (o.errors() or o.warnings())},
         "venster_open": bool(lab.op("venster").isOpen),
         "absTime_fps": round(1.0 / max(absTime.stepSeconds, 1e-6), 1),
     }
+    try:
+        stats["cam1_alle_info"] = [c.name for c in lab.op("cam1_caminfo").chans()]
+    except Exception:
+        pass
     open(os.path.join(OUT, "td_stats.json"), "w").write(json.dumps(stats, indent=1))
     try:
         if lab.par.Bron.eval().startswith("cam"):
@@ -255,17 +367,16 @@ def _na_laden(poging=0):
         return
     v = lab2.op("route1_vision")
     r = lab2.op("route3_rvm")
-    ak = lab2.op("autokey")
-    cb = lab2.op("combi_rvm")
-    if any(getattr(o.par, n, None) is None for o, n in ((v, "Quality"), (r, "Model"), (ak, "Ai"), (cb, "Ai"))) and poging < 40:
+    ck = lab2.op("gk_calib")
+    if any(getattr(o.par, n, None) is None for o, n in ((v, "Quality"), (r, "Model"), (ck, "Adapt"))) and poging < 40:
         run(_na_laden, poging + 1, delayFrames=15)
         return
     model_expr = "=%r if me.inputs[0].width >= me.inputs[0].height else %r" % (
         os.path.join(MODELS, "rvm_1920x1080.mlpackage"), os.path.join(MODELS, "rvm_1080x1920.mlpackage"))
     setp(v, Quality="=parent().par.Visionkwaliteit.menuIndex", Output="=min(parent().par.Uitvoer.menuIndex, 1)")
-    setp(r, Output="=min(parent().par.Uitvoer.menuIndex, 1)", Model=model_expr)
-    setp(ak, Output="=parent().par.Uitvoer.menuIndex", Ai="None")
-    setp(cb, Output="=parent().par.Uitvoer.menuIndex", Ai="Rvm", Model=model_expr)
+    setp(r, Output=0, Model=model_expr)
+    setp(ck, Adapt=0.15, Active="=parent().par.Weergave.eval() == 'vergelijking'")
+    setp(v, Active="=parent().par.Weergave.eval() == 'vergelijking'")
     log("na laden, poging", poging, [(p.name, p.eval()) for p in v.pars() if p.name in ("Quality", "Output", "Active")])
     open(LOG, "a").write("\n".join(_log) + "\n")
 

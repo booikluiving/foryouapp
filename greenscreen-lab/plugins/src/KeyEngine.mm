@@ -89,11 +89,11 @@ public:
 		{
 			const uint8_t* s = in + (size_t)y * rowBytes;
 			uint8_t* k = myKey.data() + (size_t)y * w;
-			float cy = (y + 0.5f) / CELL - 0.5f;
+			float cy = (y + 0.5f) / myCell - 0.5f;
 			for (int x = 0; x < w; ++x)
 			{
 				float b = s[4 * x] / 255.f, g = s[4 * x + 1] / 255.f, r = s[4 * x + 2] / 255.f;
-				float cx = (x + 0.5f) / CELL - 0.5f;
+				float cx = (x + 0.5f) / myCell - 0.5f;
 				float bgLevel = sampleCells(cx, cy, myCells);
 				float ratio = (b - std::max(r, g)) / std::max(bgLevel, 0.02f);
 				float sum = r + g + b;
@@ -176,8 +176,8 @@ public:
 	// Voor de Info CHOP / log: gevonden papierkleur
 	float paperR = 0, paperG = 0, paperB = 0;
 
-private:
-	static constexpr int CELL = 32;
+protected:
+	int myCell = 32;
 
 	float sampleCells(float cx, float cy, const std::vector<float>& cells) const
 	{
@@ -194,7 +194,7 @@ private:
 
 	void calibrate(const uint8_t* in, int w, int h, size_t rowBytes, const EngineParams& p)
 	{
-		const int gw = (w + CELL - 1) / CELL, gh = (h + CELL - 1) / CELL;
+		const int gw = (w + myCell - 1) / myCell, gh = (h + myCell - 1) / myCell;
 		if (gw != myGW || gh != myGH)
 		{
 			myGW = gw;
@@ -242,10 +242,10 @@ private:
 			{
 				tmp.clear();
 				int n = 0;
-				for (int y = cyi * CELL + 2; y < std::min(h, (cyi + 1) * CELL); y += 4)
+				for (int y = cyi * myCell + 2; y < std::min(h, (cyi + 1) * myCell); y += 4)
 				{
 					const uint8_t* s = in + (size_t)y * rowBytes;
-					for (int x = cxi * CELL + 2; x < std::min(w, (cxi + 1) * CELL); x += 4)
+					for (int x = cxi * myCell + 2; x < std::min(w, (cxi + 1) * myCell); x += 4)
 					{
 						n++;
 						float b = s[4 * x] / 255.f, g = s[4 * x + 1] / 255.f, r = s[4 * x + 2] / 255.f;
@@ -311,8 +311,40 @@ private:
 	std::vector<uint8_t> myAi;
 };
 
+// Alleen de kalibratie, voor de GPU-key in TD: verwacht een verkleind beeld (bijv. kwart resolutie)
+// en geeft een klein raster terug: R = blauw-niveau van het papier per vak, G/B = papiertint (r, g chromaticiteit).
+class CalibEngine : public KeyEngine
+{
+public:
+	CalibEngine() { myCell = 8; }
+	bool process(const uint8_t* in, int w, int h, size_t rowBytes,
+	             const EngineParams& p, EngineResult& out, std::string& err) override
+	{
+		calibrate(in, w, h, rowBytes, p);
+		out.width = myGW;
+		out.height = myGH;
+		out.bgra.resize((size_t)myGW * myGH * 4);
+		auto u8 = [](float v) { return (uint8_t)(std::max(0.f, std::min(1.f, v)) * 255.f + 0.5f); };
+		for (int i = 0; i < myGW * myGH; ++i)
+		{
+			out.bgra[4 * i + 0] = u8(myPg);
+			out.bgra[4 * i + 1] = u8(myPr);
+			out.bgra[4 * i + 2] = u8(myCells[i]);
+			out.bgra[4 * i + 3] = 255;
+		}
+		return true;
+	}
+};
+
+#ifdef CALIB_PLUGIN
+Engine* createEngine() { return new CalibEngine(); }
+const char* engineOpType() { return "Fykeycalib"; }
+const char* engineOpLabel() { return "FY Key Calib"; }
+const char* engineOpIcon() { return "FKC"; }
+#else
 Engine* createEngine() { return new KeyEngine(); }
 const char* engineOpType() { return "Fykeymatte"; }
 const char* engineOpLabel() { return "FY Auto Key"; }
 const char* engineOpIcon() { return "FKM"; }
+#endif
 bool engineHasKeyParams() { return true; }
