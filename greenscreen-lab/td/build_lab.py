@@ -47,8 +47,13 @@ lab.nodeX, lab.nodeY = 0, 0
 
 page = lab.appendCustomPage("Lab")
 p = page.appendMenu("Bron", label="Bron")[0]
-p.menuNames = [b[0] for b in BRONNEN] + ["live"]
-p.menuLabels = [b[1] for b in BRONNEN] + ["Live (Syphon fy_show_cam)"]
+CAMS = [
+    ("cam1", "Camera 1 (live)", "V1|||3299243008|||0|||0|||DeckLink 8K Pro (1) - 1"),
+    ("cam2", "Camera 2 (live)", "V1|||3299243010|||2|||0|||DeckLink 8K Pro (3) - 1"),
+    ("cam3", "Camera 3 (live)", "V1|||3299243009|||1|||0|||DeckLink 8K Pro (2) - 1"),
+]
+p.menuNames = [b[0] for b in BRONNEN] + [c[0] for c in CAMS] + ["live"]
+p.menuLabels = [b[1] for b in BRONNEN] + [c[1] for c in CAMS] + ["Live (Syphon fy_show_cam)"]
 _start = os.path.join(OUT, "startbron.txt")
 if os.path.exists(_start):
     p.val = open(_start).read().strip()
@@ -67,9 +72,25 @@ for i, (key, label, path) in enumerate(BRONNEN):
     setp(m, file=path)
     m.nodeX, m.nodeY = -800, 300 - i * 150
     ins.append(m)
+# live camera's: dezelfde DeckLink-ingangen en dezelfde draaiing als het show-TD (mirror flipY, fit r90),
+# maar 1080x1920 i.p.v. 2160x3840. Alleen de gekozen camera staat aan.
+for j, (key, label, dev) in enumerate(CAMS):
+    v = lab.create(videodeviceinTOP, key + "_in")
+    setp(v, driver="blackmagic", device=dev, inputpixelformat="fixed10", cgamma=0.8,
+         active="=parent().par.Bron.eval() == %r" % key)
+    v.nodeX, v.nodeY = -1200, -300 - j * 150
+    mi = lab.create(mirrorTOP, key + "_mirror")
+    mi.inputConnectors[0].connect(v)
+    setp(mi, pivotx=0, pivoty=0, flipy=True)
+    mi.nodeX, mi.nodeY = -1050, -300 - j * 150
+    fi = lab.create(fitTOP, key + "_rechtop")
+    fi.inputConnectors[0].connect(mi)
+    setp(fi, fit="nativeres", r=90, legacyxform=True, outputresolution="custom", resolutionw=1080, resolutionh=1920)
+    fi.nodeX, fi.nodeY = -900, -300 - j * 150
+    ins.append(fi)
 live = lab.create(syphonspoutinTOP, "live_syphon")
 setp(live, sendername="fy_show_cam")
-live.nodeX, live.nodeY = -800, 300 - 3 * 150
+live.nodeX, live.nodeY = -800, -800
 ins.append(live)
 bron = lab.create(switchTOP, "bron")
 for i, m in enumerate(ins):
@@ -189,6 +210,7 @@ def onFrameStart(frame):
         "bron_res": [lab.op("bron").width, lab.op("bron").height],
         "vision": _vals(lab.op("info_vision")),
         "rvm_cpp": _vals(lab.op("info_rvm")),
+        "cams": {k: [lab.op(k + "_in").width, lab.op(k + "_in").height, bool(lab.op(k + "_in").par.active.eval())] for k in ("cam1", "cam2", "cam3")},
         "sidecar_in_res": [lab.op("route2_van_sidecar").width, lab.op("route2_van_sidecar").height],
         "fouten": {o.name: (o.errors() or "") + (o.warnings() or "") for o in lab.children if (o.errors() or o.warnings())},
         "venster_open": bool(lab.op("venster").isOpen),
