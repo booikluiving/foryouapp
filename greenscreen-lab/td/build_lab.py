@@ -148,10 +148,17 @@ uit.inputConnectors[0].connect(raster)
 uit.nodeX, uit.nodeY = 1200, 225
 root.par.opviewer = uit.path if hasattr(root.par, "opviewer") else None
 
-# --- venster op de hoofdmonitor (regie-Dell) ---
+# --- venster op de hoofdmonitor (regie-Dell), NOOIT op de LG ---
 win = lab.create(windowCOMP, "venster")
-setp(win, winop=uit.path, title="For_You greenscreen-lab", monitor=0, winw=1920, winh=1080, borders=True,
+_mon = None
+for _i, _m in enumerate(monitors):
+    log("monitor", _i, _m.description if hasattr(_m, "description") else "", _m.left, _m.top, _m.width, _m.height, _m.isPrimary)
+    if _m.isPrimary:
+        _mon = _i
+setp(win, winop=uit.path, title="For_You greenscreen-lab", winw=1920, winh=1080, borders=True,
      justifyh="center", justifyv="center")
+if _mon is not None:
+    setp(win, monitor=_mon)
 win.nodeX, win.nodeY = 1400, 225
 
 # --- info en monitor ---
@@ -217,6 +224,8 @@ def _na_laden(poging=0):
 
 
 run(_na_laden, delayFrames=30)
-if win.par.winopen is not None:
+if _mon is not None and "LG" not in str(getattr(monitors[_mon], "description", "")):
     run(lambda: op("/project1/lab/venster").par.winopen.pulse(), delayFrames=45)
+else:
+    log("venster NIET geopend: geen veilige hoofdmonitor gevonden")
 open(LOG, "w").write("\n".join(_log) + "\nbuild klaar\n")
