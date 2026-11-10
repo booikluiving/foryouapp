@@ -834,10 +834,17 @@ async function upsertEnvironment(body, readModel, options = {}) {
   const existing = store.environments.find((item) => item.id === body.id);
   const base = (readModel.environments || []).find((item) => item.id === body.id) || null;
   const at = nowIso();
+  const description = String(body.description || "").trim();
+  // Bestaande velden (labelScores, legacyId, externalId, source, ...) blijven staan.
+  const keptPromptText = existing && existing.promptText && existing.promptText !== existing.description
+    ? existing.promptText
+    : description;
   const record = {
+    ...(existing || {}),
     id: String(body.id || nextEntityId(store, "environment", body.name)),
     name: String(body.name || "").trim(),
-    description: String(body.description || "").trim(),
+    description,
+    promptText: keptPromptText,
     extras: normalizeEnvironmentExtras(Object.prototype.hasOwnProperty.call(body, "extras")
       ? body.extras
       : (existing && existing.extras) || (base && base.extras) || null),
