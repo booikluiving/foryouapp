@@ -158,6 +158,21 @@ def main():
         for n in (1, 2, 3):
             cp = p1 / f"Camera{n}.parm"
             cp.write_text(re.sub(r'display 67108913 on "1 if op\(\'null2\'\).*"\n', "display 67108864 off\n", cp.read_text()))
+        # Camera2 2x uitgesneden: fit2 stond op 1080x1920 i.p.v. 2160x3840 (bevinding sessie camera2-crop; ja van Booi 10 nov)
+        f2 = p1 / "Camera2" / "fit2.parm"
+        t = f2.read_text()
+        t = t.replace("resolutionw 67108864 1080\n", "resolutionw 67108864 2160\n").replace("resolutionh 67108864 1920\n", "resolutionh 67108864 3840\n")
+        f2.write_text(t)
+        # TD leest de projectnaam (titel, opslaan) uit local/set_variables: TOENAME gelijkzetten aan het nieuwe bestand
+        sv = d / "local" / "set_variables.table"
+        raw = sv.read_bytes()
+        oud = src.name.encode("utf-8")
+        i = raw.find(oud)
+        if i < 4 or struct.unpack(">i", raw[i - 4:i])[0] != len(oud):
+            sys.exit("TOENAME niet gevonden in local/set_variables.table")
+        nieuw = dst.name.encode("utf-8")
+        sv.write_bytes(raw[:i - 4] + struct.pack(">i", len(nieuw)) + nieuw + raw[i + len(oud):])
+        print("TOENAME:", dst.name)
         toc_path.write_text("\n".join(toc) + "\n")
         work.unlink()
         subprocess.run([f"{TD}/toecollapse", work.name], capture_output=True, cwd=tmp)

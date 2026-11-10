@@ -111,10 +111,11 @@ def bouw():
         ui.par.x, ui.par.y = x, H - y - (H - y - MARGE)
         ui.par.w, ui.par.h = KOLOM, H - y - MARGE
 
-    # rechts: Main TV (= LG) groot
+    # rechts: het hoofdscherm zoals de fase het kiest (inloop / loading / scène), staand
     rx = MARGE + 3 * (KOLOM + MARGE)
     rw = W - rx - MARGE
-    tegel('main_tv', '/project1/Main_TV', rx, boven, rw, int(rw * 9 / 16), 'MAIN TV / LG  → SDI 4K + LG')
+    rh = H - boven - MARGE
+    tegel('hoofdscherm', '/project1/phase_switch_maindisplay', rx, boven, rw, rh, 'HOOFDSCHERM  (phase_switch_maindisplay)')
     return m
 
 
