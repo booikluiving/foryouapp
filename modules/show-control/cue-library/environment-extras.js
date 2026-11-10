@@ -159,9 +159,14 @@ function environmentExtrasStatus(runtimeState, options = {}) {
     shot: resolveExtra("shot", extras.shot, read.mediaAssets || [], options),
     geluid: resolveExtra("geluid", extras.geluid, read.mediaAssets || [], options),
   };
+  // Staat er nu een shot dat blijft staan (duur 0)? Dan kan het deck dat tonen.
+  result.shot.aan = holdState.aan && holdState.environmentId === ref.environmentId;
   if (!read.ok && read.error) result.catalogError = read.error;
   return result;
 }
+
+// Een shot met duur 0 blijft staan; de volgende druk haalt hem weg.
+const holdState = { environmentId: "", aan: false };
 
 // Kort voor deck-status: geen bestandspaden.
 function publicExtrasStatus(status) {
@@ -171,9 +176,6 @@ function publicExtrasStatus(status) {
   };
   return { ...status, shot: strip(status.shot), geluid: strip(status.geluid) };
 }
-
-// Een shot met duur 0 blijft staan; de volgende druk haalt hem weg.
-const holdState = { environmentId: "", aan: false };
 
 function cueAction(cueId, index, targetId, command, ackMode, payload, timeoutMs = 1500) {
   const payloadId = `${cueId}:payload:${String(index + 1).padStart(2, "0")}`;

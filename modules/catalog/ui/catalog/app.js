@@ -242,7 +242,8 @@ function assetFileUrl(asset) {
 }
 
 function deckKeyHtml(kind, extra) {
-  const lines = String(extra.label || "").toUpperCase().split(/\n|\s+/).filter(Boolean).slice(0, 3);
+  // Zoals het deck: breekt op een spatie en na een "-".
+  const lines = String(extra.label || "").toUpperCase().replace(/-/g, "-\n").split(/\n|\s+/).filter(Boolean).slice(0, 3);
   const empty = !extra.label;
   return `
     <div class="deckKey ${empty ? "is-empty" : ""}" style="--deck-color:${DECK_COLORS[kind]}">
@@ -306,7 +307,7 @@ function extrasFormHtml(item) {
       </div>
       <fieldset class="extraField">
         <legend>Extra shot</legend>
-        <label class="fy-label">Knoplabel<input class="fy-input" maxlength="24" data-extra="shot" data-field="label" value="${esc(shot.label)}"></label>
+        <label class="fy-label">Knoplabel<input class="fy-input" maxlength="24" placeholder="Shot kruip-ruimte" data-extra="shot" data-field="label" value="${esc(shot.label)}"></label>
         <label class="fy-label">Wat zie je<textarea class="fy-textarea extraText" data-extra="shot" data-field="omschrijving">${esc(shot.omschrijving)}</textarea></label>
         <label class="fy-label">Bron<select class="fy-select" data-extra="shot" data-field="bron">
           ${EXTRA_SHOT_SOURCES.map(([value, label]) => optionHtml(value, label, shot.bron)).join("")}
@@ -325,7 +326,7 @@ function extrasFormHtml(item) {
       </fieldset>
       <fieldset class="extraField">
         <legend>Extra geluid</legend>
-        <label class="fy-label">Knoplabel<input class="fy-input" maxlength="24" data-extra="geluid" data-field="label" value="${esc(geluid.label)}"></label>
+        <label class="fy-label">Knoplabel<input class="fy-input" maxlength="24" placeholder="Fiets-bel" data-extra="geluid" data-field="label" value="${esc(geluid.label)}"></label>
         <label class="fy-label">Wat hoor je<textarea class="fy-textarea extraText" data-extra="geluid" data-field="omschrijving">${esc(geluid.omschrijving)}</textarea></label>
         <label class="fy-label">Bron<select class="fy-select" data-extra="geluid" data-field="bron">
           ${EXTRA_SOUND_SOURCES.map(([value, label]) => optionHtml(value, label, geluid.bron)).join("")}

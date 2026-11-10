@@ -121,8 +121,12 @@ async function testRoutes() {
     runtimeState = runtimeFor("environment:12");
     await post({ soort: "shot" });
     assert.equal(calls.at(-1).payload.uit, false);
+    let cur = await fetch(`${base}/v0/show-control/environment-extras/current`).then((res) => res.json());
+    assert.equal(cur.shot.aan, true, "shot blijft staan");
     await post({ soort: "shot" });
     assert.equal(calls.at(-1).payload.uit, true);
+    cur = await fetch(`${base}/v0/show-control/environment-extras/current`).then((res) => res.json());
+    assert.equal(cur.shot.aan, false);
     await post({ soort: "shot" });
     assert.equal(calls.at(-1).payload.uit, false);
 
