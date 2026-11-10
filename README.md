@@ -4,6 +4,10 @@ For You is het digitale regie- en publiekssysteem voor een interactieve livevoor
 
 Het publiek neemt via een QR-code deel aan de voorstelling en kan live chatten, reageren en stemmen. Die input wordt tijdens de show verwerkt naast vooraf gemaakte personages, omgevingen, situaties en dramaturgische paden. De regisseur houdt de controle over wat er daadwerkelijk wordt gespeeld. For You ondersteunt vervolgens de tekstproductie en stuurt technische cues naar onder andere TouchDesigner, audio, licht en camera's.
 
+## Eén app
+
+Dit is de For_You-app. Er is één versie: wat op `main` staat. Er bestaat geen V1, V2 of legacy-versie naast. Hoe iets vroeger was, staat in de git-historie.
+
 ## Hoe een voorstelling werkt
 
 1. **Voorbereiden** - De redactie vult de catalogus met performers, personages, omgevingen en speelbare situaties.
