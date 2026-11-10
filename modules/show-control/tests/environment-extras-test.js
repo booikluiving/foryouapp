@@ -89,6 +89,7 @@ async function testRoutes() {
     clients: { fetchCurrentRuntimeState: async () => ({ ok: true, state: runtimeState }) },
     adapters: { touchdesigner: record("touchdesigner"), macaudio: record("macaudio") },
     environmentExtras: extrasOptions,
+    environmentExtrasCacheMs: 0,
   });
   const server = await new Promise((resolve) => {
     const s = app.listen(0, "127.0.0.1", () => resolve(s));

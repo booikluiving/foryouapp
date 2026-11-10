@@ -348,10 +348,41 @@ function createShowControlApp(options = {}) {
     res.status(201).json({ ok: true, cue });
   }));
 
+  // /status wordt elke seconde gevraagd (deck-status): de omgevingsknoppen hoeven
+  // niet vaker dan eens per seconde opnieuw bepaald te worden.
+  const extrasCache = { at: 0, value: null, pending: null };
+  const EXTRAS_CACHE_MS = Number(options.environmentExtrasCacheMs ?? 1000);
+  async function cachedExtrasStatus(req) {
+    if (extrasCache.value && Date.now() - extrasCache.at < EXTRAS_CACHE_MS) return extrasCache.value;
+    // Verlopen: geef meteen de vorige stand en ververs op de achtergrond, zodat /status
+    // nooit op Runtime wacht. Alleen de allereerste keer wordt er gewacht.
+    if (extrasCache.value && EXTRAS_CACHE_MS > 0) {
+      if (!extrasCache.pending) refreshExtras(req).catch(() => {});
+      return extrasCache.value;
+    }
+    return refreshExtras(req);
+  }
+  function refreshExtras(req) {
+    if (!extrasCache.pending) {
+      extrasCache.pending = runtimeStateQuick(req, clients)
+        .then((runtimeState) => publicExtrasStatus(environmentExtrasStatus(runtimeState || {}, options.environmentExtras || {})))
+        .then((value) => {
+          extrasCache.value = value;
+          extrasCache.at = Date.now();
+          return value;
+        })
+        .finally(() => { extrasCache.pending = null; });
+    }
+    return extrasCache.pending;
+  }
+
   // Extra shot en extra geluid van de actieve (of klaargezette) omgeving.
   app.get("/v0/show-control/environment-extras/current", asyncRoute(async (req, res) => {
     const runtimeState = await runtimeStateQuick(req, clients);
-    res.json(publicExtrasStatus(environmentExtrasStatus(runtimeState || {}, options.environmentExtras || {})));
+    const value = publicExtrasStatus(environmentExtrasStatus(runtimeState || {}, options.environmentExtras || {}));
+    extrasCache.value = value;
+    extrasCache.at = Date.now();
+    res.json(value);
   }));
 
   app.post("/v0/show-control/cues/environment-extra", asyncRoute(async (req, res) => {
@@ -368,6 +399,7 @@ function createShowControlApp(options = {}) {
     }
     await executeCue(cue, executeOptions);
     await saveCue(cue);
+    extrasCache.at = 0;
     res.status(201).json({ ok: true, cue });
   }));
 
@@ -533,9 +565,10 @@ function createShowControlApp(options = {}) {
     const latestCue = cues[cues.length - 1] || null;
     const full = wantsFullDetail(req);
     const latestCueSummary = latestCue ? summarizeCue(latestCue, { actionLimit: 10, logLimit: 24 }) : null;
-    const hardware = await hardwareStatus(executeOptions.adapterOptions);
-    const extrasRuntime = await runtimeStateQuick(req, clients);
-    const environmentExtras = publicExtrasStatus(environmentExtrasStatus(extrasRuntime || {}, options.environmentExtras || {}));
+    const [hardware, environmentExtras] = await Promise.all([
+      hardwareStatus(executeOptions.adapterOptions),
+      cachedExtrasStatus(req),
+    ]);
     res.json({
       ok: true,
       schemaVersion: SHOW_CONTROL_STATUS_SCHEMA_VERSION,
