@@ -3,167 +3,296 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <title>For You - App (Lokaal)</title>
-    <link rel="icon" type="image/svg+xml" href="/favicons/app.svg" />
-    <script>
-      (() => {
-        const baseTitle = "For You - App";
-        const runtimeName = () => (
-          location.port === "3310" || location.hostname === "192.168.1.49" ? "Mac Studio" : "Lokaal"
-        );
-        const fullTitle = () => baseTitle + " (" + runtimeName() + ")";
-        const applyTitle = () => {
-          const nextTitle = fullTitle();
-          if (document.title !== nextTitle) document.title = nextTitle;
-        };
-        applyTitle();
-        document.addEventListener("DOMContentLoaded", applyTitle);
-        window.addEventListener("pageshow", applyTitle);
-        window.addEventListener("focus", applyTitle);
-        const titleEl = document.querySelector("title");
-        if (titleEl && "MutationObserver" in window) {
-          new MutationObserver(applyTitle).observe(titleEl, {
-            childList: true,
-            characterData: true,
-            subtree: true,
-          });
-        }
-        setTimeout(applyTitle, 0);
-        setTimeout(applyTitle, 250);
-        setTimeout(applyTitle, 1000);
-      })();
-    </script>
+    <title>For_You</title>
     <style>
-      :root {
-        --bg: #f4f7fb;
-        --ink: #16202b;
-        --muted: #5f6b7a;
-        --line: #d9e2ec;
-        --line-strong: #c3cfdb;
-        --surface: #ffffff;
-        --surface-soft: #f8fbff;
-        --surface-elevated: #ffffff;
-        --button-bg: #ffffff;
-        --accent: #2563eb;
-        --accent-soft: #dbeafe;
-        --reaction-impact: rgba(37, 99, 235, 0.42);
-        --reaction-impact-clear: rgba(37, 99, 235, 0);
-        --poll-line: #cbd5e1;
-        --scene-bg: rgba(255, 255, 255, 0.72);
-        --scene-button-bg: #eef4ff;
-        --shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-        --toast-bg: rgba(28, 28, 28, 0.86);
-        --toast-subtle-bg: rgba(28, 28, 28, 0.74);
-        --toast-ink: #ffffff;
-      }
+      /* For_You · publieksapp. Huisstijl (donker, zoals Universe): Helvetica Neue, wit in drie sterktes,
+         één dunne lijn, knoppen als tekst of met één lijn, geen schaduwen, geen ronde hoeken.
+         Kleur alleen waar ze iets betekent: de kleur van een naam. */
+      :root,
       body.theme-dark {
-        --bg: #0f1722;
-        --ink: #e6edf5;
-        --muted: #9fb0c3;
-        --line: #26384c;
-        --line-strong: #314862;
-        --surface: #152233;
-        --surface-soft: #1a2b3f;
-        --surface-elevated: #152233;
-        --button-bg: #1a2b3f;
-        --accent: #6cb8ff;
-        --accent-soft: #223c5a;
-        --reaction-impact: rgba(108, 184, 255, 0.46);
-        --reaction-impact-clear: rgba(108, 184, 255, 0);
-        --poll-line: #3b5470;
-        --scene-bg: rgba(21, 34, 51, 0.82);
-        --scene-button-bg: #223c5a;
-        --shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
-        --toast-bg: rgba(11, 17, 26, 0.9);
-        --toast-subtle-bg: rgba(11, 17, 26, 0.82);
-        --toast-ink: #e6edf5;
+        --bg: #07080b;
+        --a: #fff;
+        --b: rgba(255, 255, 255, 0.66);
+        --c: rgba(255, 255, 255, 0.22);
+        --d: rgba(255, 255, 255, 0.07);
+        --font: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+        --reaction-impact: rgba(255, 255, 255, 0.5);
+        --reaction-impact-clear: rgba(255, 255, 255, 0);
+        color-scheme: dark;
       }
       html {
         height: 100%;
+        background: var(--bg);
       }
       body {
-        margin: 0;
-        min-height: 100%;
-        font-family: system-ui, -apple-system, Arial, sans-serif;
-        padding: 16px;
+        box-sizing: border-box;
+        margin: 0 auto;
+        max-width: 560px;
+        height: 100dvh;
+        min-height: 100dvh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: calc(14px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+        overscroll-behavior: none;
         background: var(--bg);
-        color: var(--ink);
+        color: var(--a);
+        font: 400 16px/1.35 var(--font);
+        -webkit-font-smoothing: antialiased;
+        -webkit-tap-highlight-color: transparent;
       }
       [hidden] {
         display: none !important;
       }
-      input, textarea, button {
-        font-size: 18px;
-        padding: 12px;
-        width: 100%;
+      button,
+      input,
+      textarea {
+        font: inherit;
+        color: inherit;
         box-sizing: border-box;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-      }
-      input, textarea {
-        background: var(--surface);
-        color: var(--ink);
-      }
-      input::placeholder, textarea::placeholder {
-        color: var(--muted);
-        opacity: 1;
+        border-radius: 0;
+        box-shadow: none;
+        -webkit-appearance: none;
+        appearance: none;
       }
       button {
-        margin-top: 10px;
-        background: var(--button-bg);
-        color: var(--ink);
+        background: none;
+        border: 0;
+        padding: 0;
+        cursor: pointer;
+        touch-action: manipulation;
       }
-      textarea {
-        resize: vertical;
-        min-height: 52px;
-        max-height: 220px;
+      button:disabled {
+        cursor: default;
+        opacity: 0.35;
+      }
+      :focus-visible {
+        outline: 1px solid var(--a);
+        outline-offset: 3px;
+      }
+      ::placeholder {
+        color: var(--b);
+        opacity: 1;
       }
       .muted {
-        color: var(--muted);
+        color: var(--b);
       }
-      #status { display: none; }
-      #nameRow { margin: 10px 0; opacity: 0.9; display: flex; gap: 10px; align-items: center; }
-      #nameRow span { flex: 1; }
+      .lijnKnop {
+        border: 1px solid var(--a);
+        color: var(--a);
+        padding: 0 18px;
+        min-height: 46px;
+      }
+      .lijnKnop:not(:disabled):active {
+        background: var(--a);
+        color: var(--bg);
+      }
+      .tekstKnop {
+        color: var(--b);
+        font-size: 15px;
+        padding: 6px 0;
+      }
+      .tekstKnop:hover {
+        color: var(--a);
+      }
+
+      /* ------------------------------------------------ kop */
+      .topBar {
+        flex: 0 0 auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+      }
+      .merk {
+        margin: 0;
+        font: 700 24px/1 var(--font);
+        letter-spacing: -0.03em;
+      }
+      .buildBadge {
+        display: none;
+      }
+      #settingsMenu {
+        position: relative;
+      }
+      #settingsMenu summary {
+        list-style: none;
+        cursor: pointer;
+        user-select: none;
+        color: var(--b);
+        font-size: 15px;
+      }
+      #settingsMenu[open] summary {
+        color: var(--a);
+        text-decoration: underline;
+        text-underline-offset: 0.35em;
+        text-decoration-thickness: 1px;
+      }
+      #settingsMenu summary::-webkit-details-marker {
+        display: none;
+      }
+      .settingsContent {
+        position: absolute;
+        right: 0;
+        top: calc(100% + 10px);
+        z-index: 40;
+        width: min(calc(100vw - 32px), 300px);
+        display: grid;
+        padding: 8px 16px;
+        background: var(--bg);
+        border: 1px solid var(--c);
+      }
+      .settingsContent > button {
+        text-align: left;
+        color: var(--b);
+        padding: 10px 0;
+      }
+      .settingsContent > button:hover {
+        color: var(--a);
+      }
+      #themeToggleBtn {
+        display: none;
+      }
+      #devPanel {
+        display: grid;
+        gap: 8px;
+        padding: 8px 0;
+      }
+      #devPanel > button {
+        text-align: left;
+        color: var(--b);
+        padding: 4px 0;
+      }
+      .devLabel {
+        font-size: 13px;
+        color: var(--b);
+      }
+      .devLog {
+        min-height: 80px;
+        max-height: 180px;
+        overflow: auto;
+        margin: 0;
+        padding: 8px 0;
+        border-top: 1px solid var(--c);
+        white-space: pre-wrap;
+        word-break: break-word;
+        font: 12px/1.35 var(--mono);
+        color: var(--b);
+      }
+      #status {
+        display: none;
+      }
+
+      /* ------------------------------------------------ naam */
+      #nameRow {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: baseline;
+        gap: 14px;
+        font-size: 13px;
+        color: var(--b);
+      }
+      #nameLabel {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #nameRow .tekstKnop {
+        font-size: 13px;
+        padding: 0;
+        text-decoration: underline;
+        text-underline-offset: 0.3em;
+        text-decoration-thickness: 1px;
+      }
+      #nameScreen {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        display: flex;
+        justify-content: center;
+        background: var(--bg);
+      }
+      #nameForm {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 560px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 14px;
+        padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+      }
+      #nameForm .merk {
+        font-size: clamp(40px, 13vw, 56px);
+        margin-bottom: 28px;
+      }
+      #nameForm label {
+        font-size: 13px;
+        color: var(--b);
+      }
+      #nameInput {
+        width: 100%;
+        background: none;
+        border: 0;
+        border-bottom: 1px solid var(--c);
+        padding: 6px 0 10px;
+        font-size: 24px;
+      }
+      #nameInput:focus {
+        outline: none;
+        border-bottom-color: var(--a);
+      }
+      #nameError {
+        margin: 0;
+        font-size: 14px;
+        color: var(--a);
+      }
+      #nameForm .lijnKnop {
+        margin-top: 14px;
+        min-height: 54px;
+        font-size: 17px;
+      }
+      #nameForm .tekstKnop {
+        align-self: flex-start;
+      }
+
+      /* ------------------------------------------------ scène */
       #scenePanel {
-        min-height: 38px;
-        margin-top: 8px;
+        flex: 0 0 auto;
         display: flex;
         align-items: center;
-        overflow: hidden;
+        min-height: 0;
+      }
+      #scenePanel:not(:has(.sceneNotice:not([hidden]))) {
+        display: none;
       }
       .sceneNotice {
         width: 100%;
-        min-height: 32px;
         display: flex;
-        align-items: center;
-        gap: 7px;
+        align-items: baseline;
+        gap: 8px;
         box-sizing: border-box;
-        padding: 5px 8px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--scene-bg);
-        color: var(--muted);
-        font-size: 12px;
-        line-height: 1.2;
+        padding: 10px 0;
+        border-top: 1px solid var(--c);
+        border-bottom: 1px solid var(--c);
+        font-size: 13px;
+        line-height: 1.25;
+        color: var(--b);
         white-space: nowrap;
         overflow: hidden;
       }
-      .sceneNotice[hidden] {
-        display: none;
-      }
       .sceneKicker {
         flex: 0 0 auto;
-        font-size: 10px;
-        font-weight: 800;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        color: var(--accent);
+        color: var(--b);
       }
       .sceneTitle {
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
-        color: var(--ink);
+        color: var(--a);
         font-weight: 700;
       }
       .sceneCast,
@@ -172,11 +301,16 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      .sceneQuestion {
+        flex: 0 0 auto;
+        max-width: 44%;
+        color: var(--a);
+      }
       #sceneVoteOptions {
         flex: 1 1 auto;
         min-width: 0;
         display: flex;
-        gap: 6px;
+        gap: 14px;
         overflow-x: auto;
         scrollbar-width: none;
       }
@@ -184,49 +318,35 @@
         display: none;
       }
       #sceneVoteOptions button {
-        width: auto;
         flex: 0 0 auto;
-        margin: 0;
-        padding: 5px 8px;
-        border-radius: 999px;
-        background: var(--scene-button-bg);
-        color: var(--ink);
-        font-size: 12px;
-        line-height: 1;
         white-space: nowrap;
-      }
-      #sceneVoteOptions button:disabled {
-        opacity: 0.62;
+        color: var(--a);
+        text-decoration: underline;
+        text-underline-offset: 0.3em;
+        text-decoration-thickness: 1px;
       }
       #sceneVoteOptions button.sceneSkipButton {
-        background: var(--button-bg);
-        color: var(--muted);
+        color: var(--b);
       }
       body[data-interaction-mode="scene_vote"] #scenePanel {
-        align-items: stretch;
-        overflow: visible;
+        flex: 1 1 auto;
+        align-items: center;
       }
       body[data-interaction-mode="scene_vote"] #sceneVote {
-        min-height: 240px;
         flex-direction: column;
         align-items: stretch;
-        justify-content: center;
-        gap: 14px;
-        padding: 18px;
-        color: var(--ink);
-        font-size: 18px;
+        gap: 22px;
+        padding: 0;
+        border: 0;
         white-space: normal;
         overflow: visible;
       }
       body[data-interaction-mode="scene_vote"] .sceneQuestion {
         max-width: none;
         overflow: visible;
-        text-align: center;
-        text-overflow: clip;
         white-space: normal;
-        font-size: 24px;
-        font-weight: 800;
-        line-height: 1.08;
+        font: 700 clamp(28px, 8.5vw, 40px)/1.05 var(--font);
+        letter-spacing: -0.02em;
       }
       body[data-interaction-mode="scene_vote"] #sceneVoteOptions {
         flex: 0 0 auto;
@@ -236,259 +356,229 @@
       }
       body[data-interaction-mode="scene_vote"] #sceneVoteOptions button {
         width: 100%;
-        min-height: 58px;
-        border-radius: 8px;
+        min-height: 64px;
         padding: 14px 16px;
-        font-size: 18px;
-        font-weight: 800;
-        line-height: 1.1;
+        border: 1px solid var(--a);
+        text-align: left;
+        text-decoration: none;
+        white-space: normal;
+        font-size: clamp(19px, 5.4vw, 24px);
+        line-height: 1.15;
+      }
+      body[data-interaction-mode="scene_vote"] #sceneVoteOptions button:not(:disabled):active {
+        background: var(--a);
+        color: var(--bg);
       }
       body[data-interaction-mode="scene_vote"] #sceneVoteOptions button.sceneSkipButton {
-        min-height: 46px;
+        min-height: 0;
+        padding: 10px 0;
+        border: 0;
         font-size: 15px;
-        font-weight: 700;
+        color: var(--b);
       }
-      .topBar { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-      .titleWrap {
-        display: inline-flex;
-        align-items: baseline;
-        gap: 8px;
-        min-width: 0;
-      }
-      .buildBadge {
-        display: inline-block;
-        padding: 2px 7px;
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        font-size: 11px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        color: var(--muted);
-        background: var(--surface-soft);
-        white-space: nowrap;
-      }
-      #settingsMenu { position: relative; }
-      #settingsMenu summary {
-        list-style: none;
-        cursor: pointer;
-        border: 1px solid var(--line-strong);
-        border-radius: 8px;
-        padding: 4px 10px;
-        font-size: 18px;
-        user-select: none;
-        background: var(--button-bg);
-      }
-      #settingsMenu summary::-webkit-details-marker { display: none; }
-      .settingsContent {
-        position: absolute;
-        right: 0;
-        margin-top: 8px;
-        width: min(92vw, 420px);
-        background: var(--surface-elevated);
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        box-shadow: var(--shadow);
-        padding: 8px;
-        z-index: 10;
-      }
-      .settingsContent button { margin-top: 0; }
-      #devPanel {
-        margin-top: 8px;
-        display: grid;
-        gap: 8px;
-      }
-      #devPanel[hidden] { display: none; }
-      .devLabel {
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--muted);
-        opacity: 0.9;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-      }
-      .devLog {
-        min-height: 80px;
-        max-height: 180px;
+
+      /* ------------------------------------------------ peiling */
+      #pollBox {
+        flex: 0 0 auto;
+        max-height: 34dvh;
         overflow: auto;
-        margin: 0;
-        padding: 8px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--surface-soft);
-        color: var(--ink);
-        white-space: pre-wrap;
-        word-break: break-word;
-        font-size: 12px;
-        line-height: 1.35;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        display: grid;
+        gap: 6px;
+        padding: 12px 0;
+        border-top: 1px solid var(--c);
+        border-bottom: 1px solid var(--c);
       }
+      #pollQuestion {
+        font-weight: 700;
+        font-size: 18px;
+        line-height: 1.2;
+        letter-spacing: -0.01em;
+      }
+      #pollOptions {
+        display: grid;
+      }
+      .pollOption {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        text-align: left;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--c);
+        color: var(--b);
+      }
+      .pollOption.selected {
+        color: var(--a);
+        font-weight: 700;
+        border-bottom-color: var(--a);
+      }
+      .pollOption .muted {
+        font-weight: 400;
+        font-size: 13px;
+      }
+      #pollActions {
+        display: flex;
+        padding-top: 6px;
+      }
+      #pollSubmitBtn {
+        border: 1px solid var(--a);
+        min-height: 42px;
+        padding: 0 18px;
+      }
+      #pollMeta {
+        font-size: 13px;
+        color: var(--b);
+      }
+
+      /* ------------------------------------------------ chat */
       #chatFeed {
-        min-height: 140px;
-        max-height: 46vh;
+        flex: 1 1 auto;
+        min-height: 0;
         overflow: auto;
         display: flex;
         flex-direction: column-reverse;
-        gap: 2px;
-        margin-top: 14px;
-        padding: 10px;
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        background: var(--surface-soft);
-        color: var(--ink);
+        gap: 6px;
+        padding-top: 32px;
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
+        mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
         white-space: pre-wrap;
         word-break: break-word;
+        font-size: 16px;
         line-height: 1.35;
-        font-size: 14px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       }
       #chatFeed .chatLine {
-        white-space: pre-wrap;
-        word-break: break-word;
+        color: var(--b);
+        font-size: 14px;
       }
-      #chatFeed .chatLine + .chatLine {
-        margin-top: 0;
-      }
-      #chatFeed .chatTime {
-        opacity: 0.72;
+      #chatFeed .chatLine:has(.chatName) {
+        color: var(--a);
+        font-size: 16px;
       }
       #chatFeed .chatName {
         font-weight: 700;
       }
-      #reactionBar {
-        display: flex;
-        gap: 8px;
-        margin-top: 8px;
-        margin-bottom: 8px;
-        padding-bottom: 2px;
+      #chatFeed .chatTime {
+        color: var(--b);
       }
-      #reactionBar:not([hidden]) {
-        position: fixed;
-        left: 50%;
-        bottom: calc(18px + env(safe-area-inset-bottom));
-        z-index: 22;
-        width: min(680px, calc(100vw - 24px));
-        margin: 0;
-        padding: 0;
+      .composer {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: flex-end;
         gap: 12px;
-        transform: translateX(-50%);
+      }
+      .composer:not(:has(> :not([hidden]))) {
+        display: none;
+      }
+      #text {
+        flex: 1 1 auto;
+        min-width: 0;
+        min-height: 46px;
+        max-height: 20dvh;
+        resize: none;
+        background: none;
+        border: 0;
+        border-bottom: 1px solid var(--c);
+        padding: 12px 0 10px;
+        font-size: 17px;
+        line-height: 1.3;
+      }
+      #text:focus {
+        outline: none;
+        border-bottom-color: var(--a);
+      }
+      #text:disabled {
+        opacity: 0.5;
+      }
+      #send {
+        flex: 0 0 auto;
+      }
+
+      /* ------------------------------------------------ reacties */
+      #reactionBar {
+        flex: 0 0 auto;
+        display: flex;
+        gap: 12px;
       }
       #reactionBar button {
-        width: auto;
-        min-width: 0;
         flex: 1;
-        margin: 0;
-        min-height: 64px;
-        padding: 11px 10px 12px;
-        font-size: 24px;
-        line-height: 1.2;
+        min-width: 0;
+        min-height: 68px;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 4px;
-        touch-action: manipulation;
-        -webkit-tap-highlight-color: transparent;
+        gap: 10px;
+        border: 1px solid var(--c);
+        color: var(--a);
         user-select: none;
         -webkit-user-select: none;
         position: relative;
         overflow: visible;
         transform: none;
         transform-origin: center;
-        transition: transform 120ms ease, filter 120ms ease, box-shadow 180ms ease;
+        transition: transform 120ms ease, border-color 120ms ease;
         backface-visibility: hidden;
-      }
-      #reactionBar:not([hidden]) button {
-        min-height: clamp(104px, 18dvh, 150px);
-        padding: 18px 12px;
-        border-radius: 12px;
-        background: var(--surface-elevated);
-        box-shadow: var(--shadow);
       }
       #reactionBar button:active,
       #reactionBar button.reaction-pressed {
-        transform: scale(0.93);
-        filter: brightness(0.96);
+        transform: scale(0.95);
+        border-color: var(--a);
+      }
+      .reactionEmoji {
+        display: block;
+        font-size: 30px;
+        line-height: 1;
+        font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+      }
+      .reactionCount {
+        display: block;
+        font-size: 15px;
+        color: var(--b);
+        font-variant-numeric: tabular-nums;
+      }
+      body[data-interaction-mode="scene_reaction"] #reactionBar {
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: 12px;
+      }
+      body[data-interaction-mode="scene_reaction"] #reactionBar button {
+        flex-direction: column;
+        gap: 8px;
+      }
+      body[data-interaction-mode="scene_reaction"] .reactionEmoji {
+        font-size: clamp(64px, 18vw, 96px);
+      }
+      body[data-interaction-mode="scene_reaction"] .reactionCount {
+        font-size: 20px;
       }
       #reactionBar button.reaction-tap-pop {
         animation: reactionTapPop 220ms cubic-bezier(0.17, 0.89, 0.32, 1.22);
       }
       @keyframes reactionTapPop {
-        0% {
-          transform: scale(0.93);
-        }
-        58% {
-          transform: scale(1.08);
-        }
-        100% {
-          transform: scale(1);
-        }
+        0% { transform: scale(0.95); }
+        58% { transform: scale(1.04); }
+        100% { transform: scale(1); }
       }
       #reactionBar button::after {
         content: "";
         position: absolute;
-        inset: -6px;
-        border-radius: 13px;
-        border: 2px solid var(--reaction-impact);
+        inset: -5px;
+        border: 1px solid var(--reaction-impact);
         opacity: 0;
-        transform: scale(0.9);
+        transform: scale(0.96);
         pointer-events: none;
-      }
-      #reactionBar button.reaction-impact {
-        animation: reactionImpactFlash 320ms ease-out;
       }
       #reactionBar button.reaction-impact::after {
         animation: reactionImpactRing 320ms cubic-bezier(0.1, 0.78, 0.18, 1);
       }
-      @keyframes reactionImpactFlash {
-        0% {
-          box-shadow: 0 0 0 0 var(--reaction-impact);
-          filter: brightness(0.98);
-        }
-        40% {
-          box-shadow: 0 0 0 10px var(--reaction-impact-clear);
-          filter: brightness(1.08);
-        }
-        100% {
-          box-shadow: 0 0 0 14px var(--reaction-impact-clear);
-          filter: brightness(1);
-        }
-      }
       @keyframes reactionImpactRing {
-        0% {
-          opacity: 0.62;
-          transform: scale(0.9);
-        }
-        100% {
-          opacity: 0;
-          transform: scale(1.22);
-        }
-      }
-      .reactionEmoji {
-        display: block;
-        line-height: 1.25;
-        font-size: 1em;
-        font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
-      }
-      #reactionBar:not([hidden]) .reactionEmoji {
-        font-size: clamp(48px, 9vw, 76px);
-        line-height: 1;
-      }
-      .reactionCount {
-        display: block;
-        font-size: 12px;
-        opacity: 0.7;
-        margin-top: 0;
-        line-height: 1;
-      }
-      #reactionBar:not([hidden]) .reactionCount {
-        font-size: clamp(18px, 3.8vw, 28px);
-        font-weight: 800;
-        opacity: 0.82;
+        0% { opacity: 0.8; transform: scale(0.96); }
+        100% { opacity: 0; transform: scale(1.08); }
       }
       #reactionBurstLayer {
         position: fixed;
         left: 0;
         right: 0;
-        bottom: calc(170px + env(safe-area-inset-bottom));
+        bottom: calc(140px + env(safe-area-inset-bottom));
         height: 50vh;
         pointer-events: none;
         overflow: hidden;
@@ -503,236 +593,74 @@
         will-change: transform, opacity;
       }
       @keyframes burstUp {
-        0% {
-          transform: translateY(0) scale(0.9);
-          opacity: 0;
-        }
-        10% {
-          opacity: 0.95;
-        }
-        100% {
-          transform: translateY(-220px) scale(1.15) translateX(var(--drift, 0px));
-          opacity: 0;
-        }
+        0% { transform: translateY(0) scale(0.9); opacity: 0; }
+        10% { opacity: 0.95; }
+        100% { transform: translateY(-220px) scale(1.15) translateX(var(--drift, 0px)); opacity: 0; }
       }
-      #pollBox {
-        margin-top: 12px;
-        padding: 10px;
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        background: var(--surface);
-        display: grid;
-        gap: 8px;
-      }
-      #pollBox[hidden] { display: none; }
-      #pollQuestion {
-        font-weight: 600;
-        line-height: 1.3;
-      }
-      #pollOptions {
-        display: grid;
-        gap: 6px;
-      }
-      .pollOption {
-        width: 100%;
-        text-align: left;
-        margin: 0;
-        border: 1px solid var(--poll-line);
-        border-radius: 8px;
-        background: var(--surface-soft);
-        color: var(--ink);
-        padding: 8px 10px;
-      }
-      .pollOption.selected {
-        border-color: var(--accent);
-        background: var(--accent-soft);
-      }
-      #pollActions {
-        display: flex;
-        gap: 8px;
-      }
-      #pollActions button {
-        margin: 0;
-      }
-      #pollMeta {
-        font-size: 12px;
-        opacity: 0.74;
-      }
+
+      /* ------------------------------------------------ melding */
       #connectionToast {
         position: fixed;
-        right: 14px;
-        bottom: 14px;
+        left: 50%;
+        top: calc(52px + env(safe-area-inset-top));
+        z-index: 30;
         display: flex;
         align-items: center;
         gap: 8px;
-        max-width: min(280px, calc(100vw - 28px));
-        padding: 8px 10px;
-        border-radius: 10px;
-        background: var(--toast-bg);
-        color: var(--toast-ink);
-        font-size: 13px;
-        line-height: 1.2;
+        box-sizing: border-box;
+        width: max-content;
+        max-width: min(528px, calc(100vw - 32px));
+        padding: 9px 12px;
+        background: var(--bg);
+        border: 1px solid var(--c);
+        color: var(--a);
+        font-size: 14px;
+        line-height: 1.25;
         opacity: 0;
-        transform: translateY(8px);
+        transform: translate(-50%, -6px);
         pointer-events: none;
         transition: opacity 180ms ease, transform 180ms ease;
-        z-index: 30;
       }
       #connectionToast.show {
         opacity: 1;
-        transform: translateY(0);
+        transform: translate(-50%, 0);
       }
       #connectionToast.subtle {
-        background: var(--toast-subtle-bg);
-        font-size: 12px;
-        padding: 7px 9px;
+        color: var(--b);
+        font-size: 13px;
       }
       #toastIcon {
         width: 14px;
         text-align: center;
-        opacity: 0.92;
       }
-      #toastIcon.spin { animation: spin 1s linear infinite; }
+      #toastIcon:empty {
+        display: none;
+      }
+      #toastIcon.spin {
+        animation: spin 1s linear infinite;
+      }
       @keyframes spin {
         from { transform: rotate(0deg); }
         to { transform: rotate(360deg); }
       }
       @media (prefers-reduced-motion: reduce) {
-        #reactionBar button {
+        #reactionBar button,
+        #connectionToast {
           transition: none;
         }
-        #reactionBar button.reaction-tap-pop {
-          animation: none;
-        }
-        #reactionBar button.reaction-impact {
-          animation: none;
-        }
+        #reactionBar button.reaction-tap-pop,
         #reactionBar button.reaction-impact::after {
           animation: none;
-        }
-      }
-      @media (max-width: 780px) {
-        body {
-          height: 100dvh;
-          min-height: 100dvh;
-          overflow: hidden;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          padding: calc(10px + env(safe-area-inset-top)) 12px calc(18px + env(safe-area-inset-bottom));
-          overscroll-behavior: none;
-        }
-        .topBar {
-          flex: 0 0 auto;
-        }
-        .topBar h2 {
-          margin: 0;
-          font-size: 1.3rem;
-        }
-        #status,
-        #nameRow,
-        #scenePanel,
-        #pollBox,
-        #text,
-        #send,
-        #reactionBar {
-          flex: 0 0 auto;
-        }
-        #nameRow {
-          margin: 0;
-        }
-        #scenePanel {
-          margin-top: 0;
-          min-height: 38px;
-        }
-        .sceneNotice {
-          font-size: 11px;
-          padding: 5px 7px;
-        }
-        .sceneQuestion {
-          flex: 0 0 auto;
-          max-width: 44%;
-        }
-        body[data-interaction-mode="scene_vote"] #scenePanel {
-          flex: 1 1 auto;
-          min-height: 0;
-          align-items: center;
-        }
-        body[data-interaction-mode="scene_vote"] #sceneVote {
-          min-height: min(58dvh, 440px);
-          padding: 20px 16px;
-          gap: 16px;
-        }
-        body[data-interaction-mode="scene_vote"] .sceneQuestion {
-          font-size: clamp(28px, 8vw, 38px);
-        }
-        body[data-interaction-mode="scene_vote"] #sceneVoteOptions {
-          gap: 12px;
-        }
-        body[data-interaction-mode="scene_vote"] #sceneVoteOptions button {
-          min-height: 66px;
-          font-size: clamp(19px, 5vw, 24px);
-        }
-        body[data-interaction-mode="scene_vote"] #sceneVoteOptions button.sceneSkipButton {
-          min-height: 50px;
-          font-size: 16px;
-        }
-        #pollBox {
-          margin-top: 0;
-          max-height: 28dvh;
-          overflow: auto;
-        }
-        #chatFeed {
-          order: 5;
-          flex: 1 1 auto;
-          min-height: 0;
-          max-height: none;
-          margin-top: 0;
-        }
-        #text {
-          order: 6;
-          resize: none;
-          max-height: 20dvh;
-        }
-        #send {
-          order: 7;
-          margin-top: 0;
-        }
-        #reactionBar {
-          order: 8;
-          margin-top: 0;
-          margin-bottom: 2px;
-          padding-bottom: 4px;
-        }
-        #reactionBar:not([hidden]) {
-          bottom: calc(18px + env(safe-area-inset-bottom));
-          width: calc(100vw - 24px);
-          gap: 10px;
-        }
-        #reactionBar button {
-          min-height: 60px;
-          font-size: 22px;
-          padding-bottom: 13px;
-        }
-        #reactionBar:not([hidden]) button {
-          min-height: clamp(122px, 22dvh, 178px);
-          padding: 22px 10px;
-          border-radius: 14px;
-        }
-        #reactionBurstLayer {
-          bottom: calc(210px + env(safe-area-inset-bottom));
         }
       }
     </style>
   </head>
   <body>
     <div class="topBar">
-      <div class="titleWrap">
-        <h2>Live reacties</h2>
-        <span id="buildBadge" class="buildBadge" title="Build versie">v0.0.----</span>
-      </div>
+      <h1 class="merk">For_You</h1>
+      <span id="buildBadge" class="buildBadge" title="Build versie">v0.0.----</span>
       <details id="settingsMenu">
-        <summary aria-label="Instellingen">⚙</summary>
+        <summary>Menu</summary>
         <div class="settingsContent">
           <button id="themeToggleBtn" type="button">Thema: Auto</button>
           <button id="changeName" type="button">Naam wijzigen</button>
@@ -752,6 +680,7 @@
 
     <div id="nameRow">
       <span id="nameLabel"></span>
+      <button id="nameRowChange" class="tekstKnop" type="button">wijzig</button>
     </div>
 
     <div id="scenePanel" aria-live="polite">
@@ -766,26 +695,6 @@
       </div>
     </div>
 
-    <div id="reactionBar" hidden>
-      <button type="button" data-reaction="heart" aria-label="Positief"><span class="reactionEmoji" aria-hidden="true">❤️</span><span class="reactionCount" data-reaction-count="heart">0</span></button>
-      <button type="button" data-reaction="bored" aria-label="Negatief"><span class="reactionEmoji" aria-hidden="true">👎</span><span class="reactionCount" data-reaction-count="bored">0</span></button>
-    </div>
-
-    <textarea
-      id="text"
-      maxlength="140"
-      rows="2"
-      placeholder="Typ je reactie"
-      autocomplete="off"
-      aria-autocomplete="none"
-      data-lpignore="true"
-      autocapitalize="none"
-      autocorrect="off"
-      spellcheck="false"
-      inputmode="text"
-      enterkeyhint="send"
-    ></textarea>
-    <button id="send" disabled>Send</button>
     <div id="pollBox" hidden>
       <div id="pollQuestion"></div>
       <div id="pollOptions"></div>
@@ -795,10 +704,41 @@
       <div id="pollMeta"></div>
     </div>
     <div id="chatFeed"></div>
+    <div class="composer">
+      <textarea
+        id="text"
+        maxlength="140"
+        rows="1"
+        placeholder="Typ je reactie"
+        autocomplete="off"
+        aria-autocomplete="none"
+        data-lpignore="true"
+        autocapitalize="none"
+        autocorrect="off"
+        spellcheck="false"
+        inputmode="text"
+        enterkeyhint="send"
+      ></textarea>
+      <button id="send" class="lijnKnop" disabled>Verstuur</button>
+    </div>
+    <div id="reactionBar" hidden>
+      <button type="button" data-reaction="heart" aria-label="Positief"><span class="reactionEmoji" aria-hidden="true">❤️</span><span class="reactionCount" data-reaction-count="heart">0</span></button>
+      <button type="button" data-reaction="bored" aria-label="Negatief"><span class="reactionEmoji" aria-hidden="true">👎</span><span class="reactionCount" data-reaction-count="bored">0</span></button>
+    </div>
     <div id="reactionBurstLayer" aria-hidden="true"></div>
     <div id="connectionToast" role="status" aria-live="polite" aria-atomic="true">
       <span id="toastIcon"></span>
       <span id="toastText"></span>
+    </div>
+    <div id="nameScreen" hidden>
+      <form id="nameForm" autocomplete="off">
+        <div class="merk">For_You</div>
+        <label for="nameInput">Je naam</label>
+        <input id="nameInput" maxlength="24" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="go" />
+        <p id="nameError" hidden></p>
+        <button class="lijnKnop" type="submit">Meedoen</button>
+        <button id="nameCancel" class="tekstKnop" type="button">Annuleren</button>
+      </form>
     </div>
 
     <script src="/v2/audience/socket.io/socket.io.js"></script>
@@ -1695,29 +1635,87 @@
         return name.slice(0, 24).replace(/\s+/g, " ");
       }
 
-      function getOrAskName() {
-        let name = sanitizeNameClient(localStorage.getItem("live_name"));
-        while (!name) {
-          const candidate = prompt("Wat is je naam");
-          name = sanitizeNameClient(candidate);
+      // Naam via het eigen naamscherm (geen prompt() van de browser).
+      const nameScreenEl = document.getElementById("nameScreen");
+      const nameFormEl = document.getElementById("nameForm");
+      const nameInputEl = document.getElementById("nameInput");
+      const nameCancelBtn = document.getElementById("nameCancel");
+      const nameErrorEl = document.getElementById("nameError");
+      let nameScreenResolve = null;
+
+      function openNameScreen({ initial = "", cancellable = false, error = "" } = {}) {
+        if (nameScreenResolve) nameScreenResolve("");
+        nameInputEl.value = initial;
+        nameErrorEl.textContent = error;
+        nameErrorEl.hidden = !error;
+        nameCancelBtn.hidden = !cancellable;
+        nameScreenEl.hidden = false;
+        setTimeout(() => {
+          try { nameInputEl.focus(); } catch {}
+        }, 30);
+        return new Promise((resolve) => {
+          nameScreenResolve = resolve;
+        });
+      }
+
+      function closeNameScreen(value) {
+        nameScreenEl.hidden = true;
+        const resolve = nameScreenResolve;
+        nameScreenResolve = null;
+        if (resolve) resolve(value);
+      }
+
+      nameFormEl.addEventListener("submit", (ev) => {
+        ev.preventDefault();
+        const name = sanitizeNameClient(nameInputEl.value);
+        if (!name) {
+          nameInputEl.focus();
+          return;
         }
+        closeNameScreen(name);
+      });
+      nameCancelBtn.addEventListener("click", () => closeNameScreen(""));
+
+      function applyName(name) {
         localStorage.setItem("live_name", name);
-        nameLabelEl.textContent = "Naam: " + name;
+        nameLabelEl.textContent = name;
+        myName = name;
+      }
+
+      function getOrAskName() {
+        const name = sanitizeNameClient(localStorage.getItem("live_name"));
+        if (name) nameLabelEl.textContent = name;
+        else ensureName();
         return name;
       }
 
-      function changeName() {
+      let ensureNamePromise = null;
+      function ensureName() {
+        if (ensureNamePromise) return ensureNamePromise;
+        ensureNamePromise = (async () => {
+          let name = sanitizeNameClient(localStorage.getItem("live_name"));
+          while (!name) {
+            name = sanitizeNameClient(await openNameScreen());
+          }
+          applyName(name);
+          return name;
+        })().finally(() => {
+          ensureNamePromise = null;
+        });
+        return ensureNamePromise;
+      }
+
+      async function changeName({ required = false, error = "" } = {}) {
         const current = sanitizeNameClient(localStorage.getItem("live_name"));
-        const candidate = prompt("Wat is je naam", current || "");
-        const name = sanitizeNameClient(candidate);
+        const name = sanitizeNameClient(await openNameScreen({ initial: current, cancellable: !required, error }));
         if (!name) return;
-        localStorage.setItem("live_name", name);
-        nameLabelEl.textContent = "Naam: " + name;
+        applyName(name);
         if (ws && ws.readyState === WebSocket.OPEN) {
           try {
             ws.send(JSON.stringify({ type: "register", clientTag, name }));
           } catch {}
         }
+        if (!pausedByServer) connect();
       }
 
       function setDevPanelOpen(open) {
@@ -1762,9 +1760,11 @@
         cycleTheme();
       });
       changeNameBtn.addEventListener("click", () => {
-        changeName();
-        myName = sanitizeNameClient(localStorage.getItem("live_name"));
         settingsMenuEl.removeAttribute("open");
+        changeName();
+      });
+      document.getElementById("nameRowChange").addEventListener("click", () => {
+        changeName();
       });
       if (ENABLE_CLIENT_DEBUG) {
         toggleDevPanelBtn.addEventListener("click", () => {
@@ -2211,18 +2211,18 @@
       }
 
       function setUiConnected(connected, { notify = true } = {}) {
-        statusEl.textContent = connected ? "Connected" : "Disconnected, reconnecting";
+        statusEl.textContent = connected ? "Verbonden" : "Verbinding weg, opnieuw verbinden";
         renderInteractionMode();
         if (!notify) return;
 
         if (connected) {
           hideToast();
           if (!hasShownConnectedToast) {
-            showToast("Connected", { subtle: true, autoHideMs: 1800 });
+            showToast("Verbonden", { subtle: true, autoHideMs: 1800 });
             hasShownConnectedToast = true;
           }
         } else {
-          showToast("Disconnected, reconnecting", { subtle: true, spinning: true });
+          showToast("Verbinding weg, opnieuw verbinden", { subtle: true, spinning: true });
         }
       }
 
@@ -2299,16 +2299,17 @@
           appendChat("Bericht verwijderd: telefoonnummers zijn niet toegestaan.");
           return;
         }
-        if (code === "name_blocked" || code === "name_link_blocked" || code === "name_phone_blocked") {
+        if (code === "name_blocked" || code === "name_word_blocked" || code === "name_link_blocked" || code === "name_phone_blocked") {
           const messageByCode = {
             name_blocked: "Gebruikersnaam bevat ongewenst taalgebruik.",
+            name_word_blocked: "Gebruikersnaam bevat ongewenst taalgebruik.",
             name_link_blocked: "Gebruikersnaam mag geen links bevatten.",
             name_phone_blocked: "Gebruikersnaam mag geen telefoonnummers bevatten.",
           };
-          appendChat(messageByCode[code] || "Gebruikersnaam is niet toegestaan.");
+          const nameError = messageByCode[code] || "Gebruikersnaam is niet toegestaan.";
+          appendChat(nameError);
           setTimeout(() => {
-            changeName();
-            myName = sanitizeNameClient(localStorage.getItem("live_name"));
+            changeName({ required: true, error: nameError });
           }, 60);
           return;
         }
@@ -2437,6 +2438,7 @@
 
       function connect() {
         if (pausedByServer) return;
+        if (!sanitizeNameClient(localStorage.getItem("live_name"))) return;
         if (pageDeactivating) return;
         if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.CLOSING)) return;
         debugLog("connect() called");
@@ -2732,7 +2734,8 @@
 
         const name = sanitizeNameClient(localStorage.getItem("live_name"));
         if (!name) {
-          myName = getOrAskName();
+          ensureName();
+          return;
         }
 
         ws.send(JSON.stringify({ type: "comment", name: name || myName, text, clientTag }));
@@ -2904,6 +2907,7 @@
       });
 
       (async () => {
+        await ensureName();
         await loadChatHistory();
         startConnectionManager();
         startHealthProbeLoop();
