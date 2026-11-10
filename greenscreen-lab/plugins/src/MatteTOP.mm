@@ -59,6 +59,7 @@ public:
 			p.adapt = inputs->getParDouble("Adapt");
 			p.tint = inputs->getParDouble("Tint");
 			p.clean = inputs->getParDouble("Clean");
+			p.lock = inputs->getParInt("Lock") != 0;
 			p.cropL = inputs->getParDouble("Randlinks");
 			p.cropR = inputs->getParDouble("Randrechts");
 			p.cropT = inputs->getParDouble("Randboven");
@@ -115,13 +116,13 @@ public:
 		}
 	}
 
-	int32_t getNumInfoCHOPChans(void*) override { return 5; }
+	int32_t getNumInfoCHOPChans(void*) override { return 6; }
 
 	void getInfoCHOPChan(int32_t i, OP_InfoCHOPChan* c, void*) override
 	{
 		std::lock_guard<std::mutex> l(myLock);
-		const char* names[] = {"infer_ms", "latency_ms", "processed", "dropped", "uploaded"};
-		float vals[] = {(float)myInferMs, (float)myLatencyMs, (float)myProcessed, (float)myDropped, (float)myUploaded};
+		const char* names[] = {"infer_ms", "latency_ms", "processed", "dropped", "uploaded", "resets"};
+		float vals[] = {(float)myInferMs, (float)myLatencyMs, (float)myProcessed, (float)myDropped, (float)myUploaded, (float)myResets};
 		c->name->setString(names[i]);
 		c->value = vals[i];
 	}
@@ -173,6 +174,13 @@ public:
 				const char* names[] = {"None", "Vision", "Rvm"};
 				const char* labels[] = {"Geen", "Apple Vision", "RVM"};
 				m->appendMenu(sp, 3, names, labels);
+			}
+			{
+				OP_NumericParameter np("Lock");
+				np.label = "Key vastzetten";
+				np.page = "Key";
+				np.defaultValues[0] = 0;
+				m->appendToggle(np);
 			}
 			{
 				OP_NumericParameter np("Garbage");
@@ -232,7 +240,10 @@ private:
 				since = myPendingSince;
 			}
 			if (myResetRequested.exchange(false))
+			{
 				myEngine->reset();
+				myResets++;
+			}
 
 			const uint8_t* data = (const uint8_t*)job->getData();
 			int w = (int)job->textureDesc.width;
@@ -278,7 +289,7 @@ private:
 	bool myResultReady = false;
 
 	double myInferMs = 0, myLatencyMs = 0;
-	int64_t myProcessed = 0, myDropped = 0, myUploaded = 0;
+	int64_t myProcessed = 0, myDropped = 0, myUploaded = 0, myResets = 0;
 	std::string myError;
 };
 

@@ -85,6 +85,9 @@ for _n, _l, _d, _mx in (("Keyonder", "Key onder (voorgrond)", 0.25, 1), ("Keybov
     _p.default = _d
     _p.val = _d
     _p.normMin, _p.normMax = 0, _mx
+_p = gp.appendToggle("Keyvast", label="Key vastzetten")[0]
+_p.val = False
+gp.appendPulse("Herkalibreer", label="Herkalibreer (meet één keer opnieuw)")
 SHADERS = os.path.join(LAB_DIR, "td", "shaders")
 
 
@@ -331,6 +334,15 @@ def _control(lab):
         if p is not None:
             p.expr = ""
             p.val = v
+    for k in cfg.get("pulse", []):
+        if k in me.fetch("pulsed", []):
+            continue
+        opname, _, par = k.rpartition(".")
+        o = lab.op(opname) if opname else lab
+        p = getattr(o.par, par, None) if o else None
+        if p is not None:
+            p.pulse()
+    me.store("pulsed", list(cfg.get("pulse", [])))
     if cfg.get("snapshot") != me.fetch("snapshot", None):
         me.store("snapshot", cfg.get("snapshot"))
         lab.op("uit").save(os.path.join(OUT, "td_raster.jpg"))
@@ -377,6 +389,8 @@ def onFrameStart(frame):
         "rvm_processed": _chan(rvm, "processed"),
         "rvm_dropped": _chan(rvm, "dropped"),
         "weergave": lab.par.Weergave.eval(),
+        "key_vast": bool(lab.par.Keyvast.eval()),
+        "calib_resets": _chan(lab.op("info_calib"), "resets"),
         "teleprompters": bool(lab.par.Teleprompters.eval()),
         "rvm_actief": bool(lab.op("route3_rvm").par.Active.eval()) if getattr(lab.op("route3_rvm").par, "Active", None) is not None else None,
         "venster": bool(lab.op("venster").isOpen),
@@ -384,6 +398,29 @@ def onFrameStart(frame):
     with open(os.path.join(OUT, "frametijden.jsonl"), "a") as f:
         f.write(json.dumps(line) + "\n")
 """.replace("__OUT__", repr(OUT))
+pe = lab.create(parameterexecuteDAT, "knoppen")
+pe.text = """
+def onPulse(par):
+    if par.name == 'Herkalibreer':
+        c = parent().op('gk_calib')
+        if c is not None and getattr(c.par, 'Reset', None) is not None:
+            c.par.Reset.pulse()
+"""
+setp(pe, op=lab.path, pars="Herkalibreer", onpulse=True, valuechange=False)
+pe.nodeX, pe.nodeY = 1200, -250
+
+# zichtbare status van de key op de grote weergave
+status = lab.create(textTOP, "key_status")
+setp(status, text="=('KEY VAST' if parent().par.Keyvast else 'KEY VOLGT LICHT') if parent().par.Weergave.eval() == 'combi' else ''",
+     outputresolution="custom", resolutionw=1920, resolutionh=1080, alignx="left", aligny="top", fontsizex=34,
+     bgalpha=0, positionx=24, positiony=-20, fontcolorr=1, fontcolorg=1, fontcolorb=1)
+status.nodeX, status.nodeY = 1000, -300
+solo_status = lab.create(overTOP, "solo_met_status")
+solo_status.inputConnectors[0].connect(status)
+solo_status.inputConnectors[1].connect(solo)
+solo_status.nodeX, solo_status.nodeY = 1100, -150
+weergave.inputConnectors[0].connect(solo_status)
+
 mon = lab.create(executeDAT, "monitor")
 mon.text = MONITOR
 setp(mon, framestart=True, active=True)
@@ -407,7 +444,7 @@ def _na_laden(poging=0):
         _o.cook(force=True)
     setp(v, Quality="=parent().par.Visionkwaliteit.menuIndex", Output="=min(parent().par.Uitvoer.menuIndex, 1)")
     setp(r, Output=0, Model=model_expr)
-    setp(ck, Adapt=0.15, Active="=parent().par.Weergave.eval() != 'rvm'")
+    setp(ck, Adapt=0.15, Active="=parent().par.Weergave.eval() != 'rvm'", Lock="=parent().par.Keyvast")
     setp(v, Active="=parent().par.Weergave.eval() == 'vergelijking'")
     log("na laden, poging", poging, [(p.name, p.eval()) for p in v.pars() if p.name in ("Quality", "Output", "Active")])
     open(LOG, "a").write("\n".join(_log) + "\n")

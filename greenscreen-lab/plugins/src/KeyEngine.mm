@@ -194,6 +194,9 @@ protected:
 
 	void calibrate(const uint8_t* in, int w, int h, size_t rowBytes, const EngineParams& p)
 	{
+		// vast: niets meer bijstellen, behalve direct na een Reset (dan is myCells leeg en meet hij één keer volledig)
+		if (p.lock && !myCells.empty() && myGW == (w + myCell - 1) / myCell && myGH == (h + myCell - 1) / myCell)
+			return;
 		const int gw = (w + myCell - 1) / myCell, gh = (h + myCell - 1) / myCell;
 		if (gw != myGW || gh != myGH)
 		{

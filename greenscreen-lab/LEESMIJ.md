@@ -16,6 +16,10 @@ Proefopstelling voor AI-mattes in TouchDesigner, los van het show-TD.
 ```
 
 In het lab-TD: `/project1/lab`, pagina **Lab**: Bron, Vision-kwaliteit, Uitvoer.
+Pagina **GPU-key**: **Key vastzetten** (aan = kalibratie bevroren) en **Herkalibreer** (meet één keer opnieuw, ook als hij vast staat; daarna blijft hij vast). Status linksboven in beeld: KEY VAST / KEY VOLGT LICHT.
+Op afstand: `out/lab_control.json`, bijv. `{"pars": {"Weergave": "combi", "Keyvast": true}, "pulse": ["Herkalibreer"]}`.
+Voor de show (nog niet gebouwd): twee cues via show-control/OSC, bijv. `td.key.lock` (aan/uit) en `td.key.recalibrate`.
+
 Het netwerk wordt gebouwd door `td/build_lab.py`; wijzigingen in dat bestand worden binnen een seconde opnieuw ingeladen.
 Status: `out/td_stats.json`, `out/td_raster.jpg`, `out/sidecar_stats.json`.
 

@@ -19,7 +19,8 @@ struct EngineParams
 	double aiFill = 0.85;   // AI-zekerheid vanaf waar gaten gevuld worden
 	double adapt = 0.15;
 	double tint = 0.06;     // tolerantie rond de papiertint (chromaticiteit)
-	double clean = 0.5;     // gaatjes dichten (0 uit, 1 grof)    // hoe snel de kalibratie meebeweegt (per frame)
+	double clean = 0.5;     // gaatjes dichten (0 uit, 1 grof)
+	bool lock = false;      // kalibratie vastzetten (Reset meet één keer opnieuw, ook als hij vast staat)    // hoe snel de kalibratie meebeweegt (per frame)
 };
 
 struct EngineResult
