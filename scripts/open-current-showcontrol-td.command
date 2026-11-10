@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 
 SHOW_DIR="${FORYOU_TD_SHOW_DIR:-$REPO_ROOT/show}"
-SHOW_PATTERN="${FORYOU_TD_SHOW_PATTERN:-ForYou TD Showcontrol-Jillis Juni v*.toe}"
+SHOW_PATTERN="${FORYOU_TD_SHOW_PATTERN:-ForYou TD Showcontrol - Najaar 2026 v*.toe}"
 LOG_PATH="${FORYOU_TD_SHOW_OPEN_LOG:-$HOME/Library/Logs/ForYouApp/showcontrol-touchdesigner-open.log}"
 DRY_RUN="${FORYOU_TD_DRY_RUN:-0}"
 ACTION="${1:-open}"
