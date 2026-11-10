@@ -12,7 +12,9 @@ Wat het doet, in /project1:
   Main_TV, videodevout4, window1 en auto_open_lg_window blijven zoals ze zijn.
 - td_qhub_router: /td/cue met command td.extra.shot gaat naar handle_extra_shot.
   Bestand, duur en uit komen als OSC-args 4-6 mee: geen HTTP, geen payload-fetch.
-- Bewaart als een nieuwe versie (v1.13 -> v1.14) en zet TOENAME mee.
+- Bewaart als een nieuwe versie (v1.13 -> v1.14) en zet TOENAME mee. Let op: project.save
+  neemt de hele live stand mee, ook niet-bewaarde wijzigingen. Kijk dat eerst na, of zet
+  EXTRA_SHOT_SAVE = False en bewaar zelf.
 
 Terugdraaien: fit2 weer aan phase_switch_maindisplay hangen en de vorige versie openen.
 Nogmaals draaien kan: wat er al staat, wordt hergebruikt.
@@ -22,12 +24,14 @@ import os
 import re
 
 EXTRA_SHOT_NEW_VERSION = None  # bijvoorbeeld "v1.14"; None = huidige versie + 1
+EXTRA_SHOT_SAVE = True  # False = niet bewaren; project.save neemt de hele live stand mee
 
 ROUTER_MARKER = "# --- For_You extra shot (td.extra.shot) ---"
 
 ROUTER_CODE = ROUTER_MARKER + '''
 EXTRA_SHOT_FILE_OP = "extra_shot_bestand"
 EXTRA_SHOT_SWITCH_OP = "extra_shot_switch"
+EXTRA_SHOT_FIT_OP = "extra_shot_fit"
 
 
 def _extra_shot_log(cue_id, stage, status, message):
@@ -71,10 +75,22 @@ def handle_extra_shot(cue_id, extra_args):
         movie.par.file = file_path
     elif hasattr(movie.par, "cuepulse"):
         movie.par.cuepulse.pulse()
-    # Pas schakelen als het bestand er een paar frames is; laden gebeurt niet in de cook.
+    # Een Switch TOP kookt alleen de gekozen ingang: laat het bestand en de fit nu al
+    # koken, zodat het eerste beeld na het schakelen het nieuwe shot is.
+    fit = _op(EXTRA_SHOT_FIT_OP)
+    try:
+        if hasattr(movie, "preload"):
+            movie.preload()
+        movie.cook(force=True)
+        if fit is not None:
+            fit.cook(force=True)
+    except Exception as err:
+        _extra_shot_log(cue_id, "preload", "warning", err)
     run(
-        "if args[1].fetch('extra_shot_token', 0) == args[2]:\\n    args[0].par.index = 1",
-        switch, base, token, delayFrames=3,
+        "if args[1].fetch('extra_shot_token', 0) == args[2]:\\n"
+        "    args[3].cook(force=True)\\n"
+        "    args[0].par.index = 1",
+        switch, base, token, fit or movie, delayFrames=3,
     )
     if duur > 0:
         run(
@@ -183,6 +199,9 @@ def apply_extra_shot_patch():
     variables = op("/local/set_variables")
     if variables is not None and variables.row("TOENAME") is not None:
         variables["TOENAME", 1] = new_name
+    if not EXTRA_SHOT_SAVE:
+        print("For_You extra shot: klaar, NIET bewaard (EXTRA_SHOT_SAVE = False)")
+        return None
     new_path = os.path.join(project.folder, new_name)
     if os.path.exists(new_path):
         raise RuntimeError("bestaat al, niet overschreven: %s" % new_path)
