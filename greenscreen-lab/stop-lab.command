@@ -13,7 +13,9 @@ fi
 if [[ -f "$OUT/td-lab.pid" ]]; then
   pid="$(cat "$OUT/td-lab.pid")"
   # alleen stoppen als dit proces echt het labbestand open heeft
-  if lsof -p "$pid" 2>/dev/null | grep -q "greenscreen-lab"; then
+  # tellen i.p.v. grep -q: met pipefail geeft grep -q anders een vals 'nee' (lsof krijgt SIGPIPE)
+  hits="$(lsof -p "$pid" 2>/dev/null | grep -c "greenscreen-lab" || true)"
+  if [[ "${hits:-0}" -gt 0 ]]; then
     kill "$pid"
     for _ in 1 2 3 4 5 6; do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
     # het labbestand wordt bij elke start opnieuw gebouwd: niets op te slaan, dus hard stoppen mag
