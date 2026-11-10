@@ -16,6 +16,7 @@
     widthPercent: 86,
     outlineScale: 1,
   });
+  const OUTLINE_EM_AT_100 = 0.057; // gemeten op CapCut-standaardtekst: rand ≈ 0,057 × lettergrootte
 
   let teleprompt = null;
   let preparedScene = null;
@@ -44,7 +45,21 @@
     root.style.setProperty("--caption-size-scale", captionStyle.fontSizeScale.toFixed(3));
     root.style.setProperty("--caption-top", `${captionStyle.verticalPosition.toFixed(1)}%`);
     root.style.setProperty("--caption-width", `${captionStyle.widthPercent.toFixed(1)}%`);
-    root.style.setProperty("--caption-stroke", `${Math.max(1, Math.round(7 * captionStyle.outlineScale))}px`);
+    root.style.setProperty("--caption-outline", buildOutline(OUTLINE_EM_AT_100 * captionStyle.outlineScale));
+  }
+
+  // Ronde zwarte rand buiten de letter (zoals CapCut): ringen van schaduwkopieën in em,
+  // zodat de rand meeschaalt met de lettergrootte en niet afhangt van paint-order in TD's browser.
+  function buildOutline(widthEm) {
+    const shadows = [];
+    [[1, 32], [0.5, 16]].forEach(([fraction, steps]) => {
+      const radius = widthEm * fraction;
+      for (let step = 0; step < steps; step += 1) {
+        const angle = (step / steps) * Math.PI * 2;
+        shadows.push(`${(Math.cos(angle) * radius).toFixed(4)}em ${(Math.sin(angle) * radius).toFixed(4)}em 0 #000`);
+      }
+    });
+    return shadows.join(", ");
   }
 
   function updateCaptionScale() {
