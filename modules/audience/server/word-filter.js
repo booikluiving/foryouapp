@@ -1,6 +1,6 @@
 "use strict";
 
-// Scheldwoordenfilter, overgenomen uit V1 (legacy/server.js detectModerationMatch).
+// Scheldwoordenfilter.
 // Woordenlijst: modules/audience/moderation/bad-words.txt (een woord per regel, # = commentaar).
 // De lijst wordt opnieuw ingelezen zodra het bestand verandert.
 
@@ -102,7 +102,7 @@ function detectMatch(words, input, { allowSubword = false } = {}) {
   return null;
 }
 
-function createWordFilter({ wordsPath = process.env.V2_AUDIENCE_BAD_WORDS_PATH || DEFAULT_WORDS_PATH, watch = true } = {}) {
+function createWordFilter({ wordsPath = process.env.AUDIENCE_BAD_WORDS_PATH || DEFAULT_WORDS_PATH, watch = true } = {}) {
   let words = [];
   function load() {
     try {

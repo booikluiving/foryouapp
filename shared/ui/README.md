@@ -1,16 +1,12 @@
-# For You V2 UI Styles
+# For You UI Styles
 
-Deze map bevat de gedeelde visuele basis voor nieuwe V2-modulepagina's.
+Deze map bevat de gedeelde visuele basis voor nieuwe modulepagina's.
 
-Gebruik `foryou-v2.css` als startpunt voor nieuwe schermen. De stijl is gebaseerd op de bestaande pagina's die goed werken:
-
-- `legacy/public/algoritme.html`
-- `app/public/paden.html`
-- `For_universe/src/public/styles.css`
+Gebruik `foryou.css` als startpunt voor nieuwe schermen.
 
 ## Regels
 
-- V1-pariteit eerst: behoud bestaande werkende UI-patronen.
+- Behoud bestaande werkende UI-patronen.
 - Geen nieuwe sidebar/admin-stijl tenzij daar expliciet om gevraagd is.
 - Editorpagina's gebruiken standaard de lichte werkstijl.
 - Stage/Universe-achtige visualisaties gebruiken `.fy-theme-stage`.
@@ -20,7 +16,7 @@ Gebruik `foryou-v2.css` als startpunt voor nieuwe schermen. De stijl is gebaseer
 ## Voorbeeld
 
 ```html
-<link rel="stylesheet" href="/shared/ui/foryou-v2.css">
+<link rel="stylesheet" href="/shared/ui/foryou.css">
 <body class="fy-page">
   <header class="fy-topbar">
     <div class="fy-bar">
@@ -28,7 +24,7 @@ Gebruik `foryou-v2.css` als startpunt voor nieuwe schermen. De stijl is gebaseer
         <span class="fy-brand-mark">FY</span>
         <div class="fy-brand-text">
           <strong>Catalogus</strong>
-          <span>V2 module</span>
+          <span>module</span>
         </div>
       </div>
       <div class="fy-actions">

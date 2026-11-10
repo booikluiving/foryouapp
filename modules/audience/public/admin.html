@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>For You - Audience Admin V2</title>
+    <title>For You - Audience Admin</title>
     <style>
       :root {
         --bg: #f4f7fb;
@@ -368,10 +368,9 @@
       <div class="card">
         <div class="row adminTop">
           <div>
-            <h1>Audience Admin V2</h1>
-            <p class="muted">Legacy audience-flow op V2 sessies, opslag en realtime.</p>
+            <h1>Audience Admin</h1>
           </div>
-          <nav class="serviceNav" aria-label="V2 service links">
+          <nav class="serviceNav" aria-label="service links">
             <a href="http://127.0.0.1:3026/admin" aria-current="page">Audience Admin</a>
             <a href="http://127.0.0.1:3024/runtime/" target="_blank" rel="noopener">Runtime</a>
             <a href="http://127.0.0.1:3023/algorithm/" target="_blank" rel="noopener">Algorithm</a>
@@ -421,7 +420,7 @@
             <input id="wifiPasswordInput" placeholder="Wachtwoord" autocomplete="off" />
             <button id="saveWifiBtn" class="primary" type="button">Opslaan</button>
           </div>
-          <div class="muted"><a href="/v2/audience/stage/wifi-qr" target="_blank" rel="noopener">/v2/audience/stage/wifi-qr</a></div>
+          <div class="muted"><a href="/audience/stage/wifi-qr" target="_blank" rel="noopener">/audience/stage/wifi-qr</a></div>
         </section>
 
         <section class="card">
@@ -615,10 +614,10 @@
       </section>
     </div>
 
-    <script src="/v2/audience/vendor/qrcode-generator.min.js"></script>
+    <script src="/audience/vendor/qrcode-generator.min.js"></script>
     <script>
-      const LIVE_CHAT_HEIGHT_PREF_KEY = "audience_admin_live_chat_height_v2";
-      const SECTION_OPEN_PREF_PREFIX = "audience_admin_section_open_v2:";
+      const LIVE_CHAT_HEIGHT_PREF_KEY = "audience_admin_live_chat_height";
+      const SECTION_OPEN_PREF_PREFIX = "audience_admin_section_open:";
       const SECTION_MAX_HEIGHTS = {
         "Sessie & QR": "440px",
         "WiFi QR": "220px",
@@ -859,7 +858,7 @@
         if (ip) query.set("ip", ip);
         query.set("targetKind", targetKind);
         query.set("limit", "80");
-        const data = await api("/v2/audience/admin/user-history?" + query.toString());
+        const data = await api("/audience/admin/user-history?" + query.toString());
         const cacheKey = clientKey || ip || "";
         userHistoryCache.set(cacheKey, {
           ip,
@@ -1200,7 +1199,7 @@
         simulationUpdatePending = true;
         let succeeded = false;
         try {
-          const result = await post("/v2/audience/admin/simulation/update", simConfig());
+          const result = await post("/audience/admin/simulation/update", simConfig());
           succeeded = true;
           if (result.simulation && lastState) {
             lastState.simulation = result.simulation;
@@ -1329,7 +1328,7 @@
         stageSettingsSaveTimer = setTimeout(async () => {
           stageSettingsSaveTimer = null;
           try {
-            const body = await post("/v2/audience/admin/stage/settings", stageSettingsFromControls());
+            const body = await post("/audience/admin/stage/settings", stageSettingsFromControls());
             if (body.stage && lastState) {
               lastState.stage = body.stage;
               renderStage(lastState);
@@ -1375,7 +1374,7 @@
       }
       async function refresh() {
         try {
-          renderState(await api("/v2/audience/admin/state?ts=" + Date.now(), { cache: "no-store" }));
+          renderState(await api("/audience/admin/state?ts=" + Date.now(), { cache: "no-store" }));
         } catch (err) {
           setActionMessage("Admin state fout: " + err.message, true);
         }
@@ -1432,13 +1431,13 @@
           return;
         }
         const payload = moderationPayload(button);
-        if (act === "mute1") await runAction("/v2/audience/admin/users/mute", { ...payload, minutes: 1 }, "Gebruiker gemute (1m).");
-        if (act === "mute2") await runAction("/v2/audience/admin/users/mute", { ...payload, minutes: 2 }, "Gebruiker gemute (2m).");
-        if (act === "mute5") await runAction("/v2/audience/admin/users/mute", { ...payload, minutes: 5 }, "Gebruiker gemute (5m).");
-        if (act === "unmute") await runAction("/v2/audience/admin/users/unmute", payload, "Gebruiker unmuted.");
-        if (act === "block") await runAction("/v2/audience/admin/users/block", payload, "Gebruiker geblokkeerd.");
-        if (act === "unblock") await runAction("/v2/audience/admin/users/unblock", payload, "Gebruiker unblocked.");
-        if (act === "kick") await runAction("/v2/audience/admin/users/kick", payload, "Gebruiker verwijderd.");
+        if (act === "mute1") await runAction("/audience/admin/users/mute", { ...payload, minutes: 1 }, "Gebruiker gemute (1m).");
+        if (act === "mute2") await runAction("/audience/admin/users/mute", { ...payload, minutes: 2 }, "Gebruiker gemute (2m).");
+        if (act === "mute5") await runAction("/audience/admin/users/mute", { ...payload, minutes: 5 }, "Gebruiker gemute (5m).");
+        if (act === "unmute") await runAction("/audience/admin/users/unmute", payload, "Gebruiker unmuted.");
+        if (act === "block") await runAction("/audience/admin/users/block", payload, "Gebruiker geblokkeerd.");
+        if (act === "unblock") await runAction("/audience/admin/users/unblock", payload, "Gebruiker unblocked.");
+        if (act === "kick") await runAction("/audience/admin/users/kick", payload, "Gebruiker verwijderd.");
       }
       function simConfig() {
         return {
@@ -1472,27 +1471,27 @@
       }
 
       document.getElementById("saveWifiBtn").addEventListener("click", () => {
-        runAction("/v2/audience/admin/wifi-qr", {
+        runAction("/audience/admin/wifi-qr", {
           ssid: els.wifiSsidInput.value,
           auth: els.wifiAuthInput.value,
           password: els.wifiPasswordInput.value,
         }, "WiFi QR opgeslagen.");
       });
       document.getElementById("startSessionBtn").addEventListener("click", async () => {
-        const result = await runAction("/v2/audience/admin/sessions/start", {
+        const result = await runAction("/audience/admin/sessions/start", {
           name: els.sessionName.value,
           tokenTtlMinutes: Number(els.tokenTtl.value || 720),
         }, "Nieuwe sessie gestart. QR klaar.");
         if (result.join && result.join.joinUrl) drawQr(result.join.joinUrl);
       });
       document.getElementById("newTokenBtn").addEventListener("click", async () => {
-        const result = await runAction("/v2/audience/admin/sessions/join-token", {
+        const result = await runAction("/audience/admin/sessions/join-token", {
           ttlMinutes: Number(els.tokenTtl.value || 720),
         }, "Nieuwe join-token gemaakt.");
         if (result.join && result.join.joinUrl) drawQr(result.join.joinUrl);
       });
       document.getElementById("endSessionBtn").addEventListener("click", () => {
-        runAction("/v2/audience/admin/sessions/stop", {}, "Sessie beëindigd.");
+        runAction("/audience/admin/sessions/stop", {}, "Sessie beëindigd.");
       });
       document.getElementById("copyJoinBtn").addEventListener("click", async () => {
         const ok = await copyText(els.joinUrl.value);
@@ -1518,26 +1517,26 @@
       els.enforcementBody.addEventListener("click", handleModerationClick);
       document.getElementById("addPollOptionBtn").addEventListener("click", () => addPollOptionRow("", true));
       document.getElementById("startPollBtn").addEventListener("click", () => {
-        runAction("/v2/audience/admin/polls/start", {
+        runAction("/audience/admin/polls/start", {
           question: els.pollQuestion.value,
           options: pollOptionsPayload(),
           durationSeconds: Number(els.pollDurationSeconds.value || 60),
         }, "Poll gestart.");
       });
       document.getElementById("closePollBtn").addEventListener("click", () => {
-        runAction("/v2/audience/admin/polls/close", {}, "Poll gesloten.");
+        runAction("/audience/admin/polls/close", {}, "Poll gesloten.");
       });
       els.messageSlowdownMs.addEventListener("input", () => {
         els.messageSlowdownValue.textContent = `${els.messageSlowdownMs.value}ms`;
       });
       document.getElementById("saveMessageSlowdownBtn").addEventListener("click", () => {
-        runAction("/v2/audience/admin/settings/message-slowdown", { ms: Number(els.messageSlowdownMs.value || 850) }, `Slowdown bewaard (${els.messageSlowdownMs.value}ms).`);
+        runAction("/audience/admin/settings/message-slowdown", { ms: Number(els.messageSlowdownMs.value || 850) }, `Slowdown bewaard (${els.messageSlowdownMs.value}ms).`);
       });
       els.engagementCommentPoints.addEventListener("input", () => {
         els.engagementCommentPointsValue.textContent = String(els.engagementCommentPoints.value);
         if (engagementSaveTimer) clearTimeout(engagementSaveTimer);
         engagementSaveTimer = setTimeout(() => {
-          runAction("/v2/audience/admin/settings/engagement-comment-points", { points: Number(els.engagementCommentPoints.value || 75) }, "Comment-punten bijgewerkt.");
+          runAction("/audience/admin/settings/engagement-comment-points", { points: Number(els.engagementCommentPoints.value || 75) }, "Comment-punten bijgewerkt.");
         }, 180);
       });
       els.simToggleBtn.addEventListener("click", async () => {
@@ -1551,7 +1550,7 @@
         if (lastState) renderSimulation(lastState);
         try {
           await runAction(
-            running ? "/v2/audience/admin/simulation/stop" : "/v2/audience/admin/simulation/start",
+            running ? "/audience/admin/simulation/stop" : "/audience/admin/simulation/start",
             running ? {} : simConfig()
           );
         } finally {
@@ -1560,7 +1559,7 @@
         }
       });
       document.getElementById("updateSimBtn").addEventListener("click", () => submitSimulationUpdate({ quiet: false }));
-      document.getElementById("sendCueBtn").addEventListener("click", () => runAction("/v2/audience/admin/simulation/cue", { cue: els.simCue.value }, "Crowd cue verstuurd."));
+      document.getElementById("sendCueBtn").addEventListener("click", () => runAction("/audience/admin/simulation/cue", { cue: els.simCue.value }, "Crowd cue verstuurd."));
       for (const control of [els.simClients, els.simMsgRate, els.simReactionRate]) {
         control.addEventListener("input", () => {
           updateSimulationValueLabels();
@@ -1587,7 +1586,7 @@
         if (!els.stageUrl.value) return setActionMessage("Stage-link nog niet beschikbaar.", true);
         window.open(els.stageUrl.value, "_blank", "noopener");
       });
-      document.getElementById("testEmojiBtn").addEventListener("click", () => runAction("/v2/audience/admin/stage/test-emoji", {}, "Test emoji verstuurd."));
+      document.getElementById("testEmojiBtn").addEventListener("click", () => runAction("/audience/admin/stage/test-emoji", {}, "Test emoji verstuurd."));
       for (const control of [
         els.stageShowQr, els.stageShowChat, els.stageShowEmojis, els.stageShowLeaderboard, els.stageBackground,
         els.stageChatScale, els.stageChatHeight, els.stageChatBottom, els.stageChatX, els.stageChatFade,

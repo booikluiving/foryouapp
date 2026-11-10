@@ -2,7 +2,7 @@
 
 const http = require("http");
 
-const baseUrl = new URL(process.env.V2_SHOW_CONTROL_SQ5_BRIDGE_URL || process.argv[2] || "http://127.0.0.1:3225");
+const baseUrl = new URL(process.env.SHOW_CONTROL_SQ5_BRIDGE_URL || process.argv[2] || "http://127.0.0.1:3225");
 const requested = process.argv.slice(3);
 
 function postJson(path, body) {

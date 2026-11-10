@@ -4,7 +4,17 @@ const STAGE_W = 1080;
 const STAGE_H = 1920;
 const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 6000;
-const SOURCE_KEY = "script_agent_operator_stage_source_v1";
+const SOURCE_KEY = "script_agent_operator_stage_source";
+// Eenmalig: wat in deze browser nog onder de oude sleutelnaam staat, overnemen.
+for (const key of [SOURCE_KEY]) {
+  try {
+    const oldKey = key + "_v1";
+    const oldValue = localStorage.getItem(oldKey);
+    if (oldValue === null) continue;
+    if (localStorage.getItem(key) === null) localStorage.setItem(key, oldValue);
+    localStorage.removeItem(oldKey);
+  } catch (_err) { /* opslag niet beschikbaar */ }
+}
 const STYLE_DEFAULT = Object.freeze({ font: "jetbrains", cursor: "block", fontSize: 30 });
 const FONT_STACKS = {
   jetbrains: '"JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',

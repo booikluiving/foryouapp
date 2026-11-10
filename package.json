@@ -1,5 +1,5 @@
 {
-  "name": "foryou-v2",
+  "name": "foryou",
   "private": true,
   "version": "0.0.0",
   "engines": {
@@ -8,11 +8,9 @@
   "scripts": {
     "catalog:start": "node modules/catalog/server/server.js",
     "catalog:smoke": "node modules/catalog/tests/smoke-test.js",
-    "catalog:test:readonly": "node modules/catalog/tests/readonly-regression-test.js",
     "catalog:smoke:write-media": "node modules/catalog/tests/write-media-smoke-test.js",
     "catalog:smoke:composition-editor": "node modules/catalog/tests/composition-editor-smoke-test.js",
     "catalog:smoke:import-assets": "node modules/catalog/tests/import-environment-assets-test.js",
-    "catalog:import-legacy": "node modules/catalog/tools/import-legacy-catalog.js",
     "catalog:import-environment-assets": "node modules/catalog/tools/import-environment-assets.js",
     "paths:start": "node modules/paths/server/server.js",
     "paths:smoke": "node modules/paths/tests/smoke-test.js",
@@ -44,9 +42,7 @@
     "show-control:hardware:test": "node modules/show-control/hardware/tests/hardware-test.js",
     "gateway:start": "node gateway/server/server.js",
     "gateway:smoke": "node gateway/tests/smoke-test.js",
-    "gateway:test": "node gateway/tests/unit-test.js",
-    "shadow-run:smoke": "node shadow-run/tests/smoke-test.js",
-    "shadow-run:test": "node shadow-run/tests/unit-test.js"
+    "gateway:test": "node gateway/tests/unit-test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.7.0",

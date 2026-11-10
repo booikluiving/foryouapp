@@ -41,7 +41,7 @@ function buildSocketIoCompatRequest(socket) {
     }
   }
   const query = search.toString();
-  const url = query ? `/v2/audience/socket.io?${query}` : "/v2/audience/socket.io";
+  const url = query ? `/audience/socket.io?${query}` : "/audience/socket.io";
   return {
     url,
     headers,
@@ -123,13 +123,13 @@ function attachAudienceRealtime(server, service, options = {}) {
   const chatClients = new Set();
   const wss = new WebSocket.Server({
     server,
-    path: "/v2/audience/realtime",
+    path: "/audience/realtime",
     perMessageDeflate: false,
     maxPayload: 16 * 1024,
   });
   const io = SocketIOServer
     ? new SocketIOServer(server, {
-      path: "/v2/audience/socket.io",
+      path: "/audience/socket.io",
       transports: ["polling"],
       allowUpgrades: false,
       serveClient: true,

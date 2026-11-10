@@ -91,7 +91,7 @@ function sanitizeSeededFrom(seededFrom) {
   if (!seededFrom || typeof seededFrom !== "object" || Array.isArray(seededFrom)) return null;
   if (seededFrom.type === "legacy-sqlite-wal-copy") {
     return {
-      type: "v2-owned-import",
+      type: "owned-import",
       importedFrom: "legacy-paths",
       snapshotId: seededFrom.snapshotId || null,
       adapter: seededFrom.adapter || null,
@@ -143,7 +143,7 @@ async function buildPathsSnapshot(options = {}) {
     schemaVersion: PATHS_SNAPSHOT_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
     source: {
-      type: "v2-paths-store",
+      type: "paths-store",
       path: pathsStorePath(options),
       readOnly: false,
       ownsMutations: true,

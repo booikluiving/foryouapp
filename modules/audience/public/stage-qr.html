@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>For You - Audience QR V2</title>
+    <title>For You - Audience QR</title>
     <style>
       html, body {
         margin: 0;
@@ -32,10 +32,10 @@
       <div id="qr"></div>
       <div id="label" class="muted">Scan om mee te doen</div>
     </div>
-    <script src="/v2/audience/vendor/qrcode-generator.min.js"></script>
+    <script src="/audience/vendor/qrcode-generator.min.js"></script>
     <script>
       async function refresh() {
-        const data = await fetch("/v2/audience/admin/state?stage=qr&ts=" + Date.now(), { cache: "no-store" }).then((res) => res.json());
+        const data = await fetch("/audience/admin/state?stage=qr&ts=" + Date.now(), { cache: "no-store" }).then((res) => res.json());
         const url = data.sessionJoin && data.sessionJoin.joinUrl;
         const qrEl = document.getElementById("qr");
         if (!url || typeof qrcode !== "function") {

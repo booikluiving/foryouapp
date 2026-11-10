@@ -9,8 +9,8 @@ function tryLoadExpress(moduleId) {
 }
 
 function loadExpress() {
-  if (process.env.V2_SCRIPT_AGENT_EXPRESS_MODULE) {
-    const configured = tryLoadExpress(process.env.V2_SCRIPT_AGENT_EXPRESS_MODULE);
+  if (process.env.SCRIPT_AGENT_EXPRESS_MODULE) {
+    const configured = tryLoadExpress(process.env.SCRIPT_AGENT_EXPRESS_MODULE);
     if (!configured || !configured.error) return configured;
     throw configured.error;
   }

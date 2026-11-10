@@ -13,7 +13,7 @@ const {
 } = require("../write-model/catalog-store");
 const { buildCatalogReadModel } = require("../read-model/build-read-model");
 const { validateCatalogReadModel } = require("../validation/validate-catalog");
-const { importLegacyCatalog } = require("../tools/import-legacy-catalog");
+const { seedCatalog } = require("./fixtures/seed-catalog");
 const { runImport } = require("../tools/import-environment-assets");
 
 const TEST_DIR = __dirname;
@@ -25,23 +25,9 @@ const REPLACEMENT_SOURCE_ROOT = path.join(TEST_ROOT, "replacement-source");
 const TEST_DB_PATH = path.join(TEST_ROOT, "db", "catalog.sqlite");
 const TEST_MEDIA_ROOT = path.join(TEST_ROOT, "media");
 const TEST_REPORT_DIR = path.join(TEST_ROOT, "reports");
-const PROTECTED_V1_FILES = [
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-wal"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-shm"),
-];
-
 async function sha256(filePath) {
   const data = await fs.readFile(filePath);
   return crypto.createHash("sha256").update(data).digest("hex");
-}
-
-async function protectedHashes() {
-  const entries = [];
-  for (const filePath of PROTECTED_V1_FILES) {
-    entries.push([filePath, await sha256(filePath)]);
-  }
-  return Object.fromEntries(entries);
 }
 
 async function pathExists(filePath) {
@@ -79,12 +65,6 @@ async function hashPathState(filePath) {
   return { type: "dir", files };
 }
 
-function assertHashesEqual(before, after) {
-  for (const filePath of PROTECTED_V1_FILES) {
-    assert.equal(after[filePath], before[filePath], `${path.basename(filePath)} changed`);
-  }
-}
-
 function assertPathInside(parent, child) {
   const relative = path.relative(parent, child);
   assert(!relative.startsWith("..") && !path.isAbsolute(relative), `${child} is outside ${parent}`);
@@ -105,7 +85,7 @@ async function createSourceFixture() {
   await writeFixture(path.join(SOURCE_ROOT, "Lingo_studio.mp3"), "canonical lingo soundscape");
   await writeFixture(path.join(SOURCE_ROOT, "The_Voice_of_Holland.png"), "canonical voice background");
   await writeFixture(path.join(SOURCE_ROOT, "The_Voice_of_Holland.mp3"), "canonical voice soundscape");
-  await writeFixture(path.join(SOURCE_ROOT, "Cradam.txt"), "legacy prompt text");
+  await writeFixture(path.join(SOURCE_ROOT, "Cradam.txt"), "prompt text");
   await writeFixture(path.join(SOURCE_ROOT, ".DS_Store"), "hidden");
   await writeFixture(path.join(SOURCE_ROOT, "._Bioscoop.jpg"), "appledouble");
   await writeFixture(path.join(SOURCE_ROOT, "NietBestaandVoorTest.jpg"), "unmatched");
@@ -134,14 +114,10 @@ async function main() {
   await createSourceFixture();
   await createReplacementSourceFixture();
 
-  const beforeHashes = await protectedHashes();
   const defaultStoreBefore = await hashPathState(DEFAULT_STORE_PATH);
   const defaultDbBefore = await hashPathState(DEFAULT_DB_PATH);
   const defaultMediaBefore = await hashPathState(DEFAULT_MEDIA_ROOT);
-  await importLegacyCatalog({
-    dbPath: TEST_DB_PATH,
-    jsonStorePath: path.join(TEST_ROOT, "missing-catalog-store.json"),
-  });
+  await seedCatalog({ dbPath: TEST_DB_PATH });
 
   try {
     const dryStoreBefore = await hashPathState(TEST_DB_PATH);
@@ -177,7 +153,7 @@ async function main() {
     assert(dryRun.unmatchedGroups.some((group) => group.groupName === "NietBestaandVoorTest"));
     assert(dryRun.environmentsWithoutSourceAssets.some((item) => item.environmentName === "Cradam"));
     assert(await pathExists(dryRun.reportPath));
-    assert.deepEqual(await hashPathState(TEST_DB_PATH), dryStoreBefore, "dry-run changed temporary V2 catalog db");
+    assert.deepEqual(await hashPathState(TEST_DB_PATH), dryStoreBefore, "dry-run changed temporary catalog db");
     assert.deepEqual(await hashPathState(TEST_MEDIA_ROOT), dryMediaBefore, "dry-run wrote temporary media");
 
     const applyRun = await runImport({
@@ -199,7 +175,7 @@ async function main() {
       issue.code === "media_asset_missing_files"
       && issue.refId === "environment:24"
       && /background|audio|soundscape/.test(issue.message)
-    )), "V2-present imported assets should suppress legacy missing media info for Bioscoop");
+    )), "Present imported assets should suppress missing media info for Bioscoop");
     for (const imported of applyRun.importedAssets) {
       assertPathInside(TEST_MEDIA_ROOT, imported.asset.filePath);
       assert(await pathExists(imported.asset.filePath));
@@ -236,11 +212,9 @@ async function main() {
     assert.equal(newBackground.type, "background");
     assertPathInside(TEST_MEDIA_ROOT, newBackground.filePath);
 
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
-    assert.deepEqual(await hashPathState(DEFAULT_STORE_PATH), defaultStoreBefore, "default V2 store changed during import smoke");
-    assert.deepEqual(await hashPathState(DEFAULT_DB_PATH), defaultDbBefore, "default V2 catalog db changed during import smoke");
-    assert.deepEqual(await hashPathState(DEFAULT_MEDIA_ROOT), defaultMediaBefore, "default V2 media root changed during import smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_STORE_PATH), defaultStoreBefore, "default store changed during import smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_DB_PATH), defaultDbBefore, "default catalog db changed during import smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_MEDIA_ROOT), defaultMediaBefore, "default media root changed during import smoke");
 
     await cleanupTestRoot();
     process.stdout.write(JSON.stringify({
@@ -248,18 +222,15 @@ async function main() {
       dryRunWouldImport: dryRun.wouldImportAssets.length,
       applyImported: applyRun.importedAssets.length,
       replacementImported: replacementRun.importedAssets.length,
-      protectedV1HashesUnchanged: true,
-      defaultV2StoreUnchanged: true,
-      defaultV2MediaRootUnchanged: true,
+      defaultStoreUnchanged: true,
+      defaultMediaRootUnchanged: true,
       temporaryTestRootCleaned: !(await pathExists(TEST_ROOT)),
     }, null, 2));
     process.stdout.write("\n");
   } catch (err) {
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
-    assert.deepEqual(await hashPathState(DEFAULT_STORE_PATH), defaultStoreBefore, "default V2 store changed during failed import smoke");
-    assert.deepEqual(await hashPathState(DEFAULT_DB_PATH), defaultDbBefore, "default V2 catalog db changed during failed import smoke");
-    assert.deepEqual(await hashPathState(DEFAULT_MEDIA_ROOT), defaultMediaBefore, "default V2 media root changed during failed import smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_STORE_PATH), defaultStoreBefore, "default store changed during failed import smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_DB_PATH), defaultDbBefore, "default catalog db changed during failed import smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_MEDIA_ROOT), defaultMediaBefore, "default media root changed during failed import smoke");
     await cleanupTestRoot();
     throw err;
   }

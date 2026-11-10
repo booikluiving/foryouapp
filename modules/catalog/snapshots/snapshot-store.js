@@ -10,18 +10,18 @@ const {
 const { buildCatalogReadModel } = require("../read-model/build-read-model");
 const { validateCatalogReadModel } = require("../validation/validate-catalog");
 
-const V2_ROOT = path.resolve(__dirname, "../../..");
-const DEFAULT_SNAPSHOT_DIR = path.join(V2_ROOT, "modules", "catalog", "snapshots", "data");
+const APP_ROOT = path.resolve(__dirname, "../../..");
+const DEFAULT_SNAPSHOT_DIR = path.join(APP_ROOT, "modules", "catalog", "snapshots", "data");
 
 function snapshotDir() {
-  return path.resolve(process.env.V2_CATALOG_SNAPSHOT_DIR || DEFAULT_SNAPSHOT_DIR);
+  return path.resolve(process.env.CATALOG_SNAPSHOT_DIR || DEFAULT_SNAPSHOT_DIR);
 }
 
-function assertPathUnderV2(targetPath) {
+function assertPathUnderApp(targetPath) {
   const resolved = path.resolve(targetPath);
-  const relative = path.relative(V2_ROOT, resolved);
+  const relative = path.relative(APP_ROOT, resolved);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`snapshot_path_outside_v2:${resolved}`);
+    throw new Error(`snapshot_path_outside_app:${resolved}`);
   }
   return resolved;
 }
@@ -45,8 +45,8 @@ async function createCatalogSnapshot(options = {}) {
   const createdAtDate = new Date();
   const createdAt = createdAtDate.toISOString();
   const snapshotId = createSnapshotId(createdAtDate);
-  const targetDir = assertPathUnderV2(options.snapshotDir || snapshotDir());
-  const filePath = assertPathUnderV2(path.join(targetDir, `${snapshotId}.json`));
+  const targetDir = assertPathUnderApp(options.snapshotDir || snapshotDir());
+  const filePath = assertPathUnderApp(path.join(targetDir, `${snapshotId}.json`));
   const payload = {
     snapshotId,
     createdAt,
@@ -66,7 +66,7 @@ async function createCatalogSnapshot(options = {}) {
     catalogSchemaVersion: payload.catalogSchemaVersion,
     source: payload.source,
     filePath,
-    relativePath: path.relative(V2_ROOT, filePath),
+    relativePath: path.relative(APP_ROOT, filePath),
     catalogCounts: catalog.counts,
     validationCounts: validation.counts,
   };
@@ -74,7 +74,7 @@ async function createCatalogSnapshot(options = {}) {
 
 module.exports = {
   DEFAULT_SNAPSHOT_DIR,
-  V2_ROOT,
+  APP_ROOT,
   createCatalogSnapshot,
   snapshotDir,
 };

@@ -5,7 +5,7 @@ const { buildCatalogReadModel } = require("../../catalog/read-model/build-read-m
 const DEFAULT_CATALOG_BASE_URL = "http://127.0.0.1:3021";
 
 function catalogBaseUrl() {
-  return String(process.env.V2_SCRIPT_AGENT_CATALOG_URL || DEFAULT_CATALOG_BASE_URL).replace(/\/+$/, "");
+  return String(process.env.SCRIPT_AGENT_CATALOG_URL || DEFAULT_CATALOG_BASE_URL).replace(/\/+$/, "");
 }
 
 async function fetchCatalogSnapshot() {

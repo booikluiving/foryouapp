@@ -5,7 +5,7 @@ const { fetchJson, joinUrl } = require("./http-json");
 const DEFAULT_SQ5_BASE_URL = "http://127.0.0.1:3225";
 
 function sq5BaseUrl(options = {}) {
-  return String(options.sq5BaseUrl || process.env.V2_SHOW_CONTROL_SQ5_URL || DEFAULT_SQ5_BASE_URL).replace(/\/+$/, "");
+  return String(options.sq5BaseUrl || process.env.SHOW_CONTROL_SQ5_URL || DEFAULT_SQ5_BASE_URL).replace(/\/+$/, "");
 }
 
 function encode(value) {

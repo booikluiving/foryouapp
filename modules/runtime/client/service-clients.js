@@ -6,19 +6,19 @@ const DEFAULT_ALGORITHM_BASE_URL = "http://127.0.0.1:3023";
 const DEFAULT_AUDIENCE_BASE_URL = "http://127.0.0.1:3026";
 
 function catalogBaseUrl() {
-  return String(process.env.V2_RUNTIME_CATALOG_URL || DEFAULT_CATALOG_BASE_URL).replace(/\/+$/, "");
+  return String(process.env.RUNTIME_CATALOG_URL || DEFAULT_CATALOG_BASE_URL).replace(/\/+$/, "");
 }
 
 function pathsBaseUrl() {
-  return String(process.env.V2_RUNTIME_PATHS_URL || DEFAULT_PATHS_BASE_URL).replace(/\/+$/, "");
+  return String(process.env.RUNTIME_PATHS_URL || DEFAULT_PATHS_BASE_URL).replace(/\/+$/, "");
 }
 
 function algorithmBaseUrl() {
-  return String(process.env.V2_RUNTIME_ALGORITHM_URL || DEFAULT_ALGORITHM_BASE_URL).replace(/\/+$/, "");
+  return String(process.env.RUNTIME_ALGORITHM_URL || DEFAULT_ALGORITHM_BASE_URL).replace(/\/+$/, "");
 }
 
 function audienceBaseUrl() {
-  return String(process.env.V2_RUNTIME_AUDIENCE_URL || DEFAULT_AUDIENCE_BASE_URL).replace(/\/+$/, "");
+  return String(process.env.RUNTIME_AUDIENCE_URL || DEFAULT_AUDIENCE_BASE_URL).replace(/\/+$/, "");
 }
 
 async function fetchJson(url, options) {
@@ -73,7 +73,7 @@ async function fetchAudienceAlgorithmInput({ showRunId, situationRunId }) {
     showRunId,
     situationRunId,
   });
-  return fetchJson(`${audienceBaseUrl()}/v2/audience/algorithm-input?${query.toString()}`);
+  return fetchJson(`${audienceBaseUrl()}/audience/algorithm-input?${query.toString()}`);
 }
 
 module.exports = {

@@ -6,9 +6,9 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 
 const tempDbDir = path.join(__dirname, "..", `.tmp-cue-store-${process.pid}`);
-process.env.V2_SHOW_CONTROL_DB_DIR = tempDbDir;
-process.env.V2_SHOW_CONTROL_MAX_CUES = "5";
-process.env.V2_SHOW_CONTROL_CUE_FLUSH_MS = "30";
+process.env.SHOW_CONTROL_DB_DIR = tempDbDir;
+process.env.SHOW_CONTROL_MAX_CUES = "5";
+process.env.SHOW_CONTROL_CUE_FLUSH_MS = "30";
 
 const {
   archiveCue,
@@ -46,7 +46,7 @@ async function main() {
 
     await flushCueStore();
     const onDisk = JSON.parse(await fs.readFile(cuesFilePath(), "utf8"));
-    assert.equal(onDisk.length, 5, "cues.json houdt maximaal V2_SHOW_CONTROL_MAX_CUES cues");
+    assert.equal(onDisk.length, 5, "cues.json houdt maximaal SHOW_CONTROL_MAX_CUES cues");
     assert.equal(onDisk[0].cueId, "cue-004", "oudste cues zijn gesnoeid");
     assert.equal(onDisk[4].status.stage, "applied");
     const raw = await fs.readFile(cuesFilePath(), "utf8");

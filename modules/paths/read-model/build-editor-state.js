@@ -13,7 +13,7 @@ function sanitizeSeededFrom(seededFrom) {
   if (!seededFrom || typeof seededFrom !== "object" || Array.isArray(seededFrom)) return null;
   if (seededFrom.type === "legacy-sqlite-wal-copy") {
     return {
-      type: "v2-owned-import",
+      type: "owned-import",
       importedFrom: "legacy-paths",
       snapshotId: seededFrom.snapshotId || null,
       adapter: seededFrom.adapter || null,
@@ -38,10 +38,10 @@ async function buildPathsEditorState(options = {}) {
     schemaVersion: PATHS_EDITOR_STATE_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
     source: {
-      type: "v2-paths-store-with-readonly-catalog",
+      type: "paths-store-with-readonly-catalog",
       pathsStoreReadOnly: false,
       catalogReadOnly: true,
-      catalogSource: "v2-catalog-service",
+      catalogSource: "catalog-service",
       seededFrom: sanitizeSeededFrom(store.seededFrom),
     },
     catalog: {

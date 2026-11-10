@@ -5,7 +5,7 @@ const { fetchJson, joinUrl } = require("./http-json");
 const DEFAULT_PERFECT_CUE_BASE_URL = "http://127.0.0.1:3228";
 
 function perfectCueBaseUrl(options = {}) {
-  return String(options.perfectCueBaseUrl || process.env.V2_SHOW_CONTROL_PERFECT_CUE_URL || DEFAULT_PERFECT_CUE_BASE_URL).replace(/\/+$/, "");
+  return String(options.perfectCueBaseUrl || process.env.SHOW_CONTROL_PERFECT_CUE_URL || DEFAULT_PERFECT_CUE_BASE_URL).replace(/\/+$/, "");
 }
 
 function requestForPerfectCueAction(action) {

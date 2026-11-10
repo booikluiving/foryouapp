@@ -6,7 +6,7 @@ Context:
 
 - Bridge base URL: `http://127.0.0.1:3225`
 - Gebruik HTTP-actions, geen OSC.
-- De bridge moet draaien met snelle Stream Deck mute-polling, bij voorkeur: `V2_SHOW_CONTROL_SQ5_STREAMDECK_POLL_MS=500`.
+- De bridge moet draaien met snelle Stream Deck mute-polling, bij voorkeur: `SHOW_CONTROL_SQ5_STREAMDECK_POLL_MS=500`.
 - Companion moet `GET /api/streamdeck/state` elke `250ms` tot `500ms` pollen voor feedback.
 - In de JSON-status betekent `true` gemute en `false` niet gemute.
 - De knoppen moeten dynamisch zijn: als mute op de SQ-5, de SQ5 webpagina, TouchDesigner of een andere controller verandert, moet Companion de button-status zo snel mogelijk updaten.

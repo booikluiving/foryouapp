@@ -5,7 +5,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 
 const TEST_DB_DIR = path.join(__dirname, ".tmp-unit-db");
-process.env.V2_RUNTIME_DB_DIR = TEST_DB_DIR;
+process.env.RUNTIME_DB_DIR = TEST_DB_DIR;
 
 const {
   assertNoAlgorithmRuntimeOwnershipFields,

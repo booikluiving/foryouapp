@@ -501,9 +501,9 @@ async function main() {
   assert.equal(summarizedCue.executionLog.length, 5, "cue summary should keep only recent log rows");
   assert(Buffer.byteLength(JSON.stringify(summarizedCue)) < 12000, "cue summary should stay compact");
 
-  const previousDbDir = process.env.V2_SHOW_CONTROL_DB_DIR;
+  const previousDbDir = process.env.SHOW_CONTROL_DB_DIR;
   const tempDbDir = path.join(__dirname, "..", `.tmp-unit-db-${process.pid}`);
-  process.env.V2_SHOW_CONTROL_DB_DIR = tempDbDir;
+  process.env.SHOW_CONTROL_DB_DIR = tempDbDir;
   try {
     const indexedCue = buildCompoundCue({
       name: "Payload index fixture",
@@ -521,8 +521,8 @@ async function main() {
     assert(!indexText.includes("indexed-payload"), "payload-index file should not inline payload data");
   } finally {
     await flushCueStore();
-    if (previousDbDir == null) delete process.env.V2_SHOW_CONTROL_DB_DIR;
-    else process.env.V2_SHOW_CONTROL_DB_DIR = previousDbDir;
+    if (previousDbDir == null) delete process.env.SHOW_CONTROL_DB_DIR;
+    else process.env.SHOW_CONTROL_DB_DIR = previousDbDir;
     await fs.rm(tempDbDir, { recursive: true, force: true });
   }
 

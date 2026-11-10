@@ -3,32 +3,32 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const V2_ROOT = path.resolve(__dirname, "../../..");
-const DEFAULT_ALGORITHM_DB_DIR = path.join(V2_ROOT, "modules", "algorithm", "db");
+const APP_ROOT = path.resolve(__dirname, "../../..");
+const DEFAULT_ALGORITHM_DB_DIR = path.join(APP_ROOT, "modules", "algorithm", "db");
 
 function algorithmDbDir() {
-  return path.resolve(process.env.V2_ALGORITHM_DB_DIR || DEFAULT_ALGORITHM_DB_DIR);
+  return path.resolve(process.env.ALGORITHM_DB_DIR || DEFAULT_ALGORITHM_DB_DIR);
 }
 
-function assertPathUnderV2(targetPath) {
+function assertPathUnderApp(targetPath) {
   const resolved = path.resolve(targetPath);
-  const relative = path.relative(V2_ROOT, resolved);
+  const relative = path.relative(APP_ROOT, resolved);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`algorithm_path_outside_v2:${resolved}`);
+    throw new Error(`algorithm_path_outside_app:${resolved}`);
   }
   return resolved;
 }
 
 function runsDir() {
-  return assertPathUnderV2(path.join(algorithmDbDir(), "runs"));
+  return assertPathUnderApp(path.join(algorithmDbDir(), "runs"));
 }
 
 function scoringContextsDir() {
-  return assertPathUnderV2(path.join(algorithmDbDir(), "scoring-contexts"));
+  return assertPathUnderApp(path.join(algorithmDbDir(), "scoring-contexts"));
 }
 
 function configDir() {
-  return assertPathUnderV2(path.join(algorithmDbDir(), "config"));
+  return assertPathUnderApp(path.join(algorithmDbDir(), "config"));
 }
 
 function assertShowRunId(showRunId) {
@@ -39,15 +39,15 @@ function assertShowRunId(showRunId) {
 }
 
 function legacyRunFilePath(showRunId) {
-  return assertPathUnderV2(path.join(runsDir(), `${assertShowRunId(showRunId)}.json`));
+  return assertPathUnderApp(path.join(runsDir(), `${assertShowRunId(showRunId)}.json`));
 }
 
 function scoringContextFilePath(showRunId) {
-  return assertPathUnderV2(path.join(scoringContextsDir(), `${assertShowRunId(showRunId)}.json`));
+  return assertPathUnderApp(path.join(scoringContextsDir(), `${assertShowRunId(showRunId)}.json`));
 }
 
 function configFilePath() {
-  return assertPathUnderV2(path.join(configDir(), "algorithm-config.json"));
+  return assertPathUnderApp(path.join(configDir(), "algorithm-config.json"));
 }
 
 async function fileExists(filePath) {
@@ -130,9 +130,9 @@ async function saveAlgorithmConfigFile(config) {
 }
 
 module.exports = {
-  V2_ROOT,
+  APP_ROOT,
   algorithmDbDir,
-  assertPathUnderV2,
+  assertPathUnderApp,
   assertShowRunId,
   configFilePath,
   legacyRunFilePath,

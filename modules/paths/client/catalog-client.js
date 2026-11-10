@@ -3,7 +3,7 @@
 const DEFAULT_CATALOG_BASE_URL = "http://127.0.0.1:3021";
 
 function catalogBaseUrl() {
-  return String(process.env.V2_PATHS_CATALOG_URL || DEFAULT_CATALOG_BASE_URL).replace(/\/+$/, "");
+  return String(process.env.PATHS_CATALOG_URL || DEFAULT_CATALOG_BASE_URL).replace(/\/+$/, "");
 }
 
 function legacyNumber(item) {

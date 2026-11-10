@@ -1,6 +1,6 @@
 # Camera Control Sidecar
 
-Standalone Blackmagic Micro Studio Camera 4K G2 control surface for the V2 Show Control setup. This sidecar is intentionally separate from the Show Control cue hub.
+Standalone Blackmagic Micro Studio Camera 4K G2 control surface for the Show Control setup. This sidecar is intentionally separate from the Show Control cue hub.
 
 ## Start
 
@@ -8,7 +8,7 @@ From the repo root:
 
 ```bash
 cd app
-V2_SHOW_CONTROL_CAMERA_HOST=127.0.0.1 V2_SHOW_CONTROL_CAMERA_PORT=3226 node modules/show-control/hardware/camera-control/server.js
+SHOW_CONTROL_CAMERA_HOST=127.0.0.1 SHOW_CONTROL_CAMERA_PORT=3226 node modules/show-control/hardware/camera-control/server.js
 ```
 
 Open:
@@ -28,9 +28,9 @@ cam3 192.168.1.167
 Override:
 
 ```bash
-V2_SHOW_CONTROL_CAMERA_CAM1_HOST=192.168.1.165 \
-V2_SHOW_CONTROL_CAMERA_CAM2_HOST=192.168.1.166 \
-V2_SHOW_CONTROL_CAMERA_CAM3_HOST=192.168.1.167 \
+SHOW_CONTROL_CAMERA_CAM1_HOST=192.168.1.165 \
+SHOW_CONTROL_CAMERA_CAM2_HOST=192.168.1.166 \
+SHOW_CONTROL_CAMERA_CAM3_HOST=192.168.1.167 \
 node modules/show-control/hardware/camera-control/server.js
 ```
 
@@ -41,8 +41,8 @@ HTTP and OSC bind to localhost by default.
 Remote HTTP requires an explicit token:
 
 ```bash
-V2_SHOW_CONTROL_CAMERA_HOST=0.0.0.0 \
-V2_SHOW_CONTROL_CAMERA_TOKEN=change-me \
+SHOW_CONTROL_CAMERA_HOST=0.0.0.0 \
+SHOW_CONTROL_CAMERA_TOKEN=change-me \
 node modules/show-control/hardware/camera-control/server.js
 ```
 
@@ -55,8 +55,8 @@ http://<machine-ip>:3226/?token=change-me
 Remote OSC is not token-protected and must be explicitly enabled:
 
 ```bash
-V2_SHOW_CONTROL_CAMERA_ALLOW_REMOTE=1 \
-V2_SHOW_CONTROL_CAMERA_OSC_LISTEN_ADDRESS=0.0.0.0 \
+SHOW_CONTROL_CAMERA_ALLOW_REMOTE=1 \
+SHOW_CONTROL_CAMERA_OSC_LISTEN_ADDRESS=0.0.0.0 \
 node modules/show-control/hardware/camera-control/server.js
 ```
 
@@ -75,13 +75,13 @@ The UI shows three camera panels with:
 Preview is configured with URLs and embedded as an iframe:
 
 ```bash
-V2_SHOW_CONTROL_CAMERA_CAM1_PREVIEW_URL=http://127.0.0.1:8889/cam1 \
-V2_SHOW_CONTROL_CAMERA_CAM2_PREVIEW_URL=http://127.0.0.1:8889/cam2 \
-V2_SHOW_CONTROL_CAMERA_CAM3_PREVIEW_URL=http://127.0.0.1:8889/cam3 \
+SHOW_CONTROL_CAMERA_CAM1_PREVIEW_URL=http://127.0.0.1:8889/cam1 \
+SHOW_CONTROL_CAMERA_CAM2_PREVIEW_URL=http://127.0.0.1:8889/cam2 \
+SHOW_CONTROL_CAMERA_CAM3_PREVIEW_URL=http://127.0.0.1:8889/cam3 \
 node modules/show-control/hardware/camera-control/server.js
 ```
 
-V2 expects OBS/WebRTC or another local video pipeline to provide these URLs. Camera control and video preview remain separate systems.
+The setup expects OBS/WebRTC or another local video pipeline to provide these URLs. Camera control and video preview remain separate systems.
 
 ## HTTP API
 

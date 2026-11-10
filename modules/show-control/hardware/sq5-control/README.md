@@ -13,7 +13,7 @@ Brent, Megan, Booi, Mac, Studio, MiniJack, Mics, Muziek, Sub, Main
 Vanaf de repo-root:
 
 ```bash
-V2_SHOW_CONTROL_SQ5_MIXER_HOST=192.168.1.129 node modules/show-control/hardware/sq5-control/server.js
+SHOW_CONTROL_SQ5_MIXER_HOST=192.168.1.129 node modules/show-control/hardware/sq5-control/server.js
 ```
 
 Open:
@@ -25,21 +25,21 @@ http://127.0.0.1:3225
 Optionele env-vars:
 
 ```bash
-V2_SHOW_CONTROL_SQ5_MIXER_HOST=192.168.1.x \
-V2_SHOW_CONTROL_SQ5_HOST=127.0.0.1 \
-V2_SHOW_CONTROL_SQ5_MIXER_PORT=51325 \
-V2_SHOW_CONTROL_SQ5_MIDI_CHANNEL=1 \
-V2_SHOW_CONTROL_SQ5_FADER_LAW=linear \
-V2_SHOW_CONTROL_SQ5_OSC_LISTEN_ADDRESS=127.0.0.1 \
-V2_SHOW_CONTROL_SQ5_OSC_PORT=53000 \
-V2_SHOW_CONTROL_SQ5_STATUS_POLL_MS=1500 \
-V2_SHOW_CONTROL_SQ5_STREAMDECK_POLL_MS=500 \
+SHOW_CONTROL_SQ5_MIXER_HOST=192.168.1.x \
+SHOW_CONTROL_SQ5_HOST=127.0.0.1 \
+SHOW_CONTROL_SQ5_MIXER_PORT=51325 \
+SHOW_CONTROL_SQ5_MIDI_CHANNEL=1 \
+SHOW_CONTROL_SQ5_FADER_LAW=linear \
+SHOW_CONTROL_SQ5_OSC_LISTEN_ADDRESS=127.0.0.1 \
+SHOW_CONTROL_SQ5_OSC_PORT=53000 \
+SHOW_CONTROL_SQ5_STATUS_POLL_MS=1500 \
+SHOW_CONTROL_SQ5_STREAMDECK_POLL_MS=500 \
 node modules/show-control/hardware/sq5-control/server.js
 ```
 
-Veilige default: HTTP en OSC luisteren lokaal. Companion gebruikt lokaal `http://127.0.0.1:3225`, dus daar verandert niets aan. Wil je de HTTP-interface vanaf een andere machine openen, start dan met `V2_SHOW_CONTROL_SQ5_TOKEN=<token> V2_SHOW_CONTROL_SQ5_HOST=0.0.0.0` en open `http://<mac-studio-ip>:3225/?token=<token>`. Remote OSC is niet met een token te beschermen en vereist daarom expliciet `V2_SHOW_CONTROL_SQ5_ALLOW_REMOTE=1 V2_SHOW_CONTROL_SQ5_OSC_LISTEN_ADDRESS=0.0.0.0`.
+Veilige default: HTTP en OSC luisteren lokaal. Companion gebruikt lokaal `http://127.0.0.1:3225`, dus daar verandert niets aan. Wil je de HTTP-interface vanaf een andere machine openen, start dan met `SHOW_CONTROL_SQ5_TOKEN=<token> SHOW_CONTROL_SQ5_HOST=0.0.0.0` en open `http://<mac-studio-ip>:3225/?token=<token>`. Remote OSC is niet met een token te beschermen en vereist daarom expliciet `SHOW_CONTROL_SQ5_ALLOW_REMOTE=1 SHOW_CONTROL_SQ5_OSC_LISTEN_ADDRESS=0.0.0.0`.
 
-In V2 hoort de bridge als Show Control hardware sidecar te draaien:
+Hier hoort de bridge als Show Control hardware sidecar te draaien:
 
 ```bash
 npm run show-control:hardware:sq5:start
@@ -104,7 +104,7 @@ false = unmuted
 null  = nog geen state bekend
 ```
 
-De bridge pollt de belangrijke Stream Deck mute-status standaard elke `500ms` via `V2_SHOW_CONTROL_SQ5_STREAMDECK_POLL_MS`. Daardoor kan Companion meestal sneller dan 1 seconde reageren op mute-wijzigingen die elders gebeuren.
+De bridge pollt de belangrijke Stream Deck mute-status standaard elke `500ms` via `SHOW_CONTROL_SQ5_STREAMDECK_POLL_MS`. Daardoor kan Companion meestal sneller dan 1 seconde reageren op mute-wijzigingen die elders gebeuren.
 
 Gebruik voor feedback in Companion deze velden:
 
@@ -168,7 +168,7 @@ main
 OSC blijft beschikbaar voor TouchDesigner of andere show-control:
 
 ```text
-host: 127.0.0.1 standaard, of <bridge-computer-ip> met V2_SHOW_CONTROL_SQ5_ALLOW_REMOTE=1
+host: 127.0.0.1 standaard, of <bridge-computer-ip> met SHOW_CONTROL_SQ5_ALLOW_REMOTE=1
 port: 53000
 ```
 

@@ -63,33 +63,40 @@ function createAudienceApp(options = {}) {
   });
   app.locals.audienceService = service;
   app.use(express.json({ limit: "512kb" }));
-  app.use("/v2/audience/vendor", express.static(path.join(PUBLIC_DIR, "vendor"), { fallthrough: false }));
+  app.use("/audience/vendor", express.static(path.join(PUBLIC_DIR, "vendor"), { fallthrough: false }));
 
   app.get("/health", (_req, res) => {
     res.json(service.health());
   });
 
-  app.get(["/", "/app", "/v2/audience/public"], (_req, res) => {
+  app.get(["/", "/app", "/audience/public"], (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "index.html"));
   });
 
-  app.get(["/admin", "/v2/audience/admin"], (_req, res) => {
+  app.get(["/admin", "/audience/admin"], (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "admin.html"));
   });
 
-  app.get("/v2/audience/stage", (_req, res) => {
+  // TIJDELIJK: TouchDesigner (webrender_wifi en webrender_sessie) vraagt de podiumpagina's
+  // nog op het oude adres op. Stuur die door tot show/td-qhub-test/apply_publiek_adres_patch.py
+  // in TouchDesigner is gedraaid; daarna kan dit blok weg.
+  app.get(/^\/v2\/audience\/stage(\/.*)?$/, (req, res) => {
+    res.redirect(307, req.originalUrl.replace(/^\/v2\/audience/, "/audience"));
+  });
+
+  app.get("/audience/stage", (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "stage.html"));
   });
 
-  app.get("/v2/audience/stage/session-qr", (_req, res) => {
+  app.get("/audience/stage/session-qr", (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "stage-qr.html"));
   });
 
-  app.get("/v2/audience/stage/wifi-qr", (_req, res) => {
+  app.get("/audience/stage/wifi-qr", (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "stage-wifi-qr.html"));
   });
 
-  app.get("/v2/audience/stage/wifi-qr/state", (_req, res) => {
+  app.get("/audience/stage/wifi-qr/state", (_req, res) => {
     res.set("Cache-Control", "no-store");
     res.json({ ok: true, wifiQr: service.getWifiQr() });
   });
@@ -119,11 +126,11 @@ function createAudienceApp(options = {}) {
     res.redirect(302, "/");
   });
 
-  app.get("/v2/audience/status", asyncRoute(async (req, res) => {
+  app.get("/audience/status", asyncRoute(async (req, res) => {
     res.json(await service.adminState(req));
   }));
 
-  app.get("/v2/audience/public/history", (req, res) => {
+  app.get("/audience/public/history", (req, res) => {
     const ip = req.socket && req.socket.remoteAddress;
     const access = service.ensureSessionAccessForRequest(req, ip);
     if (!access.ok) {
@@ -137,19 +144,19 @@ function createAudienceApp(options = {}) {
     res.json(service.publicHistory(req.query.limit));
   });
 
-  app.post("/v2/audience/public/debug", (_req, res) => {
+  app.post("/audience/public/debug", (_req, res) => {
     res.status(204).end();
   });
 
-  app.get("/v2/audience/public/debug-log", (_req, res) => {
+  app.get("/audience/public/debug-log", (_req, res) => {
     res.json({ ok: true, lines: [] });
   });
 
-  app.get("/v2/audience/admin/state", asyncRoute(async (req, res) => {
+  app.get("/audience/admin/state", asyncRoute(async (req, res) => {
     res.json(await service.adminState(req));
   }));
 
-  app.post("/v2/audience/admin/settings/message-slowdown", (req, res) => {
+  app.post("/audience/admin/settings/message-slowdown", (req, res) => {
     const settings = service.updateMessageSlowdown(req.body && req.body.ms);
     res.json({
       ok: true,
@@ -159,7 +166,7 @@ function createAudienceApp(options = {}) {
     });
   });
 
-  app.post("/v2/audience/admin/settings/engagement-comment-points", (req, res) => {
+  app.post("/audience/admin/settings/engagement-comment-points", (req, res) => {
     const settings = service.updateEngagementCommentPoints(req.body && req.body.points);
     res.json({
       ok: true,
@@ -172,15 +179,15 @@ function createAudienceApp(options = {}) {
     });
   });
 
-  app.post("/v2/audience/admin/stage/settings", (req, res) => {
+  app.post("/audience/admin/stage/settings", (req, res) => {
     res.json({ ok: true, stage: service.updateStageSettings(req.body || {}, req) });
   });
 
-  app.post("/v2/audience/admin/wifi-qr", (req, res) => {
+  app.post("/audience/admin/wifi-qr", (req, res) => {
     res.json({ ok: true, wifiQr: service.updateWifiQrSettings(req.body || {}) });
   });
 
-  app.post("/v2/audience/admin/stage/test-emoji", (_req, res) => {
+  app.post("/audience/admin/stage/test-emoji", (_req, res) => {
     service.emit("broadcast", {
       type: "stage_reaction",
       reaction: "heart",
@@ -190,7 +197,7 @@ function createAudienceApp(options = {}) {
     res.json({ ok: true, reaction: "heart", burst: 2 });
   });
 
-  app.post("/v2/audience/admin/sessions/start", (req, res) => {
+  app.post("/audience/admin/sessions/start", (req, res) => {
     const tokenTtlMinutes = req.body && req.body.tokenTtlMinutes;
     const result = service.startSession(req, {
       name: req.body && req.body.name,
@@ -200,12 +207,12 @@ function createAudienceApp(options = {}) {
     res.status(201).json({ ok: true, session: result.session, join: result.join });
   });
 
-  app.post("/v2/audience/admin/sessions/stop", (_req, res) => {
+  app.post("/audience/admin/sessions/stop", (_req, res) => {
     const session = service.stopSession();
     res.json({ ok: true, session });
   });
 
-  app.post("/v2/audience/admin/sessions/join-token", (req, res) => {
+  app.post("/audience/admin/sessions/join-token", (req, res) => {
     const join = service.issueJoinToken(req, {
       ttlMinutes: req.body && req.body.ttlMinutes,
       createdBy: "admin",
@@ -213,7 +220,7 @@ function createAudienceApp(options = {}) {
     res.status(201).json({ ok: true, join });
   });
 
-  app.post("/v2/audience/admin/users/:action", (req, res) => {
+  app.post("/audience/admin/users/:action", (req, res) => {
     const action = String(req.params.action || "");
     if (!["mute", "unmute", "block", "unblock", "kick"].includes(action)) {
       res.status(404).json({ ok: false, error: "not_found" });
@@ -227,7 +234,7 @@ function createAudienceApp(options = {}) {
     res.json(result);
   });
 
-  app.get("/v2/audience/admin/user-history", (req, res) => {
+  app.get("/audience/admin/user-history", (req, res) => {
     const session = service.getActiveSession();
     if (!session) {
       res.status(409).json({ ok: false, error: "session_inactive" });
@@ -247,12 +254,12 @@ function createAudienceApp(options = {}) {
     res.json({ ok: true, sessionId: session.id, targetIp: ip || null, targetClientKey: clientKey || null, messages });
   });
 
-  app.post("/v2/audience/admin/polls/start", (req, res) => {
+  app.post("/audience/admin/polls/start", (req, res) => {
     const poll = service.startPoll(req.body || {});
     res.status(201).json({ ok: true, poll });
   });
 
-  app.post("/v2/audience/admin/polls/close", (_req, res) => {
+  app.post("/audience/admin/polls/close", (_req, res) => {
     const pollId = service.closePoll("admin_close");
     if (!pollId) {
       res.status(400).json({ ok: false, error: "no_active_poll" });
@@ -261,21 +268,21 @@ function createAudienceApp(options = {}) {
     res.json({ ok: true, pollId });
   });
 
-  app.post("/v2/audience/admin/simulation/start", (req, res) => {
+  app.post("/audience/admin/simulation/start", (req, res) => {
     service.activeSessionRequired();
     res.json({ ok: true, simulation: service.simulation.start(req.body || {}) });
   });
 
-  app.post("/v2/audience/admin/simulation/update", (req, res) => {
+  app.post("/audience/admin/simulation/update", (req, res) => {
     res.json({ ok: true, simulation: service.simulation.update(req.body || {}) });
   });
 
-  app.post("/v2/audience/admin/simulation/defaults", (req, res) => {
+  app.post("/audience/admin/simulation/defaults", (req, res) => {
     const defaults = service.simulation.saveDefaults(req.body || {});
     res.json({ ok: true, defaults, simulation: service.simulation.getState() });
   });
 
-  app.post("/v2/audience/admin/simulation/cue", (req, res) => {
+  app.post("/audience/admin/simulation/cue", (req, res) => {
     const accepted = service.simulation.issueCue(req.body && req.body.cue);
     if (!accepted) {
       res.status(400).json({ ok: false, error: "invalid_crowd_cue" });
@@ -284,12 +291,12 @@ function createAudienceApp(options = {}) {
     res.json({ ok: true, accepted, simulation: service.simulation.getState() });
   });
 
-  app.post("/v2/audience/admin/simulation/stop", (req, res) => {
+  app.post("/audience/admin/simulation/stop", (req, res) => {
     const reason = String(req.body && req.body.reason || "admin_stop").slice(0, 120);
     res.json({ ok: true, simulation: service.simulation.stop(reason) });
   });
 
-  app.get("/v2/audience/algorithm-input", asyncRoute(async (req, res) => {
+  app.get("/audience/algorithm-input", asyncRoute(async (req, res) => {
     res.json(await service.algorithmInput({
       showRunId: req.query.showRunId,
       situationRunId: req.query.situationRunId,
@@ -297,7 +304,7 @@ function createAudienceApp(options = {}) {
     }));
   }));
 
-  app.post("/v2/audience/signals", asyncRoute(async (req, res) => {
+  app.post("/audience/signals", asyncRoute(async (req, res) => {
     const session = service.getActiveSession();
     const meta = {
       sessionId: session ? session.id : 0,
@@ -321,7 +328,7 @@ function createAudienceApp(options = {}) {
     res.status(201).json({ ok: true, signal });
   }));
 
-  app.get("/v2/audience/signals", (req, res) => {
+  app.get("/audience/signals", (req, res) => {
     const signals = service.store.readSignals({
       showRunId: req.query.showRunId ? String(req.query.showRunId) : null,
       situationRunId: req.query.situationRunId ? String(req.query.situationRunId) : null,

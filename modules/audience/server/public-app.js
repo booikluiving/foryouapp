@@ -41,7 +41,7 @@ function createAudiencePublicApp({ service } = {}) {
   });
 
   app.use(express.json({ limit: "16kb" }));
-  app.use("/v2/audience/vendor", express.static(path.join(PUBLIC_DIR, "vendor"), { fallthrough: false }));
+  app.use("/audience/vendor", express.static(path.join(PUBLIC_DIR, "vendor"), { fallthrough: false }));
 
   app.get("/health", (_req, res) => {
     const health = service.health();
@@ -98,7 +98,7 @@ function createAudiencePublicApp({ service } = {}) {
     res.redirect(302, "/");
   });
 
-  app.get("/v2/audience/public/history", (req, res) => {
+  app.get("/audience/public/history", (req, res) => {
     const access = service.ensureSessionAccessForRequest(req, service.requestAddress(req));
     if (!access.ok) {
       res.status(access.reason === "session_inactive" ? 410 : 403).json({ ok: false, error: access.reason, messages: [] });
@@ -107,11 +107,11 @@ function createAudiencePublicApp({ service } = {}) {
     res.json(service.publicHistory(req.query.limit));
   });
 
-  app.post("/v2/audience/public/debug", (_req, res) => {
+  app.post("/audience/public/debug", (_req, res) => {
     res.status(204).end();
   });
 
-  app.get("/v2/audience/public/debug-log", (_req, res) => {
+  app.get("/audience/public/debug-log", (_req, res) => {
     res.json({ ok: true, lines: [] });
   });
 

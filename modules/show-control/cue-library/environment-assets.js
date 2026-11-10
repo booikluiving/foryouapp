@@ -98,7 +98,7 @@ function catalogFromRuntimeState(runtimeState = {}) {
 function catalogDbPath(options = {}) {
   return String(
     options.catalogDbPath
-    || process.env.V2_CATALOG_DB_PATH
+    || process.env.CATALOG_DB_PATH
     || DEFAULT_CATALOG_DB_PATH
   );
 }

@@ -5,7 +5,7 @@ const { fetchJson, joinUrl } = require("./http-json");
 const DEFAULT_DMX_BASE_URL = "http://127.0.0.1:3229";
 
 function dmxBaseUrl(options = {}) {
-  return String(options.dmxBaseUrl || process.env.V2_SHOW_CONTROL_DMX_URL || DEFAULT_DMX_BASE_URL).replace(/\/+$/, "");
+  return String(options.dmxBaseUrl || process.env.SHOW_CONTROL_DMX_URL || DEFAULT_DMX_BASE_URL).replace(/\/+$/, "");
 }
 
 function passThroughPayload(payload = {}) {

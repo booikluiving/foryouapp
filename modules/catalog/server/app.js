@@ -36,8 +36,8 @@ function asyncRoute(handler) {
 function showControlUrl(options = {}) {
   return String(
     options.showControlUrl
-    || process.env.V2_CATALOG_SHOW_CONTROL_URL
-    || process.env.V2_SHOW_CONTROL_URL
+    || process.env.CATALOG_SHOW_CONTROL_URL
+    || process.env.SHOW_CONTROL_URL
     || DEFAULT_SHOW_CONTROL_URL
   ).replace(/\/+$/, "");
 }
@@ -46,7 +46,7 @@ function createMediaRefreshScheduler(options = {}) {
   const timers = new Map();
   const debounceMs = Math.max(0, Number(
     options.mediaRefreshDebounceMs
-    || process.env.V2_CATALOG_MEDIA_REFRESH_DEBOUNCE_MS
+    || process.env.CATALOG_MEDIA_REFRESH_DEBOUNCE_MS
     || 150
   ));
   return function scheduleMediaRefresh(input = {}) {
@@ -137,7 +137,7 @@ function createCatalogApp(options = {}) {
         fixtureIds: ["lamp4", "lamp5", "lamp6", "lamp7", "lamp8", "lamp9"],
         look: "neutral-soft-white",
       },
-      v2MediaAssets: await listMediaAssets(options),
+      storedMediaAssets: await listMediaAssets(options),
       counts: {
         environments: readModel.environments.length,
         mediaAssets: readModel.mediaAssets.length,

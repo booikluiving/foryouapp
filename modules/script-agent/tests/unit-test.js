@@ -6,7 +6,7 @@ const path = require("node:path");
 const { Readable } = require("node:stream");
 
 const TMP_DB_DIR = path.join(__dirname, ".tmp-unit-db");
-process.env.V2_SCRIPT_AGENT_DB_DIR = TMP_DB_DIR;
+process.env.SCRIPT_AGENT_DB_DIR = TMP_DB_DIR;
 
 const {
   validatePromptInputShape,
@@ -169,13 +169,13 @@ async function main() {
     "Script Agent fallback should reflect catalog performer choices without redistributing roles"
   );
 
-  const previousCatalogUrl = process.env.V2_SCRIPT_AGENT_CATALOG_URL;
-  process.env.V2_SCRIPT_AGENT_CATALOG_URL = "http://127.0.0.1:1";
+  const previousCatalogUrl = process.env.SCRIPT_AGENT_CATALOG_URL;
+  process.env.SCRIPT_AGENT_CATALOG_URL = "http://127.0.0.1:1";
   const fallbackCatalog = await fetchCatalogSnapshot();
   if (previousCatalogUrl == null) {
-    delete process.env.V2_SCRIPT_AGENT_CATALOG_URL;
+    delete process.env.SCRIPT_AGENT_CATALOG_URL;
   } else {
-    process.env.V2_SCRIPT_AGENT_CATALOG_URL = previousCatalogUrl;
+    process.env.SCRIPT_AGENT_CATALOG_URL = previousCatalogUrl;
   }
   assert.equal(fallbackCatalog.ok, true);
   assert.equal(fallbackCatalog.source, "local-catalog-read-model");
@@ -226,7 +226,7 @@ async function main() {
   assert.equal(legacyStore.setCaptionStyle({ fontSizeScale: 9, verticalPosition: 10 }).captionStyle.fontSizeScale, 1.25);
 
   const bridge = createTeleprompterParserBridge({
-    env: { V2_SCRIPT_AGENT_CATALOG_URL: "http://catalog.test" },
+    env: { SCRIPT_AGENT_CATALOG_URL: "http://catalog.test" },
   });
   const preparedFromPrompt = bridge.preparedSceneFromPromptInput(promptInput);
   assert.equal(preparedFromPrompt.sceneId, 1);
@@ -266,7 +266,7 @@ async function main() {
   };
   try {
     const stopBridge = createTeleprompterParserBridge({
-      env: { V2_SCRIPT_AGENT_SHOW_CONTROL_URL: "http://show-control.test" },
+      env: { SCRIPT_AGENT_SHOW_CONTROL_URL: "http://show-control.test" },
       clients: {
         fetchCurrentRuntimeState: async () => ({ ok: true, state: cloneJson(runtimeState) }),
       },
@@ -375,18 +375,18 @@ async function main() {
     performerSlots: scriptOutput.teleprompter.performerSlots.length,
     assertions: [
       "resolvedPreparedNext yields stable prompt input",
-      "Catalog client falls back to local V2 read model when the service URL is unavailable",
+      "Catalog client falls back to local read model when the service URL is unavailable",
       "parser verifies characters and flags unknown roles against snapshot",
       "teleprompter shows performer slots from runtime output",
       "Script Agent output contains no Runtime order state",
       "Operator migrates preparedNext to editable DeepSeek prompt draft",
       "Operator builds manual catalog drafts with stage source tracking",
-      "Operator stage style normalizes legacy terminal settings",
+      "Operator stage style normalizes older terminal settings",
       "Operator secrets are managed in UI API without plaintext status leaks",
       "DeepSeek stream is converted to Script Agent output and teleprompter data",
       "Scene naar chat uses the Runtime prepared draft and DeepSeek stream",
-      "Legacy teleprompter parser/store behavior is preserved under Script Agent",
-      "Teleprompter bridge maps Script Agent prompt input to legacy prepared scene payloads",
+      "Teleprompter parser/store behavior is preserved under Script Agent",
+      "Teleprompter bridge maps Script Agent prompt input to prepared scene payloads",
       "Teleprompter end scene uses the shared Show Control stop-situation cue",
     ],
   }, null, 2));

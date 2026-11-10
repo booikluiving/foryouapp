@@ -5,15 +5,15 @@ const { URL } = require("url");
 const osc = require("../common/osc-compat");
 const WebSocket = loadOptionalWebSocket();
 
-const TOOL_PORT = Number(process.env.V2_SHOW_CONTROL_CAMERA_PORT || 3226);
-const TOOL_HOST = normalizeBindHost(process.env.V2_SHOW_CONTROL_CAMERA_HOST || "127.0.0.1");
-const CONTROL_TOKEN = String(process.env.V2_SHOW_CONTROL_CAMERA_TOKEN || "").trim();
-const ALLOW_REMOTE = parseBooleanLike(process.env.V2_SHOW_CONTROL_CAMERA_ALLOW_REMOTE || "0");
-const OSC_PORT = Number(process.env.V2_SHOW_CONTROL_CAMERA_OSC_PORT || 53260);
-const OSC_LISTEN_ADDRESS = normalizeBindHost(process.env.V2_SHOW_CONTROL_CAMERA_OSC_LISTEN_ADDRESS || "127.0.0.1");
-const CAMERA_TIMEOUT_MS = Number(process.env.V2_SHOW_CONTROL_CAMERA_TIMEOUT_MS || 1800);
-const CAMERA_POLL_MS = Number(process.env.V2_SHOW_CONTROL_CAMERA_POLL_MS || 2000);
-const WS_RECONNECT_BASE_MS = Number(process.env.V2_SHOW_CONTROL_CAMERA_WS_RECONNECT_BASE_MS || 1000);
+const TOOL_PORT = Number(process.env.SHOW_CONTROL_CAMERA_PORT || 3226);
+const TOOL_HOST = normalizeBindHost(process.env.SHOW_CONTROL_CAMERA_HOST || "127.0.0.1");
+const CONTROL_TOKEN = String(process.env.SHOW_CONTROL_CAMERA_TOKEN || "").trim();
+const ALLOW_REMOTE = parseBooleanLike(process.env.SHOW_CONTROL_CAMERA_ALLOW_REMOTE || "0");
+const OSC_PORT = Number(process.env.SHOW_CONTROL_CAMERA_OSC_PORT || 53260);
+const OSC_LISTEN_ADDRESS = normalizeBindHost(process.env.SHOW_CONTROL_CAMERA_OSC_LISTEN_ADDRESS || "127.0.0.1");
+const CAMERA_TIMEOUT_MS = Number(process.env.SHOW_CONTROL_CAMERA_TIMEOUT_MS || 1800);
+const CAMERA_POLL_MS = Number(process.env.SHOW_CONTROL_CAMERA_POLL_MS || 2000);
+const WS_RECONNECT_BASE_MS = Number(process.env.SHOW_CONTROL_CAMERA_WS_RECONNECT_BASE_MS || 1000);
 const STATIC_DIR = path.join(__dirname, "public");
 
 requireSafeBind("HTTP", TOOL_HOST, { allowToken: true });
@@ -542,15 +542,15 @@ function broadcastState() {
 
 function buildCameraConfig() {
   const defaults = [
-    ["cam1", "CAM1", process.env.V2_SHOW_CONTROL_CAMERA_CAM1_HOST || "192.168.1.165"],
-    ["cam2", "CAM2", process.env.V2_SHOW_CONTROL_CAMERA_CAM2_HOST || "192.168.1.166"],
-    ["cam3", "CAM3", process.env.V2_SHOW_CONTROL_CAMERA_CAM3_HOST || "192.168.1.167"],
+    ["cam1", "CAM1", process.env.SHOW_CONTROL_CAMERA_CAM1_HOST || "192.168.1.165"],
+    ["cam2", "CAM2", process.env.SHOW_CONTROL_CAMERA_CAM2_HOST || "192.168.1.166"],
+    ["cam3", "CAM3", process.env.SHOW_CONTROL_CAMERA_CAM3_HOST || "192.168.1.167"],
   ];
   return Object.fromEntries(defaults.map(([id, label, host]) => [id, {
     id,
     label,
     host: String(host).trim(),
-    previewUrl: String(process.env[`V2_SHOW_CONTROL_CAMERA_${id.toUpperCase()}_PREVIEW_URL`] || "").trim(),
+    previewUrl: String(process.env[`SHOW_CONTROL_CAMERA_${id.toUpperCase()}_PREVIEW_URL`] || "").trim(),
     tally: "none",
     online: false,
     restOk: false,
@@ -643,8 +643,8 @@ function requireSafeBind(kind, host, options = {}) {
   if (options.allowToken && CONTROL_TOKEN) return;
   if (options.allowRemoteFlag && ALLOW_REMOTE) return;
   const suffix = options.allowToken
-    ? "Set V2_SHOW_CONTROL_CAMERA_TOKEN to allow remote HTTP binding."
-    : "Set V2_SHOW_CONTROL_CAMERA_ALLOW_REMOTE=1 to allow remote OSC binding.";
+    ? "Set SHOW_CONTROL_CAMERA_TOKEN to allow remote HTTP binding."
+    : "Set SHOW_CONTROL_CAMERA_ALLOW_REMOTE=1 to allow remote OSC binding.";
   throw new Error(`${kind} bind host ${host} is remote. ${suffix}`);
 }
 
@@ -665,7 +665,7 @@ function loadOptionalWebSocket() {
   try {
     return require("ws");
   } catch (error) {
-    process.stderr.write(`Camera Control V2: WebSocket dependency unavailable; HTTP/OSC mode stays active. ${error.message || error}\n`);
+    process.stderr.write(`Camera Control: WebSocket dependency unavailable; HTTP/OSC mode stays active. ${error.message || error}\n`);
     return null;
   }
 }

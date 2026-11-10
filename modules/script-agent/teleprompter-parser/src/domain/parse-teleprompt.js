@@ -142,7 +142,7 @@ function parseTeleprompt(input = {}) {
     lines,
     source: {
       kind: sourceKind,
-      parser: "rule-based-v1",
+      parser: "rule-based",
       generatedAt: new Date().toISOString(),
     },
   };

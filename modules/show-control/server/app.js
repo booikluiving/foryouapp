@@ -69,16 +69,16 @@ function showControlClients() {
 
 function showControlAdapterOptions(options = {}) {
   return {
-    runtimeBaseUrl: process.env.V2_SHOW_CONTROL_RUNTIME_URL,
-    sq5BaseUrl: process.env.V2_SHOW_CONTROL_SQ5_URL,
-    cameraBaseUrl: process.env.V2_SHOW_CONTROL_CAMERA_URL,
-    dmxBaseUrl: process.env.V2_SHOW_CONTROL_DMX_URL,
-    streamDeckBaseUrl: process.env.V2_SHOW_CONTROL_STREAMDECK_URL,
-    perfectCueBaseUrl: process.env.V2_SHOW_CONTROL_PERFECT_CUE_URL,
-    scriptAgentBaseUrl: process.env.V2_SHOW_CONTROL_SCRIPT_AGENT_URL,
-    tdOscHost: process.env.V2_SHOW_CONTROL_TD_OSC_HOST,
-    tdOscPort: process.env.V2_SHOW_CONTROL_TD_OSC_PORT,
-    tdAckPort: process.env.V2_SHOW_CONTROL_TD_ACK_PORT,
+    runtimeBaseUrl: process.env.SHOW_CONTROL_RUNTIME_URL,
+    sq5BaseUrl: process.env.SHOW_CONTROL_SQ5_URL,
+    cameraBaseUrl: process.env.SHOW_CONTROL_CAMERA_URL,
+    dmxBaseUrl: process.env.SHOW_CONTROL_DMX_URL,
+    streamDeckBaseUrl: process.env.SHOW_CONTROL_STREAMDECK_URL,
+    perfectCueBaseUrl: process.env.SHOW_CONTROL_PERFECT_CUE_URL,
+    scriptAgentBaseUrl: process.env.SHOW_CONTROL_SCRIPT_AGENT_URL,
+    tdOscHost: process.env.SHOW_CONTROL_TD_OSC_HOST,
+    tdOscPort: process.env.SHOW_CONTROL_TD_OSC_PORT,
+    tdAckPort: process.env.SHOW_CONTROL_TD_ACK_PORT,
     ...(options.adapterOptions || {}),
   };
 }
@@ -192,7 +192,7 @@ function createShowControlApp(options = {}) {
 
   app.get("/health", (_req, res) => {
     const port = Number(process.env.SHOW_CONTROL_PORT || process.env.PORT || options.port || 3025);
-    const adapterMode = String(process.env.V2_SHOW_CONTROL_ADAPTER_MODE || "live");
+    const adapterMode = String(process.env.SHOW_CONTROL_ADAPTER_MODE || "live");
     res.json({
       ok: true,
       service: "show-control",

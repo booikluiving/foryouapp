@@ -3,7 +3,7 @@
 const DEFAULT_RUNTIME_BASE_URL = "http://127.0.0.1:3024";
 
 function runtimeBaseUrl() {
-  return String(process.env.V2_SCRIPT_AGENT_RUNTIME_URL || DEFAULT_RUNTIME_BASE_URL).replace(/\/+$/, "");
+  return String(process.env.SCRIPT_AGENT_RUNTIME_URL || DEFAULT_RUNTIME_BASE_URL).replace(/\/+$/, "");
 }
 
 async function fetchCurrentRuntimeState() {

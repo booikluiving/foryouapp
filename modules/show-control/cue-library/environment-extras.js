@@ -20,11 +20,11 @@ const DEFAULT_MEDIA_ROOT = path.resolve(__dirname, "../../catalog/media");
 const EXTRA_KINDS = ["shot", "geluid"];
 
 function catalogDbPath(options = {}) {
-  return String(options.catalogDbPath || process.env.V2_CATALOG_DB_PATH || DEFAULT_CATALOG_DB_PATH);
+  return String(options.catalogDbPath || process.env.CATALOG_DB_PATH || DEFAULT_CATALOG_DB_PATH);
 }
 
 function mediaRoot(options = {}) {
-  return String(options.catalogMediaRoot || process.env.V2_CATALOG_MEDIA_ROOT || DEFAULT_MEDIA_ROOT);
+  return String(options.catalogMediaRoot || process.env.CATALOG_MEDIA_ROOT || DEFAULT_MEDIA_ROOT);
 }
 
 function environmentIdOf(resolved) {

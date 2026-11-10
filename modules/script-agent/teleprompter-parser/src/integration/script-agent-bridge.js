@@ -19,18 +19,18 @@ function normalizeBaseUrl(value, fallback) {
 }
 
 function catalogBaseUrl(env = process.env) {
-  return normalizeBaseUrl(env.V2_SCRIPT_AGENT_CATALOG_URL, DEFAULT_CATALOG_BASE_URL);
+  return normalizeBaseUrl(env.SCRIPT_AGENT_CATALOG_URL, DEFAULT_CATALOG_BASE_URL);
 }
 
 function showControlBaseUrl(env = process.env) {
   return normalizeBaseUrl(
-    env.V2_SCRIPT_AGENT_SHOW_CONTROL_URL || env.V2_SHOW_CONTROL_URL,
+    env.SCRIPT_AGENT_SHOW_CONTROL_URL || env.SHOW_CONTROL_URL,
     DEFAULT_SHOW_CONTROL_BASE_URL
   );
 }
 
 function runtimeBaseUrl(env = process.env) {
-  return normalizeBaseUrl(env.V2_SCRIPT_AGENT_RUNTIME_URL, DEFAULT_RUNTIME_BASE_URL);
+  return normalizeBaseUrl(env.SCRIPT_AGENT_RUNTIME_URL, DEFAULT_RUNTIME_BASE_URL);
 }
 
 function joinUrl(baseUrl, pathname) {

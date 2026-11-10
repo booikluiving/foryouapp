@@ -19,15 +19,15 @@ function nowIso() {
 }
 
 function perfectCuePort(options = {}) {
-  return Number(options.port || process.env.V2_SHOW_CONTROL_PERFECT_CUE_PORT || DEFAULT_PORT);
+  return Number(options.port || process.env.SHOW_CONTROL_PERFECT_CUE_PORT || DEFAULT_PORT);
 }
 
 function perfectCueHost(options = {}) {
-  return String(options.host || process.env.V2_SHOW_CONTROL_PERFECT_CUE_HOST || DEFAULT_HOST);
+  return String(options.host || process.env.SHOW_CONTROL_PERFECT_CUE_HOST || DEFAULT_HOST);
 }
 
 function showControlUrl(options = {}) {
-  return String(options.showControlUrl || process.env.V2_SHOW_CONTROL_URL || DEFAULT_SHOW_CONTROL_URL).replace(/\/+$/, "");
+  return String(options.showControlUrl || process.env.SHOW_CONTROL_URL || DEFAULT_SHOW_CONTROL_URL).replace(/\/+$/, "");
 }
 
 function createState() {
@@ -86,7 +86,7 @@ function htmlPage() {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Perfect Cue Control V2</title>
+  <title>Perfect Cue Control</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 24px; background: #f7f3ea; color: #1f1d1a; }
     main { max-width: 760px; display: grid; gap: 16px; }
@@ -96,9 +96,9 @@ function htmlPage() {
 </head>
 <body>
   <main>
-    <h1>Perfect Cue Control V2</h1>
+    <h1>Perfect Cue Control</h1>
     <pre id="status">Status laden...</pre>
-    <p>Reserve: focus deze pagina en druk een toets. De key wordt naar deze V2 sidecar gestuurd.</p>
+    <p>Reserve: focus deze pagina en druk een toets. De key wordt naar deze sidecar gestuurd.</p>
     <button id="arm">Keyboard capture actief</button>
     <pre id="log">Wachten op input...</pre>
   </main>
@@ -335,7 +335,7 @@ function startPerfectCueServer(options = {}) {
   const port = perfectCuePort(options);
   const host = perfectCueHost(options);
   server.listen(port, host, () => {
-    process.stdout.write(`Perfect Cue Control V2 listening on http://${host}:${port}\n`);
+    process.stdout.write(`Perfect Cue Control listening on http://${host}:${port}\n`);
   });
   return server;
 }

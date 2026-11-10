@@ -11,7 +11,6 @@ debug.log
 **/data/*.sqlite-wal
 logs/*.log
 **/.tmp/
-**/legacy-readonly/snapshots/
 **/reports/
 **/snapshots/data/
 modules/algorithm/db/.tmp/
@@ -36,11 +35,4 @@ modules/catalog/media/**
 !modules/catalog/media/.gitkeep
 !modules/catalog/media/**/.gitkeep
 !modules/catalog/media/README.md
-legacy/data/*.sqlite-wal
-legacy/data/*.sqlite-shm
-legacy/data/*.sqlite
-legacy/data/local-backups/
-legacy/data/script-output/
-legacy/root-data/
-legacy/**/node_modules/
 modules/runtime/.tmp-ui-db/

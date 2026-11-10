@@ -142,7 +142,7 @@ async function buildPathsUniverseState(options = {}) {
     schemaVersion: PATHS_UNIVERSE_STATE_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
     source: {
-      type: "v2-paths-universe-state",
+      type: "paths-universe-state",
       pathsReadModel: "/v0/paths/editor-state",
       pathsStoreReadOnly: false,
       catalogReadOnly: true,

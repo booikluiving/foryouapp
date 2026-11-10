@@ -19,8 +19,7 @@ const {
 } = require("../write-model/catalog-store");
 
 const CATALOG_ROOT = path.resolve(__dirname, "..");
-const V2_ROOT = path.resolve(__dirname, "../../..");
-const APP_ROOT = V2_ROOT;
+const APP_ROOT = path.resolve(__dirname, "../../..");
 const DEFAULT_SOURCE = path.join(
   os.homedir(),
   "Dropbox",
@@ -30,11 +29,6 @@ const DEFAULT_SOURCE = path.join(
   "Achtergrondjes"
 );
 const DEFAULT_REPORT_DIR = path.join(CATALOG_ROOT, "reports");
-const PROTECTED_V1_FILES = Object.freeze([
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-wal"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-shm"),
-]);
 const TYPE_ORDER = Object.freeze(["background", "soundscape", "fx"]);
 const TAGS_BY_TYPE = Object.freeze({
   background: Object.freeze(["background"]),
@@ -42,34 +36,17 @@ const TAGS_BY_TYPE = Object.freeze({
   fx: Object.freeze(["fx"]),
 });
 
-function assertPathUnderV2(targetPath) {
+function assertPathUnderApp(targetPath) {
   const resolved = path.resolve(targetPath);
-  const relative = path.relative(V2_ROOT, resolved);
+  const relative = path.relative(APP_ROOT, resolved);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`catalog_import_path_outside_v2:${resolved}`);
+    throw new Error(`catalog_import_path_outside_app:${resolved}`);
   }
   return resolved;
 }
 
 function timestampId(date = new Date()) {
   return date.toISOString().replace(/[-:.]/g, "").replace("T", "-").replace("Z", "Z");
-}
-
-async function sha256File(filePath) {
-  const data = await fs.readFile(filePath);
-  return crypto.createHash("sha256").update(data).digest("hex");
-}
-
-async function protectedV1Hashes() {
-  const entries = [];
-  for (const filePath of PROTECTED_V1_FILES) {
-    entries.push([filePath, await sha256File(filePath)]);
-  }
-  return Object.fromEntries(entries);
-}
-
-function hashesUnchanged(before, after) {
-  return PROTECTED_V1_FILES.every((filePath) => before[filePath] === after[filePath]);
 }
 
 async function pathExists(filePath) {
@@ -104,12 +81,12 @@ async function countFiles(rootPath) {
   return { fileCount: count, sampleFiles: samples };
 }
 
-async function v2MediaCounts(options = {}) {
+async function mediaCounts(options = {}) {
   const store = await readCatalogStore(options);
   return {
     dbPath: catalogDbPath(options),
-    storePath: path.resolve(options.storePath || process.env.V2_CATALOG_STORE_PATH || DEFAULT_STORE_PATH),
-    mediaRoot: path.resolve(options.mediaRoot || process.env.V2_CATALOG_MEDIA_ROOT || DEFAULT_MEDIA_ROOT),
+    storePath: path.resolve(options.storePath || process.env.CATALOG_STORE_PATH || DEFAULT_STORE_PATH),
+    mediaRoot: path.resolve(options.mediaRoot || process.env.CATALOG_MEDIA_ROOT || DEFAULT_MEDIA_ROOT),
     storeMediaAssets: (store.mediaAssets || []).length,
     presentStoreMediaAssets: (store.mediaAssets || []).filter((asset) => asset.status === "present").length,
     replacedStoreMediaAssets: (store.mediaAssets || []).filter((asset) => asset.status === "replaced").length,
@@ -291,9 +268,9 @@ async function scanSourceDirectory(sourceDir, readModel) {
 
 async function stageImportFile(candidate, options = {}) {
   const mediaRoot = catalogMediaRoot(options);
-  const tempDir = assertPathUnderV2(path.join(mediaRoot, "_asset-import-tmp"));
+  const tempDir = assertPathUnderApp(path.join(mediaRoot, "_asset-import-tmp"));
   await fs.mkdir(tempDir, { recursive: true });
-  const tempPath = assertPathUnderV2(path.join(
+  const tempPath = assertPathUnderApp(path.join(
     tempDir,
     `${Date.now()}-${crypto.randomBytes(8).toString("hex")}.${candidate.extension}.import`
   ));
@@ -302,7 +279,7 @@ async function stageImportFile(candidate, options = {}) {
 }
 
 async function cleanupImportTmp(options = {}) {
-  const tempDir = assertPathUnderV2(path.join(catalogMediaRoot(options), "_asset-import-tmp"));
+  const tempDir = assertPathUnderApp(path.join(catalogMediaRoot(options), "_asset-import-tmp"));
   try {
     await fs.rmdir(tempDir);
   } catch (err) {
@@ -355,9 +332,9 @@ async function importCandidates(candidates, readModel, options = {}) {
 }
 
 async function writeReport(report, reportDir) {
-  const resolvedReportDir = assertPathUnderV2(reportDir || DEFAULT_REPORT_DIR);
+  const resolvedReportDir = assertPathUnderApp(reportDir || DEFAULT_REPORT_DIR);
   await fs.mkdir(resolvedReportDir, { recursive: true });
-  const filePath = assertPathUnderV2(path.join(
+  const filePath = assertPathUnderApp(path.join(
     resolvedReportDir,
     `environment-assets-import-${timestampId(new Date(report.createdAt))}.json`
   ));
@@ -375,30 +352,25 @@ async function runImport(rawOptions = {}) {
     mediaRoot: rawOptions.mediaRoot,
   };
   const createdAt = new Date().toISOString();
-  const beforeV1Hashes = await protectedV1Hashes();
-  const beforeV2MediaCounts = await v2MediaCounts(options);
+  const beforeMediaCounts = await mediaCounts(options);
   const readModelBefore = await buildCatalogReadModel(options);
   const scan = await scanSourceDirectory(sourceDir, readModelBefore);
   const importResult = rawOptions.apply
     ? await importCandidates(scan.importCandidates, readModelBefore, options)
     : { importedAssets: [], failedImports: [] };
   const readModelAfter = rawOptions.apply ? await buildCatalogReadModel(options) : readModelBefore;
-  const afterV2MediaCounts = await v2MediaCounts(options);
-  const afterV1Hashes = await protectedV1Hashes();
+  const afterMediaCounts = await mediaCounts(options);
 
   const report = {
     ok: importResult.failedImports.length === 0,
     mode,
     createdAt,
     sourceDir,
-    dbPath: beforeV2MediaCounts.dbPath,
-    storePath: beforeV2MediaCounts.storePath,
-    mediaRoot: beforeV2MediaCounts.mediaRoot,
-    beforeV1Hashes,
-    afterV1Hashes,
-    protectedV1HashesUnchanged: hashesUnchanged(beforeV1Hashes, afterV1Hashes),
-    beforeV2MediaCounts,
-    afterV2MediaCounts,
+    dbPath: beforeMediaCounts.dbPath,
+    storePath: beforeMediaCounts.storePath,
+    mediaRoot: beforeMediaCounts.mediaRoot,
+    beforeMediaCounts,
+    afterMediaCounts,
     readModelCountsBefore: readModelBefore.counts,
     readModelCountsAfter: readModelAfter.counts,
     wouldImportAssets: scan.importCandidates,
@@ -413,7 +385,7 @@ async function runImport(rawOptions = {}) {
     unmatchedGroups: scan.unmatchedGroups,
     environmentsWithoutSourceAssets: scan.environmentsWithoutSourceAssets,
   };
-  report.reportPath = await writeReport(report, rawOptions.reportDir || process.env.V2_CATALOG_REPORT_DIR || DEFAULT_REPORT_DIR);
+  report.reportPath = await writeReport(report, rawOptions.reportDir || process.env.CATALOG_REPORT_DIR || DEFAULT_REPORT_DIR);
   return report;
 }
 
@@ -421,7 +393,7 @@ function parseArgs(argv) {
   const options = {
     source: DEFAULT_SOURCE,
     apply: false,
-    reportDir: process.env.V2_CATALOG_REPORT_DIR || DEFAULT_REPORT_DIR,
+    reportDir: process.env.CATALOG_REPORT_DIR || DEFAULT_REPORT_DIR,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -483,7 +455,6 @@ async function main() {
     skippedAssetBackups: report.skippedAssetBackups.length,
     unmatchedGroups: report.unmatchedGroups.map((group) => group.groupName),
     environmentsWithoutSourceAssets: report.environmentsWithoutSourceAssets.map((environment) => environment.environmentName),
-    protectedV1HashesUnchanged: report.protectedV1HashesUnchanged,
   }, null, 2));
   process.stdout.write("\n");
   if (!report.ok) process.exitCode = 1;

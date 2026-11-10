@@ -7,7 +7,6 @@ const { DatabaseSync } = require("node:sqlite");
 
 const MODULE_ROOT = path.resolve(__dirname, "..");
 const APP_ROOT = path.resolve(MODULE_ROOT, "../..");
-const LEGACY_DATA_ROOT = path.join(APP_ROOT, "legacy", "data");
 const DEFAULT_DB_DIR = path.join(MODULE_ROOT, "db");
 const DEFAULT_DB_PATH = path.join(DEFAULT_DB_DIR, "audience.sqlite");
 
@@ -31,24 +30,15 @@ function safeJsonParse(value, fallback) {
   }
 }
 
-function pathIsInside(parent, child) {
-  const relative = path.relative(path.resolve(parent), path.resolve(child));
-  return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
 function assertAudienceStoragePath(filePath) {
-  const resolved = path.resolve(filePath || DEFAULT_DB_PATH);
-  if (pathIsInside(LEGACY_DATA_ROOT, resolved)) {
-    throw new Error(`audience_refuses_legacy_data_path:${resolved}`);
-  }
-  return resolved;
+  return path.resolve(filePath || DEFAULT_DB_PATH);
 }
 
 function audienceDbPath() {
-  if (process.env.V2_AUDIENCE_DB_PATH) {
-    return assertAudienceStoragePath(process.env.V2_AUDIENCE_DB_PATH);
+  if (process.env.AUDIENCE_DB_PATH) {
+    return assertAudienceStoragePath(process.env.AUDIENCE_DB_PATH);
   }
-  const dbDir = path.resolve(process.env.V2_AUDIENCE_DB_DIR || DEFAULT_DB_DIR);
+  const dbDir = path.resolve(process.env.AUDIENCE_DB_DIR || DEFAULT_DB_DIR);
   return assertAudienceStoragePath(path.join(dbDir, "audience.sqlite"));
 }
 

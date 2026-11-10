@@ -8,21 +8,14 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const { DEFAULT_STORE_PATH } = require("../db/paths-store");
-const { V2_ROOT } = require("../snapshots/snapshot-store");
+const { APP_ROOT } = require("../snapshots/snapshot-store");
 
 const TEST_DIR = __dirname;
-const APP_ROOT = path.resolve(TEST_DIR, "../../..");
 let CATALOG_PORT = 3021;
 let PORT = 3022;
 const TEST_TMP_DIR = path.join(TEST_DIR, ".tmp", `paths-smoke-${process.pid}`);
 const TEST_STORE_PATH = path.join(TEST_TMP_DIR, "paths-store.json");
 const TEST_SNAPSHOT_DIR = path.join(TEST_TMP_DIR, "snapshots");
-const PROTECTED_V1_FILES = [
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-wal"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-shm"),
-];
-
 async function sha256(filePath) {
   const data = await fs.readFile(filePath);
   return crypto.createHash("sha256").update(data).digest("hex");
@@ -47,21 +40,7 @@ async function hashPathState(filePath) {
 async function assertNoDefaultPollution() {
   if (!(await pathExists(DEFAULT_STORE_PATH))) return;
   const storeText = await fs.readFile(DEFAULT_STORE_PATH, "utf8");
-  assert(!/V2 smoke pad/i.test(storeText), "default V2 paths store contains smoke-test records");
-}
-
-async function protectedHashes() {
-  const entries = [];
-  for (const filePath of PROTECTED_V1_FILES) {
-    entries.push([filePath, await sha256(filePath)]);
-  }
-  return Object.fromEntries(entries);
-}
-
-function assertHashesEqual(before, after) {
-  for (const filePath of PROTECTED_V1_FILES) {
-    assert.equal(after[filePath], before[filePath], `${path.basename(filePath)} changed`);
-  }
+  assert(!/Smoke pad/i.test(storeText), "default paths store contains smoke-test records");
 }
 
 function assertPathInside(parent, child) {
@@ -146,7 +125,6 @@ async function main() {
   await fs.rm(TEST_TMP_DIR, { recursive: true, force: true });
   await fs.mkdir(path.dirname(TEST_STORE_PATH), { recursive: true });
   await fs.copyFile(DEFAULT_STORE_PATH, TEST_STORE_PATH);
-  const beforeHashes = await protectedHashes();
   const defaultStoreBefore = await hashPathState(DEFAULT_STORE_PATH);
   const catalogLogs = [];
   const catalogChild = spawn(process.execPath, [path.resolve(TEST_DIR, "../../catalog/server/server.js")], {
@@ -154,7 +132,6 @@ async function main() {
     env: {
       ...process.env,
       CATALOG_PORT: String(CATALOG_PORT),
-      V2_CATALOG_LEGACY_SQLITE_PATH: "/missing.sqlite",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -169,10 +146,9 @@ async function main() {
     env: {
       ...process.env,
       PATHS_PORT: String(PORT),
-      V2_PATHS_STORE_PATH: TEST_STORE_PATH,
-      V2_PATHS_SNAPSHOT_DIR: TEST_SNAPSHOT_DIR,
-      V2_PATHS_CATALOG_URL: catalogBaseUrl,
-      V2_PATHS_LEGACY_SQLITE_PATH: "/missing.sqlite",
+      PATHS_STORE_PATH: TEST_STORE_PATH,
+      PATHS_SNAPSHOT_DIR: TEST_SNAPSHOT_DIR,
+      PATHS_CATALOG_URL: catalogBaseUrl,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -192,9 +168,8 @@ async function main() {
     assert(snapshot.counts.pathEdges > 0, "path edges should be present");
     assert.equal(snapshot.source.readOnly, false);
     assert.equal(snapshot.source.ownsMutations, true);
-    assertPathInside(V2_ROOT, snapshot.source.path);
-    assert.equal(snapshot.source.seededFrom.type, "v2-owned-import");
-    assert(!JSON.stringify(snapshot.source.seededFrom).includes("legacy/data/live.sqlite"), "paths source must not expose legacy sqlite paths");
+    assertPathInside(APP_ROOT, snapshot.source.path);
+    assert.equal(snapshot.source.seededFrom.type, "owned-import");
 
     const editorState = await fetchJson("/v0/paths/editor-state");
     assert.equal(editorState.ok, true);
@@ -230,7 +205,7 @@ async function main() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        name: "V2 smoke pad",
+        name: "Smoke pad",
         description: "save-load test",
         color: "#039be5",
         edgeMode: "manual",
@@ -250,7 +225,7 @@ async function main() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         ...created.path,
-        name: "V2 smoke pad opgeslagen",
+        name: "Smoke pad opgeslagen",
         sceneIds,
         edges: [{ fromSceneId: sceneIds[0], toSceneId: sceneIds[1], edgeType: "required" }],
         thresholds: [],
@@ -260,11 +235,11 @@ async function main() {
         isActive: true,
       }),
     });
-    assert.equal(updated.path.name, "V2 smoke pad opgeslagen");
+    assert.equal(updated.path.name, "Smoke pad opgeslagen");
 
     const reloadedState = await fetchJson("/v0/paths/editor-state");
     const savedPath = reloadedState.catalog.paths.find((item) => Number(item.id) === Number(created.path.id));
-    assert(savedPath, "saved path should reload from V2 store");
+    assert(savedPath, "saved path should reload from store");
     assert.deepEqual(savedPath.sceneIds, sceneIds);
     assert.deepEqual(savedPath.edges, [{ fromSceneId: sceneIds[0], toSceneId: sceneIds[1] }]);
     assert.deepEqual(savedPath.endSceneIds, [sceneIds[1]]);
@@ -280,26 +255,26 @@ async function main() {
     assert(universeState.graph.summary.pathCount > 0, "universe-state should include paths");
     assert(universeState.graph.networkMap.summary.nodeCount > 0, "universe-state should include network nodes");
     assert(universeState.graph.networkMap.summary.edgeCount > 0, "universe-state should include network edges");
-    assert.equal(universeState.runtime, null, "V2 Universe runtime overlay should be a read-only disconnected fallback");
+    assert.equal(universeState.runtime, null, "Universe runtime overlay should be a read-only disconnected fallback");
 
     const universeHtml = await fetchText("/universe/");
     assert(universeHtml.includes('id="sky"'), "Universe page should include the sky svg");
     assert(universeHtml.includes('id="testModeBtn"'), "Universe page should include Testpad control");
     assert(universeHtml.includes('id="testPanel"'), "Universe page should include Testpad panel");
     assert(universeHtml.includes('href="/editor/"'), "Universe page should link back to the Paths editor");
-    assert(universeHtml.includes("/universe/sky-renderer.js"), "Universe page should load the V1 renderer copy");
+    assert(universeHtml.includes("/universe/sky-renderer.js"), "Universe page should load the renderer");
     const universeApp = await fetchText("/universe/app.js");
-    assert(universeApp.includes("/v0/paths/universe-state"), "Universe page should use the V2 universe-state endpoint");
-    assert(universeApp.includes("/v0/paths/evaluate"), "Universe Testpad should use the V2 evaluate endpoint");
+    assert(universeApp.includes("/v0/paths/universe-state"), "Universe page should use the universe-state endpoint");
+    assert(universeApp.includes("/v0/paths/evaluate"), "Universe Testpad should use the evaluate endpoint");
     assert(universeApp.includes("playedSceneIds"), "Universe Testpad should evaluate played scene ids");
-    assert(!universeApp.includes("/api/universe/graph"), "Universe page should not use the V1 graph endpoint");
+    assert(!universeApp.includes("/api/universe/graph"), "Universe page should not use the old graph endpoint");
     const universeRenderer = await fetchText("/universe/sky-renderer.js");
     assert(universeRenderer.includes("onSceneClick"), "Universe renderer should expose scene click handling");
     const universeStageHtml = await fetchText("/universe/stage");
     assert(universeStageHtml.includes('id="sky"'), "Universe stage page should include the sky svg");
     const universeStageApp = await fetchText("/universe/stage-app.js");
-    assert(universeStageApp.includes("/v0/paths/universe-state"), "Universe stage page should use the V2 universe-state endpoint");
-    assert(!universeStageApp.includes("/api/universe/graph"), "Universe stage page should not use the V1 graph endpoint");
+    assert(universeStageApp.includes("/v0/paths/universe-state"), "Universe stage page should use the universe-state endpoint");
+    assert(!universeStageApp.includes("/api/universe/graph"), "Universe stage page should not use the old graph endpoint");
 
     const initialEvaluation = await fetchJson("/v0/paths/evaluate", {
       method: "POST",
@@ -340,13 +315,11 @@ async function main() {
     assert(snapshotResult.snapshotId);
     assert(snapshotResult.createdAt);
     assert(snapshotResult.filePath);
-    assertPathInside(V2_ROOT, snapshotResult.filePath);
+    assertPathInside(APP_ROOT, snapshotResult.filePath);
 
     await stopChild(child);
     await stopChild(catalogChild);
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
-    assert.deepEqual(await hashPathState(DEFAULT_STORE_PATH), defaultStoreBefore, "default V2 paths store changed during smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_STORE_PATH), defaultStoreBefore, "default paths store changed during smoke");
     await assertNoDefaultPollution();
     await fs.rm(TEST_TMP_DIR, { recursive: true, force: true });
 
@@ -361,16 +334,13 @@ async function main() {
       playedStart,
       savedPathId: created.path.id,
       snapshotId: snapshotResult.snapshotId,
-      snapshotPathInsideV2: true,
-      protectedV1HashesUnchanged: true,
+      snapshotPathInsideApp: true,
     }, null, 2));
     process.stdout.write("\n");
   } catch (err) {
     await stopChild(child);
     await stopChild(catalogChild);
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
-    assert.deepEqual(await hashPathState(DEFAULT_STORE_PATH), defaultStoreBefore, "default V2 paths store changed during failed smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_STORE_PATH), defaultStoreBefore, "default paths store changed during failed smoke");
     await fs.rm(TEST_TMP_DIR, { recursive: true, force: true });
     err.message = `${err.message}\nPaths server logs:\n${logs.join("")}`;
     throw err;

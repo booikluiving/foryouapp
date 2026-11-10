@@ -741,7 +741,7 @@
       </form>
     </div>
 
-    <script src="/v2/audience/socket.io/socket.io.js"></script>
+    <script src="/audience/socket.io/socket.io.js"></script>
     <script>
       const statusEl = document.getElementById("status");
       const nameLabelEl = document.getElementById("nameLabel");
@@ -815,9 +815,9 @@
       const VOTED_POLL_STORAGE_KEY = "live_voted_poll_id";
       const SCENE_VOTE_STORAGE_KEY = "live_algorithm_character_vote_run_id";
       const SCENE_VOTE_SKIP_STORAGE_KEY = "live_algorithm_character_vote_skip_run_id";
-      const THEME_PREF_KEY = "live_theme_pref_v1";
+      const THEME_PREF_KEY = "live_theme_pref";
       const THEME_MODES = ["auto", "light", "dark"];
-      const DEBUG_CLIENT_PREF_KEY = "live_client_debug_v1";
+      const DEBUG_CLIENT_PREF_KEY = "live_client_debug";
       const ENABLE_CLIENT_DEBUG = (() => {
         try {
           const params = new URLSearchParams(window.location.search || "");
@@ -1473,11 +1473,11 @@
         if (typeof navigator.sendBeacon === "function") {
           try {
             const blob = new Blob([payload], { type: "application/json" });
-            if (navigator.sendBeacon("/v2/audience/public/debug", blob)) return;
+            if (navigator.sendBeacon("/audience/public/debug", blob)) return;
           } catch {}
         }
 
-        fetch("/v2/audience/public/debug", {
+        fetch("/audience/public/debug", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: payload,
@@ -1725,7 +1725,7 @@
 
       function refreshServerLog() {
         refreshServerLogBtn.disabled = true;
-        fetch("/v2/audience/public/debug-log?lines=140&ts=" + Date.now(), { cache: "no-store" })
+        fetch("/audience/public/debug-log?lines=140&ts=" + Date.now(), { cache: "no-store" })
           .then((res) => {
             if (!res.ok) throw new Error("bad status");
             return res.json();
@@ -1831,7 +1831,7 @@
           message: new Set(),
         };
         const ioSocket = window.io({
-          path: "/v2/audience/socket.io",
+          path: "/audience/socket.io",
           transports: ["polling"],
           upgrade: false,
           reconnection: false,
@@ -2257,7 +2257,7 @@
         }, CHAT_HISTORY_LOAD_TIMEOUT_MS);
         try {
           const response = await fetch(
-            "/v2/audience/public/history?limit=" + CHAT_HISTORY_LIMIT + "&ts=" + Date.now(),
+            "/audience/public/history?limit=" + CHAT_HISTORY_LIMIT + "&ts=" + Date.now(),
             {
               cache: "no-store",
               signal: controller.signal,
@@ -2444,7 +2444,7 @@
         debugLog("connect() called");
 
         const wsBaseUrl = (location.protocol === "https:" ? "wss://" : "ws://") + location.host;
-        const wsUrl = wsBaseUrl + "/v2/audience/realtime?sid=" + Date.now();
+        const wsUrl = wsBaseUrl + "/audience/realtime?sid=" + Date.now();
         debugLog("connecting to " + wsUrl + " via socket.io");
 
         let socket;

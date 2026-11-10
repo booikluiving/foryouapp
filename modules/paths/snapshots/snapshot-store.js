@@ -7,18 +7,18 @@ const path = require("node:path");
 const { buildPathsSnapshot } = require("../read-model/build-snapshot");
 const { validatePathsSnapshot } = require("../validation/validate-paths");
 
-const V2_ROOT = path.resolve(__dirname, "../../..");
-const DEFAULT_SNAPSHOT_DIR = path.join(V2_ROOT, "modules", "paths", "snapshots", "data");
+const APP_ROOT = path.resolve(__dirname, "../../..");
+const DEFAULT_SNAPSHOT_DIR = path.join(APP_ROOT, "modules", "paths", "snapshots", "data");
 
 function snapshotDir() {
-  return path.resolve(process.env.V2_PATHS_SNAPSHOT_DIR || DEFAULT_SNAPSHOT_DIR);
+  return path.resolve(process.env.PATHS_SNAPSHOT_DIR || DEFAULT_SNAPSHOT_DIR);
 }
 
-function assertPathUnderV2(targetPath) {
+function assertPathUnderApp(targetPath) {
   const resolved = path.resolve(targetPath);
-  const relative = path.relative(V2_ROOT, resolved);
+  const relative = path.relative(APP_ROOT, resolved);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`paths_snapshot_path_outside_v2:${resolved}`);
+    throw new Error(`paths_snapshot_path_outside_app:${resolved}`);
   }
   return resolved;
 }
@@ -42,8 +42,8 @@ async function createPathsSnapshot(options = {}) {
   const createdAtDate = new Date();
   const createdAt = createdAtDate.toISOString();
   const snapshotId = createSnapshotId(createdAtDate);
-  const targetDir = assertPathUnderV2(options.snapshotDir || snapshotDir());
-  const filePath = assertPathUnderV2(path.join(targetDir, `${snapshotId}.json`));
+  const targetDir = assertPathUnderApp(options.snapshotDir || snapshotDir());
+  const filePath = assertPathUnderApp(path.join(targetDir, `${snapshotId}.json`));
   const payload = {
     snapshotId,
     createdAt,
@@ -59,7 +59,7 @@ async function createPathsSnapshot(options = {}) {
     schemaVersion: payload.schemaVersion,
     source: payload.source,
     filePath,
-    relativePath: path.relative(V2_ROOT, filePath),
+    relativePath: path.relative(APP_ROOT, filePath),
     counts: paths.counts,
     validationCounts: validation.counts,
   };
@@ -67,7 +67,7 @@ async function createPathsSnapshot(options = {}) {
 
 module.exports = {
   DEFAULT_SNAPSHOT_DIR,
-  V2_ROOT,
+  APP_ROOT,
   createPathsSnapshot,
   snapshotDir,
 };

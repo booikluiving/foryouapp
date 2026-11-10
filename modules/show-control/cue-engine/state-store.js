@@ -5,15 +5,15 @@ const fsSync = require("node:fs");
 const path = require("node:path");
 const { compactCueForStorage } = require("./compact-results");
 
-const V2_ROOT = path.resolve(__dirname, "../../..");
-const DEFAULT_SHOW_CONTROL_DB_DIR = path.join(V2_ROOT, "modules", "show-control", "db");
+const APP_ROOT = path.resolve(__dirname, "../../..");
+const DEFAULT_SHOW_CONTROL_DB_DIR = path.join(APP_ROOT, "modules", "show-control", "db");
 const PAYLOAD_INDEX_SCHEMA_VERSION = "show-control.payload-index.v0";
 const writeQueues = new Map();
 const cueFileCaches = new Map();
 // cues.json wordt niet meer bij elke cue/ack volledig herschreven: wijzigingen gaan eerst
 // in het geheugen en worden kort daarna in één keer (compact) weggeschreven.
 const pendingCueFlushes = new Map();
-const CUE_FLUSH_DELAY_MS = Number(process.env.V2_SHOW_CONTROL_CUE_FLUSH_MS || 150);
+const CUE_FLUSH_DELAY_MS = Number(process.env.SHOW_CONTROL_CUE_FLUSH_MS || 150);
 const DEFAULT_MAX_ACTIVE_CUES = 200;
 
 function cloneJson(value) {
@@ -21,41 +21,41 @@ function cloneJson(value) {
 }
 
 function showControlDbDir() {
-  return path.resolve(process.env.V2_SHOW_CONTROL_DB_DIR || DEFAULT_SHOW_CONTROL_DB_DIR);
+  return path.resolve(process.env.SHOW_CONTROL_DB_DIR || DEFAULT_SHOW_CONTROL_DB_DIR);
 }
 
-function assertPathUnderV2(targetPath) {
+function assertPathUnderApp(targetPath) {
   const resolved = path.resolve(targetPath);
-  const relative = path.relative(V2_ROOT, resolved);
+  const relative = path.relative(APP_ROOT, resolved);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`show_control_path_outside_v2:${resolved}`);
+    throw new Error(`show_control_path_outside_app:${resolved}`);
   }
   return resolved;
 }
 
 function cuesFilePath() {
-  return assertPathUnderV2(path.join(showControlDbDir(), "cues.json"));
+  return assertPathUnderApp(path.join(showControlDbDir(), "cues.json"));
 }
 
 function triggerBindingsFilePath() {
-  return assertPathUnderV2(path.join(showControlDbDir(), "trigger-bindings.json"));
+  return assertPathUnderApp(path.join(showControlDbDir(), "trigger-bindings.json"));
 }
 
 function payloadIndexFilePath() {
-  return assertPathUnderV2(path.join(showControlDbDir(), "payload-index.json"));
+  return assertPathUnderApp(path.join(showControlDbDir(), "payload-index.json"));
 }
 
 function cueArchiveDir() {
-  return assertPathUnderV2(path.join(showControlDbDir(), "cue-archief"));
+  return assertPathUnderApp(path.join(showControlDbDir(), "cue-archief"));
 }
 
 function maxActiveCues() {
-  const value = Number(process.env.V2_SHOW_CONTROL_MAX_CUES || DEFAULT_MAX_ACTIVE_CUES);
+  const value = Number(process.env.SHOW_CONTROL_MAX_CUES || DEFAULT_MAX_ACTIVE_CUES);
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_MAX_ACTIVE_CUES;
 }
 
 function payloadStoreDir() {
-  return assertPathUnderV2(path.join(showControlDbDir(), "payloads"));
+  return assertPathUnderApp(path.join(showControlDbDir(), "payloads"));
 }
 
 function payloadFileName(payloadId) {
@@ -63,7 +63,7 @@ function payloadFileName(payloadId) {
 }
 
 function payloadFilePath(payloadId) {
-  return assertPathUnderV2(path.join(payloadStoreDir(), payloadFileName(payloadId)));
+  return assertPathUnderApp(path.join(payloadStoreDir(), payloadFileName(payloadId)));
 }
 
 async function readJsonArray(filePath) {
@@ -508,8 +508,8 @@ function findCuePayload(cue, payloadId) {
 }
 
 module.exports = {
-  V2_ROOT,
-  assertPathUnderV2,
+  APP_ROOT,
+  assertPathUnderApp,
   archiveCue,
   cuesFilePath,
   findCuePayload,

@@ -36,9 +36,9 @@ function createState(options = {}) {
     protocol: "artnet",
     startedAt: nowIso(),
     config: {
-      targetIp: String(options.targetIp || process.env.V2_SHOW_CONTROL_DMX_TARGET_IP || DEFAULT_TARGET_IP).trim(),
-      universe: clampInt(options.universe || process.env.V2_SHOW_CONTROL_DMX_UNIVERSE, 0, 32767, 1),
-      frameRate: clampInt(options.frameRate || process.env.V2_SHOW_CONTROL_DMX_FRAME_RATE, 1, 44, 35),
+      targetIp: String(options.targetIp || process.env.SHOW_CONTROL_DMX_TARGET_IP || DEFAULT_TARGET_IP).trim(),
+      universe: clampInt(options.universe || process.env.SHOW_CONTROL_DMX_UNIVERSE, 0, 32767, 1),
+      frameRate: clampInt(options.frameRate || process.env.SHOW_CONTROL_DMX_FRAME_RATE, 1, 44, 35),
     },
     channels,
     active: false,
@@ -240,8 +240,8 @@ function applyConfig(state, body = {}) {
 function catalogBaseUrl(options = {}) {
   return String(
     options.catalogUrl
-    || process.env.V2_CATALOG_URL
-    || process.env.V2_SHOW_CONTROL_CATALOG_URL
+    || process.env.CATALOG_URL
+    || process.env.SHOW_CONTROL_CATALOG_URL
     || DEFAULT_CATALOG_URL
   ).replace(/\/+$/, "");
 }
@@ -446,11 +446,11 @@ function createDmxApp(options = {}) {
 }
 
 function dmxPort(options = {}) {
-  return Number(options.port || process.env.V2_SHOW_CONTROL_DMX_PORT || DEFAULT_PORT);
+  return Number(options.port || process.env.SHOW_CONTROL_DMX_PORT || DEFAULT_PORT);
 }
 
 function dmxHost(options = {}) {
-  return String(options.host || process.env.V2_SHOW_CONTROL_DMX_HOST || DEFAULT_HOST);
+  return String(options.host || process.env.SHOW_CONTROL_DMX_HOST || DEFAULT_HOST);
 }
 
 function startDmxServer(options = {}) {

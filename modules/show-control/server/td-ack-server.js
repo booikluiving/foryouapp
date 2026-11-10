@@ -11,7 +11,7 @@ const {
 const { createOscServer } = require("../target-adapters/osc-lite");
 
 function ackListenHost(options = {}) {
-  return String(options.tdAckHost || process.env.V2_SHOW_CONTROL_TD_ACK_HOST || "127.0.0.1");
+  return String(options.tdAckHost || process.env.SHOW_CONTROL_TD_ACK_HOST || "127.0.0.1");
 }
 
 async function storeAck(payload) {
@@ -27,7 +27,7 @@ async function storeAck(payload) {
 }
 
 function startTdAckServer(options = {}) {
-  if (options.disableTdAckServer || process.env.V2_SHOW_CONTROL_TD_ACK_DISABLED === "1") return null;
+  if (options.disableTdAckServer || process.env.SHOW_CONTROL_TD_ACK_DISABLED === "1") return null;
   const localAddress = ackListenHost(options);
   const localPort = Number(options.tdAckPort || showControlAckPort(options) || DEFAULT_TD_ACK_PORT);
   const server = createOscServer({

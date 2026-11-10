@@ -1,7 +1,7 @@
 const HOSTS = [
-  process.argv[2] || process.env.V2_SHOW_CONTROL_CAMERA_CAM1_HOST || "192.168.1.165",
-  process.argv[3] || process.env.V2_SHOW_CONTROL_CAMERA_CAM2_HOST || "192.168.1.166",
-  process.argv[4] || process.env.V2_SHOW_CONTROL_CAMERA_CAM3_HOST || "192.168.1.167",
+  process.argv[2] || process.env.SHOW_CONTROL_CAMERA_CAM1_HOST || "192.168.1.165",
+  process.argv[3] || process.env.SHOW_CONTROL_CAMERA_CAM2_HOST || "192.168.1.166",
+  process.argv[4] || process.env.SHOW_CONTROL_CAMERA_CAM3_HOST || "192.168.1.167",
 ];
 
 const ENDPOINTS = [
@@ -12,7 +12,7 @@ const ENDPOINTS = [
   { path: "/camera/tallyStatus", optional: true },
 ];
 
-const TIMEOUT_MS = Number(process.env.V2_SHOW_CONTROL_CAMERA_TEST_TIMEOUT_MS || 2000);
+const TIMEOUT_MS = Number(process.env.SHOW_CONTROL_CAMERA_TEST_TIMEOUT_MS || 2000);
 
 async function main() {
   let failed = false;

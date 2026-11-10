@@ -215,8 +215,8 @@ function validateCatalogReadModel(readModel) {
     }
   }
 
-  const hasV2MediaAssets = Number(readModel.counts && readModel.counts.v2MediaAssets || 0) > 0;
-  if (readModel.source && readModel.source.environmentAssetMediaDirError && !hasV2MediaAssets) {
+  const hasStoredMediaAssets = Number(readModel.counts && readModel.counts.storedMediaAssets || 0) > 0;
+  if (readModel.source && readModel.source.environmentAssetMediaDirError && !hasStoredMediaAssets) {
     issues.push(issue(
       "warning",
       "media_asset_directory_unavailable",

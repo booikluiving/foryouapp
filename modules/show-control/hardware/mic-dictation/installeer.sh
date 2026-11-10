@@ -6,7 +6,7 @@ set -e
 HIER=${0:A:h}
 DOEL=$HOME/ForYou/mic-knop
 PLIST=$HOME/Library/LaunchAgents/nl.foryou.mic-knop.plist
-LOGS=$HOME/Library/Logs/ForYouV2
+LOGS=$HOME/Library/Logs/ForYou
 if [[ "$1" == "uit" ]]; then
   launchctl bootout gui/$(id -u)/nl.foryou.mic-knop 2>/dev/null || true
   rm -f "$PLIST"; echo "mic-knop uit"; exit 0

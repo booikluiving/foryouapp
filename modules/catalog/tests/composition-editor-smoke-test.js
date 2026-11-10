@@ -7,46 +7,25 @@ const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 
-const { V2_ROOT } = require("../snapshots/snapshot-store");
+const { APP_ROOT } = require("../snapshots/snapshot-store");
 const {
   DEFAULT_DB_PATH,
   DEFAULT_MEDIA_ROOT,
   DEFAULT_STORE_PATH,
   readCatalogStore,
 } = require("../write-model/catalog-store");
-const { importLegacyCatalog } = require("../tools/import-legacy-catalog");
+const { seedCatalog } = require("./fixtures/seed-catalog");
 
 const TEST_DIR = __dirname;
-const APP_ROOT = path.resolve(TEST_DIR, "../../..");
 let PORT = 3021;
 const RUN_ID = `catalog-composition-editor-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
 const TEST_ROOT = path.join(APP_ROOT, "modules", "catalog", "tests", "tmp", RUN_ID);
 const TEST_DB_PATH = path.join(TEST_ROOT, "db", "catalog.sqlite");
 const TEST_MEDIA_ROOT = path.join(TEST_ROOT, "media");
 const TEST_SNAPSHOT_DIR = path.join(TEST_ROOT, "snapshots");
-const PROTECTED_V1_FILES = [
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-wal"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-shm"),
-];
-
 async function sha256(filePath) {
   const data = await fs.readFile(filePath);
   return crypto.createHash("sha256").update(data).digest("hex");
-}
-
-async function protectedHashes() {
-  const entries = [];
-  for (const filePath of PROTECTED_V1_FILES) {
-    entries.push([filePath, await sha256(filePath)]);
-  }
-  return Object.fromEntries(entries);
-}
-
-function assertHashesEqual(before, after) {
-  for (const filePath of PROTECTED_V1_FILES) {
-    assert.equal(after[filePath], before[filePath], `${path.basename(filePath)} changed`);
-  }
 }
 
 async function pathExists(filePath) {
@@ -87,11 +66,11 @@ async function hashPathState(filePath) {
 async function assertNoDefaultPollution() {
   if (await pathExists(DEFAULT_STORE_PATH)) {
     const storeText = await fs.readFile(DEFAULT_STORE_PATH, "utf8");
-    assert(!/composition-editor-test|flattened-test|test-bg-video|test-fx-video|test-fx-image/i.test(storeText), "default V2 store contains composition test records");
+    assert(!/composition-editor-test|flattened-test|test-bg-video|test-fx-video|test-fx-image/i.test(storeText), "default store contains composition test records");
   }
   if (await pathExists(DEFAULT_MEDIA_ROOT)) {
     const mediaState = JSON.stringify(await hashPathState(DEFAULT_MEDIA_ROOT));
-    assert(!/composition-editor-test|flattened-test|test-bg-video|test-fx-video|test-fx-image/i.test(mediaState), "default V2 media root contains composition test media");
+    assert(!/composition-editor-test|flattened-test|test-bg-video|test-fx-video|test-fx-image/i.test(mediaState), "default media root contains composition test media");
   }
 }
 
@@ -211,24 +190,19 @@ async function main() {
   PORT = await findFreePort();
   await assertPortFree(PORT);
   await assertNoDefaultPollution();
-  const beforeHashes = await protectedHashes();
   const defaultStoreBefore = await hashPathState(DEFAULT_STORE_PATH);
   const defaultDbBefore = await hashPathState(DEFAULT_DB_PATH);
   const defaultMediaBefore = await hashPathState(DEFAULT_MEDIA_ROOT);
-  await importLegacyCatalog({
-    dbPath: TEST_DB_PATH,
-    jsonStorePath: path.join(TEST_ROOT, "missing-catalog-store.json"),
-  });
+  await seedCatalog({ dbPath: TEST_DB_PATH });
   const logs = [];
   const child = spawn(process.execPath, [path.resolve(TEST_DIR, "../server/server.js")], {
     cwd: APP_ROOT,
     env: {
       ...process.env,
       CATALOG_PORT: String(PORT),
-      V2_CATALOG_DB_PATH: TEST_DB_PATH,
-      V2_CATALOG_MEDIA_ROOT: TEST_MEDIA_ROOT,
-      V2_CATALOG_SNAPSHOT_DIR: TEST_SNAPSHOT_DIR,
-      V2_CATALOG_LEGACY_SQLITE_PATH: "/missing.sqlite",
+      CATALOG_DB_PATH: TEST_DB_PATH,
+      CATALOG_MEDIA_ROOT: TEST_MEDIA_ROOT,
+      CATALOG_SNAPSHOT_DIR: TEST_SNAPSHOT_DIR,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -241,7 +215,7 @@ async function main() {
     const mediaHtml = await fetchText("/catalog/media-assets/");
     const mediaJs = await fetchText("/catalog/media-assets/app.js");
     const catalogCss = await fetchText("/catalog/styles.css");
-    assert(mediaHtml.includes("/shared/ui/foryou-v2.css"));
+    assert(mediaHtml.includes("/shared/ui/foryou.css"));
     assert(mediaJs.includes("aspectRatio: \"27:16\""));
     assert(mediaJs.includes("canvasWidth: 6480"));
     assert(mediaJs.includes("canvasHeight: 3840"));
@@ -346,7 +320,7 @@ async function main() {
     assert.equal(bgVideo.type, "background");
     assert.equal(bgVideo.role, "background");
     assert.equal(bgVideo.metadata.previewKind, "video");
-    assertPathInside(V2_ROOT, bgVideo.filePath);
+    assertPathInside(APP_ROOT, bgVideo.filePath);
     assertPathInside(TEST_MEDIA_ROOT, bgVideo.filePath);
 
     const oldFxVideo = (await uploadAsset({
@@ -439,7 +413,7 @@ async function main() {
     await fs.access(inactiveImage.filePath);
     const deletedImage = await fetchJson(`/v0/catalog/media-assets/${encodeURIComponent(inactiveImage.id)}`, { method: "DELETE" });
     assert.equal(deletedImage.asset.status, "deleted");
-    assert(!(await pathExists(inactiveImage.filePath)), "deleted media file should be removed from the V2 media root");
+    assert(!(await pathExists(inactiveImage.filePath)), "deleted media file should be removed from the media root");
     const storeAfterDelete = await readCatalogStore({ dbPath: TEST_DB_PATH });
     assert(storeAfterDelete.mediaAssets.some((asset) => asset.id === inactiveImage.id && asset.status === "deleted"));
     assert(storeAfterDelete.mediaAssets.some((asset) => asset.id === imageOne.id && asset.status !== "deleted"));
@@ -523,11 +497,9 @@ async function main() {
     assert(snapshot.catalog.lightingPresets.some((preset) => preset.id === "festival-color" && preset.fixtures.lamp2.intensity === 144));
 
     await stopChild(child);
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
-    assert.deepEqual(await hashPathState(DEFAULT_STORE_PATH), defaultStoreBefore, "default V2 store changed during composition smoke");
-    assert.deepEqual(await hashPathState(DEFAULT_DB_PATH), defaultDbBefore, "default V2 catalog db changed during composition smoke");
-    assert.deepEqual(await hashPathState(DEFAULT_MEDIA_ROOT), defaultMediaBefore, "default V2 media root changed during composition smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_STORE_PATH), defaultStoreBefore, "default store changed during composition smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_DB_PATH), defaultDbBefore, "default catalog db changed during composition smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_MEDIA_ROOT), defaultMediaBefore, "default media root changed during composition smoke");
     await assertNoDefaultPollution();
     await cleanupTestRoot();
 
@@ -540,19 +512,16 @@ async function main() {
       fxImageAssetIds: [imageOne.id, imageTwo.id],
       compositionEnvironmentId: saved.composition.environmentId,
       snapshotId: snapshotResult.snapshotId,
-      protectedV1HashesUnchanged: true,
-      defaultV2StoreUnchanged: true,
-      defaultV2MediaRootUnchanged: true,
+      defaultStoreUnchanged: true,
+      defaultMediaRootUnchanged: true,
       temporaryTestRootCleaned: true,
     }, null, 2));
     process.stdout.write("\n");
   } catch (err) {
     await stopChild(child);
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
-    assert.deepEqual(await hashPathState(DEFAULT_STORE_PATH), defaultStoreBefore, "default V2 store changed during failed composition smoke");
-    assert.deepEqual(await hashPathState(DEFAULT_DB_PATH), defaultDbBefore, "default V2 catalog db changed during failed composition smoke");
-    assert.deepEqual(await hashPathState(DEFAULT_MEDIA_ROOT), defaultMediaBefore, "default V2 media root changed during failed composition smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_STORE_PATH), defaultStoreBefore, "default store changed during failed composition smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_DB_PATH), defaultDbBefore, "default catalog db changed during failed composition smoke");
+    assert.deepEqual(await hashPathState(DEFAULT_MEDIA_ROOT), defaultMediaBefore, "default media root changed during failed composition smoke");
     await cleanupTestRoot();
     throw err;
   }

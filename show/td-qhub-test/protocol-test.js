@@ -5,7 +5,7 @@ const fs = require("node:fs/promises");
 const http = require("node:http");
 const path = require("node:path");
 
-const V2_ROOT = path.resolve(__dirname, "../..");
+const APP_ROOT = path.resolve(__dirname, "../..");
 const { createOscServer, sendOsc } = require("../../modules/show-control/target-adapters/osc-lite");
 
 const PORTS = Object.freeze({
@@ -133,8 +133,8 @@ async function runProtocol(baseUrl) {
 }
 
 async function runSelfContained() {
-  const dbDir = path.join(V2_ROOT, ".tmp", `td-qhub-protocol-${Date.now()}`);
-  process.env.V2_SHOW_CONTROL_DB_DIR = dbDir;
+  const dbDir = path.join(APP_ROOT, ".tmp", `td-qhub-protocol-${Date.now()}`);
+  process.env.SHOW_CONTROL_DB_DIR = dbDir;
   const calls = [];
   let showServer = null;
   let tdAckServer = null;

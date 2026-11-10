@@ -11,11 +11,11 @@ const AUDIO_EXTENSIONS = /\.(mp3|wav|aif|aiff|m4a|aac|flac)$/i;
 let current = null;
 
 function player(options = {}) {
-  return String(options.macAudioPlayer || process.env.V2_SHOW_CONTROL_AUDIO_PLAYER || "/usr/bin/afplay");
+  return String(options.macAudioPlayer || process.env.SHOW_CONTROL_AUDIO_PLAYER || "/usr/bin/afplay");
 }
 
 function audioDisabled(options = {}) {
-  const value = String(options.macAudio || process.env.V2_SHOW_CONTROL_EXTRA_AUDIO || "on").toLowerCase();
+  const value = String(options.macAudio || process.env.SHOW_CONTROL_EXTRA_AUDIO || "on").toLowerCase();
   return value === "off" || value === "0" || value === "uit";
 }
 
@@ -41,7 +41,7 @@ async function sendMacAudioCommand(action, context = {}) {
   if (!fs.existsSync(filePath)) throw new Error("show_control_mac_audio_file_missing");
   const volume = Math.min(1, Math.max(0, Number(payload.volume ?? 1)));
   if (audioDisabled(options)) {
-    return { stage: "applied", state: "warning", warning: true, message: "extra geluid staat uit (V2_SHOW_CONTROL_EXTRA_AUDIO=off)" };
+    return { stage: "applied", state: "warning", warning: true, message: "extra geluid staat uit (SHOW_CONTROL_EXTRA_AUDIO=off)" };
   }
   // Nog eens drukken = opnieuw beginnen, niet over elkaar heen.
   stopCurrent();

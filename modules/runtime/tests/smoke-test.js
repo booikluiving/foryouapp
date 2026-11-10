@@ -1,7 +1,6 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const net = require("node:net");
 const path = require("node:path");
@@ -11,33 +10,6 @@ const TEST_DIR = __dirname;
 const APP_ROOT = path.resolve(TEST_DIR, "../../..");
 const TEST_RUNTIME_DB_DIR = path.join(TEST_DIR, ".tmp-smoke-db");
 const PORTS = {};
-const PROTECTED_V1_FILES = [
-  path.join(APP_ROOT, "legacy", "public", "algoritme.html"),
-  path.join(APP_ROOT, "legacy", "server.js"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-wal"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-shm"),
-];
-
-async function sha256(filePath) {
-  const data = await fs.readFile(filePath);
-  return crypto.createHash("sha256").update(data).digest("hex");
-}
-
-async function protectedHashes() {
-  const entries = [];
-  for (const filePath of PROTECTED_V1_FILES) {
-    entries.push([filePath, await sha256(filePath)]);
-  }
-  return Object.fromEntries(entries);
-}
-
-function assertHashesEqual(before, after) {
-  for (const filePath of PROTECTED_V1_FILES) {
-    assert.equal(after[filePath], before[filePath], `${path.basename(filePath)} changed`);
-  }
-}
-
 async function assertPortFree(port) {
   await new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -132,7 +104,6 @@ async function main() {
   Object.assign(PORTS, await allocatePorts());
   for (const port of Object.values(PORTS)) await assertPortFree(port);
   await resetRuntimeTestDb();
-  const beforeHashes = await protectedHashes();
   const services = [];
   try {
     const catalogScript = path.join(APP_ROOT, "modules", "catalog", "server", "server.js");
@@ -140,24 +111,22 @@ async function main() {
     const runtimeScript = path.join(APP_ROOT, "modules", "runtime", "server", "server.js");
     services.push(spawnService("catalog", catalogScript, {
       CATALOG_PORT: String(PORTS.catalog),
-      V2_CATALOG_LEGACY_SQLITE_PATH: "/missing.sqlite",
     }));
     await waitForHealth(services[0].child, `http://127.0.0.1:${PORTS.catalog}`, "catalog", services[0].logs);
 
     services.push(spawnService("paths", pathsScript, {
       PATHS_PORT: String(PORTS.paths),
-      V2_PATHS_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
-      V2_PATHS_LEGACY_SQLITE_PATH: "/missing.sqlite",
+      PATHS_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
     }));
     await waitForHealth(services[1].child, `http://127.0.0.1:${PORTS.paths}`, "paths", services[1].logs);
 
     services.push(spawnService("runtime", runtimeScript, {
       RUNTIME_PORT: String(PORTS.runtime),
-      V2_RUNTIME_DB_DIR: TEST_RUNTIME_DB_DIR,
-      V2_RUNTIME_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
-      V2_RUNTIME_PATHS_URL: `http://127.0.0.1:${PORTS.paths}`,
-      V2_RUNTIME_ALGORITHM_URL: "http://127.0.0.1:3999",
-      V2_RUNTIME_AUDIENCE_URL: "http://127.0.0.1:3998",
+      RUNTIME_DB_DIR: TEST_RUNTIME_DB_DIR,
+      RUNTIME_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
+      RUNTIME_PATHS_URL: `http://127.0.0.1:${PORTS.paths}`,
+      RUNTIME_ALGORITHM_URL: "http://127.0.0.1:3999",
+      RUNTIME_AUDIENCE_URL: "http://127.0.0.1:3998",
     }));
     await waitForHealth(services[2].child, `http://127.0.0.1:${PORTS.runtime}`, "runtime", services[2].logs);
 
@@ -181,9 +150,8 @@ async function main() {
     assert(started.showRunSnapshot.algorithmConfig);
     const snapshotText = JSON.stringify(started.showRunSnapshot);
     assert(!snapshotText.includes("legacy-sqlite-wal-copy"), "runtime snapshot must not include legacy sqlite source type");
-    assert(!snapshotText.includes("originalPath"), "runtime snapshot must not include legacy originalPath metadata");
-    assert(!snapshotText.includes("rawPath"), "runtime snapshot must not include legacy rawPath metadata");
-    assert(!snapshotText.includes("legacy/data/live.sqlite"), "runtime snapshot must not include V1 sqlite paths");
+    assert(!snapshotText.includes("originalPath"), "runtime snapshot must not include originalPath metadata");
+    assert(!snapshotText.includes("rawPath"), "runtime snapshot must not include rawPath metadata");
     assert(started.preparedNext && started.preparedNext.situationId);
     assert(started.resolvedPreparedNext && started.resolvedPreparedNext.situationId);
     assert(started.eligiblePool.length > 0);
@@ -228,8 +196,6 @@ async function main() {
 
     await stopServices(services);
     await resetRuntimeTestDb();
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
 
     process.stdout.write(JSON.stringify({
       ok: true,
@@ -243,14 +209,11 @@ async function main() {
       runtimeUiServed: true,
       resetReturnedIdle: true,
       resetKeptCatalogPreview: true,
-      protectedV1HashesUnchanged: true,
     }, null, 2));
     process.stdout.write("\n");
   } catch (err) {
     await stopServices(services);
     await resetRuntimeTestDb();
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
     err.message = `${err.message}\nService logs:\n${services.map((service) => `${service.name}:\n${service.logs.join("")}`).join("\n")}`;
     throw err;
   }

@@ -109,7 +109,7 @@ function applyProbe(status, probe) {
 
 function startDeviceMonitor(status, options = {}) {
   const probe = options.probe || (() => defaultProbe(options));
-  const intervalMs = Number(options.intervalMs || process.env.V2_SHOW_CONTROL_PERFECT_CUE_PROBE_MS || DEFAULT_INTERVAL_MS);
+  const intervalMs = Number(options.intervalMs || process.env.SHOW_CONTROL_PERFECT_CUE_PROBE_MS || DEFAULT_INTERVAL_MS);
   let running = false;
   let stopped = false;
   async function tick() {

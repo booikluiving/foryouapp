@@ -67,7 +67,7 @@ async function buildCatalogReadModel(options = {}) {
   const dbPath = catalogDbPath(options);
   const store = await readCatalogStore(options);
   const source = {
-    type: "v2-catalog-sqlite",
+    type: "catalog-sqlite",
     path: dbPath,
     readOnly: false,
     ownsMutations: true,

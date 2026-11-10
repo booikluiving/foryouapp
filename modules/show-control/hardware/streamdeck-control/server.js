@@ -21,15 +21,15 @@ function boolOrNull(value) {
 }
 
 function streamDeckPort(options = {}) {
-  return Number(options.port || process.env.V2_SHOW_CONTROL_STREAMDECK_PORT || DEFAULT_PORT);
+  return Number(options.port || process.env.SHOW_CONTROL_STREAMDECK_PORT || DEFAULT_PORT);
 }
 
 function streamDeckHost(options = {}) {
-  return String(options.host || process.env.V2_SHOW_CONTROL_STREAMDECK_HOST || DEFAULT_HOST);
+  return String(options.host || process.env.SHOW_CONTROL_STREAMDECK_HOST || DEFAULT_HOST);
 }
 
 function showControlUrl(options = {}) {
-  return String(options.showControlUrl || process.env.V2_SHOW_CONTROL_URL || DEFAULT_SHOW_CONTROL_URL).replace(/\/+$/, "");
+  return String(options.showControlUrl || process.env.SHOW_CONTROL_URL || DEFAULT_SHOW_CONTROL_URL).replace(/\/+$/, "");
 }
 
 function createState() {
@@ -201,7 +201,7 @@ function startStreamDeckServer(options = {}) {
   const port = streamDeckPort(options);
   const host = streamDeckHost(options);
   server.listen(port, host, () => {
-    process.stdout.write(`Stream Deck Control V2 listening on http://${host}:${port}\n`);
+    process.stdout.write(`Stream Deck Control listening on http://${host}:${port}\n`);
   });
   return server;
 }

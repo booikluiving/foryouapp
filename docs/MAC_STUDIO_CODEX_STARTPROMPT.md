@@ -77,7 +77,7 @@ Belangrijkste conclusies:
 
 - Relevante For You TD-bron: `For You V15 - week 3 (2023TD) v3.toe`.
 - `v3.toe` en `v3.37.toe` zijn byte-identiek.
-- API `v1.toe` en `v1.9.toe` zijn byte-identiek en waarschijnlijk legacy.
+- API `v1.toe` en `v1.9.toe` zijn byte-identiek en waarschijnlijk verouderd.
 - Bestaande fases in TD:
   - `buttonRadio2.Value0 = 0` -> `INLOOP/out1`
   - `buttonRadio2.Value0 = 1` -> `Waitscreens/out2`
@@ -93,7 +93,7 @@ Belangrijkste conclusies:
 - Outputs:
   - DeckLink out1-3 zijn teleprompters
   - DeckLink out4 is main/stage
-- Environment/muziek bestaat in `/ForU/AI`, maar gebruikt legacy Dropbox/CSV state.
+- Environment/muziek bestaat in `/ForU/AI`, maar gebruikt oude Dropbox/CSV state.
 - Captions lopen via `/ForU/Text/Caption -> /ForU/cam_bg_mix/select7 -> /ForU/cam_bg_mix/over3`.
 - Teleprompters lopen via `/ForU/Text/Teleprompt -> /ForU/Teleprompt_*/select1`.
 

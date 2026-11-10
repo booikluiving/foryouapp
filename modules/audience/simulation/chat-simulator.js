@@ -161,7 +161,7 @@ class ChatSimulator {
       clientKey: `127.0.0.1|${clientTag}`,
       name: this.formatName(index),
       ip: "127.0.0.1",
-      ua: "audience-v2-internal-simulator",
+      ua: "audience-internal-simulator",
       isBot: true,
       simulated: true,
       connectedAt: new Date().toISOString(),

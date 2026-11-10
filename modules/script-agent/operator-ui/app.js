@@ -2,8 +2,18 @@
 
 const $ = (selector) => document.querySelector(selector);
 
-const STORAGE_SESSION_KEY = "script_agent_operator_session_v1";
-const STORAGE_SOURCE_KEY = "script_agent_operator_source_v1";
+const STORAGE_SESSION_KEY = "script_agent_operator_session";
+const STORAGE_SOURCE_KEY = "script_agent_operator_source";
+// Eenmalig: wat in deze browser nog onder de oude sleutelnaam staat, overnemen.
+for (const key of [STORAGE_SESSION_KEY, STORAGE_SOURCE_KEY]) {
+  try {
+    const oldKey = key + "_v1";
+    const oldValue = localStorage.getItem(oldKey);
+    if (oldValue === null) continue;
+    if (localStorage.getItem(key) === null) localStorage.setItem(key, oldValue);
+    localStorage.removeItem(oldKey);
+  } catch (_err) { /* opslag niet beschikbaar */ }
+}
 
 const els = {
   operatorStatusText: $("#operatorStatusText"),

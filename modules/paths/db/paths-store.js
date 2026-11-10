@@ -7,24 +7,24 @@ const { PATHS_STORE_SCHEMA_VERSION, PathsInputError } = require("../contracts/pa
 const Graph = require("../rules-engine/paden-graph");
 
 const PATHS_ROOT = path.resolve(__dirname, "..");
-const V2_ROOT = path.resolve(__dirname, "../../..");
+const APP_ROOT = path.resolve(__dirname, "../../..");
 const DEFAULT_STORE_PATH = path.join(PATHS_ROOT, "db", "paths-store.json");
 
 function nowIso() {
   return new Date().toISOString();
 }
 
-function assertPathUnderV2(targetPath) {
+function assertPathUnderApp(targetPath) {
   const resolved = path.resolve(targetPath);
-  const relative = path.relative(V2_ROOT, resolved);
+  const relative = path.relative(APP_ROOT, resolved);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`paths_store_path_outside_v2:${resolved}`);
+    throw new Error(`paths_store_path_outside_app:${resolved}`);
   }
   return resolved;
 }
 
 function pathsStorePath(options = {}) {
-  return assertPathUnderV2(options.storePath || process.env.V2_PATHS_STORE_PATH || DEFAULT_STORE_PATH);
+  return assertPathUnderApp(options.storePath || process.env.PATHS_STORE_PATH || DEFAULT_STORE_PATH);
 }
 
 function emptyStore() {
@@ -139,7 +139,7 @@ async function writePathsStore(store, options = {}) {
   const filePath = pathsStorePath(options);
   const normalized = normalizeStore({ ...store, updatedAt: nowIso() });
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const tempPath = assertPathUnderV2(path.join(path.dirname(filePath), `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`));
+  const tempPath = assertPathUnderApp(path.join(path.dirname(filePath), `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`));
   await fs.writeFile(tempPath, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
   await fs.rename(tempPath, filePath);
   return normalized;
@@ -263,7 +263,7 @@ async function deleteInactivePath(id, options = {}) {
 module.exports = {
   DEFAULT_STORE_PATH,
   PATHS_ROOT,
-  V2_ROOT,
+  APP_ROOT,
   archivePath,
   deleteInactivePath,
   normalizeStore,

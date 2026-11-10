@@ -3,13 +3,13 @@
 const net = require("net");
 const { protocol, state } = require("./server");
 
-const host = String(process.env.V2_SHOW_CONTROL_SQ5_MIXER_HOST || process.argv[2] || state.mixerHost || "192.168.1.129").trim();
+const host = String(process.env.SHOW_CONTROL_SQ5_MIXER_HOST || process.argv[2] || state.mixerHost || "192.168.1.129").trim();
 const cliPort = Number(process.argv[3]);
 const hasCliPort = Number.isFinite(cliPort) && cliPort > 0;
-const port = Number(process.env.V2_SHOW_CONTROL_SQ5_MIXER_PORT || (hasCliPort ? cliPort : "") || state.mixerPort || 51325);
+const port = Number(process.env.SHOW_CONTROL_SQ5_MIXER_PORT || (hasCliPort ? cliPort : "") || state.mixerPort || 51325);
 const requestedTokens = process.argv.slice(hasCliPort ? 4 : 3);
-const timeoutMs = Number(process.env.V2_SHOW_CONTROL_SQ5_TCP_TIMEOUT_MS || 1800);
-const responseWindowMs = Number(process.env.V2_SHOW_CONTROL_SQ5_MIDI_RESPONSE_WINDOW_MS || 90);
+const timeoutMs = Number(process.env.SHOW_CONTROL_SQ5_TCP_TIMEOUT_MS || 1800);
+const responseWindowMs = Number(process.env.SHOW_CONTROL_SQ5_MIDI_RESPONSE_WINDOW_MS || 90);
 
 function connect() {
   return new Promise((resolve, reject) => {
@@ -124,7 +124,7 @@ async function readOutput(socket, token) {
 }
 
 async function main() {
-  if (!host) throw new Error("Geen V2_SHOW_CONTROL_SQ5_MIXER_HOST opgegeven");
+  if (!host) throw new Error("Geen SHOW_CONTROL_SQ5_MIXER_HOST opgegeven");
   const defaultTokens = [
     "main",
     "mics",

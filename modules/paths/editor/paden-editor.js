@@ -3,9 +3,19 @@
 
   const Graph = window.PadenGraph;
   const LayoutRelaxer = window.PadenLayoutRelaxer;
-  const TOKEN_KEY = "paths_editor_token_v2";
-  const LAYOUT_KEY = "paden_editor_layouts_v2";
-  const PREF_KEY = "paden_editor_prefs_v2";
+  const TOKEN_KEY = "paths_editor_token";
+  const LAYOUT_KEY = "paden_editor_layouts";
+  const PREF_KEY = "paden_editor_prefs";
+  // Eenmalig: wat in deze browser nog onder de oude sleutelnaam staat, overnemen.
+  for (const key of [TOKEN_KEY, LAYOUT_KEY, PREF_KEY]) {
+    try {
+      const oldKey = key + "_v2";
+      const oldValue = localStorage.getItem(oldKey);
+      if (oldValue === null) continue;
+      if (localStorage.getItem(key) === null) localStorage.setItem(key, oldValue);
+      localStorage.removeItem(oldKey);
+    } catch (_err) { /* opslag niet beschikbaar */ }
+  }
   const NODE_W = Graph.DEFAULT_NODE_W;
   const NODE_H = Graph.DEFAULT_NODE_H;
   const PATH_COLOR_ROWS = [

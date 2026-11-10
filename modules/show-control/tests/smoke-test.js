@@ -2,7 +2,6 @@
 
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
-const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const http = require("node:http");
 const net = require("node:net");
@@ -11,7 +10,6 @@ const { createOscServer, sendOsc } = require("../target-adapters/osc-lite");
 
 const TEST_DIR = __dirname;
 const APP_ROOT = path.resolve(TEST_DIR, "../../..");
-const V2_ROOT = path.resolve(TEST_DIR, "../../..");
 const PORTS = {
   runtime: 19324,
   showControl: 19325,
@@ -26,33 +24,6 @@ const PORTS = {
   tdOsc: 19300,
   tdAck: 19301,
 };
-const PROTECTED_FILES = [
-  path.join(APP_ROOT, "legacy", "server.js"),
-  path.join(APP_ROOT, "legacy", "public", "algoritme.html"),
-  path.join(APP_ROOT, "legacy", "sq5-control", "server.js"),
-  path.join(APP_ROOT, "legacy", "camera-control", "server.js"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-wal"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-shm"),
-];
-
-async function sha256(filePath) {
-  const data = await fs.readFile(filePath);
-  return crypto.createHash("sha256").update(data).digest("hex");
-}
-
-async function protectedHashes() {
-  const entries = [];
-  for (const filePath of PROTECTED_FILES) entries.push([filePath, await sha256(filePath)]);
-  return Object.fromEntries(entries);
-}
-
-function assertHashesEqual(before, after) {
-  for (const filePath of PROTECTED_FILES) {
-    assert.equal(after[filePath], before[filePath], `${filePath} changed`);
-  }
-}
-
 async function assertPortFree(port) {
   await new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -309,20 +280,20 @@ async function waitForCondition(check, timeoutMs = 1500) {
 }
 
 function startCameraSidecarProcess() {
-  const script = path.join(V2_ROOT, "modules", "show-control", "hardware", "camera-control", "server.js");
+  const script = path.join(APP_ROOT, "modules", "show-control", "hardware", "camera-control", "server.js");
   const cameraHardwareHost = `127.0.0.1:${PORTS.cameraHardware}`;
   const child = spawn(process.execPath, [script], {
     env: {
       ...process.env,
-      V2_SHOW_CONTROL_CAMERA_HOST: "127.0.0.1",
-      V2_SHOW_CONTROL_CAMERA_PORT: String(PORTS.camera),
-      V2_SHOW_CONTROL_CAMERA_OSC_LISTEN_ADDRESS: "127.0.0.1",
-      V2_SHOW_CONTROL_CAMERA_OSC_PORT: String(PORTS.cameraOsc),
-      V2_SHOW_CONTROL_CAMERA_CAM1_HOST: cameraHardwareHost,
-      V2_SHOW_CONTROL_CAMERA_CAM2_HOST: cameraHardwareHost,
-      V2_SHOW_CONTROL_CAMERA_CAM3_HOST: cameraHardwareHost,
-      V2_SHOW_CONTROL_CAMERA_POLL_MS: "60000",
-      V2_SHOW_CONTROL_CAMERA_WS_RECONNECT_BASE_MS: "60000",
+      SHOW_CONTROL_CAMERA_HOST: "127.0.0.1",
+      SHOW_CONTROL_CAMERA_PORT: String(PORTS.camera),
+      SHOW_CONTROL_CAMERA_OSC_LISTEN_ADDRESS: "127.0.0.1",
+      SHOW_CONTROL_CAMERA_OSC_PORT: String(PORTS.cameraOsc),
+      SHOW_CONTROL_CAMERA_CAM1_HOST: cameraHardwareHost,
+      SHOW_CONTROL_CAMERA_CAM2_HOST: cameraHardwareHost,
+      SHOW_CONTROL_CAMERA_CAM3_HOST: cameraHardwareHost,
+      SHOW_CONTROL_CAMERA_POLL_MS: "60000",
+      SHOW_CONTROL_CAMERA_WS_RECONNECT_BASE_MS: "60000",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -407,20 +378,19 @@ async function closeServer(server) {
 
 async function main() {
   for (const port of Object.values(PORTS)) await assertPortFree(port);
-  const beforeHashes = await protectedHashes();
-  const dbDir = path.join(V2_ROOT, "modules", "show-control", `.tmp-smoke-db-${process.pid}`);
-  process.env.V2_SHOW_CONTROL_DB_DIR = dbDir;
-  process.env.V2_SHOW_CONTROL_ADAPTER_MODE = "test";
-  process.env.V2_SHOW_CONTROL_RUNTIME_URL = `http://127.0.0.1:${PORTS.runtime}`;
-  process.env.V2_SHOW_CONTROL_SQ5_URL = `http://127.0.0.1:${PORTS.sq5}`;
-  process.env.V2_SHOW_CONTROL_CAMERA_URL = `http://127.0.0.1:${PORTS.camera}`;
-  process.env.V2_SHOW_CONTROL_DMX_URL = `http://127.0.0.1:${PORTS.dmx}`;
-  process.env.V2_SHOW_CONTROL_STREAMDECK_URL = `http://127.0.0.1:${PORTS.streamdeck}`;
-  process.env.V2_SHOW_CONTROL_PERFECT_CUE_URL = `http://127.0.0.1:${PORTS.perfectCue}`;
-  process.env.V2_SHOW_CONTROL_SCRIPT_AGENT_URL = `http://127.0.0.1:${PORTS.scriptAgent}`;
-  process.env.V2_SHOW_CONTROL_TD_OSC_HOST = "127.0.0.1";
-  process.env.V2_SHOW_CONTROL_TD_OSC_PORT = String(PORTS.tdOsc);
-  process.env.V2_SHOW_CONTROL_TD_ACK_PORT = String(PORTS.tdAck);
+  const dbDir = path.join(APP_ROOT, "modules", "show-control", `.tmp-smoke-db-${process.pid}`);
+  process.env.SHOW_CONTROL_DB_DIR = dbDir;
+  process.env.SHOW_CONTROL_ADAPTER_MODE = "test";
+  process.env.SHOW_CONTROL_RUNTIME_URL = `http://127.0.0.1:${PORTS.runtime}`;
+  process.env.SHOW_CONTROL_SQ5_URL = `http://127.0.0.1:${PORTS.sq5}`;
+  process.env.SHOW_CONTROL_CAMERA_URL = `http://127.0.0.1:${PORTS.camera}`;
+  process.env.SHOW_CONTROL_DMX_URL = `http://127.0.0.1:${PORTS.dmx}`;
+  process.env.SHOW_CONTROL_STREAMDECK_URL = `http://127.0.0.1:${PORTS.streamdeck}`;
+  process.env.SHOW_CONTROL_PERFECT_CUE_URL = `http://127.0.0.1:${PORTS.perfectCue}`;
+  process.env.SHOW_CONTROL_SCRIPT_AGENT_URL = `http://127.0.0.1:${PORTS.scriptAgent}`;
+  process.env.SHOW_CONTROL_TD_OSC_HOST = "127.0.0.1";
+  process.env.SHOW_CONTROL_TD_OSC_PORT = String(PORTS.tdOsc);
+  process.env.SHOW_CONTROL_TD_ACK_PORT = String(PORTS.tdAck);
 
   const calls = [];
   const servers = [];
@@ -826,13 +796,11 @@ async function main() {
     for (const server of servers.reverse()) await closeServer(server);
     await fs.rm(dbDir, { recursive: true, force: true });
 
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
 
     process.stdout.write(JSON.stringify({
       ok: true,
       ports: PORTS,
-      fakeMode: "explicit-test-mode-with-v2-sidecars",
+      fakeMode: "explicit-test-mode-with-sidecars",
       runtimeRoutes: calls.filter((call) => call.service === "runtime").map((call) => `${call.method} ${call.path}`),
       sq5Routes: sq5Status.activity.map((entry) => `${entry.source || "unknown"} ${entry.channel || entry.action || ""} ${entry.action || ""}`.trim()),
       cameraHardwareRoutes: calls.filter((call) => call.service === "camera-hardware").map((call) => `${call.method} ${call.path}`),
@@ -854,16 +822,14 @@ async function main() {
         H1: "runtime.startRun changed fake Runtime state and generated td.environment.prepare for preparedNext",
         H2: "runtime.startSituation generated DMX lighting and TD GO by default and can fan out to SQ5, Camera, Stream Deck status and Perfect Cue trigger",
         H4: "unknown commands fail through command registry",
-        H5: "SQ5/Camera adapters called V2 sidecar HTTP contracts copied from the legacy API shape",
+        H5: "SQ5/Camera adapters called sidecar HTTP contracts",
         H6: "TD fetched HTTP payloads and sent acks; timeout warning stored",
         H7: "UI assets expose cue create/run/status/warning surfaces",
         H7a: "UI exposes active Stream Deck cue definitions separately from historical cue records",
         H7b: "Stream Deck trigger binding fires a saved cue and reaches TD camera switch",
-        H8: "V1 app files and legacy/data/live.sqlite* hashes unchanged",
-        H9: "smoke ran in explicit test mode with V2 hardware sidecars and fake downstream hardware",
+        H9: "smoke ran in explicit test mode with hardware sidecars and fake downstream hardware",
         H10: "Show Control delegated Runtime/SQ5/Camera/TD/Stream Deck/Perfect Cue work through adapters",
       },
-      protectedV1HashesUnchanged: true,
     }, null, 2));
     process.stdout.write("\n");
   } catch (err) {
@@ -873,8 +839,6 @@ async function main() {
     await stopChild(cameraSidecar);
     for (const server of servers.reverse()) await closeServer(server);
     await fs.rm(dbDir, { recursive: true, force: true });
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
     throw err;
   }
 }

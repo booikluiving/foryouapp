@@ -13,7 +13,7 @@ const { RULE_DESCRIPTION_PREFIX, VENDOR_ID, PRODUCT_ID } = require("./device-mon
 const OLD_RULE_DESCRIPTIONS = ["For You: PerfectCue Page Up/Down controls teleprompter only"];
 const OLD_AGENT_LABEL = "com.foryou.perfectcue-remap";
 const OLD_AGENT_DISABLED_SUFFIX = ".uit-perfectcue-karabiner";
-const TRIGGER_URL = process.env.V2_SHOW_CONTROL_PERFECT_CUE_TRIGGER_URL || "http://127.0.0.1:3228/api/trigger?async=1";
+const TRIGGER_URL = process.env.SHOW_CONTROL_PERFECT_CUE_TRIGGER_URL || "http://127.0.0.1:3228/api/trigger?async=1";
 
 function parseArgs(argv) {
   const args = { action: argv[0] || "status", dryRun: false, launchctl: true };
@@ -29,8 +29,8 @@ function parseArgs(argv) {
   const home = os.homedir();
   args.config ||= path.join(home, ".config", "karabiner", "karabiner.json");
   args.agentsDir ||= path.join(home, "Library", "LaunchAgents");
-  args.backupDir ||= path.join(home, "Library", "Application Support", "ForYouV2", "perfectcue", "karabiner-backups");
-  args.logFile = path.join(home, "Library", "Logs", "ForYouV2", "perfectcue-karabiner-fouten.log");
+  args.backupDir ||= path.join(home, "Library", "Application Support", "ForYou", "perfectcue", "karabiner-backups");
+  args.logFile = path.join(home, "Library", "Logs", "ForYou", "perfectcue-karabiner-fouten.log");
   return args;
 }
 

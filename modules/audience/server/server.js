@@ -35,7 +35,7 @@ function startAudienceServer(options = {}) {
   const server = http.createServer(app);
   const realtime = attachAudienceRealtime(server, app.locals.audienceService);
   server.listen(port, () => {
-    process.stdout.write(`Audience Service V2 listening on ${port}\n`);
+    process.stdout.write(`Audience Service listening on ${port}\n`);
   });
   server.audienceRealtime = realtime;
   server.audiencePublicServer = startAudiencePublicServer(app.locals.audienceService, options);

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>For You - Audience Stage V2</title>
+    <title>For You - Audience Stage</title>
     <style>
       html, body {
         margin: 0;
@@ -96,7 +96,7 @@
       <div id="leaderboard" class="leaderboard"></div>
       <div id="emojiLayer" class="emojiLayer"></div>
     </div>
-    <script src="/v2/audience/vendor/qrcode-generator.min.js"></script>
+    <script src="/audience/vendor/qrcode-generator.min.js"></script>
     <script>
       const els = {
         qr: document.getElementById("qr"),
@@ -139,7 +139,7 @@
         }
       }
       async function refresh() {
-        const data = await fetch("/v2/audience/admin/state?stage=1&ts=" + Date.now(), { cache: "no-store" }).then((res) => res.json());
+        const data = await fetch("/audience/admin/state?stage=1&ts=" + Date.now(), { cache: "no-store" }).then((res) => res.json());
         const stage = data.stage || {};
         const settings = stage.settings || {};
         document.body.className = settings.background === "black" ? "black" : "";

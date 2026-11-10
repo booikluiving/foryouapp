@@ -4,11 +4,11 @@ const DEFAULT_RUNTIME_BASE_URL = "http://127.0.0.1:3024";
 const DEFAULT_ALGORITHM_BASE_URL = "http://127.0.0.1:3023";
 
 function runtimeBaseUrl() {
-  return String(process.env.V2_AUDIENCE_RUNTIME_URL || DEFAULT_RUNTIME_BASE_URL).replace(/\/+$/, "");
+  return String(process.env.AUDIENCE_RUNTIME_URL || DEFAULT_RUNTIME_BASE_URL).replace(/\/+$/, "");
 }
 
 function algorithmBaseUrl() {
-  return String(process.env.V2_AUDIENCE_ALGORITHM_URL || DEFAULT_ALGORITHM_BASE_URL).replace(/\/+$/, "");
+  return String(process.env.AUDIENCE_ALGORITHM_URL || DEFAULT_ALGORITHM_BASE_URL).replace(/\/+$/, "");
 }
 
 async function fetchJsonWithTimeout(url, options = {}) {
@@ -17,7 +17,7 @@ async function fetchJsonWithTimeout(url, options = {}) {
     try {
       controller.abort();
     } catch {}
-  }, Number(process.env.V2_AUDIENCE_SERVICE_TIMEOUT_MS || process.env.V2_AUDIENCE_RUNTIME_TIMEOUT_MS || 1500));
+  }, Number(process.env.AUDIENCE_SERVICE_TIMEOUT_MS || process.env.AUDIENCE_RUNTIME_TIMEOUT_MS || 1500));
   try {
     const response = await fetch(url, { ...options, signal: controller.signal });
     const body = await response.json();
@@ -37,7 +37,7 @@ async function fetchCurrentRuntimeState() {
     try {
       controller.abort();
     } catch {}
-  }, Number(process.env.V2_AUDIENCE_RUNTIME_TIMEOUT_MS || 1500));
+  }, Number(process.env.AUDIENCE_RUNTIME_TIMEOUT_MS || 1500));
   try {
     const response = await fetch(url, { signal: controller.signal });
     const body = await response.json();

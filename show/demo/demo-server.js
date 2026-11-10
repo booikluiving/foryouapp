@@ -341,7 +341,7 @@ function catalogBody() {
     ok: true,
     schemaVersion: "standalone-demo.catalog.v0",
     mediaAssets,
-    v2MediaAssets: mediaAssets,
+    storedMediaAssets: mediaAssets,
   };
 }
 

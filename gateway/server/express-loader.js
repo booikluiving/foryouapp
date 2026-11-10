@@ -9,8 +9,8 @@ function tryLoadExpress(moduleId) {
 }
 
 function loadExpress() {
-  if (process.env.V2_GATEWAY_EXPRESS_MODULE) {
-    const configured = tryLoadExpress(process.env.V2_GATEWAY_EXPRESS_MODULE);
+  if (process.env.GATEWAY_EXPRESS_MODULE) {
+    const configured = tryLoadExpress(process.env.GATEWAY_EXPRESS_MODULE);
     if (!configured || !configured.error) return configured;
     throw configured.error;
   }

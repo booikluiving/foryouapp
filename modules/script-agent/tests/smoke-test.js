@@ -1,7 +1,6 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const net = require("node:net");
 const path = require("node:path");
@@ -18,31 +17,6 @@ const PORTS = {
   showControlUnavailable: 4199,
 };
 const SCRIPT_AGENT_DB_DIR = path.join(TEST_DIR, ".tmp-smoke-db");
-const PROTECTED_V1_FILES = [
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-wal"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-shm"),
-];
-
-async function sha256(filePath) {
-  const data = await fs.readFile(filePath);
-  return crypto.createHash("sha256").update(data).digest("hex");
-}
-
-async function protectedHashes() {
-  const entries = [];
-  for (const filePath of PROTECTED_V1_FILES) {
-    entries.push([filePath, await sha256(filePath)]);
-  }
-  return Object.fromEntries(entries);
-}
-
-function assertHashesEqual(before, after) {
-  for (const filePath of PROTECTED_V1_FILES) {
-    assert.equal(after[filePath], before[filePath], `${path.basename(filePath)} changed`);
-  }
-}
-
 async function assertPortFree(port) {
   await new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -169,7 +143,6 @@ function runtimeOrderSnapshot(runtimeState) {
 async function main() {
   await fs.rm(SCRIPT_AGENT_DB_DIR, { recursive: true, force: true });
   for (const port of Object.values(PORTS)) await assertPortFree(port);
-  const beforeHashes = await protectedHashes();
   const services = [];
   try {
     const catalogScript = path.join(APP_ROOT, "modules", "catalog", "server", "server.js");
@@ -179,30 +152,28 @@ async function main() {
 
     services.push(spawnService("catalog", catalogScript, {
       CATALOG_PORT: String(PORTS.catalog),
-      V2_CATALOG_LEGACY_SQLITE_PATH: "/missing.sqlite",
     }));
     await waitForHealth(services[0].child, `http://127.0.0.1:${PORTS.catalog}`, "catalog", services[0].logs);
 
     services.push(spawnService("paths", pathsScript, {
       PATHS_PORT: String(PORTS.paths),
-      V2_PATHS_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
-      V2_PATHS_LEGACY_SQLITE_PATH: "/missing.sqlite",
+      PATHS_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
     }));
     await waitForHealth(services[1].child, `http://127.0.0.1:${PORTS.paths}`, "paths", services[1].logs);
 
     services.push(spawnService("runtime", runtimeScript, {
       RUNTIME_PORT: String(PORTS.runtime),
-      V2_RUNTIME_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
-      V2_RUNTIME_PATHS_URL: `http://127.0.0.1:${PORTS.paths}`,
+      RUNTIME_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
+      RUNTIME_PATHS_URL: `http://127.0.0.1:${PORTS.paths}`,
     }));
     await waitForHealth(services[2].child, `http://127.0.0.1:${PORTS.runtime}`, "runtime", services[2].logs);
 
     services.push(spawnService("script-agent", scriptAgentScript, {
       SCRIPT_AGENT_PORT: String(PORTS.scriptAgent),
-      V2_SCRIPT_AGENT_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
-      V2_SCRIPT_AGENT_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
-      V2_SCRIPT_AGENT_SHOW_CONTROL_URL: `http://127.0.0.1:${PORTS.showControlUnavailable}`,
-      V2_SCRIPT_AGENT_DB_DIR: SCRIPT_AGENT_DB_DIR,
+      SCRIPT_AGENT_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
+      SCRIPT_AGENT_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
+      SCRIPT_AGENT_SHOW_CONTROL_URL: `http://127.0.0.1:${PORTS.showControlUnavailable}`,
+      SCRIPT_AGENT_DB_DIR: SCRIPT_AGENT_DB_DIR,
     }));
     await waitForHealth(services[3].child, `http://127.0.0.1:${PORTS.scriptAgent}`, "script-agent", services[3].logs);
 
@@ -391,8 +362,6 @@ async function main() {
     assert(["show-control", "runtime-fallback"].includes(readyStart.startScene.mode));
 
     await stopServices(services);
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
     await fs.rm(SCRIPT_AGENT_DB_DIR, { recursive: true, force: true });
 
     process.stdout.write(JSON.stringify({
@@ -411,13 +380,10 @@ async function main() {
       stageWebSocketDraftSync: true,
       deepSeekSecretRedacted: true,
       runtimeOrderStateUnchanged: true,
-      protectedV1HashesUnchanged: true,
     }, null, 2));
     process.stdout.write("\n");
   } catch (err) {
     await stopServices(services);
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
     await fs.rm(SCRIPT_AGENT_DB_DIR, { recursive: true, force: true });
     err.message = `${err.message}\nService logs:\n${services.map((service) => `${service.name}:\n${service.logs.join("")}`).join("\n")}`;
     throw err;

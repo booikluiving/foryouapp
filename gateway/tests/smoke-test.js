@@ -1,7 +1,6 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const net = require("node:net");
 const path = require("node:path");
@@ -10,30 +9,6 @@ const { spawn } = require("node:child_process");
 const TEST_DIR = __dirname;
 const APP_ROOT = path.resolve(TEST_DIR, "../..");
 const PORTS = {};
-const PROTECTED_V1_FILES = [
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-wal"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-shm"),
-];
-async function sha256(filePath) {
-  const data = await fs.readFile(filePath);
-  return crypto.createHash("sha256").update(data).digest("hex");
-}
-
-async function protectedHashes() {
-  const entries = [];
-  for (const filePath of PROTECTED_V1_FILES) {
-    entries.push([filePath, await sha256(filePath)]);
-  }
-  return Object.fromEntries(entries);
-}
-
-function assertHashesEqual(before, after) {
-  for (const filePath of PROTECTED_V1_FILES) {
-    assert.equal(after[filePath], before[filePath], `${path.basename(filePath)} changed`);
-  }
-}
-
 async function assertPortFree(port) {
   await new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -127,7 +102,6 @@ async function stopServices(services) {
 async function main() {
   Object.assign(PORTS, await allocatePorts());
   for (const port of Object.values(PORTS)) await assertPortFree(port);
-  const beforeHashes = await protectedHashes();
   const services = [];
   try {
     const scripts = {
@@ -143,14 +117,12 @@ async function main() {
 
     services.push(spawnService("catalog", scripts.catalog, {
       CATALOG_PORT: String(PORTS.catalog),
-      V2_CATALOG_LEGACY_SQLITE_PATH: "/missing.sqlite",
     }));
     await waitForHealth(services.at(-1).child, `http://127.0.0.1:${PORTS.catalog}`, "catalog", services.at(-1).logs);
 
     services.push(spawnService("paths", scripts.paths, {
       PATHS_PORT: String(PORTS.paths),
-      V2_PATHS_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
-      V2_PATHS_LEGACY_SQLITE_PATH: "/missing.sqlite",
+      PATHS_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
     }));
     await waitForHealth(services.at(-1).child, `http://127.0.0.1:${PORTS.paths}`, "paths", services.at(-1).logs);
 
@@ -161,39 +133,39 @@ async function main() {
 
     services.push(spawnService("runtime", scripts.runtime, {
       RUNTIME_PORT: String(PORTS.runtime),
-      V2_RUNTIME_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
-      V2_RUNTIME_PATHS_URL: `http://127.0.0.1:${PORTS.paths}`,
+      RUNTIME_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
+      RUNTIME_PATHS_URL: `http://127.0.0.1:${PORTS.paths}`,
     }));
     await waitForHealth(services.at(-1).child, `http://127.0.0.1:${PORTS.runtime}`, "runtime", services.at(-1).logs);
 
     services.push(spawnService("show-control", scripts.showControl, {
       SHOW_CONTROL_PORT: String(PORTS.showControl),
-      V2_SHOW_CONTROL_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
-      V2_SHOW_CONTROL_TD_ACK_PORT: String(PORTS.showControlTdAck),
+      SHOW_CONTROL_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
+      SHOW_CONTROL_TD_ACK_PORT: String(PORTS.showControlTdAck),
     }));
     await waitForHealth(services.at(-1).child, `http://127.0.0.1:${PORTS.showControl}`, "show-control", services.at(-1).logs);
 
     services.push(spawnService("audience", scripts.audience, {
       AUDIENCE_PORT: String(PORTS.audience),
-      V2_AUDIENCE_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
+      AUDIENCE_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
     }));
     await waitForHealth(services.at(-1).child, `http://127.0.0.1:${PORTS.audience}`, "audience", services.at(-1).logs);
 
     services.push(spawnService("script-agent", scripts.scriptAgent, {
       SCRIPT_AGENT_PORT: String(PORTS.scriptAgent),
-      V2_SCRIPT_AGENT_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
+      SCRIPT_AGENT_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
     }));
     await waitForHealth(services.at(-1).child, `http://127.0.0.1:${PORTS.scriptAgent}`, "script-agent", services.at(-1).logs);
 
     services.push(spawnService("gateway", scripts.gateway, {
       GATEWAY_PORT: String(PORTS.gateway),
-      V2_GATEWAY_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
-      V2_GATEWAY_PATHS_URL: `http://127.0.0.1:${PORTS.paths}`,
-      V2_GATEWAY_ALGORITHM_URL: `http://127.0.0.1:${PORTS.algorithm}`,
-      V2_GATEWAY_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
-      V2_GATEWAY_SHOW_CONTROL_URL: `http://127.0.0.1:${PORTS.showControl}`,
-      V2_GATEWAY_AUDIENCE_URL: `http://127.0.0.1:${PORTS.audience}`,
-      V2_GATEWAY_SCRIPT_AGENT_URL: `http://127.0.0.1:${PORTS.scriptAgent}`,
+      GATEWAY_CATALOG_URL: `http://127.0.0.1:${PORTS.catalog}`,
+      GATEWAY_PATHS_URL: `http://127.0.0.1:${PORTS.paths}`,
+      GATEWAY_ALGORITHM_URL: `http://127.0.0.1:${PORTS.algorithm}`,
+      GATEWAY_RUNTIME_URL: `http://127.0.0.1:${PORTS.runtime}`,
+      GATEWAY_SHOW_CONTROL_URL: `http://127.0.0.1:${PORTS.showControl}`,
+      GATEWAY_AUDIENCE_URL: `http://127.0.0.1:${PORTS.audience}`,
+      GATEWAY_SCRIPT_AGENT_URL: `http://127.0.0.1:${PORTS.scriptAgent}`,
     }));
     const gatewayService = services.at(-1);
     await waitForHealth(gatewayService.child, `http://127.0.0.1:${PORTS.gateway}`, "gateway", gatewayService.logs);
@@ -202,7 +174,7 @@ async function main() {
     const runtimeBase = `http://127.0.0.1:${PORTS.runtime}`;
     const html = await fetchText(gatewayBase, "/dashboard/");
     const js = await fetchText(gatewayBase, "/dashboard/app.js");
-    assert(html.includes("For You V2"));
+    assert(html.includes("For You"));
     assert(js.includes("/v0/gateway/status"));
 
     const status = await fetchJson(gatewayBase, "/v0/gateway/status");
@@ -247,8 +219,6 @@ async function main() {
     assert(runtimeAfterGatewayStop.activeSituation && runtimeAfterGatewayStop.activeSituation.situationRunId);
 
     await stopServices(services);
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
 
     process.stdout.write(JSON.stringify({
       ok: true,
@@ -258,13 +228,10 @@ async function main() {
       prepareCueId: prepare.cue.cueId,
       goCueId: go.cue.cueId,
       gatewayStoppedWithoutModuleDataCorruption: true,
-      protectedV1HashesUnchanged: true,
     }, null, 2));
     process.stdout.write("\n");
   } catch (err) {
     await stopServices(services);
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
     err.message = `${err.message}\nService logs:\n${services.map((service) => `${service.name}:\n${service.logs.join("")}`).join("\n")}`;
     throw err;
   }

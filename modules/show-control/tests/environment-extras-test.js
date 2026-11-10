@@ -9,8 +9,8 @@ const path = require("node:path");
 
 const tmp = path.resolve(__dirname, "..", `.tmp-extras-db-${process.pid}`);
 fs.mkdirSync(tmp, { recursive: true });
-process.env.V2_SHOW_CONTROL_DB_DIR = path.join(tmp, "db");
-process.env.V2_SHOW_CONTROL_ADAPTER_MODE = "test";
+process.env.SHOW_CONTROL_DB_DIR = path.join(tmp, "db");
+process.env.SHOW_CONTROL_ADAPTER_MODE = "test";
 
 const { createShowControlApp } = require("../server/app");
 const { environmentExtrasStatus, resetHoldState } = require("../cue-library/environment-extras");

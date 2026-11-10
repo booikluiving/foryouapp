@@ -122,7 +122,7 @@ const MEDIA_ROLE_ALIASES = Object.freeze({
 });
 
 const CATALOG_ROOT = path.resolve(__dirname, "..");
-const V2_ROOT = path.resolve(__dirname, "../../..");
+const APP_ROOT = path.resolve(__dirname, "../../..");
 const DEFAULT_STORE_PATH = path.join(CATALOG_ROOT, "db", "catalog-store.json");
 const DEFAULT_DB_PATH = path.join(CATALOG_ROOT, "db", "catalog.sqlite");
 const DEFAULT_MEDIA_ROOT = path.join(CATALOG_ROOT, "media");
@@ -136,21 +136,21 @@ class CatalogInputError extends Error {
   }
 }
 
-function assertPathUnderV2(targetPath) {
+function assertPathUnderApp(targetPath) {
   const resolved = path.resolve(targetPath);
-  const relative = path.relative(V2_ROOT, resolved);
+  const relative = path.relative(APP_ROOT, resolved);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`catalog_store_path_outside_v2:${resolved}`);
+    throw new Error(`catalog_store_path_outside_app:${resolved}`);
   }
   return resolved;
 }
 
 function catalogStorePath(options = {}) {
-  return assertPathUnderV2(options.storePath || process.env.V2_CATALOG_STORE_PATH || DEFAULT_STORE_PATH);
+  return assertPathUnderApp(options.storePath || process.env.CATALOG_STORE_PATH || DEFAULT_STORE_PATH);
 }
 
 function catalogMediaRoot(options = {}) {
-  return assertPathUnderV2(options.mediaRoot || process.env.V2_CATALOG_MEDIA_ROOT || DEFAULT_MEDIA_ROOT);
+  return assertPathUnderApp(options.mediaRoot || process.env.CATALOG_MEDIA_ROOT || DEFAULT_MEDIA_ROOT);
 }
 
 function nowIso() {
@@ -200,14 +200,14 @@ function normalizeStore(raw) {
 }
 
 function catalogDbPath(options = {}) {
-  const explicit = options.dbPath || options.catalogDbPath || process.env.V2_CATALOG_DB_PATH;
-  if (explicit) return assertPathUnderV2(explicit);
-  const legacyJsonStorePath = options.storePath || process.env.V2_CATALOG_STORE_PATH;
+  const explicit = options.dbPath || options.catalogDbPath || process.env.CATALOG_DB_PATH;
+  if (explicit) return assertPathUnderApp(explicit);
+  const legacyJsonStorePath = options.storePath || process.env.CATALOG_STORE_PATH;
   if (legacyJsonStorePath) {
     const parsed = path.parse(legacyJsonStorePath);
-    return assertPathUnderV2(path.join(parsed.dir, `${parsed.name}.sqlite`));
+    return assertPathUnderApp(path.join(parsed.dir, `${parsed.name}.sqlite`));
   }
-  return assertPathUnderV2(DEFAULT_DB_PATH);
+  return assertPathUnderApp(DEFAULT_DB_PATH);
 }
 
 function openCatalogDb(options = {}) {
@@ -537,7 +537,7 @@ function slugify(value, fallback = "item") {
 function nextEntityId(store, entityType, name) {
   const next = Number(store.nextCounters[entityType] || 1);
   store.nextCounters[entityType] = next + 1;
-  return `${entityType}:v2-${String(next).padStart(4, "0")}-${slugify(name, entityType)}`;
+  return `${entityType}:app-${String(next).padStart(4, "0")}-${slugify(name, entityType)}`;
 }
 
 function upsertById(items, item) {
@@ -607,8 +607,8 @@ function normalizePerformerRecord(record, base = null) {
     status: record.status || statusFor(active),
     createdAt: record.createdAt || (base && base.createdAt) || nowIso(),
     updatedAt: record.updatedAt || (base && base.updatedAt) || nowIso(),
-    source: record.source || { type: "v2-catalog-sqlite" },
-    v2Edited: record.v2Edited !== false,
+    source: record.source || { type: "catalog-sqlite" },
+    edited: record.edited !== false,
   };
 }
 
@@ -630,8 +630,8 @@ function normalizeCharacterRecord(record, base = null) {
     status: record.status || statusFor(active),
     createdAt: record.createdAt || (base && base.createdAt) || nowIso(),
     updatedAt: record.updatedAt || (base && base.updatedAt) || nowIso(),
-    source: record.source || { type: "v2-catalog-sqlite" },
-    v2Edited: record.v2Edited !== false,
+    source: record.source || { type: "catalog-sqlite" },
+    edited: record.edited !== false,
   };
 }
 
@@ -652,8 +652,8 @@ function normalizeEnvironmentRecord(record, base = null) {
     status: record.status || statusFor(active),
     createdAt: record.createdAt || (base && base.createdAt) || nowIso(),
     updatedAt: record.updatedAt || (base && base.updatedAt) || nowIso(),
-    source: record.source || { type: "v2-catalog-sqlite" },
-    v2Edited: record.v2Edited !== false,
+    source: record.source || { type: "catalog-sqlite" },
+    edited: record.edited !== false,
   };
 }
 
@@ -664,7 +664,7 @@ function normalizeSituationRecord(record, base = null) {
     ...(base || {}),
     id: record.id,
     legacyId: base ? base.legacyId || record.legacyId || null : record.legacyId || null,
-    legacyTable: base ? base.legacyTable || record.legacyTable || "algorithm_scenes" : record.legacyTable || "v2-catalog-sqlite",
+    legacyTable: base ? base.legacyTable || record.legacyTable || "algorithm_scenes" : record.legacyTable || "catalog-sqlite",
     title: record.title,
     description: record.description || "",
     promptText: record.promptText || record.description || "",
@@ -691,8 +691,8 @@ function normalizeSituationRecord(record, base = null) {
     status: record.status || statusFor(active),
     createdAt: record.createdAt || (base && base.createdAt) || nowIso(),
     updatedAt: record.updatedAt || (base && base.updatedAt) || nowIso(),
-    source: record.source || { type: "v2-catalog-sqlite" },
-    v2Edited: record.v2Edited !== false,
+    source: record.source || { type: "catalog-sqlite" },
+    edited: record.edited !== false,
   };
 }
 
@@ -709,7 +709,7 @@ function normalizeLabelRecord(record, base = null) {
     status: record.status || statusFor(active),
     createdAt: record.createdAt || (base && base.createdAt) || nowIso(),
     updatedAt: record.updatedAt || (base && base.updatedAt) || nowIso(),
-    source: record.source || { type: "v2-catalog-sqlite" },
+    source: record.source || { type: "catalog-sqlite" },
   };
 }
 
@@ -933,11 +933,11 @@ function pathInside(parent, child) {
 
 function resolveMediaAssetPath(record, mediaRoot) {
   const relativePath = String(record && record.relativePath || "").trim();
-  if (relativePath) return assertPathUnderV2(path.join(mediaRoot, relativePath));
+  if (relativePath) return assertPathUnderApp(path.join(mediaRoot, relativePath));
   const storedPath = String(record && record.filePath || "").trim();
   if (!storedPath) return "";
   try {
-    const resolved = assertPathUnderV2(storedPath);
+    const resolved = assertPathUnderApp(storedPath);
     return pathInside(mediaRoot, resolved) ? resolved : "";
   } catch (_err) {
     return "";
@@ -966,7 +966,7 @@ function normalizeMediaAssetRecord(record) {
     metadata: record.metadata && typeof record.metadata === "object" ? record.metadata : {},
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
-    source: { type: "v2-media-store" },
+    source: { type: "media-store" },
   };
 }
 
@@ -1027,7 +1027,7 @@ function normalizeEnvironmentCompositionRecord(record, lightingPresets = DEFAULT
     lighting,
     createdAt: record && record.createdAt || at,
     updatedAt: record && record.updatedAt || record && record.createdAt || at,
-    source: { type: "v2-composition-store" },
+    source: { type: "composition-store" },
   };
 }
 
@@ -1050,12 +1050,12 @@ function applyCatalogStore(readModel, store, options = {}) {
     ...readModel,
     source: {
       ...readModel.source,
-      v2CatalogDb: {
+      catalogDb: {
         path: catalogDbPath(options),
         readOnly: false,
         schemaVersion: STORE_SCHEMA_VERSION,
       },
-      v2MediaRoot: {
+      mediaRoot: {
         path: catalogMediaRoot(options),
         readOnly: false,
       },
@@ -1076,12 +1076,12 @@ function applyCatalogStore(readModel, store, options = {}) {
       presentMediaAssets: mediaAssets.filter((asset) => asset.status === "present").length,
       environmentCompositions: environmentCompositions.length,
       lightingPresets: lightingPresets.length,
-      v2Performers: store.performers.length,
-      v2Characters: store.characters.length,
-      v2Environments: store.environments.length,
-      v2Situations: store.situations.length,
-      v2MediaAssets: store.mediaAssets.length,
-      v2LightingPresets: store.lightingPresets.length,
+      storedPerformers: store.performers.length,
+      storedCharacters: store.characters.length,
+      storedEnvironments: store.environments.length,
+      storedSituations: store.situations.length,
+      storedMediaAssets: store.mediaAssets.length,
+      storedLightingPresets: store.lightingPresets.length,
     },
     performers,
     characters,
@@ -1125,7 +1125,7 @@ function parseTags(value) {
 
 function loadBusboy() {
   const candidates = [
-    process.env.V2_CATALOG_BUSBOY_MODULE,
+    process.env.CATALOG_BUSBOY_MODULE,
     "busboy",
   ].filter(Boolean);
   for (const candidate of candidates) {
@@ -1259,7 +1259,7 @@ function parseMediaAssetUpload(req, options = {}) {
   return new Promise((resolve, reject) => {
     const Busboy = loadBusboy();
     const mediaRoot = catalogMediaRoot(options);
-    const tempDir = assertPathUnderV2(path.join(mediaRoot, "_asset-upload-tmp"));
+    const tempDir = assertPathUnderApp(path.join(mediaRoot, "_asset-upload-tmp"));
     const fields = {};
     const writeJobs = [];
     let upload = null;
@@ -1306,7 +1306,7 @@ function parseMediaAssetUpload(req, options = {}) {
       }
       try {
         ensureDirSync(tempDir);
-        tempPath = assertPathUnderV2(path.join(tempDir, `${Date.now()}-${crypto.randomBytes(8).toString("hex")}.upload`));
+        tempPath = assertPathUnderApp(path.join(tempDir, `${Date.now()}-${crypto.randomBytes(8).toString("hex")}.upload`));
       } catch (err) {
         file.resume();
         fail(err);
@@ -1374,9 +1374,9 @@ function backupExistingMediaAssets(store, { environmentId, type, role, mediaRoot
     }
     const sourcePath = resolveMediaAssetPath(record, mediaRoot);
     if (!sourcePath || !fsSync.existsSync(sourcePath)) continue;
-    const backupDir = assertPathUnderV2(path.join(mediaRoot, "_asset-backups", stamp, safeSegment(environmentId), type));
+    const backupDir = assertPathUnderApp(path.join(mediaRoot, "_asset-backups", stamp, safeSegment(environmentId), type));
     ensureDirSync(backupDir);
-    const targetPath = assertPathUnderV2(path.join(backupDir, path.basename(sourcePath)));
+    const targetPath = assertPathUnderApp(path.join(backupDir, path.basename(sourcePath)));
     fsSync.renameSync(sourcePath, targetPath);
     record.status = "replaced";
     record.replacedAt = nowIso();
@@ -1392,7 +1392,7 @@ function backupExistingMediaAssets(store, { environmentId, type, role, mediaRoot
 }
 
 async function saveMediaAssetFile(input, readModel, options = {}) {
-  let tempPath = input && input.tempPath ? assertPathUnderV2(input.tempPath) : "";
+  let tempPath = input && input.tempPath ? assertPathUnderApp(input.tempPath) : "";
   const environmentId = String(input && input.environmentId || "").trim();
   const originalFilename = String(input && input.originalFilename || input && input.filename || "");
   const extension = extensionFromFilename(originalFilename);
@@ -1424,8 +1424,8 @@ async function saveMediaAssetFile(input, readModel, options = {}) {
   const base = slugify(path.basename(originalFilename, path.extname(originalFilename)), "asset");
   const filename = `${base}-${hash}.${extension}`;
   const mediaRoot = catalogMediaRoot(options);
-  const targetDir = assertPathUnderV2(path.join(mediaRoot, "environments", safeSegment(environmentId), type));
-  const filePath = assertPathUnderV2(path.join(targetDir, filename));
+  const targetDir = assertPathUnderApp(path.join(mediaRoot, "environments", safeSegment(environmentId), type));
+  const filePath = assertPathUnderApp(path.join(targetDir, filename));
   const store = await readCatalogStore(options);
   const assetId = `media-asset:${environmentId}:${role || type}:${base}-${hash}`;
   const backups = backupExistingMediaAssets(store, {
@@ -1582,7 +1582,7 @@ function validateCompositionLayer(layer, { expectedRole, environmentId, assetMap
   }
   const asset = assetMap.get(normalized.assetId);
   if (!asset) {
-    issues.push(issue("composition_asset_missing", `${pathLabel} references an unknown V2 asset.`, {
+    issues.push(issue("composition_asset_missing", `${pathLabel} references an unknown asset.`, {
       path: pathLabel,
       assetId: normalized.assetId,
     }));
@@ -1611,7 +1611,7 @@ function validateCompositionLayer(layer, { expectedRole, environmentId, assetMap
     if (asset.relativePath || asset.filePath) {
       const assetPath = resolveMediaAssetPath(asset, mediaRoot);
       if (!assetPath) {
-        issues.push(issue("composition_asset_outside_media_root", `${pathLabel} asset is outside the V2 media root.`, {
+        issues.push(issue("composition_asset_outside_media_root", `${pathLabel} asset is outside the media root.`, {
           path: pathLabel,
           assetId: normalized.assetId,
         }));

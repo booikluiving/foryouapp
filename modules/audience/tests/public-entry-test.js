@@ -21,9 +21,9 @@ const child = spawn(process.execPath, [path.join(ROOT, "modules/audience/server/
     AUDIENCE_PORT: String(LAN),
     AUDIENCE_PUBLIC_PORT: String(PUB),
     AUDIENCE_PUBLIC_JOIN_URL: "https://www.foryouniverse.nl/live",
-    V2_AUDIENCE_DB_DIR: dbDir,
-    V2_AUDIENCE_RUNTIME_URL: "http://127.0.0.1:9",
-    V2_AUDIENCE_ALGORITHM_URL: "http://127.0.0.1:9",
+    AUDIENCE_DB_DIR: dbDir,
+    AUDIENCE_RUNTIME_URL: "http://127.0.0.1:9",
+    AUDIENCE_ALGORITHM_URL: "http://127.0.0.1:9",
   },
   stdio: ["ignore", "pipe", "pipe"],
 });
@@ -37,7 +37,7 @@ const pub = (p, o) => fetch(`http://127.0.0.1:${PUB}${p}`, { redirect: "manual",
 
 function openWs(cookie) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${PUB}/v2/audience/realtime`, { headers: cookie ? { cookie } : {} });
+    const ws = new WebSocket(`ws://127.0.0.1:${PUB}/audience/realtime`, { headers: cookie ? { cookie } : {} });
     const msgs = [];
     ws.on("message", (raw) => msgs.push(JSON.parse(String(raw))));
     ws.on("open", () => resolve({ ws, msgs }));
@@ -59,10 +59,10 @@ function openWs(cookie) {
     assert.equal(h.db, undefined); assert.equal(h.port, undefined);
     ok("publieke /health zonder db-pad of poort");
 
-    for (const p of ["/admin", "/v2/audience/admin", "/v2/audience/admin/state", "/v2/audience/status", "/v2/audience/stage", "/v2/audience/stage/session-qr", "/v2/audience/signals", "/v2/audience/algorithm-input", "/v0/audience/sessions"]) {
+    for (const p of ["/admin", "/audience/admin", "/audience/admin/state", "/audience/status", "/audience/stage", "/audience/stage/session-qr", "/audience/signals", "/audience/algorithm-input", "/v0/audience/sessions"]) {
       assert.equal((await pub(p)).status, 404, p);
     }
-    for (const p of ["/v2/audience/admin/sessions/stop", "/v2/audience/admin/users/kick", "/v2/audience/signals", "/v2/audience/admin/polls/start"]) {
+    for (const p of ["/audience/admin/sessions/stop", "/audience/admin/users/kick", "/audience/signals", "/audience/admin/polls/start"]) {
       assert.equal((await pub(p, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 404, p);
     }
     ok("admin/stage/signalen/status geven 404 op de publieke poort");
@@ -71,14 +71,14 @@ function openWs(cookie) {
     assert.equal(r.status, 200); assert.match(await r.text(), /Scan de QR-code/);
     ok("/live zonder code: 'Scan de QR-code in de zaal'");
 
-    const start = await (await lan("/v2/audience/admin/sessions/start", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "test-run" }) })).json();
+    const start = await (await lan("/audience/admin/sessions/start", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "test-run" }) })).json();
     const join = start.join || (start.session && start.sessionJoin);
     assert.ok(join && join.token, JSON.stringify(start).slice(0, 300));
     assert.equal(join.joinUrl, `https://www.foryouniverse.nl/live?t=${join.token}`);
     assert.match(join.lanJoinUrl, /^http:\/\/.*:39126\/join\?token=/);
     ok("QR-link = https://www.foryouniverse.nl/live?t=<token> (LAN-link apart bewaard)");
 
-    const st = await (await lan("/v2/audience/admin/state?stage=qr")).json();
+    const st = await (await lan("/audience/admin/state?stage=qr")).json();
     assert.equal(st.sessionJoin.joinUrl, join.joinUrl);
     ok("stage-QR (admin/state) toont de publieke link");
 
@@ -97,8 +97,8 @@ function openWs(cookie) {
     assert.match(r.headers.get("set-cookie"), /Secure/);
     ok("achter de tunnel (https): pas is Secure");
 
-    assert.equal((await pub("/v2/audience/public/history")).status, 403);
-    assert.equal((await pub("/v2/audience/public/history", { headers: { cookie } })).status, 200);
+    assert.equal((await pub("/audience/public/history")).status, 403);
+    assert.equal((await pub("/audience/public/history", { headers: { cookie } })).status, 200);
     ok("chatgeschiedenis alleen met pas");
 
     r = await pub("/", { headers: { cookie } });
@@ -109,7 +109,7 @@ function openWs(cookie) {
       assert.match(body, /Scan de QR-code/, p); assert.doesNotMatch(body, /<script/, p);
     }
     ok("app alleen met pas; zonder pas: 'Scan de QR-code'");
-    assert.equal((await pub("/v2/audience/socket.io/socket.io.js")).status, 200);
+    assert.equal((await pub("/audience/socket.io/socket.io.js")).status, 200);
     ok("publieke app en socket.io-client laden");
 
     const noPass = await openWs("");
@@ -136,7 +136,7 @@ function openWs(cookie) {
     assert.ok(a.msgs.some((m) => m.code === "name_word_blocked"));
     ok("scheldwoord in naam wordt tegengehouden");
 
-    const users = (await (await lan("/v2/audience/admin/state")).json());
+    const users = (await (await lan("/audience/admin/state")).json());
     const txt = JSON.stringify(users);
     assert.ok(!/127\.0\.0\.1\|t1/.test(txt));
     assert.match(txt, /pub-[0-9a-f]{12}\|t1/);
@@ -158,7 +158,7 @@ function openWs(cookie) {
     ok("database: geen IP-adres of apparaat opgeslagen voor publieke deelnemers");
 
     const closed = new Promise((res) => a.ws.on("close", (code) => res(code)));
-    await lan("/v2/audience/admin/sessions/stop", { method: "POST" });
+    await lan("/audience/admin/sessions/stop", { method: "POST" });
     assert.equal(await closed, 4011);
     ok("sessie stoppen: telefoon eruit (4011)");
 
@@ -166,10 +166,10 @@ function openWs(cookie) {
     assert.equal(r.status, 410); assert.match(await r.text(), /afgelopen/);
     r = await pub("/", { headers: { cookie } });
     assert.match(await r.text(), /afgelopen/);
-    assert.equal((await pub("/v2/audience/public/history", { headers: { cookie } })).status, 410);
+    assert.equal((await pub("/audience/public/history", { headers: { cookie } })).status, 410);
     ok("na stop: oude QR en oude pas werken niet meer");
 
-    const start2 = await (await lan("/v2/audience/admin/sessions/start", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).json();
+    const start2 = await (await lan("/audience/admin/sessions/start", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).json();
     assert.notEqual(start2.join.token, join.token);
     const old = await openWs(cookie); await sleep(300);
     assert.ok(old.msgs.some((m) => m.code === "session_join_required"));

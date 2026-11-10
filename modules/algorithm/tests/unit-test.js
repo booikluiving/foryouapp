@@ -7,7 +7,7 @@ const path = require("node:path");
 const TEST_DIR = __dirname;
 const APP_ROOT = path.resolve(TEST_DIR, "../../..");
 const TEST_DB_DIR = path.join(APP_ROOT, "modules/algorithm/db/.tmp/unit");
-process.env.V2_ALGORITHM_DB_DIR = TEST_DB_DIR;
+process.env.ALGORITHM_DB_DIR = TEST_DB_DIR;
 
 const {
   assertNoPromptSettings,
@@ -172,7 +172,7 @@ async function main() {
   assert.deepEqual(created.scoreFeed.scores.map((score) => score.predictedScore), [0, 0, 0, 0, 0], "Equal neutral scores should remain equal");
 
   const legacyCreated = await createAlgorithmRun({ showRunId: "show-run-20260524-120000002Z", catalog });
-  assert.equal(legacyCreated.contextType, "scoring-context", "legacy run route should create scoring context state");
+  assert.equal(legacyCreated.contextType, "scoring-context", "runs alias route should create scoring context state");
 
   assert.throws(
     () => assertNoRuntimeOwnershipFields({ preparedNext: { situationId: "situation:1" } }),
@@ -375,7 +375,7 @@ async function main() {
     observedScore: result.observation.observedScore,
     assertions: [
       "config normalizes and persists",
-      "scoring contexts replace algorithm runs while legacy alias works",
+      "scoring contexts replace algorithm runs while the runs alias works",
       "runtime/order ownership fields are rejected and absent from scorefeed",
       "live audience signals change score feeds without persisting observations",
       "run profile scoring accumulates labels and characters with recency weighting",

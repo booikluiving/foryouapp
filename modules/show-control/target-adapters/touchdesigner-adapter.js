@@ -8,15 +8,15 @@ const DEFAULT_TD_OSC_PORT = 9100;
 const DEFAULT_TD_ACK_PORT = 9101;
 
 function tdOscHost(options = {}) {
-  return String(options.tdOscHost || process.env.V2_SHOW_CONTROL_TD_OSC_HOST || DEFAULT_TD_OSC_HOST);
+  return String(options.tdOscHost || process.env.SHOW_CONTROL_TD_OSC_HOST || DEFAULT_TD_OSC_HOST);
 }
 
 function tdOscPort(options = {}) {
-  return Number(options.tdOscPort || process.env.V2_SHOW_CONTROL_TD_OSC_PORT || DEFAULT_TD_OSC_PORT);
+  return Number(options.tdOscPort || process.env.SHOW_CONTROL_TD_OSC_PORT || DEFAULT_TD_OSC_PORT);
 }
 
 function showControlAckPort(options = {}) {
-  return Number(options.tdAckPort || process.env.V2_SHOW_CONTROL_TD_ACK_PORT || DEFAULT_TD_ACK_PORT);
+  return Number(options.tdAckPort || process.env.SHOW_CONTROL_TD_ACK_PORT || DEFAULT_TD_ACK_PORT);
 }
 
 function oscArgsForAction(action) {

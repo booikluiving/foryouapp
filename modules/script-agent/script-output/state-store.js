@@ -3,28 +3,28 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const V2_ROOT = path.resolve(__dirname, "../../..");
-const DEFAULT_SCRIPT_AGENT_DB_DIR = path.join(V2_ROOT, "modules", "script-agent", "db");
+const APP_ROOT = path.resolve(__dirname, "../../..");
+const DEFAULT_SCRIPT_AGENT_DB_DIR = path.join(APP_ROOT, "modules", "script-agent", "db");
 
 function scriptAgentDbDir() {
-  return path.resolve(process.env.V2_SCRIPT_AGENT_DB_DIR || DEFAULT_SCRIPT_AGENT_DB_DIR);
+  return path.resolve(process.env.SCRIPT_AGENT_DB_DIR || DEFAULT_SCRIPT_AGENT_DB_DIR);
 }
 
-function assertPathUnderV2(targetPath) {
+function assertPathUnderApp(targetPath) {
   const resolved = path.resolve(targetPath);
-  const relative = path.relative(V2_ROOT, resolved);
+  const relative = path.relative(APP_ROOT, resolved);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`script_agent_path_outside_v2:${resolved}`);
+    throw new Error(`script_agent_path_outside_app:${resolved}`);
   }
   return resolved;
 }
 
 function promptInputsFilePath() {
-  return assertPathUnderV2(path.join(scriptAgentDbDir(), "prompt-inputs.json"));
+  return assertPathUnderApp(path.join(scriptAgentDbDir(), "prompt-inputs.json"));
 }
 
 function scriptsFilePath() {
-  return assertPathUnderV2(path.join(scriptAgentDbDir(), "scripts.json"));
+  return assertPathUnderApp(path.join(scriptAgentDbDir(), "scripts.json"));
 }
 
 async function readJsonArray(filePath) {
@@ -97,10 +97,10 @@ async function readLatestScriptOutput(filter = {}) {
 }
 
 module.exports = {
-  V2_ROOT,
+  APP_ROOT,
   appendPromptInput,
   appendScriptOutput,
-  assertPathUnderV2,
+  assertPathUnderApp,
   promptInputsFilePath,
   readLatestScriptOutput,
   readPromptInput,

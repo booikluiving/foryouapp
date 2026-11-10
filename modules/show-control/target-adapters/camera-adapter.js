@@ -5,7 +5,7 @@ const { fetchJson, joinUrl } = require("./http-json");
 const DEFAULT_CAMERA_BASE_URL = "http://127.0.0.1:3226";
 
 function cameraBaseUrl(options = {}) {
-  return String(options.cameraBaseUrl || process.env.V2_SHOW_CONTROL_CAMERA_URL || DEFAULT_CAMERA_BASE_URL).replace(/\/+$/, "");
+  return String(options.cameraBaseUrl || process.env.SHOW_CONTROL_CAMERA_URL || DEFAULT_CAMERA_BASE_URL).replace(/\/+$/, "");
 }
 
 function encode(value) {

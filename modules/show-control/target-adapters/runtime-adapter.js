@@ -12,7 +12,7 @@ const { channelsForAccentFixtures } = require("../../../shared/lighting/environm
 const DEFAULT_RUNTIME_BASE_URL = "http://127.0.0.1:3024";
 
 function runtimeBaseUrl(options = {}) {
-  return String(options.runtimeBaseUrl || process.env.V2_SHOW_CONTROL_RUNTIME_URL || DEFAULT_RUNTIME_BASE_URL).replace(/\/+$/, "");
+  return String(options.runtimeBaseUrl || process.env.SHOW_CONTROL_RUNTIME_URL || DEFAULT_RUNTIME_BASE_URL).replace(/\/+$/, "");
 }
 
 async function getCurrentRuntimeState(options = {}) {

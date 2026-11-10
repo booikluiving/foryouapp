@@ -301,7 +301,7 @@ Omgeving/muziek:
 /ForU/AI/null2
 ```
 
-De bestaande media-assets en basename-conventie zijn waardevol. De oude API/Dropbox `CURRENT_ENVIRONMENT` route is legacy en liever niet de nieuwe bron van waarheid.
+De bestaande media-assets en basename-conventie zijn waardevol. De oude API/Dropbox `CURRENT_ENVIRONMENT` route is verouderd en liever niet de nieuwe bron van waarheid.
 
 ## Gefaseerde aanpak
 
@@ -362,7 +362,7 @@ Maak een compact rapport:
 1. welke onderdelen bestaan al
 2. welke nodes/routes relevant zijn
 3. wat veilig overgenomen kan worden
-4. wat legacy/risicovol lijkt
+4. wat verouderd/risicovol lijkt
 5. welke aannames nog getest moeten worden
 
 Niet wijzigen. Alleen lezen/analyseren.
@@ -561,7 +561,7 @@ Doe geen nieuwe features.
 Vergelijk het werkende TD-light systeem met het oude bestand.
 Maak een lijst van:
 - nodes/modules die nog actief nodig zijn
-- legacy modules die veilig genegeerd kunnen worden
+- oude modules die veilig genegeerd kunnen worden
 - modules die pas later verwijderd mogen worden
 - risico's bij verwijderen
 

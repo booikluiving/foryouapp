@@ -12,12 +12,10 @@ Open eerst:
 - [05-touchdesigner-command-surface.md](05-touchdesigner-command-surface.md)
 - [06-touchdesigner-cheat-sheet.md](06-touchdesigner-cheat-sheet.md)
 - [07-algorithm-service-contract.md](07-algorithm-service-contract.md)
-- [08-v2-implementatieplan.md](08-v2-implementatieplan.md)
-- [09-repo-reality-check-2026-05-26.md](09-repo-reality-check-2026-05-26.md)
 
 De Mermaid-bronbestanden staan in `diagrams/`.
 
-Er is bewust geen `generated/` map meer. De oude generated route-, SQLite- en dependency-kaarten verwezen nog naar legacy-routes en oude serverstructuur. Totdat er een V2-generator is, zijn de handgeschreven Mermaid-diagrammen en Markdown-contracten leidend.
+Er is bewust geen `generated/` map meer. De oude generated route-, SQLite- en dependency-kaarten verwezen nog naar oude routes en oude serverstructuur. Totdat er een generator is, zijn de handgeschreven Mermaid-diagrammen en Markdown-contracten leidend.
 
 ## Wat zit hierin
 
@@ -48,4 +46,4 @@ Er is bewust geen `generated/` map meer. De oude generated route-, SQLite- en de
 
 ## Werkwijze
 
-Pas de handgeschreven diagrammen in `diagrams/` aan wanneer het conceptuele systeem verandert. Voeg geen generated architectuurkaarten toe zonder actuele V2-generator, zodat oude routes niet opnieuw als bron van waarheid binnenkomen.
+Pas de handgeschreven diagrammen in `diagrams/` aan wanneer het conceptuele systeem verandert. Voeg geen generated architectuurkaarten toe zonder actuele generator, zodat oude routes niet opnieuw als bron van waarheid binnenkomen.

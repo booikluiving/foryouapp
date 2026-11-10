@@ -9,7 +9,7 @@ const {
   getAudienceStore,
 } = require("../db/audience-store");
 
-const V2_ROOT = path.resolve(MODULE_ROOT, "../..");
+const APP_ROOT = path.resolve(MODULE_ROOT, "../..");
 
 function audienceDbDir() {
   return path.dirname(audienceDbPath());
@@ -54,17 +54,17 @@ async function readAudienceSessions() {
     createdAt: session.startedAt,
     endedAt: session.endedAt,
     source: {
-      type: "audience-v2-sqlite-session",
+      type: "audience-sqlite-session",
       readOnly: true,
     },
   }));
 }
 
 module.exports = {
-  V2_ROOT,
+  APP_ROOT,
   appendAudienceSession,
   appendAudienceSignal,
-  assertPathUnderV2: assertAudienceStoragePath,
+  assertPathUnderApp: assertAudienceStoragePath,
   audienceDbDir,
   readAudienceSessions,
   readAudienceSignals,

@@ -1,7 +1,6 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const net = require("node:net");
 const path = require("node:path");
@@ -12,36 +11,10 @@ const {
   CATALOG_SNAPSHOT_SCHEMA_VERSION,
   REQUIRED_READ_MODEL_ARRAYS,
 } = require("../../../shared/contracts/catalog-v0");
-const { V2_ROOT } = require("../snapshots/snapshot-store");
+const { APP_ROOT } = require("../snapshots/snapshot-store");
 
 const TEST_DIR = __dirname;
-const APP_ROOT = path.resolve(TEST_DIR, "../../..");
 let PORT = 3021;
-const PROTECTED_V1_FILES = [
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-wal"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-shm"),
-];
-
-async function sha256(filePath) {
-  const data = await fs.readFile(filePath);
-  return crypto.createHash("sha256").update(data).digest("hex");
-}
-
-async function protectedHashes() {
-  const entries = [];
-  for (const filePath of PROTECTED_V1_FILES) {
-    entries.push([filePath, await sha256(filePath)]);
-  }
-  return Object.fromEntries(entries);
-}
-
-function assertHashesEqual(before, after) {
-  for (const filePath of PROTECTED_V1_FILES) {
-    assert.equal(after[filePath], before[filePath], `${path.basename(filePath)} changed`);
-  }
-}
-
 function assertPathInside(parent, child) {
   const relative = path.relative(parent, child);
   assert(!relative.startsWith("..") && !path.isAbsolute(relative), `${child} is outside ${parent}`);
@@ -108,7 +81,6 @@ async function stopChild(child) {
 async function main() {
   PORT = await findFreePort();
   await assertPortFree(PORT);
-  const beforeHashes = await protectedHashes();
   const serverPath = path.resolve(TEST_DIR, "../server/server.js");
   const logs = [];
   const child = spawn(process.execPath, [serverPath], {
@@ -116,7 +88,6 @@ async function main() {
     env: {
       ...process.env,
       CATALOG_PORT: String(PORT),
-      V2_CATALOG_LEGACY_SQLITE_PATH: "/missing.sqlite",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -142,11 +113,10 @@ async function main() {
     assert(readModel.labels.length > 0, "labels should be present");
     assert(readModel.mediaAssets.length >= readModel.environments.length, "media asset metadata should be present");
     assert(readModel.lightingPresets.some((preset) => preset.id === "studio-neutral"), "lighting presets should be present");
-    assert.equal(readModel.source.type, "v2-catalog-sqlite");
+    assert.equal(readModel.source.type, "catalog-sqlite");
     assert.equal(readModel.source.readOnly, false);
     assert.equal(readModel.source.ownsMutations, true);
-    assertPathInside(V2_ROOT, readModel.source.path);
-    assert(!JSON.stringify(readModel.source).includes("legacy/data/live.sqlite"), "read-model source must not expose legacy sqlite paths");
+    assertPathInside(APP_ROOT, readModel.source.path);
 
     const validation = await fetchJson("/v0/catalog/validation");
     assert.equal(validation.schemaVersion, CATALOG_SCHEMA_VERSION);
@@ -160,26 +130,23 @@ async function main() {
     assert(snapshotResult.snapshotId, "snapshotId should be returned");
     assert(snapshotResult.createdAt, "createdAt should be returned");
     assert.equal(snapshotResult.schemaVersion, CATALOG_SNAPSHOT_SCHEMA_VERSION);
-    assert(snapshotResult.source && snapshotResult.source.type === "v2-catalog-sqlite", "snapshot source should be V2 SQLite");
+    assert(snapshotResult.source && snapshotResult.source.type === "catalog-sqlite", "snapshot source should be SQLite");
     assert(snapshotResult.source && snapshotResult.source.ownsMutations === true, "snapshot source should own mutations");
     assert(snapshotResult.filePath, "snapshot filePath should be returned");
-    assertPathInside(V2_ROOT, snapshotResult.filePath);
+    assertPathInside(APP_ROOT, snapshotResult.filePath);
 
     const snapshot = JSON.parse(await fs.readFile(snapshotResult.filePath, "utf8"));
     assert.equal(snapshot.snapshotId, snapshotResult.snapshotId);
     assert(snapshot.createdAt);
-    assert(snapshot.source && snapshot.source.type === "v2-catalog-sqlite");
+    assert(snapshot.source && snapshot.source.type === "catalog-sqlite");
     assert(snapshot.source && snapshot.source.ownsMutations === true);
-    assertPathInside(V2_ROOT, snapshot.source.path);
-    assert(!JSON.stringify(snapshot.source).includes("legacy/data/live.sqlite"), "snapshot source must not expose legacy sqlite paths");
+    assertPathInside(APP_ROOT, snapshot.source.path);
     assert.equal(snapshot.schemaVersion, CATALOG_SNAPSHOT_SCHEMA_VERSION);
     assert(snapshot.catalog && Array.isArray(snapshot.catalog.situations));
     assert.equal(snapshot.catalog.situations.length, readModel.situations.length);
     assert(snapshot.catalog.lightingPresets.some((preset) => preset.id === "studio-neutral"), "snapshot should include lighting presets");
 
     await stopChild(child);
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
 
     process.stdout.write(JSON.stringify({
       ok: true,
@@ -188,13 +155,10 @@ async function main() {
       validationCounts: validation.counts,
       snapshotId: snapshotResult.snapshotId,
       snapshotPath: snapshotResult.filePath,
-      protectedV1HashesUnchanged: true,
     }, null, 2));
     process.stdout.write("\n");
   } catch (err) {
     await stopChild(child);
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
     err.message = `${err.message}\nCatalog server logs:\n${logs.join("")}`;
     throw err;
   }

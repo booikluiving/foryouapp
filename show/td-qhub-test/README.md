@@ -1,7 +1,7 @@
-# TouchDesigner Q-hub Protocol Test v1
+# TouchDesigner Q-hub Protocol Test
 
 This folder contains the smallest TouchDesigner-side test surface for the
-For You V2 Show Control cue protocol.
+For You Show Control cue protocol.
 
 The goal is protocol proof, not final visuals:
 
@@ -24,7 +24,7 @@ TouchDesigner returns:
 /td/ack cueId command stage status message
 ```
 
-Supported v1 commands:
+Supported commands:
 
 - `td.status.heartbeat`
 - `td.environment.prepare`

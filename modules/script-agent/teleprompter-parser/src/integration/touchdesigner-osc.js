@@ -61,15 +61,15 @@ function sendPacket({ host, port, address, args }) {
 }
 
 function tdOscHost(env = process.env) {
-  return String(env.V2_SCRIPT_AGENT_TELEPROMPTER_TD_OSC_HOST || DEFAULT_TD_OSC_HOST).trim() || DEFAULT_TD_OSC_HOST;
+  return String(env.SCRIPT_AGENT_TELEPROMPTER_TD_OSC_HOST || DEFAULT_TD_OSC_HOST).trim() || DEFAULT_TD_OSC_HOST;
 }
 
 function tdStageOscPort(env = process.env) {
-  return clampInt(env.V2_SCRIPT_AGENT_TELEPROMPTER_TD_STAGE_OSC_PORT, 1, 65535, DEFAULT_TD_STAGE_OSC_PORT);
+  return clampInt(env.SCRIPT_AGENT_TELEPROMPTER_TD_STAGE_OSC_PORT, 1, 65535, DEFAULT_TD_STAGE_OSC_PORT);
 }
 
 function tdPulseResetMs(env = process.env) {
-  return clampInt(env.V2_SCRIPT_AGENT_TELEPROMPTER_TD_PULSE_RESET_MS, 20, 1000, DEFAULT_TD_PULSE_RESET_MS);
+  return clampInt(env.SCRIPT_AGENT_TELEPROMPTER_TD_PULSE_RESET_MS, 20, 1000, DEFAULT_TD_PULSE_RESET_MS);
 }
 
 function sendTouchDesignerPulse(address, options = {}) {

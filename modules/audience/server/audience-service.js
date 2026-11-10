@@ -26,7 +26,7 @@ const {
 } = require("../simulation/chat-simulator");
 const { createWordFilter } = require("./word-filter");
 
-const SERVICE_VERSION = "v2-audience.0";
+const SERVICE_VERSION = "audience.0";
 const ACCESS_COOKIE = "fy_audience_access";
 const ACCESS_TTL_MINUTES = 720;
 const JOIN_TOKEN_TTL_MINUTES = 720;
@@ -460,7 +460,7 @@ class AudienceService extends EventEmitter {
       version: SERVICE_VERSION,
       instanceId: this.serverInstanceId,
       buildVersion: SERVICE_VERSION,
-      buildLabel: "Audience V2",
+      buildLabel: "Audience",
       port: this.port,
       startedAt: this.startedAt.toISOString(),
       uptimeSeconds: Math.round(process.uptime()),
@@ -492,10 +492,10 @@ class AudienceService extends EventEmitter {
   getStageControl(req) {
     const baseUrl = buildBaseUrl(req, this.port);
     return {
-      path: "/v2/audience/stage",
-      url: `${baseUrl}/v2/audience/stage`,
-      sessionQrPath: "/v2/audience/stage/session-qr",
-      sessionQrUrl: `${baseUrl}/v2/audience/stage/session-qr`,
+      path: "/audience/stage",
+      url: `${baseUrl}/audience/stage`,
+      sessionQrPath: "/audience/stage/session-qr",
+      sessionQrUrl: `${baseUrl}/audience/stage/session-qr`,
       settings: normalizeStageSettings(this.stageOutputSettings),
     };
   }
@@ -1246,7 +1246,7 @@ class AudienceService extends EventEmitter {
       simulated: !!(meta && meta.simulated),
       link,
       source: {
-        type: "audience-v2-signal",
+        type: "audience-signal",
         readOnly: false,
       },
     };
@@ -1699,9 +1699,9 @@ class AudienceService extends EventEmitter {
       sessionJoin: req && active ? this.currentJoinPayload(req) : null,
       wifiQr: this.getWifiQr(),
       stage: req ? this.getStageControl(req) : {
-        path: "/v2/audience/stage",
+        path: "/audience/stage",
         url: "",
-        sessionQrPath: "/v2/audience/stage/session-qr",
+        sessionQrPath: "/audience/stage/session-qr",
         sessionQrUrl: "",
         settings: normalizeStageSettings(this.stageOutputSettings),
       },
@@ -1725,7 +1725,7 @@ class AudienceService extends EventEmitter {
     if (!resolvedShowRunId || !resolvedSituationRunId) {
       return {
         ok: true,
-        schemaVersion: "audience.algorithm-input.v2",
+        schemaVersion: "audience.algorithm-input.v0",
         type: "audienceSignalsForAlgorithm",
         showRunId: resolvedShowRunId || null,
         situationRunId: resolvedSituationRunId || null,

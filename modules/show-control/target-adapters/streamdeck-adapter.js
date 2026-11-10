@@ -5,7 +5,7 @@ const { fetchJson, joinUrl } = require("./http-json");
 const DEFAULT_STREAMDECK_BASE_URL = "http://127.0.0.1:3227";
 
 function streamDeckBaseUrl(options = {}) {
-  return String(options.streamDeckBaseUrl || process.env.V2_SHOW_CONTROL_STREAMDECK_URL || DEFAULT_STREAMDECK_BASE_URL).replace(/\/+$/, "");
+  return String(options.streamDeckBaseUrl || process.env.SHOW_CONTROL_STREAMDECK_URL || DEFAULT_STREAMDECK_BASE_URL).replace(/\/+$/, "");
 }
 
 function encode(value) {

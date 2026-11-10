@@ -1,8 +1,8 @@
 const http = require("http");
 const osc = require("../common/osc-compat");
 
-const targetPort = Number(process.env.V2_SHOW_CONTROL_SQ5_OSC_PORT || 53250);
-const statusUrl = new URL(process.env.V2_SHOW_CONTROL_SQ5_TEST_STATUS_URL || "http://127.0.0.1:3225/api/status");
+const targetPort = Number(process.env.SHOW_CONTROL_SQ5_OSC_PORT || 53250);
+const statusUrl = new URL(process.env.SHOW_CONTROL_SQ5_TEST_STATUS_URL || "http://127.0.0.1:3225/api/status");
 
 function getStatus() {
   return new Promise((resolve, reject) => {

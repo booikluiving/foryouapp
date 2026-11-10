@@ -10,7 +10,7 @@ function tryRequire(moduleId) {
 
 function loadWs() {
   const candidates = [
-    process.env.V2_AUDIENCE_WS_MODULE,
+    process.env.AUDIENCE_WS_MODULE,
     "ws",
   ].filter(Boolean);
   const errors = [];
@@ -24,7 +24,7 @@ function loadWs() {
 
 function loadSocketIo() {
   const candidates = [
-    process.env.V2_AUDIENCE_SOCKET_IO_MODULE,
+    process.env.AUDIENCE_SOCKET_IO_MODULE,
     "socket.io",
   ].filter(Boolean);
   for (const candidate of candidates) {

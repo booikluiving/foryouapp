@@ -7,8 +7,8 @@ const DEFAULT_SCRIPT_AGENT_BASE_URL = "http://127.0.0.1:3027";
 function scriptAgentBaseUrl(options = {}) {
   return String(
     options.scriptAgentBaseUrl
-    || process.env.V2_SHOW_CONTROL_SCRIPT_AGENT_URL
-    || process.env.V2_SHOW_CONTROL_TELEPROMPTER_URL
+    || process.env.SHOW_CONTROL_SCRIPT_AGENT_URL
+    || process.env.SHOW_CONTROL_TELEPROMPTER_URL
     || DEFAULT_SCRIPT_AGENT_BASE_URL
   ).replace(/\/+$/, "");
 }

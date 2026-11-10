@@ -1,7 +1,6 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const net = require("node:net");
 const path = require("node:path");
@@ -12,31 +11,6 @@ const APP_ROOT = path.resolve(TEST_DIR, "../../..");
 const PORTS = {};
 const SHOW_RUN_ID = "show-run-20260524-130000000Z";
 const ALGORITHM_TEST_DB_DIR = path.join(APP_ROOT, "modules/algorithm/db/.tmp/smoke");
-const PROTECTED_V1_FILES = [
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-wal"),
-  path.join(APP_ROOT, "legacy", "data", "live.sqlite-shm"),
-];
-
-async function sha256(filePath) {
-  const data = await fs.readFile(filePath);
-  return crypto.createHash("sha256").update(data).digest("hex");
-}
-
-async function protectedHashes() {
-  const entries = [];
-  for (const filePath of PROTECTED_V1_FILES) {
-    entries.push([filePath, await sha256(filePath)]);
-  }
-  return Object.fromEntries(entries);
-}
-
-function assertHashesEqual(before, after) {
-  for (const filePath of PROTECTED_V1_FILES) {
-    assert.equal(after[filePath], before[filePath], `${path.basename(filePath)} changed`);
-  }
-}
-
 async function assertPortFree(port) {
   await new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -125,20 +99,18 @@ async function main() {
   await assertPortFree(PORTS.catalog);
   await assertPortFree(PORTS.algorithm);
   await fs.rm(ALGORITHM_TEST_DB_DIR, { recursive: true, force: true });
-  const beforeHashes = await protectedHashes();
   const services = [];
   try {
     const catalogUrl = `http://127.0.0.1:${PORTS.catalog}`;
     const algorithmUrl = `http://127.0.0.1:${PORTS.algorithm}`;
     services.push(spawnService("catalog", path.join(APP_ROOT, "modules/catalog/server/server.js"), {
       CATALOG_PORT: String(PORTS.catalog),
-      V2_CATALOG_LEGACY_SQLITE_PATH: "/missing.sqlite",
     }));
     await waitForHealth(services[0].child, catalogUrl, "catalog", services[0].logs);
 
     services.push(spawnService("algorithm", path.join(APP_ROOT, "modules/algorithm/server/server.js"), {
       ALGORITHM_PORT: String(PORTS.algorithm),
-      V2_ALGORITHM_DB_DIR: ALGORITHM_TEST_DB_DIR,
+      ALGORITHM_DB_DIR: ALGORITHM_TEST_DB_DIR,
     }));
     await waitForHealth(services[1].child, algorithmUrl, "algorithm", services[1].logs);
 
@@ -263,8 +235,6 @@ async function main() {
     assert(uiJs.includes("/v0/algorithm/simulate"));
 
     await stopServices(services);
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
 
     process.stdout.write(JSON.stringify({
       ok: true,
@@ -274,13 +244,10 @@ async function main() {
       observedSituationId: situation.id,
       observedScore: observed.observation.observedScore,
       uiSmoke: true,
-      protectedV1HashesUnchanged: true,
     }, null, 2));
     process.stdout.write("\n");
   } catch (err) {
     await stopServices(services);
-    const afterHashes = await protectedHashes();
-    assertHashesEqual(beforeHashes, afterHashes);
     err.message = `${err.message}\nService logs:\n${services.map((service) => `${service.name}:\n${service.logs.join("")}`).join("\n")}`;
     throw err;
   }

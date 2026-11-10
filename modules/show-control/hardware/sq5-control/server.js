@@ -3,30 +3,30 @@ const net = require("net");
 const { URL } = require("url");
 const osc = require("../common/osc-compat");
 
-const TOOL_PORT = Number(process.env.V2_SHOW_CONTROL_SQ5_PORT || 3225);
-const TOOL_HOST = String(process.env.V2_SHOW_CONTROL_SQ5_HOST || "127.0.0.1").trim() || "127.0.0.1";
-const DEFAULT_MIXER_PORT = Number(process.env.V2_SHOW_CONTROL_SQ5_MIXER_PORT || 51325);
-const DEFAULT_OSC_PORT = Number(process.env.V2_SHOW_CONTROL_SQ5_OSC_PORT || 53250);
-const DEFAULT_OSC_LISTEN_ADDRESS = String(process.env.V2_SHOW_CONTROL_SQ5_OSC_LISTEN_ADDRESS || "127.0.0.1").trim() || "127.0.0.1";
-const TCP_TIMEOUT_MS = Number(process.env.V2_SHOW_CONTROL_SQ5_TCP_TIMEOUT_MS || 1800);
-const STATUS_POLL_MS = Number(process.env.V2_SHOW_CONTROL_SQ5_STATUS_POLL_MS || 1500);
-const STREAMDECK_POLL_MS = Number(process.env.V2_SHOW_CONTROL_SQ5_STREAMDECK_POLL_MS || 500);
-const MIDI_RESPONSE_WINDOW_MS = Number(process.env.V2_SHOW_CONTROL_SQ5_MIDI_RESPONSE_WINDOW_MS || 90);
-const CONTROL_TOKEN = String(process.env.V2_SHOW_CONTROL_SQ5_TOKEN || "").trim();
-const ALLOW_REMOTE = parseBooleanLike(process.env.V2_SHOW_CONTROL_SQ5_ALLOW_REMOTE || "0");
+const TOOL_PORT = Number(process.env.SHOW_CONTROL_SQ5_PORT || 3225);
+const TOOL_HOST = String(process.env.SHOW_CONTROL_SQ5_HOST || "127.0.0.1").trim() || "127.0.0.1";
+const DEFAULT_MIXER_PORT = Number(process.env.SHOW_CONTROL_SQ5_MIXER_PORT || 51325);
+const DEFAULT_OSC_PORT = Number(process.env.SHOW_CONTROL_SQ5_OSC_PORT || 53250);
+const DEFAULT_OSC_LISTEN_ADDRESS = String(process.env.SHOW_CONTROL_SQ5_OSC_LISTEN_ADDRESS || "127.0.0.1").trim() || "127.0.0.1";
+const TCP_TIMEOUT_MS = Number(process.env.SHOW_CONTROL_SQ5_TCP_TIMEOUT_MS || 1800);
+const STATUS_POLL_MS = Number(process.env.SHOW_CONTROL_SQ5_STATUS_POLL_MS || 1500);
+const STREAMDECK_POLL_MS = Number(process.env.SHOW_CONTROL_SQ5_STREAMDECK_POLL_MS || 500);
+const MIDI_RESPONSE_WINDOW_MS = Number(process.env.SHOW_CONTROL_SQ5_MIDI_RESPONSE_WINDOW_MS || 90);
+const CONTROL_TOKEN = String(process.env.SHOW_CONTROL_SQ5_TOKEN || "").trim();
+const ALLOW_REMOTE = parseBooleanLike(process.env.SHOW_CONTROL_SQ5_ALLOW_REMOTE || "0");
 
 const state = {
-  mixerHost: String(process.env.V2_SHOW_CONTROL_SQ5_MIXER_HOST || "").trim(),
+  mixerHost: String(process.env.SHOW_CONTROL_SQ5_MIXER_HOST || "").trim(),
   mixerPort: DEFAULT_MIXER_PORT,
-  midiChannel: clampInt(process.env.V2_SHOW_CONTROL_SQ5_MIDI_CHANNEL || 1, 1, 16),
-  faderLaw: String(process.env.V2_SHOW_CONTROL_SQ5_FADER_LAW || "linear").toLowerCase() === "audio" ? "audio" : "linear",
+  midiChannel: clampInt(process.env.SHOW_CONTROL_SQ5_MIDI_CHANNEL || 1, 1, 16),
+  faderLaw: String(process.env.SHOW_CONTROL_SQ5_FADER_LAW || "linear").toLowerCase() === "audio" ? "audio" : "linear",
   oscListenPort: DEFAULT_OSC_PORT,
   oscListenAddress: DEFAULT_OSC_LISTEN_ADDRESS,
   defaultDestination: "lr",
   channels: {
-    brent: { key: "brent", label: "Brent", input: clampInt(process.env.V2_SHOW_CONTROL_SQ5_BRENT_INPUT || 1, 1, 48) },
-    megan: { key: "megan", label: "Megan", input: clampInt(process.env.V2_SHOW_CONTROL_SQ5_MEGAN_INPUT || 2, 1, 48) },
-    booi: { key: "booi", label: "Booi", input: clampInt(process.env.V2_SHOW_CONTROL_SQ5_BOOI_INPUT || 3, 1, 48) },
+    brent: { key: "brent", label: "Brent", input: clampInt(process.env.SHOW_CONTROL_SQ5_BRENT_INPUT || 1, 1, 48) },
+    megan: { key: "megan", label: "Megan", input: clampInt(process.env.SHOW_CONTROL_SQ5_MEGAN_INPUT || 2, 1, 48) },
+    booi: { key: "booi", label: "Booi", input: clampInt(process.env.SHOW_CONTROL_SQ5_BOOI_INPUT || 3, 1, 48) },
   },
 };
 
@@ -259,7 +259,7 @@ function requireSafeBind(kind, host, options = {}) {
   if (!isRemoteBindHost(normalized)) return normalized;
   const tokenAllowed = !!options.allowToken && !!CONTROL_TOKEN;
   if (!ALLOW_REMOTE && !tokenAllowed) {
-    throw new Error(`${kind} remote bind ${normalized} requires V2_SHOW_CONTROL_SQ5_ALLOW_REMOTE=1${options.allowToken ? " or V2_SHOW_CONTROL_SQ5_TOKEN" : ""}`);
+    throw new Error(`${kind} remote bind ${normalized} requires SHOW_CONTROL_SQ5_ALLOW_REMOTE=1${options.allowToken ? " or SHOW_CONTROL_SQ5_TOKEN" : ""}`);
   }
   return normalized;
 }
@@ -2068,7 +2068,7 @@ function html() {
       sliderTimers: new Map(),
       local: JSON.parse(localStorage.getItem("sq5-control") || "{}"),
     };
-    const STORAGE_VERSION = "sq5-v2";
+    const STORAGE_VERSION = "sq5-2";
     if (app.local.version !== STORAGE_VERSION) app.local = {};
     const CONFIG_FIELD_IDS = ["mixerHost", "mixerPort", "midiChannel", "faderLaw", "oscListenPort"];
 

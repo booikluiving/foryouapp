@@ -17,7 +17,7 @@ const { createScriptOutput } = require("../script-output/script-service");
 const {
   appendPromptInput,
   appendScriptOutput,
-  assertPathUnderV2,
+  assertPathUnderApp,
   readLatestScriptOutput,
   readPromptInput,
   scriptAgentDbDir,
@@ -327,11 +327,11 @@ function draftInfoFromPromptInput(promptInput = {}, sourceType = "") {
 }
 
 function operatorSettingsFilePath() {
-  return assertPathUnderV2(path.join(scriptAgentDbDir(), "operator-settings.json"));
+  return assertPathUnderApp(path.join(scriptAgentDbDir(), "operator-settings.json"));
 }
 
 function operatorSecretsFilePath() {
-  return assertPathUnderV2(path.join(scriptAgentDbDir(), "operator-secrets.json"));
+  return assertPathUnderApp(path.join(scriptAgentDbDir(), "operator-secrets.json"));
 }
 
 async function readJsonObject(filePath, fallback = {}) {

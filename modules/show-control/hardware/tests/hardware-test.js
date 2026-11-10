@@ -81,7 +81,7 @@ async function assertNoLegacyRuntimeReferences() {
       if (text.includes(pattern)) violations.push(`${path.relative(SHOW_CONTROL_ROOT, filePath)} -> ${pattern}`);
     }
   }
-  assert.deepEqual(violations, [], "Show Control V2 must not runtime-reference legacy hardware paths or mock-only transports");
+  assert.deepEqual(violations, [], "Show Control must not runtime-reference old hardware paths or mock-only transports");
   return { filesScanned: files.length, guardedPatterns: GUARDED_PATTERNS };
 }
 
@@ -176,10 +176,10 @@ async function main() {
       perfectCue,
     },
     proof: [
-      "V2 Show Control source contains no legacy hardware path defaults",
-      "Stream Deck V2 sidecar supports status polling and button trigger state",
-      "Perfect Cue V2 sidecar maps keyboard input to a Show Control cue create call",
-      "SQ5 V2 sidecar preserves the copied MIDI/Stream Deck protocol helpers",
+      "Show Control source contains no old hardware path defaults",
+      "Stream Deck sidecar supports status polling and button trigger state",
+      "Perfect Cue sidecar maps keyboard input to a Show Control cue create call",
+      "SQ5 sidecar preserves the copied MIDI/Stream Deck protocol helpers",
     ],
   }, null, 2));
   process.stdout.write("\n");

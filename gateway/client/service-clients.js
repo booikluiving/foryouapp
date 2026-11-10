@@ -7,13 +7,13 @@ const {
 } = require("../../shared/contracts/gateway-v0");
 
 const SERVICE_DEFINITIONS = Object.freeze({
-  catalog: { key: "catalog", label: "Catalog", env: "V2_GATEWAY_CATALOG_URL", defaultBaseUrl: "http://127.0.0.1:3021" },
-  paths: { key: "paths", label: "Paths", env: "V2_GATEWAY_PATHS_URL", defaultBaseUrl: "http://127.0.0.1:3022" },
-  algorithm: { key: "algorithm", label: "Algorithm", env: "V2_GATEWAY_ALGORITHM_URL", defaultBaseUrl: "http://127.0.0.1:3023" },
-  runtime: { key: "runtime", label: "Runtime", env: "V2_GATEWAY_RUNTIME_URL", defaultBaseUrl: "http://127.0.0.1:3024" },
-  showControl: { key: "showControl", label: "Show Control", env: "V2_GATEWAY_SHOW_CONTROL_URL", defaultBaseUrl: "http://127.0.0.1:3025" },
-  audience: { key: "audience", label: "Audience", env: "V2_GATEWAY_AUDIENCE_URL", defaultBaseUrl: "http://127.0.0.1:3026" },
-  scriptAgent: { key: "scriptAgent", label: "Script Agent", env: "V2_GATEWAY_SCRIPT_AGENT_URL", defaultBaseUrl: "http://127.0.0.1:3027" },
+  catalog: { key: "catalog", label: "Catalog", env: "GATEWAY_CATALOG_URL", defaultBaseUrl: "http://127.0.0.1:3021" },
+  paths: { key: "paths", label: "Paths", env: "GATEWAY_PATHS_URL", defaultBaseUrl: "http://127.0.0.1:3022" },
+  algorithm: { key: "algorithm", label: "Algorithm", env: "GATEWAY_ALGORITHM_URL", defaultBaseUrl: "http://127.0.0.1:3023" },
+  runtime: { key: "runtime", label: "Runtime", env: "GATEWAY_RUNTIME_URL", defaultBaseUrl: "http://127.0.0.1:3024" },
+  showControl: { key: "showControl", label: "Show Control", env: "GATEWAY_SHOW_CONTROL_URL", defaultBaseUrl: "http://127.0.0.1:3025" },
+  audience: { key: "audience", label: "Audience", env: "GATEWAY_AUDIENCE_URL", defaultBaseUrl: "http://127.0.0.1:3026" },
+  scriptAgent: { key: "scriptAgent", label: "Script Agent", env: "GATEWAY_SCRIPT_AGENT_URL", defaultBaseUrl: "http://127.0.0.1:3027" },
 });
 
 function serviceBaseUrl(serviceKey) {

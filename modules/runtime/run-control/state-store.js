@@ -5,20 +5,20 @@ const path = require("node:path");
 
 const { RUNTIME_STATE_SCHEMA_VERSION } = require("../../../shared/contracts/runtime-v0");
 
-const V2_ROOT = path.resolve(__dirname, "../../..");
-const DEFAULT_RUNTIME_DB_DIR = path.join(V2_ROOT, "modules", "runtime", "db");
+const APP_ROOT = path.resolve(__dirname, "../../..");
+const DEFAULT_RUNTIME_DB_DIR = path.join(APP_ROOT, "modules", "runtime", "db");
 const DEFAULT_RUNS_DIR = path.join(DEFAULT_RUNTIME_DB_DIR, "runs");
 const CURRENT_RUN_FILE = path.join(DEFAULT_RUNTIME_DB_DIR, "current-run.json");
 
 function runtimeDbDir() {
-  return path.resolve(process.env.V2_RUNTIME_DB_DIR || DEFAULT_RUNTIME_DB_DIR);
+  return path.resolve(process.env.RUNTIME_DB_DIR || DEFAULT_RUNTIME_DB_DIR);
 }
 
-function assertPathUnderV2(targetPath) {
+function assertPathUnderApp(targetPath) {
   const resolved = path.resolve(targetPath);
-  const relative = path.relative(V2_ROOT, resolved);
+  const relative = path.relative(APP_ROOT, resolved);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`runtime_path_outside_v2:${resolved}`);
+    throw new Error(`runtime_path_outside_app:${resolved}`);
   }
   return resolved;
 }
@@ -72,14 +72,14 @@ function createIdleRuntimeState(details = {}) {
 }
 
 function runsDir() {
-  return assertPathUnderV2(path.join(runtimeDbDir(), "runs"));
+  return assertPathUnderApp(path.join(runtimeDbDir(), "runs"));
 }
 
 function runFilePath(showRunId) {
   if (!/^show-run-\d{8}-\d{9}Z$/.test(String(showRunId || ""))) {
     throw new Error(`invalid_show_run_id:${showRunId}`);
   }
-  return assertPathUnderV2(path.join(runsDir(), `${showRunId}.json`));
+  return assertPathUnderApp(path.join(runsDir(), `${showRunId}.json`));
 }
 
 function sleep(ms) {
@@ -88,7 +88,7 @@ function sleep(ms) {
 
 function tempFilePath(filePath) {
   const suffix = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
-  return assertPathUnderV2(`${filePath}.${suffix}`);
+  return assertPathUnderApp(`${filePath}.${suffix}`);
 }
 
 async function writeJsonAtomic(filePath, value) {
@@ -134,7 +134,7 @@ async function readJsonFile(filePath) {
 
 async function saveRunState(state, options = {}) {
   const filePath = runFilePath(state.showRunId);
-  const currentPath = assertPathUnderV2(path.join(runtimeDbDir(), "current-run.json"));
+  const currentPath = assertPathUnderApp(path.join(runtimeDbDir(), "current-run.json"));
   await writeJsonAtomic(filePath, state);
   if (options.updateCurrent === false || state.status === "reset") {
     return { filePath };
@@ -152,7 +152,7 @@ async function readRunState(showRunId) {
 }
 
 async function readCurrentRunState() {
-  const currentPath = assertPathUnderV2(path.join(runtimeDbDir(), "current-run.json"));
+  const currentPath = assertPathUnderApp(path.join(runtimeDbDir(), "current-run.json"));
   try {
     const current = await readJsonFile(currentPath);
     const state = await readRunState(current.showRunId);
@@ -173,7 +173,7 @@ async function readCurrentRunState() {
 }
 
 async function clearCurrentRunState() {
-  const currentPath = assertPathUnderV2(path.join(runtimeDbDir(), "current-run.json"));
+  const currentPath = assertPathUnderApp(path.join(runtimeDbDir(), "current-run.json"));
   try {
     await fs.unlink(currentPath);
   } catch (err) {
@@ -183,8 +183,8 @@ async function clearCurrentRunState() {
 
 module.exports = {
   CURRENT_RUN_FILE,
-  V2_ROOT,
-  assertPathUnderV2,
+  APP_ROOT,
+  assertPathUnderApp,
   clearCurrentRunState,
   createIdleRuntimeState,
   readCurrentRunState,

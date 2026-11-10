@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>For You - WiFi QR V2</title>
+    <title>For You - WiFi QR</title>
     <style>
       :root {
         --qr-size: min(68vmin, 700px);
@@ -91,7 +91,7 @@
       </div>
     </main>
 
-    <script src="/v2/audience/vendor/qrcode-generator.min.js"></script>
+    <script src="/audience/vendor/qrcode-generator.min.js"></script>
     <script>
       (() => {
         const stackEl = document.getElementById("wifiStack");
@@ -130,7 +130,7 @@
         }
 
         async function refresh() {
-          const res = await fetch("/v2/audience/stage/wifi-qr/state?ts=" + Date.now(), { cache: "no-store" });
+          const res = await fetch("/audience/stage/wifi-qr/state?ts=" + Date.now(), { cache: "no-store" });
           const data = await res.json();
           render(data.wifiQr);
         }

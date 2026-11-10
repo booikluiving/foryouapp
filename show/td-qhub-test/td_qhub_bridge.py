@@ -1,5 +1,5 @@
 """
-TouchDesigner Q-hub protocol bridge v2.
+TouchDesigner Q-hub protocol bridge.
 
 The external Show Control contract stays intentionally small:
 
@@ -632,7 +632,7 @@ def refresh_asset_registry():
         registry.appendRow(headers)
     try:
         data = _fetch_json(CATALOG_HTTP + "/v0/catalog/media-assets", timeout=1.5)
-        assets = data.get("mediaAssets") or data.get("v2MediaAssets") or []
+        assets = data.get("mediaAssets") or []
         present_assets = [asset for asset in assets if _text(asset.get("status") or "present") == "present"]
         for asset in present_assets:
             if registry is not None:
