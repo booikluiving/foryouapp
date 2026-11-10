@@ -187,7 +187,11 @@ private:
 	int myW = 0, myH = 0;
 };
 
+Engine* createRvmEngine() { return new RvmEngine(); }
+#ifndef ENGINE_EMBEDDED
 Engine* createEngine() { return new RvmEngine(); }
 const char* engineOpType() { return "Fyrvmmatte"; }
 const char* engineOpLabel() { return "FY RVM Matte"; }
 const char* engineOpIcon() { return "FRM"; }
+bool engineHasKeyParams() { return false; }
+#endif

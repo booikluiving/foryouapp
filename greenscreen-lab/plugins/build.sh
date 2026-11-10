@@ -5,6 +5,7 @@ HERE="$(cd "$(dirname "$0")" && pwd -P)"
 SDK_HDR="/Applications/TouchDesigner.app/Contents/Resources/tfs/Samples/CPlusPlus/CPUMemoryTOP"
 OUT="$HERE/build"
 mkdir -p "$OUT"
+STAMP="$(date +%Y%m%d-%H%M%S)"
 
 bundle() {
   local name="$1"; shift
@@ -29,8 +30,12 @@ bundle() {
 </dict></plist>
 PLIST
   codesign --force --sign - "$OUT/$name.plugin" >/dev/null
-  echo "gebouwd: $OUT/$name.plugin"
+  # een draaiend TD houdt een geladen plug-in vast: elke build ook als eigen versie, het lab kiest de nieuwste
+  mkdir -p "$OUT/versies"
+  cp -R "$OUT/$name.plugin" "$OUT/versies/$name-$STAMP.plugin"
+  echo "gebouwd: $OUT/$name.plugin (versie $STAMP)"
 }
 
 bundle FYVisionMatte "$HERE/src/VisionEngine.mm" -framework Vision
 bundle FYRvmMatte "$HERE/src/RvmEngine.mm" -framework CoreML
+bundle FYKeyMatte "$HERE/src/KeyEngine.mm" "$HERE/src/VisionEngine.mm" "$HERE/src/RvmEngine.mm" -DENGINE_EMBEDDED -framework Vision -framework CoreML

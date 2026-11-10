@@ -15,6 +15,7 @@ int main(int argc, char** argv)
 	if (argc > 4) p.quality = atoi(argv[4]);
 	if (argc > 5) p.output = atoi(argv[5]);
 	if (argc > 6) p.modelPath = argv[6];
+	if (argc > 7) p.ai = atoi(argv[7]);
 	Engine* e = createEngine();
 	std::vector<uint8_t> frame((size_t)w * h * 4);
 	std::vector<double> ms;

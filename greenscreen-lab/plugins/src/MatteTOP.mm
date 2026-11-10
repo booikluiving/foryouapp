@@ -48,6 +48,22 @@ public:
 		const char* mp = inputs->getParFilePath("Model");
 		p.modelPath = mp ? mp : "";
 		bool active = inputs->getParInt("Active") != 0;
+		if (engineHasKeyParams())
+		{
+			p.ai = inputs->getParInt("Ai");
+			p.garbage = inputs->getParInt("Garbage") != 0;
+			p.keyLow = inputs->getParDouble("Keylow");
+			p.keyHigh = inputs->getParDouble("Keyhigh");
+			p.despill = inputs->getParDouble("Despill");
+			p.aiFill = inputs->getParDouble("Aifill");
+			p.adapt = inputs->getParDouble("Adapt");
+			p.tint = inputs->getParDouble("Tint");
+			p.clean = inputs->getParDouble("Clean");
+			p.cropL = inputs->getParDouble("Randlinks");
+			p.cropR = inputs->getParDouble("Randrechts");
+			p.cropT = inputs->getParDouble("Randboven");
+			p.cropB = inputs->getParDouble("Randonder");
+		}
 
 		if (active && inputs->getNumInputs() > 0)
 		{
@@ -129,9 +145,9 @@ public:
 			OP_StringParameter sp("Output");
 			sp.label = "Output";
 			sp.defaultValue = "Cutout";
-			const char* names[] = {"Cutout", "Matte"};
-			const char* labels[] = {"Cutout (premultiplied)", "Matte"};
-			m->appendMenu(sp, 2, names, labels);
+			const char* names[] = {"Cutout", "Matte", "Debug"};
+			const char* labels[] = {"Cutout (premultiplied)", "Matte", "Debug (key/AI/papier)"};
+			m->appendMenu(sp, engineHasKeyParams() ? 3 : 2, names, labels);
 		}
 		{
 			OP_StringParameter sp("Quality");
@@ -146,6 +162,43 @@ public:
 			sp.label = "Model (RVM .mlpackage)";
 			sp.defaultValue = "";
 			m->appendFile(sp);
+		}
+		if (engineHasKeyParams())
+		{
+			{
+				OP_StringParameter sp("Ai");
+				sp.label = "AI-hulp";
+				sp.page = "Key";
+				sp.defaultValue = "None";
+				const char* names[] = {"None", "Vision", "Rvm"};
+				const char* labels[] = {"Geen", "Apple Vision", "RVM"};
+				m->appendMenu(sp, 3, names, labels);
+			}
+			{
+				OP_NumericParameter np("Garbage");
+				np.label = "Randmasker";
+				np.page = "Key";
+				np.defaultValues[0] = 0;
+				m->appendToggle(np);
+			}
+			struct F { const char* n; const char* l; double d; };
+			F fs[] = {{"Keylow", "Key onder (voorgrond)", 0.25}, {"Keyhigh", "Key boven (papier)", 0.70},
+			          {"Despill", "Despill", 0.8}, {"Aifill", "AI vult vanaf", 0.85}, {"Adapt", "Kalibratie-snelheid", 0.15},
+			          {"Tint", "Tint-tolerantie", 0.06}, {"Clean", "Gaatjes dichten", 0.5},
+			          {"Randlinks", "Rand links", 0}, {"Randrechts", "Rand rechts", 0}, {"Randboven", "Rand boven", 0}, {"Randonder", "Rand onder", 0}};
+			for (auto& f : fs)
+			{
+				OP_NumericParameter np(f.n);
+				np.label = f.l;
+				np.page = "Key";
+				np.defaultValues[0] = f.d;
+				np.minSliders[0] = 0;
+				np.maxSliders[0] = 1;
+				np.minValues[0] = 0;
+				np.maxValues[0] = 1;
+				np.clampMins[0] = np.clampMaxes[0] = true;
+				m->appendFloat(np);
+			}
 		}
 		{
 			OP_NumericParameter np("Reset");

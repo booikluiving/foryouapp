@@ -9,6 +9,17 @@ struct EngineParams
 	int quality = 1;        // Vision: 0 fast, 1 balanced, 2 accurate
 	int output = 0;         // 0 cutout (voorvermenigvuldigd RGBA), 1 matte (grijs)
 	std::string modelPath;  // RVM: pad naar .mlpackage / .mlmodel
+	// auto-key
+	int ai = 0;             // 0 geen, 1 Vision, 2 RVM
+	bool garbage = false;   // randmasker aan
+	double cropL = 0, cropR = 0, cropT = 0, cropB = 0;  // randmasker, fractie van het beeld
+	double keyLow = 0.25;   // onder deze verhouding: volledig voorgrond
+	double keyHigh = 0.70;  // boven deze verhouding: volledig papier
+	double despill = 0.8;
+	double aiFill = 0.85;   // AI-zekerheid vanaf waar gaten gevuld worden
+	double adapt = 0.15;
+	double tint = 0.06;     // tolerantie rond de papiertint (chromaticiteit)
+	double clean = 0.5;     // gaatjes dichten (0 uit, 1 grof)    // hoe snel de kalibratie meebeweegt (per frame)
 };
 
 struct EngineResult
@@ -32,3 +43,4 @@ Engine* createEngine();
 const char* engineOpType();
 const char* engineOpLabel();
 const char* engineOpIcon();
+bool engineHasKeyParams();

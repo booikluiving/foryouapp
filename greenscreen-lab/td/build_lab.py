@@ -36,7 +36,13 @@ BRONNEN = [
     ("groep", "Groep van vier", "/Users/Shared/Adobe/Premiere Pro/26.0/Sample Media/Sample Media Clip 13.mp4"),
     ("twin", "Twin S2 blauw papier", "/Users/booikluiving/ForYou-twin/feeds/cam2.mp4"),
 ]
-TILE_W, TILE_H = 960, 540
+TILE_W, TILE_H = 640, 540
+
+
+def plugin(name):
+    import glob
+    v = sorted(glob.glob(os.path.join(PLUG, "versies", name + "-*.plugin")))
+    return v[-1] if v else os.path.join(PLUG, name + ".plugin")
 
 root = op("/project1")
 old = root.op("lab")
@@ -62,8 +68,8 @@ p.menuNames = ["Fast", "Balanced", "Accurate"]
 p.menuLabels = ["Fast", "Balanced", "Accurate"]
 p.val = "Balanced"
 p = page.appendMenu("Uitvoer", label="Uitvoer")[0]
-p.menuNames = ["Cutout", "Matte"]
-p.menuLabels = ["Over achtergrond", "Alleen matte"]
+p.menuNames = ["Cutout", "Matte", "Debug"]
+p.menuLabels = ["Over achtergrond", "Alleen matte", "Debug (auto-key: blauw key, groen AI, rood rand)"]
 
 # --- bronnen ---
 ins = []
@@ -100,22 +106,30 @@ bron.nodeX, bron.nodeY = -600, 150
 
 # --- route 1: Apple Vision C++ TOP ---
 vision = lab.create(cplusplusTOP, "route1_vision")
-setp(vision, plugin=os.path.join(PLUG, "FYVisionMatte.plugin"))
+setp(vision, plugin=plugin("FYVisionMatte"))
 vision.inputConnectors[0].connect(bron)
 vision.nodeX, vision.nodeY = -350, 300
 
-# --- route 2: RVM via Syphon (sidecar) ---
-naar = lab.create(syphonspoutoutTOP, "route2_naar_sidecar")
-setp(naar, sendername="fy_lab_bron")
-naar.inputConnectors[0].connect(bron)
-naar.nodeX, naar.nodeY = -350, 150
-van = lab.create(syphonspoutinTOP, "route2_van_sidecar")
-setp(van, sendername="Python:fy_lab_rvm")
-van.nodeX, van.nodeY = -150, 150
+# --- standaard keyer: Chroma Key TOP van TD, vast blauw bereik (zoals de show-kalibratie, hue ± 210-240) ---
+std = lab.create(chromakeyTOP, "std_key")
+std.inputConnectors[0].connect(bron)
+std.nodeX, std.nodeY = -350, 150
+setp(std, huemin=205, huemax=245, satmin=0.25, satmax=1, valmin=0.12, valmax=1, hsoftlow=10, hsofthigh=10,
+     ssoftlow=0.1, vsoftlow=0.08, invert=True)
+
+# --- auto-key (FY) en auto-key + RVM ---
+autokey = lab.create(cplusplusTOP, "autokey")
+setp(autokey, plugin=plugin("FYKeyMatte"))
+autokey.inputConnectors[0].connect(bron)
+autokey.nodeX, autokey.nodeY = -350, -150
+combi = lab.create(cplusplusTOP, "combi_rvm")
+setp(combi, plugin=plugin("FYKeyMatte"))
+combi.inputConnectors[0].connect(bron)
+combi.nodeX, combi.nodeY = -350, -300
 
 # --- route 3: RVM C++ TOP (CoreML) ---
 rvm = lab.create(cplusplusTOP, "route3_rvm")
-setp(rvm, plugin=os.path.join(PLUG, "FYRvmMatte.plugin"))
+setp(rvm, plugin=plugin("FYRvmMatte"))
 rvm.inputConnectors[0].connect(bron)
 rvm.nodeX, rvm.nodeY = -350, 0
 
@@ -139,7 +153,7 @@ def tegel(name, src, titel, x, y, cutout=True):
         sw = lab.create(switchTOP, name + "_uit")
         sw.inputConnectors[0].connect(ov)
         sw.inputConnectors[1].connect(fit)
-        setp(sw, index="=parent().par.Uitvoer.menuIndex")
+        setp(sw, index="=min(parent().par.Uitvoer.menuIndex, 1)")
         sw.nodeX, sw.nodeY = x + 300, y
         last = sw
     txt = lab.create(textTOP, name + "_titel")
@@ -153,16 +167,18 @@ def tegel(name, src, titel, x, y, cutout=True):
     return t
 
 
-t0 = tegel("t0", bron, "Bron", 100, 450, cutout=False)
-t1 = tegel("t1", vision, "1  Apple Vision (C++ TOP)", 100, 300)
-t2 = tegel("t2", van, "2  RVM via Syphon (los programma)", 100, 150)
-t3 = tegel("t3", rvm, "3  RVM CoreML (C++ TOP)", 100, 0)
-
+tegels = [
+    tegel("t0", bron, "Bron", 100, 600, cutout=False),
+    tegel("t1", std, "Standaard key (Chroma Key TOP)", 100, 450),
+    tegel("t2", autokey, "Auto-key (FY)", 100, 300),
+    tegel("t3", combi, "Auto-key + RVM", 100, 150),
+    tegel("t4", vision, "Apple Vision", 100, 0),
+    tegel("t5", rvm, "RVM", 100, -150),
+]
 raster = lab.create(layoutTOP, "raster")
-for i, t in enumerate((t0, t1, t2, t3)):
+for i, t in enumerate(tegels):
     raster.inputConnectors[i].connect(t)
-setp(raster, align="gridrows", maxcols=2, maxrows=2)
-log("align menu:", raster.par.align.menuNames, "fit:", raster.par.fit.menuNames)
+setp(raster, align="gridrows", maxcols=3, maxrows=2, outputresolution="custom", resolutionw=3 * TILE_W, resolutionh=2 * TILE_H)
 raster.nodeX, raster.nodeY = 1000, 225
 uit = lab.create(nullTOP, "uit")
 uit.inputConnectors[0].connect(raster)
@@ -183,7 +199,7 @@ if _mon is not None:
 win.nodeX, win.nodeY = 1400, 225
 
 # --- info en monitor ---
-for o, n in ((vision, "info_vision"), (rvm, "info_rvm")):
+for o, n in ((vision, "info_vision"), (rvm, "info_rvm"), (autokey, "info_autokey"), (combi, "info_combi")):
     ic = lab.create(infoCHOP, n)
     setp(ic, op=o.path)
     ic.nodeX, ic.nodeY = o.nodeX, o.nodeY - 80
@@ -211,13 +227,18 @@ def onFrameStart(frame):
         "vision": _vals(lab.op("info_vision")),
         "rvm_cpp": _vals(lab.op("info_rvm")),
         "cams": {k: [lab.op(k + "_in").width, lab.op(k + "_in").height, bool(lab.op(k + "_in").par.active.eval())] for k in ("cam1", "cam2", "cam3")},
-        "sidecar_in_res": [lab.op("route2_van_sidecar").width, lab.op("route2_van_sidecar").height],
+        "autokey": _vals(lab.op("info_autokey")),
+        "combi": _vals(lab.op("info_combi")),
         "fouten": {o.name: (o.errors() or "") + (o.warnings() or "") for o in lab.children if (o.errors() or o.warnings())},
         "venster_open": bool(lab.op("venster").isOpen),
         "absTime_fps": round(1.0 / max(absTime.stepSeconds, 1e-6), 1),
     }
     open(os.path.join(OUT, "td_stats.json"), "w").write(json.dumps(stats, indent=1))
     try:
+        if lab.par.Bron.eval().startswith("cam"):
+            _tmp = os.path.join(OUT, "bron_tmp.png")
+            lab.op("bron").save(_tmp)
+            os.replace(_tmp, os.path.join(OUT, "bron_" + lab.par.Bron.eval() + ".png"))
         lab.op("uit").save(os.path.join(OUT, "td_raster.jpg"))
     except Exception as e:
         stats["save_fout"] = str(e)
@@ -234,13 +255,17 @@ def _na_laden(poging=0):
         return
     v = lab2.op("route1_vision")
     r = lab2.op("route3_rvm")
-    if (getattr(v.par, "Quality", None) is None or getattr(r.par, "Model", None) is None) and poging < 40:
+    ak = lab2.op("autokey")
+    cb = lab2.op("combi_rvm")
+    if any(getattr(o.par, n, None) is None for o, n in ((v, "Quality"), (r, "Model"), (ak, "Ai"), (cb, "Ai"))) and poging < 40:
         run(_na_laden, poging + 1, delayFrames=15)
         return
-    setp(v, Quality="=parent().par.Visionkwaliteit.menuIndex", Output="=parent().par.Uitvoer.menuIndex")
-    setp(r, Output="=parent().par.Uitvoer.menuIndex",
-         Model="=%r if me.inputs[0].width >= me.inputs[0].height else %r" % (
-             os.path.join(MODELS, "rvm_1920x1080.mlpackage"), os.path.join(MODELS, "rvm_1080x1920.mlpackage")))
+    model_expr = "=%r if me.inputs[0].width >= me.inputs[0].height else %r" % (
+        os.path.join(MODELS, "rvm_1920x1080.mlpackage"), os.path.join(MODELS, "rvm_1080x1920.mlpackage"))
+    setp(v, Quality="=parent().par.Visionkwaliteit.menuIndex", Output="=min(parent().par.Uitvoer.menuIndex, 1)")
+    setp(r, Output="=min(parent().par.Uitvoer.menuIndex, 1)", Model=model_expr)
+    setp(ak, Output="=parent().par.Uitvoer.menuIndex", Ai="None")
+    setp(cb, Output="=parent().par.Uitvoer.menuIndex", Ai="Rvm", Model=model_expr)
     log("na laden, poging", poging, [(p.name, p.eval()) for p in v.pars() if p.name in ("Quality", "Output", "Active")])
     open(LOG, "a").write("\n".join(_log) + "\n")
 

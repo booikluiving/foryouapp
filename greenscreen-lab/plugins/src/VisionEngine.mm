@@ -85,7 +85,11 @@ private:
 	std::vector<uint8_t> myAlpha;
 };
 
+Engine* createVisionEngine() { return new VisionEngine(); }
+#ifndef ENGINE_EMBEDDED
 Engine* createEngine() { return new VisionEngine(); }
 const char* engineOpType() { return "Fyvisionmatte"; }
 const char* engineOpLabel() { return "FY Vision Matte"; }
 const char* engineOpIcon() { return "FVM"; }
+bool engineHasKeyParams() { return false; }
+#endif
