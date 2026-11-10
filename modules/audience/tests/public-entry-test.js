@@ -101,7 +101,14 @@ function openWs(cookie) {
     assert.equal((await pub("/v2/audience/public/history", { headers: { cookie } })).status, 200);
     ok("chatgeschiedenis alleen met pas");
 
-    assert.equal((await pub("/", { headers: { cookie } })).status, 200);
+    r = await pub("/", { headers: { cookie } });
+    assert.equal(r.status, 200); assert.match(await r.text(), /<script/);
+    for (const p of ["/", "/app"]) {
+      r = await pub(p);
+      const body = await r.text();
+      assert.match(body, /Scan de QR-code/, p); assert.doesNotMatch(body, /<script/, p);
+    }
+    ok("app alleen met pas; zonder pas: 'Scan de QR-code'");
     assert.equal((await pub("/v2/audience/socket.io/socket.io.js")).status, 200);
     ok("publieke app en socket.io-client laden");
 
@@ -157,6 +164,8 @@ function openWs(cookie) {
 
     r = await pub(`/live?t=${join.token}`);
     assert.equal(r.status, 410); assert.match(await r.text(), /afgelopen/);
+    r = await pub("/", { headers: { cookie } });
+    assert.match(await r.text(), /afgelopen/);
     assert.equal((await pub("/v2/audience/public/history", { headers: { cookie } })).status, 410);
     ok("na stop: oude QR en oude pas werken niet meer");
 

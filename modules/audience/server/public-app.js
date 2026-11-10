@@ -54,7 +54,17 @@ function createAudiencePublicApp({ service } = {}) {
     });
   });
 
-  app.get(["/", "/app"], (_req, res) => {
+  // Zonder geldige pas geen app, alleen de uitleg.
+  app.get(["/", "/app"], (req, res) => {
+    const access = service.ensureSessionAccessForRequest(req, service.requestAddress(req));
+    if (!access.ok) {
+      if (access.reason === "session_inactive") {
+        sendPage(res, "De voorstelling is afgelopen", "Er loopt nu geen voorstelling. Bedankt voor het meedoen.");
+        return;
+      }
+      sendPage(res, "For_You", "Scan de QR-code in de zaal om mee te doen.");
+      return;
+    }
     res.sendFile(path.join(PUBLIC_DIR, "index.html"));
   });
 
