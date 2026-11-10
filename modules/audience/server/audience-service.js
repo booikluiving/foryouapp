@@ -42,6 +42,7 @@ const ENGAGEMENT_COMMENT_MIN_CHARS = 4;
 const ENGAGEMENT_DUPLICATE_WINDOW_MS = 30000;
 const ADMIN_SETTINGS_KEY = "admin_settings";
 const STAGE_SETTINGS_KEY = "stage_output_settings";
+const WIFI_QR_SETTINGS_KEY = "wifi_qr_settings";
 const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   showQr: true,
   showChat: true,
@@ -96,6 +97,41 @@ function normalizeAdminSettings(raw = {}) {
       ENGAGEMENT_COMMENT_POINTS_DEFAULT
     ),
   };
+}
+
+function normalizeWifiAuth(input) {
+  const raw = String(input || "WPA").trim();
+  if (raw === "WEP") return "WEP";
+  if (raw === "nopass") return "nopass";
+  return "WPA";
+}
+
+function escapeWifiQrValue(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/:/g, "\\:");
+}
+
+function normalizeWifiQrSettings(raw = {}, base = {}) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const prev = base && typeof base === "object" ? base : {};
+  const auth = normalizeWifiAuth(src.auth !== undefined ? src.auth : prev.auth);
+  const ssid = String(src.ssid !== undefined ? src.ssid : prev.ssid || "").trim().slice(0, 120);
+  const password = auth === "nopass"
+    ? ""
+    : String(src.password !== undefined ? src.password : prev.password || "").trim().slice(0, 200);
+  const hiddenRaw = src.hidden !== undefined ? src.hidden : prev.hidden;
+  const hidden = hiddenRaw === true || hiddenRaw === "true" || hiddenRaw === 1 || hiddenRaw === "1" || hiddenRaw === "on";
+  let payload = "";
+  if (ssid) {
+    payload = `WIFI:T:${auth};S:${escapeWifiQrValue(ssid)};`;
+    if (auth !== "nopass") payload += `P:${escapeWifiQrValue(password)};`;
+    if (hidden) payload += "H:true;";
+    payload += ";";
+  }
+  return { ssid, password, auth, hidden, configured: !!ssid, payload };
 }
 
 function normalizeStageSettings(raw = {}, base = STAGE_OUTPUT_DEFAULTS) {
@@ -383,6 +419,7 @@ class AudienceService extends EventEmitter {
     this.reactionRate = new Map();
     this.adminSettings = normalizeAdminSettings(this.store.getSetting(ADMIN_SETTINGS_KEY, {}));
     this.stageOutputSettings = normalizeStageSettings(this.store.getSetting(STAGE_SETTINGS_KEY, {}));
+    this.wifiQrSettings = normalizeWifiQrSettings(this.store.getSetting(WIFI_QR_SETTINGS_KEY, {}));
     this.pollAutoCloseTimer = null;
     this.internalSimulatorKey = crypto.randomBytes(16).toString("hex");
     this.liveScoreDispatchWork = Promise.resolve();
@@ -469,6 +506,18 @@ class AudienceService extends EventEmitter {
     this.emit("broadcast", { type: "stage_settings", stage: this.getStageControl(req) });
     this.emit("admin-state-changed");
     return this.getStageControl(req);
+  }
+
+  getWifiQr() {
+    return { ...normalizeWifiQrSettings(this.wifiQrSettings) };
+  }
+
+  updateWifiQrSettings(incoming = {}) {
+    this.wifiQrSettings = normalizeWifiQrSettings(incoming, this.wifiQrSettings);
+    const { ssid, password, auth, hidden } = this.wifiQrSettings;
+    this.store.setSetting(WIFI_QR_SETTINGS_KEY, { ssid, password, auth, hidden });
+    this.emit("admin-state-changed");
+    return this.getWifiQr();
   }
 
   getActiveSession() {
@@ -1648,6 +1697,7 @@ class AudienceService extends EventEmitter {
         nameColor: getNameColorHex(message.name),
       })),
       sessionJoin: req && active ? this.currentJoinPayload(req) : null,
+      wifiQr: this.getWifiQr(),
       stage: req ? this.getStageControl(req) : {
         path: "/v2/audience/stage",
         url: "",

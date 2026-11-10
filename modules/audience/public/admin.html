@@ -408,6 +408,23 @@
         </section>
 
         <section class="card">
+          <h2>WiFi QR</h2>
+          <div class="row">
+            <input id="wifiSsidInput" placeholder="Netwerknaam" autocomplete="off" />
+            <select id="wifiAuthInput">
+              <option value="WPA">WPA/WPA2</option>
+              <option value="WEP">WEP</option>
+              <option value="nopass">Open</option>
+            </select>
+          </div>
+          <div class="row">
+            <input id="wifiPasswordInput" placeholder="Wachtwoord" autocomplete="off" />
+            <button id="saveWifiBtn" class="primary" type="button">Opslaan</button>
+          </div>
+          <div class="muted"><a href="/v2/audience/stage/wifi-qr" target="_blank" rel="noopener">/v2/audience/stage/wifi-qr</a></div>
+        </section>
+
+        <section class="card">
           <h2>Top Chatters</h2>
           <div id="emojiLeaderboardMeta" class="muted">Nog geen puntenactiviteit.</div>
           <div class="row">
@@ -604,6 +621,7 @@
       const SECTION_OPEN_PREF_PREFIX = "audience_admin_section_open_v2:";
       const SECTION_MAX_HEIGHTS = {
         "Sessie & QR": "440px",
+        "WiFi QR": "220px",
         "Top Chatters": "340px",
         "Poll (multiple choice)": "360px",
         "Live chat (recent)": "340px",
@@ -631,7 +649,7 @@
       const els = {};
       for (const id of [
         "runtimePill", "usersPill", "pollPill", "reactionsPill", "simPill", "actionMessage",
-        "sessionName", "tokenTtl", "qrBox", "joinUrl", "usersSearchInput", "usersSearchClearBtn", "usersSearchState",
+        "sessionName", "tokenTtl", "qrBox", "joinUrl", "wifiSsidInput", "wifiAuthInput", "wifiPasswordInput", "usersSearchInput", "usersSearchClearBtn", "usersSearchState",
         "usersBody", "enforcementBody", "actionsLog", "liveChatLog", "liveChatResizeHandle", "emojiLeaderboardMeta",
         "emojiLeaderboardBody", "engagementCommentPoints", "engagementCommentPointsValue", "engagementRulesMeta",
         "pollQuestion", "pollOptionsList", "pollDurationSeconds", "pollState", "messageSlowdownMs",
@@ -1322,6 +1340,15 @@
         }, delay);
       }
 
+      let wifiFormFilled = false;
+      function renderWifiQr(wifi) {
+        if (wifiFormFilled || !wifi) return;
+        els.wifiSsidInput.value = wifi.ssid || "";
+        els.wifiAuthInput.value = wifi.auth || "WPA";
+        els.wifiPasswordInput.value = wifi.password || "";
+        wifiFormFilled = true;
+      }
+
       function renderState(data) {
         lastState = data;
         const session = data.session;
@@ -1335,6 +1362,7 @@
         els.usersPill.textContent = `${session ? session.onlineCount : 0} live · ${session ? session.onlineBotCount : 0} bots`;
         els.reactionsPill.textContent = `${Number(data.reactionCounts && data.reactionCounts.heart || 0)} hearts · ${Number(data.reactionCounts && data.reactionCounts.bored || 0)} bored`;
         if (data.sessionJoin && data.sessionJoin.joinUrl) drawQr(data.sessionJoin.joinUrl);
+        renderWifiQr(data.wifiQr);
         renderSettings(data);
         renderLeaderboard(data);
         renderPollState(data);
@@ -1443,6 +1471,13 @@
         });
       }
 
+      document.getElementById("saveWifiBtn").addEventListener("click", () => {
+        runAction("/v2/audience/admin/wifi-qr", {
+          ssid: els.wifiSsidInput.value,
+          auth: els.wifiAuthInput.value,
+          password: els.wifiPasswordInput.value,
+        }, "WiFi QR opgeslagen.");
+      });
       document.getElementById("startSessionBtn").addEventListener("click", async () => {
         const result = await runAction("/v2/audience/admin/sessions/start", {
           name: els.sessionName.value,

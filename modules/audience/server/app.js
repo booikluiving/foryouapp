@@ -85,6 +85,15 @@ function createAudienceApp(options = {}) {
     res.sendFile(path.join(PUBLIC_DIR, "stage-qr.html"));
   });
 
+  app.get("/v2/audience/stage/wifi-qr", (_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, "stage-wifi-qr.html"));
+  });
+
+  app.get("/v2/audience/stage/wifi-qr/state", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, wifiQr: service.getWifiQr() });
+  });
+
   app.get("/join", (req, res) => {
     const token = String(req.query && req.query.token || "");
     if (!token) {
@@ -165,6 +174,10 @@ function createAudienceApp(options = {}) {
 
   app.post("/v2/audience/admin/stage/settings", (req, res) => {
     res.json({ ok: true, stage: service.updateStageSettings(req.body || {}, req) });
+  });
+
+  app.post("/v2/audience/admin/wifi-qr", (req, res) => {
+    res.json({ ok: true, wifiQr: service.updateWifiQrSettings(req.body || {}) });
   });
 
   app.post("/v2/audience/admin/stage/test-emoji", (_req, res) => {
