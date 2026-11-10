@@ -20,7 +20,14 @@ function showControlAckPort(options = {}) {
 }
 
 function oscArgsForAction(action) {
-  return [action.cueId, action.command, action.payloadId || "-"];
+  const args = [action.cueId, action.command, action.payloadId || "-"];
+  // td.extra.shot: alles wat TD nodig heeft zit in de OSC-args, zodat TD de
+  // payload niet synchroon hoeft op te halen (dat laat TD bevriezen).
+  if (action.command === "td.extra.shot") {
+    const payload = action.payload || {};
+    args.push(String(payload.filePath || ""), String(Number(payload.duur) || 0), payload.uit ? "1" : "0");
+  }
+  return args;
 }
 
 function normalizeTdAck(raw = {}) {

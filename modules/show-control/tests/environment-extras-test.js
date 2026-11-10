@@ -14,6 +14,7 @@ process.env.V2_SHOW_CONTROL_ADAPTER_MODE = "test";
 
 const { createShowControlApp } = require("../server/app");
 const { environmentExtrasStatus, resetHoldState } = require("../cue-library/environment-extras");
+const { oscArgsForAction } = require("../target-adapters/touchdesigner-adapter");
 
 const catalog = {
   environments: [
@@ -150,8 +151,15 @@ async function testRoutes() {
   }
 }
 
+function testOscArgs() {
+  const args = oscArgsForAction({ cueId: "c", command: "td.extra.shot", payloadId: "p", payload: { filePath: "/a b.jpg", duur: 4, uit: false } });
+  assert.deepEqual(args, ["c", "td.extra.shot", "p", "/a b.jpg", "4", "0"]);
+  assert.deepEqual(oscArgsForAction({ cueId: "c", command: "td.camera.set", payloadId: "p", payload: { camera: 2 } }), ["c", "td.camera.set", "p"]);
+}
+
 (async () => {
   testStatus();
+  testOscArgs();
   await testRoutes();
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log("environment-extras: ok");
