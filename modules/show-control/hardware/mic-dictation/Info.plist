@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key><string>nl.foryou.mic-knop</string>
+	<key>CFBundleName</key><string>For_You mic-knop</string>
+	<key>NSMicrophoneUsageDescription</key><string>Hoort of de For_You-microfoon aan (blauw) of gedempt (rood) staat. Er wordt niets opgenomen.</string>
+</dict>
+</plist>
