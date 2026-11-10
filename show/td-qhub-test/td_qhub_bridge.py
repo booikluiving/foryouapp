@@ -965,6 +965,25 @@ def _write_asset_bundle_table(asset_items):
             pass
 
 
+# --- For_You sfeer volume ---
+def _set_soundscape_volume(op_obj, volume):
+    if op_obj is None:
+        return False
+    try:
+        value = float(volume)
+    except Exception:
+        value = 1.0
+    if value != value:
+        value = 1.0
+    value = max(0.0, min(1.0, value))
+    try:
+        op_obj.par.volume = value
+        return True
+    except Exception:
+        return False
+# --- einde For_You sfeer volume ---
+
+
 def update_asset_bundle_outputs(asset_items):
     background = None
     soundscape = None
@@ -990,6 +1009,7 @@ def update_asset_bundle_outputs(asset_items):
     if soundscape is not None:
         soundscape_path = _text(soundscape.get("filePath") or "")
         _set_file_parameter(soundscape_op, soundscape_path)
+        _set_soundscape_volume(soundscape_op, soundscape.get("volume"))  # --- For_You sfeer volume ---
         _set_dat_text(
             soundscape_status,
             "\n".join([

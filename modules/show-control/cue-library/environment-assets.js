@@ -6,6 +6,7 @@ const {
   mergeLightingPresets,
   resolveEnvironmentLighting,
 } = require("../../../shared/lighting/environment-lighting-v0");
+const { normalizeEnvironmentExtras } = require("../../../shared/environment-extras/environment-extras-v0");
 
 const DEFAULT_CATALOG_DB_PATH = path.resolve(__dirname, "../../catalog/db/catalog.sqlite");
 
@@ -116,6 +117,7 @@ function liveCatalogFromOption(environmentId, liveCatalog) {
   return {
     ok: true,
     source: "option",
+    environment: (liveCatalog.environments || []).find((item) => item && item.id === environmentId) || null,
     mediaAssets: (liveCatalog.mediaAssets || [])
       .filter((asset) => String(asset.environmentId || "") === environmentId),
     environmentCompositions: (liveCatalog.environmentCompositions || [])
@@ -145,9 +147,10 @@ function liveCatalogFromDisk(environmentId, options = {}) {
     const mediaAssets = readOptionalRecords(db, "SELECT record_json FROM media_assets WHERE environment_id = ? ORDER BY id", environmentId);
     const environmentCompositions = readOptionalRecords(db, "SELECT record_json FROM environment_compositions WHERE environment_id = ?", environmentId);
     const lightingPresets = readOptionalRecords(db, "SELECT record_json FROM lighting_presets ORDER BY id");
-    const environment = db
-      .prepare("SELECT id FROM environments WHERE id = ? LIMIT 1")
+    const environmentRow = db
+      .prepare("SELECT record_json FROM environments WHERE id = ? LIMIT 1")
       .get(environmentId);
+    const environment = environmentRow ? parseRecordJson(environmentRow) || { id: environmentId } : null;
     if (!environment && !mediaAssets.length && !environmentCompositions.length) {
       return {
         ok: false,
@@ -160,6 +163,7 @@ function liveCatalogFromDisk(environmentId, options = {}) {
       ok: true,
       source: "catalog.sqlite",
       dbPath,
+      environment,
       mediaAssets,
       environmentCompositions,
       lightingPresets,
@@ -176,6 +180,12 @@ function liveCatalogFromDisk(environmentId, options = {}) {
       try { db.close(); } catch (_err) {}
     }
   }
+}
+
+// Niveau van het sfeergeluid uit het omgevingsrecord (extras.sfeer.volume, 0-1).
+function soundscapeVolumeFor(catalog, environmentId) {
+  const environment = ((catalog && catalog.environments) || []).find((item) => item && item.id === environmentId) || null;
+  return normalizeEnvironmentExtras(environment && environment.extras).sfeer.volume;
 }
 
 function liveCatalogForEnvironment(environmentId, options = {}) {
@@ -212,6 +222,12 @@ function catalogWithLiveEnvironmentAssets(runtimeState = {}, environmentId = "",
   return {
     catalog: {
       ...snapshotCatalog,
+      environments: live.environment
+        ? [
+          ...(snapshotCatalog.environments || []).filter((item) => !item || item.id !== environmentId),
+          live.environment,
+        ]
+        : snapshotCatalog.environments,
       mediaAssets: [
         ...(snapshotCatalog.mediaAssets || []).filter((asset) => String(asset.environmentId || "") !== environmentId),
         ...live.mediaAssets,
@@ -388,6 +404,7 @@ function resolvedEnvironmentAssets(runtimeState, resolved, options = {}) {
       : existingAsset(resolved, "soundscape") || preferredAssetForRole(catalog, environmentId, "soundscape"),
     { environmentId, role: "soundscape" }
   );
+  if (soundscape) soundscape.volume = soundscapeVolumeFor(catalog, environmentId);
   const catalogOutputFx = tdOutputAssetsForEnvironment(catalog, environmentId);
   const existingFx = existingFxAssets(resolved);
   const fxSource = preferCatalogAssets

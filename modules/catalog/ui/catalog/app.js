@@ -3,6 +3,8 @@
 const state = {
   catalog: null,
   validation: null,
+  meting: null,
+  levelsDraft: {},
   editing: {
     performer: null,
     character: null,
@@ -214,6 +216,7 @@ function emptyExtras() {
   return {
     shot: { label: "", omschrijving: "", bron: "", bestand: "", camera: 1, duur: 4 },
     geluid: { label: "", omschrijving: "", bron: "", bestand: "", volume: 1 },
+    sfeer: { volume: 1 },
   };
 }
 
@@ -223,6 +226,7 @@ function cloneExtras(extras) {
   return {
     shot: { ...base.shot, ...(source.shot || {}) },
     geluid: { ...base.geluid, ...(source.geluid || {}) },
+    sfeer: { ...base.sfeer, ...(source.sfeer || {}) },
   };
 }
 
@@ -273,7 +277,133 @@ function soundPreviewHtml(environmentId, geluid) {
   if (geluid.bron !== "bestand") return "";
   const asset = extraAssets(environmentId, "geluid").find((item) => item.id === geluid.bestand) || null;
   if (!asset) return "";
-  return `<label class="fy-label">Luister (in deze browser)<audio class="extraPreview" src="${esc(assetFileUrl(asset))}" controls preload="none"></audio></label>`;
+  return `<label class="fy-label">Luister (in deze browser)<audio class="extraPreview" src="${esc(assetFileUrl(asset))}" controls preload="none" data-level-audio="geluid"></audio></label>`;
+}
+
+// Geluidsniveaus: meting (geluidsniveaus-meting.json, per bestandsnaam) en volume.
+// sfeer = soundscape van de omgeving (TD, extras.sfeer.volume),
+// geluid = extra geluid (afplay, extras.geluid.volume). Beide 0-100%.
+function soundscapeAssetFor(environmentId) {
+  if (!environmentId || !state.catalog) return null;
+  const assets = presentAssets(environmentId).filter((asset) => asset.type === "soundscape" || asset.role === "soundscape");
+  const composition = (state.catalog.environmentCompositions || []).find((item) => item.environmentId === environmentId);
+  const chosen = composition && composition.soundscapeLayer && composition.soundscapeLayer.assetId;
+  return (chosen && assets.find((asset) => asset.id === chosen)) || assets[0] || null;
+}
+
+function extraSoundAssetFor(environmentId, geluid) {
+  if (!geluid || geluid.bron !== "bestand") return null;
+  return extraAssets(environmentId, "geluid").find((item) => item.id === geluid.bestand) || null;
+}
+
+function levelAssetFor(environmentId, kind, extras) {
+  return kind === "sfeer" ? soundscapeAssetFor(environmentId) : extraSoundAssetFor(environmentId, extras.geluid);
+}
+
+function metingFor(asset) {
+  if (!asset || !state.meting || !state.meting.bestanden) return null;
+  return state.meting.bestanden[asset.filename] || null;
+}
+
+function fmtDb(value, sign = false) {
+  if (!Number.isFinite(value)) return "-";
+  const text = Math.abs(value).toFixed(1).replace(".", ",");
+  if (value < 0 && text !== "0,0") return `\u2212${text}`;
+  return sign && text !== "0,0" ? `+${text}` : text;
+}
+
+function volumeDb(volume) {
+  const v = Number(volume);
+  return v > 0 ? 20 * Math.log10(v) : -Infinity;
+}
+
+// Hoe het klinkt met dit volume, ten opzichte van de rest (mediaan van de meting).
+function levelJudgement(kind, meting, volume) {
+  if (!meting || !state.meting) return null;
+  const config = state.meting[kind === "sfeer" ? "sfeer" : "extra"];
+  const base = kind === "sfeer" ? meting.lufs : meting.luidst;
+  const level = base + volumeDb(volume);
+  const diff = level - config.referentie;
+  const verdict = !Number.isFinite(diff) ? "uit" : diff > config.grens.teHard ? "te hard" : diff < config.grens.teZacht ? "te zacht" : "ok";
+  return { level, diff, verdict, peak: meting.truePeak + volumeDb(volume) };
+}
+
+function levelInfoHtml(kind, meting, volume, compact = false) {
+  if (!state.meting) return "";
+  if (!meting) return `<span class="fy-small">${compact ? "niet gemeten" : "Dit bestand is nog niet gemeten."}</span>`;
+  const judgement = levelJudgement(kind, meting, volume);
+  if (compact) {
+    const clip = Number.isFinite(judgement.peak) && judgement.peak >= -1 ? " \u00b7 clipt" : "";
+    const title = `${fmtDb(judgement.level)} LUFS ${kind === "sfeer" ? "gemiddeld" : "luidste moment"}; ${(meting.opmerkingen || []).join("; ")}`;
+    return `<span title="${esc(title)}"><span class="levelVerdict is-${esc(judgement.verdict.replace(" ", "-"))}">${esc(judgement.verdict)}</span> ${fmtDb(judgement.diff, true)}${clip}</span>`;
+  }
+  const maat = kind === "sfeer" ? "gemiddeld" : "luidste moment";
+  const pct = Math.round(Number(volume) * 100);
+  const parts = [
+    `<span class="levelVerdict is-${esc(judgement.verdict.replace(" ", "-"))}">${esc(judgement.verdict)}</span>`,
+    `met ${pct}%: ${fmtDb(judgement.level)} LUFS ${maat}, ${fmtDb(judgement.diff, true)} t.o.v. de rest`,
+  ];
+  if (Number.isFinite(judgement.peak) && judgement.peak >= -1) parts.push(`piek ${fmtDb(judgement.peak, true)} dBTP: clipt`);
+  return parts.join(" \u00b7 ");
+}
+
+function levelProposalHtml(kind, meting) {
+  if (!meting) return "";
+  const notes = (meting.opmerkingen || []).map((note) => `<li>${esc(note)}</li>`).join("");
+  const harder = meting.voorstelDb > 0
+    ? ` Harder dan 100% kan niet: dit bestand zou ${fmtDb(meting.voorstelDb, true)} dB moeten.`
+    : "";
+  return `
+    <div class="fy-small levelProposal">
+      Gemeten ${esc(state.meting.gemeten || "")}: ${fmtDb(kind === "sfeer" ? meting.lufs : meting.luidst)} LUFS, piek ${fmtDb(meting.truePeak, true)} dBTP.
+      Voorstel ${esc(meting.voorstelVolume)}%.${esc(harder)}
+      <button class="fy-button levelTake" type="button" data-level-take="${esc(kind)}" data-level-value="${esc(meting.voorstelVolume)}">Neem ${esc(meting.voorstelVolume)}% over</button>
+      ${notes ? `<ul class="levelNotes">${notes}</ul>` : ""}
+    </div>
+  `;
+}
+
+function sfeerLevelHtml(item, extras) {
+  const environmentId = item ? item.id : "";
+  const asset = soundscapeAssetFor(environmentId);
+  if (!asset) return `<fieldset class="extraField"><legend>Sfeergeluid</legend><div class="fy-small">Deze omgeving heeft nog geen sfeergeluid.</div></fieldset>`;
+  const meting = metingFor(asset);
+  const volume = extras.sfeer.volume;
+  const start = meting && meting.luidstOp ? Math.max(0, meting.luidstOp - 3) : 0;
+  return `
+    <fieldset class="extraField">
+      <legend>Sfeergeluid</legend>
+      <div class="fy-small">${esc(asset.originalFilename || asset.filename || asset.id)}</div>
+      <label class="fy-label">Volume (%)
+        <input class="fy-input" type="number" min="0" max="100" step="1" data-extra="sfeer" data-field="volume" value="${esc(Math.round(Number(volume ?? 1) * 100))}">
+      </label>
+      <div class="levelInfo" data-level-info="sfeer">${levelInfoHtml("sfeer", meting, volume)}</div>
+      ${levelProposalHtml("sfeer", meting)}
+      <label class="fy-label">Luister (in deze browser)<audio class="extraPreview" src="${esc(assetFileUrl(asset))}" controls preload="none" data-level-audio="sfeer"></audio></label>
+      ${meting && start ? `<button class="fy-button" type="button" data-level-seek="${esc(start)}">Luister vanaf het luidste moment</button>` : ""}
+    </fieldset>
+  `;
+}
+
+function extraLevelHtml(item, extras) {
+  const meting = metingFor(extraSoundAssetFor(item ? item.id : "", extras.geluid));
+  return `
+    <div class="levelInfo" data-level-info="geluid">${levelInfoHtml("geluid", meting, extras.geluid.volume)}</div>
+    ${levelProposalHtml("geluid", meting)}
+  `;
+}
+
+// Na tekenen of na een wijziging: meting en luistervolume bijwerken.
+function syncLevelUi() {
+  const form = document.querySelector("[data-extras-form]");
+  if (!form || !state.editing.environment) return;
+  const extras = readExtrasForm();
+  ["sfeer", "geluid"].forEach((kind) => {
+    const volume = Math.min(1, Math.max(0, Number(extras[kind].volume)));
+    const info = form.querySelector(`[data-level-info="${kind}"]`);
+    if (info) info.innerHTML = levelInfoHtml(kind, metingFor(levelAssetFor(state.editing.environment, kind, extras)), volume);
+    form.querySelectorAll(`[data-level-audio="${kind}"]`).forEach((audio) => { audio.volume = volume; });
+  });
 }
 
 function fileOptionsHtml(environmentId, kind, selected) {
@@ -337,9 +467,12 @@ function extrasFormHtml(item) {
           <label class="fy-label">Volume (%)
             <input class="fy-input" type="number" min="0" max="100" step="5" data-extra="geluid" data-field="volume" value="${esc(Math.round(Number(geluid.volume ?? 1) * 100))}">
           </label>
+          ${extraLevelHtml(item, extras)}
         ` : ""}
         ${soundPreviewHtml(environmentId, geluid)}
       </fieldset>
+      <div class="extrasHead"><strong>Geluidsniveau</strong></div>
+      ${sfeerLevelHtml(item, extras)}
     </div>
   `;
 }
@@ -353,6 +486,7 @@ function readExtrasForm() {
     let value = field.value;
     if (name === "camera" || name === "duur") value = Number(value || 0);
     if (name === "volume") value = Math.min(100, Math.max(0, Number(value || 0))) / 100;
+    if (!extras[kind]) extras[kind] = {};
     extras[kind][name] = value;
   });
   return extras;
@@ -519,6 +653,165 @@ function renderEnvironments() {
   $("environmentsList").innerHTML = rows.join("") || `<div class="fy-small">Geen omgevingen.</div>`;
 }
 
+// Overzicht: alle omgevingen naast elkaar, volumes invullen en in één keer bewaren.
+function levelValue(item, kind) {
+  const draft = state.levelsDraft[item.id];
+  if (draft && Number.isFinite(draft[kind])) return draft[kind];
+  return Number(cloneExtras(item.extras)[kind].volume ?? 1);
+}
+
+function levelCellHtml(item, kind) {
+  const extras = cloneExtras(item.extras);
+  const asset = levelAssetFor(item.id, kind, extras);
+  if (!asset) return `<td class="fy-small">-</td><td></td><td></td>`;
+  const meting = metingFor(asset);
+  const volume = levelValue(item, kind);
+  const dirty = state.levelsDraft[item.id] && Number.isFinite(state.levelsDraft[item.id][kind]);
+  const proposal = meting && Math.round(volume * 100) !== meting.voorstelVolume ? `<button class="fy-button levelTake" type="button" data-levels-take="${esc(item.id)}" data-level-kind="${kind}" data-level-value="${esc(meting.voorstelVolume)}">voorstel ${esc(meting.voorstelVolume)}%</button>` : "";
+  return `
+    <td><input class="fy-input levelInput ${dirty ? "is-dirty" : ""}" type="number" min="0" max="100" step="1" data-levels-env="${esc(item.id)}" data-level-kind="${kind}" value="${esc(Math.round(volume * 100))}"></td>
+    <td><button class="fy-button levelPlay" type="button" data-levels-play="${esc(item.id)}" data-level-kind="${kind}" title="Luister (in deze browser)">\u25b6</button></td>
+    <td class="levelInfoCell" data-levels-info="${esc(item.id)}:${kind}">${levelInfoHtml(kind, meting, volume, true)} ${proposal}</td>
+  `;
+}
+
+function renderLevels() {
+  const target = $("levelsList");
+  if (!target) return;
+  const items = active(state.catalog.environments);
+  const dirtyCount = Object.keys(state.levelsDraft).length;
+  $("levelsStatus").textContent = dirtyCount ? `${dirtyCount} omgeving(en) gewijzigd, nog niet bewaard.` : "";
+  target.innerHTML = `
+    <table class="levelsTable">
+      <thead><tr>
+        <th>Omgeving</th>
+        <th colspan="3">Sfeergeluid</th>
+        <th>Extra geluid</th>
+        <th colspan="3"></th>
+      </tr></thead>
+      <tbody>${items.map((item) => {
+        const label = cloneExtras(item.extras).geluid.label;
+        return `<tr>
+          <td><strong>${esc(item.name || item.id)}</strong></td>
+          ${levelCellHtml(item, "sfeer")}
+          <td class="fy-small">${esc(label || "")}</td>
+          ${levelCellHtml(item, "geluid")}
+        </tr>`;
+      }).join("")}</tbody>
+    </table>
+  `;
+}
+
+function setLevelDraft(environmentId, kind, percent) {
+  const value = Math.min(100, Math.max(0, Number(percent) || 0)) / 100;
+  const item = byId(state.catalog.environments, environmentId);
+  if (!item) return;
+  const saved = Number(cloneExtras(item.extras)[kind].volume ?? 1);
+  const draft = { ...(state.levelsDraft[environmentId] || {}) };
+  if (Math.abs(saved - value) < 0.001) delete draft[kind];
+  else draft[kind] = value;
+  if (Object.keys(draft).length) state.levelsDraft[environmentId] = draft;
+  else delete state.levelsDraft[environmentId];
+  const info = document.querySelector(`[data-levels-info="${CSS.escape(environmentId)}:${kind}"]`);
+  if (info) {
+    const extras = cloneExtras(item.extras);
+    const meting = metingFor(levelAssetFor(environmentId, kind, extras));
+    const button = meting && Math.round(value * 100) !== meting.voorstelVolume
+      ? `<button class="fy-button levelTake" type="button" data-levels-take="${esc(environmentId)}" data-level-kind="${kind}" data-level-value="${esc(meting.voorstelVolume)}">voorstel ${esc(meting.voorstelVolume)}%</button>`
+      : "";
+    info.innerHTML = `${levelInfoHtml(kind, meting, value, true)} ${button}`;
+  }
+  const input = document.querySelector(`[data-levels-env="${CSS.escape(environmentId)}"][data-level-kind="${kind}"]`);
+  if (input) {
+    input.classList.toggle("is-dirty", Number.isFinite(draft[kind]));
+    if (Number(input.value) !== Math.round(value * 100)) input.value = String(Math.round(value * 100));
+  }
+  if (state.levelPlaying && state.levelPlaying.id === environmentId && state.levelPlaying.kind === kind) levelAudio().volume = value;
+  const dirtyCount = Object.keys(state.levelsDraft).length;
+  $("levelsStatus").textContent = dirtyCount ? `${dirtyCount} omgeving(en) gewijzigd, nog niet bewaard.` : "";
+}
+
+function levelAudio() {
+  if (!state.levelAudioEl) {
+    state.levelAudioEl = new Audio();
+    state.levelAudioEl.addEventListener("ended", () => { state.levelPlaying = null; markLevelPlaying(); });
+  }
+  return state.levelAudioEl;
+}
+
+function markLevelPlaying() {
+  document.querySelectorAll("[data-levels-play]").forEach((button) => {
+    const on = state.levelPlaying && state.levelPlaying.id === button.getAttribute("data-levels-play") && state.levelPlaying.kind === button.getAttribute("data-level-kind");
+    button.textContent = on ? "\u25a0" : "\u25b6";
+    button.classList.toggle("is-playing", !!on);
+  });
+}
+
+function playLevel(environmentId, kind) {
+  const audio = levelAudio();
+  if (state.levelPlaying && state.levelPlaying.id === environmentId && state.levelPlaying.kind === kind) {
+    audio.pause();
+    state.levelPlaying = null;
+    markLevelPlaying();
+    return;
+  }
+  const item = byId(state.catalog.environments, environmentId);
+  const asset = item ? levelAssetFor(environmentId, kind, cloneExtras(item.extras)) : null;
+  if (!asset) return;
+  audio.pause();
+  audio.src = assetFileUrl(asset);
+  audio.volume = Math.min(1, Math.max(0, levelValue(item, kind)));
+  audio.currentTime = 0;
+  state.levelPlaying = { id: environmentId, kind };
+  audio.play().catch(() => { state.levelPlaying = null; markLevelPlaying(); });
+  markLevelPlaying();
+}
+
+function fillLevelProposals() {
+  active(state.catalog.environments).forEach((item) => {
+    ["sfeer", "geluid"].forEach((kind) => {
+      const meting = metingFor(levelAssetFor(item.id, kind, cloneExtras(item.extras)));
+      if (meting) setLevelDraft(item.id, kind, meting.voorstelVolume);
+    });
+  });
+}
+
+async function saveLevels() {
+  const ids = Object.keys(state.levelsDraft);
+  if (!ids.length) return;
+  const status = $("levelsStatus");
+  const skipped = [];
+  let saved = 0;
+  for (const id of ids) {
+    if (state.editing.environment === id) {
+      skipped.push(id);
+      continue;
+    }
+    const item = byId(state.catalog.environments, id);
+    if (!item) continue;
+    const extras = cloneExtras(item.extras);
+    const draft = state.levelsDraft[id];
+    if (Number.isFinite(draft.sfeer)) extras.sfeer.volume = draft.sfeer;
+    if (Number.isFinite(draft.geluid)) extras.geluid.volume = draft.geluid;
+    status.textContent = `Bewaren: ${item.name || id}...`;
+    try {
+      await requestJson(`/v0/catalog/environments/${encodeURIComponent(id)}`, jsonOptions("PATCH", {
+        name: item.name || "",
+        description: item.description || "",
+        extras,
+      }));
+      delete state.levelsDraft[id];
+      saved += 1;
+    } catch (err) {
+      status.textContent = `${item.name || id}: ${err.message || "bewaren mislukt"}`;
+      await loadAll();
+      return;
+    }
+  }
+  await loadAll();
+  status.textContent = `${saved} bewaard.${skipped.length ? ` ${skipped.length} niet: die omgeving staat open om te bewerken.` : ""}`;
+}
+
 function renderSituations() {
   const items = active(state.catalog.situations);
   const rows = items.map((item) => {
@@ -642,9 +935,11 @@ function renderAll() {
   renderPerformerControls();
   renderCharacters();
   renderEnvironments();
+  renderLevels();
   renderSituations();
   renderCastPreview();
   renderValidation();
+  syncLevelUi();
 }
 
 async function loadAll() {
@@ -654,6 +949,13 @@ async function loadAll() {
   ]);
   state.catalog = catalog;
   state.validation = validation;
+  if (!state.meting) {
+    try {
+      state.meting = await requestJson("/catalog/geluidsniveaus-meting.json");
+    } catch (_err) {
+      state.meting = null;
+    }
+  }
   renderAll();
 }
 
@@ -778,6 +1080,9 @@ function bindEvents() {
   $("newCharacterBtn").addEventListener("click", () => toggleForm("character"));
   $("newEnvironmentBtn").addEventListener("click", () => toggleForm("environment"));
   $("newSituationBtn").addEventListener("click", () => toggleForm("situation"));
+  $("fillLevelsBtn").addEventListener("click", fillLevelProposals);
+  $("saveLevelsBtn").addEventListener("click", saveLevels);
+  $("resetLevelsBtn").addEventListener("click", () => { state.levelsDraft = {}; renderLevels(); });
   $("savePerformerBtn").addEventListener("click", savePerformer);
   $("cancelPerformerBtn").addEventListener("click", () => hideForm("performer"));
   document.addEventListener("click", (event) => {
@@ -801,6 +1106,33 @@ function bindEvents() {
     }
     if (target.closest("#cancelEnvironmentBtn")) {
       hideForm("environment");
+      return;
+    }
+    const take = target.closest("[data-level-take]");
+    if (take) {
+      const field = document.querySelector(`[data-extras-form] [data-extra="${take.getAttribute("data-level-take")}"][data-field="volume"]`);
+      if (field) field.value = take.getAttribute("data-level-value");
+      rememberExtrasDraft();
+      syncLevelUi();
+      return;
+    }
+    const seek = target.closest("[data-level-seek]");
+    if (seek) {
+      const audio = document.querySelector('[data-extras-form] [data-level-audio="sfeer"]');
+      if (audio) {
+        audio.currentTime = Number(seek.getAttribute("data-level-seek")) || 0;
+        audio.play().catch(() => {});
+      }
+      return;
+    }
+    const levelsTake = target.closest("[data-levels-take]");
+    if (levelsTake) {
+      setLevelDraft(levelsTake.getAttribute("data-levels-take"), levelsTake.getAttribute("data-level-kind"), levelsTake.getAttribute("data-level-value"));
+      return;
+    }
+    const levelsPlay = target.closest("[data-levels-play]");
+    if (levelsPlay) {
+      playLevel(levelsPlay.getAttribute("data-levels-play"), levelsPlay.getAttribute("data-level-kind"));
       return;
     }
     if (target.closest("#cancelSituationBtn")) {
@@ -845,9 +1177,21 @@ function bindEvents() {
       renderEnvironments();
       if ($("environmentName")) $("environmentName").value = name;
       if ($("environmentDescription")) $("environmentDescription").value = description;
+      syncLevelUi();
     }
   });
   document.addEventListener("input", (event) => {
+    const levelField = event.target.closest("[data-extras-form] [data-field=\"volume\"]");
+    if (levelField) {
+      rememberExtrasDraft();
+      syncLevelUi();
+      return;
+    }
+    const levelsField = event.target.closest("[data-levels-env]");
+    if (levelsField) {
+      if (levelsField.value !== "") setLevelDraft(levelsField.getAttribute("data-levels-env"), levelsField.getAttribute("data-level-kind"), levelsField.value);
+      return;
+    }
     const field = event.target.closest("[data-extras-form] [data-extra][data-field=\"label\"]");
     if (!field) return;
     rememberExtrasDraft();
