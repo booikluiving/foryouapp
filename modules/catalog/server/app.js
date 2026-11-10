@@ -192,7 +192,9 @@ function createCatalogApp(options = {}) {
     const readModel = await buildCatalogReadModel(options);
     const asset = await saveMediaAssetUpload(req, readModel, options);
     const updatedReadModel = await buildCatalogReadModel(options);
-    scheduleMediaRefresh({
+    // Extra shot/geluid zit niet in de TD-omgeving: geen refresh, anders laadt TD
+    // midden in een scène de omgeving opnieuw.
+    if (asset.type !== "extra") scheduleMediaRefresh({
       environmentId: asset.environmentId,
       roles: [asset.role || asset.type].filter(Boolean),
       reason: "media_asset_upload",
@@ -209,7 +211,7 @@ function createCatalogApp(options = {}) {
   app.delete("/v0/catalog/media-assets/:assetId", asyncRoute(async (req, res) => {
     const asset = await deleteMediaAsset(req.params.assetId, options);
     const updatedReadModel = await buildCatalogReadModel(options);
-    scheduleMediaRefresh({
+    if (asset.type !== "extra") scheduleMediaRefresh({
       environmentId: asset.environmentId,
       roles: [asset.role || asset.type].filter(Boolean),
       reason: "media_asset_delete",

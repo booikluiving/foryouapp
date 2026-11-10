@@ -2,6 +2,7 @@
 
 const { sendCameraCommand } = require("./camera-adapter");
 const { sendDmxCommand } = require("./dmx-adapter");
+const { sendMacAudioCommand } = require("./mac-audio-adapter");
 const { sendDebugCommand } = require("./mock-contract-adapter");
 const { sendPerfectCueCommand } = require("./perfect-cue-adapter");
 const { sendRuntimeCommand } = require("./runtime-adapter");
@@ -23,6 +24,7 @@ function createAdapters(overrides = {}) {
     perfectcue: overrides.perfectcue || sendPerfectCueCommand,
     keyboard: overrides.keyboard || sendPerfectCueCommand,
     teleprompter: overrides.teleprompter || sendTeleprompterCommand,
+    macaudio: overrides.macaudio || sendMacAudioCommand,
     debug: overrides.debug || sendDebugCommand,
   };
 }

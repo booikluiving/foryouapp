@@ -36,6 +36,11 @@ const {
   buildStartSituationCue,
   buildStopSituationCue,
 } = require("../cue-library/runtime-cues");
+const {
+  buildEnvironmentExtraCue,
+  environmentExtrasStatus,
+  publicExtrasStatus,
+} = require("../cue-library/environment-extras");
 const { cameraBaseUrl } = require("../target-adapters/camera-adapter");
 const { dmxBaseUrl } = require("../target-adapters/dmx-adapter");
 const { perfectCueBaseUrl } = require("../target-adapters/perfect-cue-adapter");
@@ -86,6 +91,22 @@ async function runtimeStateForRequest(req, clients) {
   const runtimeResult = await clients.fetchCurrentRuntimeState();
   if (!runtimeResult.ok) throw httpError(502, `show_control_runtime_unavailable:${runtimeResult.error || "unknown"}`);
   return runtimeResult.state;
+}
+
+// Voor de status van de omgevingsknoppen: nooit langer wachten dan even, zodat
+// /status (elke seconde door deck-status) niet blijft hangen op Runtime.
+async function runtimeStateQuick(req, clients, timeoutMs = 500) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      runtimeStateForRequest(req, clients),
+      new Promise((resolve) => { timer = setTimeout(() => resolve(null), timeoutMs); }),
+    ]);
+  } catch (_err) {
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function handleAckPayload(payload) {
@@ -327,6 +348,29 @@ function createShowControlApp(options = {}) {
     res.status(201).json({ ok: true, cue });
   }));
 
+  // Extra shot en extra geluid van de actieve (of klaargezette) omgeving.
+  app.get("/v0/show-control/environment-extras/current", asyncRoute(async (req, res) => {
+    const runtimeState = await runtimeStateQuick(req, clients);
+    res.json(publicExtrasStatus(environmentExtrasStatus(runtimeState || {}, options.environmentExtras || {})));
+  }));
+
+  app.post("/v0/show-control/cues/environment-extra", asyncRoute(async (req, res) => {
+    const runtimeState = await runtimeStateQuick(req, clients, 1500);
+    let cue;
+    try {
+      cue = buildEnvironmentExtraCue(runtimeState || {}, req.body || {}, options.environmentExtras || {});
+    } catch (err) {
+      if (err && err.statusCode === 409) {
+        res.status(409).json({ ok: false, error: err.code, extras: err.extras });
+        return;
+      }
+      throw err;
+    }
+    await executeCue(cue, executeOptions);
+    await saveCue(cue);
+    res.status(201).json({ ok: true, cue });
+  }));
+
   app.post("/v0/show-control/media-assets/refresh", asyncRoute(async (req, res) => {
     const body = req.body || {};
     const environmentId = String(body.environmentId || "").trim();
@@ -490,6 +534,8 @@ function createShowControlApp(options = {}) {
     const full = wantsFullDetail(req);
     const latestCueSummary = latestCue ? summarizeCue(latestCue, { actionLimit: 10, logLimit: 24 }) : null;
     const hardware = await hardwareStatus(executeOptions.adapterOptions);
+    const extrasRuntime = await runtimeStateQuick(req, clients);
+    const environmentExtras = publicExtrasStatus(environmentExtrasStatus(extrasRuntime || {}, options.environmentExtras || {}));
     res.json({
       ok: true,
       schemaVersion: SHOW_CONTROL_STATUS_SCHEMA_VERSION,
@@ -505,6 +551,7 @@ function createShowControlApp(options = {}) {
       latestCueSummary,
       targetStatus: latestCueSummary && latestCueSummary.status ? latestCueSummary.status.targetStatus || {} : {},
       hardware,
+      environmentExtras,
     });
   }));
 

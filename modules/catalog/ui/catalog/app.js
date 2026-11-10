@@ -12,6 +12,20 @@ const state = {
 };
 const NEW_ITEM_ID = "__new__";
 
+// Extra shot en extra geluid per omgeving (twee knoppen op de Stream Deck).
+const EXTRA_SHOT_SOURCES = [
+  ["", "Nog niets"],
+  ["achtergrond", "Achtergrond van deze omgeving"],
+  ["bestand", "Eigen beeld of video"],
+  ["camera", "Camera"],
+];
+const EXTRA_SOUND_SOURCES = [
+  ["", "Nog niets"],
+  ["bestand", "Eigen geluid"],
+];
+const EXTRA_ROLES = { shot: "extraShot", geluid: "extraGeluid" };
+const DECK_COLORS = { shot: "#2563ff", geluid: "#ff2fa0" };
+
 const $ = (id) => document.getElementById(id);
 
 function esc(value) {
@@ -196,11 +210,192 @@ function characterFormHtml(item = null) {
   `;
 }
 
+function emptyExtras() {
+  return {
+    shot: { label: "", omschrijving: "", bron: "", bestand: "", camera: 1, duur: 4 },
+    geluid: { label: "", omschrijving: "", bron: "", bestand: "", volume: 1 },
+  };
+}
+
+function cloneExtras(extras) {
+  const base = emptyExtras();
+  const source = extras && typeof extras === "object" ? extras : {};
+  return {
+    shot: { ...base.shot, ...(source.shot || {}) },
+    geluid: { ...base.geluid, ...(source.geluid || {}) },
+  };
+}
+
+function extrasFor(item) {
+  const id = item ? item.id : NEW_ITEM_ID;
+  if (state.extrasDraft && state.extrasDraft.id === id) return state.extrasDraft.extras;
+  return cloneExtras(item ? item.extras : null);
+}
+
+function extraAssets(environmentId, kind) {
+  if (!environmentId) return [];
+  return presentAssets(environmentId).filter((asset) => asset.role === EXTRA_ROLES[kind]);
+}
+
+function assetFileUrl(asset) {
+  return asset ? `/v0/catalog/media-assets/file/${encodeURIComponent(asset.id)}` : "";
+}
+
+function deckKeyHtml(kind, extra) {
+  const lines = String(extra.label || "").toUpperCase().split(/\n|\s+/).filter(Boolean).slice(0, 3);
+  const empty = !extra.label;
+  return `
+    <div class="deckKey ${empty ? "is-empty" : ""}" style="--deck-color:${DECK_COLORS[kind]}">
+      <span>${lines.length ? lines.map(esc).join("<br>") : kind === "shot" ? "SHOT" : "GELUID"}</span>
+      ${empty || !extra.bron ? `<small>LEEG</small>` : ""}
+    </div>
+  `;
+}
+
+function shotPreviewHtml(environmentId, shot) {
+  if (shot.bron === "camera") return `<div class="fy-small">Knop schakelt naar camera ${esc(shot.camera || 1)}.</div>`;
+  let asset = null;
+  if (shot.bron === "achtergrond") {
+    asset = presentAssets(environmentId).find((item) => item.type === "background") || null;
+    if (!asset) return `<div class="fy-small">Deze omgeving heeft nog geen achtergrond.</div>`;
+  }
+  if (shot.bron === "bestand") asset = extraAssets(environmentId, "shot").find((item) => item.id === shot.bestand) || null;
+  if (!asset) return "";
+  const url = assetFileUrl(asset);
+  const isVideo = /^video\//.test(asset.mimeType || "") || /\.(mp4|mov|m4v|webm)$/i.test(asset.filename || "");
+  return isVideo
+    ? `<video class="extraPreview" src="${esc(url)}" muted controls preload="metadata"></video>`
+    : `<img class="extraPreview" src="${esc(url)}" alt="">`;
+}
+
+function soundPreviewHtml(environmentId, geluid) {
+  if (geluid.bron !== "bestand") return "";
+  const asset = extraAssets(environmentId, "geluid").find((item) => item.id === geluid.bestand) || null;
+  if (!asset) return "";
+  return `<label class="fy-label">Luister (in deze browser)<audio class="extraPreview" src="${esc(assetFileUrl(asset))}" controls preload="none"></audio></label>`;
+}
+
+function fileOptionsHtml(environmentId, kind, selected) {
+  const assets = extraAssets(environmentId, kind);
+  return optionHtml("", assets.length ? "Kies een bestand" : "Nog geen bestand", selected)
+    + assets.map((asset) => optionHtml(asset.id, asset.originalFilename || asset.filename || asset.id, selected)).join("");
+}
+
+function uploadHtml(item, kind) {
+  if (!item) return `<div class="fy-small">Sla de omgeving eerst op om een bestand toe te voegen.</div>`;
+  const accept = kind === "shot" ? "image/*,video/*" : "audio/*";
+  return `
+    <label class="fy-label">Bestand toevoegen
+      <input class="fy-input" type="file" accept="${accept}" data-extra-upload="${kind}">
+    </label>
+    <div class="fy-small" data-extra-upload-status="${kind}"></div>
+  `;
+}
+
+function extrasFormHtml(item) {
+  const environmentId = item ? item.id : "";
+  const extras = extrasFor(item);
+  const shot = extras.shot;
+  const geluid = extras.geluid;
+  const cameraOptions = [1, 2, 3].map((n) => optionHtml(String(n), `Camera ${n}`, String(shot.camera || 1))).join("");
+  return `
+    <div class="extrasBlock" data-extras-form>
+      <div class="extrasHead">
+        <strong>Stream Deck</strong>
+        <div class="deckPreview">${deckKeyHtml("shot", shot)}${deckKeyHtml("geluid", geluid)}</div>
+      </div>
+      <fieldset class="extraField">
+        <legend>Extra shot</legend>
+        <label class="fy-label">Knoplabel<input class="fy-input" maxlength="24" data-extra="shot" data-field="label" value="${esc(shot.label)}"></label>
+        <label class="fy-label">Wat zie je<textarea class="fy-textarea extraText" data-extra="shot" data-field="omschrijving">${esc(shot.omschrijving)}</textarea></label>
+        <label class="fy-label">Bron<select class="fy-select" data-extra="shot" data-field="bron">
+          ${EXTRA_SHOT_SOURCES.map(([value, label]) => optionHtml(value, label, shot.bron)).join("")}
+        </select></label>
+        ${shot.bron === "bestand" ? `
+          <label class="fy-label">Bestand<select class="fy-select" data-extra="shot" data-field="bestand">${fileOptionsHtml(environmentId, "shot", shot.bestand)}</select></label>
+          ${uploadHtml(item, "shot")}
+        ` : ""}
+        ${shot.bron === "camera" ? `<label class="fy-label">Camera<select class="fy-select" data-extra="shot" data-field="camera">${cameraOptions}</select></label>` : ""}
+        ${shot.bron === "achtergrond" || shot.bron === "bestand" ? `
+          <label class="fy-label">Hoe lang in beeld (seconden, 0 = tot je opnieuw drukt)
+            <input class="fy-input" type="number" min="0" max="120" step="1" data-extra="shot" data-field="duur" value="${esc(shot.duur)}">
+          </label>
+        ` : ""}
+        ${shotPreviewHtml(environmentId, shot)}
+      </fieldset>
+      <fieldset class="extraField">
+        <legend>Extra geluid</legend>
+        <label class="fy-label">Knoplabel<input class="fy-input" maxlength="24" data-extra="geluid" data-field="label" value="${esc(geluid.label)}"></label>
+        <label class="fy-label">Wat hoor je<textarea class="fy-textarea extraText" data-extra="geluid" data-field="omschrijving">${esc(geluid.omschrijving)}</textarea></label>
+        <label class="fy-label">Bron<select class="fy-select" data-extra="geluid" data-field="bron">
+          ${EXTRA_SOUND_SOURCES.map(([value, label]) => optionHtml(value, label, geluid.bron)).join("")}
+        </select></label>
+        ${geluid.bron === "bestand" ? `
+          <label class="fy-label">Bestand<select class="fy-select" data-extra="geluid" data-field="bestand">${fileOptionsHtml(environmentId, "geluid", geluid.bestand)}</select></label>
+          ${uploadHtml(item, "geluid")}
+          <label class="fy-label">Volume (%)
+            <input class="fy-input" type="number" min="0" max="100" step="5" data-extra="geluid" data-field="volume" value="${esc(Math.round(Number(geluid.volume ?? 1) * 100))}">
+          </label>
+        ` : ""}
+        ${soundPreviewHtml(environmentId, geluid)}
+      </fieldset>
+    </div>
+  `;
+}
+
+function readExtrasForm() {
+  const id = state.editing.environment;
+  const extras = cloneExtras(state.extrasDraft && state.extrasDraft.id === id ? state.extrasDraft.extras : null);
+  document.querySelectorAll("[data-extras-form] [data-extra][data-field]").forEach((field) => {
+    const kind = field.getAttribute("data-extra");
+    const name = field.getAttribute("data-field");
+    let value = field.value;
+    if (name === "camera" || name === "duur") value = Number(value || 0);
+    if (name === "volume") value = Math.min(100, Math.max(0, Number(value || 0))) / 100;
+    extras[kind][name] = value;
+  });
+  return extras;
+}
+
+function rememberExtrasDraft() {
+  if (!state.editing.environment || !document.querySelector("[data-extras-form]")) return;
+  state.extrasDraft = { id: state.editing.environment, extras: readExtrasForm() };
+}
+
+async function uploadExtraFile(input) {
+  const kind = input.getAttribute("data-extra-upload");
+  const file = input.files && input.files[0];
+  const environmentId = state.editing.environment;
+  if (!file || !environmentId || environmentId === NEW_ITEM_ID) return;
+  const status = document.querySelector(`[data-extra-upload-status="${kind}"]`);
+  rememberExtrasDraft();
+  if (status) status.textContent = "Uploaden...";
+  const form = new FormData();
+  form.set("environmentId", environmentId);
+  form.set("type", "extra");
+  form.set("role", EXTRA_ROLES[kind]);
+  form.set("tags", `extra,${kind}`);
+  form.set("asset", file, file.name);
+  try {
+    const result = await requestJson("/v0/catalog/media-assets/upload", { method: "POST", body: form });
+    state.extrasDraft.extras[kind].bron = "bestand";
+    state.extrasDraft.extras[kind].bestand = result.asset.id;
+    const name = $("environmentName") ? $("environmentName").value : "";
+    const description = $("environmentDescription") ? $("environmentDescription").value : "";
+    await loadAll();
+    if ($("environmentName")) $("environmentName").value = name;
+    if ($("environmentDescription")) $("environmentDescription").value = description;
+  } catch (err) {
+    if (status) status.innerHTML = formIssueHtml(err) || esc(err.message || "Upload mislukt.");
+  }
+}
+
 function environmentFormHtml(item = null) {
   return `
     <div id="environmentForm" class="fy-stack inlineForm" data-inline-form="environment">
       <label class="fy-label">Naam<input id="environmentName" class="fy-input" maxlength="140" value="${esc(item ? item.name || "" : "")}"></label>
       <label class="fy-label">Omschrijving<textarea id="environmentDescription" class="fy-textarea">${esc(item ? item.description || "" : "")}</textarea></label>
+      ${extrasFormHtml(item)}
       <div class="fy-actions">
         <button id="saveEnvironmentBtn" class="fy-button fy-button-primary" type="button">Opslaan</button>
         <button id="cancelEnvironmentBtn" class="fy-button" type="button">Annuleer</button>
@@ -472,6 +667,7 @@ function showForm(kind, item = null) {
   }
 
   state.editing[kind] = item ? item.id : NEW_ITEM_ID;
+  if (kind === "environment") state.extrasDraft = null;
   renderAll();
   const firstField = {
     character: "characterName",
@@ -485,6 +681,7 @@ function hideForm(kind) {
   if (kind === "performer" && $(`${kind}Form`)) {
     $(`${kind}Form`).classList.add("fy-hidden");
   }
+  if (kind === "environment") state.extrasDraft = null;
   state.editing[kind] = null;
   if (kind !== "performer") renderAll();
 }
@@ -533,6 +730,7 @@ async function saveEnvironment() {
   const body = {
     name: $("environmentName").value,
     description: $("environmentDescription").value,
+    extras: readExtrasForm(),
   };
   try {
     if (id) await requestJson(`/v0/catalog/environments/${encodeURIComponent(id)}`, jsonOptions("PATCH", body));
@@ -631,6 +829,29 @@ function bindEvents() {
   });
   document.addEventListener("change", (event) => {
     if (event.target.closest("#situationCharacterSlots")) renderCastPreview();
+    const upload = event.target.closest("[data-extra-upload]");
+    if (upload) {
+      uploadExtraFile(upload);
+      return;
+    }
+    const extraField = event.target.closest("[data-extras-form] [data-extra][data-field]");
+    if (extraField && ["bron", "bestand", "camera"].includes(extraField.getAttribute("data-field"))) {
+      // Bron/bestand bepaalt welke velden en welk voorbeeld er staan: opnieuw tekenen,
+      // met naam en omschrijving zoals ze nu ingetypt zijn.
+      const name = $("environmentName") ? $("environmentName").value : "";
+      const description = $("environmentDescription") ? $("environmentDescription").value : "";
+      rememberExtrasDraft();
+      renderEnvironments();
+      if ($("environmentName")) $("environmentName").value = name;
+      if ($("environmentDescription")) $("environmentDescription").value = description;
+    }
+  });
+  document.addEventListener("input", (event) => {
+    const field = event.target.closest("[data-extras-form] [data-extra][data-field=\"label\"]");
+    if (!field) return;
+    rememberExtrasDraft();
+    const preview = document.querySelector("[data-extras-form] .deckPreview");
+    if (preview) preview.innerHTML = deckKeyHtml("shot", state.extrasDraft.extras.shot) + deckKeyHtml("geluid", state.extrasDraft.extras.geluid);
   });
 }
 

@@ -14,6 +14,7 @@ const {
   normalizeEnvironmentLighting,
   normalizeLightingPreset,
 } = require("../../../shared/lighting/environment-lighting-v0");
+const { normalizeEnvironmentExtras } = require("../../../shared/environment-extras/environment-extras-v0");
 
 const STORE_SCHEMA_VERSION = "catalog.write-store.v0";
 const COMPOSITION_SCHEMA_VERSION = "catalog.environment-composition.v0";
@@ -25,8 +26,8 @@ const COMPOSITION_CANVAS = Object.freeze({
   canvasHeight: 3840,
   aspectRatio: "27:16",
 });
-const MEDIA_ASSET_TYPES = Object.freeze(["background", "soundscape", "fx"]);
-const MEDIA_ASSET_ROLES = Object.freeze(["background", "soundscape", "fxVideo", "fxImage"]);
+const MEDIA_ASSET_TYPES = Object.freeze(["background", "soundscape", "fx", "extra"]);
+const MEDIA_ASSET_ROLES = Object.freeze(["background", "soundscape", "fxVideo", "fxImage", "extraShot", "extraGeluid"]);
 const MEDIA_ASSET_CONFIG = Object.freeze({
   background: Object.freeze({
     extensions: Object.freeze(["jpg", "jpeg", "png", "webp", "mp4", "mov", "m4v", "webm"]),
@@ -41,6 +42,13 @@ const MEDIA_ASSET_CONFIG = Object.freeze({
   fx: Object.freeze({
     extensions: Object.freeze(["mp4", "mov", "m4v", "webm", "jpg", "jpeg", "png", "webp"]),
     mimePrefixes: Object.freeze(["video/", "image/"]),
+    maxBytes: 250 * 1024 * 1024,
+  }),
+  // Extra shot en extra geluid per omgeving (Stream Deck). Eigen type, zodat het
+  // nooit als achtergrond, soundscape of fx-laag wordt gekozen.
+  extra: Object.freeze({
+    extensions: Object.freeze(["mp4", "mov", "m4v", "webm", "jpg", "jpeg", "png", "webp", "mp3", "wav", "aif", "aiff", "m4a", "aac", "flac"]),
+    mimePrefixes: Object.freeze(["video/", "image/", "audio/"]),
     maxBytes: 250 * 1024 * 1024,
   }),
 });
@@ -73,12 +81,27 @@ const MEDIA_ASSET_ROLE_CONFIG = Object.freeze({
     maxBytes: 50 * 1024 * 1024,
     singleton: false,
   }),
+  extraShot: Object.freeze({
+    type: "extra",
+    extensions: Object.freeze(["mp4", "mov", "m4v", "webm", "jpg", "jpeg", "png", "webp"]),
+    mimePrefixes: Object.freeze(["video/", "image/"]),
+    maxBytes: 250 * 1024 * 1024,
+    singleton: false,
+  }),
+  extraGeluid: Object.freeze({
+    type: "extra",
+    extensions: Object.freeze(["mp3", "wav", "aif", "aiff", "m4a", "aac", "flac"]),
+    mimePrefixes: Object.freeze(["audio/"]),
+    maxBytes: 100 * 1024 * 1024,
+    singleton: false,
+  }),
 });
 const MEDIA_TYPE_ALIASES = Object.freeze({
   audio: "soundscape",
   soundscape: "soundscape",
   background: "background",
   fx: "fx",
+  extra: "extra",
 });
 const MEDIA_ROLE_ALIASES = Object.freeze({
   audio: "soundscape",
@@ -92,6 +115,10 @@ const MEDIA_ROLE_ALIASES = Object.freeze({
   "fx-image": "fxImage",
   image: "fxImage",
   png: "fxImage",
+  extrashot: "extraShot",
+  "extra-shot": "extraShot",
+  extrageluid: "extraGeluid",
+  "extra-geluid": "extraGeluid",
 });
 
 const CATALOG_ROOT = path.resolve(__dirname, "..");
@@ -619,6 +646,7 @@ function normalizeEnvironmentRecord(record, base = null) {
     promptText: record.promptText || record.description || "",
     labelScores: record.labelScores || (base && base.labelScores) || {},
     externalId: base ? base.externalId || record.externalId || null : record.externalId || null,
+    extras: normalizeEnvironmentExtras(record.extras || (base && base.extras) || null),
     active,
     archivedAt: record.archivedAt || null,
     status: record.status || statusFor(active),
@@ -810,6 +838,9 @@ async function upsertEnvironment(body, readModel, options = {}) {
     id: String(body.id || nextEntityId(store, "environment", body.name)),
     name: String(body.name || "").trim(),
     description: String(body.description || "").trim(),
+    extras: normalizeEnvironmentExtras(Object.prototype.hasOwnProperty.call(body, "extras")
+      ? body.extras
+      : (existing && existing.extras) || (base && base.extras) || null),
     active: body.active !== false,
     createdAt: existing ? existing.createdAt : base ? base.createdAt || at : at,
     updatedAt: at,
@@ -1193,9 +1224,9 @@ function validateMediaUploadFields({ environment, type, role, extension, mimeTyp
   const issues = [];
   const config = MEDIA_ASSET_ROLE_CONFIG[role] || MEDIA_ASSET_CONFIG[type];
   if (!environment) issues.push(issue("media_environment_missing", "A valid environment is required."));
-  if (!config) issues.push(issue("media_type_invalid", "Asset type must be background, soundscape, or fx.", { type }));
+  if (!config) issues.push(issue("media_type_invalid", "Asset type must be background, soundscape, fx, or extra.", { type }));
   if (role && !MEDIA_ASSET_ROLES.includes(role)) {
-    issues.push(issue("media_role_invalid", "Asset role must be background, soundscape, fxVideo, or fxImage.", { role }));
+    issues.push(issue("media_role_invalid", "Asset role must be background, soundscape, fxVideo, fxImage, extraShot, or extraGeluid.", { role }));
   }
   if (role && type && mediaStorageTypeForRole(role) && mediaStorageTypeForRole(role) !== type) {
     issues.push(issue("media_role_type_conflict", `${role} cannot be uploaded as ${type}.`, { role, type }));
