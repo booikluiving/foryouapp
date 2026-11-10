@@ -213,8 +213,12 @@ protected:
 				float b = s[4 * x] / 255.f, g = s[4 * x + 1] / 255.f, r = s[4 * x + 2] / 255.f;
 				float sum = r + g + b;
 				if (b - std::max(r, g) < 0.05f || sum < 0.06f) continue;
+				// papier = verzadigd blauw. Een blauwig verlichte grijze trui kan groter zijn dan het papier
+				// in beeld, maar is veel minder verzadigd: alleen verzadigde pixels tellen, en zwaarder naarmate verzadigder.
+				float sat = (b - std::min(r, g)) / std::max(b, 1e-3f);
+				if (sat < 0.45f) continue;
 				int hr = std::min(HB - 1, (int)(r / sum * HB)), hg = std::min(HB - 1, (int)(g / sum * HB));
-				hist[hg * HB + hr]++;
+				hist[hg * HB + hr] += (int)(sat * sat * 16.f);
 			}
 		}
 		int best = -1, bestCount = 0;

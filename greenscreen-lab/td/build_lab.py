@@ -64,8 +64,8 @@ _start = os.path.join(OUT, "startbron.txt")
 if os.path.exists(_start):
     p.val = open(_start).read().strip()
 p = page.appendMenu("Weergave", label="Weergave")[0]
-p.menuNames = ["rvm", "vergelijking"]
-p.menuLabels = ["Alleen RVM (groot)", "Vergelijking (6 beelden, zwaar)"]
+p.menuNames = ["rvm", "combi", "vergelijking"]
+p.menuLabels = ["Alleen RVM (groot)", "GPU-key + RVM (groot)", "Vergelijking (6 beelden, zwaar)"]
 p.val = "rvm"
 p = page.appendMenu("Visionkwaliteit", label="Vision-kwaliteit")[0]
 p.menuNames = ["Fast", "Balanced", "Accurate"]
@@ -236,8 +236,13 @@ raster.nodeX, raster.nodeY = 1000, 225
 solo_bg = lab.create(constantTOP, "solo_achtergrond")
 setp(solo_bg, outputresolution="custom", resolutionw=1920, resolutionh=1080, colorr=0.0, colorg=0.6, colorb=0.2)
 solo_bg.nodeX, solo_bg.nodeY = 800, -300
+solo_keuze = lab.create(switchTOP, "solo_keuze")
+solo_keuze.inputConnectors[0].connect(rvm)
+solo_keuze.inputConnectors[1].connect(gk_ai)
+setp(solo_keuze, index="=1 if parent().par.Weergave.eval() == 'combi' else 0")
+solo_keuze.nodeX, solo_keuze.nodeY = 650, -150
 solo_fit = lab.create(fitTOP, "solo_fit")
-solo_fit.inputConnectors[0].connect(rvm)
+solo_fit.inputConnectors[0].connect(solo_keuze)
 setp(solo_fit, outputresolution="custom", resolutionw=1920, resolutionh=1080, fit="fitbest")
 solo_fit.nodeX, solo_fit.nodeY = 800, -150
 solo = lab.create(overTOP, "solo")
@@ -247,7 +252,7 @@ solo.nodeX, solo.nodeY = 1000, -150
 weergave = lab.create(switchTOP, "weergave")
 weergave.inputConnectors[0].connect(solo)
 weergave.inputConnectors[1].connect(raster)
-setp(weergave, index="=parent().par.Weergave.menuIndex")
+setp(weergave, index="=1 if parent().par.Weergave.eval() == 'vergelijking' else 0")
 weergave.nodeX, weergave.nodeY = 1150, 225
 uit = lab.create(nullTOP, "uit")
 uit.inputConnectors[0].connect(weergave)
@@ -293,68 +298,92 @@ for o, n in ((vision, "info_vision"), (rvm, "info_rvm"), (calib, "info_calib")):
     setp(ic, op=o.path)
     ic.nodeX, ic.nodeY = o.nodeX, o.nodeY - 80
 
-MONITOR = r'''
+MONITOR = r"""
+# Lichte monitor: meet elke frametijd; schrijft elke 2 s één regel naar frametijden.jsonl.
+# Zware dingen (pixels teruglezen, beelden opslaan) alleen op verzoek via out/lab_control.json {"snapshot": <getal>}.
 import json, os, time
 OUT = __OUT__
+CTRL = os.path.join(OUT, "lab_control.json")
 
-def _vals(chop):
+def _chan(chop, name):
     try:
-        return {c.name: round(float(c.eval()), 2) for c in chop.chans()}
-    except Exception as e:
-        return {"fout": str(e)}
+        c = chop[name]
+        return float(c.eval()) if c is not None else None
+    except Exception:
+        return None
+
+def _control(lab):
+    try:
+        m = os.path.getmtime(CTRL)
+    except OSError:
+        return
+    if m == me.fetch("ctrl_mtime", 0):
+        return
+    me.store("ctrl_mtime", m)
+    try:
+        cfg = json.load(open(CTRL))
+    except Exception:
+        return
+    for k, v in cfg.get("pars", {}).items():
+        opname, _, par = k.rpartition(".")
+        o = lab.op(opname) if opname else lab
+        p = getattr(o.par, par, None) if o else None
+        if p is not None:
+            p.expr = ""
+            p.val = v
+    if cfg.get("snapshot") != me.fetch("snapshot", None):
+        me.store("snapshot", cfg.get("snapshot"))
+        lab.op("uit").save(os.path.join(OUT, "td_raster.jpg"))
+        for n in cfg.get("save", []):
+            if lab.op(n) is not None:
+                lab.op(n).save(os.path.join(OUT, "snap_" + n + ".jpg"))
+        if cfg.get("bron") and lab.par.Bron.eval().startswith("cam"):
+            tmp = os.path.join(OUT, "bron_tmp.png")
+            lab.op("bron").save(tmp)
+            os.replace(tmp, os.path.join(OUT, "bron_" + lab.par.Bron.eval() + ".png"))
+    if cfg.get("cookrate"):
+        project.cookRate = cfg["cookrate"]
 
 def onFrameStart(frame):
-    if frame % 90:
-        return
     lab = parent()
+    dts = me.fetch("dts", [], storeDefault=True)
+    dts.append(absTime.stepSeconds * 1000.0)
     now = time.time()
-    last = me.fetch("last", None)
-    me.store("last", (absTime.frame, now))
-    echte = round((absTime.frame - last[0]) / (now - last[1]), 1) if last else None
-    stats = {
-        "echte_fps": echte,
-        "tijd": time.strftime("%H:%M:%S"),
-        "td_fps": round(float(project.cookRate), 1),
-        "td_frame_ms": round(float(lab.op("uit").cookTime or 0), 2),
-        "bron": lab.par.Bron.eval(),
-        "bron_res": [lab.op("bron").width, lab.op("bron").height],
-        "vision": _vals(lab.op("info_vision")),
-        "rvm_cpp": _vals(lab.op("info_rvm")),
-        "cams": {k: [lab.op(k + "_in").width, lab.op(k + "_in").height, bool(lab.op(k + "_in").par.active.eval())] for k in ("cam1", "cam2", "cam3")},
-        "calib": _vals(lab.op("info_calib")),
-        "teleprompters": {n: (lab.op(n).errors() or lab.op(n).warnings() or "ok") for n in ("teleprompter_1", "teleprompter_2", "teleprompter_3")},
-        "probe": {
-            "calib_mid": [round(v, 3) for v in lab.op("gk_calib").sample(u=0.5, v=0.5)],
-            "klein_mid": [round(v, 3) for v in lab.op("gk_klein").sample(u=0.9, v=0.9)],
-            "cam1_info": [(c.name, round(float(c.eval()), 2)) for c in op("/project1/lab/cam1_caminfo").chans() if c.name in ("signal_fps", "capture_fps", "frames_dropped", "frames_repeated", "frames_skipped", "resx", "resy")] if op("/project1/lab/cam1_caminfo") else None,
-            "bron_fmt": [lab.op("bron").pixelFormat, lab.op("gk_klein").pixelFormat, lab.op("cam1_rechtop").pixelFormat],
-            "calib_topright": [round(v, 3) for v in lab.op("gk_calib").sample(u=0.9, v=0.9)],
-            "bron_topright": [round(v, 3) for v in lab.op("bron").sample(u=0.9, v=0.9)],
-            "bron_trui": [round(v, 3) for v in lab.op("bron").sample(u=0.5, v=0.2)],
-            "alpha_topright": [round(v, 3) for v in lab.op("gk_alpha").sample(u=0.9, v=0.9)],
-            "alpha_trui": [round(v, 3) for v in lab.op("gk_alpha").sample(u=0.5, v=0.2)],
-            "uKey": [lab.op("gk_alpha").par.vec0name.eval()] + [round(float(getattr(lab.op("gk_alpha").par, "vec0value" + c).eval()), 3) for c in "xyzw"],
-        },
-        "gpu_ms": {n: [round(float(getattr(lab.op(n), "cookTime", 0) or 0), 3), round(float(getattr(lab.op(n), "gpuCookTime", 0) or 0), 3)]
-                   for n in ("gk_alpha", "gk_dilate", "gk_erode", "gpu_key", "gpu_key_rvm", "std_key")},
-        "fouten": {o.name: (o.errors() or "") + (o.warnings() or "") for o in lab.children if (o.errors() or o.warnings())},
-        "venster_open": bool(lab.op("venster").isOpen),
-        "absTime_fps": round(1.0 / max(absTime.stepSeconds, 1e-6), 1),
+    t0 = me.fetch("t0", now, storeDefault=True)
+    if frame % 12 == 0:
+        _control(lab)
+    if now - t0 < 2.0:
+        return
+    me.store("t0", now)
+    me.store("dts", [])
+    exp = 1000.0 / max(project.cookRate, 1)
+    cam = lab.op("cam1_caminfo")
+    rvm = lab.op("info_rvm")
+    line = {
+        "t": time.strftime("%H:%M:%S"),
+        "n": len(dts),
+        "fps": round(len(dts) / (now - t0), 1),
+        "gem_ms": round(sum(dts) / max(len(dts), 1), 1),
+        "max_ms": round(max(dts) if dts else 0, 1),
+        "hapering_1.5x": sum(1 for d in dts if d > 1.5 * exp),
+        "groot_100ms": sum(1 for d in dts if d > 100),
+        "cookrate": project.cookRate,
+        "cam_skipped": _chan(cam, "frames_skipped"),
+        "cam_repeated": _chan(cam, "frames_repeated"),
+        "cam_dropped": _chan(cam, "frames_dropped"),
+        "cam_sync_timeouts": _chan(cam, "sync_timeouts"),
+        "rvm_infer": _chan(rvm, "infer_ms"),
+        "rvm_lat": _chan(rvm, "latency_ms"),
+        "rvm_processed": _chan(rvm, "processed"),
+        "rvm_dropped": _chan(rvm, "dropped"),
+        "weergave": lab.par.Weergave.eval(),
+        "teleprompters": bool(lab.par.Teleprompters.eval()),
+        "rvm_actief": bool(lab.op("route3_rvm").par.Active.eval()) if getattr(lab.op("route3_rvm").par, "Active", None) is not None else None,
+        "venster": bool(lab.op("venster").isOpen),
     }
-    try:
-        stats["cam1_alle_info"] = [c.name for c in lab.op("cam1_caminfo").chans()]
-    except Exception:
-        pass
-    open(os.path.join(OUT, "td_stats.json"), "w").write(json.dumps(stats, indent=1))
-    try:
-        if lab.par.Bron.eval().startswith("cam"):
-            _tmp = os.path.join(OUT, "bron_tmp.png")
-            lab.op("bron").save(_tmp)
-            os.replace(_tmp, os.path.join(OUT, "bron_" + lab.par.Bron.eval() + ".png"))
-        lab.op("uit").save(os.path.join(OUT, "td_raster.jpg"))
-    except Exception as e:
-        stats["save_fout"] = str(e)
-'''.replace("__OUT__", repr(OUT))
+    with open(os.path.join(OUT, "frametijden.jsonl"), "a") as f:
+        f.write(json.dumps(line) + "\n")
+""".replace("__OUT__", repr(OUT))
 mon = lab.create(executeDAT, "monitor")
 mon.text = MONITOR
 setp(mon, framestart=True, active=True)
@@ -368,14 +397,17 @@ def _na_laden(poging=0):
     v = lab2.op("route1_vision")
     r = lab2.op("route3_rvm")
     ck = lab2.op("gk_calib")
-    if any(getattr(o.par, n, None) is None for o, n in ((v, "Quality"), (r, "Model"), (ck, "Adapt"))) and poging < 40:
+    if getattr(r.par, "Model", None) is None and poging < 40:
         run(_na_laden, poging + 1, delayFrames=15)
         return
     model_expr = "=%r if me.inputs[0].width >= me.inputs[0].height else %r" % (
         os.path.join(MODELS, "rvm_1920x1080.mlpackage"), os.path.join(MODELS, "rvm_1080x1920.mlpackage"))
+    # Vision en kalibratie koken pas als de vergelijking aan staat; hun parameters bestaan dan pas
+    for _o in (v, ck):
+        _o.cook(force=True)
     setp(v, Quality="=parent().par.Visionkwaliteit.menuIndex", Output="=min(parent().par.Uitvoer.menuIndex, 1)")
     setp(r, Output=0, Model=model_expr)
-    setp(ck, Adapt=0.15, Active="=parent().par.Weergave.eval() == 'vergelijking'")
+    setp(ck, Adapt=0.15, Active="=parent().par.Weergave.eval() != 'rvm'")
     setp(v, Active="=parent().par.Weergave.eval() == 'vergelijking'")
     log("na laden, poging", poging, [(p.name, p.eval()) for p in v.pars() if p.name in ("Quality", "Output", "Active")])
     open(LOG, "a").write("\n".join(_log) + "\n")
