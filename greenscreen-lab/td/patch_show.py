@@ -146,6 +146,18 @@ def main():
                     f.unlink()
                 print(f"Camera{n}: oude chromaKey{n} weggehaald ({len(weg)} bestanden)")
             print(f"Camera{n}: greenscreen + key_transform + aansluiten + bedieningsvenster, null1 en keywindows omgezet")
+        # regiemonitor voor perform mode: Execute DAT bouwt /project1/monitor bij start (alleen als hij ontbreekt)
+        p1 = d / "project1"
+        (p1 / "monitor_bouwer.n").write_text(
+            "DAT:execute\ntile -1200 -1400 130 90\nflags =  parlanguage 0\ncolor 0.1 0.35 0.8 \nend\n")
+        (p1 / "monitor_bouwer.parm").write_text(
+            "?\nstart 67108864 on\ncreate 67108864 on\nlanguage 67108864 python\n?\n")
+        (p1 / "monitor_bouwer.text").write_bytes(dat_text((Path(__file__).parent / "monitor_ui.py").read_text()))
+        toc.extend(["project1/monitor_bouwer.n", "project1/monitor_bouwer.parm", "project1/monitor_bouwer.text"])
+        # Display-expressie van de camera's verwijst naar een niet-bestaande null2 (fout sinds v1.9): uitzetten
+        for n in (1, 2, 3):
+            cp = p1 / f"Camera{n}.parm"
+            cp.write_text(re.sub(r'display 67108913 on "1 if op\(\'null2\'\).*"\n', "display 67108864 off\n", cp.read_text()))
         toc_path.write_text("\n".join(toc) + "\n")
         work.unlink()
         subprocess.run([f"{TD}/toecollapse", work.name], capture_output=True, cwd=tmp)
