@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("node:fs/promises");
+const fsSync = require("node:fs");
 const path = require("node:path");
 const { compactCueForStorage } = require("./compact-results");
 
@@ -9,6 +10,11 @@ const DEFAULT_SHOW_CONTROL_DB_DIR = path.join(V2_ROOT, "modules", "show-control"
 const PAYLOAD_INDEX_SCHEMA_VERSION = "show-control.payload-index.v0";
 const writeQueues = new Map();
 const cueFileCaches = new Map();
+// cues.json wordt niet meer bij elke cue/ack volledig herschreven: wijzigingen gaan eerst
+// in het geheugen en worden kort daarna in één keer (compact) weggeschreven.
+const pendingCueFlushes = new Map();
+const CUE_FLUSH_DELAY_MS = Number(process.env.V2_SHOW_CONTROL_CUE_FLUSH_MS || 150);
+const DEFAULT_MAX_ACTIVE_CUES = 200;
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -37,6 +43,15 @@ function triggerBindingsFilePath() {
 
 function payloadIndexFilePath() {
   return assertPathUnderV2(path.join(showControlDbDir(), "payload-index.json"));
+}
+
+function cueArchiveDir() {
+  return assertPathUnderV2(path.join(showControlDbDir(), "cue-archief"));
+}
+
+function maxActiveCues() {
+  const value = Number(process.env.V2_SHOW_CONTROL_MAX_CUES || DEFAULT_MAX_ACTIVE_CUES);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_MAX_ACTIVE_CUES;
 }
 
 function payloadStoreDir() {
@@ -73,8 +88,10 @@ async function fileMtimeMs(filePath) {
 }
 
 async function readCueArrayCached(filePath = cuesFilePath()) {
-  const mtimeMs = await fileMtimeMs(filePath);
   const cached = cueFileCaches.get(filePath);
+  // Nog niet weggeschreven wijzigingen: het geheugen is nieuwer dan het bestand.
+  if (cached && pendingCueFlushes.has(filePath)) return cached.items;
+  const mtimeMs = await fileMtimeMs(filePath);
   if (cached && cached.mtimeMs === mtimeMs) return cached.items;
   const items = await readJsonArray(filePath);
   cueFileCaches.set(filePath, { mtimeMs: await fileMtimeMs(filePath), items });
@@ -116,18 +133,122 @@ async function writeJsonArray(filePath, items) {
   await fs.rename(tempPath, filePath);
 }
 
-async function writeCueArrayCached(filePath, items) {
-  await writeJsonArray(filePath, items);
-  cueFileCaches.set(filePath, {
-    mtimeMs: await fileMtimeMs(filePath),
-    items: cloneJson(items),
+async function writeCueArrayCompact(filePath, items) {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  await fs.writeFile(tempPath, `${JSON.stringify(items)}\n`, "utf8");
+  await fs.rename(tempPath, filePath);
+}
+
+async function readBoundCueIds() {
+  try {
+    const bindings = await readJsonArray(triggerBindingsFilePath());
+    return new Set(bindings.map((binding) => binding && binding.cueId).filter(Boolean));
+  } catch (_err) {
+    return new Set();
+  }
+}
+
+// Houdt cues.json klein: de oudste cues boven het maximum gaan naar
+// db/cue-archief/cues-JJJJ-MM-DD.jsonl (één cue per regel). Cues waar een
+// trigger-binding naar wijst, blijven staan.
+async function pruneCueArray(items) {
+  const max = maxActiveCues();
+  if (items.length <= max) return [];
+  const bound = await readBoundCueIds();
+  let excess = items.length - max;
+  const keep = [];
+  const pruned = [];
+  for (const cue of items) {
+    if (excess > 0 && !(cue && bound.has(cue.cueId))) {
+      pruned.push(cue);
+      excess -= 1;
+    } else {
+      keep.push(cue);
+    }
+  }
+  if (!pruned.length) return [];
+  const day = new Date().toISOString().slice(0, 10);
+  const archivePath = path.join(cueArchiveDir(), `cues-${day}.jsonl`);
+  await fs.mkdir(path.dirname(archivePath), { recursive: true });
+  await fs.appendFile(archivePath, pruned.map((cue) => JSON.stringify(cue)).join("\n") + "\n", "utf8");
+  items.splice(0, items.length, ...keep);
+  return pruned;
+}
+
+async function flushCueFile(filePath) {
+  const pending = pendingCueFlushes.get(filePath);
+  if (pending && pending.timer) clearTimeout(pending.timer);
+  return withFileQueue(filePath, async () => {
+    if (!pendingCueFlushes.has(filePath)) return;
+    pendingCueFlushes.delete(filePath);
+    const cached = cueFileCaches.get(filePath);
+    if (!cached) return;
+    const pruned = await pruneCueArray(cached.items);
+    await writeCueArrayCompact(filePath, cached.items);
+    cached.mtimeMs = await fileMtimeMs(filePath);
+    if (pruned.length) await prunePayloadIndex(cached.items);
   });
+}
+
+function scheduleCueFlush(filePath) {
+  if (pendingCueFlushes.has(filePath)) return;
+  const entry = { timer: null };
+  pendingCueFlushes.set(filePath, entry);
+  entry.timer = setTimeout(() => {
+    flushCueFile(filePath).catch((err) => {
+      process.stderr.write(`Show Control cue flush failed: ${err && err.message ? err.message : err}\n`);
+    });
+  }, CUE_FLUSH_DELAY_MS);
+  if (entry.timer.unref) entry.timer.unref();
+}
+
+async function flushCueStore() {
+  await Promise.all([...pendingCueFlushes.keys()].map((filePath) => flushCueFile(filePath)));
+}
+
+function flushCueStoreSync() {
+  for (const filePath of [...pendingCueFlushes.keys()]) {
+    const pending = pendingCueFlushes.get(filePath);
+    if (pending && pending.timer) clearTimeout(pending.timer);
+    pendingCueFlushes.delete(filePath);
+    const cached = cueFileCaches.get(filePath);
+    if (!cached) continue;
+    try {
+      fsSync.mkdirSync(path.dirname(filePath), { recursive: true });
+      const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+      fsSync.writeFileSync(tempPath, `${JSON.stringify(cached.items)}\n`, "utf8");
+      fsSync.renameSync(tempPath, filePath);
+    } catch (err) {
+      process.stderr.write(`Show Control cue flush (exit) failed: ${err && err.message ? err.message : err}\n`);
+    }
+  }
+}
+
+let exitFlushInstalled = false;
+function installExitFlush() {
+  if (exitFlushInstalled) return;
+  exitFlushInstalled = true;
+  for (const signal of ["SIGTERM", "SIGINT"]) {
+    process.once(signal, () => {
+      flushCueStoreSync();
+      process.exit(0);
+    });
+  }
+}
+
+// Wijzigt de cue-lijst in het geheugen en plant één schrijfactie in.
+function markCueArrayChanged(filePath, items, mtimeMs) {
+  const cached = cueFileCaches.get(filePath);
+  if (!cached || cached.items !== items) cueFileCaches.set(filePath, { mtimeMs, items });
+  installExitFlush();
+  scheduleCueFlush(filePath);
 }
 
 async function writeJsonObject(filePath, item) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(tempPath, `${JSON.stringify(item, null, 2)}\n`, "utf8");
+  await fs.writeFile(tempPath, `${JSON.stringify(item)}\n`, "utf8");
   await fs.rename(tempPath, filePath);
 }
 
@@ -201,6 +322,32 @@ async function updatePayloadIndexForCue(cue) {
   });
 }
 
+// Haalt payloads van cues die niet meer in cues.json staan uit de index (de cue zelf,
+// met payload, staat in het cue-archief).
+async function prunePayloadIndex(activeCues) {
+  const filePath = payloadIndexFilePath();
+  return withFileQueue(filePath, async () => {
+    const index = await readJsonObject(filePath, null);
+    if (!index || !index.entries || typeof index.entries !== "object") return 0;
+    const active = new Set(activeCues.map((cue) => cue && cue.cueId).filter(Boolean));
+    const removed = [];
+    for (const [payloadId, entry] of Object.entries(index.entries)) {
+      if (!entry || !active.has(entry.cueId)) {
+        removed.push(payloadId);
+        delete index.entries[payloadId];
+      }
+    }
+    if (!removed.length) return 0;
+    index.count = Object.keys(index.entries).length;
+    index.updatedAt = new Date().toISOString();
+    await writeJsonObject(filePath, index);
+    for (let i = 0; i < removed.length; i += 100) {
+      await Promise.all(removed.slice(i, i + 100).map((payloadId) => fs.rm(payloadFilePath(payloadId), { force: true })));
+    }
+    return removed.length;
+  });
+}
+
 async function rebuildPayloadIndex() {
   const cues = await readCueArrayCached(cuesFilePath());
   const index = await payloadIndexFromCues(cues);
@@ -230,11 +377,13 @@ async function saveCue(cue) {
     Object.assign(cue, compactCue);
   }
   return withFileQueue(filePath, async () => {
-    const cues = cloneJson(await readCueArrayCached(filePath));
+    const cues = await readCueArrayCached(filePath);
+    const cached = cueFileCaches.get(filePath);
+    const stored = cloneJson(cue);
     const index = cues.findIndex((item) => item.cueId === cue.cueId);
-    if (index >= 0) cues[index] = cue;
-    else cues.push(cue);
-    await writeCueArrayCached(filePath, cues);
+    if (index >= 0) cues[index] = stored;
+    else cues.push(stored);
+    markCueArrayChanged(filePath, cues, cached ? cached.mtimeMs : null);
     await updatePayloadIndexForCue(cue);
     return cue;
   });
@@ -305,16 +454,43 @@ async function readCues(filter = {}) {
 async function archiveCue(cueId, options = {}) {
   const filePath = cuesFilePath();
   return withFileQueue(filePath, async () => {
-    const cues = cloneJson(await readCueArrayCached(filePath));
-    const cue = cues.find((item) => item.cueId === cueId);
-    if (!cue) throw new Error(`show_control_cue_not_found:${cueId}`);
+    const cues = await readCueArrayCached(filePath);
+    const cached = cueFileCaches.get(filePath);
+    const index = cues.findIndex((item) => item.cueId === cueId);
+    if (index < 0) throw new Error(`show_control_cue_not_found:${cueId}`);
+    const cue = cloneJson(cues[index]);
     const now = new Date().toISOString();
     cue.archivedAt = cue.archivedAt || now;
     cue.archivedReason = options.reason || cue.archivedReason || "manual_archive";
     cue.archivedBy = options.archivedBy || cue.archivedBy || "show-control";
-    await writeCueArrayCached(filePath, cues);
+    cues[index] = cue;
+    markCueArrayChanged(filePath, cues, cached ? cached.mtimeMs : null);
     return cloneJson(cue);
   });
+}
+
+// Voor /status: tellingen, waarschuwingen en de laatste cue zonder alle cues te kopiëren.
+async function readCueSummary() {
+  const cues = await readCueArrayCached(cuesFilePath());
+  let count = 0;
+  let archivedCount = 0;
+  let latestCue = null;
+  const warnings = [];
+  for (const cue of cues) {
+    if (cue.archivedAt) {
+      archivedCount += 1;
+      continue;
+    }
+    count += 1;
+    latestCue = cue;
+    if (cue.status && Array.isArray(cue.status.warnings)) warnings.push(...cue.status.warnings);
+  }
+  return {
+    count,
+    archivedCount,
+    warnings: cloneJson(warnings),
+    latestCue: latestCue ? cloneJson(latestCue) : null,
+  };
 }
 
 async function readCue(cueId) {
@@ -337,10 +513,12 @@ module.exports = {
   archiveCue,
   cuesFilePath,
   findCuePayload,
+  flushCueStore,
   payloadFilePath,
   payloadIndexFilePath,
   payloadStoreDir,
   readCue,
+  readCueSummary,
   readCues,
   readIndexedPayload,
   readTriggerBinding,

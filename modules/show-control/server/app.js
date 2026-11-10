@@ -19,6 +19,7 @@ const {
   readIndexedPayload,
   archiveCue,
   readCue,
+  readCueSummary,
   readCues,
   readTriggerBinding,
   readTriggerBindings,
@@ -558,11 +559,10 @@ function createShowControlApp(options = {}) {
   }));
 
   app.get("/v0/show-control/status", asyncRoute(async (req, res) => {
-    const cues = await readCues();
-    const archivedCues = await readCues({ archived: "only" });
+    const cueSummary = await readCueSummary();
     const bindings = await readTriggerBindings();
-    const warnings = cues.flatMap((cue) => (cue.status && cue.status.warnings ? cue.status.warnings : []));
-    const latestCue = cues[cues.length - 1] || null;
+    const warnings = cueSummary.warnings;
+    const latestCue = cueSummary.latestCue;
     const full = wantsFullDetail(req);
     const latestCueSummary = latestCue ? summarizeCue(latestCue, { actionLimit: 10, logLimit: 24 }) : null;
     const [hardware, environmentExtras] = await Promise.all([
@@ -574,8 +574,8 @@ function createShowControlApp(options = {}) {
       schemaVersion: SHOW_CONTROL_STATUS_SCHEMA_VERSION,
       service: "show-control",
       detail: full ? "full" : "summary",
-      cueCount: cues.length,
-      archivedCueCount: archivedCues.length,
+      cueCount: cueSummary.count,
+      archivedCueCount: cueSummary.archivedCount,
       bindingCount: bindings.length,
       warningCount: warnings.length,
       warnings,

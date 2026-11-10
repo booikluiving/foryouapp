@@ -13,6 +13,7 @@ const {
   readIndexedPayload,
   rebuildPayloadIndex,
   saveCue,
+  flushCueStore,
 } = require("../cue-engine/state-store");
 const {
   buildPrepareCue,
@@ -519,6 +520,7 @@ async function main() {
     const indexText = await fs.readFile(payloadIndexFilePath(), "utf8");
     assert(!indexText.includes("indexed-payload"), "payload-index file should not inline payload data");
   } finally {
+    await flushCueStore();
     if (previousDbDir == null) delete process.env.V2_SHOW_CONTROL_DB_DIR;
     else process.env.V2_SHOW_CONTROL_DB_DIR = previousDbDir;
     await fs.rm(tempDbDir, { recursive: true, force: true });

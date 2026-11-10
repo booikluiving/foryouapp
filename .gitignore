@@ -29,6 +29,7 @@ modules/script-agent/db/*.json
 modules/show-control/db/*.json
 modules/show-control/db/*.backup-*
 modules/show-control/db/payloads/
+modules/show-control/db/cue-archief/
 modules/catalog/media/**
 !modules/catalog/media/
 !modules/catalog/media/**/
