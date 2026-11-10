@@ -19,14 +19,17 @@ def bouw():
     m = p.create(containerCOMP, 'monitor')
     m.nodeX, m.nodeY = -1200, -1600
     m.par.w, m.par.h = W, H
+    m.par.display = False  # niet over de oude /project1-weergave heen tekenen; de monitor heeft een eigen venster
     m.color = (0.1, 0.35, 0.8)
 
     achter = m.create(constantTOP, 'achtergrond')
     achter.par.colorr, achter.par.colorg, achter.par.colorb = 0.07, 0.07, 0.08
     achter.par.outputresolution = 'custom'
     achter.par.resolutionw, achter.par.resolutionh = W, H
-    m.par.top = 'achtergrond'
-    ruit = m.create(rampTOP, 'raster')  # neutrale achtergrond onder het gekeyde beeld
+    # let op: TOP-verwijzingen van een COMP lossen hier niet relatief op; altijd absolute paden gebruiken
+    m.par.top = m.path + '/achtergrond'
+    ruit = m.create(constantTOP, 'grijs')  # neutraal grijs onder het gekeyde beeld
+    ruit.par.colorr = ruit.par.colorg = ruit.par.colorb = 0.32
     ruit.par.outputresolution = 'custom'
     ruit.par.resolutionw, ruit.par.resolutionh = 16, 16
 
@@ -61,7 +64,7 @@ def bouw():
         paneel = m.create(containerCOMP, naam)
         paneel.par.x, paneel.par.y = x, H - y - h
         paneel.par.w, paneel.par.h = w, h
-        paneel.par.top = '../' + samen.name
+        paneel.par.top = samen.path
         return paneel
 
     # bovenbalk: fase + status
@@ -75,13 +78,14 @@ def bouw():
     fase.par.bgalpha = 0
     fp = m.create(containerCOMP, 'fase')
     fp.par.x, fp.par.y, fp.par.w, fp.par.h = MARGE, H - MARGE - 56, 900, 56
-    fp.par.top = '../fase_tekst'
+    fp.par.top = fase.path
 
     status = m.create(textTOP, 'status_tekst')
+    # geen generator-expressies in parameter-expressies: daarin is op() niet zichtbaar
     status.par.text.expr = (
-        "'TD %d fps   ' % round(1 / max(absTime.stepSeconds, 1e-3)) + "
-        "'   '.join('cam%d RVM %s ms' % (n, int(op('/project1/Camera%d/greenscreen/info_rvm')['infer_ms'].eval()) "
-        "if op('/project1/Camera%d/greenscreen/info_rvm') else '-') for n in (1, 2, 3))")
+        "'TD %d fps     RVM  cam1 %d ms   cam2 %d ms   cam3 %d ms' % (round(1 / max(absTime.stepSeconds, 1e-3)), "
+        "op('/project1/Camera1/greenscreen/info_rvm')['infer_ms'], op('/project1/Camera2/greenscreen/info_rvm')['infer_ms'], "
+        "op('/project1/Camera3/greenscreen/info_rvm')['infer_ms'])")
     status.par.outputresolution = 'custom'
     status.par.resolutionw, status.par.resolutionh = 960, 56
     status.par.alignx, status.par.aligny = 'right', 'center'
@@ -90,7 +94,7 @@ def bouw():
     status.par.bgalpha = 0
     sp = m.create(containerCOMP, 'status')
     sp.par.x, sp.par.y, sp.par.w, sp.par.h = W - MARGE - 960, H - MARGE - 56, 960, 56
-    sp.par.top = '../status_tekst'
+    sp.par.top = status.path
 
     # per camera: gekeyd beeld, teleprompter, key-bediening
     boven = MARGE + 56 + MARGE
@@ -114,10 +118,44 @@ def bouw():
     return m
 
 
-def koppel_perform():
-    w = op('/perform')
-    if w is not None and op('/project1/monitor') is not None:
+def venster_en_knop():
+    p = op('/project1')
+    # eigen venster op de tweede regiemonitor (niet de LG: TD-monitor 0 is hier de LG)
+    w = p.op('monitor_venster')
+    if w is None:
+        w = p.create(windowCOMP, 'monitor_venster')
+        w.nodeX, w.nodeY = -1000, -1600
         w.par.winop = '/project1/monitor'
+        w.par.title = 'For_You regiemonitor'
+        w.par.borders = True
+        w.par.winw, w.par.winh = W, H
+        doel = None
+        for i, mon in enumerate(monitors):
+            if not mon.isPrimary and mon.width < 3000:
+                doel = i
+        if doel is None:
+            for i, mon in enumerate(monitors):
+                if mon.isPrimary:
+                    doel = i
+        if doel is not None:
+            w.par.monitor = doel
+        w.par.justifyh, w.par.justifyv = 'center', 'center'
+    # knop in het netwerk van /project1 om het venster te openen
+    if p.op('OPEN_REGIEMONITOR') is None:
+        b = p.create(buttonCOMP, 'OPEN_REGIEMONITOR')
+        b.nodeX, b.nodeY = -1000, -1450
+        b.par.w, b.par.h = 220, 60
+        b.par.display = False
+        b.viewer = True
+        for naam in ('label', 'text', 'buttonlabel'):
+            if hasattr(b.par, naam):
+                setattr(b.par, naam, 'OPEN REGIEMONITOR')
+        pe = p.create(panelexecuteDAT, 'open_regiemonitor')
+        pe.nodeX, pe.nodeY = -800, -1450
+        pe.par.panels = b.name
+        pe.par.offtoon = True
+        pe.text = "def onOffToOn(panelValue):\n    op('/project1/monitor_venster').par.winopen.pulse()\n    return\n"
+    run("op('/project1/monitor_venster').par.winopen.pulse()", delayFrames=60)
 
 
 def _veilig():
@@ -127,7 +165,7 @@ def _veilig():
     f = os.path.join(d, 'monitor_fout.txt')
     try:
         bouw()
-        koppel_perform()
+        venster_en_knop()
         if os.path.exists(f):
             os.remove(f)
     except Exception:
