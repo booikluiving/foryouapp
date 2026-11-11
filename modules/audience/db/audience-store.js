@@ -262,6 +262,16 @@ class AudienceStore {
       CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_messages(session_id, id);
       CREATE INDEX IF NOT EXISTS idx_chat_client ON chat_messages(session_id, client_key, id);
 
+      -- Likes op comments: één per telefoon per comment.
+      CREATE TABLE IF NOT EXISTS comment_likes (
+        message_id INTEGER NOT NULL,
+        session_id INTEGER NOT NULL,
+        client_key TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (message_id, client_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_likes_session ON comment_likes(session_id, message_id);
+
       CREATE TABLE IF NOT EXISTS signals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         signal_id TEXT NOT NULL UNIQUE,
@@ -603,6 +613,43 @@ class AudienceStore {
       fromBoolean(message.isBot)
     );
     return Number(insert.lastInsertRowid);
+  }
+
+  getChatMessage(id) {
+    return parseChatRow(this.db.prepare("SELECT * FROM chat_messages WHERE id = ?").get(Number(id || 0)));
+  }
+
+  // Zet een like aan of uit; geeft de nieuwe stand en het aantal terug.
+  toggleCommentLike({ sessionId, messageId, clientKey, liked } = {}) {
+    const args = [Number(messageId || 0), String(clientKey || "")];
+    const had = !!this.db.prepare("SELECT 1 FROM comment_likes WHERE message_id = ? AND client_key = ?").get(...args);
+    const wil = liked === undefined ? !had : !!liked;
+    if (wil && !had) {
+      this.db.prepare("INSERT OR IGNORE INTO comment_likes (message_id, session_id, client_key, created_at) VALUES (?, ?, ?, ?)")
+        .run(Number(messageId || 0), Number(sessionId || 0), String(clientKey || ""), nowIso());
+    } else if (!wil && had) {
+      this.db.prepare("DELETE FROM comment_likes WHERE message_id = ? AND client_key = ?").run(...args);
+    }
+    return { liked: wil, likes: this.commentLikeCount(messageId) };
+  }
+
+  commentLikeCount(messageId) {
+    const row = this.db.prepare("SELECT COUNT(*) AS n FROM comment_likes WHERE message_id = ?").get(Number(messageId || 0));
+    return Number(row && row.n || 0);
+  }
+
+  // { messageId: aantal } voor een sessie
+  commentLikeCounts(sessionId) {
+    const out = {};
+    for (const row of this.db.prepare("SELECT message_id, COUNT(*) AS n FROM comment_likes WHERE session_id = ? GROUP BY message_id").all(Number(sessionId || 0))) {
+      out[Number(row.message_id)] = Number(row.n || 0);
+    }
+    return out;
+  }
+
+  likedMessageIds({ sessionId, clientKey } = {}) {
+    return this.db.prepare("SELECT message_id FROM comment_likes WHERE session_id = ? AND client_key = ?")
+      .all(Number(sessionId || 0), String(clientKey || "")).map((r) => Number(r.message_id));
   }
 
   recentChatMessages({ sessionId, limit = 80, status } = {}) {

@@ -252,6 +252,14 @@ function attachAudienceRealtime(server, service, options = {}) {
         return;
       }
 
+      if (msg.type === "like") {
+        meta.clientTag = msg.clientTag || meta.clientTag;
+        const result = service.acceptLike(meta, msg.id, msg.liked);
+        if (result && result.error) sendJson(client, { type: "error", ...result.error, id: msg.id });
+        else if (result && result.ok && !result.throttled) sendJson(client, { type: "like_ok", id: result.id, liked: result.liked, likes: result.likes });
+        return;
+      }
+
       if (msg.type === "poll_vote") {
         meta.clientTag = msg.clientTag || meta.clientTag;
         const result = await service.acceptPollVote(meta, msg.pollId, msg.optionIndex);

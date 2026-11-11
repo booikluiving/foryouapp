@@ -457,6 +457,49 @@
       #chatFeed .chatName {
         font-weight: 700;
       }
+      #chatFeed .chatLine:has(.likeKnop) {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+      }
+      #chatFeed .chatBody,
+      #topComment .chatBody {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .likeKnop {
+        flex: 0 0 auto;
+        min-width: 44px;
+        padding: 2px 0 2px 8px;
+        border: 0;
+        background: none;
+        color: var(--b);
+        font: inherit;
+        font-size: 15px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+      .likeKnop .hart { font-size: 18px; }
+      .likeKnop.geliked { color: var(--a); }
+      .likeKnop.geliked .hart { color: #ff3b5c; }
+      #topComment {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--c);
+        font-size: 17px;
+        line-height: 1.3;
+      }
+      #topComment .topLabel {
+        display: block;
+        color: var(--b);
+        font-size: 13px;
+        margin-bottom: 2px;
+      }
       #chatFeed .chatTime {
         color: var(--b);
       }
@@ -729,6 +772,7 @@
       </div>
       <div id="pollMeta"></div>
     </div>
+    <div id="topComment" hidden></div>
     <div id="chatFeed"></div>
     <div id="naVraag" hidden></div>
     <div class="composer">
@@ -785,6 +829,17 @@
       const devPanelEl = document.getElementById("devPanel");
       const logEl = document.getElementById("log");
       const chatFeedEl = document.getElementById("chatFeed");
+      const topCommentEl = document.getElementById("topComment");
+      // Likes op comments: welke ik geliked heb (per sessie, in localStorage) en het aantal per comment.
+      let likeSessieId = 0;
+      let mijnLikes = new Set();
+      function laadMijnLikes(sessieId) {
+        likeSessieId = Number(sessieId || 0);
+        try { mijnLikes = new Set(JSON.parse(localStorage.getItem("fy_likes_" + likeSessieId) || "[]")); } catch { mijnLikes = new Set(); }
+      }
+      function bewaarMijnLikes() {
+        try { localStorage.setItem("fy_likes_" + likeSessieId, JSON.stringify(Array.from(mijnLikes).slice(-500))); } catch {}
+      }
       const serverLogEl = document.getElementById("serverLog");
       const textEl = document.getElementById("text");
       const sendBtn = document.getElementById("send");
@@ -1037,8 +1092,15 @@
             const textNode = document.createElement("span");
             textNode.textContent = ": " + String(entry.text || "");
 
-            row.appendChild(nameNode);
-            row.appendChild(textNode);
+            if (entry.id) {
+              const body = document.createElement("span");
+              body.className = "chatBody";
+              body.append(nameNode, textNode);
+              row.append(body, likeKnop(entry));
+            } else {
+              row.appendChild(nameNode);
+              row.appendChild(textNode);
+            }
           } else {
             row.textContent = String((entry && entry.text) || "");
           }
@@ -1046,6 +1108,76 @@
           fragment.appendChild(row);
         }
         chatFeedEl.appendChild(fragment);
+        renderTopComment();
+      }
+
+      function likeKnop(entry) {
+        const knop = document.createElement("button");
+        knop.type = "button";
+        knop.className = "likeKnop";
+        knop.setAttribute("data-like-id", String(entry.id));
+        const geliked = mijnLikes.has(entry.id);
+        if (geliked) knop.classList.add("geliked");
+        knop.setAttribute("aria-label", geliked ? "Like weghalen" : "Like");
+        const hart = document.createElement("span");
+        hart.className = "hart";
+        hart.textContent = geliked ? "\u2665" : "\u2661";
+        knop.appendChild(hart);
+        if (entry.likes > 0) knop.appendChild(document.createTextNode(" " + entry.likes));
+        return knop;
+      }
+
+      // Comment met de meeste likes (minstens 1) bovenaan.
+      function renderTopComment() {
+        let top = null;
+        for (const e of chatLogEntries) {
+          if (!e || e.type !== "comment" || !e.id || e.systemNotice || !(e.likes > 0)) continue;
+          if (!top || e.likes > top.likes || (e.likes === top.likes && e.id < top.id)) top = e;
+        }
+        topCommentEl.textContent = "";
+        topCommentEl.hidden = !top || interactionMode !== "chat";
+        if (!top) return;
+        const body = document.createElement("span");
+        body.className = "chatBody";
+        const label = document.createElement("span");
+        label.className = "topLabel";
+        label.textContent = "Topcomment";
+        const naam = document.createElement("span");
+        naam.className = "chatName";
+        naam.textContent = String(top.name || "Anoniem");
+        if (top.nameColor) naam.style.color = top.nameColor;
+        body.append(label, naam, document.createTextNode(": " + String(top.text || "")));
+        topCommentEl.append(body, likeKnop(top));
+      }
+
+      function zetLikes(id, likes) {
+        const entry = chatLogEntries.find((e) => e && e.id === id);
+        if (!entry) return;
+        entry.likes = Math.max(0, Number(likes) || 0);
+        renderChatFeed();
+      }
+
+      function drukLike(id) {
+        const entry = chatLogEntries.find((e) => e && e.id === id);
+        if (!entry) return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          ensureFreshConnection();
+          return;
+        }
+        const nu = !mijnLikes.has(id);
+        if (nu) mijnLikes.add(id); else mijnLikes.delete(id);
+        bewaarMijnLikes();
+        entry.likes = Math.max(0, (entry.likes || 0) + (nu ? 1 : -1));
+        renderChatFeed();
+        if (nu && supportsNativeVibration) { try { navigator.vibrate(10); } catch {} }
+        try { ws.send(JSON.stringify({ type: "like", id, liked: nu, clientTag })); } catch {}
+      }
+
+      function onLikeKlik(e) {
+        const knop = e.target.closest && e.target.closest("button[data-like-id]");
+        if (!knop) return;
+        e.preventDefault();
+        drukLike(Number(knop.getAttribute("data-like-id")));
       }
 
       function buildChatEntryKey(entry) {
@@ -1088,6 +1220,8 @@
         const rankBadge = normalizeRankBadge(msg && msg.rankBadge);
         const systemNotice = !!(msg && msg.system);
         const time = String((msg && msg.time) || "").trim();
+        const id = Number(msg && msg.id) || 0;
+        if (id && chatLogEntries.some((e) => e && e.id === id)) return false;
         const key = buildChatEntryKey({
           time,
           name,
@@ -1099,6 +1233,8 @@
         if (key && chatEntryKeys.has(key)) return false;
         return pushChatEntry({
           type: "comment",
+          id,
+          likes: Number(msg && msg.likes) || 0,
           time,
           name,
           text,
@@ -1444,6 +1580,7 @@
         textEl.hidden = !chatMode;
         sendBtn.hidden = !chatMode;
         textEl.parentElement.hidden = !chatMode;
+        renderTopComment();
         reactionBarEl.hidden = !(reactionMode || chatMode);
         pollBoxEl.hidden = !chatMode || !activePoll;
 
@@ -2462,6 +2599,17 @@
           appendChat("Je stem was al opgeslagen.");
           return;
         }
+        if (code === "like_eigen" || code === "like_invalid") {
+          const id = Number(msg.id);
+          if (mijnLikes.delete(id)) {
+            bewaarMijnLikes();
+            const entry = chatLogEntries.find((e) => e && e.id === id);
+            if (entry) entry.likes = Math.max(0, (entry.likes || 0) - 1);
+            renderChatFeed();
+          }
+          showToast(String(msg.message || "Dat lukt niet."), { subtle: true, autoHideMs: 2000 });
+          return;
+        }
         if (code === "scene_typen_dicht") {
           showToast("Typen kan weer na de scène.", { subtle: true, autoHideMs: 2400 });
           return;
@@ -2644,6 +2792,7 @@
           try {
             const msg = JSON.parse(ev.data);
             if (msg.type === "hello") {
+              if (Number(msg.sessionId || 0) !== likeSessieId) laadMijnLikes(msg.sessionId);
               observeServerInstanceId(msg.serverInstanceId, "ws_hello");
               applyBuildLabel(msg.buildVersion, msg.buildLabel, "ws_hello");
               noteServerSeen();
@@ -2654,6 +2803,17 @@
                 faseNu = msg.fase.fase === "scene" ? "scene" : "tussen";
                 renderInteractionMode();
               }
+              return;
+            }
+            if (msg.type === "comment_likes") {
+              zetLikes(Number(msg.id), msg.likes);
+              return;
+            }
+            if (msg.type === "like_ok") {
+              const id = Number(msg.id);
+              if (msg.liked) mijnLikes.add(id); else mijnLikes.delete(id);
+              bewaarMijnLikes();
+              zetLikes(id, msg.likes);
               return;
             }
             if (msg.type === "fase") {
@@ -2913,6 +3073,8 @@
         const characterId = Number.parseInt(btn.getAttribute("data-scene-vote-character"), 10);
         submitSceneCharacterVote(characterId);
       });
+      chatFeedEl.addEventListener("click", onLikeKlik);
+      topCommentEl.addEventListener("click", onLikeKlik);
       reactionBarEl.addEventListener("pointerdown", (e) => {
         const btn = readReactionButtonFromEventTarget(e.target);
         if (!btn) return;

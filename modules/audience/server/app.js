@@ -105,7 +105,7 @@ function createAudienceApp(options = {}) {
   });
 
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
-  const STROOM_TYPES = new Set(["comment", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed"]);
+  const STROOM_TYPES = new Set(["comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed"]);
   app.get("/audience/stage/stroom", (req, res) => {
     res.set({
       "Content-Type": "text/event-stream",
@@ -119,7 +119,7 @@ function createAudienceApp(options = {}) {
     };
     let berichten = [];
     try {
-      const history = service.publicHistory(12);
+      const history = service.publicHistory(60);
       berichten = (history.messages || []).filter((m) => !m.system);
     } catch {}
     stuur({
