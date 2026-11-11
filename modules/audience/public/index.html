@@ -820,6 +820,7 @@
       let faseNu = "tussen";
       let naSceneVraag = "En?";
       const TEXT_PLACEHOLDER = "Typ je reactie";
+      const NA_SCENE_PLACEHOLDER = "Laat je reactie achter";
       const NA_SCENE_TRIL = [45, 90, 45, 90, 45];
       const REACTION_POINTER_GHOST_MS = 700;
       const HEART_HAPTIC_MIN_GAP_MS = 90;
@@ -1151,7 +1152,7 @@
         el.style.animation = "none";
         void el.offsetWidth;
         el.style.animation = "";
-        textEl.placeholder = naSceneVraag;
+        textEl.placeholder = NA_SCENE_PLACEHOLDER;
         if (supportsNativeVibration) {
           try { navigator.vibrate(NA_SCENE_TRIL); } catch {}
         }

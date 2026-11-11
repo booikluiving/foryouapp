@@ -43,6 +43,8 @@ const REACTIES_STANDAARD = Object.freeze([
 const FASE_POLL_MS = 1000;
 // Vraag die na de scène op de telefoon verschijnt (met een paar trillingen); instelbaar in Admin.
 const NA_SCENE_VRAAG_KEY = "na_scene_vraag";
+// Ronde = van de start van een scène tot de start van de volgende: daarover tellen we de emoji.
+const RONDE_KEY = "ronde";
 const NA_SCENE_VRAAG_STANDAARD = "En?";
 
 function normalizeNaSceneVraag(raw) {
@@ -87,6 +89,17 @@ const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   leaderboardX: 98,
   leaderboardY: 18,
   leaderboardFadeStart: 74,
+  // Tussenscherm (1080x1920): titel, script, tellingen en reacties van de vorige scène.
+  tussenTitel: "Generating next scene",
+  tussenTitelY: 110,
+  tussenTitelGrootte: 64,
+  tussenScriptY: 230,
+  tussenScriptHoogte: 860,
+  tussenStatsY: 1150,
+  tussenStatsGrootte: 88,
+  tussenChatY: 1380,
+  tussenChatHoogte: 480,
+  tussenChatGrootte: 40,
 });
 const DIRECT_LINK_RE = /\b(?:https?:\/\/|www\.)\S+/i;
 const DOMAIN_RE = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|nl|be|de|eu|io|gg|tv|co|me|app|dev|info|xyz|ly|to|ai)\b/i;
@@ -195,6 +208,16 @@ function normalizeStageSettings(raw = {}, base = STAGE_OUTPUT_DEFAULTS) {
     leaderboardX: clampFloat(src.leaderboardX, 0, 100, Number(base.leaderboardX || 98)),
     leaderboardY: clampFloat(src.leaderboardY, 0, 100, Number(base.leaderboardY || 18)),
     leaderboardFadeStart: clampInt(src.leaderboardFadeStart, 30, 100, Number(base.leaderboardFadeStart || 74)),
+    tussenTitel: String(src.tussenTitel !== undefined ? src.tussenTitel : (base.tussenTitel ?? STAGE_OUTPUT_DEFAULTS.tussenTitel)).replace(/\s+/g, " ").trim().slice(0, 80),
+    tussenTitelY: clampInt(src.tussenTitelY, 0, 1900, Number(base.tussenTitelY ?? STAGE_OUTPUT_DEFAULTS.tussenTitelY)),
+    tussenTitelGrootte: clampInt(src.tussenTitelGrootte, 16, 220, Number(base.tussenTitelGrootte ?? STAGE_OUTPUT_DEFAULTS.tussenTitelGrootte)),
+    tussenScriptY: clampInt(src.tussenScriptY, 0, 1900, Number(base.tussenScriptY ?? STAGE_OUTPUT_DEFAULTS.tussenScriptY)),
+    tussenScriptHoogte: clampInt(src.tussenScriptHoogte, 100, 1920, Number(base.tussenScriptHoogte ?? STAGE_OUTPUT_DEFAULTS.tussenScriptHoogte)),
+    tussenStatsY: clampInt(src.tussenStatsY, 0, 1900, Number(base.tussenStatsY ?? STAGE_OUTPUT_DEFAULTS.tussenStatsY)),
+    tussenStatsGrootte: clampInt(src.tussenStatsGrootte, 24, 260, Number(base.tussenStatsGrootte ?? STAGE_OUTPUT_DEFAULTS.tussenStatsGrootte)),
+    tussenChatY: clampInt(src.tussenChatY, 0, 1900, Number(base.tussenChatY ?? STAGE_OUTPUT_DEFAULTS.tussenChatY)),
+    tussenChatHoogte: clampInt(src.tussenChatHoogte, 100, 1920, Number(base.tussenChatHoogte ?? STAGE_OUTPUT_DEFAULTS.tussenChatHoogte)),
+    tussenChatGrootte: clampInt(src.tussenChatGrootte, 16, 120, Number(base.tussenChatGrootte ?? STAGE_OUTPUT_DEFAULTS.tussenChatGrootte)),
   };
 }
 
@@ -457,6 +480,7 @@ class AudienceService extends EventEmitter {
     // Fase van de voorstelling, uit de runtime: "scene" (situatie loopt) of "tussen".
     this.fase = { fase: "tussen", titel: null, situationRunId: null, sinds: nowIso(), bekend: false };
     this.faseTimer = null;
+    this.ronde = this.laadRonde();
     this.pollAutoCloseTimer = null;
     this.internalSimulatorKey = crypto.randomBytes(16).toString("hex");
     this.liveScoreDispatchWork = Promise.resolve();
@@ -569,6 +593,38 @@ class AudienceService extends EventEmitter {
     return { ...this.fase };
   }
 
+  laadRonde() {
+    const opgeslagen = this.store.getSetting(RONDE_KEY, null);
+    const ronde = opgeslagen && typeof opgeslagen === "object" && opgeslagen.start
+      ? { start: String(opgeslagen.start), eind: opgeslagen.eind ? String(opgeslagen.eind) : null, titel: opgeslagen.titel || null, situationRunId: opgeslagen.situationRunId || null, emoji: {} }
+      : { start: null, eind: null, titel: null, situationRunId: null, emoji: {} };
+    this.telRondeOpnieuw(ronde);
+    return ronde;
+  }
+
+  // Tellingen opnieuw uit de database (na herstart of nieuwe sessie).
+  telRondeOpnieuw(ronde = this.ronde) {
+    ronde.emoji = {};
+    const session = this.getActiveSession();
+    if (!session || !ronde.start) return ronde;
+    const vanaf = Date.parse(ronde.start);
+    for (const signal of this.store.readSignals({ sessionId: session.id })) {
+      if (!signal || !signal.reaction || !["heart", "bored", "emoji"].includes(String(signal.type || ""))) continue;
+      if (Date.parse(signal.receivedAt) < vanaf) continue;
+      ronde.emoji[signal.reaction] = Number(ronde.emoji[signal.reaction] || 0) + 1;
+    }
+    return ronde;
+  }
+
+  getRonde() {
+    return { ...this.ronde, emoji: { ...this.ronde.emoji } };
+  }
+
+  bewaarRonde() {
+    const { start, eind, titel, situationRunId } = this.ronde;
+    this.store.setSetting(RONDE_KEY, { start, eind, titel, situationRunId });
+  }
+
   setFase(next = {}) {
     const fase = next.fase === "scene" ? "scene" : "tussen";
     const titel = fase === "scene" && next.titel ? String(next.titel).slice(0, 160) : null;
@@ -577,7 +633,14 @@ class AudienceService extends EventEmitter {
     this.fase.bekend = true;
     if (zelfde) return this.getFase();
     this.fase = { fase, titel, situationRunId, sinds: nowIso(), bekend: true };
-    this.emit("broadcast", { type: "fase", ...this.getFase() });
+    if (fase === "scene" && this.ronde.situationRunId !== situationRunId) {
+      this.ronde = { start: this.fase.sinds, eind: null, titel, situationRunId, emoji: {} };
+      this.bewaarRonde();
+    } else if (fase === "tussen" && this.ronde.start && !this.ronde.eind) {
+      this.ronde.eind = this.fase.sinds;
+      this.bewaarRonde();
+    }
+    this.emit("broadcast", { type: "fase", ...this.getFase(), ronde: this.getRonde() });
     this.emit("admin-state-changed");
     return this.getFase();
   }
@@ -799,6 +862,7 @@ class AudienceService extends EventEmitter {
   startSession(req, { name, tokenTtlMinutes = JOIN_TOKEN_TTL_MINUTES, createdBy = "admin" } = {}) {
     this.simulation.stop("new_session", { quiet: true });
     const session = this.store.startSession({ name, createdBy });
+    this.ronde.emoji = {};
     this.mutedUsers.clear();
     this.blockedUsers.clear();
     this.messageRate.clear();
@@ -1499,8 +1563,9 @@ class AudienceService extends EventEmitter {
       this.reactionCounts[normalized] = Number(this.reactionCounts[normalized] || 0) + 1;
     }
     await this.recordSignal({ type: normalized, meta, reaction: item.emoji });
+    if (this.ronde.start) this.ronde.emoji[item.emoji] = Number(this.ronde.emoji[item.emoji] || 0) + 1;
     if (normalized !== "emoji") this.simulation.observeReaction(normalized, !!meta.isBot);
-    this.emit("broadcast", { type: "reaction_update", reaction: normalized, emoji: item.emoji, fase: this.fase.fase, counts: { ...this.reactionCounts } });
+    this.emit("broadcast", { type: "reaction_update", reaction: normalized, emoji: item.emoji, fase: this.fase.fase, counts: { ...this.reactionCounts }, ronde: { ...this.ronde.emoji } });
     this.emit("admin-state-changed");
     return { ok: true, reaction: normalized, emoji: item.emoji, counts: { ...this.reactionCounts } };
   }
@@ -1806,6 +1871,7 @@ class AudienceService extends EventEmitter {
       fase: this.getFase(),
       reacties: this.getReacties(),
       naSceneVraag: this.naSceneVraag,
+      ronde: this.getRonde(),
       activePoll: this.pollSnapshot(activePoll),
       lastPoll: this.pollSnapshot(latestPoll),
       engagementLeaderboard,

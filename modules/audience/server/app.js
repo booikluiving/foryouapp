@@ -99,6 +99,11 @@ function createAudienceApp(options = {}) {
     res.sendFile(path.join(PUBLIC_DIR, "stage-chat.html"));
   });
 
+  // Tussenscherm: titel, het script dat gegenereerd wordt, tellingen en reacties van de vorige scène.
+  app.get("/audience/stage/tussen", (_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, "stage-tussen.html"));
+  });
+
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
   const STROOM_TYPES = new Set(["comment", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed"]);
   app.get("/audience/stage/stroom", (req, res) => {
@@ -121,6 +126,7 @@ function createAudienceApp(options = {}) {
       type: "begin",
       fase: service.getFase(),
       reacties: service.getReacties(),
+      ronde: service.getRonde(),
       settings: service.getStageControl(req).settings,
       berichten,
     });

@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>For_You tussenscherm</title>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        color: #fff;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+      #stage {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #000;
+        transform-origin: 0 0;
+      }
+      #titel {
+        position: absolute;
+        left: 88px;
+        right: 88px;
+        font-weight: 700;
+        line-height: 1.05;
+        letter-spacing: -0.01em;
+      }
+      #script {
+        position: absolute;
+        left: 0;
+        width: 1080px;
+        overflow: hidden;
+      }
+      #script iframe {
+        position: absolute;
+        left: 0;
+        width: 1080px;
+        height: 1920px;
+        border: 0;
+        background: #000;
+      }
+      #stats {
+        position: absolute;
+        left: 88px;
+        right: 88px;
+      }
+      #statsScene {
+        color: rgba(255, 255, 255, 0.66);
+        font-weight: 500;
+        margin-bottom: 0.4em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #statsRij {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0 1.1em;
+        align-items: baseline;
+      }
+      .telling {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.25em;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .telling .emoji {
+        font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+        font-weight: 400;
+      }
+      #chat {
+        position: absolute;
+        left: 88px;
+        right: 88px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        gap: 0.45em;
+        overflow: hidden;
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%);
+        mask-image: linear-gradient(to bottom, transparent 0, #000 22%);
+      }
+      .regel {
+        line-height: 1.18;
+        font-weight: 500;
+        overflow-wrap: anywhere;
+        animation: erin 260ms ease-out;
+      }
+      .naam { font-weight: 700; }
+      @keyframes erin {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div id="titel"></div>
+      <div id="script"><iframe id="scriptFrame" title="Script" scrolling="no"></iframe></div>
+      <div id="stats" hidden>
+        <div id="statsScene"></div>
+        <div id="statsRij"></div>
+      </div>
+      <div id="chat"></div>
+    </div>
+    <script>
+      const W = 1080, H = 1920, MAX_REGELS = 14;
+      const el = (id) => document.getElementById(id);
+      const stage = el("stage");
+      let settings = {};
+      let reacties = [];
+      let ronde = { start: null, titel: null, emoji: {} };
+
+      // Het script van de script-agent (poort 3027) op dezelfde machine.
+      el("scriptFrame").src = `${location.protocol}//${location.hostname}:3027/script-agent/operator/stage`;
+
+      function pas() {
+        const s = Math.min(window.innerWidth / W, window.innerHeight / H);
+        const tx = (window.innerWidth - W * s) / 2, ty = (window.innerHeight - H * s) / 2;
+        stage.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+      }
+      window.addEventListener("resize", pas);
+      pas();
+
+      const getal = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+
+      function toepassen(next) {
+        settings = next || settings || {};
+        const t = el("titel");
+        t.textContent = settings.tussenTitel ?? "Generating next scene";
+        t.style.top = getal(settings.tussenTitelY, 110) + "px";
+        t.style.fontSize = getal(settings.tussenTitelGrootte, 64) + "px";
+        const sh = getal(settings.tussenScriptHoogte, 860);
+        el("script").style.top = getal(settings.tussenScriptY, 230) + "px";
+        el("script").style.height = sh + "px";
+        el("scriptFrame").style.top = (sh - H) + "px"; // onderkant van het script (nieuwste tekst) in beeld
+        el("stats").style.top = getal(settings.tussenStatsY, 1150) + "px";
+        el("stats").style.fontSize = getal(settings.tussenStatsGrootte, 88) + "px";
+        el("statsScene").style.fontSize = "0.36em";
+        const c = el("chat");
+        c.style.top = getal(settings.tussenChatY, 1380) + "px";
+        c.style.height = getal(settings.tussenChatHoogte, 480) + "px";
+        c.style.fontSize = getal(settings.tussenChatGrootte, 40) + "px";
+      }
+
+      function tekenStats() {
+        const box = el("stats");
+        if (!ronde || !ronde.start) { box.hidden = true; return; }
+        box.hidden = false;
+        el("statsScene").textContent = ronde.titel || "";
+        const rij = el("statsRij");
+        rij.textContent = "";
+        const emoji = ronde.emoji || {};
+        const lijst = reacties.length ? reacties.map((r) => r.emoji) : Object.keys(emoji);
+        for (const e of lijst) {
+          const span = document.createElement("span");
+          span.className = "telling";
+          const em = document.createElement("span");
+          em.className = "emoji";
+          em.textContent = e;
+          const n = document.createElement("span");
+          n.textContent = String(Number(emoji[e] || 0));
+          span.append(em, n);
+          rij.appendChild(span);
+        }
+      }
+
+      function regel(msg) {
+        if (!msg || msg.system || !msg.text) return;
+        if (ronde && ronde.start && msg.time && Date.parse(msg.time) < Date.parse(ronde.start)) return;
+        const r = document.createElement("div");
+        r.className = "regel";
+        const naam = document.createElement("span");
+        naam.className = "naam";
+        naam.textContent = (msg.name || "Anoniem") + " ";
+        if (/^#[0-9a-f]{6}$/i.test(String(msg.nameColor || ""))) naam.style.color = msg.nameColor;
+        r.append(naam, document.createTextNode(msg.text));
+        el("chat").appendChild(r);
+        while (el("chat").childElementCount > MAX_REGELS) el("chat").firstElementChild.remove();
+      }
+
+      function nieuweRonde(next) {
+        const was = ronde && ronde.start;
+        ronde = next || ronde;
+        if (ronde.start && ronde.start !== was) el("chat").textContent = "";
+        tekenStats();
+      }
+
+      const bron = new EventSource("/audience/stage/stroom");
+      bron.onmessage = (ev) => {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+        if (msg.type === "begin") {
+          toepassen(msg.settings);
+          reacties = msg.reacties || [];
+          ronde = msg.ronde || ronde;
+          el("chat").textContent = "";
+          for (const m of msg.berichten || []) regel(m);
+          tekenStats();
+        } else if (msg.type === "stage_settings") toepassen(msg.stage && msg.stage.settings);
+        else if (msg.type === "reacties") { reacties = msg.reacties || []; tekenStats(); }
+        else if (msg.type === "fase") nieuweRonde(msg.ronde);
+        else if (msg.type === "reaction_update" && msg.ronde) { ronde.emoji = msg.ronde; tekenStats(); }
+        else if (msg.type === "comment") regel(msg);
+        else if (msg.type === "session_reset" || msg.type === "session_closed") {
+          el("chat").textContent = "";
+          ronde.emoji = {};
+          tekenStats();
+        }
+      };
+    </script>
+  </body>
+</html>

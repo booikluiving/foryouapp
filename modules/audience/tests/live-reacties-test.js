@@ -165,6 +165,11 @@ const wachtOp = async (fn, ms = 3000) => {
     assert.equal(state2.fase.fase, "scene"); assert.equal(state2.reacties.length, 2);
     ok("emoji die 'niet' telt: wel op het podium, niet in de algoritme-tellers");
 
+    assert.equal(state2.ronde.titel, "Testscène");
+    assert.deepEqual(state2.ronde.emoji, { "\u2764\ufe0f": 1, "\ud83d\udc4e": 1, "\ud83d\ude02": 1 });
+    assert.equal(state2.ronde.eind, null);
+    ok("tellingen per scène: ❤️ 1, 👎 1, 😂 1 voor 'Testscène'");
+
     runtimeAan = false;
     await sleep(800);
     assert.equal((await (await lan("/audience/admin/state")).json()).fase.fase, "scene");
@@ -178,11 +183,25 @@ const wachtOp = async (fn, ms = 3000) => {
     assert.ok(await wachtOp(() => stroom.msgs.some((m) => m.type === "comment" && m.text === "mooie scene")));
     ok("situatie stopt: fase 'tussen', typen werkt weer");
 
-    for (const p of ["/audience/stage/emoji", "/audience/stage/chat"]) {
+    const na = (await (await lan("/audience/admin/state")).json()).ronde;
+    assert.ok(na.eind); assert.equal(na.emoji["\ud83d\ude02"], 1);
+    const faseTussen = tel.msgs.filter((m) => m.type === "fase").pop();
+    assert.equal(faseTussen.ronde.titel, "Testscène");
+    ok("na de scène blijven de tellingen staan (met eindtijd) voor het tussenscherm");
+
+    actief = { situationRunId: "sr-2", situationId: "situation:2", title: "Tweede scène", status: "active" };
+    assert.ok(await wachtOp(() => tel.msgs.filter((m) => m.type === "fase").pop()?.fase === "scene"));
+    const r2 = (await (await lan("/audience/admin/state")).json()).ronde;
+    assert.equal(r2.titel, "Tweede scène"); assert.deepEqual(r2.emoji, {});
+    ok("nieuwe scène: tellingen beginnen opnieuw");
+    actief = null;
+    assert.ok(await wachtOp(() => tel.msgs.filter((m) => m.type === "fase").pop()?.fase === "tussen"));
+
+    for (const p of ["/audience/stage/emoji", "/audience/stage/chat", "/audience/stage/tussen"]) {
       const res = await lan(p);
       assert.equal(res.status, 200, p); assert.match(await res.text(), /EventSource\("\/audience\/stage\/stroom"\)/, p);
     }
-    for (const p of ["/audience/stage/stroom", "/audience/stage/emoji", "/audience/stage/chat"]) {
+    for (const p of ["/audience/stage/stroom", "/audience/stage/emoji", "/audience/stage/chat", "/audience/stage/tussen"]) {
       assert.equal((await pub(p)).status, 404, p);
     }
     assert.equal((await pub("/audience/admin/reacties", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 404);
