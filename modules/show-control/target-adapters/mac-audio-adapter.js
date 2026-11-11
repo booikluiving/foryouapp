@@ -67,17 +67,26 @@ async function sendMacAudioCommand(action, context = {}) {
   if (payload.stopLied) stopSpoor("lied");
   // Binnen een spoor: nog eens drukken = opnieuw beginnen, niet over elkaar heen.
   stopSpoor(naam);
-  const child = spawn(player(options), ["-v", String(volume), filePath], { stdio: "ignore", detached: false });
   const spoor = sporen[naam];
-  child.on("error", () => {});
-  child.on("exit", () => {
-    if (spoor.child === child) {
+  const lus = payload.lus === true && naam === "lied";
+  const start = () => {
+    const child = spawn(player(options), ["-v", String(volume), filePath], { stdio: "ignore", detached: false });
+    child.on("error", () => {});
+    child.on("exit", (code) => {
+      if (spoor.child !== child) return;
+      // In een lus: afgelopen (niet gestopt) = opnieuw vanaf het begin.
+      if (lus && code === 0) {
+        start();
+        return;
+      }
       spoor.child = null;
       spoor.file = "";
-    }
-  });
-  spoor.child = child;
-  spoor.file = filePath;
+    });
+    spoor.child = child;
+    spoor.file = filePath;
+    return child;
+  };
+  const child = start();
   return {
     stage: "applied",
     state: "ok",

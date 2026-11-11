@@ -53,3 +53,26 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+// In een lus: het geluid begint vanzelf opnieuw als het afloopt, en een druk zet het uit.
+(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lus-"));
+  const plas = path.join(dir, "plas.wav");
+  fs.writeFileSync(plas, "");
+  const teller = path.join(dir, "teller");
+  const fakePlayer = path.join(dir, "speler.sh");
+  fs.writeFileSync(fakePlayer, `#!/bin/sh\necho x >> ${teller}\nsleep 0.2\n`, { mode: 0o755 });
+  const context = { adapterOptions: { macAudioPlayer: fakePlayer, macAudio: "on" } };
+  const play = () => sendMacAudioCommand({ command: "audio.extra.play", payload: { filePath: plas, volume: 1, wissel: true, lus: true } }, context);
+  await play();
+  await new Promise((resolve) => setTimeout(resolve, 750));
+  const uit = await play();
+  assert.equal(uit.data.gestopt, true, "een druk zet de lus uit");
+  const keren = fs.readFileSync(teller, "utf8").trim().split("\n").length;
+  assert.ok(keren >= 3, `de lus begon vanzelf opnieuw (${keren} keer)`);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(fs.readFileSync(teller, "utf8").trim().split("\n").length, keren, "na uit begint hij niet opnieuw");
+  fs.rmSync(dir, { recursive: true, force: true });
+  console.log("mac-audio-lus-test ok");
+})().catch((err) => { console.error(err); process.exit(1); });
