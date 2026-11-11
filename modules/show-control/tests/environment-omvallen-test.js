@@ -71,4 +71,33 @@ assert.equal(cue.actions[0].payload.uit, true);
 // Clip weg: geen cue.
 assert.throws(() => buildEnvironmentOmvallenCue(scene("environment:26", "c"), {}, { ...options, fileExists: () => false }), /clip_ontbreekt/);
 
+// Stappen per situatie en een stap die het sfeergeluid wisselt.
+{
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "omvallen-test-"));
+  const dir = path.join(root, "environments", "environment_27", "omvallen");
+  fs.mkdirSync(dir, { recursive: true });
+  for (const naam of ["a.mov", "b.mov", "stil.wav"]) fs.writeFileSync(path.join(dir, naam), "x");
+  fs.writeFileSync(path.join(dir, "omvallen.json"), JSON.stringify({ drukken: [{ druk: 1, naam: "omgeving", clip: "a.mov" }] }));
+  fs.writeFileSync(path.join(dir, "omvallen-situation_67.json"), JSON.stringify({ drukken: [
+    { druk: 1, naam: "neemt op", clip: "b.mov", klap: 0.5, sfeer: "environments/environment_27/omvallen/stil.wav" },
+  ] }));
+  const opts = { catalogMediaRoot: root };
+  const met = (situationId, runId) => ({ activeSituation: { runId, resolved: { environmentId: "environment:27", situationId } } });
+  resetOmvallenState();
+  assert.equal(environmentOmvallenStatus(met("situation:81", "x"), opts).volgende, "omgeving");
+  assert.equal(environmentOmvallenStatus(met("situation:67", "y"), opts).volgende, "neemt op");
+  cue = buildEnvironmentOmvallenCue(met("situation:67", "y"), {}, opts);
+  assert.deepEqual(cue.actions.map((action) => action.command), ["td.effect.omvallen", "td.effect.fase"]);
+  assert.equal(cue.actions[1].delayMs, 500);
+  assert.deepEqual(oscArgsForAction({ ...cue.actions[1], cueId: cue.cueId }).slice(3), ["", "1", "0", "0", path.join(dir, "stil.wav")]);
+  // Begin: clip weg en het sfeergeluid van de omgeving terug.
+  cue = buildEnvironmentOmvallenCue(met("situation:67", "y"), { actie: "begin" }, opts);
+  assert.deepEqual(cue.actions.map((action) => action.command), ["td.effect.omvallen", "td.effect.fase"]);
+  assert.equal(cue.actions[1].payload.sfeerPath, "");
+  fs.rmSync(root, { recursive: true, force: true });
+}
+
 console.log("show-control environment-omvallen: ok");

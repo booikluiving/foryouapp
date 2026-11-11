@@ -22,14 +22,29 @@ function omvallenDir(environmentId, options = {}) {
   return path.join(mediaRoot(options), "environments", String(environmentId).replace(":", "_"), "omvallen");
 }
 
-function readManifest(environmentId, options = {}) {
-  if (options.manifest) return options.manifest;
+function readManifestFile(filePath) {
   try {
-    const manifest = JSON.parse(fs.readFileSync(path.join(omvallenDir(environmentId, options), "omvallen.json"), "utf8"));
+    const manifest = JSON.parse(fs.readFileSync(filePath, "utf8"));
     return manifest && Array.isArray(manifest.drukken) ? manifest : null;
   } catch (_err) {
     return null;
   }
+}
+
+// Een omgeving kan per situatie eigen stappen hebben: omvallen-situation_<nr>.json naast
+// omvallen.json. Speelt die situatie, dan gelden haar stappen; anders die van de omgeving.
+function readManifest(environmentId, options = {}, situationId = "") {
+  if (options.manifest) return options.manifest;
+  const dir = omvallenDir(environmentId, options);
+  const eigen = situationId
+    ? readManifestFile(path.join(dir, `omvallen-${String(situationId).replace(":", "_")}.json`))
+    : null;
+  return eigen || readManifestFile(path.join(dir, "omvallen.json"));
+}
+
+function situationIdOf(resolved) {
+  if (!resolved || typeof resolved !== "object") return "";
+  return String(resolved.situationId || (resolved.situation && resolved.situation.id) || "").trim();
 }
 
 function fileExists(filePath, options = {}) {
@@ -60,7 +75,7 @@ function environmentOmvallenStatus(runtimeState, options = {}) {
   const ref = currentEnvironmentRef(runtimeState);
   const base = { ok: true, environmentId: ref.environmentId, bron: ref.bron, klaar: false, reden: "", pos: 0, totaal: 0, volgende: "" };
   if (!ref.environmentId) return { ...base, reden: "geen_omgeving" };
-  const manifest = readManifest(ref.environmentId, options);
+  const manifest = readManifest(ref.environmentId, options, situationIdOf(ref.resolved));
   if (!manifest || !manifest.drukken.length) return { ...base, reden: "geen_effect" };
   const sleutel = sleutelVoor(ref, runtimeState);
   const pos = state.sleutel === sleutel ? Math.min(state.pos, manifest.drukken.length) : 0;
@@ -129,6 +144,10 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
   let naam = "begin";
   if (naarBegin) {
     actions.push(cueAction(cueId, 0, "touchdesigner", "td.effect.omvallen", { ...common, filePath: "", uit: true, druk: 0 }));
+    // Heeft een stap het sfeergeluid gewisseld, dan komt bij het begin dat van de omgeving terug.
+    if (status.manifest.drukken.some((druk) => druk && druk.sfeer)) {
+      actions.push(cueAction(cueId, actions.length, "touchdesigner", "td.effect.fase", { ...common, filePath: "", uit: true, schok: false, schokNa: 0, sfeerPath: "" }));
+    }
     state.sleutel = status.sleutel;
     state.pos = 0;
   } else {
@@ -140,12 +159,20 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
     actions.push(cueAction(cueId, 0, "touchdesigner", "td.effect.omvallen", { ...common, filePath: clip, uit: false, druk: druk.druk, duur: Number(druk.duur) || 0 }));
     const geluid = druk.geluid ? path.join(mediaRoot(options), String(druk.geluid)) : "";
     if (geluid && fileExists(geluid, options)) {
-      actions.push(cueAction(cueId, 1, "mac-audio", "audio.extra.play", {
+      actions.push(cueAction(cueId, actions.length, "mac-audio", "audio.extra.play", {
         ...common,
         soort: "geluid",
         label: naam,
         filePath: geluid,
         volume: 1,
+      }, Math.round(Number(druk.klap || 0) * 1000)));
+    }
+    // Een stap kan het sfeergeluid wisselen (bijvoorbeeld: er wordt opgenomen, het bellen stopt).
+    // Dat gaat langs de weg van de fases; de achtergrond blijft staan.
+    const sfeer = druk.sfeer ? path.join(mediaRoot(options), String(druk.sfeer)) : "";
+    if (sfeer && fileExists(sfeer, options)) {
+      actions.push(cueAction(cueId, actions.length, "touchdesigner", "td.effect.fase", {
+        ...common, filePath: "", uit: true, schok: false, schokNa: 0, sfeerPath: sfeer,
       }, Math.round(Number(druk.klap || 0) * 1000)));
     }
     state.sleutel = status.sleutel;
