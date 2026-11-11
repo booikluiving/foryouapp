@@ -253,6 +253,7 @@
       bron.onmessage = (ev) => {
         let msg;
         try { msg = JSON.parse(ev.data); } catch { return; }
+        if (msg.type === "stage_herlaad") { location.reload(); return; }
         if (msg.type === "begin") {
           toepassen(msg.settings);
           reacties = msg.reacties || [];

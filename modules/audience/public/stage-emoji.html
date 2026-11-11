@@ -77,6 +77,7 @@
         bron.onmessage = (ev) => {
           let msg;
           try { msg = JSON.parse(ev.data); } catch { return; }
+          if (msg.type === "stage_herlaad") { location.reload(); return; }
           if (msg.type === "begin") toepassen(msg.settings);
           else if (msg.type === "stage_settings") toepassen(msg.stage && msg.stage.settings);
           else if (msg.type === "reaction_update") laatOpstijgen(msg.emoji);
