@@ -18,11 +18,12 @@ const catalog = {
     { id: "beeld:aanrijding", environmentId: "environment:25", type: "extra", role: "extraShot", relativePath: "environments/environment_25/extra/aanrijding.mp4" },
     { id: "beeld:uit", environmentId: "environment:25", type: "extra", role: "extraShot", relativePath: "environments/environment_25/extra/uit.jpg" },
     { id: "geluid:botsing", environmentId: "environment:25", type: "extra", role: "extraGeluid", relativePath: "environments/environment_25/extra/botsing.mp3" },
+    { id: "geluid:tikken", environmentId: "environment:25", type: "extra", role: "extraGeluid", relativePath: "environments/environment_25/extra/tikken.mp3" },
   ],
   environmentCompositions: [
     { environmentId: "environment:25", fases: [
       { naam: "Rijden", assetId: "", schok: false, schokNa: 0 },
-      { naam: "Aanrijding", assetId: "beeld:aanrijding", schok: true, schokNa: 1.4 },
+      { naam: "Aanrijding", assetId: "beeld:aanrijding", schok: true, schokNa: 1.4, sfeerAssetId: "geluid:tikken" },
       { naam: "Myrthe stapt uit", assetId: "beeld:uit", schok: false, schokNa: 0 },
     ] },
   ],
@@ -54,7 +55,7 @@ assert.equal(publicFasesStatus(environmentFasesStatus(scene("environment:25", "a
 let cue = buildEnvironmentKnopCue(scene("environment:25", "a"), { plek: 0 }, options(false));
 assert.deepEqual(cue.actions.map((action) => [action.command, action.delayMs]), [["audio.extra.play", 0], ["td.effect.fase", 0]]);
 assert.equal(cue.actions[0].payload.volume, 0.8);
-assert.deepEqual(oscArgsForAction({ ...cue.actions[1], cueId: cue.cueId }).slice(3), ["/media/environments/environment_25/extra/aanrijding.mp4", "0", "1", "1.4"]);
+assert.deepEqual(oscArgsForAction({ ...cue.actions[1], cueId: cue.cueId }).slice(3), ["/media/environments/environment_25/extra/aanrijding.mp4", "0", "1", "1.4", "/media/environments/environment_25/extra/tikken.mp3"]);
 status = environmentKnoppenStatus(scene("environment:25", "a"), options(false));
 assert.deepEqual(status.knoppen.map((knop) => [knop.label, knop.teller, knop.staat]), [["MYRTHE STAPT UIT", "2/3", "klaar"], ["BEGIN", "", "klaar"]]);
 
@@ -65,7 +66,7 @@ assert.equal(environmentKnoppenStatus(scene("environment:25", "a"), options(fals
 
 // OPNIEUW = terug naar de eerste fase: de gewone achtergrond.
 cue = buildEnvironmentKnopCue(scene("environment:25", "a"), { plek: 0 }, options(false));
-assert.deepEqual(oscArgsForAction({ ...cue.actions[0], cueId: cue.cueId }).slice(3), ["", "1", "0", "0"]);
+assert.deepEqual(oscArgsForAction({ ...cue.actions[0], cueId: cue.cueId }).slice(3), ["", "1", "0", "0", ""]);
 
 // Een nieuwe scène begint bij fase 1.
 buildEnvironmentFaseCue(scene("environment:25", "a"), { index: 2 }, fases);

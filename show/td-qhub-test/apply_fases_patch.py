@@ -36,6 +36,7 @@ FASE_SWITCH_OP = "fase_switch"
 FASE_FIT_OP = "fase_fit"
 FASE_SCHUD_OP = "fase_schud"
 FASE_UITSCHUDDEN = 1.1
+FASE_SFEER_OP = "prepared_soundscape"
 
 
 def _fase_log(cue_id, stage, status, message):
@@ -63,7 +64,26 @@ def _fase_schud_stil():
     schud.par.sy = 1
 
 
-def fase_uit():
+def _fase_sfeer(file_path):
+    # Het sfeergeluid van een fase. Leeg = terug naar het sfeergeluid van de omgeving.
+    sfeer = _op(FASE_SFEER_OP)
+    if sfeer is None:
+        return
+    base = _base()
+    oud = _text(base.fetch("fase_sfeer_omgeving", ""))
+    nu = _text(sfeer.par.file.eval())
+    if file_path:
+        if not oud:
+            base.store("fase_sfeer_omgeving", nu)
+        if nu != file_path:
+            sfeer.par.file = file_path
+    elif oud:
+        if nu != oud:
+            sfeer.par.file = oud
+        base.store("fase_sfeer_omgeving", "")
+
+
+def fase_uit(sfeer_terug=True):
     # Terug naar de gewone achtergrond. Ook bij een nieuwe omgeving en bij reset.
     switch = _op(FASE_SWITCH_OP)
     if switch is None:
@@ -71,6 +91,11 @@ def fase_uit():
     _fase_token()
     switch.par.index = 0
     _fase_schud_stil()
+    if sfeer_terug:
+        _fase_sfeer("")
+    else:
+        # Een nieuwe omgeving zet zelf haar sfeergeluid: alleen het geheugen leegmaken.
+        _base().store("fase_sfeer_omgeving", "")
     return True
 
 
@@ -103,7 +128,7 @@ def _fase_schud_plan(base, token, start, duur, oplopend):
 
 
 def handle_fase(cue_id, extra_args):
-    # OSC-args na cueId/command/payloadId: filePath, uit (0/1), schok (0/1), schokNa (s).
+    # OSC-args na cueId/command/payloadId: filePath, uit (0/1), schok (0/1), schokNa (s), sfeergeluid.
     cue_id = _text(cue_id)
     command = "td.effect.fase"
     ack(cue_id, command, "received", "ok", "osc_received")
@@ -115,6 +140,10 @@ def handle_fase(cue_id, extra_args):
     except ValueError:
         wacht = 0.0
     wacht = max(0.0, min(10.0, wacht)) if schok else 0.0
+    sfeer_path = _text(extra_args[4]) if len(extra_args) > 4 else ""
+    if sfeer_path and not os.path.isfile(sfeer_path):
+        _fase_log(cue_id, "sfeer", "warning", "fase_sfeer_missing:%s" % sfeer_path)
+        sfeer_path = ""
     movie = _op(FASE_FILE_OP)
     switch = _op(FASE_SWITCH_OP)
     if movie is None or switch is None:
@@ -141,13 +170,26 @@ def handle_fase(cue_id, extra_args):
                 fit.cook(force=True)
         except Exception as err:
             _fase_log(cue_id, "preload", "warning", err)
-    # Wisselen op de klap (meteen als er geen schok is).
+    # Wisselen op de klap (meteen als er geen schok is). Het sfeergeluid wisselt mee.
     run(
         "if args[1].fetch('fase_token', 0) == args[2]:\\n"
         "    if args[4] is not None:\\n"
         "        args[4].cook(force=True)\\n"
-        "    args[0].par.index = args[3]",
-        switch, base, token, 0 if uit else 1, None if uit else (fit or movie),
+        "    args[0].par.index = args[3]\\n"
+        "    s = args[5]\\n"
+        "    if s is not None:\\n"
+        "        oud = str(args[1].fetch('fase_sfeer_omgeving', '') or '')\\n"
+        "        nu = str(s.par.file.eval())\\n"
+        "        if args[6]:\\n"
+        "            if not oud:\\n"
+        "                args[1].store('fase_sfeer_omgeving', nu)\\n"
+        "            if nu != args[6]:\\n"
+        "                s.par.file = args[6]\\n"
+        "        elif oud:\\n"
+        "            if nu != oud:\\n"
+        "                s.par.file = oud\\n"
+        "            args[1].store('fase_sfeer_omgeving', '')",
+        switch, base, token, 0 if uit else 1, None if uit else (fit or movie), _op(FASE_SFEER_OP), sfeer_path,
         delayMilliSeconds=int(wacht * 1000) + 50,
     )
     if schok:
@@ -170,14 +212,19 @@ ROUTER_CALL_NEW = '''    payload_id = osc_args[2] if len(osc_args) > 2 else "-"
         handle_fase(cue_id, osc_args[3:])
         return
     if command in ("td.environment.go", "td.reset"):
-        fase_uit()
+        fase_uit(False)
 '''
 
 
 def patch_router_text(text):
-    """Geeft de nieuwe routertekst terug. Zelfde tekst als hij al gepatcht is."""
+    """Geeft de nieuwe routertekst terug. Staat er al een oudere versie, dan wordt die vervangen."""
+    einde = "# --- einde For_You fases ---\n\n\n"
     if ROUTER_MARKER in text:
-        return text
+        a = text.index(ROUTER_MARKER)
+        b = text.index(einde, a) + len(einde)
+        text = text[:a] + ROUTER_CODE + text[b:]
+        oud = "    if command in (\"td.environment.go\", \"td.reset\"):\n        fase_uit()\n"
+        return text.replace(oud, "    if command in (\"td.environment.go\", \"td.reset\"):\n        fase_uit(False)\n")
     start = text.find("def onReceiveOSC(")
     if start < 0 or text.count(ROUTER_CALL_OLD, start) != 1:
         raise RuntimeError("td_qhub_router: onReceiveOSC niet herkend, niets veranderd")
