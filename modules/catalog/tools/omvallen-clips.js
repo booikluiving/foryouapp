@@ -63,7 +63,7 @@ function bouwPlan(composition, assets, mediaRoot) {
       links: !!(layer.val && layer.val.richting === "links"),
     })),
   };
-  const namen = (index) => lagen.filter((layer) => layer.val && stappen.indexOf(Number(layer.val.stap)) === index).map((layer) => layer.name || layer.assetId);
+  const namen = (index) => lagen.filter((layer) => layer.val && stappen.indexOf(Number(layer.val.stap)) === index).map((layer) => String(layer.name || layer.assetId).replace(/\.(png|jpe?g|webp)$/i, "").replace(/[-_]+/g, " "));
   const geluiden = Array.isArray(composition.valGeluiden) ? composition.valGeluiden : [];
   const drukken = [{ naam: "komt los", klap: KLAP.loskom }]
     .concat(stappen.map((_stap, index) => ({ naam: `${namen(index).join(" + ")} valt`, klap: KLAP.val })))
@@ -97,7 +97,10 @@ function main() {
   const frames = path.join(work, "beelden");
   fs.mkdirSync(frames);
 
-  execFileSync(bin, [specPath, frames, "0"], { stdio: "inherit" });
+  // De beginstand op volle maat (6480 breed): dat is ook de stilstaande voorgrond voor TD.
+  const volPath = path.join(work, "spec-vol.json");
+  fs.writeFileSync(volPath, JSON.stringify({ ...spec, breedte: 6480, hoogte: 3840 }));
+  execFileSync(bin, [volPath, frames, "0"], { stdio: "inherit" });
   fs.copyFileSync(path.join(frames, "druk0_0000.png"), path.join(outDir, "begin.png"));
   for (const druk of drukken) {
     execFileSync(bin, [specPath, frames, String(druk.druk)], { stdio: "inherit" });
