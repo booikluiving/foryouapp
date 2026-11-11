@@ -1105,6 +1105,24 @@ async function updateOrderSettings(state, clients, patch = {}) {
   return state;
 }
 
+function isTestRun(state) {
+  return Boolean(state && state.testRun && state.testRun.enabled === true);
+}
+
+// Scènes testen: de lopende run wordt een testrun. Dat blijft in het log staan tot de reset;
+// uitzetten sluit alleen het starten van losse scènes weer af.
+async function setTestRun(state, options = {}) {
+  if (!state || !state.showRunId || state.status !== "running") throw new Error("runtime_no_show_run");
+  const enabled = options.enabled === true;
+  const at = new Date().toISOString();
+  const markedAt = state.testRun && state.testRun.markedAt ? state.testRun.markedAt : enabled ? at : null;
+  state.testRun = { enabled, markedAt, changedAt: at };
+  state.updatedAt = at;
+  appendRunLog(state, { type: "test_run_changed", at, enabled });
+  if (!options.skipSave) await saveRunState(state);
+  return state;
+}
+
 // Een gekozen situatie klaarzetten, buiten de paden en het algoritme om: om te testen en ermee
 // te werken. Daarna start hij met de gewone "Start situatie". Met willekeurig: true kiest de
 // runtime er zelf een uit alle actieve situaties. De volgende situatie daarna komt weer gewoon
@@ -1112,6 +1130,21 @@ async function updateOrderSettings(state, clients, patch = {}) {
 async function prepareChosenSituation(state, clients, options = {}) {
   if (!state || !state.showRunId || state.status !== "running") throw new Error("runtime_no_show_run");
   normalizeRuntimeDerivedState(state);
+  if (options.testRun === true) {
+    if (!isTestRun(state)) {
+      const err = new Error("runtime_not_test_run");
+      err.statusCode = 409;
+      throw err;
+    }
+    // In een testrun telt de catalogus van nu: zo test je de prompt die er net in is gezet.
+    // Lukt het ophalen niet, dan blijft de vastgelegde catalogus van de run staan.
+    try {
+      const fresh = clients && typeof clients.fetchCatalogSnapshot === "function" ? await clients.fetchCatalogSnapshot() : null;
+      if (fresh && Array.isArray(fresh.situations) && fresh.situations.length) state.showRunSnapshot.catalog = fresh;
+    } catch (_err) {
+      // de vastgelegde catalogus blijft
+    }
+  }
   const catalog = state.showRunSnapshot.catalog;
   const situations = activeCatalogSituations(catalog);
   const activeId = state.activeSituation ? state.activeSituation.situationId : null;
@@ -1265,10 +1298,12 @@ module.exports = {
   normalizeRuntimeDerivedState,
   normalizeOrderSettings,
   placeholderAlgorithmConfigSnapshot,
+  isTestRun,
   prepareChosenSituation,
   previousSituation,
   receiveScores,
   refreshEligiblePool,
+  setTestRun,
   resetRun,
   restoreAlgorithmScoringContext,
   situationObservedEvent,

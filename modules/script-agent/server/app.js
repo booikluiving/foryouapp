@@ -11,6 +11,7 @@ const {
 const { fetchCatalogSnapshot } = require("../client/catalog-client");
 const { fetchCurrentRuntimeState } = require("../client/runtime-client");
 const { createOperatorService } = require("../operator/operator-service");
+const { createSceneTest } = require("../operator/scene-test");
 const { buildPromptInput } = require("../prompt-builder/prompt-builder");
 const { createScriptOutput } = require("../script-output/script-service");
 const {
@@ -103,6 +104,7 @@ function createScriptAgentApp(options = {}) {
     }),
   });
   app.locals.operatorService = operatorService;
+  const sceneTest = options.sceneTest || createSceneTest({ env: options.env || process.env, fetchImpl: options.fetchImpl });
   app.locals.teleprompterParser = teleprompterParser;
   app.locals.stopOperatorDraftSync = null;
   if (options.operatorAutoDraftSync !== false) {
@@ -190,6 +192,19 @@ function createScriptAgentApp(options = {}) {
       revision: req.body && req.body.revision,
     });
     res.json({ ok: true, draft, stage: operatorService.snapshotStage() });
+  }));
+
+  // Scènes testen: alleen in een testrun elke situatie starten, los van de paden.
+  app.get("/v0/script-agent/operator/scene-test", asyncRoute(async (_req, res) => {
+    res.json({ ok: true, ...(await sceneTest.status()) });
+  }));
+
+  app.post("/v0/script-agent/operator/scene-test", asyncRoute(async (req, res) => {
+    res.json({ ok: true, ...(await sceneTest.setEnabled(!!(req.body && req.body.enabled === true))) });
+  }));
+
+  app.post("/v0/script-agent/operator/scene-test/start", asyncRoute(async (req, res) => {
+    res.json(await sceneTest.startScene(req.body && req.body.situationId));
   }));
 
   app.get("/v0/script-agent/operator/catalog/index", asyncRoute(async (_req, res) => {

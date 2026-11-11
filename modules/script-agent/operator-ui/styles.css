@@ -704,3 +704,30 @@ textarea:focus {
     justify-content: flex-start;
   }
 }
+
+.scene-test {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.scene-test-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.scene-test-toggle input {
+  width: auto;
+  margin: 0;
+}
+
+.scene-test.on {
+  padding: 8px;
+  border: 1px solid var(--warn, #c98a00);
+  border-radius: 6px;
+}

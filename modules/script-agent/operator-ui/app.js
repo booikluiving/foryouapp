@@ -30,6 +30,9 @@ const els = {
   sceneToChat: $("#sceneToChat"),
   refreshRuntimeDraft: $("#refreshRuntimeDraft"),
   operatorMsg: $("#operatorMsg"),
+  sceneTestToggle: $("#sceneTestToggle"),
+  sceneTestStart: $("#sceneTestStart"),
+  sceneTestMsg: $("#sceneTestMsg"),
   chatLog: $("#chatLog"),
   chatForm: $("#chatForm"),
   chatInput: $("#chatInput"),
@@ -493,6 +496,10 @@ function renderSecretStatus(status = {}) {
 }
 
 async function loadStatus() {
+  loadSceneTest().catch(() => {
+    sceneTestState = { running: false, enabled: false, activeSituation: null };
+    renderSceneTest();
+  });
   const status = await api("/v0/script-agent/operator/status");
   els.operatorStatusText.textContent = [
     "DeepSeek",
@@ -691,6 +698,68 @@ async function refreshRuntimeDraft() {
   setMsg("Runtime draft geladen.");
 }
 
+// Scènes testen: elke situatie starten, los van de paden. Kan alleen in een testrun; aanzetten
+// maakt de lopende run een testrun (tot de reset).
+let sceneTestState = { running: false, enabled: false, activeSituation: null };
+
+function renderSceneTest(message, error = false) {
+  const { running, enabled, activeSituation } = sceneTestState;
+  els.sceneTestToggle.checked = enabled;
+  els.sceneTestToggle.disabled = !running;
+  els.sceneTestToggle.closest(".scene-test").classList.toggle("on", enabled);
+  els.sceneTestStart.hidden = !enabled;
+  els.sceneTestStart.disabled = !els.situation.value;
+  const standaard = !running
+    ? "Kan alleen als er een run loopt."
+    : enabled
+      ? `Testrun. ${activeSituation ? `Nu: ${activeSituation.title}. ` : ""}Kies een situatie en start hem, los van de paden.`
+      : "";
+  els.sceneTestMsg.textContent = message || standaard;
+  els.sceneTestMsg.style.color = error ? "var(--bad)" : "";
+}
+
+async function loadSceneTest() {
+  sceneTestState = await api("/v0/script-agent/operator/scene-test");
+  renderSceneTest();
+}
+
+async function toggleSceneTest() {
+  const enabled = els.sceneTestToggle.checked;
+  if (enabled && !sceneTestState.markedAt
+    && !confirm("Scènes testen maakt van de lopende run een testrun, tot de reset. Doorgaan?")) {
+    renderSceneTest();
+    return;
+  }
+  try {
+    sceneTestState = await api("/v0/script-agent/operator/scene-test", {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    });
+    renderSceneTest();
+  } catch (err) {
+    renderSceneTest(err.message || "Scènes testen zetten lukte niet.", true);
+  }
+}
+
+async function startTestScene() {
+  if (!els.situation.value) return;
+  els.sceneTestStart.disabled = true;
+  renderSceneTest("Scène starten...");
+  try {
+    const body = await api("/v0/script-agent/operator/scene-test/start", {
+      method: "POST",
+      body: JSON.stringify({ situationId: els.situation.value }),
+    });
+    sceneTestState = body.status || sceneTestState;
+    manualSelectionDirty = false;
+    renderSceneTest(`Gestart: ${body.title || "scène"}.`);
+  } catch (err) {
+    renderSceneTest(err.message || "Scène starten lukte niet.", true);
+  } finally {
+    els.sceneTestStart.disabled = !els.situation.value;
+  }
+}
+
 function parseSseBuffer(buffer, onEvent) {
   let remaining = buffer;
   let index = remaining.indexOf("\n\n");
@@ -838,7 +907,10 @@ els.sessionId.addEventListener("change", () => {
   withUiError(loadSession);
 });
 els.model.addEventListener("change", () => withUiError(saveModel));
+els.sceneTestToggle.addEventListener("change", () => toggleSceneTest());
+els.sceneTestStart.addEventListener("click", () => startTestScene());
 els.situation.addEventListener("change", () => {
+  els.sceneTestStart.disabled = !els.situation.value;
   manualSelectionDirty = true;
   updateSituationSelection({ preserveManualCharacters: false });
   sendManualDraftPreview();

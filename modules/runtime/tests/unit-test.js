@@ -15,6 +15,8 @@ const {
   refreshEligiblePool,
   resetRun,
   startRun,
+  prepareChosenSituation,
+  setTestRun,
   startSituation,
   stopSituation,
   updateOrderSettings,
@@ -622,6 +624,35 @@ async function main() {
   await Promise.all(concurrentWrites.concat(concurrentReads));
   assert.equal((await readCurrentRunState()).showRunId, state.showRunId, "state reads should survive live write/poll races");
 
+  // Scènes testen: alleen in een testrun, met de catalogus van nu.
+  const testState = cloneJson(state);
+  await assert.rejects(
+    () => prepareChosenSituation(testState, clients, { situationId: "situation:2", testRun: true, skipSave: true }),
+    /runtime_not_test_run/,
+    "a chosen test scene needs a test run"
+  );
+  await setTestRun(testState, { enabled: true, skipSave: true });
+  assert.equal(testState.testRun.enabled, true);
+  const freshCatalog = cloneJson(catalogFixture);
+  freshCatalog.situations.find((item) => item.id === "situation:2").promptText = "verse prompt";
+  await prepareChosenSituation(testState, { ...clients, fetchCatalogSnapshot: async () => freshCatalog }, {
+    situationId: "situation:2",
+    testRun: true,
+    skipSave: true,
+  });
+  assert.equal(testState.preparedNext.situationId, "situation:2", "test run prepares the chosen situation outside the paths");
+  assert.equal(testState.preparedNext.reason, "operator_chosen");
+  assert.equal(
+    testState.showRunSnapshot.catalog.situations.find((item) => item.id === "situation:2").promptText,
+    "verse prompt",
+    "test run uses the current catalog"
+  );
+  const markedAt = testState.testRun.markedAt;
+  await setTestRun(testState, { enabled: false, skipSave: true });
+  assert.equal(testState.testRun.enabled, false);
+  assert.equal(testState.testRun.markedAt, markedAt, "a run stays marked as test run until reset");
+  assert.equal(state.testRun, undefined, "the real run state is untouched by the test copy");
+
   const reset = await resetRun(state);
   assert.equal(reset.status, "idle", "reset should return logical idle state");
   const idleAfterReset = await readCurrentRunState();
@@ -653,6 +684,7 @@ async function main() {
       "previous restores the last played situation",
       "runtime reader tolerates trailing stale JSON bytes",
       "runtime state writes are atomic during concurrent live polling",
+      "scene testing needs a test run and uses the current catalog",
       "reset runs cannot become current after late saves",
       "reset returns to idle",
     ],

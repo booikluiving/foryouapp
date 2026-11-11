@@ -19,6 +19,7 @@ const {
   previousSituation,
   receiveScores,
   refreshEligiblePool,
+  setTestRun,
   resetRun,
   restoreAlgorithmScoringContext,
   startRun,
@@ -367,6 +368,14 @@ function createRuntimeApp(options = {}) {
       }
       throw err;
     }
+    await persistRunState(next);
+    res.json(next);
+  }));
+
+  // Scènes testen aan of uit: maakt de lopende run een testrun (blijft zo tot de reset).
+  app.post("/v0/runtime/runs/:showRunId/test-run", asyncRoute(async (req, res) => {
+    const state = await readRunStateCached(req.params.showRunId);
+    const next = await setTestRun(state, { enabled: !!(req.body && req.body.enabled === true), skipSave: true });
     await persistRunState(next);
     res.json(next);
   }));
