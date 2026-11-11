@@ -15,6 +15,7 @@ const {
 const {
   finalizePendingSituation,
   normalizeRuntimeDerivedState,
+  prepareChosenSituation,
   previousSituation,
   receiveScores,
   refreshEligiblePool,
@@ -351,6 +352,23 @@ function createRuntimeApp(options = {}) {
     await persistRunState(next);
     res.json(next);
     queueFinalization(req.params.showRunId, req.body || {});
+  }));
+
+  // Een gekozen (of willekeurige) situatie klaarzetten, buiten paden en algoritme om: om te testen.
+  app.post("/v0/runtime/runs/:showRunId/prepare-situation", asyncRoute(async (req, res) => {
+    const state = await readRunStateCached(req.params.showRunId);
+    let next;
+    try {
+      next = await prepareChosenSituation(state, clients, { ...(req.body || {}), skipSave: true });
+    } catch (err) {
+      if (err && (err.statusCode === 404 || err.statusCode === 409)) {
+        res.status(err.statusCode).json({ ok: false, error: err.message });
+        return;
+      }
+      throw err;
+    }
+    await persistRunState(next);
+    res.json(next);
   }));
 
   app.post("/v0/runtime/runs/:showRunId/previous-situation", asyncRoute(async (req, res) => {

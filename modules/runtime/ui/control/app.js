@@ -443,6 +443,34 @@ function renderActions() {
   situationToggle.textContent = hasActive ? "Stop situatie" : "Start situatie";
   situationToggle.className = hasActive ? "fy-button fy-button-danger" : "fy-button fy-button-primary";
   $("previousSituationBtn").disabled = actionPending || !hasRun || hasActive || !hasPrevious;
+  renderKiesSituatie(hasRun);
+}
+
+// Kies een situatie om klaar te zetten, buiten paden en algoritme om (om te testen).
+let kiesSituatieKey = "";
+function renderKiesSituatie(hasRun) {
+  const select = $("kiesSituatieSelect");
+  if (!select) return;
+  const catalog = state && state.showRunSnapshot && state.showRunSnapshot.catalog ? state.showRunSnapshot.catalog : {};
+  const omgevingen = new Map((catalog.environments || []).map((item) => [item.id, item.name]));
+  const situaties = (catalog.situations || [])
+    .filter((item) => item.active && !item.archivedAt)
+    .slice()
+    .sort((a, b) => String(a.title).localeCompare(String(b.title), "nl"));
+  const key = `${state && state.showRunId}:${situaties.length}`;
+  if (key !== kiesSituatieKey) {
+    kiesSituatieKey = key;
+    const gekozen = select.value;
+    select.innerHTML = situaties.map((item) => {
+      const omgeving = omgevingen.get(item.environmentId);
+      return `<option value="${esc(item.id)}">${esc(item.title)}${omgeving ? ` · ${esc(omgeving)}` : ""}</option>`;
+    }).join("");
+    if (gekozen) select.value = gekozen;
+  }
+  const uit = actionPending || !hasRun || !situaties.length;
+  select.disabled = uit;
+  $("kiesSituatieBtn").disabled = uit;
+  $("willekeurigeSituatieBtn").disabled = uit;
 }
 
 function renderOrderSettings() {
@@ -520,6 +548,16 @@ function bindActions() {
       return next;
     }
     const next = await post(`/v0/runtime/runs/${encodeURIComponent(state.showRunId)}/start-situation`);
+    setMessage("");
+    return next;
+  }));
+  $("kiesSituatieBtn").addEventListener("click", () => withAction(async () => {
+    const next = await post(`/v0/runtime/runs/${encodeURIComponent(state.showRunId)}/prepare-situation`, { situationId: $("kiesSituatieSelect").value });
+    setMessage("");
+    return next;
+  }));
+  $("willekeurigeSituatieBtn").addEventListener("click", () => withAction(async () => {
+    const next = await post(`/v0/runtime/runs/${encodeURIComponent(state.showRunId)}/prepare-situation`, { willekeurig: true });
     setMessage("");
     return next;
   }));

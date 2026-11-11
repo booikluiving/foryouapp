@@ -1105,6 +1105,53 @@ async function updateOrderSettings(state, clients, patch = {}) {
   return state;
 }
 
+// Een gekozen situatie klaarzetten, buiten de paden en het algoritme om: om te testen en ermee
+// te werken. Daarna start hij met de gewone "Start situatie". Met willekeurig: true kiest de
+// runtime er zelf een uit alle actieve situaties. De volgende situatie daarna komt weer gewoon
+// uit de paden en de scores.
+async function prepareChosenSituation(state, clients, options = {}) {
+  if (!state || !state.showRunId || state.status !== "running") throw new Error("runtime_no_show_run");
+  normalizeRuntimeDerivedState(state);
+  const catalog = state.showRunSnapshot.catalog;
+  const situations = activeCatalogSituations(catalog);
+  const activeId = state.activeSituation ? state.activeSituation.situationId : null;
+  let situation = null;
+  if (options.willekeurig === true || options.random === true) {
+    const keuze = situations.filter((item) => item.id !== activeId);
+    situation = keuze.length ? keuze[Math.floor(Math.random() * keuze.length)] : null;
+  } else {
+    const wanted = String(options.situationId || "").trim();
+    situation = situations.find((item) => item.id === wanted) || null;
+  }
+  if (!situation) {
+    const err = new Error("runtime_unknown_situation");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (situation.id === activeId) {
+    const err = new Error("runtime_situation_already_active");
+    err.statusCode = 409;
+    throw err;
+  }
+  const chosenAt = new Date().toISOString();
+  const seed = crypto.createHash("sha256")
+    .update(`${situation.id}:${Date.now()}:${Math.random()}`)
+    .digest("hex")
+    .slice(0, 16);
+  const candidate = { situationId: situation.id, legacySituationId: situation.legacyId, title: situation.title };
+  state.resolvedPreparedNext = materializePreparedNext({ catalog, preparedNext: candidate, seed });
+  state.preparedNext = { ...candidate, chosenAt, reason: "operator_chosen", seed };
+  state.updatedAt = chosenAt;
+  appendRunLog(state, {
+    type: "prepared_next_chosen",
+    at: chosenAt,
+    reason: options.willekeurig === true || options.random === true ? "operator_random" : "operator_chosen",
+    situationId: situation.id,
+  });
+  if (!options.skipSave) await saveRunState(state);
+  return state;
+}
+
 async function previousSituation(state, clients, options = {}) {
   if (!state || !state.showRunId || state.status === "idle") throw new Error("runtime_no_show_run");
   normalizeRuntimeDerivedState(state);
@@ -1218,6 +1265,7 @@ module.exports = {
   normalizeRuntimeDerivedState,
   normalizeOrderSettings,
   placeholderAlgorithmConfigSnapshot,
+  prepareChosenSituation,
   previousSituation,
   receiveScores,
   refreshEligiblePool,

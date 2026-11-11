@@ -455,3 +455,14 @@
     justify-content: flex-start;
   }
 }
+
+.kies-actions {
+  margin-top: 8px;
+}
+
+#kiesSituatieSelect {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 8px 10px;
+  font: inherit;
+}
