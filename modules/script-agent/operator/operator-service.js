@@ -30,6 +30,8 @@ const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
 const MAX_STAGE_MESSAGES = 20;
 const DEFAULT_FALLBACK_MODEL = "deepseek-v4-pro";
 const CLAUDE_MAX_TOKENS = 16000;
+// DeepSeek telt het nadenken mee in max_tokens. maxTokens geldt voor de tekst; met reasoning komt dit erbij.
+const DEEPSEEK_REASONING_HEADROOM_TOKENS = 8192;
 // $ per 1M tokens. DeepSeek V4: piektarief (buiten piek is het de helft).
 const DEEPSEEK_PRICING = {
   "deepseek-chat": { input: 0.27, cachedInput: 0.07, output: 1.10 },
@@ -402,6 +404,10 @@ function reasoningRequestFields(effort) {
   return { reasoning_effort: effort };
 }
 
+function deepSeekMaxTokens(maxTokens, effort) {
+  return normalizeReasoningEffort(effort) === "off" ? maxTokens : maxTokens + DEEPSEEK_REASONING_HEADROOM_TOKENS;
+}
+
 function normalizeStageStyle(input = {}) {
   const source = input && typeof input === "object" ? input : {};
   const font = String(source.font || "jetbrains").trim().toLowerCase();
@@ -546,6 +552,7 @@ function createOperatorService(options = {}) {
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const env = options.env || process.env;
   const onScriptOutput = typeof options.onScriptOutput === "function" ? options.onScriptOutput : null;
+  const log = typeof options.log === "function" ? options.log : (line) => console.log(line);
   const sessions = new Map();
   let settingsCache = null;
   let draft = null;
@@ -977,6 +984,8 @@ function createOperatorService(options = {}) {
   }
 
   async function streamDeepSeekText({ apiKey, model, settings, effort, history, userText, onText }) {
+    const startedAt = Date.now();
+    const timing = { firstReasoningMs: null, firstTextMs: null, totalMs: null };
     const response = await fetchImpl("https://api.deepseek.com/chat/completions", {
       method: "POST",
       headers: {
@@ -990,7 +999,7 @@ function createOperatorService(options = {}) {
           ...history,
           { role: "user", content: userText },
         ],
-        max_tokens: settings.maxTokens,
+        max_tokens: deepSeekMaxTokens(settings.maxTokens, effort),
         temperature: settings.temperature,
         ...reasoningRequestFields(normalizeReasoningEffort(effort)),
         stream: true,
@@ -999,6 +1008,7 @@ function createOperatorService(options = {}) {
     });
     if (!response.ok) throw await responseError(response, "deepseek_api_error");
     let usage = {};
+    let finishReason = null;
     await readSseStream(response.body, async (data) => {
       if (data.error) {
         const message = data.error && data.error.message ? data.error.message : "deepseek_stream_error";
@@ -1008,13 +1018,29 @@ function createOperatorService(options = {}) {
       const choices = Array.isArray(data.choices) ? data.choices : [];
       for (const choice of choices) {
         const delta = choice && choice.delta ? choice.delta.content : "";
-        if (delta) onText(String(delta));
+        const reasoning = choice && choice.delta ? choice.delta.reasoning_content : "";
+        if (reasoning && timing.firstReasoningMs === null) timing.firstReasoningMs = Date.now() - startedAt;
+        if (delta) {
+          if (timing.firstTextMs === null) timing.firstTextMs = Date.now() - startedAt;
+          onText(String(delta));
+        }
+        if (choice && choice.finish_reason) finishReason = choice.finish_reason;
       }
     });
-    return { priced: calculateDeepSeekCost(model, usage), stopReason: "end_turn" };
+    timing.totalMs = Date.now() - startedAt;
+    const details = usage.completion_tokens_details || {};
+    return {
+      priced: calculateDeepSeekCost(model, usage),
+      stopReason: finishReason === "length" ? "max_tokens" : "end_turn",
+      finishReason,
+      reasoningTokens: Number(details.reasoning_tokens || 0) || 0,
+      timing,
+    };
   }
 
   async function streamClaudeText({ apiKey, model, settings, effort, history, userText, onText }) {
+    const startedAt = Date.now();
+    const timing = { firstReasoningMs: null, firstTextMs: null, totalMs: null };
     const client = new Anthropic({ apiKey, baseURL: "https://api.anthropic.com" });
     // Claude wil afwisselend user/assistant, beginnend met user, zonder lege berichten.
     const messages = [...history, { role: "user", content: userText }]
@@ -1028,12 +1054,23 @@ function createOperatorService(options = {}) {
       messages,
     });
     for await (const event of stream) {
+      if (event.type === "content_block_delta" && event.delta && event.delta.type === "thinking_delta") {
+        if (timing.firstReasoningMs === null) timing.firstReasoningMs = Date.now() - startedAt;
+      }
       if (event.type === "content_block_delta" && event.delta && event.delta.type === "text_delta") {
+        if (timing.firstTextMs === null) timing.firstTextMs = Date.now() - startedAt;
         onText(String(event.delta.text || ""));
       }
     }
     const final = await stream.finalMessage();
-    return { priced: calculateClaudeCost(model, final.usage || {}), stopReason: final.stop_reason };
+    timing.totalMs = Date.now() - startedAt;
+    return {
+      priced: calculateClaudeCost(model, final.usage || {}),
+      stopReason: final.stop_reason,
+      finishReason: final.stop_reason,
+      reasoningTokens: null,
+      timing,
+    };
   }
 
   async function streamChat(body = {}, emit = () => {}) {
@@ -1121,6 +1158,33 @@ function createOperatorService(options = {}) {
       });
       emit({ type: "delta", assistantId, text: delta, fullText });
     };
+    const chatStartedAt = Date.now();
+    const logGeneration = (extra = {}) => {
+      const priced = result && result.priced ? result.priced : {};
+      const timing = result && result.timing ? result.timing : {};
+      log(JSON.stringify({
+        at: nowIso(),
+        event: "script_agent_generation",
+        situationId: promptInput.situation && promptInput.situation.situationId,
+        sessionId,
+        historyMessages: history.length,
+        provider,
+        model,
+        reasoningEffort: settings.reasoningEffort,
+        fallback,
+        firstReasoningMs: timing.firstReasoningMs ?? null,
+        firstTextMs: timing.firstTextMs ?? null,
+        generationMs: timing.totalMs ?? null,
+        totalMs: Date.now() - chatStartedAt,
+        finishReason: result ? result.finishReason ?? null : null,
+        tokensInput: priced.input ?? null,
+        tokensCached: priced.cached ?? null,
+        tokensOutput: priced.output ?? null,
+        reasoningTokens: result ? result.reasoningTokens ?? null : null,
+        textChars: fullText.length,
+        ...extra,
+      }));
+    };
     const runDeepSeek = (deepSeekModel, effort) => streamDeepSeekText({
       apiKey: deepSeekKey, model: deepSeekModel, settings, effort, history, userText, onText: (text) => publish(text),
     });
@@ -1154,8 +1218,13 @@ function createOperatorService(options = {}) {
       } else {
         result = await runDeepSeek(model, wantsClaude ? "off" : settings.reasoningEffort);
       }
+      if (result && result.stopReason === "max_tokens") {
+        recordUsage(session, result.priced, provider);
+        throw new Error(`script_afgekapt: tokenlimiet bereikt na ${fullText.length} tekens tekst (maxTokens ${settings.maxTokens})`);
+      }
     } catch (err) {
       const message = err && err.message ? String(err.message) : `${provider}_stream_error`;
+      logGeneration({ error: normalizeText(message, 300) });
       assistantMessage.streaming = false;
       assistantMessage.error = normalizeText(message, 300);
       stageState.streaming = false;
@@ -1171,6 +1240,7 @@ function createOperatorService(options = {}) {
       throw err;
     }
 
+    logGeneration();
     const priced = result.priced;
     recordUsage(session, priced, provider);
     session.messages.push({ role: "user", content: userText, at: userMessage.at });
