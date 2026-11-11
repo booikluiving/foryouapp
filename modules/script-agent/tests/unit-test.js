@@ -87,6 +87,8 @@ function assertNoRuntimeOrderFields(value) {
   }
 }
 
+const fakeDeepSeek = { truncate: false, lastBody: null };
+
 function fakeDeepSeekFetch(expectedApiKey) {
   return async (url, options = {}) => {
     assert.equal(url, "https://api.deepseek.com/chat/completions");
@@ -97,11 +99,18 @@ function fakeDeepSeekFetch(expectedApiKey) {
     assert.equal(body.stream, true);
     assert.equal(body.messages[0].role, "system");
     assert.equal(body.messages.at(-1).role, "user");
+    fakeDeepSeek.lastBody = body;
     const chunks = [
+      `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "Even nadenken." } }] })}\n\n`,
       `data: ${JSON.stringify({ choices: [{ delta: { content: "Ada: Live regel\\n" } }] })}\n\n`,
       `data: ${JSON.stringify({
-        choices: [{ delta: { content: "Ben: Tegenregel" } }],
-        usage: { prompt_tokens: 30, completion_tokens: 12, prompt_cache_hit_tokens: 4 },
+        choices: [{ delta: { content: "Ben: Tegenregel" }, finish_reason: fakeDeepSeek.truncate ? "length" : "stop" }],
+        usage: {
+          prompt_tokens: 30,
+          completion_tokens: 12,
+          prompt_cache_hit_tokens: 4,
+          completion_tokens_details: { reasoning_tokens: 5 },
+        },
       })}\n\n`,
       "data: [DONE]\n\n",
     ];
@@ -279,6 +288,7 @@ async function main() {
     global.fetch = previousFetch;
   }
 
+  const generationLog = [];
   const operatorService = createOperatorService({
     clients: {
       fetchCurrentRuntimeState: async () => ({ ok: true, state: cloneJson(runtimeState) }),
@@ -286,6 +296,7 @@ async function main() {
     },
     env: {},
     fetchImpl: fakeDeepSeekFetch("sk-test-deepseek"),
+    log: (line) => generationLog.push(JSON.parse(line)),
   });
   assert.equal((await operatorService.secretsStatus()).deepseek.configured, false);
   await operatorService.saveSecrets({ deepSeekApiKey: "sk-test-deepseek" });
@@ -357,6 +368,41 @@ async function main() {
   assert(streamEvents.some((event) => event.type === "delta"));
   assert(streamEvents.some((event) => event.type === "done"));
   assertNoRuntimeOrderFields(generated.scriptOutput);
+  // Reasoning staat standaard op low: het nadenken krijgt ruimte bovenop maxTokens.
+  assert.equal(fakeDeepSeek.lastBody.max_tokens, 512 + 8192);
+  const okLog = generationLog.at(-1);
+  assert.equal(okLog.event, "script_agent_generation");
+  assert.equal(okLog.finishReason, "stop");
+  assert.equal(okLog.reasoningTokens, 5);
+  assert.equal(typeof okLog.firstTextMs, "number");
+  assert.equal(typeof okLog.firstReasoningMs, "number");
+  assert.equal(okLog.error, undefined);
+
+  fakeDeepSeek.truncate = true;
+  const truncatedEvents = [];
+  await assert.rejects(
+    operatorService.streamChat({
+      sessionId: "truncate_session",
+      message: operatorDraft.text,
+      promptInput: operatorDraft.promptInput,
+    }, (event) => truncatedEvents.push(event)),
+    /script_afgekapt/
+  );
+  fakeDeepSeek.truncate = false;
+  assert(truncatedEvents.some((event) => event.type === "error" && /script_afgekapt/.test(event.error)));
+  assert.equal(operatorService.sessionInfo("truncate_session").messages.length, 0);
+  assert.equal(operatorService.snapshotStage().streaming, false);
+  assert.equal(generationLog.at(-1).finishReason, "length");
+  assert(/script_afgekapt/.test(generationLog.at(-1).error));
+
+  await operatorService.saveSettings({ reasoningEffort: "off" });
+  await operatorService.streamChat({
+    sessionId: "off_session",
+    message: operatorDraft.text,
+    promptInput: operatorDraft.promptInput,
+  });
+  assert.equal(fakeDeepSeek.lastBody.max_tokens, 512);
+  await operatorService.saveSettings({ reasoningEffort: "low" });
 
   const sceneChatEvents = [];
   const sceneChat = await operatorService.sceneToChat({ sourceId: "unit-scene-chat" }, (event) => sceneChatEvents.push(event));
