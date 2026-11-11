@@ -35,6 +35,14 @@ async function main() {
   const vijfde = await play(ander, false);
   assert.match(vijfde.message, /^speelt/);
 
+  // Een effect (stap van omvallen) kapt het lied niet af: het lied gaat daarna met een druk uit.
+  stopCurrent();
+  await play(lied, true);
+  const effect = await play(ander, false);
+  assert.equal(effect.data.spoor, "effect");
+  const uit = await play(lied, true);
+  assert.equal(uit.data.gestopt, true, "het lied speelde nog tijdens het effect");
+
   stopCurrent();
   fs.rmSync(dir, { recursive: true, force: true });
   console.log("mac-audio-wissel-test ok");
