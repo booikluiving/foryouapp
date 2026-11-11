@@ -139,3 +139,30 @@ console.log("show-control environment-omvallen: ok");
   assert.equal(environmentVanzelfTick(scene("environment:26", "a"), { ...options, now: 999999 }), null);
   resetOmvallenState();
 }
+
+// Herhaal: de knop gaat eindeloos door (salvo), zonder teller en zonder OPNIEUW.
+{
+  const { environmentKnoppenStatus } = require("../cue-library/environment-knoppen");
+  const herhaalManifest = {
+    schemaVersion: "omvallen.v0",
+    environmentId: "environment:6",
+    herhaal: true,
+    drukken: [
+      { druk: 1, naam: "Veel foto's", klap: 0, clip: "salvo-1.mov", duur: 3.6 },
+      { druk: 2, naam: "Veel foto's", klap: 0, clip: "salvo-2.mov", duur: 3.6 },
+    ],
+  };
+  const opt = { manifest: herhaalManifest, catalogMediaRoot: "/media", fileExists: () => true };
+  const speelt = scene("environment:6", "h");
+  resetOmvallenState();
+  const clips = [];
+  for (let i = 0; i < 5; i += 1) clips.push(buildEnvironmentOmvallenCue(speelt, {}, opt).actions[0].payload.filePath.split("/").pop());
+  assert.deepEqual(clips, ["salvo-1.mov", "salvo-2.mov", "salvo-1.mov", "salvo-2.mov", "salvo-1.mov"]);
+  const knoppen = environmentKnoppenStatus(speelt, { environmentOmvallen: opt }).knoppen;
+  assert.deepEqual([knoppen[0].label, knoppen[0].teller, knoppen[1].label, knoppen[1].staat], ["VEEL FOTO'S", "", "BEGIN", "klaar"]);
+  // BEGIN zet het effect uit en begint opnieuw.
+  const begin = buildEnvironmentOmvallenCue(speelt, { actie: "begin" }, opt);
+  assert.equal(begin.actions[0].payload.uit, true);
+  assert.equal(environmentOmvallenStatus(speelt, opt).pos, 0);
+  resetOmvallenState();
+}
