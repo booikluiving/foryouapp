@@ -8,9 +8,6 @@ const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 
 const AUDIO_EXTENSIONS = /\.(mp3|wav|aif|aiff|m4a|aac|flac)$/i;
-let current = null;
-let currentFile = "";
-
 function player(options = {}) {
   return String(options.macAudioPlayer || process.env.SHOW_CONTROL_AUDIO_PLAYER || "/usr/bin/afplay");
 }
@@ -20,16 +17,27 @@ function audioDisabled(options = {}) {
   return value === "off" || value === "0" || value === "uit";
 }
 
-function stopCurrent() {
-  if (current && current.exitCode === null && !current.killed) {
-    try { current.kill("SIGTERM"); } catch (_err) {}
+// Twee sporen: "lied" is het extra geluid van de omgeving (wisselknop, mag lang duren),
+// "effect" zijn de korte geluiden van stappen (omvallen, fases). Een effect kapt het lied niet af.
+const sporen = { lied: { child: null, file: "" }, effect: { child: null, file: "" } };
+
+function stopSpoor(naam) {
+  const spoor = sporen[naam];
+  if (spoor.child && spoor.child.exitCode === null && !spoor.child.killed) {
+    try { spoor.child.kill("SIGTERM"); } catch (_err) {}
   }
-  current = null;
-  currentFile = "";
+  spoor.child = null;
+  spoor.file = "";
 }
 
-function isPlaying(filePath) {
-  return Boolean(current && current.exitCode === null && !current.killed && currentFile === filePath);
+function stopCurrent() {
+  stopSpoor("lied");
+  stopSpoor("effect");
+}
+
+function isPlaying(naam, filePath) {
+  const spoor = sporen[naam];
+  return Boolean(spoor.child && spoor.child.exitCode === null && !spoor.child.killed && spoor.file === filePath);
 }
 
 async function sendMacAudioCommand(action, context = {}) {
@@ -49,29 +57,30 @@ async function sendMacAudioCommand(action, context = {}) {
   if (audioDisabled(options)) {
     return { stage: "applied", state: "warning", warning: true, message: "extra geluid staat uit (SHOW_CONTROL_EXTRA_AUDIO=off)" };
   }
-  // Wisselknop (extra geluid van de omgeving): speelt dit geluid nog, dan zet een druk het uit;
-  // de druk daarna begint weer vooraan.
-  if (payload.wissel && isPlaying(filePath)) {
-    stopCurrent();
+  const naam = payload.wissel ? "lied" : "effect";
+  // Wisselknop: speelt dit geluid nog, dan zet een druk het uit; de druk daarna begint weer vooraan.
+  if (payload.wissel && isPlaying("lied", filePath)) {
+    stopSpoor("lied");
     return { stage: "applied", state: "ok", message: `${filePath.split("/").pop()} uit`, data: { route: "mac-audio", gestopt: true } };
   }
-  // Anders: nog eens drukken = opnieuw beginnen, niet over elkaar heen.
-  stopCurrent();
+  // Binnen een spoor: nog eens drukken = opnieuw beginnen, niet over elkaar heen.
+  stopSpoor(naam);
   const child = spawn(player(options), ["-v", String(volume), filePath], { stdio: "ignore", detached: false });
+  const spoor = sporen[naam];
   child.on("error", () => {});
   child.on("exit", () => {
-    if (current === child) {
-      current = null;
-      currentFile = "";
+    if (spoor.child === child) {
+      spoor.child = null;
+      spoor.file = "";
     }
   });
-  current = child;
-  currentFile = filePath;
+  spoor.child = child;
+  spoor.file = filePath;
   return {
     stage: "applied",
     state: "ok",
     message: `speelt ${filePath.split("/").pop()} (volume ${Math.round(volume * 100)}%)`,
-    data: { route: "mac-audio", transport: { type: "afplay", pid: child.pid || null } },
+    data: { route: "mac-audio", spoor: naam, transport: { type: "afplay", pid: child.pid || null } },
   };
 }
 
