@@ -135,7 +135,7 @@ function resolveExtra(kind, extra, mediaAssets, options = {}) {
     klaar: true,
     assetId: asset.id,
     filePath,
-    ...(kind === "shot" ? { duur: extra.duur } : { volume: extra.volume }),
+    ...(kind === "shot" ? { duur: extra.duur } : { volume: extra.volume, lus: extra.lus === true }),
   };
 }
 
@@ -240,6 +240,8 @@ function buildEnvironmentExtraCue(runtimeState, input = {}, options = {}) {
       volume: volumeOverride(input.volume, extra.volume),
       // De knop is aan/uit: drukken terwijl dit geluid speelt zet het uit, de druk daarna begint vooraan.
       wissel: true,
+      // In een lus: het geluid begint vanzelf opnieuw tot de knop weer wordt ingedrukt.
+      ...(extra.lus ? { lus: true } : {}),
     }));
   } else if (extra.camera) {
     actions.push(cueAction(cueId, 0, "touchdesigner", "td.camera.set", "acknowledged-async", {

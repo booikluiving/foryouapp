@@ -57,6 +57,8 @@ function normalizeSound(input) {
     bron,
     bestand: bron === "bestand" ? text(source.bestand, 300) : "",
     volume: clampNumber(source.volume, 0, 1, 1),
+    // lus = het geluid begint vanzelf opnieuw tot de knop weer wordt ingedrukt (een eindeloze plas).
+    ...(source.lus === true ? { lus: true } : {}),
   };
 }
 
