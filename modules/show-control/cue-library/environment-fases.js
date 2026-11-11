@@ -97,7 +97,9 @@ function environmentFasesStatus(runtimeState, options = {}) {
   const base = { ok: true, environmentId: ref.environmentId, bron: ref.bron, klaar: false, reden: "", actief: 0, fases: [] };
   if (!ref.environmentId) return { ...base, reden: "geen_omgeving" };
   const read = readFromCatalog(ref.environmentId, options);
-  const lijst = read.composition && Array.isArray(read.composition.fases) ? read.composition.fases : [];
+  // Een fase die bij een situatie hoort gaat vanzelf aan met die situatie: geen stap van de knop.
+  const lijst = (read.composition && Array.isArray(read.composition.fases) ? read.composition.fases : [])
+    .filter((fase) => fase && !fase.situationId);
   if (!lijst.length) return { ...base, reden: "geen_fases" };
   const assets = (read.mediaAssets || []).filter(isPresent);
   const sleutel = sleutelVoor(ref, runtimeState);

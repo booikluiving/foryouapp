@@ -337,6 +337,21 @@ function fxAssetsForEnvironment(catalog, environmentId) {
   return assetsForEnvironment(catalog, environmentId).filter(isFxAsset).filter((asset) => !isTdOutputAsset(asset));
 }
 
+// Een fase kan bij een situatie horen (fase.situationId). Speelt die situatie, dan is het beeld
+// van die fase de achtergrond en de voorgrond van die fase (fase.overlayAssetId) de overlay.
+function faseForSituation(composition, resolved = {}) {
+  const situationId = String(resolved.situationId || (resolved.situation && resolved.situation.id) || "").trim();
+  const fases = composition && Array.isArray(composition.fases) ? composition.fases : [];
+  if (!situationId) return null;
+  return fases.find((fase) => fase && String(fase.situationId || "") === situationId) || null;
+}
+
+function presentAssetById(catalog, environmentId, assetId) {
+  if (!assetId) return null;
+  const asset = assetById(assetsForEnvironment(catalog, environmentId), String(assetId));
+  return asset && isPresent(asset) ? asset : null;
+}
+
 function existingAsset(resolved = {}, role) {
   const assets = asObject(resolved.assets) || {};
   return asObject(assets[role]) || null;
@@ -357,8 +372,12 @@ function resolvedEnvironmentAssets(runtimeState, resolved, options = {}) {
   const composition = compositionForEnvironment(catalog, environmentId);
   const existingAssets = asObject(resolved.assets) || {};
   const preferCatalogAssets = !!catalog._liveAssetOverlay;
+  const fase = faseForSituation(composition, resolved);
+  const faseBackground = fase ? presentAssetById(catalog, environmentId, fase.assetId) : null;
+  const faseOverlay = fase ? presentAssetById(catalog, environmentId, fase.overlayAssetId) : null;
   const background = normalizeAsset(
-    preferCatalogAssets
+    faseBackground ? { ...faseBackground, role: "background", type: "background" }
+    : preferCatalogAssets
       ? preferredAssetForRole(catalog, environmentId, "background")
       : existingAsset(resolved, "background") || preferredAssetForRole(catalog, environmentId, "background"),
     { environmentId, role: "background" }
@@ -378,7 +397,7 @@ function resolvedEnvironmentAssets(runtimeState, resolved, options = {}) {
       : existingFx.length
         ? existingFx
         : fxAssetsForEnvironment(catalog, environmentId));
-  const fx = preferTdOutputAssets(fxSource)
+  const fx = (faseOverlay ? [faseOverlay] : preferTdOutputAssets(fxSource))
     .map((asset) => normalizeAsset(asset, { environmentId, role: assetRoleOf(asset) || "fx" }))
     .filter(Boolean);
   const lighting = resolveEnvironmentLighting(composition && composition.lighting, catalog.lightingPresets || []);

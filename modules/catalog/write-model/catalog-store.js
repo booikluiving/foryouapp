@@ -1135,7 +1135,18 @@ function normalizeCompositionLayer(layer, role, index = 0) {
     opacity: numericValue(layer.opacity, 1, { min: 0, max: 1 }),
     zIndex: numericValue(layer.zIndex, index + 1, { min: 0, max: 9999, integer: true }),
     ...normalizeLayerVal(layer.val, role),
+    ...normalizeLayerFases(layer.fases, role),
   };
+}
+
+// Een PNG-laag kan bij bepaalde fases horen (posities in composition.fases, 0 = fase 1).
+// Geen lijst = de laag is in elke fase te zien.
+function normalizeLayerFases(fases, role) {
+  if (role !== "fxImage" || !Array.isArray(fases)) return {};
+  const posities = [...new Set(fases
+    .map((item) => Number(item))
+    .filter((item) => Number.isInteger(item) && item >= 0 && item < 12))].sort((a, b) => a - b);
+  return posities.length ? { fases: posities } : {};
 }
 
 // Effect "omvallen": een PNG-laag kan bij een stap omvallen, naar links of naar rechts.
@@ -1150,6 +1161,8 @@ function normalizeLayerVal(val, role) {
 // Fases: een omgeving kan na elkaar meerdere beelden hebben (Rijden, Aanrijding, ...).
 // Een fase zonder beeld toont de achtergrond. schok = het beeld schudt bij het ingaan van de
 // fase, schokNa = seconden tussen het begin van het geluid en de klap.
+// situationId = de fase hoort bij die situatie: start de situatie, dan staat deze fase aan.
+// overlayAssetId = de gerenderde voorgrond (PNG-lagen) van deze fase.
 function normalizeCompositionFases(fases) {
   if (!Array.isArray(fases)) return [];
   return fases.slice(0, 12).map((fase) => {
@@ -1160,6 +1173,8 @@ function normalizeCompositionFases(fases) {
       assetId: String(fase.assetId || "").trim(),
       schok,
       schokNa: schok ? numericValue(fase.schokNa, 0, { min: 0, max: 10 }) : 0,
+      ...(String(fase.situationId || "").trim() ? { situationId: String(fase.situationId).trim().slice(0, 80) } : {}),
+      ...(String(fase.overlayAssetId || "").trim() ? { overlayAssetId: String(fase.overlayAssetId).trim() } : {}),
     };
   }).filter(Boolean);
 }
@@ -1722,6 +1737,7 @@ async function deleteMediaAsset(assetId, options = {}) {
     }
     if (Array.isArray(composition.fases)) {
       composition.fases = composition.fases.map((fase) => (fase && fase.assetId === id ? { ...fase, assetId: "" } : fase));
+      composition.fases = composition.fases.map((fase) => (fase && fase.overlayAssetId === id ? { ...fase, overlayAssetId: "" } : fase));
     }
     composition.updatedAt = at;
   }
