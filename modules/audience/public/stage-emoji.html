@@ -29,8 +29,8 @@
       }
       @keyframes stijg {
         0% { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
-        10% { opacity: 1; transform: translate(-50%, -8vh) scale(1); }
-        75% { opacity: 1; }
+        10% { opacity: 1; transform: translate(-50%, -4vh) scale(1); }
+        45% { opacity: 1; }
         100% { transform: translate(calc(-50% + var(--drift, 0px)), var(--hoogte, -70vh)) scale(1.05); opacity: 0; }
       }
     </style>
@@ -62,8 +62,10 @@
           el.style.left = x + "%";
           el.style.fontSize = grootte + "px";
           el.style.setProperty("--drift", Math.round(Math.random() * 120 - 60) + "px");
-          el.style.setProperty("--hoogte", -(55 + Math.random() * 30) + "vh");
-          el.style.setProperty("--duur", Math.round(2800 + Math.random() * 1200) + "ms");
+          // Hoe ver ze stijgen (Admin: Emoji hoogte); halverwege beginnen ze te vervagen.
+          const hoogte = Math.max(10, Math.min(95, Number(settings.emojiHoogte || 45)));
+          el.style.setProperty("--hoogte", -(hoogte * (0.85 + Math.random() * 0.3)) + "vh");
+          el.style.setProperty("--duur", Math.round((1600 + hoogte * 25) * (0.9 + Math.random() * 0.2)) + "ms");
           el.style.animationDelay = i * 90 + "ms";
           el.addEventListener("animationend", () => el.remove());
           laag.appendChild(el);
