@@ -1756,7 +1756,17 @@ class AudienceService extends EventEmitter {
       simulated: true,
       isInternalSimulator: true,
     };
-    return this.acceptReaction(meta, reaction);
+    return this.acceptReaction(meta, this.botEmoji(reaction));
+  }
+
+  // Bots sturen heart/bored; kies daarvoor een emoji uit de lijst die zo telt.
+  // De eerste (❤️ of 👎) blijft de meest gekozen, de andere komen ook voorbij.
+  botEmoji(reaction) {
+    const telt = { heart: "positief", bored: "negatief" }[String(reaction || "").toLowerCase()];
+    if (!telt) return reaction;
+    const opties = this.reacties.filter((r) => r.telt === telt);
+    if (opties.length < 2 || Math.random() < 0.5) return opties.length ? opties[0].emoji : reaction;
+    return opties[1 + Math.floor(Math.random() * (opties.length - 1))].emoji;
   }
 
   // Voor de bot-simulatie: recente comments (oud → nieuw) met likes; leeg tijdens de scène.
