@@ -38,17 +38,31 @@ async function readJsonArray(filePath) {
   }
 }
 
+// Schrijven via een tijdelijk bestand + rename: een half of dubbel geschreven bestand kan niet meer.
 async function writeJsonArray(filePath, items) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, `${JSON.stringify(items, null, 2)}\n`, "utf8");
+  const tmp = `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+  await fs.writeFile(tmp, `${JSON.stringify(items, null, 2)}\n`, "utf8");
+  await fs.rename(tmp, filePath);
+}
+
+// Lezen-aanpassen-schrijven per bestand na elkaar, zodat twee gelijktijdige aanroepen elkaar niet overschrijven.
+const schrijfRij = new Map();
+function naElkaar(filePath, werk) {
+  const vorige = schrijfRij.get(filePath) || Promise.resolve();
+  const volgende = vorige.then(werk, werk);
+  schrijfRij.set(filePath, volgende.catch(() => {}));
+  return volgende;
 }
 
 async function appendPromptInput(promptInput) {
   const filePath = promptInputsFilePath();
-  const promptInputs = await readJsonArray(filePath);
-  promptInputs.push(promptInput);
-  await writeJsonArray(filePath, promptInputs);
-  return promptInput;
+  return naElkaar(filePath, async () => {
+    const promptInputs = await readJsonArray(filePath);
+    promptInputs.push(promptInput);
+    await writeJsonArray(filePath, promptInputs);
+    return promptInput;
+  });
 }
 
 async function readPromptInputs(filter = {}) {
@@ -68,10 +82,12 @@ async function readPromptInput(promptInputId) {
 
 async function appendScriptOutput(scriptOutput) {
   const filePath = scriptsFilePath();
-  const scripts = await readJsonArray(filePath);
-  scripts.push(scriptOutput);
-  await writeJsonArray(filePath, scripts);
-  return scriptOutput;
+  return naElkaar(filePath, async () => {
+    const scripts = await readJsonArray(filePath);
+    scripts.push(scriptOutput);
+    await writeJsonArray(filePath, scripts);
+    return scriptOutput;
+  });
 }
 
 async function readScriptOutputs(filter = {}) {
