@@ -180,6 +180,8 @@ function attachAudienceRealtime(server, service, options = {}) {
       buildVersion: service.health().buildVersion,
       buildLabel: service.health().buildLabel,
       poll: service.getActivePollSnapshot(),
+      fase: service.getFase(),
+      reacties: service.getReacties(),
     });
   }
 

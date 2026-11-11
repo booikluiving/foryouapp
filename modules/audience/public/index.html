@@ -535,17 +535,26 @@
         color: var(--b);
         font-variant-numeric: tabular-nums;
       }
+      #reactionBar.veel button {
+        min-height: 56px;
+      }
+      #reactionBar.veel .reactionEmoji {
+        font-size: 24px;
+      }
       body[data-interaction-mode="scene_reaction"] #reactionBar {
         flex: 1 1 auto;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: repeat(var(--kolommen, 1), 1fr);
+        grid-auto-rows: 1fr;
         gap: 12px;
       }
       body[data-interaction-mode="scene_reaction"] #reactionBar button {
         flex-direction: column;
         gap: 8px;
       }
-      body[data-interaction-mode="scene_reaction"] .reactionEmoji {
-        font-size: clamp(64px, 18vw, 96px);
+      body[data-interaction-mode="scene_reaction"] .reactionEmoji,
+      body[data-interaction-mode="scene_reaction"] #reactionBar.veel .reactionEmoji {
+        font-size: clamp(56px, 16vw, 96px);
       }
       body[data-interaction-mode="scene_reaction"] .reactionCount {
         font-size: 20px;
@@ -722,8 +731,6 @@
       <button id="send" class="lijnKnop" disabled>Verstuur</button>
     </div>
     <div id="reactionBar" hidden>
-      <button type="button" data-reaction="heart" aria-label="Positief"><span class="reactionEmoji" aria-hidden="true">❤️</span><span class="reactionCount" data-reaction-count="heart">0</span></button>
-      <button type="button" data-reaction="bored" aria-label="Negatief"><span class="reactionEmoji" aria-hidden="true">👎</span><span class="reactionCount" data-reaction-count="bored">0</span></button>
     </div>
     <div id="reactionBurstLayer" aria-hidden="true"></div>
     <div id="connectionToast" role="status" aria-live="polite" aria-atomic="true">
@@ -790,10 +797,9 @@
         heart: 0,
         bored: 0,
       };
-      const reactionEmoji = {
-        heart: "❤️",
-        bored: "👎",
-      };
+      // Emoji-lijst komt van de server (hello / "reacties"); dit is de stand tot die er is.
+      const reactionEmoji = {};
+      let faseNu = "tussen";
       const REACTION_POINTER_GHOST_MS = 700;
       const HEART_HAPTIC_MIN_GAP_MS = 90;
       const REACTION_SEND_STEP_MS = 130;
@@ -1115,6 +1121,30 @@
         }
       }
 
+      function renderReactieKnoppen(lijst) {
+        const items = Array.isArray(lijst) && lijst.length ? lijst : [{ emoji: "\u2764\ufe0f" }, { emoji: "\ud83d\udc4e" }];
+        for (const key of Object.keys(reactionEmoji)) delete reactionEmoji[key];
+        reactionBarEl.textContent = "";
+        for (const item of items) {
+          const emoji = String(item && item.emoji || "");
+          if (!emoji) continue;
+          reactionEmoji[emoji] = emoji;
+          const button = document.createElement("button");
+          button.type = "button";
+          button.setAttribute("data-reaction", emoji);
+          button.setAttribute("aria-label", emoji);
+          const span = document.createElement("span");
+          span.className = "reactionEmoji";
+          span.setAttribute("aria-hidden", "true");
+          span.textContent = emoji;
+          button.appendChild(span);
+          reactionBarEl.appendChild(button);
+        }
+        const aantal = Object.keys(reactionEmoji).length;
+        reactionBarEl.classList.toggle("veel", aantal > 3);
+        reactionBarEl.style.setProperty("--kolommen", aantal > 3 ? "2" : "1");
+      }
+
       function sendReaction(reactionKey) {
         if (!reactionEmoji[reactionKey]) return;
         if (interactionMode !== "scene_reaction" && interactionMode !== "chat") {
@@ -1131,7 +1161,7 @@
           reactionCounts[reactionKey] = Number(reactionCounts[reactionKey] || 0) + 1;
           updateReactionCounterUi();
           spawnReactionBurst(reactionKey, 1);
-          if (reactionKey === "heart" && supportsNativeVibration) {
+          if (supportsNativeVibration) {
             const pulseNow = Date.now();
             if (pulseNow - lastHeartHapticAt >= HEART_HAPTIC_MIN_GAP_MS) {
               lastHeartHapticAt = pulseNow;
@@ -1279,6 +1309,7 @@
       }
 
       function resolveInteractionMode() {
+        if (faseNu === "scene") return "scene_reaction";
         const active = activeAlgorithmScene && activeAlgorithmScene.runId ? activeAlgorithmScene : null;
         if (active) return "scene_reaction";
         if (sceneVotePrompt && sceneVotePrompt.runId && !hasStoredSceneVoteResolution(sceneVotePrompt.runId)) {
@@ -1361,6 +1392,7 @@
         chatFeedEl.hidden = !chatMode;
         textEl.hidden = !chatMode;
         sendBtn.hidden = !chatMode;
+        textEl.parentElement.hidden = !chatMode;
         reactionBarEl.hidden = !(reactionMode || chatMode);
         pollBoxEl.hidden = !chatMode || !activePoll;
 
@@ -1782,6 +1814,7 @@
         if (devPanelEl) devPanelEl.hidden = true;
       }
       setDevPanelOpen(false);
+      renderReactieKnoppen();
       updateReactionCounterUi();
 
       let hasShownConnectedToast = false;
@@ -2378,8 +2411,12 @@
           appendChat("Je stem was al opgeslagen.");
           return;
         }
+        if (code === "scene_typen_dicht") {
+          showToast("Typen kan weer na de scène.", { subtle: true, autoHideMs: 2400 });
+          return;
+        }
         if (code === "chat_paused_for_scene") {
-          showToast("Tijdens de scene kun je alleen hart/bored drukken.", { subtle: true, autoHideMs: 2400 });
+          showToast("Tijdens de scène kun je alleen emoji sturen.", { subtle: true, autoHideMs: 2400 });
           return;
         }
         if (code === "poll_paused_for_scene") {
@@ -2560,6 +2597,21 @@
               applyBuildLabel(msg.buildVersion, msg.buildLabel, "ws_hello");
               noteServerSeen();
               if (msg.poll) showPoll(msg.poll);
+              if (Array.isArray(msg.reacties)) renderReactieKnoppen(msg.reacties);
+              if (msg.fase && msg.fase.fase) {
+                faseNu = msg.fase.fase === "scene" ? "scene" : "tussen";
+                renderInteractionMode();
+              }
+              return;
+            }
+            if (msg.type === "fase") {
+              faseNu = msg.fase === "scene" ? "scene" : "tussen";
+              renderInteractionMode();
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "reacties") {
+              renderReactieKnoppen(msg.reacties);
               return;
             }
             if (msg.type === "pong") {
@@ -2716,7 +2768,7 @@
           return;
         }
         if (interactionMode === "scene_reaction") {
-          showToast("Tijdens de scene kun je alleen hart/bored drukken.", { subtle: true, autoHideMs: 2200 });
+          showToast("Tijdens de scène kun je alleen emoji sturen.", { subtle: true, autoHideMs: 2200 });
           return;
         }
         if (interactionMode === "scene_vote") {

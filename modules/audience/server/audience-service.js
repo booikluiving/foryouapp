@@ -15,6 +15,7 @@ const {
 const { getAudienceStore, normalizeToken, nowIso, safeJsonStringify } = require("../db/audience-store");
 const {
   fetchCurrentRuntimeState,
+  fetchRuntimeView,
   restoreRuntimeAlgorithmContext,
   sendAudienceSignalsToAlgorithm,
   sendScoreFeedToRuntime,
@@ -30,7 +31,16 @@ const SERVICE_VERSION = "audience.0";
 const ACCESS_COOKIE = "fy_audience_access";
 const ACCESS_TTL_MINUTES = 720;
 const JOIN_TOKEN_TTL_MINUTES = 720;
-const ALLOWED_REACTIONS = Object.freeze(["heart", "bored"]);
+// Emoji die het publiek kan sturen; instelbaar in Admin. "telt" bepaalt wat het algoritme ermee doet:
+// positief = heart, negatief = bored, niet = alleen in beeld.
+const REACTIES_KEY = "reactie_emoji";
+const REACTIE_TELT = Object.freeze({ positief: "heart", negatief: "bored", niet: "emoji" });
+const REACTIES_MAX = 8;
+const REACTIES_STANDAARD = Object.freeze([
+  Object.freeze({ emoji: "\u2764\ufe0f", telt: "positief" }),
+  Object.freeze({ emoji: "\ud83d\udc4e", telt: "negatief" }),
+]);
+const FASE_POLL_MS = 1000;
 const MESSAGE_SLOWDOWN_MIN_MS = 500;
 const MESSAGE_SLOWDOWN_MAX_MS = 8000;
 const MESSAGE_SLOWDOWN_DEFAULT_MS = 850;
@@ -99,6 +109,19 @@ function normalizeAdminSettings(raw = {}) {
   };
 }
 
+function normalizeReacties(raw) {
+  const lijst = Array.isArray(raw) ? raw : [];
+  const uit = [];
+  for (const item of lijst) {
+    const emoji = String(item && item.emoji || "").trim().slice(0, 16);
+    if (!emoji || /[<>&"'\s]/.test(emoji) || uit.some((r) => r.emoji === emoji)) continue;
+    const telt = Object.prototype.hasOwnProperty.call(REACTIE_TELT, item.telt) ? item.telt : "niet";
+    uit.push({ emoji, telt });
+    if (uit.length >= REACTIES_MAX) break;
+  }
+  return uit.length ? uit : REACTIES_STANDAARD.map((r) => ({ ...r }));
+}
+
 function normalizeWifiAuth(input) {
   const raw = String(input || "WPA").trim();
   if (raw === "WEP") return "WEP";
@@ -154,7 +177,7 @@ function normalizeStageSettings(raw = {}, base = STAGE_OUTPUT_DEFAULTS) {
     qrY: clampFloat(src.qrY, 0, 100, Number(base.qrY || 10)),
     emojiScale: clampFloat(src.emojiScale, 0.4, 2.8, Number(base.emojiScale || 1)),
     emojiBurst: clampInt(src.emojiBurst, 1, 6, Number(base.emojiBurst || 2)),
-    emojiSpread: clampFloat(src.emojiSpread, 0, 30, Number(base.emojiSpread || 6)),
+    emojiSpread: clampFloat(src.emojiSpread, 0, 50, Number(base.emojiSpread || 6)),
     emojiHeartX: clampFloat(src.emojiHeartX, 0, 100, Number(base.emojiHeartX || 18)),
     emojiFireX: clampFloat(src.emojiFireX, 0, 100, Number(base.emojiFireX || 38)),
     emojiLaughX: clampFloat(src.emojiLaughX, 0, 100, Number(base.emojiLaughX || 58)),
@@ -399,6 +422,7 @@ class AudienceService extends EventEmitter {
     this.store = options.store || getAudienceStore(options);
     this.clients = options.clients || {
       fetchCurrentRuntimeState,
+      fetchRuntimeView,
       restoreRuntimeAlgorithmContext,
       sendAudienceSignalsToAlgorithm,
       sendScoreFeedToRuntime,
@@ -420,6 +444,10 @@ class AudienceService extends EventEmitter {
     this.adminSettings = normalizeAdminSettings(this.store.getSetting(ADMIN_SETTINGS_KEY, {}));
     this.stageOutputSettings = normalizeStageSettings(this.store.getSetting(STAGE_SETTINGS_KEY, {}));
     this.wifiQrSettings = normalizeWifiQrSettings(this.store.getSetting(WIFI_QR_SETTINGS_KEY, {}));
+    this.reacties = normalizeReacties(this.store.getSetting(REACTIES_KEY, null));
+    // Fase van de voorstelling, uit de runtime: "scene" (situatie loopt) of "tussen".
+    this.fase = { fase: "tussen", titel: null, situationRunId: null, sinds: nowIso(), bekend: false };
+    this.faseTimer = null;
     this.pollAutoCloseTimer = null;
     this.internalSimulatorKey = crypto.randomBytes(16).toString("hex");
     this.liveScoreDispatchWork = Promise.resolve();
@@ -506,6 +534,66 @@ class AudienceService extends EventEmitter {
     this.emit("broadcast", { type: "stage_settings", stage: this.getStageControl(req) });
     this.emit("admin-state-changed");
     return this.getStageControl(req);
+  }
+
+  getReacties() {
+    return this.reacties.map((r) => ({ ...r }));
+  }
+
+  saveReacties(lijst) {
+    this.reacties = normalizeReacties(lijst);
+    this.store.setSetting(REACTIES_KEY, this.reacties);
+    this.emit("broadcast", { type: "reacties", reacties: this.getReacties() });
+    this.emit("admin-state-changed");
+    return this.getReacties();
+  }
+
+  getFase() {
+    return { ...this.fase };
+  }
+
+  setFase(next = {}) {
+    const fase = next.fase === "scene" ? "scene" : "tussen";
+    const titel = fase === "scene" && next.titel ? String(next.titel).slice(0, 160) : null;
+    const situationRunId = fase === "scene" && next.situationRunId ? String(next.situationRunId) : null;
+    const zelfde = this.fase.fase === fase && this.fase.situationRunId === situationRunId;
+    this.fase.bekend = true;
+    if (zelfde) return this.getFase();
+    this.fase = { fase, titel, situationRunId, sinds: nowIso(), bekend: true };
+    this.emit("broadcast", { type: "fase", ...this.getFase() });
+    this.emit("admin-state-changed");
+    return this.getFase();
+  }
+
+  async pollFase() {
+    const fetchView = this.clients && this.clients.fetchRuntimeView;
+    if (typeof fetchView !== "function") return this.getFase();
+    const result = await fetchView();
+    // Runtime onbereikbaar: laatste stand houden.
+    if (!result || !result.ok || !result.state) return this.getFase();
+    const active = result.state.activeSituation;
+    return this.setFase(active
+      ? { fase: "scene", titel: active.title, situationRunId: active.situationRunId || active.situationId || "actief" }
+      : { fase: "tussen" });
+  }
+
+  startFaseWatch(intervalMs = Number(process.env.AUDIENCE_FASE_POLL_MS || FASE_POLL_MS)) {
+    this.stopFaseWatch();
+    const ms = Math.max(250, Number(intervalMs) || FASE_POLL_MS);
+    let bezig = false;
+    const tick = async () => {
+      if (bezig) return;
+      bezig = true;
+      try { await this.pollFase(); } catch {} finally { bezig = false; }
+    };
+    this.faseTimer = setInterval(tick, ms);
+    if (typeof this.faseTimer.unref === "function") this.faseTimer.unref();
+    tick();
+  }
+
+  stopFaseWatch() {
+    if (this.faseTimer) clearInterval(this.faseTimer);
+    this.faseTimer = null;
   }
 
   getWifiQr() {
@@ -1286,6 +1374,9 @@ class AudienceService extends EventEmitter {
     const cleanName = sanitizeName(name || meta.name);
     const cleanText = sanitizeText(text);
     if (!cleanText) return null;
+    if (this.fase.fase === "scene") {
+      return { error: { code: "scene_typen_dicht", message: "Typen kan weer na de scène." } };
+    }
     const isBot = isSimulatorBotIdentity(meta, cleanName, meta.clientTag) || !!meta.isBot || !!meta.simulated;
     meta.name = cleanName;
     meta.isBot = isBot;
@@ -1372,8 +1463,14 @@ class AudienceService extends EventEmitter {
 
   async acceptReaction(meta, reaction) {
     this.activeSessionRequired();
-    const normalized = String(reaction || "").trim().toLowerCase();
-    if (!ALLOWED_REACTIONS.includes(normalized)) return { error: { code: "reaction_invalid", message: "Ongeldige reactie." } };
+    const gevraagd = String(reaction || "").trim();
+    // Oude namen (heart/bored, o.a. simulator) wijzen naar de eerste positieve/negatieve emoji.
+    const oud = { heart: "positief", bored: "negatief" }[gevraagd.toLowerCase()];
+    const item = oud
+      ? this.reacties.find((r) => r.telt === oud) || { emoji: oud === "positief" ? REACTIES_STANDAARD[0].emoji : REACTIES_STANDAARD[1].emoji, telt: oud }
+      : this.reacties.find((r) => r.emoji === gevraagd);
+    if (!item) return { error: { code: "reaction_invalid", message: "Ongeldige reactie." } };
+    const normalized = REACTIE_TELT[item.telt];
     meta.clientTag = sanitizeClientTag(meta.clientTag);
     meta.clientKey = buildClientKey(meta.ip, meta.clientTag);
     meta.isBot = isSimulatorBotIdentity(meta, meta.name, meta.clientTag) || !!meta.isBot || !!meta.simulated;
@@ -1381,12 +1478,14 @@ class AudienceService extends EventEmitter {
     const enforcement = this.enforceClient(meta);
     if (!enforcement.ok) return { error: enforcement };
     if (!meta.isBot && !this.allowRate(this.reactionRate, meta.clientKey, 120)) return { ok: true, throttled: true };
-    this.reactionCounts[normalized] = Number(this.reactionCounts[normalized] || 0) + 1;
-    await this.recordSignal({ type: normalized, meta, reaction: normalized });
-    this.simulation.observeReaction(normalized, !!meta.isBot);
-    this.emit("broadcast", { type: "reaction_update", reaction: normalized, counts: { ...this.reactionCounts } });
+    if (normalized === "heart" || normalized === "bored") {
+      this.reactionCounts[normalized] = Number(this.reactionCounts[normalized] || 0) + 1;
+    }
+    await this.recordSignal({ type: normalized, meta, reaction: item.emoji });
+    if (normalized !== "emoji") this.simulation.observeReaction(normalized, !!meta.isBot);
+    this.emit("broadcast", { type: "reaction_update", reaction: normalized, emoji: item.emoji, fase: this.fase.fase, counts: { ...this.reactionCounts } });
     this.emit("admin-state-changed");
-    return { ok: true, reaction: normalized, counts: { ...this.reactionCounts } };
+    return { ok: true, reaction: normalized, emoji: item.emoji, counts: { ...this.reactionCounts } };
   }
 
   getPollEndsAt(poll) {
@@ -1687,6 +1786,8 @@ class AudienceService extends EventEmitter {
         blocked: activeBlocked,
       },
       reactionCounts: { ...this.reactionCounts },
+      fase: this.getFase(),
+      reacties: this.getReacties(),
       activePoll: this.pollSnapshot(activePoll),
       lastPoll: this.pollSnapshot(latestPoll),
       engagementLeaderboard,

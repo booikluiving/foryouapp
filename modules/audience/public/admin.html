@@ -424,6 +424,18 @@
         </section>
 
         <section class="card">
+          <h2>Reacties</h2>
+          <div id="faseRegel" class="muted">Fase: onbekend</div>
+          <div id="reactieRijen"></div>
+          <div class="row">
+            <button id="reactieErbijBtn" type="button">Emoji erbij</button>
+            <button id="reactiesOpslaanBtn" class="primary" type="button">Opslaan</button>
+          </div>
+          <div class="muted">Scène: alleen emoji. Tussen de scènes: typen en emoji. Telt = wat het algoritme ermee doet.</div>
+          <div class="muted"><a href="/audience/stage/emoji" target="_blank" rel="noopener">/audience/stage/emoji</a> · <a href="/audience/stage/chat" target="_blank" rel="noopener">/audience/stage/chat</a></div>
+        </section>
+
+        <section class="card">
           <h2>Top Chatters</h2>
           <div id="emojiLeaderboardMeta" class="muted">Nog geen puntenactiviteit.</div>
           <div class="row">
@@ -601,9 +613,9 @@
             <label class="sliderField"><span class="sliderLabel"><span>QR Y</span><span id="stageQrYValue" class="sliderValue">10%</span></span><input id="stageQrY" type="range" min="0" max="100" step="1" value="10" /></label>
             <label class="sliderField"><span class="sliderLabel"><span>Emoji schaal</span><span id="stageEmojiScaleValue" class="sliderValue">1.00x</span></span><input id="stageEmojiScale" type="range" min="0.4" max="2.8" step="0.01" value="1" /></label>
             <label class="sliderField"><span class="sliderLabel"><span>Emoji burst</span><span id="stageEmojiBurstValue" class="sliderValue">1</span></span><input id="stageEmojiBurst" type="range" min="1" max="6" step="1" value="1" /></label>
-            <label class="sliderField"><span class="sliderLabel"><span>Emoji spreiding</span><span id="stageEmojiSpreadValue" class="sliderValue">6%</span></span><input id="stageEmojiSpread" type="range" min="0" max="30" step="1" value="6" /></label>
-            <label class="sliderField"><span class="sliderLabel"><span>Emoji X hart</span><span id="stageEmojiHeartXValue" class="sliderValue">50%</span></span><input id="stageEmojiHeartX" type="range" min="0" max="100" step="1" value="50" /></label>
-            <label class="sliderField"><span class="sliderLabel"><span>Emoji X bored</span><span id="stageEmojiBoredXValue" class="sliderValue">50%</span></span><input id="stageEmojiBoredX" type="range" min="0" max="100" step="1" value="50" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Emoji spreiding</span><span id="stageEmojiSpreadValue" class="sliderValue">6%</span></span><input id="stageEmojiSpread" type="range" min="0" max="50" step="1" value="6" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Emoji X (midden)</span><span id="stageEmojiHeartXValue" class="sliderValue">50%</span></span><input id="stageEmojiHeartX" type="range" min="0" max="100" step="1" value="50" /></label>
+            <label class="sliderField" hidden><span class="sliderLabel"><span>Emoji X bored</span><span id="stageEmojiBoredXValue" class="sliderValue">50%</span></span><input id="stageEmojiBoredX" type="range" min="0" max="100" step="1" value="50" /></label>
             <label class="sliderField"><span class="sliderLabel"><span>Top Chatters schaal</span><span id="stageLeaderboardScaleValue" class="sliderValue">1.00x</span></span><input id="stageLeaderboardScale" type="range" min="0.45" max="2.4" step="0.01" value="1" /></label>
             <label class="sliderField"><span class="sliderLabel"><span>Top Chatters breedte</span><span id="stageLeaderboardWidthValue" class="sliderValue">360px</span></span><input id="stageLeaderboardWidth" type="range" min="220" max="760" step="10" value="360" /></label>
             <label class="sliderField"><span class="sliderLabel"><span>Top Chatters X</span><span id="stageLeaderboardXValue" class="sliderValue">98%</span></span><input id="stageLeaderboardX" type="range" min="0" max="100" step="1" value="98" /></label>
@@ -1340,6 +1352,58 @@
       }
 
       let wifiFormFilled = false;
+      let reactiesBewerkt = false;
+      function reactieRij(item = {}) {
+        const rij = document.createElement("div");
+        rij.className = "row reactieRij";
+        const emoji = document.createElement("input");
+        emoji.className = "reactieEmoji";
+        emoji.maxLength = 16;
+        emoji.placeholder = "Emoji";
+        emoji.value = item.emoji || "";
+        emoji.style.maxWidth = "6em";
+        const telt = document.createElement("select");
+        telt.className = "reactieTelt";
+        for (const [waarde, label] of [["positief", "telt positief"], ["negatief", "telt negatief"], ["niet", "telt niet"]]) {
+          const o = document.createElement("option");
+          o.value = waarde; o.textContent = label;
+          telt.appendChild(o);
+        }
+        telt.value = item.telt || "niet";
+        const weg = document.createElement("button");
+        weg.type = "button";
+        weg.textContent = "Weg";
+        weg.addEventListener("click", () => { rij.remove(); reactiesBewerkt = true; });
+        emoji.addEventListener("input", () => { reactiesBewerkt = true; });
+        telt.addEventListener("change", () => { reactiesBewerkt = true; });
+        rij.append(emoji, telt, weg);
+        return rij;
+      }
+      function renderReacties(lijst, fase) {
+        const regel = document.getElementById("faseRegel");
+        if (regel && fase) {
+          regel.textContent = fase.fase === "scene"
+            ? "Fase: scène" + (fase.titel ? " (" + fase.titel + ")" : "") + " · alleen emoji"
+            : "Fase: tussen de scènes · typen en emoji";
+        }
+        if (reactiesBewerkt || !Array.isArray(lijst)) return;
+        const box = document.getElementById("reactieRijen");
+        box.textContent = "";
+        for (const item of lijst) box.appendChild(reactieRij(item));
+      }
+      document.getElementById("reactieErbijBtn").addEventListener("click", () => {
+        document.getElementById("reactieRijen").appendChild(reactieRij());
+        reactiesBewerkt = true;
+      });
+      document.getElementById("reactiesOpslaanBtn").addEventListener("click", async () => {
+        const reacties = Array.from(document.querySelectorAll("#reactieRijen .reactieRij")).map((rij) => ({
+          emoji: rij.querySelector(".reactieEmoji").value.trim(),
+          telt: rij.querySelector(".reactieTelt").value,
+        })).filter((r) => r.emoji);
+        reactiesBewerkt = false;
+        await runAction("/audience/admin/reacties", { reacties });
+      });
+
       function renderWifiQr(wifi) {
         if (wifiFormFilled || !wifi) return;
         els.wifiSsidInput.value = wifi.ssid || "";
@@ -1362,6 +1426,7 @@
         els.reactionsPill.textContent = `${Number(data.reactionCounts && data.reactionCounts.heart || 0)} hearts · ${Number(data.reactionCounts && data.reactionCounts.bored || 0)} bored`;
         if (data.sessionJoin && data.sessionJoin.joinUrl) drawQr(data.sessionJoin.joinUrl);
         renderWifiQr(data.wifiQr);
+        renderReacties(data.reacties, data.fase);
         renderSettings(data);
         renderLeaderboard(data);
         renderPollState(data);

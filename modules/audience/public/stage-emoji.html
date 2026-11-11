@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>For_You emoji</title>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+      }
+      body.black { background: #000; }
+      #laag {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .emoji {
+        position: absolute;
+        bottom: -12vh;
+        line-height: 1;
+        font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+        transform: translate(-50%, 0);
+        animation: stijg var(--duur, 3200ms) cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+        will-change: transform, opacity;
+      }
+      @keyframes stijg {
+        0% { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+        10% { opacity: 1; transform: translate(-50%, -8vh) scale(1); }
+        75% { opacity: 1; }
+        100% { transform: translate(calc(-50% + var(--drift, 0px)), var(--hoogte, -70vh)) scale(1.05); opacity: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="laag"></div>
+    <script>
+      const laag = document.getElementById("laag");
+      const MAX_TEGELIJK = 160;
+      let settings = {};
+
+      function toepassen(next) {
+        settings = next || settings || {};
+        document.body.className = settings.background === "black" ? "black" : "";
+      }
+
+      function laatOpstijgen(emoji, aantal) {
+        if (!emoji || settings.showEmojis === false) return;
+        const n = Math.max(1, Math.min(6, Number(aantal || settings.emojiBurst || 1)));
+        const midden = Number.isFinite(Number(settings.emojiHeartX)) ? Number(settings.emojiHeartX) : 50;
+        const spreiding = Math.max(0, Math.min(50, Number(settings.emojiSpread ?? 6)));
+        const grootte = Math.round(110 * Number(settings.emojiScale || 1));
+        for (let i = 0; i < n; i += 1) {
+          if (laag.childElementCount >= MAX_TEGELIJK) laag.firstElementChild.remove();
+          const el = document.createElement("div");
+          el.className = "emoji";
+          el.textContent = emoji;
+          const x = Math.max(0, Math.min(100, midden + (Math.random() * 2 - 1) * spreiding));
+          el.style.left = x + "%";
+          el.style.fontSize = grootte + "px";
+          el.style.setProperty("--drift", Math.round(Math.random() * 120 - 60) + "px");
+          el.style.setProperty("--hoogte", -(55 + Math.random() * 30) + "vh");
+          el.style.setProperty("--duur", Math.round(2800 + Math.random() * 1200) + "ms");
+          el.style.animationDelay = i * 90 + "ms";
+          el.addEventListener("animationend", () => el.remove());
+          laag.appendChild(el);
+        }
+      }
+
+      function verbind() {
+        const bron = new EventSource("/audience/stage/stroom");
+        bron.onmessage = (ev) => {
+          let msg;
+          try { msg = JSON.parse(ev.data); } catch { return; }
+          if (msg.type === "begin") toepassen(msg.settings);
+          else if (msg.type === "stage_settings") toepassen(msg.stage && msg.stage.settings);
+          else if (msg.type === "reaction_update") laatOpstijgen(msg.emoji);
+          else if (msg.type === "stage_reaction") laatOpstijgen(msg.emoji, msg.burst);
+        };
+        // EventSource verbindt zelf opnieuw na een onderbreking.
+      }
+      verbind();
+    </script>
+  </body>
+</html>
