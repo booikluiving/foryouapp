@@ -38,6 +38,7 @@ function startAudienceServer(options = {}) {
     process.stdout.write(`Audience Service listening on ${port}\n`);
   });
   server.audienceRealtime = realtime;
+  if (options.faseWatch !== false) app.locals.audienceService.startFaseWatch();
   server.audiencePublicServer = startAudiencePublicServer(app.locals.audienceService, options);
   return server;
 }

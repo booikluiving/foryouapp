@@ -10,6 +10,7 @@ const {
 } = require("../../../shared/contracts/audience-v0");
 const {
   fetchCurrentRuntimeState,
+  fetchRuntimeView,
   restoreRuntimeAlgorithmContext,
   sendAudienceSignalsToAlgorithm,
   sendScoreFeedToRuntime,
@@ -43,6 +44,7 @@ function badRequest(message) {
 function audienceClients() {
   return {
     fetchCurrentRuntimeState,
+    fetchRuntimeView,
     restoreRuntimeAlgorithmContext,
     sendAudienceSignalsToAlgorithm,
     sendScoreFeedToRuntime,
@@ -86,6 +88,55 @@ function createAudienceApp(options = {}) {
 
   app.get("/audience/stage", (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "stage.html"));
+  });
+
+  // Podiumlagen voor TouchDesigner (1080x1920, transparant): alleen emoji, of alleen de getypte reacties.
+  app.get("/audience/stage/emoji", (_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, "stage-emoji.html"));
+  });
+
+  app.get("/audience/stage/chat", (_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, "stage-chat.html"));
+  });
+
+  // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
+  const STROOM_TYPES = new Set(["comment", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed"]);
+  app.get("/audience/stage/stroom", (req, res) => {
+    res.set({
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-store",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.flushHeaders();
+    const stuur = (msg) => {
+      try { res.write(`data: ${JSON.stringify(msg)}\n\n`); } catch {}
+    };
+    let berichten = [];
+    try {
+      const history = service.publicHistory(12);
+      berichten = (history.messages || []).filter((m) => !m.system);
+    } catch {}
+    stuur({
+      type: "begin",
+      fase: service.getFase(),
+      reacties: service.getReacties(),
+      settings: service.getStageControl(req).settings,
+      berichten,
+    });
+    const doorsturen = (msg) => {
+      if (!msg || !STROOM_TYPES.has(msg.type)) return;
+      if (msg.type === "comment" && msg.system) return;
+      stuur(msg);
+    };
+    service.on("broadcast", doorsturen);
+    const hartslag = setInterval(() => {
+      try { res.write(": hartslag\n\n"); } catch {}
+    }, 15000);
+    req.on("close", () => {
+      clearInterval(hartslag);
+      service.off("broadcast", doorsturen);
+    });
   });
 
   app.get("/audience/stage/session-qr", (_req, res) => {
@@ -183,6 +234,11 @@ function createAudienceApp(options = {}) {
     res.json({ ok: true, stage: service.updateStageSettings(req.body || {}, req) });
   });
 
+  app.post("/audience/admin/reacties", (req, res) => {
+    const body = req.body || {};
+    res.json({ ok: true, reacties: service.saveReacties(body.reacties) });
+  });
+
   app.post("/audience/admin/wifi-qr", (req, res) => {
     res.json({ ok: true, wifiQr: service.updateWifiQrSettings(req.body || {}) });
   });
@@ -191,6 +247,7 @@ function createAudienceApp(options = {}) {
     service.emit("broadcast", {
       type: "stage_reaction",
       reaction: "heart",
+      emoji: service.getReacties()[0].emoji,
       burst: 2,
       counts: { ...service.reactionCounts },
     });

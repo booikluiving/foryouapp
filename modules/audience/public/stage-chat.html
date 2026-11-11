@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>For_You chat</title>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        color: #fff;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+      body.black { background: #000; }
+      #chat {
+        position: absolute;
+        left: 50%;
+        bottom: 36px;
+        width: 86vw;
+        height: 940px;
+        transform: translateX(-50%);
+        transform-origin: bottom center;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        gap: 18px;
+        overflow: hidden;
+      }
+      .regel {
+        font-size: 44px;
+        line-height: 1.18;
+        font-weight: 500;
+        text-shadow: 0 2px 18px rgba(0, 0, 0, 0.85);
+        overflow-wrap: anywhere;
+        animation: erin 260ms ease-out;
+      }
+      .naam { font-weight: 700; }
+      @keyframes erin {
+        from { opacity: 0; transform: translateY(16px); }
+        to { opacity: 1; transform: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="chat"></div>
+    <script>
+      const chat = document.getElementById("chat");
+      const MAX_REGELS = 12;
+      let settings = {};
+
+      function toepassen(next) {
+        settings = next || settings || {};
+        document.body.className = settings.background === "black" ? "black" : "";
+        chat.style.display = settings.showChat === false ? "none" : "";
+        chat.style.bottom = Number(settings.chatBottom ?? 36) + "px";
+        chat.style.height = Number(settings.chatHeight || 940) + "px";
+        chat.style.transform = `translateX(calc(-50% + ${Number(settings.chatX || 0)}vw)) scale(${Number(settings.chatScale || 1)})`;
+        const fade = Number(settings.chatFadeStart ?? 52);
+        chat.style.maskImage = `linear-gradient(to top, black 0%, black ${fade}%, transparent 100%)`;
+        chat.style.webkitMaskImage = chat.style.maskImage;
+      }
+
+      function regel(msg) {
+        if (!msg || msg.system || !msg.text) return;
+        const el = document.createElement("div");
+        el.className = "regel";
+        const naam = document.createElement("span");
+        naam.className = "naam";
+        naam.textContent = (msg.name || "Anoniem") + " ";
+        if (/^#[0-9a-f]{6}$/i.test(String(msg.nameColor || ""))) naam.style.color = msg.nameColor;
+        el.append(naam, document.createTextNode(msg.text));
+        chat.appendChild(el);
+        while (chat.childElementCount > MAX_REGELS) chat.firstElementChild.remove();
+      }
+
+      function verbind() {
+        const bron = new EventSource("/audience/stage/stroom");
+        bron.onmessage = (ev) => {
+          let msg;
+          try { msg = JSON.parse(ev.data); } catch { return; }
+          if (msg.type === "begin") {
+            toepassen(msg.settings);
+            chat.textContent = "";
+            for (const m of msg.berichten || []) regel(m);
+          } else if (msg.type === "stage_settings") toepassen(msg.stage && msg.stage.settings);
+          else if (msg.type === "comment") regel(msg);
+          else if (msg.type === "session_reset" || msg.type === "session_closed") chat.textContent = "";
+        };
+      }
+      verbind();
+    </script>
+  </body>
+</html>

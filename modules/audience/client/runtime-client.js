@@ -52,6 +52,26 @@ async function fetchCurrentRuntimeState() {
   }
 }
 
+// Kleine weergave van de huidige run (alleen voor de fase: loopt er een situatie?).
+async function fetchRuntimeView() {
+  const url = `${runtimeBaseUrl()}/v0/runtime/runs/current/view`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    try {
+      controller.abort();
+    } catch {}
+  }, Number(process.env.AUDIENCE_RUNTIME_TIMEOUT_MS || 1500));
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) return { ok: false, state: null, error: `${url} returned ${response.status}` };
+    return { ok: true, state: await response.json() };
+  } catch (err) {
+    return { ok: false, state: null, error: err && err.message ? String(err.message) : "runtime_unavailable" };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function sendAudienceSignalsToAlgorithm(input = {}) {
   return fetchJsonWithTimeout(`${algorithmBaseUrl()}/v0/algorithm/events/audience-signals`, {
     method: "POST",
@@ -83,6 +103,7 @@ module.exports = {
   DEFAULT_RUNTIME_BASE_URL,
   algorithmBaseUrl,
   fetchCurrentRuntimeState,
+  fetchRuntimeView,
   restoreRuntimeAlgorithmContext,
   sendAudienceSignalsToAlgorithm,
   sendScoreFeedToRuntime,
