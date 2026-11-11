@@ -60,9 +60,37 @@ function fileExists(filePath, options = {}) {
 // Waar het effect staat: per omgeving en per scène; een nieuwe scène begint weer bij het begin.
 const state = { sleutel: "", pos: 0 };
 
+// Vanzelf: zolang de scène speelt komt er af en toe uit zichzelf een korte clip langs
+// (bij de persconferentie: één flits). Staat in omvallen.json onder "vanzelf":
+// { clips: [...], duur, geluid, volume, minSec, maxSec }. Telt niet mee als druk.
+const vanzelf = { sleutel: "", volgendeOp: 0, bezigTot: 0, teller: 0 };
+
 function resetOmvallenState() {
   state.sleutel = "";
   state.pos = 0;
+  vanzelf.sleutel = "";
+  vanzelf.volgendeOp = 0;
+  vanzelf.bezigTot = 0;
+  vanzelf.teller = 0;
+}
+
+function vanzelfConfig(manifest) {
+  const v = manifest && manifest.vanzelf;
+  if (!v || !Array.isArray(v.clips) || !v.clips.length) return null;
+  const minSec = Math.max(1, Number(v.minSec) || 10);
+  return {
+    clips: v.clips.map(String),
+    duur: Number(v.duur) || 0,
+    geluid: v.geluid ? String(v.geluid) : "",
+    volume: Number.isFinite(Number(v.volume)) ? Number(v.volume) : 1,
+    minSec,
+    maxSec: Math.max(minSec, Number(v.maxSec) || minSec),
+  };
+}
+
+function vanzelfWachttijdMs(config, options = {}) {
+  const random = typeof options.random === "function" ? options.random : Math.random;
+  return Math.round((config.minSec + random() * (config.maxSec - config.minSec)) * 1000);
 }
 
 function sleutelVoor(ref, runtimeState = {}) {
@@ -177,6 +205,8 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
     }
     state.sleutel = status.sleutel;
     state.pos = status.pos + 1;
+    // Tijdens deze clip geen flits vanzelf eroverheen.
+    vanzelf.bezigTot = Number(options.now ?? Date.now()) + Math.round((Number(druk.duur) || 0) * 1000) + 500;
   }
   return {
     schemaVersion: SHOW_CONTROL_CUE_SCHEMA_VERSION,
@@ -196,8 +226,62 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
   };
 }
 
+// Eén tik van de klok (de server roept dit om de paar seconden aan). Geeft een cue als het
+// tijd is voor de volgende clip vanzelf, anders null. Alleen bij een scène die speelt.
+function environmentVanzelfTick(runtimeState, options = {}) {
+  const now = Number(options.now ?? Date.now());
+  let status;
+  try {
+    status = environmentOmvallenStatus(runtimeState, options);
+  } catch (_err) {
+    status = null;
+  }
+  const config = status && status.klaar && status.bron === "actief" ? vanzelfConfig(status.manifest) : null;
+  if (!config) {
+    vanzelf.sleutel = "";
+    return null;
+  }
+  if (vanzelf.sleutel !== status.sleutel) {
+    vanzelf.sleutel = status.sleutel;
+    vanzelf.volgendeOp = now + vanzelfWachttijdMs(config, options);
+    return null;
+  }
+  if (now < vanzelf.volgendeOp || now < vanzelf.bezigTot) return null;
+  vanzelf.volgendeOp = now + vanzelfWachttijdMs(config, options);
+  const dir = omvallenDir(status.environmentId, options);
+  const clip = path.join(dir, config.clips[vanzelf.teller % config.clips.length]);
+  vanzelf.teller += 1;
+  if (!fileExists(clip, options)) return null;
+  const createdAtDate = options.createdAtDate || new Date(now);
+  const cueId = createShowControlId("show-cue", createdAtDate);
+  const common = { environmentId: status.environmentId, source: "vanzelf", cueIntent: "environment_omvallen" };
+  const actions = [cueAction(cueId, 0, "touchdesigner", "td.effect.omvallen", { ...common, filePath: clip, uit: false, druk: 0, duur: config.duur })];
+  const geluid = config.geluid ? path.join(mediaRoot(options), config.geluid) : "";
+  if (geluid && config.volume > 0 && fileExists(geluid, options)) {
+    actions.push(cueAction(cueId, 1, "mac-audio", "audio.extra.play", { ...common, soort: "geluid", label: "vanzelf", filePath: geluid, volume: config.volume }));
+  }
+  vanzelf.bezigTot = now + Math.round(config.duur * 1000) + 500;
+  return {
+    schemaVersion: SHOW_CONTROL_CUE_SCHEMA_VERSION,
+    cueId,
+    cueType: "pulse",
+    cueIntent: "environment-omvallen",
+    name: "Omvallen: vanzelf",
+    createdAt: createdAtDate.toISOString(),
+    source: { type: "show-control-v0", readOnly: false },
+    runtimeRef: runtimeState ? {
+      source: "runtime.activeSituation",
+      showRunId: runtimeState.showRunId || null,
+      runtimeUpdatedAt: runtimeState.updatedAt || null,
+    } : null,
+    status: { stage: "queued", state: "queued", warnings: [], sentOrder: [], updatedAt: createdAtDate.toISOString() },
+    actions,
+  };
+}
+
 module.exports = {
   buildEnvironmentOmvallenCue,
+  environmentVanzelfTick,
   environmentOmvallenStatus,
   publicOmvallenStatus,
   resetOmvallenState,

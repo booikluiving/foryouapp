@@ -44,6 +44,7 @@ const {
   publicExtrasStatus,
 } = require("../cue-library/environment-extras");
 const {
+  environmentVanzelfTick,
   buildEnvironmentOmvallenCue,
   environmentOmvallenStatus,
   publicOmvallenStatus,
@@ -482,6 +483,17 @@ function createShowControlApp(options = {}) {
       omvallen: na,
     });
   }));
+
+  // Clips die vanzelf langskomen (flits bij de persconferentie): server.js roept dit om de
+  // paar seconden aan. Zonder "vanzelf" in omvallen.json van de spelende omgeving gebeurt er niets.
+  app.locals.environmentVanzelfTick = async () => {
+    const runtimeResult = await clients.fetchCurrentRuntimeState();
+    if (!runtimeResult || !runtimeResult.ok) return null;
+    const cue = environmentVanzelfTick(runtimeResult.state || {}, options.environmentOmvallen || {});
+    if (!cue) return null;
+    executeCue(cue, { ...executeOptions, runtimeState: runtimeResult.state }).then(() => saveCue(cue)).catch(() => {});
+    return cue;
+  };
 
   // Fases van de actieve (of klaargezette) omgeving.
   app.get("/v0/show-control/environment-fases/current", asyncRoute(async (req, res) => {

@@ -101,3 +101,41 @@ assert.throws(() => buildEnvironmentOmvallenCue(scene("environment:26", "c"), {}
 }
 
 console.log("show-control environment-omvallen: ok");
+
+// Vanzelf: af en toe een clip uit zichzelf, alleen bij een scène die speelt, niet door een druk heen.
+{
+  const { environmentVanzelfTick } = require("../cue-library/environment-omvallen");
+  const vanzelfManifest = {
+    schemaVersion: "omvallen.v0",
+    environmentId: "environment:6",
+    drukken: [{ druk: 1, naam: "Veel foto's", klap: 0, clip: "salvo-1.mov", duur: 3.6, geluid: "environments/environment_6/omvallen/salvo-1.wav" }],
+    vanzelf: { clips: ["flits-1.mov", "flits-2.mov"], duur: 0.6, geluid: "environments/environment_6/omvallen/flits.wav", volume: 0.5, minSec: 10, maxSec: 20 },
+  };
+  const opt = (now) => ({ manifest: vanzelfManifest, catalogMediaRoot: "/media", fileExists: () => true, random: () => 0.5, now });
+  const speelt = scene("environment:6", "p");
+  resetOmvallenState();
+  // Klaargezet maar niet gestart: niets.
+  assert.equal(environmentVanzelfTick({ resolvedPreparedNext: { environmentId: "environment:6" } }, opt(0)), null);
+  // Scène start: eerst wachten (15 s bij random 0,5).
+  assert.equal(environmentVanzelfTick(speelt, opt(1000)), null);
+  assert.equal(environmentVanzelfTick(speelt, opt(15000)), null);
+  let flits = environmentVanzelfTick(speelt, opt(16000));
+  assert.equal(flits.actions[0].command, "td.effect.omvallen");
+  assert.equal(flits.actions[0].payload.filePath, "/media/environments/environment_6/omvallen/flits-1.mov");
+  assert.equal(flits.actions[1].payload.volume, 0.5);
+  // Telt niet als druk.
+  assert.equal(environmentOmvallenStatus(speelt, opt(16000)).pos, 0);
+  // Volgende pas na de wachttijd, met de volgende clip.
+  assert.equal(environmentVanzelfTick(speelt, opt(20000)), null);
+  flits = environmentVanzelfTick(speelt, opt(31000));
+  assert.equal(flits.actions[0].payload.filePath, "/media/environments/environment_6/omvallen/flits-2.mov");
+  // Een druk (salvo) houdt de flits vanzelf tegen tot de clip uit is.
+  buildEnvironmentOmvallenCue(speelt, {}, opt(45900));
+  assert.equal(environmentVanzelfTick(speelt, opt(46000)), null);
+  assert.ok(environmentVanzelfTick(speelt, opt(50100)));
+  // Zonder "vanzelf" in het manifest: nooit iets.
+  resetOmvallenState();
+  assert.equal(environmentVanzelfTick(scene("environment:26", "a"), { ...options, now: 0 }), null);
+  assert.equal(environmentVanzelfTick(scene("environment:26", "a"), { ...options, now: 999999 }), null);
+  resetOmvallenState();
+}

@@ -17,7 +17,20 @@ function startShowControlServer(options = {}) {
       process.stdout.write(`Show Control TD ack OSC listening on ${tdAckServer.localAddress}:${tdAckServer.localPort}\n`);
     }
   });
+  // Flits (of een andere clip) die vanzelf langskomt bij de omgeving die speelt.
+  const vanzelfMs = Number(options.vanzelfTickMs ?? process.env.SHOW_CONTROL_VANZELF_TICK_MS ?? 2000);
+  let vanzelfBezig = false;
+  const vanzelfTimer = vanzelfMs > 0 ? setInterval(() => {
+    if (vanzelfBezig) return;
+    vanzelfBezig = true;
+    Promise.resolve()
+      .then(() => app.locals.environmentVanzelfTick())
+      .catch(() => {})
+      .finally(() => { vanzelfBezig = false; });
+  }, vanzelfMs) : null;
+  if (vanzelfTimer) vanzelfTimer.unref();
   server.on("close", () => {
+    if (vanzelfTimer) clearInterval(vanzelfTimer);
     if (tdAckServer) tdAckServer.close();
   });
   return server;
