@@ -194,6 +194,15 @@ const DEFINITIONS = Object.freeze([
     description: "Speelt de clip van een stap van het effect omvallen over de voorgrond (payload: filePath, uit). De clips komen uit modules/catalog/tools/omvallen-clips.js.",
   }),
   command({
+    name: "td.effect.fase",
+    title: "TD fase van de omgeving",
+    targetId: "touchdesigner",
+    adapter: "touchdesigner",
+    ackMode: "fire-and-forget",
+    transport: "osc-control-port",
+    description: "Zet het beeld van een fase achter de spelers (payload: filePath, uit, schok). Fases worden per omgeving in de beeldcatalogus ingevuld.",
+  }),
+  command({
     name: "audio.extra.play",
     title: "Extra geluid afspelen",
     targetId: "mac-audio",
