@@ -41,6 +41,12 @@
       const laag = document.getElementById("laag");
       const MAX_TEGELIJK = 160;
       let settings = {};
+      // Tussen scènes (Loading) geen emoji op het scherm; ze tellen wel mee.
+      let tussen = false;
+      function zetFase(f) {
+        tussen = (f && f.fase) === "tussen";
+        if (tussen) laag.textContent = "";
+      }
 
       function toepassen(next) {
         settings = next || settings || {};
@@ -48,7 +54,7 @@
       }
 
       function laatOpstijgen(emoji, aantal) {
-        if (!emoji || settings.showEmojis === false) return;
+        if (!emoji || tussen || settings.showEmojis === false) return;
         const n = Math.max(1, Math.min(6, Number(aantal || settings.emojiBurst || 1)));
         const midden = Number.isFinite(Number(settings.emojiHeartX)) ? Number(settings.emojiHeartX) : 50;
         const spreiding = Math.max(0, Math.min(50, Number(settings.emojiSpread ?? 6)));
@@ -78,7 +84,8 @@
           let msg;
           try { msg = JSON.parse(ev.data); } catch { return; }
           if (msg.type === "stage_herlaad") { location.reload(); return; }
-          if (msg.type === "begin") toepassen(msg.settings);
+          if (msg.type === "begin") { toepassen(msg.settings); zetFase(msg.fase); }
+          else if (msg.type === "fase") zetFase(msg);
           else if (msg.type === "stage_settings") toepassen(msg.stage && msg.stage.settings);
           else if (msg.type === "reaction_update") laatOpstijgen(msg.emoji);
           else if (msg.type === "stage_reaction") laatOpstijgen(msg.emoji, msg.burst);
