@@ -166,3 +166,22 @@ console.log("show-control environment-omvallen: ok");
   assert.equal(environmentOmvallenStatus(speelt, opt).pos, 0);
   resetOmvallenState();
 }
+
+// Vanzelf met meerdere geluiden: ze klinken om de beurt.
+{
+  const { environmentVanzelfTick } = require("../cue-library/environment-omvallen");
+  const m = {
+    schemaVersion: "omvallen.v0",
+    environmentId: "environment:6",
+    drukken: [{ druk: 1, naam: "Veel foto's", klap: 0, clip: "salvo-1.mov", duur: 2.2 }],
+    vanzelf: { clips: ["flits-1.mov"], duur: 0.2, geluid: "oud.wav", geluiden: ["a.wav", "b.wav", "c.wav"], volume: 0.3, minSec: 10, maxSec: 10 },
+  };
+  const opt = (now) => ({ manifest: m, catalogMediaRoot: "/media", fileExists: () => true, random: () => 0, now });
+  const speelt = scene("environment:6", "g");
+  resetOmvallenState();
+  environmentVanzelfTick(speelt, opt(0));
+  const namen = [];
+  for (let i = 1; i <= 4; i += 1) namen.push(environmentVanzelfTick(speelt, opt(i * 11000)).actions[1].payload.filePath.split("/").pop());
+  assert.deepEqual(namen, ["a.wav", "b.wav", "c.wav", "a.wav"]);
+  resetOmvallenState();
+}

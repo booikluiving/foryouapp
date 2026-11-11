@@ -62,7 +62,7 @@ const state = { sleutel: "", pos: 0 };
 
 // Vanzelf: zolang de scène speelt komt er af en toe uit zichzelf een korte clip langs
 // (bij de persconferentie: één flits). Staat in omvallen.json onder "vanzelf":
-// { clips: [...], duur, geluid, volume, minSec, maxSec }. Telt niet mee als druk.
+// { clips: [...], duur, geluid of geluiden: [...], volume, minSec, maxSec }. Telt niet mee als druk.
 const vanzelf = { sleutel: "", volgendeOp: 0, bezigTot: 0, teller: 0 };
 
 function resetOmvallenState() {
@@ -81,7 +81,8 @@ function vanzelfConfig(manifest) {
   return {
     clips: v.clips.map(String),
     duur: Number(v.duur) || 0,
-    geluid: v.geluid ? String(v.geluid) : "",
+    // "geluiden": meerdere geluiden die om de beurt klinken; anders het ene "geluid".
+    geluiden: (Array.isArray(v.geluiden) && v.geluiden.length ? v.geluiden : [v.geluid]).filter(Boolean).map(String),
     volume: Number.isFinite(Number(v.volume)) ? Number(v.volume) : 1,
     minSec,
     maxSec: Math.max(minSec, Number(v.maxSec) || minSec),
@@ -260,7 +261,7 @@ function environmentVanzelfTick(runtimeState, options = {}) {
   const cueId = createShowControlId("show-cue", createdAtDate);
   const common = { environmentId: status.environmentId, source: "vanzelf", cueIntent: "environment_omvallen" };
   const actions = [cueAction(cueId, 0, "touchdesigner", "td.effect.omvallen", { ...common, filePath: clip, uit: false, druk: 0, duur: config.duur })];
-  const geluid = config.geluid ? path.join(mediaRoot(options), config.geluid) : "";
+  const geluid = config.geluiden.length ? path.join(mediaRoot(options), config.geluiden[(vanzelf.teller - 1) % config.geluiden.length]) : "";
   if (geluid && config.volume > 0 && fileExists(geluid, options)) {
     actions.push(cueAction(cueId, 1, "mac-audio", "audio.extra.play", { ...common, soort: "geluid", label: "vanzelf", filePath: geluid, volume: config.volume }));
   }
