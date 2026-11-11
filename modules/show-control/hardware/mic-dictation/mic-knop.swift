@@ -17,6 +17,7 @@
 import Foundation
 import AVFoundation
 import AppKit
+import CoreAudio
 import IOKit.hid
 import Network
 
@@ -56,8 +57,35 @@ func startMacro(_ naam: String) {
   log("macro: \(naam)")
 }
 
+// Neemt Claude nu op? Via de CoreAudio-proceslijst; nil als macOS dat niet kan zeggen.
+func claudeNeemtOp() -> Bool? {
+  func lees<T>(_ obj: AudioObjectID, _ sel: AudioObjectPropertySelector, _ standaard: T) -> T? {
+    var a = AudioObjectPropertyAddress(mSelector: sel, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var v = standaard; var size = UInt32(MemoryLayout<T>.size)
+    return AudioObjectGetPropertyData(obj, &a, 0, nil, &size, &v) == noErr ? v : nil
+  }
+  let sys = AudioObjectID(kAudioObjectSystemObject)
+  var a = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+  var size: UInt32 = 0
+  guard AudioObjectGetPropertyDataSize(sys, &a, 0, nil, &size) == noErr, size > 0 else { return nil }
+  var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+  guard AudioObjectGetPropertyData(sys, &a, 0, nil, &size, &ids) == noErr else { return nil }
+  for id in ids {
+    guard let bid = lees(id, kAudioProcessPropertyBundleID, "" as CFString) as String?, bid.hasPrefix(claudeID) else { continue }
+    if let inp = lees(id, kAudioProcessPropertyIsRunningInput, UInt32(0)), inp != 0 { return true }
+  }
+  return false
+}
+
 func voerUit() {
-  if stand == "blauw" { startMacro(macroAan); return }
+  // Alleen Cmd+D als Claude anders staat dan de mic; anders raakt de stand omgekeerd
+  // (na aansluiten is de mic blauw terwijl Claude niet dicteert).
+  let neemtOp = claudeNeemtOp()
+  if stand == "blauw" {
+    if neemtOp == true { log("Claude dicteert al, geen macro"); return }
+    startMacro(macroAan); return
+  }
+  if neemtOp == false { log("Claude dicteert niet, geen macro"); return }
   let voor = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"
   if voor == claudeID { startMacro(macroUit) } else { log("dicteren uit overgeslagen: \(voor) staat vooraan, niet Claude") }
 }
@@ -156,7 +184,8 @@ func stateJSON() -> Data {
   let o: [String: Any] = ["stand": stand, "dicteren": stand == "blauw", "verbonden": verbonden,
                           "laatsteDruk": iso(laatsteDruk), "laatsteMacro": laatsteMacro ?? NSNull(), "drukken": drukken,
                           "macroAan": macroAan, "macroUit": macroUit,
-                          "gehoord": gemeten() ?? NSNull(), "geluidActief": geluidActief, "piekPerSeconde": piekLog]
+                          "claudeNeemtOp": claudeNeemtOp() ?? NSNull(),
+                          "gehoord": gemeten() ?? NSNull(),"geluidActief": geluidActief, "piekPerSeconde": piekLog]
   return (try? JSONSerialization.data(withJSONObject: o, options: [.prettyPrinted, .sortedKeys])) ?? Data()
 }
 func antwoord(_ c: NWConnection, _ code: Int, _ body: Data) {
