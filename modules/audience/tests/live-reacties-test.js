@@ -121,6 +121,34 @@ const wachtOp = async (fn, ms = 3000) => {
     assert.ok(await wachtOp(() => stroom.msgs.some((m) => m.type === "comment" && m.text === "wachten op de scene")));
     ok("tussen de scènes: getypte reactie komt in de podiumstroom");
 
+    // Likes op comments
+    const comment = tel.msgs.find((m) => m.type === "comment" && m.text === "wachten op de scene");
+    assert.ok(comment && comment.id > 0 && comment.likes === 0, JSON.stringify(comment));
+    const tel2 = await openWs(cookie);
+    tel2.ws.send(JSON.stringify({ type: "register", name: "Tweede", clientTag: "t2" }));
+    await sleep(150);
+    tel2.ws.send(JSON.stringify({ type: "like", id: comment.id, liked: true, clientTag: "t2" }));
+    assert.ok(await wachtOp(() => tel2.msgs.some((m) => m.type === "like_ok" && m.id === comment.id && m.likes === 1 && m.liked)));
+    assert.ok(await wachtOp(() => stroom.msgs.some((m) => m.type === "comment_likes" && m.id === comment.id && m.likes === 1)));
+    tel.ws.send(JSON.stringify({ type: "like", id: comment.id, liked: true, clientTag: "t1" }));
+    assert.ok(await wachtOp(() => tel.msgs.some((m) => m.code === "like_eigen")));
+    await sleep(200);
+    tel2.ws.send(JSON.stringify({ type: "like", id: comment.id, liked: true, clientTag: "t2" }));
+    await sleep(300);
+    let hist = await (await pub("/audience/public/history", { headers: { cookie } })).json();
+    assert.equal(hist.messages.find((m) => m.id === comment.id).likes, 1);
+    tel2.ws.send(JSON.stringify({ type: "like", id: comment.id, liked: false, clientTag: "t2" }));
+    assert.ok(await wachtOp(() => tel2.msgs.some((m) => m.type === "like_ok" && m.id === comment.id && m.likes === 0 && !m.liked)));
+    await sleep(200);
+    tel2.ws.send(JSON.stringify({ type: "like", id: comment.id, liked: true, clientTag: "t2" }));
+    assert.ok(await wachtOp(() => tel2.msgs.filter((m) => m.type === "like_ok").length >= 3));
+    hist = await (await pub("/audience/public/history", { headers: { cookie } })).json();
+    assert.equal(hist.messages.find((m) => m.id === comment.id).likes, 1);
+    tel2.ws.send(JSON.stringify({ type: "like", id: 999999, liked: true, clientTag: "t2" }));
+    assert.ok(await wachtOp(() => tel2.msgs.some((m) => m.code === "like_invalid")));
+    tel2.ws.close();
+    ok("likes: comment heeft id, ander liket (1), eigen like geweigerd, dubbel telt niet, aan/uit werkt, in geschiedenis en podiumstroom");
+
     actief = { situationRunId: "sr-1", situationId: "situation:1", title: "Testscène", status: "active" };
     assert.ok(await wachtOp(() => tel.msgs.some((m) => m.type === "fase" && m.fase === "scene")), "fase scene");
     assert.ok(await wachtOp(() => stroom.msgs.some((m) => m.type === "fase" && m.fase === "scene")));

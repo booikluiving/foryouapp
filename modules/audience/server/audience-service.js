@@ -472,6 +472,7 @@ class AudienceService extends EventEmitter {
     this.reactionCounts = { heart: 0, bored: 0 };
     this.messageRate = new Map();
     this.reactionRate = new Map();
+    this.likeRate = new Map();
     this.adminSettings = normalizeAdminSettings(this.store.getSetting(ADMIN_SETTINGS_KEY, {}));
     this.stageOutputSettings = normalizeStageSettings(this.store.getSetting(STAGE_SETTINGS_KEY, {}));
     this.wifiQrSettings = normalizeWifiQrSettings(this.store.getSetting(WIFI_QR_SETTINGS_KEY, {}));
@@ -1524,7 +1525,7 @@ class AudienceService extends EventEmitter {
       isBot,
       simulated: !!meta.simulated,
     };
-    this.store.insertChatMessage({
+    payload.id = this.store.insertChatMessage({
       sessionId: session.id,
       clientId: meta.clientId,
       clientKey: meta.clientKey,
@@ -1535,6 +1536,7 @@ class AudienceService extends EventEmitter {
       detail: "",
       isBot,
     });
+    payload.likes = 0;
     await this.recordSignal({ type: "chat", meta, text: cleanText });
     this.emit("broadcast", payload);
     this.simulation.observeAcceptedComment({ ...payload, isBot });
@@ -1568,6 +1570,27 @@ class AudienceService extends EventEmitter {
     this.emit("broadcast", { type: "reaction_update", reaction: normalized, emoji: item.emoji, fase: this.fase.fase, counts: { ...this.reactionCounts }, ronde: { ...this.ronde.emoji } });
     this.emit("admin-state-changed");
     return { ok: true, reaction: normalized, emoji: item.emoji, counts: { ...this.reactionCounts } };
+  }
+
+  // Like op een comment (aan/uit). Eén per telefoon per comment, niet op je eigen comment.
+  acceptLike(meta, messageId, liked) {
+    const session = this.activeSessionRequired();
+    meta.clientTag = sanitizeClientTag(meta.clientTag);
+    meta.clientKey = buildClientKey(meta.ip, meta.clientTag);
+    const enforcement = this.enforceClient(meta);
+    if (!enforcement.ok) return { error: enforcement };
+    const id = Number.parseInt(String(messageId || ""), 10);
+    const message = Number.isInteger(id) && id > 0 ? this.store.getChatMessage(id) : null;
+    if (!message || message.sessionId !== session.id || message.status !== "accepted" || String(message.detail || "").startsWith("moderation_notice:")) {
+      return { error: { code: "like_invalid", message: "Deze reactie bestaat niet meer." } };
+    }
+    if (message.clientKey && message.clientKey === meta.clientKey) {
+      return { error: { code: "like_eigen", message: "Je eigen reactie kun je niet liken." } };
+    }
+    if (!this.allowRate(this.likeRate, meta.clientKey, 150)) return { ok: true, throttled: true };
+    const result = this.store.toggleCommentLike({ sessionId: session.id, messageId: id, clientKey: meta.clientKey, liked });
+    this.emit("broadcast", { type: "comment_likes", id, likes: result.likes });
+    return { ok: true, id, liked: result.liked, likes: result.likes };
   }
 
   getPollEndsAt(poll) {
@@ -1764,10 +1787,13 @@ class AudienceService extends EventEmitter {
   publicHistory(limit = 80) {
     const session = this.getActiveSession();
     if (!session) return { ok: false, error: "session_inactive", messages: [] };
+    const likes = this.store.commentLikeCounts(session.id);
     const messages = this.store.recentChatMessages({ sessionId: session.id, limit, status: "accepted" })
       .reverse()
       .map((message) => ({
         type: "comment",
+        id: message.id,
+        likes: Number(likes[message.id] || 0),
         time: message.time,
         name: message.name || "Anoniem",
         text: message.text,

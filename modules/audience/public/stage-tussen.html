@@ -95,6 +95,21 @@
         animation: erin 260ms ease-out;
       }
       .naam { font-weight: 700; }
+      .likes { color: #ff3b5c; font-weight: 700; white-space: nowrap; }
+      #top {
+        position: absolute;
+        left: 88px;
+        right: 88px;
+        line-height: 1.18;
+        font-weight: 500;
+        overflow-wrap: anywhere;
+      }
+      #top .label {
+        display: block;
+        font-size: 0.55em;
+        color: rgba(255, 255, 255, 0.66);
+        margin-bottom: 0.15em;
+      }
       @keyframes erin {
         from { opacity: 0; transform: translateY(12px); }
         to { opacity: 1; transform: none; }
@@ -109,6 +124,7 @@
         <div id="statsScene"></div>
         <div id="statsRij"></div>
       </div>
+      <div id="top" hidden></div>
       <div id="chat"></div>
     </div>
     <script>
@@ -149,6 +165,8 @@
         c.style.top = getal(settings.tussenChatY, 1380) + "px";
         c.style.height = getal(settings.tussenChatHoogte, 480) + "px";
         c.style.fontSize = getal(settings.tussenChatGrootte, 40) + "px";
+        el("top").style.fontSize = getal(settings.tussenChatGrootte, 40) + "px";
+        tekenChat();
       }
 
       function tekenStats() {
@@ -173,24 +191,61 @@
         }
       }
 
-      function regel(msg) {
-        if (!msg || msg.system || !msg.text) return;
-        if (ronde && ronde.start && msg.time && Date.parse(msg.time) < Date.parse(ronde.start)) return;
+      // Reacties van deze ronde; de comment met de meeste likes staat bovenaan (boven de reacties).
+      let berichten = [];
+      function maakRegel(msg, metLabel) {
         const r = document.createElement("div");
         r.className = "regel";
+        if (metLabel) {
+          const l = document.createElement("span");
+          l.className = "label";
+          l.textContent = "Topcomment";
+          r.appendChild(l);
+        }
         const naam = document.createElement("span");
         naam.className = "naam";
         naam.textContent = (msg.name || "Anoniem") + " ";
         if (/^#[0-9a-f]{6}$/i.test(String(msg.nameColor || ""))) naam.style.color = msg.nameColor;
         r.append(naam, document.createTextNode(msg.text));
-        el("chat").appendChild(r);
-        while (el("chat").childElementCount > MAX_REGELS) el("chat").firstElementChild.remove();
+        if (msg.likes > 0) {
+          const h = document.createElement("span");
+          h.className = "likes";
+          h.textContent = " \u2665 " + msg.likes;
+          r.appendChild(h);
+        }
+        return r;
+      }
+      function tekenChat() {
+        const top = berichten.reduce((best, m) => (m.likes > 0 && (!best || m.likes > best.likes || (m.likes === best.likes && m.id < best.id)) ? m : best), null);
+        const t = el("top");
+        t.textContent = "";
+        t.hidden = !top;
+        const chatTop = getal(settings.tussenChatY, 1380);
+        if (top) {
+          t.appendChild(maakRegel(top, true));
+          t.style.top = chatTop + "px";
+        }
+        const c = el("chat");
+        c.textContent = "";
+        // Ruimte voor de topcomment boven de lijst
+        const topHoogte = top ? t.getBoundingClientRect().height / (stage.getBoundingClientRect().height / H || 1) + 24 : 0;
+        c.style.top = (chatTop + topHoogte) + "px";
+        c.style.height = Math.max(0, getal(settings.tussenChatHoogte, 480) - topHoogte) + "px";
+        for (const m of berichten.slice(-MAX_REGELS)) if (!top || m.id !== top.id) c.appendChild(maakRegel(m, false));
+      }
+      function regel(msg) {
+        if (!msg || msg.system || !msg.text) return;
+        if (ronde && ronde.start && msg.time && Date.parse(msg.time) < Date.parse(ronde.start)) return;
+        if (msg.id && berichten.some((m) => m.id === msg.id)) return;
+        berichten.push({ id: Number(msg.id) || 0, name: msg.name, nameColor: msg.nameColor, text: msg.text, likes: Number(msg.likes) || 0, time: msg.time });
+        if (berichten.length > 200) berichten = berichten.slice(-200);
+        tekenChat();
       }
 
       function nieuweRonde(next) {
         const was = ronde && ronde.start;
         ronde = next || ronde;
-        if (ronde.start && ronde.start !== was) el("chat").textContent = "";
+        if (ronde.start && ronde.start !== was) { berichten = []; tekenChat(); }
         tekenStats();
       }
 
@@ -202,16 +257,22 @@
           toepassen(msg.settings);
           reacties = msg.reacties || [];
           ronde = msg.ronde || ronde;
-          el("chat").textContent = "";
+          berichten = [];
           for (const m of msg.berichten || []) regel(m);
+          tekenChat();
           tekenStats();
         } else if (msg.type === "stage_settings") toepassen(msg.stage && msg.stage.settings);
         else if (msg.type === "reacties") { reacties = msg.reacties || []; tekenStats(); }
         else if (msg.type === "fase") nieuweRonde(msg.ronde);
         else if (msg.type === "reaction_update" && msg.ronde) { ronde.emoji = msg.ronde; tekenStats(); }
         else if (msg.type === "comment") regel(msg);
+        else if (msg.type === "comment_likes") {
+          const m = berichten.find((b) => b.id === Number(msg.id));
+          if (m) { m.likes = Number(msg.likes) || 0; tekenChat(); }
+        }
         else if (msg.type === "session_reset" || msg.type === "session_closed") {
-          el("chat").textContent = "";
+          berichten = [];
+          tekenChat();
           ronde.emoji = {};
           tekenStats();
         }
