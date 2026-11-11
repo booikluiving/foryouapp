@@ -119,6 +119,8 @@ function environmentFasesStatus(runtimeState, options = {}) {
       // Zonder beeld toont de fase de gewone achtergrond: dat kan altijd.
       klaar: !fase.assetId || fileExists(filePath, options),
       filePath,
+      // Eigen sfeergeluid van deze fase (bijvoorbeeld na de aanrijding: tikken en vogels).
+      sfeerPath: sfeerPathVoor(fase, assets, options),
     };
   });
   return {
@@ -132,9 +134,16 @@ function environmentFasesStatus(runtimeState, options = {}) {
   };
 }
 
+function sfeerPathVoor(fase, assets, options = {}) {
+  if (!fase.sfeerAssetId) return "";
+  const asset = assets.find((item) => item.id === fase.sfeerAssetId) || null;
+  const filePath = asset ? assetFilePath(asset, options) : "";
+  return fileExists(filePath, options) ? filePath : "";
+}
+
 function publicFasesStatus(status) {
   const { sleutel, geluidPath, geluidVolume, ...rest } = status || {};
-  return { ...rest, fases: (rest.fases || []).map(({ filePath, ...fase }) => fase) };
+  return { ...rest, fases: (rest.fases || []).map(({ filePath, sfeerPath, ...fase }) => ({ ...fase, sfeer: !!sfeerPath })) };
 }
 
 function cueAction(cueId, index, targetId, command, payload, delayMs = 0) {
@@ -206,6 +215,7 @@ function buildEnvironmentFaseCue(runtimeState, input = {}, options = {}) {
     uit: !fase.filePath,
     schok: fase.schok,
     schokNa: fase.schok ? fase.schokNa : 0,
+    sfeerPath: fase.sfeerPath || "",
   }));
   state.sleutel = status.sleutel;
   state.index = index;

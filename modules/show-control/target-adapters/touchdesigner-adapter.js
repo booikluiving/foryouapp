@@ -32,10 +32,10 @@ function oscArgsForAction(action) {
     const payload = action.payload || {};
     args.push(String(payload.filePath || ""), payload.uit ? "1" : "0", String(Number(payload.duur) || 0));
   }
-  // td.effect.fase: beeld, uit, schok en de wachttijd tot de klap in de OSC-args.
+  // td.effect.fase: beeld, uit, schok, de wachttijd tot de klap en het sfeergeluid in de OSC-args.
   if (action.command === "td.effect.fase") {
     const payload = action.payload || {};
-    args.push(String(payload.filePath || ""), payload.uit ? "1" : "0", payload.schok ? "1" : "0", String(Number(payload.schokNa) || 0));
+    args.push(String(payload.filePath || ""), payload.uit ? "1" : "0", payload.schok ? "1" : "0", String(Number(payload.schokNa) || 0), String(payload.sfeerPath || ""));
   }
   return args;
 }
