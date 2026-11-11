@@ -22,8 +22,8 @@ def _haper_diag_kop():
     print("--- For_You haperen: meting camera %d ---" % n)
     print("cookRate", project.cookRate, "| absTime.frame", repr(absTime.frame), type(absTime.frame).__name__,
           "| realTime", getattr(project, "realTime", "?"))
-    par = vast.par.index
-    print("vast.index: mode", par.mode, "| expr", repr(par.expr), "| eval", par.eval())
+    par = getattr(vast.par, "cross", None) or vast.par.index
+    print("vast (%s): mode" % vast.type, par.mode, "| expr", repr(par.expr), "| eval", par.eval())
     print("vast ingangen:", [i.name if i is not None else None for i in vast.inputs])
     print("terug: type", terug.type, "| top", repr(terug.par.top.eval()), "| ingang", [i.name for i in terug.inputs],
           "| bypass", terug.bypass, "| lock", terug.lock)
@@ -41,7 +41,7 @@ def _haper_diag_regel():
         groot.cook(force=True)
     except Exception as err:
         print("cook-fout", err)
-    rij = [repr(absTime.frame), repr(root.op("haper_vast_%d" % n).par.index.eval())]
+    rij = [repr(absTime.frame), repr((getattr(root.op("haper_vast_%d" % n).par, "cross", None) or root.op("haper_vast_%d" % n).par.index).eval())]
     for naam in ("haper_klein_%d", "haper_vast_%d", "haper_terug_%d"):
         o = root.op(naam % n)
         rij.append("%s/%s" % (getattr(o, "cookAbsFrame", "?"), getattr(o, "totalCooks", "?")))
