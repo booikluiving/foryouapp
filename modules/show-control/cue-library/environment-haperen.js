@@ -3,7 +3,8 @@
 // Haperen: het camerabeeld van één speler krijgt een slechte verbinding (grove blokken, schokkerig).
 // Welke speler hapert staat bij de stappen van de scène (omvallen-situation_<nr>.json of
 // omvallen.json): "haper": { "camera": 3, "naam": "Adolf" }.
-// De knop zet het aan en uit; elke keer dat het aangaat is het een stap erger (1, 2, 3).
+// Houd-knop op het deck: aan zolang de knop is ingedrukt, uit bij loslaten. De sterkte (1-3) staat
+// erbij ("sterkte"), anders 2.
 
 const {
   SHOW_CONTROL_CUE_SCHEMA_VERSION,
@@ -12,14 +13,14 @@ const {
 const { environmentOmvallenStatus } = require("./environment-omvallen");
 
 const MAX_STERKTE = 3;
+const STANDAARD_STERKTE = 2;
 
-// Per scène: staat het aan, en hoe erg was het de laatste keer.
-const state = { sleutel: "", aan: false, sterkte: 0 };
+// Per scène: staat het aan.
+const state = { sleutel: "", aan: false };
 
 function resetHaperenState() {
   state.sleutel = "";
   state.aan = false;
-  state.sterkte = 0;
 }
 
 function environmentHaperenStatus(runtimeState, options = {}) {
@@ -29,14 +30,14 @@ function environmentHaperenStatus(runtimeState, options = {}) {
   const haper = omvallen.manifest && omvallen.manifest.haper;
   const camera = haper ? Number(haper.camera) : 0;
   if (![1, 2, 3].includes(camera)) return { ...base, reden: "geen_haperen" };
-  const zelfde = state.sleutel === omvallen.sleutel;
+  const sterkte = Math.round(Number(haper.sterkte));
   return {
     ...base,
     klaar: true,
     camera,
     naam: String(haper.naam || "").trim(),
-    aan: zelfde && state.aan,
-    sterkte: zelfde ? state.sterkte : 0,
+    aan: state.sleutel === omvallen.sleutel && state.aan,
+    sterkte: sterkte >= 1 && sterkte <= MAX_STERKTE ? sterkte : STANDAARD_STERKTE,
     sleutel: omvallen.sleutel,
   };
 }
@@ -54,21 +55,20 @@ function haperenError(code, status) {
   return err;
 }
 
-// actie "wissel" (standaard): aan als het uit staat (een stap erger dan de vorige keer), anders uit.
-// actie "begin": uit, en de volgende keer begint het weer bij de lichtste stap.
+// actie "aan" (knop ingedrukt), "uit" (knop losgelaten of BEGIN), "wissel" (standaard): aan als
+// het uit staat, anders uit.
 function buildEnvironmentHaperCue(runtimeState, input = {}, options = {}) {
   const status = environmentHaperenStatus(runtimeState, options);
   if (!status.environmentId) throw haperenError("geen_omgeving", status);
   if (!status.klaar) throw haperenError(status.reden || "geen_haperen", status);
-  const begin = String(input.actie || "wissel") === "begin";
-  const aan = !begin && !status.aan;
-  const sterkte = begin ? 0 : aan ? Math.min(MAX_STERKTE, status.sterkte + 1) : status.sterkte;
+  const actie = String(input.actie || "wissel");
+  const aan = actie === "aan" ? true : actie === "uit" || actie === "begin" ? false : !status.aan;
+  const sterkte = status.sterkte;
   const createdAtDate = options.createdAtDate || new Date();
   const cueId = createShowControlId("show-cue", createdAtDate);
   const payloadId = `${cueId}:payload:01`;
   state.sleutel = status.sleutel;
   state.aan = aan;
-  state.sterkte = sterkte;
   return {
     schemaVersion: SHOW_CONTROL_CUE_SCHEMA_VERSION,
     cueId,
