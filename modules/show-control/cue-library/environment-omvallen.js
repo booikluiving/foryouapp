@@ -106,11 +106,15 @@ function environmentOmvallenStatus(runtimeState, options = {}) {
   const manifest = readManifest(ref.environmentId, options, situationIdOf(ref.resolved));
   if (!manifest || !manifest.drukken.length) return { ...base, reden: "geen_effect" };
   const sleutel = sleutelVoor(ref, runtimeState);
-  const pos = state.sleutel === sleutel ? Math.min(state.pos, manifest.drukken.length) : 0;
-  const volgende = manifest.drukken[pos];
+  // "herhaal" in omvallen.json: de knop blijft doorgaan (salvo flitsen), zonder einde en zonder teller.
+  const herhaal = manifest.herhaal === true;
+  const gedrukt = state.sleutel === sleutel ? state.pos : 0;
+  const pos = herhaal ? gedrukt : Math.min(gedrukt, manifest.drukken.length);
+  const volgende = manifest.drukken[herhaal ? pos % manifest.drukken.length : pos];
   return {
     ...base,
     klaar: true,
+    herhaal,
     pos,
     totaal: manifest.drukken.length,
     volgende: volgende ? volgende.naam : "begin",
@@ -160,7 +164,7 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
   if (!status.environmentId) throw omvallenError("geen_omgeving", status);
   if (!status.klaar) throw omvallenError(status.reden || "geen_effect", status);
   const actie = String(input.actie || "volgende");
-  const naarBegin = actie === "begin" || status.pos >= status.totaal;
+  const naarBegin = actie === "begin" || (!status.herhaal && status.pos >= status.totaal);
   const createdAtDate = options.createdAtDate || new Date();
   const cueId = createShowControlId("show-cue", createdAtDate);
   const common = {
@@ -179,7 +183,7 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
     state.sleutel = status.sleutel;
     state.pos = 0;
   } else {
-    const druk = status.manifest.drukken[status.pos];
+    const druk = status.manifest.drukken[status.herhaal ? status.pos % status.totaal : status.pos];
     const dir = omvallenDir(status.environmentId, options);
     const clip = path.join(dir, String(druk.clip || ""));
     if (!fileExists(clip, options)) throw omvallenError("clip_ontbreekt", status);

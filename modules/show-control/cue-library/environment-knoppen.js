@@ -37,13 +37,13 @@ function environmentKnoppenStatus(runtimeState, options = {}) {
     verzet = verzet || fases.actief > 0;
   }
   if (omvallen.klaar) {
-    const klaar = omvallen.pos >= omvallen.totaal;
+    const klaar = !omvallen.herhaal && omvallen.pos >= omvallen.totaal;
     knoppen.push({
       soort: "omvallen",
       actie: "volgende",
       label: klaar ? "OPNIEUW" : kort(omvallen.volgende).toUpperCase(),
       nu: "",
-      teller: `${omvallen.pos}/${omvallen.totaal}`,
+      teller: omvallen.herhaal ? "" : `${omvallen.pos}/${omvallen.totaal}`,
       staat: "klaar",
     });
     verzet = verzet || omvallen.pos > 0;
