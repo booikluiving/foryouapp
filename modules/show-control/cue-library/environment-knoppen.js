@@ -5,11 +5,13 @@
 // één knop "volgende": de tekst is wat er bij de volgende druk gebeurt.
 // - fases: de volgende fase (Aanrijding, dan Myrthe stapt uit, ...);
 // - effect omvallen: de volgende kast;
+// - haperen: het camerabeeld van één speler hapert (aan en uit, elke keer erger);
 // - begin: zet alles van deze omgeving terug naar het begin.
 // Een omgeving zonder iets geeft een lege lijst.
 
 const { buildEnvironmentFaseCue, environmentFasesStatus } = require("./environment-fases");
 const { buildEnvironmentOmvallenCue, environmentOmvallenStatus } = require("./environment-omvallen");
+const { buildEnvironmentHaperCue, environmentHaperenStatus, MAX_STERKTE } = require("./environment-haperen");
 
 const MAX_KNOPPEN = 3;
 
@@ -48,6 +50,18 @@ function environmentKnoppenStatus(runtimeState, options = {}) {
     });
     verzet = verzet || omvallen.pos > 0;
   }
+  const haperen = environmentHaperenStatus(runtimeState, options.environmentOmvallen || {});
+  if (haperen.klaar) {
+    knoppen.push({
+      soort: "haperen",
+      actie: "wissel",
+      label: haperen.aan ? "HAPEREN UIT" : kort(`${haperen.naam || "speler"} hapert`).toUpperCase(),
+      nu: haperen.aan ? "hapert" : "",
+      teller: `${haperen.sterkte}/${MAX_STERKTE}`,
+      staat: "klaar",
+    });
+    verzet = verzet || haperen.aan || haperen.sterkte > 0;
+  }
   if (knoppen.length) knoppen.push({ soort: "begin", actie: "begin", label: "BEGIN", nu: "", teller: "", staat: verzet ? "klaar" : "uit" });
   return {
     ok: true,
@@ -56,6 +70,7 @@ function environmentKnoppenStatus(runtimeState, options = {}) {
     meer: Math.max(0, knoppen.length - MAX_KNOPPEN),
     heeftFases: fases.klaar && fases.fases.length > 1,
     heeftOmvallen: omvallen.klaar,
+    heeftHaperen: haperen.klaar,
   };
 }
 
@@ -74,10 +89,12 @@ function buildEnvironmentKnopCue(runtimeState, input = {}, options = {}) {
   const omvallenOptions = options.environmentOmvallen || {};
   if (knop.soort === "fase") return buildEnvironmentFaseCue(runtimeState, { actie: "volgende", source: input.source }, faseOptions);
   if (knop.soort === "omvallen") return buildEnvironmentOmvallenCue(runtimeState, { actie: "volgende", source: input.source }, omvallenOptions);
+  if (knop.soort === "haperen") return buildEnvironmentHaperCue(runtimeState, { actie: "wissel", source: input.source }, omvallenOptions);
   // begin: alles van deze omgeving terug, in één cue.
   const cues = [];
   if (status.heeftFases) cues.push(buildEnvironmentFaseCue(runtimeState, { index: 0, source: input.source }, faseOptions));
   if (status.heeftOmvallen) cues.push(buildEnvironmentOmvallenCue(runtimeState, { actie: "begin", source: input.source }, omvallenOptions));
+  if (status.heeftHaperen) cues.push(buildEnvironmentHaperCue(runtimeState, { actie: "begin", source: input.source }, omvallenOptions));
   const cue = cues[0];
   for (const extra of cues.slice(1)) {
     for (const action of extra.actions) {

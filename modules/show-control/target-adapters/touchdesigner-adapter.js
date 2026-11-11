@@ -42,6 +42,11 @@ function oscArgsForAction(action) {
     const payload = action.payload || {};
     args.push(String(payload.filePath || ""), payload.uit ? "1" : "0", payload.schok ? "1" : "0", String(Number(payload.schokNa) || 0), String(payload.sfeerPath || ""));
   }
+  // td.effect.haper: welke camera hapert en hoe erg (0 = uit) in de OSC-args.
+  if (action.command === "td.effect.haper") {
+    const payload = action.payload || {};
+    args.push(String(Number(payload.camera) || 0), String(Number(payload.sterkte) || 0));
+  }
   return args;
 }
 

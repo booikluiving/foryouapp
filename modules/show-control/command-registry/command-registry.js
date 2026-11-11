@@ -203,6 +203,15 @@ const DEFINITIONS = Object.freeze([
     description: "Speelt de clip van een stap van het effect omvallen over de voorgrond (payload: filePath, uit). De clips komen uit modules/catalog/tools/omvallen-clips.js.",
   }),
   command({
+    name: "td.effect.haper",
+    title: "TD haperen",
+    targetId: "touchdesigner",
+    adapter: "touchdesigner",
+    ackMode: "fire-and-forget",
+    transport: "osc-control-port",
+    description: "Laat het camerabeeld van één speler haperen: grove blokken en schokkerig (payload: camera 1-3, sterkte 0-3; 0 = uit). Voor de omgeving Zoom.",
+  }),
+  command({
     name: "td.effect.fase",
     title: "TD fase van de omgeving",
     targetId: "touchdesigner",
