@@ -1,36 +1,52 @@
 """
 For_You: effect haperen (cue td.effect.haper) in het show-TD.
 
-Het camerabeeld van één speler krijgt een slechte verbinding: grove blokken (lage resolutie)
-en een schokkerig beeld (het beeld blijft telkens even staan). Voor de omgeving Zoom.
+Het vakje van één speler krijgt een slechte verbinding: speler en achtergrond samen in grove
+blokken (lage resolutie) en schokkerig (het beeld blijft telkens even staan). Voor de omgeving Zoom.
 
 Draaien in de Textport van TouchDesigner, met het showbestand "Najaar 2026" open:
 
-    exec(open('/Users/for_you/ForYou/main/show/td-qhub-test/apply_haperen_patch.py').read())
+    exec(open('/Users/for_you/ForYou/main/.claude/worktrees/zoom-haperen/show/td-qhub-test/apply_haperen_patch.py').read())
 
-Wat het doet, in /project1, per camera N (1, 2, 3; comp1, comp5, comp6):
-- haper_klein_N (Fit): het gekeyde beeld van camN op lage resolutie, zonder verzachten
-- haper_vast_N (Switch) + haper_terug_N (Feedback): houdt het beeld een paar frames vast
-- haper_groot_N (Fit): terug naar de maat van camN, zonder verzachten (blokken)
-- haper_switch_N (Switch): 0 = camN (zoals nu), 1 = het haperende beeld
-- compN krijgt haper_switch_N op de plek van camN. camN zelf en alles ervoor blijft zoals het is.
+Wat het doet, in /project1, per vakje N (1, 2, 3 = comp1, comp5, comp6 -> video1, video2, video3):
+- haper_klein_N (Fit): het samengestelde vakje compN op lage resolutie, zonder verzachten
+- haper_vast_N (Cross) + haper_terug_N (Feedback): houdt het beeld vast en laat een paar keer
+  per seconde een nieuw beeld door. Cross in plaats van Switch: zo kookt de Feedback elk frame
+  mee; met een Switch bevroor het beeld.
+- haper_groot_N (Fit): terug naar de maat van compN, zonder verzachten (blokken)
+- haper_switch_N (Switch): 0 = compN (zoals nu), 1 = het haperende vakje
+- videoN krijgt haper_switch_N op de plek van compN. compN en alles ervoor blijft zoals het is.
+- Staat de eerste versie er nog (keten tussen camN en compN), dan wordt die eerst weggehaald
+  en hangt compN weer aan camN.
 - td_qhub_router: /td/cue met command td.effect.haper gaat naar handle_haper.
-  Camera (1-3) en sterkte (0 = uit, 1-3) komen als OSC-args 4-5 mee.
+  Vakje (1-3) en sterkte (0 = uit, 1-3) komen als OSC-args 4-5 mee.
   Bij td.environment.go en td.reset gaat het haperen uit.
 - Bewaart NIET vanzelf. Bewaren doet wie TouchDesigner beheert, na het nakijken.
 
-Terugdraaien: comp1/comp5/comp6 ingang 2 weer aan cam1/cam2/cam3 hangen (of de vorige versie openen).
+Terugdraaien: video1/video2/video3 weer aan comp1/comp5/comp6 hangen (of de vorige versie openen).
 Nogmaals draaien kan: wat er al staat, wordt hergebruikt; de routercode wordt vervangen.
 """
 
 HAPER_COMPS = {1: "comp1", 2: "comp5", 3: "comp6"}
+HAPER_AFNEMERS = {1: "video1", 2: "video2", 3: "video3"}
+HAPER_ONDERDELEN = ("haper_switch_%d", "haper_groot_%d", "haper_vast_%d", "haper_terug_%d", "haper_klein_%d")
 
 ROUTER_MARKER = "# --- For_You effect haperen (td.effect.haper) ---"
 ROUTER_END = "# --- einde For_You effect haperen ---\n"
 
 ROUTER_CODE = ROUTER_MARKER + '''
-# Per sterkte: (deler van de resolutie, aantal frames dat het beeld blijft staan).
-HAPER_STERKTES = {1: (8, 4), 2: (16, 9), 3: (28, 16)}
+# Per sterkte: (deler van de resolutie, aantal nieuwe beelden per seconde).
+HAPER_STERKTES = {1: (6, 12), 2: (8, 7), 3: (14, 4)}
+HAPER_BRON = {1: "comp1", 2: "comp5", 3: "comp6"}
+
+
+def _haper_vast_expr(per_seconde):
+    # 0 = nieuw beeld doorlaten, 1 = het vorige beeld vasthouden. Op tijd, niet op framenummer:
+    # zo werkt het ook als TouchDesigner frames overslaat.
+    return (
+        "0 if int(absTime.seconds * %d) != int((absTime.seconds - absTime.stepSeconds) * %d) else 1"
+        % (per_seconde, per_seconde)
+    )
 
 
 def _haper_log(cue_id, stage, status, message):
@@ -71,7 +87,7 @@ def handle_haper(cue_id, extra_args):
     switch = _op("haper_switch_%d" % camera)
     klein = _op("haper_klein_%d" % camera)
     vast = _op("haper_vast_%d" % camera)
-    bron = _op("cam%d" % camera)
+    bron = _op(HAPER_BRON[camera])
     if switch is None or klein is None or vast is None or bron is None:
         _haper_log(cue_id, "error", "error", "haper_ops_missing")
         ack(cue_id, command, "error", "error", "haper_ops_missing")
@@ -81,11 +97,10 @@ def handle_haper(cue_id, extra_args):
         _haper_log(cue_id, "applied", "ok", "haper:cam%d uit" % camera)
         ack(cue_id, command, "applied", "ok", "haper:uit")
         return True
-    deler, frames = HAPER_STERKTES.get(min(3, sterkte), HAPER_STERKTES[3])
+    deler, per_seconde = HAPER_STERKTES.get(min(3, sterkte), HAPER_STERKTES[3])
     klein.par.resolutionw = max(8, int(bron.width / deler))
     klein.par.resolutionh = max(8, int(bron.height / deler))
-    # Index 0 = nieuw beeld doorlaten, 1 = het vorige beeld vasthouden.
-    vast.par.index.expr = "0 if absTime.frame %% %d == 0 else 1" % frames
+    vast.par.cross.expr = _haper_vast_expr(per_seconde)
     switch.par.index = 1
     message = "haper:cam%d sterkte %d" % (camera, sterkte)
     _haper_log(cue_id, "applied", "ok", message)
@@ -149,6 +164,13 @@ def _hard(operator):
     _set_par(operator, "filtertype", "nearest")
 
 
+def _plek_van(operator, namen):
+    for index, ingang in enumerate(operator.inputs):
+        if ingang is not None and ingang.name in namen:
+            return index
+    return None
+
+
 def apply_haperen_patch():
     root = op("/project1")
     router = root.op("td_qhub_router")
@@ -159,56 +181,70 @@ def apply_haperen_patch():
     for nummer, comp_name in HAPER_COMPS.items():
         cam = root.op("cam%d" % nummer)
         comp = root.op(comp_name)
-        if cam is None or comp is None:
-            raise RuntimeError("niet gevonden: cam%d of %s" % (nummer, comp_name))
-        plek = None
-        for index, ingang in enumerate(comp.inputs):
-            if ingang is not None and ingang.name in ("cam%d" % nummer, "haper_switch_%d" % nummer):
-                plek = index
+        afnemer = root.op(HAPER_AFNEMERS[nummer])
+        if cam is None or comp is None or afnemer is None:
+            raise RuntimeError("niet gevonden: cam%d, %s of %s" % (nummer, comp_name, HAPER_AFNEMERS[nummer]))
+        switch_name = "haper_switch_%d" % nummer
+        oud_plek = _plek_van(comp, (switch_name,))  # eerste versie: de keten zat tussen camN en compN
+        plek = _plek_van(afnemer, (comp_name, switch_name))
         if plek is None:
+            raise RuntimeError("%s hangt niet aan %s; niets veranderd" % (HAPER_AFNEMERS[nummer], comp_name))
+        if oud_plek is None and _plek_van(comp, ("cam%d" % nummer,)) is None:
             raise RuntimeError("%s hangt niet aan cam%d; niets veranderd" % (comp_name, nummer))
-        plan.append((nummer, cam, comp, plek))
+        plan.append((nummer, cam, comp, afnemer, plek, oud_plek))
 
     # 1. Router (alleen tekst).
     router.text = patch_router_text(router.text)
 
-    # 2. Operators, tussen camN en compN.
-    for nummer, cam, comp, plek in plan:
-        x, y = cam.nodeX, cam.nodeY
-        klein = _get_or_create(root, fitTOP, "haper_klein_%d" % nummer, x + 150, y - 45)
-        klein.inputConnectors[0].connect(cam)
+    for nummer, cam, comp, afnemer, plek, oud_plek in plan:
+        # 2. De eerste versie weghalen: compN weer aan camN, de oude onderdelen weg.
+        if oud_plek is not None:
+            comp.inputConnectors[oud_plek].connect(cam)
+            for naam in HAPER_ONDERDELEN:
+                oud = root.op(naam % nummer)
+                if oud is not None:
+                    oud.destroy()
+        # Een Switch op de plek van de Cross (eerdere poging): vervangen.
+        oude_vast = root.op("haper_vast_%d" % nummer)
+        if oude_vast is not None and oude_vast.type != "cross":
+            oude_vast.destroy()
+
+        # 3. Onderdelen, tussen compN en videoN.
+        x, y = comp.nodeX, comp.nodeY
+        klein = _get_or_create(root, fitTOP, "haper_klein_%d" % nummer, x + 150, y - 30)
+        klein.inputConnectors[0].connect(comp)
         klein.par.fit = "fill"
         klein.par.outputresolution = "custom"
-        klein.par.resolutionw = max(8, int(cam.width / 16))
-        klein.par.resolutionh = max(8, int(cam.height / 16))
+        klein.par.resolutionw = max(8, int(comp.width / 8))
+        klein.par.resolutionh = max(8, int(comp.height / 8))
         _hard(klein)
 
-        vast = _get_or_create(root, switchTOP, "haper_vast_%d" % nummer, x + 150, y - 90)
-        terug = _get_or_create(root, feedbackTOP, "haper_terug_%d" % nummer, x + 150, y - 135)
+        vast = _get_or_create(root, crossTOP, "haper_vast_%d" % nummer, x + 300, y - 30)
+        terug = _get_or_create(root, feedbackTOP, "haper_terug_%d" % nummer, x + 150, y - 75)
         terug.inputConnectors[0].connect(klein)
         terug.par.top = vast.name
         _hard(terug)
         vast.inputConnectors[0].connect(klein)
         vast.inputConnectors[1].connect(terug)
-        if not vast.par.index.expr:
-            vast.par.index.expr = "0 if absTime.frame % 9 == 0 else 1"
+        if not vast.par.cross.expr:
+            vast.par.cross.expr = "0 if int(absTime.seconds * 7) != int((absTime.seconds - absTime.stepSeconds) * 7) else 1"
         _hard(vast)
 
-        groot = _get_or_create(root, fitTOP, "haper_groot_%d" % nummer, x + 300, y - 90)
+        groot = _get_or_create(root, fitTOP, "haper_groot_%d" % nummer, x + 450, y - 30)
         groot.inputConnectors[0].connect(vast)
         groot.par.fit = "fill"
         groot.par.outputresolution = "custom"
-        groot.par.resolutionw.expr = "op('cam%d').width" % nummer
-        groot.par.resolutionh.expr = "op('cam%d').height" % nummer
+        groot.par.resolutionw.expr = "op('%s').width" % comp.name
+        groot.par.resolutionh.expr = "op('%s').height" % comp.name
         _hard(groot)
 
-        switch = _get_or_create(root, switchTOP, "haper_switch_%d" % nummer, x + 300, y - 45)
-        switch.inputConnectors[0].connect(cam)
+        switch = _get_or_create(root, switchTOP, "haper_switch_%d" % nummer, x + 600, y - 30)
+        switch.inputConnectors[0].connect(comp)
         switch.inputConnectors[1].connect(groot)
         switch.par.index = 0
 
-        # 3. compN aan de switch, op dezelfde plek als camN.
-        comp.inputConnectors[plek].connect(switch)
+        # 4. videoN aan de switch, op dezelfde plek als compN.
+        afnemer.inputConnectors[plek].connect(switch)
 
     print("For_You haperen: klaar, NIET bewaard")
     return True
