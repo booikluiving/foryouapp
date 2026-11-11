@@ -12,6 +12,7 @@ const { fetchCatalogSnapshot } = require("../client/catalog-client");
 const { fetchCurrentRuntimeState } = require("../client/runtime-client");
 const { createOperatorService } = require("../operator/operator-service");
 const { createSceneTest } = require("../operator/scene-test");
+const { readSyncStatus } = require("../operator/sync-status");
 const { buildPromptInput } = require("../prompt-builder/prompt-builder");
 const { createScriptOutput } = require("../script-output/script-service");
 const {
@@ -196,7 +197,7 @@ function createScriptAgentApp(options = {}) {
 
   // Scènes testen: alleen in een testrun elke situatie starten, los van de paden.
   app.get("/v0/script-agent/operator/scene-test", asyncRoute(async (_req, res) => {
-    res.json({ ok: true, ...(await sceneTest.status()) });
+    res.json({ ok: true, ...(await sceneTest.status()), sync: readSyncStatus() });
   }));
 
   app.post("/v0/script-agent/operator/scene-test", asyncRoute(async (req, res) => {

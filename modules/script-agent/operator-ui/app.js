@@ -33,6 +33,7 @@ const els = {
   sceneTestToggle: $("#sceneTestToggle"),
   sceneTestStart: $("#sceneTestStart"),
   sceneTestMsg: $("#sceneTestMsg"),
+  syncMsg: $("#syncMsg"),
   chatLog: $("#chatLog"),
   chatForm: $("#chatForm"),
   chatInput: $("#chatInput"),
@@ -499,6 +500,7 @@ async function loadStatus() {
   loadSceneTest().catch(() => {
     sceneTestState = { running: false, enabled: false, activeSituation: null };
     renderSceneTest();
+    renderSync(null);
   });
   const status = await api("/v0/script-agent/operator/status");
   els.operatorStatusText.textContent = [
@@ -718,9 +720,42 @@ function renderSceneTest(message, error = false) {
   els.sceneTestMsg.style.color = error ? "var(--bad)" : "";
 }
 
+function klokTijd(iso) {
+  const date = new Date(iso || "");
+  return Number.isNaN(date.getTime())
+    ? ""
+    : date.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+// De laatste update van de website, zoals de sync-agent op de show-Mac hem meldt.
+function renderSync(sync) {
+  let text = "";
+  let error = false;
+  if (!sync || !sync.available) {
+    text = "Website: geen sync op deze machine.";
+  } else {
+    const versie = sync.appliedVersion ? `versie ${sync.appliedVersion}` : "nog geen versie";
+    const sinds = sync.appliedAt ? `, laatste update ${klokTijd(sync.appliedAt)}` : "";
+    text = `Website: ${versie}${sinds}.`;
+    if (sync.stale) {
+      text += ` Sync meldt zich niet meer (laatst ${klokTijd(sync.reportedAt) || "onbekend"}).`;
+      error = true;
+    } else if (sync.state === "wacht" || sync.state === "conflict") {
+      text += ` ${sync.message}`;
+    } else if (sync.state === "offline" || sync.state === "fout") {
+      text += ` ${sync.message}`;
+      error = true;
+    }
+  }
+  els.syncMsg.textContent = text;
+  els.syncMsg.style.color = error ? "var(--bad)" : "";
+}
+
 async function loadSceneTest() {
-  sceneTestState = await api("/v0/script-agent/operator/scene-test");
+  const body = await api("/v0/script-agent/operator/scene-test");
+  sceneTestState = body;
   renderSceneTest();
+  renderSync(body.sync);
 }
 
 async function toggleSceneTest() {
