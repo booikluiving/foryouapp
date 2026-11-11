@@ -826,6 +826,24 @@ label {
   );
 }
 
+.caption-card.title {
+  max-height: 520px;
+  font-size: calc(74px * var(--caption-size-scale));
+  font-weight: 500;
+  line-height: 1.34;
+  color: #141414;
+  -webkit-text-fill-color: #141414;
+  text-shadow: none;
+}
+
+.caption-title-text {
+  background: var(--title-bg, #ffc8dd);
+  padding: 0.04em 0.34em 0.1em;
+  border-radius: 0.24em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
 .caption-inline-direction {
   font-style: italic;
   font-weight: 500;

@@ -118,8 +118,19 @@
     if (index >= lines.length + 1) return { type: "end", text: "Einde" };
     const line = lines[index - 1];
     if (!line || !line.text) return null;
+    // Regel die met # begint (de eerste regel van een gegenereerd script) = titel in een pastelblok.
+    const titel = line.type !== "dialogue" && /^\s*#+\s*(.+)$/.exec(line.text);
+    if (titel) return { type: "title", text: titel[1].trim() };
     if (line.type === "dialogue") return { type: "dialogue", text: line.text };
     return { type: "direction", text: line.text };
+  }
+
+  // Vaste pastelkleur per titel, zodat dezelfde scène altijd dezelfde kleur krijgt.
+  const PASTELS = ["#FFC8DD", "#BDE0FE", "#CDEAC0", "#FFE5A8", "#D9C8FF", "#FFD3B6", "#B8F2E6"];
+  function pastelVoor(text) {
+    let h = 0;
+    for (const ch of String(text)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+    return PASTELS[h % PASTELS.length];
   }
 
   function atEndCard() {
@@ -162,7 +173,15 @@
     }
     card.hidden = false;
     card.className = `caption-card ${activeCaption.type}`;
-    appendFormattedText(card, activeCaption.text);
+    if (activeCaption.type === "title") {
+      const blok = document.createElement("span");
+      blok.className = "caption-title-text";
+      blok.style.setProperty("--title-bg", pastelVoor(activeCaption.text));
+      blok.textContent = activeCaption.text;
+      card.appendChild(blok);
+    } else {
+      appendFormattedText(card, activeCaption.text);
+    }
     fitCaption();
   }
 
