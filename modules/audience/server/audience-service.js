@@ -1757,6 +1757,37 @@ class AudienceService extends EventEmitter {
     return this.acceptReaction(meta, reaction);
   }
 
+  // Voor de bot-simulatie: recente comments (oud → nieuw) met likes; leeg tijdens de scène.
+  recenteCommentsVoorLikes(limit = 25) {
+    const session = this.getActiveSession();
+    if (!session || this.fase.fase === "scene") return [];
+    const likes = this.store.commentLikeCounts(session.id);
+    return this.store.recentChatMessages({ sessionId: session.id, limit, status: "accepted" })
+      .filter((m) => !String(m.detail || "").startsWith("moderation_notice:"))
+      .reverse()
+      .map((m) => ({ id: m.id, clientKey: m.clientKey, likes: Number(likes[m.id] || 0) }));
+  }
+
+  async acceptSimulatedLike(bot, messageId) {
+    const session = this.getActiveSession();
+    if (!session) return null;
+    const meta = {
+      sessionId: session.id,
+      sessionPublicId: session.publicId,
+      clientId: bot.clientId,
+      clientTag: bot.clientTag,
+      clientKey: bot.clientKey,
+      name: bot.name,
+      ip: bot.ip,
+      ua: bot.ua,
+      connectedAt: bot.connectedAt || nowIso(),
+      isBot: true,
+      simulated: true,
+      isInternalSimulator: true,
+    };
+    return this.acceptLike(meta, messageId, true);
+  }
+
   async acceptSimulatedPollVote(bot, pollId, optionIndex) {
     const session = this.getActiveSession();
     if (!session) return false;
