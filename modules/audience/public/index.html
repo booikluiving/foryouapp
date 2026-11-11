@@ -460,6 +460,23 @@
       #chatFeed .chatTime {
         color: var(--b);
       }
+      #naVraag {
+        flex: 0 0 auto;
+        font-size: clamp(40px, 13vw, 64px);
+        font-weight: 700;
+        line-height: 1.05;
+        letter-spacing: -0.01em;
+        color: var(--a);
+        animation: naVraagErin 900ms ease-out;
+      }
+      @keyframes naVraagErin {
+        0% { opacity: 0; transform: translateY(12px); }
+        30% { opacity: 1; transform: none; }
+        45% { opacity: 0.35; }
+        60% { opacity: 1; }
+        75% { opacity: 0.35; }
+        100% { opacity: 1; }
+      }
       .composer {
         flex: 0 0 auto;
         display: flex;
@@ -713,6 +730,7 @@
       <div id="pollMeta"></div>
     </div>
     <div id="chatFeed"></div>
+    <div id="naVraag" hidden></div>
     <div class="composer">
       <textarea
         id="text"
@@ -800,6 +818,9 @@
       // Emoji-lijst komt van de server (hello / "reacties"); dit is de stand tot die er is.
       const reactionEmoji = {};
       let faseNu = "tussen";
+      let naSceneVraag = "En?";
+      const TEXT_PLACEHOLDER = "Typ je reactie";
+      const NA_SCENE_TRIL = [45, 90, 45, 90, 45];
       const REACTION_POINTER_GHOST_MS = 700;
       const HEART_HAPTIC_MIN_GAP_MS = 90;
       const REACTION_SEND_STEP_MS = 130;
@@ -1119,6 +1140,35 @@
           reactionBurstLayerEl.appendChild(node);
           setTimeout(() => node.remove(), 1600);
         }
+      }
+
+      // Na de scène: een paar korte trillingen (waar de telefoon dat kan) en de vraag boven het tekstveld.
+      function toonNaVraag() {
+        const el = document.getElementById("naVraag");
+        if (!el || !naSceneVraag) return;
+        el.textContent = naSceneVraag;
+        el.hidden = false;
+        el.style.animation = "none";
+        void el.offsetWidth;
+        el.style.animation = "";
+        textEl.placeholder = naSceneVraag;
+        if (supportsNativeVibration) {
+          try { navigator.vibrate(NA_SCENE_TRIL); } catch {}
+        }
+      }
+
+      function verbergNaVraag() {
+        const el = document.getElementById("naVraag");
+        if (el) el.hidden = true;
+        textEl.placeholder = TEXT_PLACEHOLDER;
+      }
+
+      function zetFase(volgende) {
+        const vorige = faseNu;
+        faseNu = volgende === "scene" ? "scene" : "tussen";
+        renderInteractionMode();
+        if (vorige === "scene" && faseNu === "tussen") toonNaVraag();
+        if (faseNu === "scene") verbergNaVraag();
       }
 
       function renderReactieKnoppen(lijst) {
@@ -2598,6 +2648,7 @@
               noteServerSeen();
               if (msg.poll) showPoll(msg.poll);
               if (Array.isArray(msg.reacties)) renderReactieKnoppen(msg.reacties);
+              if (typeof msg.naSceneVraag === "string") naSceneVraag = msg.naSceneVraag;
               if (msg.fase && msg.fase.fase) {
                 faseNu = msg.fase.fase === "scene" ? "scene" : "tussen";
                 renderInteractionMode();
@@ -2605,13 +2656,13 @@
               return;
             }
             if (msg.type === "fase") {
-              faseNu = msg.fase === "scene" ? "scene" : "tussen";
-              renderInteractionMode();
+              zetFase(msg.fase);
               noteServerSeen();
               return;
             }
             if (msg.type === "reacties") {
               renderReactieKnoppen(msg.reacties);
+              if (typeof msg.naSceneVraag === "string") naSceneVraag = msg.naSceneVraag;
               return;
             }
             if (msg.type === "pong") {
@@ -2791,6 +2842,7 @@
         }
 
         ws.send(JSON.stringify({ type: "comment", name: name || myName, text, clientTag }));
+        verbergNaVraag();
         textEl.value = "";
         textEl.focus();
       }

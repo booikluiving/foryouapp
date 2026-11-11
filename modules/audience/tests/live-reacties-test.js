@@ -106,7 +106,8 @@ const wachtOp = async (fn, ms = 3000) => {
     const hello = tel.msgs.find((m) => m.type === "hello");
     assert.equal(hello.fase.fase, "tussen");
     assert.deepEqual(hello.reacties.map((x) => x.telt), ["positief", "negatief"]);
-    ok("hello: fase 'tussen' en standaard-emoji (positief, negatief)");
+    assert.equal(hello.naSceneVraag, "En?");
+    ok("hello: fase 'tussen', standaard-emoji (positief, negatief) en vraag 'En?'");
 
     const stroom = await openStroom();
     await wachtOp(() => stroom.msgs.some((m) => m.type === "begin"));
@@ -147,11 +148,12 @@ const wachtOp = async (fn, ms = 3000) => {
     assert.ok(await wachtOp(() => tel.msgs.slice(v2).some((m) => m.code === "reaction_invalid")));
     ok("emoji die niet in de lijst staat wordt geweigerd");
 
-    const opgeslagen = await post("/audience/admin/reacties", { reacties: [
+    const opgeslagen = await post("/audience/admin/reacties", { vraag: "  Wat   vond je ervan? ", reacties: [
       { emoji: "🔥", telt: "positief" }, { emoji: "😂", telt: "niet" }, { emoji: "<b>", telt: "positief" }, { emoji: "🔥", telt: "negatief" },
     ] });
     assert.deepEqual(opgeslagen.reacties, [{ emoji: "🔥", telt: "positief" }, { emoji: "😂", telt: "niet" }]);
-    assert.ok(await wachtOp(() => tel.msgs.some((m) => m.type === "reacties" && m.reacties.length === 2)));
+    assert.equal(opgeslagen.naSceneVraag, "Wat vond je ervan?");
+    assert.ok(await wachtOp(() => tel.msgs.some((m) => m.type === "reacties" && m.reacties.length === 2 && m.naSceneVraag === "Wat vond je ervan?")));
     ok("Admin: emoji-lijst opslaan (dubbel en HTML eruit), telefoons krijgen de nieuwe lijst");
 
     const state1 = await (await lan("/audience/admin/state")).json();

@@ -428,10 +428,13 @@
           <div id="faseRegel" class="muted">Fase: onbekend</div>
           <div id="reactieRijen"></div>
           <div class="row">
+            <input id="naSceneVraagInput" maxlength="80" placeholder="Vraag na de scène" autocomplete="off" />
+          </div>
+          <div class="row">
             <button id="reactieErbijBtn" type="button">Emoji erbij</button>
             <button id="reactiesOpslaanBtn" class="primary" type="button">Opslaan</button>
           </div>
-          <div class="muted">Scène: alleen emoji. Tussen de scènes: typen en emoji. Telt = wat het algoritme ermee doet.</div>
+          <div class="muted">Scène: alleen emoji. Tussen de scènes: typen en emoji. Telt = wat het algoritme ermee doet. Na de scène trillen de telefoons kort en staat de vraag boven het tekstveld.</div>
           <div class="muted"><a href="/audience/stage/emoji" target="_blank" rel="noopener">/audience/stage/emoji</a> · <a href="/audience/stage/chat" target="_blank" rel="noopener">/audience/stage/chat</a></div>
         </section>
 
@@ -1386,11 +1389,16 @@
             ? "Fase: scène" + (fase.titel ? " (" + fase.titel + ")" : "") + " · alleen emoji"
             : "Fase: tussen de scènes · typen en emoji";
         }
+        const vraagEl = document.getElementById("naSceneVraagInput");
+        if (vraagEl && !reactiesBewerkt && document.activeElement !== vraagEl && typeof (lastState && lastState.naSceneVraag) === "string") {
+          vraagEl.value = lastState.naSceneVraag;
+        }
         if (reactiesBewerkt || !Array.isArray(lijst)) return;
         const box = document.getElementById("reactieRijen");
         box.textContent = "";
         for (const item of lijst) box.appendChild(reactieRij(item));
       }
+      document.getElementById("naSceneVraagInput").addEventListener("input", () => { reactiesBewerkt = true; });
       document.getElementById("reactieErbijBtn").addEventListener("click", () => {
         document.getElementById("reactieRijen").appendChild(reactieRij());
         reactiesBewerkt = true;
@@ -1400,8 +1408,9 @@
           emoji: rij.querySelector(".reactieEmoji").value.trim(),
           telt: rij.querySelector(".reactieTelt").value,
         })).filter((r) => r.emoji);
+        const vraag = document.getElementById("naSceneVraagInput").value;
         reactiesBewerkt = false;
-        await runAction("/audience/admin/reacties", { reacties });
+        await runAction("/audience/admin/reacties", { reacties, vraag });
       });
 
       function renderWifiQr(wifi) {

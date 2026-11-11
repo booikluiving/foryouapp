@@ -236,7 +236,8 @@ function createAudienceApp(options = {}) {
 
   app.post("/audience/admin/reacties", (req, res) => {
     const body = req.body || {};
-    res.json({ ok: true, reacties: service.saveReacties(body.reacties) });
+    const reacties = service.saveReacties(body.reacties, body.vraag);
+    res.json({ ok: true, reacties, naSceneVraag: service.getNaSceneVraag() });
   });
 
   app.post("/audience/admin/wifi-qr", (req, res) => {

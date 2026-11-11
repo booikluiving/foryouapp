@@ -182,6 +182,7 @@ function attachAudienceRealtime(server, service, options = {}) {
       poll: service.getActivePollSnapshot(),
       fase: service.getFase(),
       reacties: service.getReacties(),
+      naSceneVraag: service.getNaSceneVraag(),
     });
   }
 
