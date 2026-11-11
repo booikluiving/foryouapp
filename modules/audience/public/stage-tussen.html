@@ -92,8 +92,8 @@
         line-height: 1.18;
         font-weight: 500;
         overflow-wrap: anywhere;
-        animation: erin 260ms ease-out;
       }
+      .regel.nieuw { animation: erin 260ms ease-out; }
       .naam { font-weight: 700; }
       .likes { color: #ff3b5c; font-weight: 700; white-space: nowrap; }
       #top {
@@ -165,7 +165,7 @@
 
       function tekenStats() {
         const box = el("stats");
-        if (!ronde || !ronde.start) { box.hidden = true; tekenChat(); return; }
+        if (!ronde || !ronde.start) { box.hidden = true; plaatsChat(); return; }
         box.hidden = false;
         el("statsScene").textContent = ronde.titel || "";
         const rij = el("statsRij");
@@ -183,14 +183,16 @@
           span.append(em, n);
           rij.appendChild(span);
         }
-        tekenChat();
+        plaatsChat();
       }
 
       // Reacties van deze ronde; de comment met de meeste likes staat bovenaan (boven de reacties).
       let berichten = [];
-      function maakRegel(msg) {
-        const r = document.createElement("div");
-        r.className = "regel";
+      // Elke regel wordt één keer gemaakt en daarna hergebruikt; alleen nieuwe regels schuiven in beeld.
+      // (Alles opnieuw opbouwen liet de hele chat bij elk bericht of elke emoji knipperen.)
+      const regelEls = new WeakMap();
+      function vulRegel(r, msg) {
+        r.textContent = "";
         const naam = document.createElement("span");
         naam.className = "naam";
         naam.textContent = (msg.name || "Anoniem") + " ";
@@ -202,30 +204,50 @@
           h.textContent = " \u2665 " + msg.likes;
           r.appendChild(h);
         }
+        r.dataset.likes = String(msg.likes || 0);
+      }
+      function regelEl(msg) {
+        let r = regelEls.get(msg);
+        if (!r) {
+          r = document.createElement("div");
+          r.className = "regel nieuw";
+          r.addEventListener("animationend", () => r.classList.remove("nieuw"), { once: true });
+          vulRegel(r, msg);
+          regelEls.set(msg, r);
+        } else if (r.dataset.likes !== String(msg.likes || 0)) {
+          vulRegel(r, msg);
+        }
         return r;
+      }
+      // Zet de juiste elementen op hun plek zonder bestaande regels weg te halen.
+      function zetKinderen(ouder, lijst) {
+        for (const kind of [...ouder.children]) if (!lijst.includes(kind)) kind.remove();
+        lijst.forEach((kind, i) => {
+          if (ouder.children[i] !== kind) ouder.insertBefore(kind, ouder.children[i] || null);
+        });
       }
       function tekenChat() {
         const top = berichten.reduce((best, m) => (m.likes > 0 && (!best || m.likes > best.likes || (m.likes === best.likes && m.id < best.id)) ? m : best), null);
         const t = el("top");
-        t.textContent = "";
         t.hidden = !top;
+        zetKinderen(t, top ? [regelEl(top)] : []);
+        const c = el("chat");
+        zetKinderen(c, berichten.slice(-MAX_REGELS).filter((m) => m !== top).map(regelEl));
+        plaatsChat();
+      }
+      function plaatsChat() {
         // De chat begint nooit boven de onderkant van de tellingen.
         const stats = el("stats");
         const statsOnder = stats.hidden ? 0 : stats.offsetTop + stats.offsetHeight + 32;
         const chatY = getal(settings.tussenChatY, 1380);
         const chatTop = Math.max(chatY, statsOnder);
         const chatHoogte = Math.max(0, getal(settings.tussenChatHoogte, 480) - (chatTop - chatY));
-        if (top) {
-          t.appendChild(maakRegel(top));
-          t.style.top = chatTop + "px";
-        }
+        const t = el("top");
+        t.style.top = chatTop + "px";
+        const topHoogte = t.hidden ? 0 : t.offsetHeight + 24;
         const c = el("chat");
-        c.textContent = "";
-        // Ruimte voor de topcomment boven de lijst
-        const topHoogte = top ? t.offsetHeight + 24 : 0;
         c.style.top = (chatTop + topHoogte) + "px";
         c.style.height = Math.max(0, chatHoogte - topHoogte) + "px";
-        for (const m of berichten.slice(-MAX_REGELS)) if (!top || m.id !== top.id) c.appendChild(maakRegel(m));
       }
       function regel(msg) {
         if (!msg || msg.system || !msg.text) return;
