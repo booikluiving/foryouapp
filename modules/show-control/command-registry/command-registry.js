@@ -185,6 +185,15 @@ const DEFINITIONS = Object.freeze([
     description: "Toont het extra shot van de omgeving schermvullend (payload: filePath, duur, uit). Wordt per omgeving in de catalogus ingevuld.",
   }),
   command({
+    name: "td.effect.omvallen",
+    title: "TD effect omvallen",
+    targetId: "touchdesigner",
+    adapter: "touchdesigner",
+    ackMode: "fire-and-forget",
+    transport: "osc-control-port",
+    description: "Speelt de clip van een stap van het effect omvallen over de voorgrond (payload: filePath, uit). De clips komen uit modules/catalog/tools/omvallen-clips.js.",
+  }),
+  command({
     name: "audio.extra.play",
     title: "Extra geluid afspelen",
     targetId: "mac-audio",
