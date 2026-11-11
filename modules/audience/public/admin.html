@@ -626,6 +626,23 @@
             <label class="sliderField"><span class="sliderLabel"><span>Top Chatters fade start</span><span id="stageLeaderboardFadeValue" class="sliderValue">74%</span></span><input id="stageLeaderboardFade" type="range" min="30" max="100" step="1" value="74" /></label>
           </div>
         </details>
+        <details class="stageGroup" open>
+          <summary>Tussenscherm (<a href="/audience/stage/tussen" target="_blank" rel="noopener">/audience/stage/tussen</a>)</summary>
+          <div class="row">
+            <input data-tussen="tussenTitel" maxlength="80" placeholder="Titel" autocomplete="off" />
+          </div>
+          <div class="stageControls">
+            <label class="sliderField"><span class="sliderLabel"><span>Titel Y</span><span class="sliderValue" data-tussen-waarde="tussenTitelY"></span></span><input data-tussen="tussenTitelY" data-eenheid="px" type="range" min="0" max="1900" step="1" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Titel grootte</span><span class="sliderValue" data-tussen-waarde="tussenTitelGrootte"></span></span><input data-tussen="tussenTitelGrootte" data-eenheid="px" type="range" min="16" max="220" step="1" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Script Y</span><span class="sliderValue" data-tussen-waarde="tussenScriptY"></span></span><input data-tussen="tussenScriptY" data-eenheid="px" type="range" min="0" max="1900" step="1" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Script hoogte</span><span class="sliderValue" data-tussen-waarde="tussenScriptHoogte"></span></span><input data-tussen="tussenScriptHoogte" data-eenheid="px" type="range" min="100" max="1920" step="1" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Tellingen Y</span><span class="sliderValue" data-tussen-waarde="tussenStatsY"></span></span><input data-tussen="tussenStatsY" data-eenheid="px" type="range" min="0" max="1900" step="1" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Tellingen grootte</span><span class="sliderValue" data-tussen-waarde="tussenStatsGrootte"></span></span><input data-tussen="tussenStatsGrootte" data-eenheid="px" type="range" min="24" max="260" step="1" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Reacties Y</span><span class="sliderValue" data-tussen-waarde="tussenChatY"></span></span><input data-tussen="tussenChatY" data-eenheid="px" type="range" min="0" max="1900" step="1" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Reacties hoogte</span><span class="sliderValue" data-tussen-waarde="tussenChatHoogte"></span></span><input data-tussen="tussenChatHoogte" data-eenheid="px" type="range" min="100" max="1920" step="1" /></label>
+            <label class="sliderField"><span class="sliderLabel"><span>Reacties grootte</span><span class="sliderValue" data-tussen-waarde="tussenChatGrootte"></span></span><input data-tussen="tussenChatGrootte" data-eenheid="px" type="range" min="16" max="120" step="1" /></label>
+          </div>
+        </details>
       </section>
     </div>
 
@@ -1413,6 +1430,35 @@
         await runAction("/audience/admin/reacties", { reacties, vraag });
       });
 
+      // Tussenscherm: elke schuif slaat meteen op; de pagina volgt live.
+      const tussenVelden = Array.from(document.querySelectorAll("[data-tussen]"));
+      const tussenTimers = {};
+      function tussenWaardeTonen(veld) {
+        const label = document.querySelector(`[data-tussen-waarde="${veld.dataset.tussen}"]`);
+        if (label) label.textContent = veld.value + (veld.dataset.eenheid || "");
+      }
+      for (const veld of tussenVelden) {
+        veld.addEventListener("input", () => {
+          tussenWaardeTonen(veld);
+          const key = veld.dataset.tussen;
+          clearTimeout(tussenTimers[key]);
+          tussenTimers[key] = setTimeout(() => {
+            const waarde = veld.type === "range" ? Number(veld.value) : veld.value;
+            post("/audience/admin/stage/settings", { [key]: waarde }).catch((err) => setActionMessage("Opslaan mislukt: " + err.message, true));
+          }, 150);
+        });
+      }
+      function renderTussen(data) {
+        const settings = (data.stage && data.stage.settings) || {};
+        for (const veld of tussenVelden) {
+          if (document.activeElement === veld) continue;
+          const v = settings[veld.dataset.tussen];
+          if (v === undefined) continue;
+          veld.value = v;
+          tussenWaardeTonen(veld);
+        }
+      }
+
       function renderWifiQr(wifi) {
         if (wifiFormFilled || !wifi) return;
         els.wifiSsidInput.value = wifi.ssid || "";
@@ -1436,6 +1482,7 @@
         if (data.sessionJoin && data.sessionJoin.joinUrl) drawQr(data.sessionJoin.joinUrl);
         renderWifiQr(data.wifiQr);
         renderReacties(data.reacties, data.fase);
+        renderTussen(data);
         renderSettings(data);
         renderLeaderboard(data);
         renderPollState(data);
