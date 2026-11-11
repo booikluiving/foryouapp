@@ -121,6 +121,8 @@ function environmentFasesStatus(runtimeState, options = {}) {
       filePath,
       // Eigen sfeergeluid van deze fase (bijvoorbeeld na de aanrijding: tikken en vogels).
       sfeerPath: sfeerPathVoor(fase, assets, options),
+      // Eigen geluid bij het ingaan (bijvoorbeeld de bom). Het zet het extra geluid van de omgeving uit.
+      geluidPath: geluidPathVoor(fase, assets, options),
     };
   });
   return {
@@ -141,9 +143,16 @@ function sfeerPathVoor(fase, assets, options = {}) {
   return fileExists(filePath, options) ? filePath : "";
 }
 
+function geluidPathVoor(fase, assets, options = {}) {
+  if (!fase.geluidAssetId) return "";
+  const asset = assets.find((item) => item.id === fase.geluidAssetId) || null;
+  const filePath = asset ? assetFilePath(asset, options) : "";
+  return fileExists(filePath, options) ? filePath : "";
+}
+
 function publicFasesStatus(status) {
   const { sleutel, geluidPath, geluidVolume, ...rest } = status || {};
-  return { ...rest, fases: (rest.fases || []).map(({ filePath, sfeerPath, ...fase }) => ({ ...fase, sfeer: !!sfeerPath })) };
+  return { ...rest, fases: (rest.fases || []).map(({ filePath, sfeerPath, geluidPath, ...fase }) => ({ ...fase, sfeer: !!sfeerPath, eigenGeluid: !!geluidPath })) };
 }
 
 function cueAction(cueId, index, targetId, command, payload, delayMs = 0) {
@@ -200,13 +209,17 @@ function buildEnvironmentFaseCue(runtimeState, input = {}, options = {}) {
   const actions = [];
   // Met schok: het geluid begint meteen; TD schudt de aanloop, wisselt het beeld op de klap
   // (schokNa seconden later) en schudt dan uit. Zo loopt het ook in de editor.
-  if (fase.schok && status.geluidPath && fileExists(status.geluidPath, options)) {
+  // Een fase met een eigen geluid speelt dat (ook zonder schok) en zet het extra geluid van de
+  // omgeving uit: de bom stopt het piepje.
+  const geluidPath = fase.geluidPath || (fase.schok && fileExists(status.geluidPath, options) ? status.geluidPath : "");
+  if (geluidPath) {
     actions.push(cueAction(cueId, actions.length, "mac-audio", "audio.extra.play", {
       ...common,
       soort: "geluid",
       label: fase.naam,
-      filePath: status.geluidPath,
+      filePath: geluidPath,
       volume: status.geluidVolume,
+      ...(fase.geluidPath ? { stopLied: true } : {}),
     }));
   }
   actions.push(cueAction(cueId, actions.length, "touchdesigner", "td.effect.fase", {

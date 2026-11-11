@@ -1177,6 +1177,8 @@ function normalizeCompositionFases(fases) {
       ...(String(fase.overlayAssetId || "").trim() ? { overlayAssetId: String(fase.overlayAssetId).trim() } : {}),
       // sfeerAssetId = het sfeergeluid van deze fase (leeg = het sfeergeluid van de omgeving).
       ...(String(fase.sfeerAssetId || "").trim() ? { sfeerAssetId: String(fase.sfeerAssetId).trim() } : {}),
+      // geluidAssetId = het eigen geluid bij het ingaan van deze fase (leeg = het extra geluid van de omgeving).
+      ...(String(fase.geluidAssetId || "").trim() ? { geluidAssetId: String(fase.geluidAssetId).trim() } : {}),
     };
   }).filter(Boolean);
 }
@@ -1741,6 +1743,7 @@ async function deleteMediaAsset(assetId, options = {}) {
       composition.fases = composition.fases.map((fase) => (fase && fase.assetId === id ? { ...fase, assetId: "" } : fase));
       composition.fases = composition.fases.map((fase) => (fase && fase.overlayAssetId === id ? { ...fase, overlayAssetId: "" } : fase));
       composition.fases = composition.fases.map((fase) => (fase && fase.sfeerAssetId === id ? { ...fase, sfeerAssetId: "" } : fase));
+      composition.fases = composition.fases.map((fase) => (fase && fase.geluidAssetId === id ? { ...fase, geluidAssetId: "" } : fase));
     }
     composition.updatedAt = at;
   }

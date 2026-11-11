@@ -63,6 +63,8 @@ async function sendMacAudioCommand(action, context = {}) {
     stopSpoor("lied");
     return { stage: "applied", state: "ok", message: `${filePath.split("/").pop()} uit`, data: { route: "mac-audio", gestopt: true } };
   }
+  // Een effect kan het lied uitzetten (de bom stopt het piepje).
+  if (payload.stopLied) stopSpoor("lied");
   // Binnen een spoor: nog eens drukken = opnieuw beginnen, niet over elkaar heen.
   stopSpoor(naam);
   const child = spawn(player(options), ["-v", String(volume), filePath], { stdio: "ignore", detached: false });
