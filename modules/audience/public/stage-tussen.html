@@ -61,8 +61,8 @@
       }
       #statsRij {
         display: flex;
-        flex-wrap: wrap;
-        gap: 0 1.1em;
+        flex-wrap: nowrap;
+        gap: 0 0.9em;
         align-items: baseline;
       }
       .telling {
@@ -103,12 +103,6 @@
         line-height: 1.18;
         font-weight: 500;
         overflow-wrap: anywhere;
-      }
-      #top .label {
-        display: block;
-        font-size: 0.55em;
-        color: rgba(255, 255, 255, 0.66);
-        margin-bottom: 0.15em;
       }
       @keyframes erin {
         from { opacity: 0; transform: translateY(12px); }
@@ -171,7 +165,7 @@
 
       function tekenStats() {
         const box = el("stats");
-        if (!ronde || !ronde.start) { box.hidden = true; return; }
+        if (!ronde || !ronde.start) { box.hidden = true; tekenChat(); return; }
         box.hidden = false;
         el("statsScene").textContent = ronde.titel || "";
         const rij = el("statsRij");
@@ -189,19 +183,14 @@
           span.append(em, n);
           rij.appendChild(span);
         }
+        tekenChat();
       }
 
       // Reacties van deze ronde; de comment met de meeste likes staat bovenaan (boven de reacties).
       let berichten = [];
-      function maakRegel(msg, metLabel) {
+      function maakRegel(msg) {
         const r = document.createElement("div");
         r.className = "regel";
-        if (metLabel) {
-          const l = document.createElement("span");
-          l.className = "label";
-          l.textContent = "Topcomment";
-          r.appendChild(l);
-        }
         const naam = document.createElement("span");
         naam.className = "naam";
         naam.textContent = (msg.name || "Anoniem") + " ";
@@ -220,18 +209,23 @@
         const t = el("top");
         t.textContent = "";
         t.hidden = !top;
-        const chatTop = getal(settings.tussenChatY, 1380);
+        // De chat begint nooit boven de onderkant van de tellingen.
+        const stats = el("stats");
+        const statsOnder = stats.hidden ? 0 : stats.offsetTop + stats.offsetHeight + 32;
+        const chatY = getal(settings.tussenChatY, 1380);
+        const chatTop = Math.max(chatY, statsOnder);
+        const chatHoogte = Math.max(0, getal(settings.tussenChatHoogte, 480) - (chatTop - chatY));
         if (top) {
-          t.appendChild(maakRegel(top, true));
+          t.appendChild(maakRegel(top));
           t.style.top = chatTop + "px";
         }
         const c = el("chat");
         c.textContent = "";
         // Ruimte voor de topcomment boven de lijst
-        const topHoogte = top ? t.getBoundingClientRect().height / (stage.getBoundingClientRect().height / H || 1) + 24 : 0;
+        const topHoogte = top ? t.offsetHeight + 24 : 0;
         c.style.top = (chatTop + topHoogte) + "px";
-        c.style.height = Math.max(0, getal(settings.tussenChatHoogte, 480) - topHoogte) + "px";
-        for (const m of berichten.slice(-MAX_REGELS)) if (!top || m.id !== top.id) c.appendChild(maakRegel(m, false));
+        c.style.height = Math.max(0, chatHoogte - topHoogte) + "px";
+        for (const m of berichten.slice(-MAX_REGELS)) if (!top || m.id !== top.id) c.appendChild(maakRegel(m));
       }
       function regel(msg) {
         if (!msg || msg.system || !msg.text) return;
