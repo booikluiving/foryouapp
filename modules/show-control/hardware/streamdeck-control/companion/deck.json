@@ -1,0 +1,93 @@
+{
+  "versie": 1,
+  "deck": {"serial": "A00NA5493LJWNJ", "kolommen": 8, "rijen": 4, "helderheid": 100},
+  "onderdelen": {"show": "#8b3dff", "tekst": "#00b4e6", "beeld": "#2563ff", "geluid": "#ff2fa0", "licht": "#ffd400", "publiek": "#00c2b2", "systeem": "#62748a"},
+  "staatkleuren": {"ok": "#3ddc6e", "warn": "#ffa31a", "alert": "#ff2d2d", "nav": "#59636f", "uit": "#2e3238"},
+  "paginas": [
+    {
+      "id": "show", "naam": "SHOW",
+      "knoppen": [
+        { "plek": [0, 0], "key": "run", "label": "RUN", "rol": "schakelaar", "onderdeel": "show", "pictogram": "play_circle", "actie": {"cue": "toggle-run"} },
+        { "plek": [0, 1], "key": "sit", "label": "SCENE", "rol": "schakelaar", "onderdeel": "show", "pictogram": "movie", "actie": {"cue": "toggle-situation"} },
+        { "plek": [0, 2], "key": "scenechat", "label": "SCENE\nCHAT", "rol": "actie", "onderdeel": "tekst", "pictogram": "forum", "actie": {"cue": "scene-chat"} },
+        { "plek": [0, 3], "key": "ready", "label": "READY", "rol": "actie", "onderdeel": "tekst", "pictogram": "task_alt", "actie": {"cue": "teleprompter-ready"} },
+        { "plek": [0, 4], "key": "qr", "label": "QR", "rol": "actie", "onderdeel": "beeld", "pictogram": "qr_code_2", "actie": {"osc": {"adres": "/osc/osc10", "poort": 8008}} },
+        { "plek": [0, 5], "key": "inloop", "label": "INLOOP", "rol": "actie", "onderdeel": "beeld", "pictogram": "door_open", "actie": {"cue": "phase-inloop"} },
+        { "plek": [0, 6], "key": "loading", "label": "LOADING", "rol": "actie", "onderdeel": "beeld", "pictogram": "hourglass_top", "actie": {"cue": "phase-loading"} },
+        { "plek": [0, 7], "key": "overzicht", "label": "STATUS", "rol": "lampje", "onderdeel": "systeem", "pictogram": "monitor_heart", "actie": {"pagina": "systeem"}, "status": true },
+        { "plek": [1, 0], "key": "prev", "label": "PREV", "rol": "actie", "onderdeel": "tekst", "pictogram": "skip_previous", "actie": {"cue": "teleprompter-prev"} },
+        { "plek": [1, 1], "key": "next", "label": "NEXT", "rol": "actie", "onderdeel": "tekst", "pictogram": "skip_next", "actie": {"cue": "teleprompter-next"} },
+        { "plek": [1, 3], "key": "cam1", "label": "CAM 1", "rol": "actie", "onderdeel": "beeld", "pictogram": "videocam", "actie": {"cue": "td-camera-1"} },
+        { "plek": [1, 4], "key": "cam2", "label": "CAM 2", "rol": "actie", "onderdeel": "beeld", "pictogram": "videocam", "actie": {"cue": "td-camera-2"} },
+        { "plek": [1, 5], "key": "cam3", "label": "CAM 3", "rol": "actie", "onderdeel": "beeld", "pictogram": "videocam", "actie": {"cue": "td-camera-3"} },
+        { "plek": [1, 6], "key": "extrashot", "label": "SHOT", "rol": "actie", "onderdeel": "beeld", "pictogram": "photo_camera", "actie": {"extra": "shot"} },
+        { "plek": [1, 7], "key": "extrageluid", "label": "GELUID", "rol": "actie", "onderdeel": "geluid", "pictogram": "campaign", "actie": {"extra": "geluid"} },
+        { "plek": [3, 0], "key": "omg1", "label": "OMGEVING", "rol": "actie", "onderdeel": "beeld", "pictogram": "skip_next", "actie": {"omgeving": 0} },
+        { "plek": [3, 1], "key": "omg2", "label": "OMGEVING", "rol": "actie", "onderdeel": "beeld", "pictogram": "skip_next", "actie": {"omgeving": 1} },
+        { "plek": [3, 2], "key": "omg3", "label": "OMGEVING", "rol": "actie", "onderdeel": "beeld", "pictogram": "restart_alt", "actie": {"omgeving": 2} },
+        { "plek": [2, 0], "key": "brent", "label": "BRENT", "rol": "schakelaar", "onderdeel": "geluid", "pictogram": "mic", "actie": {"cue": "sq5-brent"} },
+        { "plek": [2, 1], "key": "megan", "label": "MEGAN", "rol": "schakelaar", "onderdeel": "geluid", "pictogram": "mic", "actie": {"cue": "sq5-megan"} },
+        { "plek": [2, 2], "key": "booi", "label": "BOOI", "rol": "schakelaar", "onderdeel": "geluid", "pictogram": "mic", "actie": {"cue": "sq5-booi"} },
+        { "plek": [2, 3], "key": "mics", "label": "MICS", "rol": "schakelaar", "onderdeel": "geluid", "pictogram": "settings_voice", "actie": {"cue": "sq5-mics"} },
+        { "plek": [2, 4], "key": "muziek", "label": "MUZIEK", "rol": "schakelaar", "onderdeel": "geluid", "pictogram": "music_note", "actie": {"cue": "sq5-muziek"} },
+        { "plek": [2, 5], "key": "main", "label": "MAIN", "rol": "schakelaar", "onderdeel": "geluid", "pictogram": "volume_up", "actie": {"cue": "sq5-main"} },
+        { "plek": [3, 3], "key": "af1", "label": "FOCUS\n1", "rol": "actie", "onderdeel": "beeld", "pictogram": "video_settings", "actie": {"autofocus": "cam1"} },
+        { "plek": [3, 4], "key": "af2", "label": "FOCUS\n2", "rol": "actie", "onderdeel": "beeld", "pictogram": "video_settings", "actie": {"autofocus": "cam2"} },
+        { "plek": [3, 5], "key": "af3", "label": "FOCUS\n3", "rol": "actie", "onderdeel": "beeld", "pictogram": "video_settings", "actie": {"autofocus": "cam3"} },
+        { "plek": [3, 6], "key": "nav_show_schermen", "label": "OVERZICHT", "rol": "nav", "onderdeel": "systeem", "pictogram": "dashboard", "actie": {"pagina": "schermen"} },
+        { "plek": [3, 7], "key": "nav_show_systeem", "label": "SYSTEEM", "rol": "nav", "onderdeel": "systeem", "pictogram": "settings", "actie": {"pagina": "systeem"} }
+      ]
+    },
+    {
+      "id": "schermen", "naam": "OVERZICHT",
+      "knoppen": [
+        { "plek": [0, 0], "key": "l_show", "label": "SHOW\nQ", "rol": "link", "onderdeel": "show", "pictogram": "list_alt", "actie": {"link": "http://127.0.0.1:3025/show-control/"} },
+        { "plek": [0, 1], "key": "l_runtime", "label": "RUNTIME", "rol": "link", "onderdeel": "show", "pictogram": "timer", "actie": {"link": "http://127.0.0.1:3024/runtime/"} },
+        { "plek": [0, 2], "key": "l_scriptop", "label": "SCRIPT\nOP", "rol": "link", "onderdeel": "tekst", "pictogram": "edit_note", "actie": {"link": "http://127.0.0.1:3027/script-agent/operator"} },
+        { "plek": [0, 3], "key": "l_scriptstage", "label": "SCRIPT\nSTAGE", "rol": "link", "onderdeel": "tekst", "pictogram": "subtitles", "actie": {"link": "http://127.0.0.1:3027/script-agent/operator/stage"} },
+        { "plek": [0, 4], "key": "l_parser", "label": "TEXT\nPARSER", "rol": "link", "onderdeel": "tekst", "pictogram": "text_snippet", "actie": {"link": "http://127.0.0.1:3027/script-agent/teleprompter-parser"} },
+        { "plek": [0, 5], "key": "l_tele", "label": "TELE\nPROMPT", "rol": "link", "onderdeel": "tekst", "pictogram": "article", "actie": {"link": "http://127.0.0.1:3027/script-agent/teleprompter-parser/stage"} },
+        { "plek": [1, 0], "key": "l_audstage", "label": "AUD\nSTAGE", "rol": "link", "onderdeel": "publiek", "pictogram": "groups", "actie": {"link": "http://127.0.0.1:3026/audience/stage"} },
+        { "plek": [1, 1], "key": "l_audadmin", "label": "AUD\nADMIN", "rol": "link", "onderdeel": "publiek", "pictogram": "admin_panel_settings", "actie": {"link": "http://127.0.0.1:3026/admin"} },
+        { "plek": [1, 2], "key": "l_audpublic", "label": "AUD\nPUBLIC", "rol": "link", "onderdeel": "publiek", "pictogram": "public", "actie": {"link": "http://127.0.0.1:3026/"} },
+        { "plek": [1, 4], "key": "l_gate", "label": "GATE", "rol": "link", "onderdeel": "systeem", "pictogram": "router", "actie": {"link": "http://127.0.0.1:3020/dashboard/"} },
+        { "plek": [1, 5], "key": "l_catalog", "label": "CATALOG", "rol": "link", "onderdeel": "systeem", "pictogram": "inventory_2", "actie": {"link": "http://127.0.0.1:3021/catalog/"} },
+        { "plek": [1, 6], "key": "l_media", "label": "MEDIA", "rol": "link", "onderdeel": "systeem", "pictogram": "perm_media", "actie": {"link": "http://127.0.0.1:3021/catalog/media-assets/"} },
+        { "plek": [1, 7], "key": "l_algo", "label": "ALGO", "rol": "link", "onderdeel": "systeem", "pictogram": "hub", "actie": {"link": "http://127.0.0.1:3023/algorithm/"} },
+        { "plek": [2, 0], "key": "l_sq5", "label": "MICS", "rol": "link", "onderdeel": "geluid", "pictogram": "tune", "actie": {"link": "http://127.0.0.1:3225/"} },
+        { "plek": [2, 1], "key": "l_camera", "label": "CAM\nSETTINGS", "rol": "link", "onderdeel": "beeld", "pictogram": "video_settings", "actie": {"link": "http://127.0.0.1:3226/"} },
+        { "plek": [2, 2], "key": "l_pcue", "label": "KLIKKER", "rol": "link", "onderdeel": "tekst", "pictogram": "touch_app", "actie": {"link": "http://127.0.0.1:3228/"} },
+        { "plek": [2, 3], "key": "l_dmx", "label": "LICHT", "rol": "link", "onderdeel": "licht", "pictogram": "lightbulb", "actie": {"link": "http://127.0.0.1:3229/"} },
+        { "plek": [2, 5], "key": "l_paths", "label": "PATHS", "rol": "link", "onderdeel": "systeem", "pictogram": "route", "actie": {"link": "http://127.0.0.1:3022/editor/"} },
+        { "plek": [2, 6], "key": "l_universe", "label": "UNIVERSE", "rol": "link", "onderdeel": "systeem", "pictogram": "auto_awesome", "actie": {"link": "http://127.0.0.1:3022/universe/"} },
+        { "plek": [3, 0], "key": "nav_schermen_show", "label": "SHOW", "rol": "nav", "onderdeel": "systeem", "pictogram": "theater_comedy", "actie": {"pagina": "show"} },
+        { "plek": [3, 7], "key": "nav_schermen_systeem", "label": "SYSTEEM", "rol": "nav", "onderdeel": "systeem", "pictogram": "settings", "actie": {"pagina": "systeem"} }
+      ]
+    },
+    {
+      "id": "systeem", "naam": "SYSTEEM",
+      "knoppen": [
+        { "plek": [0, 0], "key": "stack", "label": "STACK", "rol": "gevaar", "onderdeel": "systeem", "pictogram": "power_settings_new", "actie": {"stack": "toggle"} },
+        { "plek": [0, 1], "key": "restart", "label": "RESTART", "rol": "gevaar", "onderdeel": "systeem", "pictogram": "restart_alt", "actie": {"stack": "restart"} },
+        { "plek": [0, 3], "key": "td", "label": "TD", "rol": "actie", "onderdeel": "beeld", "pictogram": "view_in_ar", "actie": {"td": "open"} },
+        { "plek": [0, 4], "key": "tdosc", "label": "TD OSC", "rol": "lampje", "onderdeel": "beeld", "pictogram": "sensors" },
+        { "plek": [0, 5], "key": "tdack", "label": "TD ACK", "rol": "lampje", "onderdeel": "beeld", "pictogram": "done_all" },
+        { "plek": [1, 0], "key": "d_gateway", "label": "GATEWAY", "rol": "lampje", "onderdeel": "systeem", "pictogram": "router" },
+        { "plek": [1, 1], "key": "d_catalog", "label": "CATALOG", "rol": "lampje", "onderdeel": "systeem", "pictogram": "inventory_2" },
+        { "plek": [1, 2], "key": "d_paths", "label": "PADEN", "rol": "lampje", "onderdeel": "systeem", "pictogram": "route" },
+        { "plek": [1, 3], "key": "d_algorithm", "label": "ALGO", "rol": "lampje", "onderdeel": "systeem", "pictogram": "hub" },
+        { "plek": [1, 4], "key": "d_runtime", "label": "RUN", "rol": "lampje", "onderdeel": "show", "pictogram": "timer" },
+        { "plek": [1, 5], "key": "d_showcontrol", "label": "SHOW", "rol": "lampje", "onderdeel": "show", "pictogram": "list_alt" },
+        { "plek": [1, 6], "key": "d_audience", "label": "AUDIENCE", "rol": "lampje", "onderdeel": "publiek", "pictogram": "groups" },
+        { "plek": [1, 7], "key": "d_scriptagent", "label": "SCRIPT", "rol": "lampje", "onderdeel": "tekst", "pictogram": "edit_note" },
+        { "plek": [2, 0], "key": "d_sq5", "label": "MICS-SQ5", "rol": "lampje", "onderdeel": "geluid", "pictogram": "tune" },
+        { "plek": [2, 1], "key": "d_camera", "label": "CAM", "rol": "lampje", "onderdeel": "beeld", "pictogram": "videocam" },
+        { "plek": [2, 2], "key": "d_streamdeck", "label": "SDECK", "rol": "lampje", "onderdeel": "systeem", "pictogram": "grid_view" },
+        { "plek": [2, 3], "key": "d_perfectcue", "label": "KLIKKER", "rol": "lampje", "onderdeel": "tekst", "pictogram": "touch_app" },
+        { "plek": [2, 4], "key": "d_dmx", "label": "LICHT-DMX", "rol": "lampje", "onderdeel": "licht", "pictogram": "lightbulb" },
+        { "plek": [3, 0], "key": "nav_systeem_show", "label": "SHOW", "rol": "nav", "onderdeel": "systeem", "pictogram": "theater_comedy", "actie": {"pagina": "show"} },
+        { "plek": [3, 1], "key": "nav_systeem_schermen", "label": "OVERZICHT", "rol": "nav", "onderdeel": "systeem", "pictogram": "dashboard", "actie": {"pagina": "schermen"} }
+      ]
+    }
+  ]
+}
