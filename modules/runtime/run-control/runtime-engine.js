@@ -66,6 +66,12 @@ function createShowRunSnapshot({ catalog, paths, algorithmConfig }) {
   };
 }
 
+// A run keeps playing the paths it started with; edits apply from the next run.
+function runPathsSnapshot(state) {
+  const paths = state && state.showRunSnapshot && state.showRunSnapshot.paths;
+  return paths && Array.isArray(paths.paths) ? paths : null;
+}
+
 function isPathStart(statusItem) {
   return (statusItem.pathStatuses || []).some((item) => item.status === "available" && item.isPathStart);
 }
@@ -513,7 +519,7 @@ function choosePreparedNext({ catalog, eligiblePool, reason = "runtime_order" })
 async function computeAndSetPreparedNext(state, clients, reason = "runtime_order") {
   normalizeRuntimeDerivedState(state);
   const playedSituationIds = (state.playedSituations || []).map((item) => item.situationId);
-  const pathEvaluation = await clients.evaluatePaths(playedSituationIds);
+  const pathEvaluation = await clients.evaluatePaths(playedSituationIds, runPathsSnapshot(state));
   const lastPlayedSituationId = state.playedSituations.length
     ? state.playedSituations[state.playedSituations.length - 1].situationId
     : null;
@@ -560,7 +566,7 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
 async function refreshEligiblePool(state, clients, reason = "runtime_refresh") {
   normalizeRuntimeDerivedState(state);
   const playedSituationIds = (state.playedSituations || []).map((item) => item.situationId);
-  const pathEvaluation = await clients.evaluatePaths(playedSituationIds);
+  const pathEvaluation = await clients.evaluatePaths(playedSituationIds, runPathsSnapshot(state));
   const lastPlayedSituationId = state.playedSituations.length
     ? state.playedSituations[state.playedSituations.length - 1].situationId
     : null;

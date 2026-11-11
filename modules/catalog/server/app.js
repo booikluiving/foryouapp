@@ -9,10 +9,27 @@ const { loadExpress } = require("./express-loader");
 const { buildCatalogReadModel } = require("../read-model/build-read-model");
 const { createCatalogSnapshot } = require("../snapshots/snapshot-store");
 const { validateCatalogReadModel } = require("../validation/validate-catalog");
+const { createWriteQueue, loopbackOnly } = require("../../../shared/sync/content-hash");
 const {
+  catalogContent,
+  catalogContentHash,
+  contentIssues,
+  mediaFilesFor,
+  withCatalogContent,
+} = require("../write-model/catalog-content");
+const {
+  createMediaHashCache,
+  describeMediaFiles,
+  putMediaFile,
+  resolveInside,
+} = require("../write-model/media-files");
+const {
+  catalogMediaRoot,
   listMediaAssets,
   listEnvironmentCompositions,
   listLightingPresets,
+  readCatalogStore,
+  writeCatalogStore,
   deleteMediaAsset,
   mediaAssetFilePath,
   saveMediaAssetUpload,
@@ -86,8 +103,89 @@ function createCatalogApp(options = {}) {
   const app = express();
   const startedAt = new Date();
   const scheduleMediaRefresh = createMediaRefreshScheduler(options);
+  const hashMedia = createMediaHashCache();
   const uiRoot = path.resolve(__dirname, "../ui");
   const sharedUiRoot = path.resolve(__dirname, "../../../shared/ui");
+
+  app.use(createWriteQueue());
+
+  // Whole-content exchange for the website sync. Registered before the normal body
+  // parser because a full catalog is larger than its limit.
+  app.get("/v0/catalog/content", loopbackOnly, asyncRoute(async (_req, res) => {
+    const content = catalogContent(await readCatalogStore(options));
+    res.json({ ok: true, hash: catalogContentHash(content), content });
+  }));
+
+  app.put("/v0/catalog/content", loopbackOnly, express.json({ limit: "20mb" }), asyncRoute(async (req, res) => {
+    const body = req.body || {};
+    const store = await readCatalogStore(options);
+    const currentHash = catalogContentHash(catalogContent(store));
+    if (!body.force && body.expectedHash !== currentHash) {
+      res.status(409).json({ ok: false, error: "content_changed", currentHash });
+      return;
+    }
+    const issues = contentIssues(body.content, store.schemaVersion);
+    if (issues.length) {
+      res.status(400).json({ ok: false, error: "content_invalid", issues });
+      return;
+    }
+    // Every media file the new catalog uses must already be here (sent ahead by the sync).
+    // Putting back a backup (force) always goes ahead: it only ever refers to files
+    // that were here, and the sync never deletes a file.
+    const mediaRoot = catalogMediaRoot(options);
+    const needed = body.force ? [] : [...mediaFilesFor(body.content).keys()];
+    const present = await describeMediaFiles(needed, mediaRoot, hashMedia);
+    const missing = needed.filter((relativePath) => !present[relativePath]);
+    if (missing.length) {
+      res.status(409).json({ ok: false, error: "media_missing", missing: missing.slice(0, 50), count: missing.length });
+      return;
+    }
+    await writeCatalogStore(withCatalogContent(store, body.content, { mediaRoot }), options);
+    const written = catalogContent(await readCatalogStore(options));
+    res.json({ ok: true, previousHash: currentHash, hash: catalogContentHash(written) });
+  }));
+
+  // The media files of the current catalog: { relativePath: { sha256, sizeBytes } | null }.
+  app.get("/v0/catalog/media-files", loopbackOnly, asyncRoute(async (_req, res) => {
+    const content = catalogContent(await readCatalogStore(options));
+    const files = await describeMediaFiles([...mediaFilesFor(content).keys()], catalogMediaRoot(options), hashMedia);
+    res.json({ ok: true, hash: catalogContentHash(content), files });
+  }));
+
+  // Which of these { relativePath: sha256 } are not here (missing, or other content).
+  app.post("/v0/catalog/media-files/check", loopbackOnly, express.json({ limit: "2mb" }), asyncRoute(async (req, res) => {
+    const wanted = (req.body && req.body.files) || {};
+    const present = await describeMediaFiles(Object.keys(wanted), catalogMediaRoot(options), hashMedia);
+    const missing = Object.keys(wanted).filter((relativePath) => !present[relativePath] || present[relativePath].sha256 !== wanted[relativePath]);
+    res.json({ ok: true, missing });
+  }));
+
+  app.get("/v0/catalog/media-files/raw", loopbackOnly, asyncRoute(async (req, res) => {
+    const filePath = resolveInside(catalogMediaRoot(options), String(req.query.pad || ""));
+    const described = filePath ? await hashMedia(filePath) : null;
+    if (!described) {
+      res.status(404).json({ ok: false, error: "media_niet_gevonden" });
+      return;
+    }
+    res.setHeader("x-sha256", described.sha256);
+    res.sendFile(filePath);
+  }));
+
+  app.put("/v0/catalog/media-files/raw", loopbackOnly, asyncRoute(async (req, res) => {
+    try {
+      const status = await putMediaFile({
+        mediaRoot: catalogMediaRoot(options),
+        relativePath: String(req.query.pad || ""),
+        expectedSha256: String(req.query.sha256 || ""),
+        source: req,
+        hashOf: hashMedia,
+      });
+      res.json({ ok: true, status });
+    } catch (err) {
+      if (!err || !err.statusCode) throw err;
+      res.status(err.statusCode).json({ ok: false, error: err.message });
+    }
+  }));
 
   app.use(express.json({ limit: "256kb" }));
 

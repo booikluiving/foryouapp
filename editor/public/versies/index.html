@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Versies · Voorstelling · For_You</title>
+<style>
+  /* Zelfde huisstijl als de andere schermen (zie _editor/huisstijl.css): Helvetica Neue, zwart op wit, één dunne lijn. */
+  :root { --tekst: #000; --zacht: rgba(0, 0, 0, .55); --lijn: rgba(0, 0, 0, .14); --rood: #b00020; --groen: #0a6b2d; --rand: clamp(16px, 3vw, 40px); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: var(--tekst); font: 16px/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--tekst); text-underline-offset: .3em; text-decoration-thickness: 1px; }
+  header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 6px 24px; padding: 20px var(--rand) 16px; border-bottom: 1px solid var(--lijn); }
+  .hs-nav { display: flex; align-items: baseline; gap: 4px 22px; white-space: nowrap; flex-wrap: wrap; }
+  .hs-nav a { color: var(--zacht); text-decoration: none; font-size: 16px; line-height: 1.2; }
+  .hs-nav a:hover { color: var(--tekst); }
+  .hs-nav a[aria-current="page"] { color: var(--tekst); text-decoration: underline; }
+  .hs-nav a.hs-merk { color: var(--tekst); font: 700 22px/1 "Helvetica Neue", Helvetica, Arial, sans-serif; letter-spacing: -.03em; margin-right: 8px; }
+  .wie { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 13px; color: var(--zacht); }
+  .wie a { color: var(--zacht); }
+  /* met de teambalk erboven (Team / Voorstelling, met de naam) zijn het woordmerk en "Ingelogd als … ← Team" dubbel */
+  html.fy-met-balk .hs-merk, html.fy-met-balk .wie { display: none; }
+  main { max-width: 860px; padding: 8px var(--rand) 80px; }
+  h2 { font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1; margin: 40px 0 14px; }
+  .zacht { color: var(--zacht); }
+  .fout { color: var(--rood); }
+  .goed { color: var(--groen); }
+  button { font: inherit; background: none; color: var(--tekst); border: 1px solid var(--tekst); padding: 5px 14px; cursor: pointer; }
+  button:hover { background: var(--tekst); color: #fff; }
+  button.licht { border: 0; color: var(--zacht); padding: 5px 0; }
+  button.licht:hover { background: none; color: var(--tekst); text-decoration: underline; }
+  button:disabled { opacity: .4; cursor: default; }
+  ul.versies { list-style: none; padding: 0; margin: 0; border-bottom: 1px solid var(--lijn); }
+  ul.versies > li { padding: 14px 0; border-top: 1px solid var(--lijn); }
+  .kop { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
+  .nr { font-weight: 700; min-width: 4.5em; }
+  .wijzigingen { margin: 6px 0 0; padding-left: 18px; color: var(--zacht); font-size: 14px; }
+  .knoppen { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 8px; }
+  .label { display: inline-block; font-size: 13px; padding: 0 5px; border: 1px solid var(--tekst); }
+  .melding { border-left: 2px solid var(--rood); padding: 2px 0 2px 16px; margin: 24px 0 0; }
+  #status p { margin: 4px 0; }
+</style>
+</head>
+<body>
+<header>
+  <nav class="hs-nav" aria-label="For_You voorstelling">
+    <a class="hs-merk" href="/versies/">For_You</a>
+    <a href="/catalog/">Catalogus</a>
+    <a href="/catalog/media-assets/">Beeldcatalogus</a>
+    <a href="/editor/">Paden</a>
+    <a href="/universe/">Universe</a>
+    <a href="/ideeen/">Ideeën</a>
+    <a href="/versies/" aria-current="page">Versies</a>
+  </nav>
+  <div class="wie"><span id="wie"></span><a href="https://www.foryouniverse.nl/team/">← Team</a></div>
+</header>
+<main>
+  <div id="conflict"></div>
+
+  <h2>In de show</h2>
+  <div id="status" class="zacht">Laden…</div>
+
+  <h2>Versies</h2>
+  <p class="zacht">Elke opslag is een versie. Niets gaat verloren: terugzetten maakt een nieuwe versie.</p>
+  <ul class="versies" id="versies"></ul>
+</main>
+<script src="versies.js"></script>
+</body>
+</html>

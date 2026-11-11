@@ -45,10 +45,26 @@ const UPLOADS = {
     accept: ".png,.jpg,.jpeg,.webp,image/*",
     tags: "fx,image",
   },
+  // Het beeld van een fase. Eigen type (extra), zodat het nooit als FX naar de show gaat.
+  fase: {
+    type: "extra",
+    role: "extraShot",
+    label: "Fasebeeld",
+    accept: ".png,.jpg,.jpeg,.webp,.mp4,.mov,.m4v,.webm,image/*,video/*",
+    tags: "fase,image",
+  },
+  // Een geluid voor een stap van het effect "omvallen". Type extra: gaat niet als FX naar de show.
+  valGeluid: {
+    type: "extra",
+    role: "extraGeluid",
+    label: "Valgeluid",
+    accept: ".mp3,.wav,.aif,.aiff,.m4a,.aac,.flac,audio/*",
+    tags: "val,audio",
+  },
 };
 
 const CARD_UPLOAD_ORDER = ["background", "soundscape", "fx"];
-const EDITOR_UPLOAD_ORDER = ["background", "soundscape", "fxVideo", "fxImage"];
+const EDITOR_UPLOAD_ORDER = ["background", "soundscape", "fxVideo", "fxImage", "fase", "valGeluid"];
 const ACCENT_FIXTURES = [
   { id: "lamp1", label: "Lamp 1" },
   { id: "lamp2", label: "Lamp 2" },
@@ -77,6 +93,8 @@ const state = {
   videoPosterObserver: null,
   effectPos: 0,
   effectBusy: false,
+  fasePos: 0,
+  faseBusy: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -131,6 +149,12 @@ function presentAssetsFor(environmentId) {
 function assetUrl(asset) {
   if (!asset) return "";
   return asset.url || `/v0/catalog/media-assets/file/${encodeURIComponent(asset.id)}`;
+}
+
+// On the website the overview shows small previews (window.fyVoorbeeld, set by the editor's own
+// script); the composer, and the show itself, keep the original file.
+function previewUrl(asset) {
+  return window.fyVoorbeeld && asset && asset.id ? `${window.fyVoorbeeld}${encodeURIComponent(asset.id)}` : assetUrl(asset);
 }
 
 function previewKind(asset) {
@@ -531,8 +555,65 @@ function effectDreun(t, op) {
   return 0.01 * Math.sin(dt * 38) * Math.exp(-dt / 0.16);
 }
 
-function effectGeluid(delaySeconds) {
-  const asset = presentAssetsFor(state.editingEnvironmentId).find((item) => item.role === "extraGeluid");
+function valGeluidAssets() {
+  return presentAssetsFor(state.editingEnvironmentId).filter((item) => item.role === "extraGeluid");
+}
+
+// Wat er bij elke druk op de knop gebeurt, voor het lijstje met geluiden.
+function effectStapLabels() {
+  const steps = effectSteps();
+  if (!steps.length) return [];
+  const labels = ["komt los"];
+  for (const stap of steps) {
+    const namen = effectLayers().filter((layer) => Number(layer.val.stap) === stap).map((layer) => layerLabel(layer).replace(/^PNG: /, ""));
+    labels.push(`${namen.join(" + ")} valt`);
+  }
+  labels.push("stapel zakt weg");
+  return labels;
+}
+
+function setValGeluid(target) {
+  const composition = state.draftComposition;
+  if (!composition) return;
+  const index = clampInteger(target.getAttribute("data-val-geluid"), 0, 21, 0);
+  const list = Array.isArray(composition.valGeluiden) ? composition.valGeluiden.slice() : [];
+  while (list.length <= index) list.push("");
+  list[index] = target.value;
+  composition.valGeluiden = list;
+  markCompositionDirty();
+  renderCards();
+}
+
+function renderValPanel() {
+  const labels = effectStapLabels();
+  if (!labels.length) return "";
+  const geluiden = valGeluidAssets();
+  const gekozen = (state.draftComposition && state.draftComposition.valGeluiden) || [];
+  return `
+    <section class="layerPanel valPanel">
+      <h3>Omvallen</h3>
+      <div class="layerControls">
+        ${labels.map((label, index) => `
+          <label>
+            <span>${index + 1} · ${esc(label)}</span>
+            <select data-val-geluid="${index}">
+              <option value="">extra geluid van de omgeving</option>
+              ${geluiden.map((asset) => `<option value="${esc(asset.id)}" ${gekozen[index] === asset.id ? "selected" : ""}>${esc(assetLabel(asset))}</option>`).join("")}
+            </select>
+          </label>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function effectGeluid(delaySeconds, pos = 0) {
+  // Het geluid dat bij deze druk gekozen is; anders het extra geluid dat bij de omgeving
+  // gekozen is; anders het eerste dat er staat.
+  const environment = active(state.data.environments).find((item) => item.id === state.editingEnvironmentId);
+  const gekozen = environment && environment.extras && environment.extras.geluid && environment.extras.geluid.bestand;
+  const geluiden = valGeluidAssets();
+  const perStap = ((state.draftComposition && state.draftComposition.valGeluiden) || [])[pos - 1];
+  const asset = geluiden.find((item) => item.id === perStap) || geluiden.find((item) => item.id === gekozen) || geluiden[0];
   if (!asset) return;
   window.setTimeout(() => {
     const audio = new Audio(assetUrl(asset));
@@ -579,8 +660,9 @@ function effectNext() {
     }
     animations.push(node.animate(keyframes, { duration: duur * 1000, fill: "forwards", easing: "linear" }));
   }
-  if (to === 1) effectGeluid(EFFECT.loskom);
-  else if (to <= steps.length + 1) effectGeluid(EFFECT.klap);
+  if (to === 1) effectGeluid(EFFECT.loskom, to);
+  else if (to <= steps.length + 1) effectGeluid(EFFECT.klap, to);
+  else effectGeluid(1.2, to);
   state.effectBusy = true;
   const klaar = () => {
     state.effectPos = to;
@@ -605,6 +687,175 @@ function renderEffectControls() {
 }
 // -------------------------------------------------------------------------------------------
 
+// ---- Fases ---------------------------------------------------------------------------------
+// Een omgeving kan na elkaar meerdere beelden hebben. Een fase zonder eigen beeld toont de
+// achtergrond. Het beeld mag ook een korte video zijn; die speelt in een lus. Met "schok" schudt het beeld bij het ingaan van de fase en speelt het extra
+// geluid; "klap na" is de tijd tussen het begin van het geluid en de klap.
+function draftFases() {
+  const composition = state.draftComposition;
+  return composition && Array.isArray(composition.fases) ? composition.fases : [];
+}
+
+function currentFase() {
+  return draftFases()[state.fasePos] || null;
+}
+
+function faseNaam(fase, index) {
+  return fase && fase.naam ? fase.naam : `Fase ${index + 1}`;
+}
+
+function renderFaseBeeld(composition) {
+  const fase = currentFase();
+  const asset = fase && fase.assetId ? assetById(fase.assetId) : null;
+  if (!asset) return "";
+  const zIndex = Number(composition.backgroundLayer && composition.backgroundLayer.zIndex || 0);
+  return `<div class="compositionLayer faseBeeld" style="left:0;top:0;width:100%;height:100%;z-index:${zIndex};pointer-events:none" data-fase-beeld>${mediaElement(asset, { playVideo: true })}</div>`;
+}
+
+function renderFaseBar() {
+  const fases = draftFases();
+  if (!fases.length) return "";
+  return `
+    <div class="faseBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px">
+      <span class="fy-small">Fases</span>
+      ${fases.map((fase, index) => `
+        <button class="fy-button ${index === state.fasePos ? "fy-button-primary" : ""}" type="button" data-fase-go="${index}">${index + 1} · ${esc(faseNaam(fase, index))}</button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderFasePanel() {
+  const fases = draftFases();
+  const fase = currentFase();
+  const asset = fase && fase.assetId ? assetById(fase.assetId) : null;
+  return `
+    <section class="layerPanel fasePanel">
+      <h3>Fases</h3>
+      ${fase ? `
+        <div class="layerControls">
+          <label>
+            <span>Naam fase ${state.fasePos + 1}</span>
+            <input type="text" value="${esc(fase.naam || "")}" data-fase-field="naam">
+          </label>
+          <div class="fy-small">Beeld: ${esc(asset ? assetLabel(asset) : "de achtergrond")}</div>
+          <div class="controlChecks">
+            <label class="check"><input type="checkbox" ${fase.schok ? "checked" : ""} data-fase-field="schok"> Schok en geluid bij ingaan</label>
+          </div>
+          ${fase.schok ? `
+            <label>
+              <span>Klap na (seconden)</span>
+              <input type="number" step="0.1" min="0" max="10" value="${esc(Number(fase.schokNa || 0))}" data-fase-field="schokNa">
+            </label>` : ""}
+          <div class="fy-actions">
+            ${asset ? `<button class="fy-button" type="button" data-fase-action="beeld-weg">Beeld weg</button>` : ""}
+            <button class="fy-button" type="button" data-fase-action="remove">Verwijder fase</button>
+          </div>
+        </div>` : `<div class="fy-small">Nog geen fases.</div>`}
+      <div class="fy-actions" style="margin-top:8px">
+        <button class="fy-button" type="button" data-fase-action="add">+ Fase</button>
+        <span class="fy-small">${fases.length ? `${fases.length} fase(n)` : ""}</span>
+      </div>
+    </section>
+  `;
+}
+
+function faseAdd() {
+  const composition = state.draftComposition;
+  if (!composition) return;
+  const fases = draftFases().slice();
+  fases.push({ naam: "", assetId: "", schok: false, schokNa: 0 });
+  composition.fases = fases;
+  state.fasePos = fases.length - 1;
+  markCompositionDirty();
+  renderCards();
+}
+
+function faseAction(action) {
+  const composition = state.draftComposition;
+  if (!composition || state.faseBusy) return;
+  if (action === "add") { faseAdd(); return; }
+  const fases = draftFases().slice();
+  if (!fases[state.fasePos]) return;
+  if (action === "beeld-weg") fases[state.fasePos] = { ...fases[state.fasePos], assetId: "" };
+  if (action === "remove") fases.splice(state.fasePos, 1);
+  composition.fases = fases;
+  state.fasePos = clampInteger(state.fasePos, 0, Math.max(0, fases.length - 1), 0);
+  markCompositionDirty();
+  renderCards();
+}
+
+function setFaseField(target) {
+  const composition = state.draftComposition;
+  const fases = draftFases().slice();
+  const fase = fases[state.fasePos];
+  if (!composition || !fase) return;
+  const field = target.getAttribute("data-fase-field");
+  if (field === "naam") fase.naam = String(target.value || "").slice(0, 60);
+  if (field === "schok") fase.schok = target.checked;
+  if (field === "schokNa") fase.schokNa = clamp(Number(target.value) || 0, 0, 10);
+  fases[state.fasePos] = { ...fase };
+  composition.fases = fases;
+  markCompositionDirty();
+  renderCards();
+}
+
+// Een geüpload fasebeeld hoort bij de gekozen fase. Zijn er nog geen fases, dan is fase 1 de
+// achtergrond en krijgt fase 2 het nieuwe beeld.
+function setFaseBeeld(asset) {
+  const composition = state.draftComposition;
+  if (!composition) return;
+  const fases = draftFases().slice();
+  if (!fases.length) {
+    fases.push({ naam: "", assetId: "", schok: false, schokNa: 0 });
+    fases.push({ naam: "", assetId: asset.id, schok: false, schokNa: 0 });
+    state.fasePos = 1;
+  } else {
+    fases[state.fasePos] = { ...fases[state.fasePos], assetId: asset.id };
+  }
+  composition.fases = fases;
+  markCompositionDirty();
+}
+
+// Laat de achtergrond en het fasebeeld schudden. oplopend = aanloop naar de klap.
+function faseSchud(duur, oplopend) {
+  if (!(duur > 0)) return [];
+  const nodes = document.querySelectorAll("[data-composition-canvas] .role-background, [data-composition-canvas] [data-fase-beeld]");
+  const fps = 30;
+  const frames = Math.max(2, Math.round(duur * fps));
+  const keyframes = [];
+  for (let frame = 0; frame <= frames; frame += 1) {
+    const t = frame / fps;
+    const k = oplopend ? 0.3 * (t / duur) : Math.exp(-t * 3.5) * (1 - t / duur);
+    const x = 3.2 * k * Math.sin(t * 83);
+    const y = 3.2 * k * Math.sin(t * 131);
+    keyframes.push({ transform: `translate(${x.toFixed(3)}%, ${y.toFixed(3)}%) scale(${(1 + 0.08 * k).toFixed(4)})` });
+  }
+  return [...nodes].map((node) => node.animate(keyframes, { duration: duur * 1000, easing: "linear" }));
+}
+
+function faseGo(index) {
+  const fases = draftFases();
+  if (state.faseBusy || index < 0 || index >= fases.length || index === state.fasePos) return;
+  const fase = fases[index];
+  if (!fase.schok) {
+    state.fasePos = index;
+    renderCards();
+    return;
+  }
+  const wacht = clamp(Number(fase.schokNa) || 0, 0, 10);
+  state.faseBusy = true;
+  effectGeluid(0);
+  faseSchud(wacht, true);
+  window.setTimeout(() => {
+    state.fasePos = index;
+    renderCards();
+    const klaar = () => { state.faseBusy = false; };
+    Promise.all(faseSchud(1.1, false).map((animation) => animation.finished)).then(klaar, klaar);
+  }, wacht * 1000);
+}
+// -------------------------------------------------------------------------------------------
+
 function videoPosterKey(asset) {
   return asset && asset.id ? asset.id : "";
 }
@@ -618,6 +869,7 @@ function mediaElement(asset, options = {}) {
     if (poster) return `<img class="videoPosterImage" src="${esc(poster)}" alt="">`;
     return `<div class="videoPoster" data-video-poster data-asset-id="${esc(videoPosterKey(asset))}" data-src="${url}"></div>`;
   }
+  if (previewKind(asset) === "image" && options.overview) return `<img src="${esc(previewUrl(asset))}" loading="lazy" decoding="async" alt="">`;
   if (previewKind(asset) === "image") return `<img src="${url}" alt="">`;
   return `<div class="fy-preview-empty">Geen preview</div>`;
 }
@@ -657,7 +909,7 @@ function renderLayer(layer, selected = false, interactive = false, options = {})
   ].filter(Boolean).join(" ");
   return `
     <div class="${classes}" style="${esc(layerStyle(layer))}" data-layer-id="${esc(layer.id)}">
-      ${mediaElement(asset, options)}
+      ${mediaElement(asset, interactive ? options : { ...options, overview: true })}
       ${interactive && selected ? `
         <span class="layerHandle resizeHandle" data-handle="resize" aria-hidden="true"></span>
         <span class="layerHandle rotateHandle" data-handle="rotate" aria-hidden="true"></span>
@@ -678,6 +930,7 @@ function renderCompositionPreview(environmentId, interactive = false) {
     <div class="compositionCanvas ${interactive ? "is-interactive" : ""}" tabindex="${interactive ? "0" : "-1"}" data-composition-canvas data-canvas-drop>
       ${!hasBackground ? `<div class="fy-preview-empty">Geen achtergrond</div>` : ""}
       ${layers.map((layer) => renderLayer(layer, interactive && layer.id === state.selectedLayerId, interactive)).join("")}
+      ${interactive ? renderFaseBeeld(composition) : ""}
       ${renderPeopleOverlay(showPeople)}
       ${renderGuides(showGuides)}
     </div>
@@ -838,6 +1091,16 @@ function renderEditorPlayback(environmentId) {
 }
 
 function fileText(environmentId, key) {
+  if (key === "fase") {
+    const fase = currentFase();
+    const asset = fase && fase.assetId ? assetById(fase.assetId) : null;
+    if (asset) return assetFilename(asset);
+    return fase ? `Fase ${state.fasePos + 1}: de achtergrond` : "Geen bestand";
+  }
+  if (key === "valGeluid") {
+    const count = presentAssetsFor(environmentId).filter((item) => item.role === "extraGeluid").length;
+    return count ? `${count} geluid(en)` : "Geen bestand";
+  }
   if (key === "fxImage") {
     const count = assetsByRole(environmentId, "fxImage").length;
     return count ? `${count} bestand(en)` : "Geen bestand";
@@ -1093,6 +1356,7 @@ function renderEditor(environment) {
         </div>
       </div>
       ${status}
+      ${renderFaseBar()}
       <div class="compositionLayout">
         <section class="compositionStage">
           ${renderCompositionPreview(environment.id, true)}
@@ -1112,6 +1376,8 @@ function renderEditor(environment) {
             <div class="layerList">${renderLayerList()}</div>
           </section>
           ${renderInactiveAssetPanel(environment.id)}
+          ${renderValPanel()}
+          ${renderFasePanel()}
         </aside>
       </div>
     </article>
@@ -1148,6 +1414,11 @@ function uploadIssuesHtml(error) {
 
 function addUploadedAssetToDraft(asset, options = {}) {
   if (!state.draftComposition || asset.environmentId !== state.editingEnvironmentId) return;
+  if (options.key === "fase") {
+    setFaseBeeld(asset);
+    return;
+  }
+  if (options.key === "valGeluid") return;
   const role = roleForAsset(asset);
   const layer = defaultLayer(asset, role, state.draftComposition.imageLayers.length);
   if (role === "fxImage" && options.spawnPoint) {
@@ -1186,7 +1457,7 @@ async function uploadFile(dropZone, file, extra = {}) {
     const result = await requestJson("/v0/catalog/media-assets/upload", { method: "POST", body: form });
     if (status) status.textContent = "Opgeslagen.";
     await loadAll({ render: false });
-    if (extra.addToDraft !== false) addUploadedAssetToDraft(result.asset, { ...extra, intrinsicSize });
+    if (extra.addToDraft !== false) addUploadedAssetToDraft(result.asset, { ...extra, key, intrinsicSize });
     if (extra.render !== false) renderCards();
     return result.asset;
   } catch (err) {
@@ -1198,6 +1469,8 @@ async function uploadFile(dropZone, file, extra = {}) {
 function startEditing(environmentId) {
   state.effectPos = 0;
   state.effectBusy = false;
+  state.fasePos = 0;
+  state.faseBusy = false;
   state.editingEnvironmentId = environmentId;
   state.savedComposition = clone(normalizedComposition(environmentId));
   state.draftComposition = clone(state.savedComposition);
@@ -1257,6 +1530,7 @@ async function saveComposition() {
 
 function cancelComposition() {
   state.draftComposition = clone(state.savedComposition || defaultComposition(state.editingEnvironmentId));
+  state.fasePos = 0;
   state.editorStatus = "";
   state.saveStatus = "saved";
   renderCards();
@@ -1643,6 +1917,10 @@ function bindEvents() {
     if (event.target.closest("[data-cancel-composition]")) cancelComposition();
     if (event.target.closest("[data-effect-next]")) effectNext();
     if (event.target.closest("[data-effect-reset]")) effectReset();
+    const faseButton = event.target.closest("[data-fase-go]");
+    if (faseButton) faseGo(Number(faseButton.getAttribute("data-fase-go")));
+    const faseActionButton = event.target.closest("[data-fase-action]");
+    if (faseActionButton) faseAction(faseActionButton.getAttribute("data-fase-action"));
     const layerButton = event.target.closest("[data-select-layer]");
     if (layerButton) {
       state.selectedLayerId = layerButton.getAttribute("data-select-layer");
@@ -1698,6 +1976,14 @@ function bindEvents() {
     }
     if (event.target.matches("[data-lighting-field]")) {
       setLightingField(event.target);
+      return;
+    }
+    if (event.target.matches("[data-fase-field]")) {
+      setFaseField(event.target);
+      return;
+    }
+    if (event.target.matches("[data-val-geluid]")) {
+      setValGeluid(event.target);
       return;
     }
     if (event.target.matches("input[type='file']")) {

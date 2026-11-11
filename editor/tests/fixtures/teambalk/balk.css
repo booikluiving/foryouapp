@@ -1,0 +1,20 @@
+/* Stand-in for www.foryouniverse.nl/_balk/balk.css: the reference CSS of navigatie/09-ontwerp-def.md 9.10. */
+:root { --fy-balk-h: calc(48px + env(safe-area-inset-top, 0px)); --fy-rand: clamp(16px, 3vw, 40px); }
+.fy-balk, .fy-balk * { all: unset; box-sizing: border-box; }
+.fy-balk { position: sticky; top: 0; z-index: 900; display: flex; flex-wrap: wrap; align-content: flex-start;
+  height: var(--fy-balk-h); padding: env(safe-area-inset-top, 0px) var(--fy-rand) 0 0; overflow: hidden;
+  background: #000; color: #fff; border-bottom: 1px solid rgba(255,255,255,.30);
+  font: 400 18px/1 "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; text-align: left; }
+.fy-balk .fy-links { display: flex; flex: 0 1 auto; min-width: 0; height: 47px; }
+.fy-balk .fy-plek, .fy-balk .fy-scheid, .fy-balk .fy-naam { display: block; height: 47px; line-height: 47px; white-space: nowrap; }
+.fy-balk .fy-plek { color: rgba(255,255,255,.66); cursor: pointer; }
+.fy-balk .fy-plek:hover, .fy-balk .fy-plek:active, .fy-balk .fy-plek[aria-current] { color: #fff; }
+.fy-balk .fy-team { flex: none; padding: 0 10px 0 var(--fy-rand); font-weight: 700; letter-spacing: -.01em; }
+.fy-balk .fy-scheid { flex: none; color: rgba(255,255,255,.30); }
+.fy-balk .fy-gereedschap { flex: 0 1 auto; min-width: 0; padding: 0 10px; overflow: hidden; text-overflow: ellipsis; }
+.fy-balk .fy-naam { margin-left: auto; padding-left: 16px; font-size: 13px; color: rgba(255,255,255,.66); }
+.fy-balk a span { text-decoration-line: none; text-underline-offset: 6px; text-decoration-color: currentColor; }
+.fy-balk a[aria-current] span { text-decoration-line: underline; text-decoration-thickness: 2px; }
+.fy-balk a:focus-visible span { outline: 2px solid #fff; outline-offset: 4px; }
+@media print { .fy-balk { display: none !important; } }

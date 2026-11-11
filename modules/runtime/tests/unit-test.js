@@ -346,6 +346,7 @@ async function main() {
 
   const algorithmInitPayloads = [];
   const observedEvents = [];
+  const evaluatedPathSnapshots = [];
   const clients = {
     fetchCatalogSnapshot: async () => cloneJson(catalogFixture),
     fetchPathsSnapshot: async () => cloneJson(pathsFixture),
@@ -365,7 +366,10 @@ async function main() {
         }),
       };
     },
-    evaluatePaths,
+    evaluatePaths: (playedSituationIds, snapshot) => {
+      evaluatedPathSnapshots.push(snapshot ? cloneJson(snapshot) : null);
+      return evaluatePaths(playedSituationIds);
+    },
   };
 
   const state = await startRun({ clients });
@@ -397,6 +401,16 @@ async function main() {
 
   catalogFixture.situations[0].title = "MUTATED AFTER START";
   assert.equal(state.showRunSnapshot.catalog.situations[0].title, "Start A", "showRunSnapshot must be frozen");
+
+  assert.deepEqual(evaluatedPathSnapshots[0], state.showRunSnapshot.paths, "path evaluation must use the frozen run paths");
+  pathsFixture.paths.push({ id: "path:edited-during-run", sceneIds: [1, 2] });
+  await refreshEligiblePool(state, clients, "unit_paths_edited_during_run");
+  assert.deepEqual(
+    evaluatedPathSnapshots[evaluatedPathSnapshots.length - 1],
+    state.showRunSnapshot.paths,
+    "a path edit during a run must not reach the running show"
+  );
+  pathsFixture.paths.pop();
 
   for (const field of ["preparedNext", "activeSituation", "playedSituations", "eligiblePool", "pathAvailable"]) {
     assert(!Object.prototype.hasOwnProperty.call(state.lastScoreFeed, field), `Algorithm score output must not contain ${field}`);
@@ -624,6 +638,7 @@ async function main() {
     assertions: [
       "idle current state is safe",
       "Runtime creates showRunId and snapshots",
+      "path evaluation during a run uses the frozen run paths",
       "Algorithm receives no Runtime lifecycle ownership fields",
       "Algorithm score output contains no order or lifecycle fields",
       "preparedNext stays frozen on score updates",

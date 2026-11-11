@@ -1,0 +1,8 @@
+{
+  "websiteUrl": "https://voorstelling.foryouniverse.nl",
+  "syncSecret": "VUL-IN: zelfde geheim als EDITOR_SYNC_SECRET op de NAS",
+  "accessClientId": "VUL-IN: Client ID van het Access-servicetoken voor de show-Mac",
+  "accessClientSecret": "VUL-IN: Client Secret van dat servicetoken",
+  "intervalSeconds": 20,
+  "quietMinutes": 15
+}

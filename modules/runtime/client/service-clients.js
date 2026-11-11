@@ -42,11 +42,14 @@ async function fetchAlgorithmConfigSnapshot() {
   return fetchJson(`${algorithmBaseUrl()}/v0/algorithm/config-snapshot`);
 }
 
-async function evaluatePaths(playedSituationIds) {
+async function evaluatePaths(playedSituationIds, snapshot = null) {
   return fetchJson(`${pathsBaseUrl()}/v0/paths/evaluate`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ playedSituationIds: playedSituationIds || [] }),
+    body: JSON.stringify({
+      playedSituationIds: playedSituationIds || [],
+      ...(snapshot ? { snapshot } : {}),
+    }),
   });
 }
 

@@ -311,6 +311,19 @@ async function main() {
     assert(!afterPlayedEvaluation.pathAvailable.includes(playedStart), "played situation should not remain available");
     assert(afterPlayedEvaluation.pathAvailable.includes(`situation:${sceneIds[1]}`), "saved edge should unlock successor");
 
+    const grownSnapshot = {
+      ...savedReadModel,
+      paths: [savedSnapshotPath],
+      crossingThresholds: [],
+      runtimeFrozenPadding: "x".repeat(600 * 1024),
+    };
+    const grownEvaluation = await fetchJson("/v0/paths/evaluate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ snapshot: grownSnapshot, playedSituationIds: [playedStart] }),
+    });
+    assert(grownEvaluation.pathAvailable.includes(`situation:${sceneIds[1]}`), "a run snapshot above 256kb must still evaluate");
+
     const snapshotResult = await fetchJson("/v0/paths/snapshots", { method: "POST" });
     assert(snapshotResult.snapshotId);
     assert(snapshotResult.createdAt);

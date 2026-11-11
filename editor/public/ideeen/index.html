@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideeën · Voorstelling · For_You</title>
+<style>
+  /* Zelfde huisstijl als Versies (zie versies/index.html): Helvetica Neue, zwart op wit, één dunne lijn. */
+  :root { --tekst: #000; --zacht: rgba(0, 0, 0, .55); --lijn: rgba(0, 0, 0, .14); --vlak: rgba(0, 0, 0, .035); --rood: #b00020; --rand: clamp(16px, 3vw, 40px); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: var(--tekst); font: 16px/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--tekst); text-underline-offset: .3em; text-decoration-thickness: 1px; }
+  header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 6px 24px; padding: 20px var(--rand) 16px; border-bottom: 1px solid var(--lijn); }
+  .hs-nav { display: flex; align-items: baseline; gap: 4px 22px; white-space: nowrap; flex-wrap: wrap; }
+  .hs-nav a { color: var(--zacht); text-decoration: none; font-size: 16px; line-height: 1.2; }
+  .hs-nav a:hover { color: var(--tekst); }
+  .hs-nav a[aria-current="page"] { color: var(--tekst); text-decoration: underline; }
+  .hs-nav a.hs-merk { color: var(--tekst); font: 700 22px/1 "Helvetica Neue", Helvetica, Arial, sans-serif; letter-spacing: -.03em; margin-right: 8px; }
+  .wie { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 13px; color: var(--zacht); }
+  .wie a { color: var(--zacht); }
+  html.fy-met-balk .hs-merk, html.fy-met-balk .wie { display: none; }
+  main { max-width: 860px; padding: 8px var(--rand) 80px; }
+  h2 { font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1; margin: 40px 0 10px; }
+  .zacht { color: var(--zacht); }
+  .fout { color: var(--rood); }
+  button, .knop { font: inherit; background: none; color: var(--tekst); border: 1px solid var(--tekst); padding: 5px 14px; cursor: pointer; }
+  button:hover, .knop:hover { background: var(--tekst); color: #fff; }
+  button.licht { border: 0; color: var(--zacht); padding: 5px 0; }
+  button.licht:hover { background: none; color: var(--tekst); text-decoration: underline; }
+  button:disabled { opacity: .4; cursor: default; }
+  input, textarea, select { font: inherit; font-size: 16px; color: var(--tekst); background: #fff; border: 1px solid var(--lijn); border-radius: 0; padding: 8px 10px; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--tekst); }
+  textarea { width: 100%; resize: vertical; min-height: 110px; }
+
+  /* Soort kiezen: vijf woorden naast elkaar, de gekozen zwart. */
+  .keuzes { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 14px 0 12px; }
+  .keuzes label { position: relative; cursor: pointer; }
+  .keuzes input { position: absolute; opacity: 0; pointer-events: none; }
+  .keuzes span { display: inline-block; padding: 5px 12px; border: 1px solid var(--lijn); }
+  .keuzes input:checked + span { background: var(--tekst); color: #fff; border-color: var(--tekst); }
+  .keuzes input:focus-visible + span { outline: 2px solid var(--tekst); outline-offset: 2px; }
+  .extra { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin-top: 10px; }
+  .extra input[type="url"], .extra input[type="text"] { flex: 1 1 260px; min-width: 0; }
+  .knop input { display: none; }
+  .knoppen { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin-top: 14px; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin: 4px 0 16px; }
+  .filters .keuzes { margin: 0; }
+  .filters input[type="search"] { flex: 1 1 200px; min-width: 0; }
+  #telling { font-size: 14px; margin: 0 0 6px; }
+
+  ul.ideeen { list-style: none; padding: 0; margin: 0; border-bottom: 1px solid var(--lijn); }
+  ul.ideeen > li { padding: 18px 0; border-top: 1px solid var(--lijn); }
+  .kop { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
+  .label { display: inline-block; font-size: 13px; padding: 0 5px; border: 1px solid var(--tekst); }
+  .kop select { font-size: 14px; padding: 2px 6px; margin-left: auto; }
+  .tekst { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; font-size: 18px; line-height: 1.45; }
+  .link { display: inline-block; margin-top: 6px; overflow-wrap: anywhere; }
+  .foto { display: block; margin-top: 10px; max-width: 320px; }
+  .foto img { display: block; width: 100%; height: auto; background: var(--vlak); }
+  .reacties { list-style: none; margin: 12px 0 0; padding: 0 0 0 14px; border-left: 1px solid var(--lijn); font-size: 15px; }
+  .reacties li { margin: 4px 0; overflow-wrap: anywhere; }
+  .reageer { display: flex; gap: 8px; margin-top: 10px; }
+  .reageer input { flex: 1 1 auto; min-width: 0; font-size: 15px; padding: 6px 10px; }
+  .reageer button { font-size: 15px; }
+  .bewerk textarea { margin-top: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <nav class="hs-nav" aria-label="For_You voorstelling">
+    <a class="hs-merk" href="/versies/">For_You</a>
+    <a href="/catalog/">Catalogus</a>
+    <a href="/catalog/media-assets/">Beeldcatalogus</a>
+    <a href="/editor/">Paden</a>
+    <a href="/universe/">Universe</a>
+    <a href="/ideeen/" aria-current="page">Ideeën</a>
+    <a href="/versies/">Versies</a>
+  </nav>
+  <div class="wie"><span id="wie"></span><a href="https://www.foryouniverse.nl/team/">← Team</a></div>
+</header>
+<main>
+  <!-- novalidate: a link without https:// in front ("www.…") is fine, the server completes it. -->
+  <form id="nieuw" novalidate>
+    <h2>Drop een idee</h2>
+    <p class="zacht">Voor een situatie, een personage, een omgeving of een pad. Iedereen in het team ziet het.</p>
+    <fieldset class="keuzes" id="soort"><legend class="zacht" hidden>Soort</legend></fieldset>
+    <label for="tekst" hidden>Je idee</label>
+    <textarea id="tekst" maxlength="2000" placeholder="Wat zie je voor je?" required></textarea>
+    <div class="extra">
+      <label for="link" hidden>Link</label>
+      <input type="url" id="link" inputmode="url" placeholder="Een link erbij (mag leeg blijven)">
+      <label for="namens" hidden>Namens</label>
+      <input type="text" id="namens" maxlength="120" autocomplete="off" placeholder="Van wie? (leeg = van jou)">
+      <label class="knop">Foto toevoegen<input type="file" id="foto" accept="image/*"></label>
+      <span id="foto-naam" class="zacht"></span>
+    </div>
+    <div class="knoppen">
+      <button type="submit" id="drop">Drop het idee</button>
+      <span id="melding" role="status"></span>
+    </div>
+  </form>
+
+  <h2>Ideeën</h2>
+  <div class="filters">
+    <div class="keuzes" id="filter-soort" role="group" aria-label="Soort"></div>
+    <label for="filter-status" hidden>Status</label>
+    <select id="filter-status"></select>
+    <label for="zoek" hidden>Zoeken</label>
+    <input type="search" id="zoek" placeholder="Zoeken">
+  </div>
+  <p id="telling" class="zacht">Laden…</p>
+  <ul class="ideeen" id="ideeen"></ul>
+</main>
+<script src="ideeen.js"></script>
+</body>
+</html>

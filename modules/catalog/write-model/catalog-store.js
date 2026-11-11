@@ -534,10 +534,61 @@ function slugify(value, fallback = "item") {
   return slug || fallback;
 }
 
-function nextEntityId(store, entityType, name) {
-  const next = Number(store.nextCounters[entityType] || 1);
+const ENTITY_COLLECTIONS = Object.freeze({
+  performer: "performers",
+  character: "characters",
+  environment: "environments",
+  situation: "situations",
+});
+
+// Paths, runtime and the legacy-shaped clients address entities by number, so new
+// entities get the next free number (never reused) instead of a slug id.
+function nextEntityId(store, entityType) {
+  let highest = 0;
+  for (const item of store[ENTITY_COLLECTIONS[entityType]] || []) {
+    highest = Math.max(highest, Number(item.legacyId) || 0, legacyIdFromCatalogId(item.id, entityType) || 0);
+  }
+  const next = Math.max(Number(store.nextCounters[entityType] || 1), highest + 1);
   store.nextCounters[entityType] = next + 1;
-  return `${entityType}:app-${String(next).padStart(4, "0")}-${slugify(name, entityType)}`;
+  return { id: `${entityType}:${next}`, legacyId: next };
+}
+
+function nextSortOrder(items) {
+  return (items || []).reduce((highest, item) => Math.max(highest, Number(item.sortOrder) || 0), 0) + 10;
+}
+
+function hasField(body, key) {
+  return Object.prototype.hasOwnProperty.call(body || {}, key) && body[key] !== undefined;
+}
+
+function sameIds(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function legacyNumberFor(item, id, prefix) {
+  return Number(item && item.legacyId) || legacyIdFromCatalogId(id, prefix) || null;
+}
+
+function editedStatus(existing, active) {
+  if (existing && existing.status && (existing.active !== false) === active) return existing.status;
+  return statusFor(active);
+}
+
+function editedPromptText(existing, description) {
+  if (!existing) return description;
+  const followsDescription = !existing.promptText || existing.promptText === (existing.description || "");
+  return followsDescription ? description : existing.promptText;
+}
+
+function entityIdentity(store, entityType, body, existing) {
+  if (existing) {
+    return { id: existing.id, legacyId: legacyNumberFor(existing, existing.id, entityType) };
+  }
+  if (body.id) {
+    const id = String(body.id);
+    return { id, legacyId: legacyIdFromCatalogId(id, entityType) };
+  }
+  return nextEntityId(store, entityType);
 }
 
 function upsertById(items, item) {
@@ -590,6 +641,39 @@ function characterSlot(characterId, index) {
     characterId,
     legacyCharacterId: legacyIdFromCatalogId(characterId, "character"),
   };
+}
+
+const MAX_SITUATION_SLOTS = 3;
+
+// The catalog UI only edits the fixed characters. Empty and random-character slots
+// stay where they are; they are only dropped when the new characters need the room.
+function mergeCharacterSlots(existingSlots, characterIds, characterMap) {
+  const slots = (Array.isArray(existingSlots) ? existingSlots : []).filter((slot) => slot && typeof slot === "object");
+  const fixedIds = slots.filter((slot) => slot.mode === "fixed-character").map((slot) => slot.characterId);
+  if (slots.length && sameIds(fixedIds, characterIds)) return slots.map((slot) => ({ ...slot }));
+
+  const kept = [...slots];
+  let surplusOpen = kept.filter((slot) => slot.mode !== "fixed-character").length
+    - Math.max(0, MAX_SITUATION_SLOTS - characterIds.length);
+  for (let index = kept.length - 1; index >= 0 && surplusOpen > 0; index -= 1) {
+    if (kept[index].mode === "fixed-character") continue;
+    kept.splice(index, 1);
+    surplusOpen -= 1;
+  }
+
+  const queue = [...characterIds];
+  const fixedSlot = (characterId) => ({
+    mode: "fixed-character",
+    characterId,
+    legacyCharacterId: legacyNumberFor(characterMap.get(characterId), characterId, "character"),
+  });
+  const merged = [];
+  for (const slot of kept) {
+    if (slot.mode !== "fixed-character") merged.push({ ...slot });
+    else if (queue.length) merged.push(fixedSlot(queue.shift()));
+  }
+  while (queue.length) merged.push(fixedSlot(queue.shift()));
+  return merged.map(({ slotIndex: _previousIndex, ...slot }, index) => ({ slotIndex: index + 1, ...slot }));
 }
 
 function normalizePerformerRecord(record, base = null) {
@@ -760,13 +844,14 @@ function validateEnvironmentInput(body) {
   return issues;
 }
 
-function validateSituationInput(body, readModel) {
+function validateSituationInput(body, readModel, existing = null) {
   const issues = [];
   const characterIds = normalizeIds(body.characterIds);
   const characterMap = mapById(readModel.characters || []);
   const environmentMap = mapById(readModel.environments || []);
+  const keepsRandomEnvironment = !body.environmentId && existing && existing.environmentMode === "random";
   if (!String(body.title || "").trim()) issues.push(issue("situation_title_required", "Title is required."));
-  if (!body.environmentId || !environmentMap.has(body.environmentId)) {
+  if (!keepsRandomEnvironment && (!body.environmentId || !environmentMap.has(body.environmentId))) {
     issues.push(issue("situation_environment_required", "A valid environment is required.", { environmentId: body.environmentId || null }));
   }
   if (characterIds.length < 1 || characterIds.length > 3) {
@@ -790,14 +875,20 @@ async function upsertPerformer(body, readModel, options = {}) {
   const issues = validatePerformerInput(body || {}, readModel);
   if (issues.length) throw new CatalogInputError("invalid_performer", issues);
   const store = await readCatalogStore(options);
-  const existing = store.performers.find((item) => item.id === body.id);
+  const existing = store.performers.find((item) => item.id === body.id) || null;
   const base = (readModel.performers || []).find((item) => item.id === body.id) || null;
   const at = nowIso();
+  const active = hasField(body, "active") ? body.active !== false : !existing || existing.active !== false;
   const record = {
-    id: String(body.id || nextEntityId(store, "performer", body.name)),
+    ...(existing || {}),
+    ...entityIdentity(store, "performer", body, existing),
     name: String(body.name || "").trim(),
-    performerSlot: Number(body.performerSlot || 0),
-    active: body.active !== false,
+    performerSlot: hasField(body, "performerSlot") || !existing
+      ? Number(body.performerSlot || 0)
+      : Number(existing.performerSlot || 0),
+    sortOrder: existing ? Number(existing.sortOrder || 0) : nextSortOrder(store.performers),
+    active,
+    status: editedStatus(existing, active),
     createdAt: existing ? existing.createdAt : base ? base.createdAt || at : at,
     updatedAt: at,
   };
@@ -810,15 +901,29 @@ async function upsertCharacter(body, readModel, options = {}) {
   const issues = validateCharacterInput(body || {}, readModel);
   if (issues.length) throw new CatalogInputError("invalid_character", issues);
   const store = await readCatalogStore(options);
-  const existing = store.characters.find((item) => item.id === body.id);
+  const existing = store.characters.find((item) => item.id === body.id) || null;
   const base = (readModel.characters || []).find((item) => item.id === body.id) || null;
   const at = nowIso();
+  const active = hasField(body, "active") ? body.active !== false : !existing || existing.active !== false;
+  const description = hasField(body, "description") || !existing
+    ? String(body.description || "").trim()
+    : existing.description || "";
+  const performerIds = hasField(body, "performerIds") || hasField(body, "performerId") || !existing
+    ? normalizeIds(body.performerIds || body.performerId)
+    : normalizeIds(existing.performerIds);
+  const performerMap = mapById(readModel.performers || []);
   const record = {
-    id: String(body.id || nextEntityId(store, "character", body.name)),
+    ...(existing || {}),
+    ...entityIdentity(store, "character", body, existing),
     name: String(body.name || "").trim(),
-    description: String(body.description || "").trim(),
-    performerIds: normalizeIds(body.performerIds || body.performerId),
-    active: body.active !== false,
+    description,
+    promptText: editedPromptText(existing, description),
+    performerIds,
+    legacyPerformerId: existing && sameIds(performerIds, normalizeIds(existing.performerIds))
+      ? existing.legacyPerformerId || null
+      : performerIds.length ? legacyNumberFor(performerMap.get(performerIds[0]), performerIds[0], "performer") : null,
+    active,
+    status: editedStatus(existing, active),
     createdAt: existing ? existing.createdAt : base ? base.createdAt || at : at,
     updatedAt: at,
   };
@@ -831,17 +936,24 @@ async function upsertEnvironment(body, readModel, options = {}) {
   const issues = validateEnvironmentInput(body || {});
   if (issues.length) throw new CatalogInputError("invalid_environment", issues);
   const store = await readCatalogStore(options);
-  const existing = store.environments.find((item) => item.id === body.id);
+  const existing = store.environments.find((item) => item.id === body.id) || null;
   const base = (readModel.environments || []).find((item) => item.id === body.id) || null;
   const at = nowIso();
+  const active = hasField(body, "active") ? body.active !== false : !existing || existing.active !== false;
+  const description = hasField(body, "description") || !existing
+    ? String(body.description || "").trim()
+    : existing.description || "";
   const record = {
-    id: String(body.id || nextEntityId(store, "environment", body.name)),
+    ...(existing || {}),
+    ...entityIdentity(store, "environment", body, existing),
     name: String(body.name || "").trim(),
-    description: String(body.description || "").trim(),
-    extras: normalizeEnvironmentExtras(Object.prototype.hasOwnProperty.call(body, "extras")
+    description,
+    promptText: editedPromptText(existing, description),
+    extras: normalizeEnvironmentExtras(hasField(body, "extras")
       ? body.extras
       : (existing && existing.extras) || (base && base.extras) || null),
-    active: body.active !== false,
+    active,
+    status: editedStatus(existing, active),
     createdAt: existing ? existing.createdAt : base ? base.createdAt || at : at,
     updatedAt: at,
   };
@@ -851,19 +963,37 @@ async function upsertEnvironment(body, readModel, options = {}) {
 }
 
 async function upsertSituation(body, readModel, options = {}) {
-  const issues = validateSituationInput(body || {}, readModel);
-  if (issues.length) throw new CatalogInputError("invalid_situation", issues);
   const store = await readCatalogStore(options);
-  const existing = store.situations.find((item) => item.id === body.id);
+  const existing = (body && body.id && store.situations.find((item) => item.id === body.id)) || null;
+  const issues = validateSituationInput(body || {}, readModel, existing);
+  if (issues.length) throw new CatalogInputError("invalid_situation", issues);
   const base = (readModel.situations || []).find((item) => item.id === body.id) || null;
   const at = nowIso();
+  const active = hasField(body, "active") ? body.active !== false : !existing || existing.active !== false;
+  const description = hasField(body, "description") || !existing
+    ? String(body.description || "").trim()
+    : existing.description || "";
+  const characterIds = normalizeIds(body.characterIds);
+  const characterMap = mapById(readModel.characters || []);
+  const environmentId = String(body.environmentId || "").trim();
+  const environment = mapById(readModel.environments || []).get(environmentId);
   const record = {
-    id: String(body.id || nextEntityId(store, "situation", body.title)),
+    ...(existing || {}),
+    ...entityIdentity(store, "situation", body, existing),
     title: String(body.title || "").trim(),
-    description: String(body.description || "").trim(),
-    environmentId: String(body.environmentId || "").trim(),
-    characterIds: normalizeIds(body.characterIds),
-    active: body.active !== false,
+    description,
+    promptText: editedPromptText(existing, description),
+    sortOrder: existing ? Number(existing.sortOrder || 0) : nextSortOrder(store.situations),
+    characterIds,
+    legacyCharacterIds: characterIds
+      .map((characterId) => legacyNumberFor(characterMap.get(characterId), characterId, "character"))
+      .filter(Boolean),
+    characterSlots: mergeCharacterSlots(existing && existing.characterSlots, characterIds, characterMap),
+    environmentMode: environmentId ? "selected" : "random",
+    environmentId: environmentId || null,
+    legacyEnvironmentId: environmentId ? legacyNumberFor(environment, environmentId, "environment") : null,
+    active,
+    status: editedStatus(existing, active),
     createdAt: existing ? existing.createdAt : base ? base.createdAt || at : at,
     updatedAt: at,
   };

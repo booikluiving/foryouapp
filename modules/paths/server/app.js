@@ -12,9 +12,18 @@ const { validatePathsSnapshot } = require("../validation/validate-paths");
 const {
   archivePath,
   deleteInactivePath,
+  readPathsStore,
   upsertCrossingThreshold,
   upsertPath,
+  writePathsStore,
 } = require("../db/paths-store");
+const {
+  pathsContent,
+  pathsContentHash,
+  pathsContentIssues,
+  withPathsContent,
+} = require("../db/paths-content");
+const { createWriteQueue, loopbackOnly } = require("../../../shared/sync/content-hash");
 const { fetchEditorCatalog } = require("../client/catalog-client");
 const { loadExpress } = require("./express-loader");
 
@@ -30,7 +39,32 @@ function createPathsApp(options = {}) {
   const editorRoot = path.resolve(__dirname, "../editor");
   const editorGraphPath = path.resolve(__dirname, "../rules-engine/paden-graph.js");
   const universeRoot = path.resolve(__dirname, "../universe/public");
-  app.use(express.json({ limit: "256kb" }));
+  app.use(createWriteQueue());
+  app.use(express.json({ limit: "5mb" }));
+
+  // Whole-content exchange for the website sync.
+  app.get("/v0/paths/store", loopbackOnly, asyncRoute(async (_req, res) => {
+    const content = pathsContent(await readPathsStore(options));
+    res.json({ ok: true, hash: pathsContentHash(content), content });
+  }));
+
+  app.put("/v0/paths/store", loopbackOnly, asyncRoute(async (req, res) => {
+    const body = req.body || {};
+    const store = await readPathsStore(options);
+    const currentHash = pathsContentHash(pathsContent(store));
+    if (!body.force && body.expectedHash !== currentHash) {
+      res.status(409).json({ ok: false, error: "content_changed", currentHash });
+      return;
+    }
+    const issues = pathsContentIssues(body.content, store.schemaVersion);
+    if (issues.length) {
+      res.status(400).json({ ok: false, error: "content_invalid", issues });
+      return;
+    }
+    await writePathsStore(withPathsContent(store, body.content), options);
+    const written = pathsContent(await readPathsStore(options));
+    res.json({ ok: true, previousHash: currentHash, hash: pathsContentHash(written) });
+  }));
 
   app.get("/", (_req, res) => {
     res.redirect("/editor/");

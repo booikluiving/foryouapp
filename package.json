@@ -8,6 +8,7 @@
   "scripts": {
     "catalog:start": "node modules/catalog/server/server.js",
     "catalog:smoke": "node modules/catalog/tests/smoke-test.js",
+    "catalog:test:write-entities": "node modules/catalog/tests/write-entities-regression-test.js",
     "catalog:smoke:write-media": "node modules/catalog/tests/write-media-smoke-test.js",
     "catalog:smoke:composition-editor": "node modules/catalog/tests/composition-editor-smoke-test.js",
     "catalog:smoke:import-assets": "node modules/catalog/tests/import-environment-assets-test.js",
@@ -43,7 +44,11 @@
     "show-control:hardware:test": "node modules/show-control/hardware/tests/hardware-test.js",
     "gateway:start": "node gateway/server/server.js",
     "gateway:smoke": "node gateway/tests/smoke-test.js",
-    "gateway:test": "node gateway/tests/unit-test.js"
+    "gateway:test": "node gateway/tests/unit-test.js",
+    "editor:start": "node editor/server/server.js",
+    "editor:test:sync": "node editor/tests/sync-integration-test.js",
+    "editor:test:access": "node editor/tests/access-auth-test.js",
+    "sync-agent:start": "node sync-agent/run.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.7.0",
