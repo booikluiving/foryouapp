@@ -41,6 +41,14 @@ const REACTIES_STANDAARD = Object.freeze([
   Object.freeze({ emoji: "\ud83d\udc4e", telt: "negatief" }),
 ]);
 const FASE_POLL_MS = 1000;
+// Vraag die na de scène op de telefoon verschijnt (met een paar trillingen); instelbaar in Admin.
+const NA_SCENE_VRAAG_KEY = "na_scene_vraag";
+const NA_SCENE_VRAAG_STANDAARD = "En?";
+
+function normalizeNaSceneVraag(raw) {
+  if (raw === null || raw === undefined) return NA_SCENE_VRAAG_STANDAARD;
+  return String(raw).replace(/\s+/g, " ").trim().slice(0, 80);
+}
 const MESSAGE_SLOWDOWN_MIN_MS = 500;
 const MESSAGE_SLOWDOWN_MAX_MS = 8000;
 const MESSAGE_SLOWDOWN_DEFAULT_MS = 850;
@@ -445,6 +453,7 @@ class AudienceService extends EventEmitter {
     this.stageOutputSettings = normalizeStageSettings(this.store.getSetting(STAGE_SETTINGS_KEY, {}));
     this.wifiQrSettings = normalizeWifiQrSettings(this.store.getSetting(WIFI_QR_SETTINGS_KEY, {}));
     this.reacties = normalizeReacties(this.store.getSetting(REACTIES_KEY, null));
+    this.naSceneVraag = normalizeNaSceneVraag(this.store.getSetting(NA_SCENE_VRAAG_KEY, null));
     // Fase van de voorstelling, uit de runtime: "scene" (situatie loopt) of "tussen".
     this.fase = { fase: "tussen", titel: null, situationRunId: null, sinds: nowIso(), bekend: false };
     this.faseTimer = null;
@@ -540,10 +549,18 @@ class AudienceService extends EventEmitter {
     return this.reacties.map((r) => ({ ...r }));
   }
 
-  saveReacties(lijst) {
+  getNaSceneVraag() {
+    return this.naSceneVraag;
+  }
+
+  saveReacties(lijst, vraag) {
     this.reacties = normalizeReacties(lijst);
     this.store.setSetting(REACTIES_KEY, this.reacties);
-    this.emit("broadcast", { type: "reacties", reacties: this.getReacties() });
+    if (vraag !== undefined) {
+      this.naSceneVraag = normalizeNaSceneVraag(vraag);
+      this.store.setSetting(NA_SCENE_VRAAG_KEY, this.naSceneVraag);
+    }
+    this.emit("broadcast", { type: "reacties", reacties: this.getReacties(), naSceneVraag: this.naSceneVraag });
     this.emit("admin-state-changed");
     return this.getReacties();
   }
@@ -1788,6 +1805,7 @@ class AudienceService extends EventEmitter {
       reactionCounts: { ...this.reactionCounts },
       fase: this.getFase(),
       reacties: this.getReacties(),
+      naSceneVraag: this.naSceneVraag,
       activePoll: this.pollSnapshot(activePoll),
       lastPoll: this.pollSnapshot(latestPoll),
       engagementLeaderboard,
