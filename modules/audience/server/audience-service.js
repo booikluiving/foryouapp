@@ -97,7 +97,7 @@ const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   tussenScriptY: 230,
   tussenScriptHoogte: 860,
   tussenStatsY: 1150,
-  tussenStatsGrootte: 88,
+  tussenStatsGrootte: 56,
   tussenChatY: 1380,
   tussenChatHoogte: 480,
   tussenChatGrootte: 40,
