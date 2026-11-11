@@ -1017,6 +1017,23 @@ function normalizeLayerVal(val, role) {
   return { val: { stap, richting: val.richting === "links" ? "links" : "rechts" } };
 }
 
+// Fases: een omgeving kan na elkaar meerdere beelden hebben (Rijden, Aanrijding, ...).
+// Een fase zonder beeld toont de achtergrond. schok = het beeld schudt bij het ingaan van de
+// fase, schokNa = seconden tussen het begin van het geluid en de klap.
+function normalizeCompositionFases(fases) {
+  if (!Array.isArray(fases)) return [];
+  return fases.slice(0, 12).map((fase) => {
+    if (!fase || typeof fase !== "object" || Array.isArray(fase)) return null;
+    const schok = fase.schok === true;
+    return {
+      naam: String(fase.naam || "").trim().slice(0, 60),
+      assetId: String(fase.assetId || "").trim(),
+      schok,
+      schokNa: schok ? numericValue(fase.schokNa, 0, { min: 0, max: 10 }) : 0,
+    };
+  }).filter(Boolean);
+}
+
 // Effect "omvallen": per druk op de knop een eigen geluid (index 0 = eerste druk). Leeg = het
 // extra geluid van de omgeving.
 function normalizeCompositionValGeluiden(list) {
@@ -1029,6 +1046,7 @@ function normalizeCompositionValGeluiden(list) {
 function normalizeEnvironmentCompositionRecord(record, lightingPresets = DEFAULT_LIGHTING_PRESETS) {
   const at = nowIso();
   const valGeluiden = normalizeCompositionValGeluiden(record && record.valGeluiden);
+  const fases = normalizeCompositionFases(record && record.fases);
   const backgroundLayer = normalizeCompositionLayer(record && record.backgroundLayer, "background", 0);
   const fxVideoLayer = normalizeCompositionLayer(record && record.fxVideoLayer, "fxVideo", 0);
   const imageLayers = Array.isArray(record && record.imageLayers)
@@ -1044,6 +1062,7 @@ function normalizeEnvironmentCompositionRecord(record, lightingPresets = DEFAULT
     backgroundLayer,
     fxVideoLayer,
     imageLayers,
+    ...(fases.length ? { fases } : {}),
     ...(valGeluiden.length ? { valGeluiden } : {}),
     lighting,
     createdAt: record && record.createdAt || at,
@@ -1571,6 +1590,9 @@ async function deleteMediaAsset(assetId, options = {}) {
     if (Array.isArray(composition.valGeluiden)) {
       composition.valGeluiden = composition.valGeluiden.map((item) => (item === id ? "" : item));
     }
+    if (Array.isArray(composition.fases)) {
+      composition.fases = composition.fases.map((fase) => (fase && fase.assetId === id ? { ...fase, assetId: "" } : fase));
+    }
     composition.updatedAt = at;
   }
   await writeCatalogStore(store, options);
@@ -1703,6 +1725,15 @@ async function upsertEnvironmentComposition(environmentId, body, readModel, opti
       issues.push(issue("composition_valgeluid_asset_invalid", "Het geluid van een stap hoort bij deze omgeving te staan.", { path: `valGeluiden.${index}` }));
     }
   }
+  // Net zo voor de fases: een editor die ze niet kent, laat ze staan.
+  const fases = normalizeCompositionFases(body && Array.isArray(body.fases) ? body.fases : existing && existing.fases);
+  for (const [index, fase] of fases.entries()) {
+    if (!fase.assetId) continue;
+    const asset = assetMap.get(fase.assetId);
+    if (!asset || asset.status !== "present" || asset.environmentId !== id || asset.type !== "extra") {
+      issues.push(issue("composition_fase_asset_invalid", "Het beeld van een fase hoort bij deze omgeving te staan.", { path: `fases.${index}` }));
+    }
+  }
   if (issues.length) throw new CatalogInputError("invalid_environment_composition", issues);
 
   const at = nowIso();
@@ -1713,6 +1744,7 @@ async function upsertEnvironmentComposition(environmentId, body, readModel, opti
     backgroundLayer,
     fxVideoLayer,
     imageLayers,
+    fases,
     valGeluiden,
     lighting,
     createdAt: existing ? existing.createdAt : at,

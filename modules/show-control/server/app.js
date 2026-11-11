@@ -47,6 +47,8 @@ const {
   environmentOmvallenStatus,
   publicOmvallenStatus,
 } = require("../cue-library/environment-omvallen");
+const { buildEnvironmentFaseCue, environmentFasesStatus, publicFasesStatus } = require("../cue-library/environment-fases");
+const { buildEnvironmentKnopCue, environmentKnoppenStatus } = require("../cue-library/environment-knoppen");
 const { cameraBaseUrl } = require("../target-adapters/camera-adapter");
 const { dmxBaseUrl } = require("../target-adapters/dmx-adapter");
 const { perfectCueBaseUrl } = require("../target-adapters/perfect-cue-adapter");
@@ -358,6 +360,18 @@ function createShowControlApp(options = {}) {
   // niet vaker dan eens per seconde opnieuw bepaald te worden.
   const extrasCache = { at: 0, value: null, pending: null };
   const omvallenCache = { value: null };
+  const knoppenCache = { value: null };
+  const knoppenOptions = {
+    environmentFases: options.environmentFases || {},
+    environmentOmvallen: options.environmentOmvallen || {},
+  };
+  function knoppenVoor(runtimeState) {
+    try {
+      return environmentKnoppenStatus(runtimeState || {}, knoppenOptions);
+    } catch (_err) {
+      return null;
+    }
+  }
   const EXTRAS_CACHE_MS = Number(options.environmentExtrasCacheMs ?? 1000);
   async function cachedExtrasStatus(req) {
     if (extrasCache.value && Date.now() - extrasCache.at < EXTRAS_CACHE_MS) return extrasCache.value;
@@ -379,6 +393,7 @@ function createShowControlApp(options = {}) {
           } catch (_err) {
             omvallenCache.value = null;
           }
+          knoppenCache.value = knoppenVoor(runtimeState);
           return publicExtrasStatus(environmentExtrasStatus(runtimeState || {}, options.environmentExtras || {}));
         })
         .then((value) => {
@@ -440,12 +455,68 @@ function createShowControlApp(options = {}) {
     executeCue(cue, executeOptions).then(() => saveCue(cue)).catch(() => {});
     const na = publicOmvallenStatus(environmentOmvallenStatus(runtimeState || {}, options.environmentOmvallen || {}));
     omvallenCache.value = na;
+    knoppenCache.value = knoppenVoor(runtimeState);
     res.status(201).json({
       ok: true,
       cueId: cue.cueId,
       name: cue.name,
       omvallen: na,
     });
+  }));
+
+  // Fases van de actieve (of klaargezette) omgeving.
+  app.get("/v0/show-control/environment-fases/current", asyncRoute(async (req, res) => {
+    const runtimeState = await runtimeStateQuick(req, clients);
+    res.json(publicFasesStatus(environmentFasesStatus(runtimeState || {}, options.environmentFases || {})));
+  }));
+
+  app.post("/v0/show-control/cues/environment-fase", asyncRoute(async (req, res) => {
+    const runtimeState = await runtimeStateQuick(req, clients, 1500);
+    let cue;
+    try {
+      cue = buildEnvironmentFaseCue(runtimeState || {}, req.body || {}, options.environmentFases || {});
+    } catch (err) {
+      if (err && err.statusCode === 409) {
+        res.status(409).json({ ok: false, error: err.code, fases: err.fases });
+        return;
+      }
+      throw err;
+    }
+    executeCue(cue, executeOptions).then(() => saveCue(cue)).catch(() => {});
+    knoppenCache.value = knoppenVoor(runtimeState);
+    res.status(201).json({
+      ok: true,
+      cueId: cue.cueId,
+      name: cue.name,
+      fases: publicFasesStatus(environmentFasesStatus(runtimeState || {}, options.environmentFases || {})),
+    });
+  }));
+
+  // Omgevingsknoppen voor het Stream Deck: één lijst per omgeving, en één adres om er een af te vuren.
+  app.get("/v0/show-control/environment-knoppen/current", asyncRoute(async (req, res) => {
+    const runtimeState = await runtimeStateQuick(req, clients);
+    const value = knoppenVoor(runtimeState);
+    knoppenCache.value = value;
+    res.json(value || { ok: false, knoppen: [] });
+  }));
+
+  app.post("/v0/show-control/cues/environment-knop", asyncRoute(async (req, res) => {
+    const runtimeState = await runtimeStateQuick(req, clients, 1500);
+    let cue;
+    try {
+      cue = buildEnvironmentKnopCue(runtimeState || {}, req.body || {}, knoppenOptions);
+    } catch (err) {
+      if (err && err.statusCode === 409) {
+        res.status(409).json({ ok: false, error: err.code, knoppen: err.knoppen || null });
+        return;
+      }
+      throw err;
+    }
+    executeCue(cue, executeOptions).then(() => saveCue(cue)).catch(() => {});
+    const value = knoppenVoor(runtimeState);
+    knoppenCache.value = value;
+    omvallenCache.value = publicOmvallenStatus(environmentOmvallenStatus(runtimeState || {}, options.environmentOmvallen || {}));
+    res.status(201).json({ ok: true, cueId: cue.cueId, name: cue.name, knoppen: value });
   }));
 
   app.post("/v0/show-control/media-assets/refresh", asyncRoute(async (req, res) => {
@@ -630,6 +701,7 @@ function createShowControlApp(options = {}) {
       hardware,
       environmentExtras,
       environmentOmvallen: omvallenCache.value,
+      environmentKnoppen: knoppenCache.value,
     });
   }));
 
