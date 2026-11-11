@@ -105,7 +105,7 @@ function createAudienceApp(options = {}) {
   });
 
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
-  const STROOM_TYPES = new Set(["comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed"]);
+  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed"]);
   app.get("/audience/stage/stroom", (req, res) => {
     res.set({
       "Content-Type": "text/event-stream",
@@ -238,6 +238,12 @@ function createAudienceApp(options = {}) {
 
   app.post("/audience/admin/stage/settings", (req, res) => {
     res.json({ ok: true, stage: service.updateStageSettings(req.body || {}, req) });
+  });
+
+  // Podiumpagina's (emoji, chat, tussen) laten herladen, bv. na een update; TD hoeft niets te doen.
+  app.post("/audience/admin/stage/herlaad", (_req, res) => {
+    service.emit("broadcast", { type: "stage_herlaad" });
+    res.json({ ok: true });
   });
 
   app.post("/audience/admin/reacties", (req, res) => {
