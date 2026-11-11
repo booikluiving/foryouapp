@@ -238,6 +238,8 @@ function buildEnvironmentExtraCue(runtimeState, input = {}, options = {}) {
       filePath: extra.filePath,
       // De catalogus mag een volume meegeven om in de zaal te proberen, zonder te bewaren.
       volume: volumeOverride(input.volume, extra.volume),
+      // De knop is aan/uit: drukken terwijl dit geluid speelt zet het uit, de druk daarna begint vooraan.
+      wissel: true,
     }));
   } else if (extra.camera) {
     actions.push(cueAction(cueId, 0, "touchdesigner", "td.camera.set", "acknowledged-async", {

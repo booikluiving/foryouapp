@@ -193,3 +193,10 @@ function testZaal() {
   console.error(err);
   process.exit(1);
 });
+
+// Het extra geluid is een wisselknop: de cue geeft dat door aan de speler.
+{
+  const cue = buildEnvironmentExtraCue(runtimeFor("environment:7"), { soort: "geluid" }, extrasOptions);
+  assert.equal(cue.actions[0].command, "audio.extra.play");
+  assert.equal(cue.actions[0].payload.wissel, true);
+}

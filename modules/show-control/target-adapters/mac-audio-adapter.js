@@ -9,6 +9,7 @@ const fs = require("node:fs");
 
 const AUDIO_EXTENSIONS = /\.(mp3|wav|aif|aiff|m4a|aac|flac)$/i;
 let current = null;
+let currentFile = "";
 
 function player(options = {}) {
   return String(options.macAudioPlayer || process.env.SHOW_CONTROL_AUDIO_PLAYER || "/usr/bin/afplay");
@@ -24,6 +25,11 @@ function stopCurrent() {
     try { current.kill("SIGTERM"); } catch (_err) {}
   }
   current = null;
+  currentFile = "";
+}
+
+function isPlaying(filePath) {
+  return Boolean(current && current.exitCode === null && !current.killed && currentFile === filePath);
 }
 
 async function sendMacAudioCommand(action, context = {}) {
@@ -43,14 +49,24 @@ async function sendMacAudioCommand(action, context = {}) {
   if (audioDisabled(options)) {
     return { stage: "applied", state: "warning", warning: true, message: "extra geluid staat uit (SHOW_CONTROL_EXTRA_AUDIO=off)" };
   }
-  // Nog eens drukken = opnieuw beginnen, niet over elkaar heen.
+  // Wisselknop (extra geluid van de omgeving): speelt dit geluid nog, dan zet een druk het uit;
+  // de druk daarna begint weer vooraan.
+  if (payload.wissel && isPlaying(filePath)) {
+    stopCurrent();
+    return { stage: "applied", state: "ok", message: `${filePath.split("/").pop()} uit`, data: { route: "mac-audio", gestopt: true } };
+  }
+  // Anders: nog eens drukken = opnieuw beginnen, niet over elkaar heen.
   stopCurrent();
   const child = spawn(player(options), ["-v", String(volume), filePath], { stdio: "ignore", detached: false });
   child.on("error", () => {});
   child.on("exit", () => {
-    if (current === child) current = null;
+    if (current === child) {
+      current = null;
+      currentFile = "";
+    }
   });
   current = child;
+  currentFile = filePath;
   return {
     stage: "applied",
     state: "ok",
