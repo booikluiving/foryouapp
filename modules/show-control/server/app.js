@@ -42,6 +42,11 @@ const {
   environmentExtrasStatus,
   publicExtrasStatus,
 } = require("../cue-library/environment-extras");
+const {
+  buildEnvironmentOmvallenCue,
+  environmentOmvallenStatus,
+  publicOmvallenStatus,
+} = require("../cue-library/environment-omvallen");
 const { cameraBaseUrl } = require("../target-adapters/camera-adapter");
 const { dmxBaseUrl } = require("../target-adapters/dmx-adapter");
 const { perfectCueBaseUrl } = require("../target-adapters/perfect-cue-adapter");
@@ -352,6 +357,7 @@ function createShowControlApp(options = {}) {
   // /status wordt elke seconde gevraagd (deck-status): de omgevingsknoppen hoeven
   // niet vaker dan eens per seconde opnieuw bepaald te worden.
   const extrasCache = { at: 0, value: null, pending: null };
+  const omvallenCache = { value: null };
   const EXTRAS_CACHE_MS = Number(options.environmentExtrasCacheMs ?? 1000);
   async function cachedExtrasStatus(req) {
     if (extrasCache.value && Date.now() - extrasCache.at < EXTRAS_CACHE_MS) return extrasCache.value;
@@ -366,7 +372,15 @@ function createShowControlApp(options = {}) {
   function refreshExtras(req) {
     if (!extrasCache.pending) {
       extrasCache.pending = runtimeStateQuick(req, clients)
-        .then((runtimeState) => publicExtrasStatus(environmentExtrasStatus(runtimeState || {}, options.environmentExtras || {})))
+        .then((runtimeState) => {
+          // Het effect omvallen leest dezelfde runtime-stand: in één keer mee.
+          try {
+            omvallenCache.value = publicOmvallenStatus(environmentOmvallenStatus(runtimeState || {}, options.environmentOmvallen || {}));
+          } catch (_err) {
+            omvallenCache.value = null;
+          }
+          return publicExtrasStatus(environmentExtrasStatus(runtimeState || {}, options.environmentExtras || {}));
+        })
         .then((value) => {
           extrasCache.value = value;
           extrasCache.at = Date.now();
@@ -402,6 +416,36 @@ function createShowControlApp(options = {}) {
     await saveCue(cue);
     extrasCache.at = 0;
     res.status(201).json({ ok: true, cue });
+  }));
+
+  // Effect omvallen van de actieve (of klaargezette) omgeving: elke druk de volgende stap.
+  app.get("/v0/show-control/environment-omvallen/current", asyncRoute(async (req, res) => {
+    const runtimeState = await runtimeStateQuick(req, clients);
+    res.json(publicOmvallenStatus(environmentOmvallenStatus(runtimeState || {}, options.environmentOmvallen || {})));
+  }));
+
+  app.post("/v0/show-control/cues/environment-omvallen", asyncRoute(async (req, res) => {
+    const runtimeState = await runtimeStateQuick(req, clients, 1500);
+    let cue;
+    try {
+      cue = buildEnvironmentOmvallenCue(runtimeState || {}, req.body || {}, options.environmentOmvallen || {});
+    } catch (err) {
+      if (err && err.statusCode === 409) {
+        res.status(409).json({ ok: false, error: err.code, omvallen: err.omvallen });
+        return;
+      }
+      throw err;
+    }
+    // Niet wachten tot het geluid klaar is: de knop moet meteen antwoord krijgen.
+    executeCue(cue, executeOptions).then(() => saveCue(cue)).catch(() => {});
+    const na = publicOmvallenStatus(environmentOmvallenStatus(runtimeState || {}, options.environmentOmvallen || {}));
+    omvallenCache.value = na;
+    res.status(201).json({
+      ok: true,
+      cueId: cue.cueId,
+      name: cue.name,
+      omvallen: na,
+    });
   }));
 
   app.post("/v0/show-control/media-assets/refresh", asyncRoute(async (req, res) => {
@@ -585,6 +629,7 @@ function createShowControlApp(options = {}) {
       targetStatus: latestCueSummary && latestCueSummary.status ? latestCueSummary.status.targetStatus || {} : {},
       hardware,
       environmentExtras,
+      environmentOmvallen: omvallenCache.value,
     });
   }));
 

@@ -27,6 +27,11 @@ function oscArgsForAction(action) {
     const payload = action.payload || {};
     args.push(String(payload.filePath || ""), String(Number(payload.duur) || 0), payload.uit ? "1" : "0");
   }
+  // td.effect.omvallen: clip en uit in de OSC-args, om dezelfde reden.
+  if (action.command === "td.effect.omvallen") {
+    const payload = action.payload || {};
+    args.push(String(payload.filePath || ""), payload.uit ? "1" : "0", String(Number(payload.duur) || 0));
+  }
   return args;
 }
 

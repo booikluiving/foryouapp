@@ -75,6 +75,8 @@ const state = {
   videoPosterQueue: [],
   videoPosterActive: false,
   videoPosterObserver: null,
+  effectPos: 0,
+  effectBusy: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -461,9 +463,147 @@ function layerStyle(layer) {
     `height:${layerPercent(layer.height, CANVAS.canvasHeight)}`,
     `opacity:${Number(layer.opacity ?? 1)}`,
     `z-index:${Number(layer.zIndex || 0)}`,
-    `transform:rotate(${Number(layer.rotationDeg || 0)}deg)`,
+    `transform:${effectTransform(layer, effectPose(layer))}`,
   ].join(";");
 }
+
+// ---- Effect "omvallen" -------------------------------------------------------------------
+// Een PNG-laag met val.stap > 0 valt om bij die stap. De knop "Volgende kast" speelt de
+// stappen na elkaar: eerst komt de eerste laag even los, dan valt per druk een stap, en als
+// laatste zakt alles wat ligt onder de beeldrand weg.
+const EFFECT = { fps: 25, klap: 1.55, leun: 0.6, loskom: 1.25, plat: 90, zakTot: 1.1 };
+
+function effectLayers(composition = state.draftComposition) {
+  return ((composition && composition.imageLayers) || []).filter((layer) => layer.val && Number(layer.val.stap) > 0);
+}
+
+function effectSteps() {
+  return [...new Set(effectLayers().map((layer) => Number(layer.val.stap)))].sort((a, b) => a - b);
+}
+
+function effectTotal() {
+  const steps = effectSteps().length;
+  return steps ? steps + 2 : 0;
+}
+
+// De stand van een laag als het effect stilstaat op positie pos.
+function effectPose(layer, pos = state.effectPos) {
+  const pose = { hoek: 0, dy: 0 };
+  if (!state.editingEnvironmentId || !layer || !layer.val || !pos) return pose;
+  const steps = effectSteps();
+  const index = steps.indexOf(Number(layer.val.stap));
+  if (index < 0) return pose;
+  if (pos >= index + 2) pose.hoek = EFFECT.plat;
+  if (pos >= steps.length + 2) pose.dy = EFFECT.zakTot;
+  return pose;
+}
+
+function effectTransform(layer, pose) {
+  const base = `rotate(${Number(layer.rotationDeg || 0)}deg)`;
+  if (!pose || (!pose.hoek && !pose.dy)) return base;
+  const links = layer.val && layer.val.richting === "links";
+  const hoek = links ? -pose.hoek : pose.hoek;
+  const px = links ? "-50%" : "50%";
+  const terug = links ? "50%" : "-50%";
+  return `translateY(${(pose.dy * 100).toFixed(2)}%) translate(${px},50%) rotate(${hoek.toFixed(3)}deg) translate(${terug},-50%) ${base}`;
+}
+
+// Een zware kast: leunt traag, kantelt steeds sneller, slaat neer en veert nauwelijks na.
+function effectValHoek(t) {
+  const tot = EFFECT.plat;
+  if (t < EFFECT.leun) { const k = t / EFFECT.leun; return 3 * k * k; }
+  const hoek = 3 * Math.exp(Math.log(tot / 3) * (t - EFFECT.leun) / (EFFECT.klap - EFFECT.leun));
+  if (t < EFFECT.klap && hoek < tot) return hoek;
+  const dt = t - EFFECT.klap;
+  return tot - 2.3 * Math.abs(Math.sin(Math.PI * dt / 0.22)) * Math.exp(-dt / 0.10);
+}
+
+function effectLoskomHoek(t) {
+  if (t < 0.8) return 4 * Math.sin(Math.PI / 2 * t / 0.8);
+  if (t < EFFECT.loskom) return 4 * Math.cos(Math.PI / 2 * (t - 0.8) / 0.45);
+  return 0;
+}
+
+// Alles wat er nog is schudt kort mee op de klap (deel van de eigen hoogte).
+function effectDreun(t, op) {
+  const dt = t - op;
+  if (dt < 0) return 0;
+  return 0.01 * Math.sin(dt * 38) * Math.exp(-dt / 0.16);
+}
+
+function effectGeluid(delaySeconds) {
+  const asset = presentAssetsFor(state.editingEnvironmentId).find((item) => item.role === "extraGeluid");
+  if (!asset) return;
+  window.setTimeout(() => {
+    const audio = new Audio(assetUrl(asset));
+    audio.play().catch(() => {});
+  }, Math.max(0, delaySeconds * 1000));
+}
+
+function effectReset() {
+  state.effectPos = 0;
+  state.effectBusy = false;
+  renderCards();
+}
+
+function effectNext() {
+  const total = effectTotal();
+  if (!total || state.effectBusy) return;
+  if (state.effectPos >= total) { effectReset(); return; }
+  const from = state.effectPos;
+  const to = from + 1;
+  const steps = effectSteps();
+  const duur = to === 1 ? 2.4 : 2.7;
+  const frames = Math.round(duur * EFFECT.fps);
+  const animations = [];
+  for (const layer of effectLayers()) {
+    const node = document.querySelector(layerSelector(layer.id));
+    if (!node) continue;
+    const index = steps.indexOf(Number(layer.val.stap));
+    const start = effectPose(layer, from);
+    const keyframes = [];
+    for (let frame = 0; frame <= frames; frame += 1) {
+      const t = frame / EFFECT.fps;
+      const pose = { ...start };
+      if (to === 1) {
+        if (index === 0) pose.hoek = effectLoskomHoek(t);
+        pose.dy += effectDreun(t, EFFECT.loskom) * (index === 0 ? 0.6 : 1);
+      } else if (to <= steps.length + 1) {
+        if (index === to - 2) pose.hoek = effectValHoek(t);
+        else pose.dy += effectDreun(t, EFFECT.klap);
+      } else {
+        const k = clamp((t - 0.3) / 0.9, 0, 1);
+        if (start.hoek) pose.dy = EFFECT.zakTot * k * k + effectDreun(t, 1.2);
+      }
+      keyframes.push({ transform: effectTransform(layer, pose) });
+    }
+    animations.push(node.animate(keyframes, { duration: duur * 1000, fill: "forwards", easing: "linear" }));
+  }
+  if (to === 1) effectGeluid(EFFECT.loskom);
+  else if (to <= steps.length + 1) effectGeluid(EFFECT.klap);
+  state.effectBusy = true;
+  const klaar = () => {
+    state.effectPos = to;
+    state.effectBusy = false;
+    renderCards();
+  };
+  if (!animations.length) { klaar(); return; }
+  Promise.all(animations.map((animation) => animation.finished)).then(klaar, klaar);
+}
+
+function renderEffectControls() {
+  const total = effectTotal();
+  if (!total) return "";
+  const label = state.effectPos >= total ? "Opnieuw" : "Volgende kast";
+  return `
+    <span class="effectControls">
+      <button class="fy-button" type="button" data-effect-next>${label}</button>
+      <button class="fy-button" type="button" data-effect-reset ${state.effectPos ? "" : "disabled"}>Begin</button>
+      <span class="fy-small">stap ${state.effectPos} / ${total}</span>
+    </span>
+  `;
+}
+// -------------------------------------------------------------------------------------------
 
 function videoPosterKey(asset) {
   return asset && asset.id ? asset.id : "";
@@ -861,6 +1001,20 @@ function renderLayerControls() {
         ${numberInput("Rotatie", "rotationDeg", Number(layer.rotationDeg || 0).toFixed(1), "0.1")}
         ${numberInput("Opacity", "opacity", Number(layer.opacity ?? 1).toFixed(2), "0.01")}
       </div>
+      ${layer.role === "fxImage" ? `
+      <div class="transformGrid">
+        <label>
+          <span>Valt bij stap</span>
+          <input type="number" step="1" min="0" max="20" value="${esc(layer.val && layer.val.stap || 0)}" data-layer-field="valStap">
+        </label>
+        <label>
+          <span>Valt naar</span>
+          <select data-layer-field="valRichting">
+            <option value="rechts" ${layer.val && layer.val.richting === "links" ? "" : "selected"}>rechts</option>
+            <option value="links" ${layer.val && layer.val.richting === "links" ? "selected" : ""}>links</option>
+          </select>
+        </label>
+      </div>` : ""}
     </div>
   `;
 }
@@ -931,6 +1085,7 @@ function renderEditor(environment) {
         <div class="fy-actions fy-actions-end">
           <label class="check guideToggle"><input type="checkbox" ${composition.guidesVisible !== false ? "checked" : ""} data-toggle-guides> Kaders 1 / 2 / 3</label>
           <label class="check guideToggle"><input type="checkbox" ${state.peopleVisible ? "checked" : ""} data-toggle-people> Personen</label>
+          ${renderEffectControls()}
           ${saveStateHtml()}
           <button class="fy-button fy-button-primary" type="button" data-save-composition>Opslaan</button>
           <button class="fy-button" type="button" data-cancel-composition>Annuleer</button>
@@ -1041,6 +1196,8 @@ async function uploadFile(dropZone, file, extra = {}) {
 }
 
 function startEditing(environmentId) {
+  state.effectPos = 0;
+  state.effectBusy = false;
   state.editingEnvironmentId = environmentId;
   state.savedComposition = clone(normalizedComposition(environmentId));
   state.draftComposition = clone(state.savedComposition);
@@ -1109,6 +1266,16 @@ function setLayerField(target) {
   const layer = findLayer(state.selectedLayerId);
   if (!layer) return;
   const field = target.getAttribute("data-layer-field");
+  if (field === "valStap" || field === "valRichting") {
+    const val = { stap: 0, richting: "rechts", ...(layer.val || {}) };
+    if (field === "valStap") val.stap = clampInteger(target.value, 0, 20, 0);
+    else val.richting = target.value === "links" ? "links" : "rechts";
+    state.effectPos = 0;
+    updateLayer(layer.id, { val: val.stap ? val : null });
+    markCompositionDirty();
+    renderCards();
+    return;
+  }
   let value;
   if (target.type === "checkbox") value = target.checked;
   else if (["x", "y", "width", "height", "rotationDeg", "opacity"].includes(field)) value = Number(target.value);
@@ -1474,6 +1641,8 @@ function bindEvents() {
       renderCards();
     });
     if (event.target.closest("[data-cancel-composition]")) cancelComposition();
+    if (event.target.closest("[data-effect-next]")) effectNext();
+    if (event.target.closest("[data-effect-reset]")) effectReset();
     const layerButton = event.target.closest("[data-select-layer]");
     if (layerButton) {
       state.selectedLayerId = layerButton.getAttribute("data-select-layer");

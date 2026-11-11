@@ -1004,11 +1004,31 @@ function normalizeCompositionLayer(layer, role, index = 0) {
     rotationDeg: numericValue(layer.rotationDeg, 0, { min: -360, max: 360 }),
     opacity: numericValue(layer.opacity, 1, { min: 0, max: 1 }),
     zIndex: numericValue(layer.zIndex, index + 1, { min: 0, max: 9999, integer: true }),
+    ...normalizeLayerVal(layer.val, role),
   };
+}
+
+// Effect "omvallen": een PNG-laag kan bij een stap omvallen, naar links of naar rechts.
+// stap 0 (of geen val) = de laag valt niet.
+function normalizeLayerVal(val, role) {
+  if (role !== "fxImage" || !val || typeof val !== "object" || Array.isArray(val)) return {};
+  const stap = numericValue(val.stap, 0, { min: 0, max: 20, integer: true });
+  if (!stap) return {};
+  return { val: { stap, richting: val.richting === "links" ? "links" : "rechts" } };
+}
+
+// Effect "omvallen": per druk op de knop een eigen geluid (index 0 = eerste druk). Leeg = het
+// extra geluid van de omgeving.
+function normalizeCompositionValGeluiden(list) {
+  if (!Array.isArray(list)) return [];
+  const result = list.slice(0, 22).map((item) => String(item || "").trim());
+  while (result.length && !result[result.length - 1]) result.pop();
+  return result;
 }
 
 function normalizeEnvironmentCompositionRecord(record, lightingPresets = DEFAULT_LIGHTING_PRESETS) {
   const at = nowIso();
+  const valGeluiden = normalizeCompositionValGeluiden(record && record.valGeluiden);
   const backgroundLayer = normalizeCompositionLayer(record && record.backgroundLayer, "background", 0);
   const fxVideoLayer = normalizeCompositionLayer(record && record.fxVideoLayer, "fxVideo", 0);
   const imageLayers = Array.isArray(record && record.imageLayers)
@@ -1024,6 +1044,7 @@ function normalizeEnvironmentCompositionRecord(record, lightingPresets = DEFAULT
     backgroundLayer,
     fxVideoLayer,
     imageLayers,
+    ...(valGeluiden.length ? { valGeluiden } : {}),
     lighting,
     createdAt: record && record.createdAt || at,
     updatedAt: record && record.updatedAt || record && record.createdAt || at,
@@ -1547,6 +1568,9 @@ async function deleteMediaAsset(assetId, options = {}) {
     if (composition.backgroundLayer && composition.backgroundLayer.assetId === id) composition.backgroundLayer = null;
     if (composition.fxVideoLayer && composition.fxVideoLayer.assetId === id) composition.fxVideoLayer = null;
     composition.imageLayers = (composition.imageLayers || []).filter((layer) => layer.assetId !== id);
+    if (Array.isArray(composition.valGeluiden)) {
+      composition.valGeluiden = composition.valGeluiden.map((item) => (item === id ? "" : item));
+    }
     composition.updatedAt = at;
   }
   await writeCatalogStore(store, options);
@@ -1667,9 +1691,20 @@ async function upsertEnvironmentComposition(environmentId, body, readModel, opti
     issues.push(issue("composition_too_many_layers", "A composition can contain at most 100 image layers."));
   }
   const lighting = normalizeEnvironmentLighting(body && body.lighting, lightingPresets);
+  const existing = (store.environmentCompositions || []).find((item) => item.environmentId === id);
+  // Een editor die de geluiden per valstap niet kent, stuurt ze niet mee: dan blijven ze staan.
+  const valGeluiden = normalizeCompositionValGeluiden(
+    body && Array.isArray(body.valGeluiden) ? body.valGeluiden : existing && existing.valGeluiden
+  );
+  for (const [index, assetId] of valGeluiden.entries()) {
+    if (!assetId) continue;
+    const asset = assetMap.get(assetId);
+    if (!asset || asset.status !== "present" || asset.environmentId !== id || asset.type !== "extra") {
+      issues.push(issue("composition_valgeluid_asset_invalid", "Het geluid van een stap hoort bij deze omgeving te staan.", { path: `valGeluiden.${index}` }));
+    }
+  }
   if (issues.length) throw new CatalogInputError("invalid_environment_composition", issues);
 
-  const existing = (store.environmentCompositions || []).find((item) => item.environmentId === id);
   const at = nowIso();
   const record = normalizeEnvironmentCompositionRecord({
     environmentId: id,
@@ -1678,6 +1713,7 @@ async function upsertEnvironmentComposition(environmentId, body, readModel, opti
     backgroundLayer,
     fxVideoLayer,
     imageLayers,
+    valGeluiden,
     lighting,
     createdAt: existing ? existing.createdAt : at,
     updatedAt: at,
