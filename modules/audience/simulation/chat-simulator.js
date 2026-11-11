@@ -14,6 +14,7 @@ const DEFAULTS = Object.freeze({
   durationSec: 0,
   msgRate: 0.025,
   reactionRate: 0.25,
+  likeRate: 0.05,
   minGapMs: 2300,
   spawnMs: 80,
   autoVote: true,
@@ -81,6 +82,7 @@ function normalizeConfig(raw = {}, base = DEFAULTS) {
     durationSec: clampInt(raw.durationSec, 0, 24 * 60 * 60, base.durationSec),
     msgRate: clampFloat(raw.msgRate, 0, 0.1, base.msgRate),
     reactionRate: clampFloat(raw.reactionRate, 0, 4, base.reactionRate),
+    likeRate: clampFloat(raw.likeRate, 0, 2, base.likeRate ?? DEFAULTS.likeRate),
     minGapMs: clampInt(raw.minGapMs, 200, 20000, base.minGapMs),
     spawnMs: clampInt(raw.spawnMs, 0, 5000, base.spawnMs),
     autoVote: parseBooleanLike(raw.autoVote, base.autoVote),
@@ -168,6 +170,8 @@ class ChatSimulator {
       nextCommentAt: Date.now() + this.randomInt(200, Math.max(400, this.config.minGapMs)),
       nextReactionAt: Date.now() + this.randomInt(120, 1000),
       votedPollIds: new Set(),
+      nextLikeAt: Date.now() + this.randomInt(1500, 6000),
+      likedIds: new Set(),
       profile: {
         ...traits,
         typingCps: Array.isArray(traits.typingCps)
@@ -273,6 +277,19 @@ class ChatSimulator {
         bot.nextReactionAt = now + this.randomInt(260, 1300);
       }
 
+      // Hier en daar elkaars comments liken (alleen tussen de scènes, zoals op de telefoon).
+      if (now >= bot.nextLikeAt && Math.random() < this.config.likeRate / 4) {
+        const id = this.kiesCommentOmTeLiken(bot);
+        if (id) {
+          bot.likedIds.add(id);
+          this.service.acceptSimulatedLike(bot, id).catch(() => {
+            this.stats.serverErrors += 1;
+          });
+          this.stats.sentLikes = Number(this.stats.sentLikes || 0) + 1;
+        }
+        bot.nextLikeAt = now + this.randomInt(2500, 9000);
+      }
+
       if (now >= bot.nextCommentAt) {
         const plan = this.engine.planComment(bot.id, bot.profile, {
           now,
@@ -304,6 +321,21 @@ class ChatSimulator {
         });
       }
     }
+  }
+
+  // Recente comments, waarbij comments met al wat likes vaker gekozen worden (zo ontstaat een topcomment).
+  kiesCommentOmTeLiken(bot) {
+    const kandidaten = typeof this.service.recenteCommentsVoorLikes === "function"
+      ? this.service.recenteCommentsVoorLikes(25).filter((c) => c.clientKey !== bot.clientKey && !bot.likedIds.has(c.id))
+      : [];
+    if (!kandidaten.length) return 0;
+    const gewichten = kandidaten.map((c, i) => (1 + Number(c.likes || 0) * 1.5) * (1 + i / kandidaten.length));
+    let r = Math.random() * gewichten.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < kandidaten.length; i += 1) {
+      r -= gewichten[i];
+      if (r <= 0) return kandidaten[i].id;
+    }
+    return kandidaten[kandidaten.length - 1].id;
   }
 
   observeAcceptedComment(comment) {
