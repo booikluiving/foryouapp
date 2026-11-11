@@ -1182,3 +1182,10 @@ audio {
 .levelsTable .levelPlay.is-playing { background: #ff2fa0; color: #fff; }
 .levelsTable .levelTake { padding: 2px 8px; font-size: 12px; }
 .levelInfoCell { white-space: nowrap; }
+
+.zaalBox{border:1px solid var(--fy-line, #d9dde4);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.zaalRow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.zaalRow.is-off{opacity:.45}
+.zaalLabel{min-width:150px;font-weight:600}
+.zaalRange{flex:1 1 220px;min-width:160px}
+.zaalPct{min-width:44px;font-variant-numeric:tabular-nums;text-align:right}

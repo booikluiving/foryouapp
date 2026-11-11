@@ -13,7 +13,7 @@ process.env.SHOW_CONTROL_DB_DIR = path.join(tmp, "db");
 process.env.SHOW_CONTROL_ADAPTER_MODE = "test";
 
 const { createShowControlApp } = require("../server/app");
-const { environmentExtrasStatus, resetHoldState } = require("../cue-library/environment-extras");
+const { buildEnvironmentExtraCue, buildSfeerVolumeCue, environmentExtrasStatus, resetHoldState } = require("../cue-library/environment-extras");
 const { oscArgsForAction } = require("../target-adapters/touchdesigner-adapter");
 
 const catalog = {
@@ -160,11 +160,31 @@ function testOscArgs() {
   const args = oscArgsForAction({ cueId: "c", command: "td.extra.shot", payloadId: "p", payload: { filePath: "/a b.jpg", duur: 4, uit: false } });
   assert.deepEqual(args, ["c", "td.extra.shot", "p", "/a b.jpg", "4", "0"]);
   assert.deepEqual(oscArgsForAction({ cueId: "c", command: "td.camera.set", payloadId: "p", payload: { camera: 2 } }), ["c", "td.camera.set", "p"]);
+  assert.deepEqual(oscArgsForAction({ cueId: "c", command: "td.sfeer.volume", payloadId: "p", payload: { volume: 0.63 } }), ["c", "td.sfeer.volume", "p", "0.63"]);
+}
+
+// In de zaal afstellen vanuit de catalogus.
+function testZaal() {
+  const runtime = runtimeFor("environment:7");
+  const sfeer = buildSfeerVolumeCue(runtime, { environmentId: "environment:7", volume: 0.4 }, extrasOptions);
+  assert.equal(sfeer.actions[0].command, "td.sfeer.volume");
+  assert.equal(sfeer.actions[0].payload.volume, 0.4);
+  assert.equal(buildSfeerVolumeCue(runtime, { volume: 3 }, extrasOptions).actions[0].payload.volume, 1);
+  assert.throws(() => buildSfeerVolumeCue(runtime, { environmentId: "environment:12", volume: 0.4 }, extrasOptions), (err) => err.code === "andere_omgeving");
+  assert.throws(() => buildSfeerVolumeCue(runtime, { volume: "x" }, extrasOptions), (err) => err.statusCode === 400);
+  assert.throws(() => buildSfeerVolumeCue({}, { volume: 0.4 }, extrasOptions), (err) => err.code === "geen_omgeving");
+
+  const gewoon = buildEnvironmentExtraCue(runtime, { soort: "geluid" }, extrasOptions);
+  assert.equal(gewoon.actions[0].payload.volume, 0.8);
+  const proberen = buildEnvironmentExtraCue(runtime, { soort: "geluid", volume: 0.25, environmentId: "environment:7" }, extrasOptions);
+  assert.equal(proberen.actions[0].payload.volume, 0.25);
+  assert.throws(() => buildEnvironmentExtraCue(runtime, { soort: "geluid", environmentId: "environment:11" }, extrasOptions), (err) => err.code === "andere_omgeving");
 }
 
 (async () => {
   testStatus();
   testOscArgs();
+  testZaal();
   await testRoutes();
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log("environment-extras: ok");

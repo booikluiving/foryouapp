@@ -10,8 +10,9 @@ Wat het doet, alleen in de tekst van /project1/td_qhub_router:
   prepared_soundscape.par.volume, uit soundscape.volume in de payload (0-1).
   Show Control vult dat uit de catalogus (omgeving -> extras.sfeer.volume).
 - Ontbreekt het volume (oude Show Control), dan wordt het 1: zoals nu.
-Geen operators, geen verbindingen. Het volume geldt vanaf de volgende omgeving
-die klaargezet wordt.
+- /td/cue met command td.sfeer.volume (4e OSC-arg = volume 0-1) zet het volume
+  meteen: de schuif "In de zaal" in de catalogus.
+Geen operators, geen verbindingen.
 
 Bewaart standaard NIET (SOUNDSCAPE_VOLUME_SAVE = False): project.save neemt de hele
 live stand mee. Zonder bewaren is de patch na een herstart van TD weg en speelt alles
@@ -28,11 +29,17 @@ SOUNDSCAPE_VOLUME_SAVE = False
 SOUNDSCAPE_VOLUME_NEW_VERSION = None  # bijvoorbeeld "v1.15"; None = huidige versie + 1
 
 ROUTER_MARKER = "# --- For_You sfeer volume ---"
+OSC_MARKER = "# --- For_You sfeer volume live ---"
 
 CALL_OLD = "        _set_file_parameter(soundscape_op, soundscape_path)\n"
 CALL_NEW = CALL_OLD + "        _set_soundscape_volume(soundscape_op, soundscape.get(\"volume\"))  " + ROUTER_MARKER + "\n"
 
 FUNCTION_ANCHOR = "def update_asset_bundle_outputs(asset_items):"
+
+OSC_OLD = "    handle_td_cue(cue_id, command, payload_id)\n    return\n"
+OSC_NEW = ("    if command == \"td.sfeer.volume\":  " + OSC_MARKER + "\n"
+           "        handle_sfeer_volume(cue_id, osc_args[3:])\n"
+           "        return\n" + OSC_OLD)
 FUNCTION_CODE = ROUTER_MARKER + '''
 def _set_soundscape_volume(op_obj, volume):
     if op_obj is None:
@@ -49,6 +56,18 @@ def _set_soundscape_volume(op_obj, volume):
         return True
     except Exception:
         return False
+
+
+def handle_sfeer_volume(cue_id, extra_args):
+    cue_id = _text(cue_id)
+    command = "td.sfeer.volume"
+    soundscape = _op("prepared_soundscape")
+    volume = extra_args[0] if len(extra_args) > 0 else 1
+    if not _set_soundscape_volume(soundscape, volume):
+        ack(cue_id, command, "error", "error", "prepared_soundscape_missing")
+        return False
+    ack(cue_id, command, "applied", "ok", "sfeer_volume:%s" % soundscape.par.volume.eval())
+    return True
 # --- einde For_You sfeer volume ---
 
 
@@ -57,13 +76,18 @@ def _set_soundscape_volume(op_obj, volume):
 
 def patch_router_text(text):
     """Geeft de nieuwe routertekst terug. Zelfde tekst als hij al gepatcht is."""
-    if ROUTER_MARKER in text:
+    if ROUTER_MARKER in text and OSC_MARKER in text:
         return text
+    if ROUTER_MARKER in text:
+        raise RuntimeError("td_qhub_router: oudere sfeer-volume-patch zonder live-deel; eerst de vorige versie openen")
+    if text.count(OSC_OLD) != 1:
+        raise RuntimeError("td_qhub_router: handle_td_cue in onReceiveOSC niet herkend, niets veranderd")
     if text.count(CALL_OLD) != 1:
         raise RuntimeError("td_qhub_router: _set_file_parameter(soundscape_op, ...) niet herkend, niets veranderd")
     if text.count(FUNCTION_ANCHOR) != 1:
         raise RuntimeError("td_qhub_router: update_asset_bundle_outputs niet gevonden, niets veranderd")
     text = text.replace(CALL_OLD, CALL_NEW)
+    text = text.replace(OSC_OLD, OSC_NEW)
     return text.replace(FUNCTION_ANCHOR, FUNCTION_CODE + FUNCTION_ANCHOR)
 
 

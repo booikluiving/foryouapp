@@ -185,6 +185,15 @@ const DEFINITIONS = Object.freeze([
     description: "Toont het extra shot van de omgeving schermvullend (payload: filePath, duur, uit). Wordt per omgeving in de catalogus ingevuld.",
   }),
   command({
+    name: "td.sfeer.volume",
+    title: "TD volume sfeergeluid",
+    targetId: "touchdesigner",
+    adapter: "touchdesigner",
+    ackMode: "fire-and-forget",
+    transport: "osc-control-port",
+    description: "Zet meteen het volume (0-1) van het sfeergeluid dat nu klaarstaat (prepared_soundscape). Vanuit de catalogus, om in de zaal af te stellen.",
+  }),
+  command({
     name: "td.effect.omvallen",
     title: "TD effect omvallen",
     targetId: "touchdesigner",

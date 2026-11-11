@@ -197,6 +197,40 @@ function createCatalogApp(options = {}) {
   app.use("/catalog/media-assets", express.static(path.join(uiRoot, "media-assets"), { extensions: ["html"] }));
   app.use("/catalog", express.static(path.join(uiRoot, "catalog"), { extensions: ["html"] }));
 
+  // In de zaal afstellen: doorgeven aan Show Control (dat weet welke omgeving er staat).
+  async function naarShowControl(method, route, body) {
+    const response = await fetch(`${showControlUrl(options)}${route}`, {
+      method,
+      headers: body === undefined ? {} : { "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(4000),
+    });
+    const data = await response.json().catch(() => ({}));
+    return { status: response.status, data };
+  }
+  function zaalRoute(handler) {
+    return async (req, res) => {
+      try {
+        const { status, data } = await handler(req);
+        res.status(status).json(data);
+      } catch (err) {
+        res.status(502).json({ ok: false, error: "show_control_niet_bereikbaar", message: err && err.message });
+      }
+    };
+  }
+  app.get("/v0/catalog/zaal", zaalRoute(() => naarShowControl("GET", "/v0/show-control/environment-extras/current")));
+  app.post("/v0/catalog/zaal/sfeer-volume", zaalRoute((req) => naarShowControl("POST", "/v0/show-control/sound/sfeer-volume", {
+    environmentId: req.body && req.body.environmentId,
+    volume: req.body && req.body.volume,
+    source: "catalogus",
+  })));
+  app.post("/v0/catalog/zaal/extra-geluid", zaalRoute((req) => naarShowControl("POST", "/v0/show-control/cues/environment-extra", {
+    soort: "geluid",
+    environmentId: req.body && req.body.environmentId,
+    volume: req.body && req.body.volume,
+    source: "catalogus",
+  })));
+
   app.get("/health", (req, res) => {
     const port = Number(process.env.CATALOG_PORT || process.env.PORT || options.port || 3021);
     res.json({

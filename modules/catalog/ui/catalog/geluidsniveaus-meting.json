@@ -738,6 +738,836 @@
    "opmerkingen": [
     "harder kan niet met het volumeveld (max 100%): bestand aanpassen"
    ]
+  },
+  "antiekwinkel-0847145cc41014e4.m4a": {
+   "soort": "sfeer",
+   "omgeving": "Antiekwinkel",
+   "lufs": -23.6,
+   "luidst": -18.7,
+   "truePeak": -8.6,
+   "lra": 3.6,
+   "duur": 325.5,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 120.3
+  },
+  "breken-ec9a1c09e0bf8a0a.mp3": {
+   "soort": "extra",
+   "omgeving": "Antiekwinkel",
+   "lufs": -17.7,
+   "luidst": -13.9,
+   "truePeak": -4.2,
+   "lra": 20.0,
+   "duur": 3.1,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "auto-0d7da2d24bcb9fcf.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Auto",
+   "lufs": -23.9,
+   "luidst": -22.7,
+   "truePeak": -9.6,
+   "lra": 0.5,
+   "duur": 227.3,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 65.8
+  },
+  "remmen-en-klap-21d10309ea46b0cb.mp3": {
+   "soort": "extra",
+   "omgeving": "Auto",
+   "lufs": -17.8,
+   "luidst": -13.6,
+   "truePeak": -6.8,
+   "lra": 0.4,
+   "duur": 3.4,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "remmen-en-klap-f788957cf2a59e80.mp3": {
+   "soort": "extra",
+   "omgeving": "Auto",
+   "lufs": -10.9,
+   "luidst": -6.7,
+   "truePeak": 0.2,
+   "lra": 0.4,
+   "duur": 3.4,
+   "voorstelDb": -6.9,
+   "voorstelVolume": 45,
+   "opmerkingen": [
+    "gemeten 11 nov",
+    "true peak +0.2 dBTP: clipt"
+   ]
+  },
+  "bioscoop-7207da6622f5e823.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Bioscoop",
+   "lufs": -23.9,
+   "luidst": -18.4,
+   "truePeak": -8.1,
+   "lra": 3.8,
+   "duur": 20.7,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 19.8
+  },
+  "ssst-fbdb2adf76b068a5.mp3": {
+   "soort": "extra",
+   "omgeving": "Bioscoop",
+   "lufs": -16.2,
+   "luidst": -13.9,
+   "truePeak": -8.6,
+   "lra": 0.0,
+   "duur": 2.4,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "cradam-7d15f237170b1b86.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Cradam",
+   "lufs": -23.6,
+   "luidst": -18.7,
+   "truePeak": -7.5,
+   "lra": 2.4,
+   "duur": 237.6,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 161.4
+  },
+  "koffie-5c9295ec2778e24d.mp3": {
+   "soort": "extra",
+   "omgeving": "Cradam",
+   "lufs": -15.5,
+   "luidst": -13.8,
+   "truePeak": -3.4,
+   "lra": 0.7,
+   "duur": 4.0,
+   "voorstelDb": 0.2,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "eerste-handboogstraat-9b962e68c1065d40.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Eerste handboogstraat",
+   "lufs": -23.6,
+   "luidst": -14.3,
+   "truePeak": -10.6,
+   "lra": 11.4,
+   "duur": 176.1,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 86.0
+  },
+  "fietsbel-c245cecd808eaafe.mp3": {
+   "soort": "extra",
+   "omgeving": "Eerste handboogstraat",
+   "lufs": -16.5,
+   "luidst": -13.8,
+   "truePeak": -3.1,
+   "lra": 0.0,
+   "duur": 1.8,
+   "voorstelDb": 0.2,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "fata-morgana-a32922657f5245e0.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Fata morgana",
+   "lufs": -23.6,
+   "luidst": -16.9,
+   "truePeak": -13.2,
+   "lra": 6.2,
+   "duur": 160.4,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 27.8
+  },
+  "harp-8ee3158eba11608f.mp3": {
+   "soort": "extra",
+   "omgeving": "Fata morgana",
+   "lufs": -17.5,
+   "luidst": -13.9,
+   "truePeak": -5.4,
+   "lra": 3.1,
+   "duur": 5.0,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "festival-b464be44bca743f7.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Festival",
+   "lufs": -23.6,
+   "luidst": -18.4,
+   "truePeak": -7.1,
+   "lra": 8.1,
+   "duur": 262.2,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 225.9
+  },
+  "kotsen-253e9051f15ad597.mp3": {
+   "soort": "extra",
+   "omgeving": "Festival",
+   "lufs": -18.2,
+   "luidst": -13.9,
+   "truePeak": -3.0,
+   "lra": 2.5,
+   "duur": 4.0,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "grimmige-slaapkamer-215bf55d1ec547ee.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Grimmige slaapkamer",
+   "lufs": -23.6,
+   "luidst": -16.3,
+   "truePeak": -5.1,
+   "lra": 5.8,
+   "duur": 220.5,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 160.2
+  },
+  "gegrom-cf0da0c48513a85a.mp3": {
+   "soort": "extra",
+   "omgeving": "Grimmige slaapkamer",
+   "lufs": -15.7,
+   "luidst": -13.9,
+   "truePeak": -4.9,
+   "lra": 3.8,
+   "duur": 4.6,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "hotelkamer-c65e17b9178b1b6d.m4a": {
+   "soort": "sfeer",
+   "omgeving": "Hotelkamer",
+   "lufs": -23.6,
+   "luidst": -17.9,
+   "truePeak": -8.4,
+   "lra": 3.3,
+   "duur": 204.2,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 72.2
+  },
+  "klop-48b1c29cb563d9fd.mp3": {
+   "soort": "extra",
+   "omgeving": "Hotelkamer",
+   "lufs": -16.3,
+   "luidst": -15.0,
+   "truePeak": -2.3,
+   "lra": 1.5,
+   "duur": 4.0,
+   "voorstelDb": 1.4,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov (met limiter)"
+   ]
+  },
+  "keuken-79e70c1d13f52013.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Keuken",
+   "lufs": -24.9,
+   "luidst": -13.5,
+   "truePeak": -1.7,
+   "lra": 19.6,
+   "duur": 170.1,
+   "voorstelDb": 1.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov (met limiter)"
+   ],
+   "luidstOp": 14.9
+  },
+  "sissen-dbb1bfba911ddf09.mp3": {
+   "soort": "extra",
+   "omgeving": "Keuken",
+   "lufs": -16.5,
+   "luidst": -14.1,
+   "truePeak": -1.8,
+   "lra": 0.6,
+   "duur": 4.0,
+   "voorstelDb": 0.5,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov (met limiter)"
+   ]
+  },
+  "kruipruimte-788326ac8c2a53e9.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Kruipruimte",
+   "lufs": -23.6,
+   "luidst": -10.2,
+   "truePeak": -2.8,
+   "lra": 15.1,
+   "duur": 262.2,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 198.2
+  },
+  "druppel-dc139ac979bc74bc.mp3": {
+   "soort": "extra",
+   "omgeving": "Kruipruimte",
+   "lufs": -24.3,
+   "luidst": -17.2,
+   "truePeak": -2.2,
+   "lra": 0.0,
+   "duur": 2.2,
+   "voorstelDb": 3.6,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov (met limiter)"
+   ]
+  },
+  "quiz-show-timer-30-sec-music-for-content-creator-aff4e728610d663e.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Lingo studio",
+   "lufs": -23.6,
+   "luidst": -17.4,
+   "truePeak": -8.8,
+   "lra": 3.0,
+   "duur": 32.3,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 28.099977
+  },
+  "quiz-show-timer-30-sec-music-for-content-creator-2851b708d86e9ccd.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Lingo studio",
+   "lufs": -13.7,
+   "luidst": -7.5,
+   "truePeak": 1.1,
+   "lra": 3.0,
+   "duur": 32.3,
+   "voorstelDb": -9.9,
+   "voorstelVolume": 32,
+   "opmerkingen": [
+    "gemeten 11 nov",
+    "true peak +1.1 dBTP: clipt"
+   ],
+   "luidstOp": 28.099977
+  },
+  "fout-16df4ddc9431476d.mp3": {
+   "soort": "extra",
+   "omgeving": "Lingo studio",
+   "lufs": -14.4,
+   "luidst": -13.8,
+   "truePeak": -7.3,
+   "lra": 0.0,
+   "duur": 1.1,
+   "voorstelDb": 0.2,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "linksvoor-584eeff7bd924cc2.m4a": {
+   "soort": "sfeer",
+   "omgeving": "Linksvoor",
+   "lufs": -23.6,
+   "luidst": -16.4,
+   "truePeak": -6.3,
+   "lra": 4.7,
+   "duur": 229.3,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 24.8
+  },
+  "bellen-404bcaf7e6dd2bae.mp3": {
+   "soort": "extra",
+   "omgeving": "Linksvoor",
+   "lufs": -14.9,
+   "luidst": -13.9,
+   "truePeak": -14.9,
+   "lra": 1.2,
+   "duur": 5.0,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "logeerkamer-a05f59f3491ef261.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Logeerkamer",
+   "lufs": -23.6,
+   "luidst": -20.3,
+   "truePeak": -12.6,
+   "lra": 2.3,
+   "duur": 172.0,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 106.0
+  },
+  "wekker-8ef89b9bb7ec32ea.mp3": {
+   "soort": "extra",
+   "omgeving": "Logeerkamer",
+   "lufs": -15.9,
+   "luidst": -13.8,
+   "truePeak": -5.1,
+   "lra": 0.7,
+   "duur": 4.0,
+   "voorstelDb": 0.2,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "nos-studio-245c72b68e33050a.mp3": {
+   "soort": "sfeer",
+   "omgeving": "NOS Studio",
+   "lufs": -23.6,
+   "luidst": -13.3,
+   "truePeak": -4.4,
+   "lra": 6.3,
+   "duur": 167.3,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 7.2
+  },
+  "jingle-9f56bc358b85fd07.mp3": {
+   "soort": "extra",
+   "omgeving": "NOS Studio",
+   "lufs": -17.0,
+   "luidst": -13.9,
+   "truePeak": -6.5,
+   "lra": 0.0,
+   "duur": 2.4,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "persconferentie-eb98d8d2ffd8e9b6.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Persconferentie",
+   "lufs": -23.8,
+   "luidst": -19.7,
+   "truePeak": -2.5,
+   "lra": 3.6,
+   "duur": 170.1,
+   "voorstelDb": 0.2,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 58.7
+  },
+  "flits-b8dc81735f3f3637.mp3": {
+   "soort": "extra",
+   "omgeving": "Persconferentie",
+   "lufs": -16.4,
+   "luidst": -13.8,
+   "truePeak": -5.1,
+   "lra": 0.0,
+   "duur": 2.3,
+   "voorstelDb": 0.2,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "podcaststudio-b42e0a025f6be8cd.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Podcaststudio",
+   "lufs": -23.9,
+   "luidst": -14.9,
+   "truePeak": -5.6,
+   "lra": 22.7,
+   "duur": 164.1,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 9.4
+  },
+  "bliep-850e49882ed37cda.mp3": {
+   "soort": "extra",
+   "omgeving": "Podcaststudio",
+   "lufs": -13.9,
+   "luidst": -13.9,
+   "truePeak": -13.9,
+   "lra": 0.0,
+   "duur": 1.0,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "restaurant-30377b98cc8f1881.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Restaurant",
+   "lufs": -23.8,
+   "luidst": -21.0,
+   "truePeak": -14.6,
+   "lra": 1.7,
+   "duur": 212.9,
+   "voorstelDb": 0.2,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 84.2
+  },
+  "belletje-f0d68ae73f3c62ca.mp3": {
+   "soort": "extra",
+   "omgeving": "Restaurant",
+   "lufs": -17.9,
+   "luidst": -13.9,
+   "truePeak": -7.5,
+   "lra": 23.2,
+   "duur": 4.0,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "spelletjeskamer-ef237a12468e9297.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Spelletjeskamer",
+   "lufs": -23.6,
+   "luidst": -17.2,
+   "truePeak": -6.8,
+   "lra": 3.6,
+   "duur": 59.4,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 27.7
+  },
+  "bom-bc042b2e29599cb9.mp3": {
+   "soort": "extra",
+   "omgeving": "Spelletjeskamer",
+   "lufs": -18.7,
+   "luidst": -13.8,
+   "truePeak": -11.5,
+   "lra": 14.7,
+   "duur": 6.0,
+   "voorstelDb": 0.2,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "supermarkt-fcd2371a06a43efa.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Supermarkt",
+   "lufs": -23.6,
+   "luidst": -18.1,
+   "truePeak": -3.0,
+   "lra": 3.3,
+   "duur": 115.4,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 87.9
+  },
+  "kassa-df4fbf10c86883de.mp3": {
+   "soort": "extra",
+   "omgeving": "Supermarkt",
+   "lufs": -14.6,
+   "luidst": -13.9,
+   "truePeak": -7.6,
+   "lra": 0.2,
+   "duur": 4.0,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "tennis-aba08ffb151b1eae.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Tennis",
+   "lufs": -24.5,
+   "luidst": -16.8,
+   "truePeak": -2.3,
+   "lra": 8.9,
+   "duur": 164.1,
+   "voorstelDb": 0.9,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov (met limiter)"
+   ],
+   "luidstOp": 151.1
+  },
+  "pok-989c6c64bdd50f06.mp3": {
+   "soort": "extra",
+   "omgeving": "Tennis",
+   "lufs": -17.2,
+   "luidst": -14.8,
+   "truePeak": -2.0,
+   "lra": 0.0,
+   "duur": 1.3,
+   "voorstelDb": 1.2,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov (met limiter)"
+   ]
+  },
+  "the-voice-of-holland-b4ac6e94d0ff7e90.mp3": {
+   "soort": "sfeer",
+   "omgeving": "The Voice of Holland",
+   "lufs": -23.6,
+   "luidst": -16.9,
+   "truePeak": -8.2,
+   "lra": 16.3,
+   "duur": 127.0,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 19.9
+  },
+  "applaus-8fb72236e49d72b5.mp3": {
+   "soort": "extra",
+   "omgeving": "The Voice of Holland",
+   "lufs": -15.8,
+   "luidst": -13.9,
+   "truePeak": -8.0,
+   "lra": 1.4,
+   "duur": 6.0,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "trampolinepark-b5e40333c2cf083d.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Trampolinepark",
+   "lufs": -23.8,
+   "luidst": -16.0,
+   "truePeak": -2.9,
+   "lra": 4.9,
+   "duur": 73.0,
+   "voorstelDb": 0.2,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 66.2
+  },
+  "omroep-34e6561c3d0e8e40.mp3": {
+   "soort": "extra",
+   "omgeving": "Trampolinepark",
+   "lufs": -17.7,
+   "luidst": -13.9,
+   "truePeak": -8.1,
+   "lra": 20.6,
+   "duur": 3.2,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "trein-c2f7ff6d1235501b.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Trein",
+   "lufs": -23.6,
+   "luidst": -15.6,
+   "truePeak": -4.8,
+   "lra": 10.9,
+   "duur": 114.0,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 82.6
+  },
+  "crash-cfd54a9ffd48011c.mp3": {
+   "soort": "extra",
+   "omgeving": "Trein",
+   "lufs": -17.6,
+   "luidst": -13.9,
+   "truePeak": -3.6,
+   "lra": 1.4,
+   "duur": 5.0,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "ziekenhuis-87f169be360ddc2b.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Ziekenhuis",
+   "lufs": -23.7,
+   "luidst": -10.1,
+   "truePeak": -2.0,
+   "lra": 8.8,
+   "duur": 292.2,
+   "voorstelDb": 0.1,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov (met limiter)"
+   ],
+   "luidstOp": 151.5
+  },
+  "piepjes-5ab67717c8b68a6b.mp3": {
+   "soort": "extra",
+   "omgeving": "Ziekenhuis",
+   "lufs": -16.1,
+   "luidst": -13.8,
+   "truePeak": -11.5,
+   "lra": 0.1,
+   "duur": 4.5,
+   "voorstelDb": 0.2,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "zonnebloemveld-4744b0ff3ec3c664.mp3": {
+   "soort": "sfeer",
+   "omgeving": "Zonnebloemveld",
+   "lufs": -23.6,
+   "luidst": -16.9,
+   "truePeak": -6.7,
+   "lra": 7.8,
+   "duur": 96.3,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 39.5
+  },
+  "plassen-7e9bc77a38eba2c5.mp3": {
+   "soort": "extra",
+   "omgeving": "Zonnebloemveld",
+   "lufs": -15.6,
+   "luidst": -13.8,
+   "truePeak": -3.2,
+   "lra": 4.8,
+   "duur": 5.0,
+   "voorstelDb": 0.2,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
+  },
+  "skype-bellen-d0a73acc3ced0422.wav": {
+   "soort": "sfeer",
+   "omgeving": "Zoom",
+   "lufs": -23.6,
+   "luidst": -21.4,
+   "truePeak": -13.6,
+   "lra": 1.5,
+   "duur": 5.1,
+   "voorstelDb": 0.0,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ],
+   "luidstOp": 0
+  },
+  "skype-bellen-2169af47a60462e5.wav": {
+   "soort": "sfeer",
+   "omgeving": "Zoom",
+   "lufs": -14.7,
+   "luidst": -12.5,
+   "truePeak": -4.7,
+   "lra": 1.5,
+   "duur": 5.1,
+   "voorstelDb": -8.9,
+   "voorstelVolume": 36,
+   "opmerkingen": [
+    "gemeten 11 nov"
+   ],
+   "luidstOp": 2.499979
+  },
+  "haperen-c0ae1e498b5b51a3.mp3": {
+   "soort": "extra",
+   "omgeving": "Zoom",
+   "lufs": -17.1,
+   "luidst": -13.9,
+   "truePeak": -1.9,
+   "lra": 1.2,
+   "duur": 4.0,
+   "voorstelDb": 0.3,
+   "voorstelVolume": 100,
+   "opmerkingen": [
+    "gelijkgetrokken 11 nov"
+   ]
   }
- }
+ },
+ "gelijkgetrokken": "11 nov 2026"
 }

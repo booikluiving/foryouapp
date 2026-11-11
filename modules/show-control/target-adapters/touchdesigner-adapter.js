@@ -27,6 +27,11 @@ function oscArgsForAction(action) {
     const payload = action.payload || {};
     args.push(String(payload.filePath || ""), String(Number(payload.duur) || 0), payload.uit ? "1" : "0");
   }
+  // td.sfeer.volume: het volume (0-1) van het sfeergeluid dat nu klaarstaat.
+  if (action.command === "td.sfeer.volume") {
+    const payload = action.payload || {};
+    args.push(String(Number(payload.volume)));
+  }
   // td.effect.omvallen: clip en uit in de OSC-args, om dezelfde reden.
   if (action.command === "td.effect.omvallen") {
     const payload = action.payload || {};

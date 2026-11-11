@@ -729,6 +729,7 @@ function setLevelDraft(environmentId, kind, percent) {
   if (state.levelPlaying && state.levelPlaying.id === environmentId && state.levelPlaying.kind === kind) levelAudio().volume = value;
   const dirtyCount = Object.keys(state.levelsDraft).length;
   $("levelsStatus").textContent = dirtyCount ? `${dirtyCount} omgeving(en) gewijzigd, nog niet bewaard.` : "";
+  if (environmentId === state.zaal.environmentId) syncZaal();
 }
 
 function levelAudio() {
@@ -776,10 +777,10 @@ function fillLevelProposals() {
   });
 }
 
-async function saveLevels() {
-  const ids = Object.keys(state.levelsDraft);
+async function saveLevels(onlyIds = null, statusEl = null) {
+  const ids = Object.keys(state.levelsDraft).filter((id) => !Array.isArray(onlyIds) || onlyIds.includes(id));
   if (!ids.length) return;
-  const status = $("levelsStatus");
+  const status = statusEl || $("levelsStatus");
   const skipped = [];
   let saved = 0;
   for (const id of ids) {
@@ -810,6 +811,141 @@ async function saveLevels() {
   }
   await loadAll();
   status.textContent = `${saved} bewaard.${skipped.length ? ` ${skipped.length} niet: die omgeving staat open om te bewerken.` : ""}`;
+}
+
+// In de zaal: de omgeving die nu in de show staat. De schuif van het sfeergeluid is
+// meteen te horen (Show Control -> TouchDesigner); het extra geluid hoor je met Speel.
+// Bewaren gaat zoals in het overzicht.
+state.zaal = { environmentId: "", environmentName: "", message: "", sending: false, pending: null, timer: 0 };
+
+function zaalItem() {
+  return state.zaal.environmentId ? byId(state.catalog && state.catalog.environments, state.zaal.environmentId) : null;
+}
+
+function syncZaal() {
+  const box = $("zaalBox");
+  if (!box || box.hidden) return;
+  const item = zaalItem();
+  const env = $("zaalEnv");
+  if (!state.zaal.environmentId) {
+    env.textContent = state.zaal.message || "Er staat geen omgeving in de show.";
+  } else {
+    env.textContent = `${state.zaal.environmentName || (item && item.name) || state.zaal.environmentId}${item ? "" : " (niet in deze catalogus)"}`;
+  }
+  const extras = item ? cloneExtras(item.extras) : null;
+  ["sfeer", "geluid"].forEach((kind) => {
+    const row = box.querySelector(`[data-zaal-row="${kind}"]`);
+    const input = $(kind === "sfeer" ? "zaalSfeer" : "zaalGeluid");
+    const asset = item ? levelAssetFor(item.id, kind, extras) : null;
+    const off = !item || !asset;
+    row.classList.toggle("is-off", off);
+    input.disabled = off;
+    const value = item ? levelValue(item, kind) : 1;
+    const pct = Math.round(value * 100);
+    if (document.activeElement !== input && Number(input.value) !== pct) input.value = String(pct);
+    $(kind === "sfeer" ? "zaalSfeerPct" : "zaalGeluidPct").textContent = off ? "" : `${pct}%`;
+    $(kind === "sfeer" ? "zaalSfeerInfo" : "zaalGeluidInfo").innerHTML = off
+      ? (item ? "geen geluid" : "")
+      : levelInfoHtml(kind, metingFor(asset), value, true);
+  });
+  $("zaalGeluidLabel").textContent = extras && extras.geluid.label ? extras.geluid.label : "";
+  $("zaalGeluidPlay").disabled = !item || !levelAssetFor(item.id, "geluid", extras);
+  const dirty = Boolean(item && state.levelsDraft[item.id]);
+  $("zaalSaveBtn").disabled = !dirty;
+  $("zaalResetBtn").disabled = !dirty;
+}
+
+async function pollZaal() {
+  const box = $("zaalBox");
+  const pane = $("levelsPane");
+  if (!box || (pane && !pane.open) || document.hidden) return;
+  try {
+    const response = await fetch("/v0/catalog/zaal", { cache: "no-store" });
+    if (response.status === 404) {
+      box.hidden = true;
+      return;
+    }
+    const data = await response.json().catch(() => ({}));
+    box.hidden = false;
+    state.zaal.message = response.ok ? "" : "Show Control is niet bereikbaar.";
+    state.zaal.environmentId = response.ok ? String(data.environmentId || "") : "";
+    state.zaal.environmentName = response.ok ? String(data.environmentName || "") : "";
+  } catch (_err) {
+    state.zaal.environmentId = "";
+    state.zaal.message = "Show Control is niet bereikbaar.";
+  }
+  syncZaal();
+}
+
+// Stuurt het laatste volume; nooit meer dan één verzoek tegelijk.
+function sendZaalSfeer() {
+  const item = zaalItem();
+  if (!item) return;
+  state.zaal.pending = { environmentId: item.id, volume: levelValue(item, "sfeer") };
+  if (state.zaal.sending) return;
+  const next = state.zaal.pending;
+  state.zaal.pending = null;
+  state.zaal.sending = true;
+  requestJson("/v0/catalog/zaal/sfeer-volume", jsonOptions("POST", next))
+    .then(() => { $("zaalStatus").textContent = ""; })
+    .catch((err) => {
+      $("zaalStatus").textContent = err.body && err.body.error === "andere_omgeving"
+        ? "In de show staat intussen een andere omgeving."
+        : `Niet doorgegeven: ${err.message}`;
+      pollZaal();
+    })
+    .finally(() => {
+      state.zaal.sending = false;
+      if (state.zaal.pending) sendZaalSfeer();
+    });
+}
+
+async function playZaalGeluid() {
+  const item = zaalItem();
+  if (!item) return;
+  const status = $("zaalStatus");
+  status.textContent = "Speelt in de zaal...";
+  try {
+    await requestJson("/v0/catalog/zaal/extra-geluid", jsonOptions("POST", {
+      environmentId: item.id,
+      volume: levelValue(item, "geluid"),
+    }));
+    status.textContent = "";
+  } catch (err) {
+    status.textContent = err.body && err.body.error === "andere_omgeving"
+      ? "In de show staat intussen een andere omgeving."
+      : `Niet gespeeld: ${err.message}`;
+    pollZaal();
+  }
+}
+
+function bindZaal() {
+  ["zaalSfeer", "zaalGeluid"].forEach((id) => {
+    $(id).addEventListener("input", (event) => {
+      const item = zaalItem();
+      if (!item) return;
+      const kind = event.target.getAttribute("data-zaal-kind");
+      setLevelDraft(item.id, kind, Number(event.target.value));
+      if (kind === "sfeer") sendZaalSfeer();
+    });
+  });
+  $("zaalGeluidPlay").addEventListener("click", playZaalGeluid);
+  $("zaalSaveBtn").addEventListener("click", () => {
+    const item = zaalItem();
+    if (item) saveLevels([item.id], $("zaalStatus"));
+  });
+  $("zaalResetBtn").addEventListener("click", () => {
+    const item = zaalItem();
+    if (!item || !state.levelsDraft[item.id]) return;
+    const hadSfeer = Number.isFinite(state.levelsDraft[item.id].sfeer);
+    delete state.levelsDraft[item.id];
+    renderLevels();
+    syncZaal();
+    if (hadSfeer) sendZaalSfeer();
+  });
+  $("levelsPane").addEventListener("toggle", pollZaal);
+  document.addEventListener("visibilitychange", pollZaal);
+  state.zaal.timer = setInterval(pollZaal, 3000);
 }
 
 function renderSituations() {
@@ -936,6 +1072,7 @@ function renderAll() {
   renderCharacters();
   renderEnvironments();
   renderLevels();
+  syncZaal();
   renderSituations();
   renderCastPreview();
   renderValidation();
@@ -1081,8 +1218,15 @@ function bindEvents() {
   $("newEnvironmentBtn").addEventListener("click", () => toggleForm("environment"));
   $("newSituationBtn").addEventListener("click", () => toggleForm("situation"));
   $("fillLevelsBtn").addEventListener("click", fillLevelProposals);
-  $("saveLevelsBtn").addEventListener("click", saveLevels);
-  $("resetLevelsBtn").addEventListener("click", () => { state.levelsDraft = {}; renderLevels(); });
+  $("saveLevelsBtn").addEventListener("click", () => saveLevels());
+  $("resetLevelsBtn").addEventListener("click", () => {
+    const zaalDraft = state.zaal.environmentId && state.levelsDraft[state.zaal.environmentId];
+    state.levelsDraft = {};
+    renderLevels();
+    syncZaal();
+    if (zaalDraft && Number.isFinite(zaalDraft.sfeer)) sendZaalSfeer();
+  });
+  bindZaal();
   $("savePerformerBtn").addEventListener("click", savePerformer);
   $("cancelPerformerBtn").addEventListener("click", () => hideForm("performer"));
   document.addEventListener("click", (event) => {

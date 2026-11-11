@@ -39,6 +39,7 @@ const {
 } = require("../cue-library/runtime-cues");
 const {
   buildEnvironmentExtraCue,
+  buildSfeerVolumeCue,
   environmentExtrasStatus,
   publicExtrasStatus,
 } = require("../cue-library/environment-extras");
@@ -431,6 +432,24 @@ function createShowControlApp(options = {}) {
     await saveCue(cue);
     extrasCache.at = 0;
     res.status(201).json({ ok: true, cue });
+  }));
+
+  // Volume van het sfeergeluid nu in de zaal (schuif in de catalogus). Wordt niet
+  // in het cue-log bewaard: een schuif stuurt er veel achter elkaar.
+  app.post("/v0/show-control/sound/sfeer-volume", asyncRoute(async (req, res) => {
+    const runtimeState = await runtimeStateQuick(req, clients, 1500);
+    let cue;
+    try {
+      cue = buildSfeerVolumeCue(runtimeState || {}, req.body || {}, options.environmentExtras || {});
+    } catch (err) {
+      if (err && err.statusCode === 409) {
+        res.status(409).json({ ok: false, error: err.code, extras: err.extras });
+        return;
+      }
+      throw err;
+    }
+    await executeCue(cue, executeOptions);
+    res.json({ ok: true, volume: cue.actions[0].payload.volume, environmentId: cue.actions[0].payload.environmentId });
   }));
 
   // Effect omvallen van de actieve (of klaargezette) omgeving: elke druk de volgende stap.

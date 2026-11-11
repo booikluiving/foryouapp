@@ -215,6 +215,8 @@ function buildEnvironmentExtraCue(runtimeState, input = {}, options = {}) {
   }
   const status = environmentExtrasStatus(runtimeState, options);
   if (!status.environmentId) throw extraError("geen_omgeving", status);
+  const wanted = String(input.environmentId || "").trim();
+  if (wanted && wanted !== status.environmentId) throw extraError("andere_omgeving", status);
   const extra = status[soort];
   if (!extra.klaar) throw extraError(extra.reden === "geen_bron" ? "geen_extra" : extra.reden || "geen_extra", status);
 
@@ -234,7 +236,8 @@ function buildEnvironmentExtraCue(runtimeState, input = {}, options = {}) {
     actions.push(cueAction(cueId, 0, "mac-audio", "audio.extra.play", "fire-and-forget", {
       ...common,
       filePath: extra.filePath,
-      volume: extra.volume,
+      // De catalogus mag een volume meegeven om in de zaal te proberen, zonder te bewaren.
+      volume: volumeOverride(input.volume, extra.volume),
     }));
   } else if (extra.camera) {
     actions.push(cueAction(cueId, 0, "touchdesigner", "td.camera.set", "acknowledged-async", {
@@ -272,6 +275,48 @@ function buildEnvironmentExtraCue(runtimeState, input = {}, options = {}) {
   };
 }
 
+function volumeOverride(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(1, number));
+}
+
+// Volume van het sfeergeluid dat nu in TouchDesigner klaarstaat, meteen hoorbaar.
+// Alleen voor de omgeving die nu in de show staat; bewaren gaat via de catalogus.
+function buildSfeerVolumeCue(runtimeState, input = {}, options = {}) {
+  const volume = volumeOverride(input.volume, null);
+  if (volume === null) {
+    const err = new Error("show_control_invalid_volume");
+    err.statusCode = 400;
+    throw err;
+  }
+  const status = environmentExtrasStatus(runtimeState, options);
+  if (!status.environmentId) throw extraError("geen_omgeving", status);
+  const wanted = String(input.environmentId || "").trim();
+  if (wanted && wanted !== status.environmentId) throw extraError("andere_omgeving", status);
+  const createdAtDate = options.createdAtDate || new Date();
+  const cueId = createShowControlId("show-cue", createdAtDate);
+  return {
+    schemaVersion: SHOW_CONTROL_CUE_SCHEMA_VERSION,
+    cueId,
+    cueType: "pulse",
+    cueIntent: "environment-sfeer-volume",
+    name: `Sfeervolume ${Math.round(volume * 100)}%: ${status.environmentName}`,
+    createdAt: createdAtDate.toISOString(),
+    source: { type: "show-control-v0", readOnly: false },
+    runtimeRef: null,
+    status: { stage: "queued", state: "queued", warnings: [], sentOrder: [], updatedAt: createdAtDate.toISOString() },
+    actions: [cueAction(cueId, 0, "touchdesigner", "td.sfeer.volume", "fire-and-forget", {
+      environmentId: status.environmentId,
+      environmentName: status.environmentName,
+      volume,
+      source: String(input.source || "catalogus"),
+      cueIntent: "environment_sfeer_volume",
+    })],
+  };
+}
+
 function resetHoldState() {
   holdState.environmentId = "";
   holdState.aan = false;
@@ -279,6 +324,7 @@ function resetHoldState() {
 
 module.exports = {
   buildEnvironmentExtraCue,
+  buildSfeerVolumeCue,
   currentEnvironmentRef,
   environmentExtrasStatus,
   publicExtrasStatus,

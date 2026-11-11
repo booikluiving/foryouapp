@@ -981,6 +981,18 @@ def _set_soundscape_volume(op_obj, volume):
         return True
     except Exception:
         return False
+
+
+def handle_sfeer_volume(cue_id, extra_args):
+    cue_id = _text(cue_id)
+    command = "td.sfeer.volume"
+    soundscape = _op("prepared_soundscape")
+    volume = extra_args[0] if len(extra_args) > 0 else 1
+    if not _set_soundscape_volume(soundscape, volume):
+        ack(cue_id, command, "error", "error", "prepared_soundscape_missing")
+        return False
+    ack(cue_id, command, "applied", "ok", "sfeer_volume:%s" % soundscape.par.volume.eval())
+    return True
 # --- einde For_You sfeer volume ---
 
 
@@ -1233,6 +1245,9 @@ def onReceiveOSC(*callback_args):
     cue_id = osc_args[0] if len(osc_args) > 0 else ""
     command = osc_args[1] if len(osc_args) > 1 else ""
     payload_id = osc_args[2] if len(osc_args) > 2 else "-"
+    if command == "td.sfeer.volume":  # --- For_You sfeer volume live ---
+        handle_sfeer_volume(cue_id, osc_args[3:])
+        return
     handle_td_cue(cue_id, command, payload_id)
     return
 
