@@ -114,69 +114,6 @@
         font-weight: 500;
         overflow-wrap: anywhere;
       }
-      #stem {
-        position: absolute;
-        left: 0;
-        width: 1080px;
-        box-sizing: border-box;
-        padding: 44px 88px 52px;
-        overflow: hidden;
-        background: rgba(5, 8, 19, 0.8);
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 22px;
-      }
-      /* Eén scherm voor inloop en loading: het universum vult het beeld, de rest ligt eroverheen. */
-      #universum {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 1080px;
-        height: 1920px;
-        border: 0;
-        background: #050813;
-        pointer-events: none;
-      }
-      /* Het genereren (titel en script) staat alleen in beeld als de camera in de gekozen ster zit. */
-      #gen {
-        position: absolute;
-        inset: 0;
-        opacity: 0;
-        transition: opacity 900ms ease;
-      }
-      #gen.toon { opacity: 1; }
-      #chatBak {
-        position: absolute;
-        left: 0;
-        width: 1080px;
-        bottom: 0;
-        height: 760px;
-        background: linear-gradient(to bottom, rgba(5, 8, 19, 0) 0%, rgba(5, 8, 19, 0.82) 38%, rgba(5, 8, 19, 0.94) 100%);
-      }
-      #qr {
-        position: absolute;
-        right: 56px;
-        top: 56px;
-        padding: 14px;
-        background: rgba(255, 255, 255, 0.94);
-        border-radius: 14px;
-        line-height: 0;
-      }
-      #qr[hidden] { display: none; }
-      #qr img { width: 190px; height: 190px; }
-      #stats { opacity: 0; transition: opacity 600ms ease; }
-      #stats.toon { opacity: 1; }
-      #stem[hidden] { display: none; }
-      #stemTitel { font-size: 64px; font-weight: 700; line-height: 1.05; letter-spacing: -0.01em; }
-      #stemKop { font-size: 34px; font-weight: 500; color: rgba(255, 255, 255, 0.66); }
-      .stemRij { position: relative; opacity: 0.6; transition: opacity 300ms ease; }
-      .stemRij.koploper, .stemRij.winnaar { opacity: 1; }
-      .stemRij.verloren { opacity: 0.22; }
-      .stemTekst { display: flex; justify-content: space-between; gap: 24px; font-size: 38px; font-weight: 700; line-height: 1.12; }
-      .stemTekst .n { font-variant-numeric: tabular-nums; }
-      .stemBalk { height: 8px; margin-top: 10px; background: rgba(255, 255, 255, 0.14); }
-      .stemBalk > span { display: block; height: 100%; width: 0; background: #fff; transition: width 400ms ease; }
       @keyframes erin {
         from { opacity: 0; transform: translateY(12px); }
         to { opacity: 1; transform: none; }
@@ -191,7 +128,6 @@
         <div id="titel"><div id="titelKop"></div><div id="titelScene"></div></div>
         <div id="script"><iframe id="scriptFrame" title="Script" scrolling="no"></iframe></div>
       </div>
-      <div id="stem" hidden></div>
       <div id="qr" hidden></div>
       <div id="stats" hidden>
         <div id="statsScene"></div>
@@ -221,7 +157,7 @@
       let universumStil = setTimeout(() => { universum = { stil: true }; zetLagen(); }, 12000);
       function zetLagen() {
         const inSter = !!(universum && (universum.stil || (universum.binnen && !universum.speelt)));
-        el("gen").classList.toggle("toon", inSter && !stem && !statsAan);
+        el("gen").classList.toggle("toon", inSter && !statsAan);
         el("stats").classList.toggle("toon", statsAan);
       }
       window.addEventListener("message", (ev) => {
@@ -273,10 +209,7 @@
         el("titelKop").textContent = settings.tussenTitel ?? "Generating next scene";
         t.style.top = getal(settings.tussenTitelY, 110) + "px";
         t.style.fontSize = getal(settings.tussenTitelGrootte, 64) + "px";
-        const sh = getal(settings.tussenScriptHoogte, 860);
         plaatsScript();
-        el("stem").style.top = getal(settings.tussenScriptY, 230) + "px";
-        el("stem").style.maxHeight = sh + "px"; // zo hoog als de lijst, zodat het universum eronder zichtbaar blijft
         el("stats").style.top = getal(settings.tussenStatsY, 1150) + "px";
         el("stats").style.fontSize = getal(settings.tussenStatsGrootte, 88) + "px";
         el("statsScene").style.fontSize = "0.36em";
@@ -401,57 +334,7 @@
         tekenStats();
       }
 
-      // Stemmen op de startscène: de stand staat op de plek van het script. Na de uitslag blijft
-      // de winnaar even staan, daarna komt het script terug.
-      let stem = null, stemTimer = null, stemWeg = null;
-      function tekenStem() {
-        const box = el("stem");
-        if (!stem) { box.hidden = true; return; }
-        box.hidden = false;
-        const counts = stem.counts || [];
-        const hoogste = Math.max(0, ...counts);
-        const totaal = counts.reduce((a, b) => a + b, 0);
-        const over = stem.endsAt ? Math.max(0, Math.ceil((Date.parse(stem.endsAt) - Date.now()) / 1000)) : 0;
-        box.textContent = "";
-        const titel = document.createElement("div");
-        titel.id = "stemTitel";
-        titel.textContent = stem.uitslag ? "De eerste scène" : "Kies de eerste scène";
-        box.appendChild(titel);
-        const kop = document.createElement("div");
-        kop.id = "stemKop";
-        kop.textContent = stem.uitslag
-          ? (stem.uitslag.geloot === "te_weinig_stemmen" ? "Geen stemmen: het lot besliste" : stem.uitslag.geloot === "gelijke_stand" ? "Gelijke stand: het lot besliste" : totaal + " stemmen")
-          : "Stem op je telefoon \u00b7 nog " + over + " s \u00b7 " + totaal + " stemmen";
-        box.appendChild(kop);
-        (stem.options || []).forEach((optie, i) => {
-          const n = Number(counts[i] || 0);
-          const rij = document.createElement("div");
-          rij.className = "stemRij" + (stem.uitslag ? (stem.uitslag.index === i ? " winnaar" : " verloren") : (n > 0 && n === hoogste ? " koploper" : ""));
-          const tekst = document.createElement("div");
-          tekst.className = "stemTekst";
-          const t = document.createElement("span");
-          t.textContent = optie;
-          const c = document.createElement("span");
-          c.className = "n";
-          c.textContent = String(n);
-          tekst.append(t, c);
-          const balk = document.createElement("div");
-          balk.className = "stemBalk";
-          const vul = document.createElement("span");
-          vul.style.width = (hoogste ? Math.round((n / hoogste) * 100) : 0) + "%";
-          balk.appendChild(vul);
-          rij.append(tekst, balk);
-          box.appendChild(rij);
-        });
-      }
-      function zetStem(poll) {
-        clearInterval(stemTimer);
-        clearTimeout(stemWeg);
-        stem = poll ? { id: poll.id, options: poll.options, counts: poll.counts || [], endsAt: poll.endsAt, uitslag: null } : null;
-        if (stem) stemTimer = setInterval(tekenStem, 1000);
-        tekenStem();
-        zetLagen();
-      }
+      // De stemming op de startscène is op dit scherm alleen in het universum te zien (koploper en winnaar lichten op).
 
       const bron = new EventSource("/audience/stage/stroom");
       bron.onmessage = (ev) => {
@@ -464,19 +347,9 @@
           ronde = msg.ronde || ronde;
           berichten = [];
           for (const m of msg.berichten || []) regel(m);
-          zetStem(msg.startStemming || null);
           tekenChat();
           tekenStats();
         } else if (msg.type === "stage_settings") toepassen(msg.stage && msg.stage.settings);
-        else if (msg.type === "start_stemming") zetStem(msg.poll);
-        else if (msg.type === "poll_update" && stem && Number(msg.pollId) === Number(stem.id)) { stem.counts = msg.counts || stem.counts; tekenStem(); }
-        else if (msg.type === "start_stemming_uitslag" && stem && Number(msg.pollId) === Number(stem.id)) {
-          clearInterval(stemTimer);
-          stem.counts = msg.uitslag.counts || stem.counts;
-          stem.uitslag = msg.uitslag;
-          tekenStem();
-          stemWeg = setTimeout(() => zetStem(null), 12000);
-        }
         else if (msg.type === "reacties") { reacties = msg.reacties || []; tekenStats(); }
         else if (msg.type === "fase") nieuweRonde(msg.ronde);
         else if (msg.type === "reaction_update" && msg.ronde) { ronde.emoji = msg.ronde; tekenStats(); }
