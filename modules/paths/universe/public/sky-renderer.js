@@ -361,6 +361,10 @@
     const REGIE_NA_SCENE = Math.max(0, Number(REGIE_OPTIES.get("naScene")) || 0);
     const REGIE_BINNEN_TITEL = REGIE_OPTIES.get("binnenTitel") !== "0";
     const REGIE_VRIJGAVE = REGIE_OPTIES.get("vrijgave") === "1";
+    // Met padZoom=1 zoomt de camera niet de ster in, maar tot het pad naar de gekozen scène het beeld vult.
+    const REGIE_PAD = REGIE_OPTIES.get("padZoom") === "1";
+    const REGIE_PAD_OMHOOG = 0.17; // het pad staat boven het midden; eronder is ruimte voor de tekst
+    const REGIE_PAD_FADE = 0.16; // zo flauw blijft de rest van de kaart zichtbaar
     const REGIE_ZOOM = 60;
     const REGIE_DRAAI = Math.PI * 0.8;
     const regie = {
@@ -383,6 +387,8 @@
       stil: false,
       stilTijd: 0,
       binnenAan: false,
+      pad: null, // { a, b }: de twee sterren van het pad waar de camera op staat
+      scherp: false, // de camera is aangekomen: het doek wordt op die stand scherp getekend
     };
 
     function pathById(pathId) {
@@ -3579,6 +3585,16 @@
       ctx.setTransform(k, 0, 0, k, podium.breedte / 2 - SKY_CX * k, podium.hoogte / 2 - SKY_CY * k);
 
       const tijd = podiumTijd(nu);
+      // Scherp op het pad: dezelfde stand als de camera, maar door het doek zelf getekend.
+      const padZoom = regie.scherp && regie.pad ? Math.exp(regie.cam.lz) : 1;
+      if (padZoom !== 1) {
+        const midden = regieCameraPunt(tijd);
+        const kz = k * padZoom;
+        if (midden) ctx.setTransform(kz, 0, 0, kz, podium.breedte / 2 - midden.x * kz, podium.hoogte * (0.5 - REGIE_PAD_OMHOOG) - midden.y * kz);
+      }
+      // Ingezoomd blijven lijnen en sterren fijn: ze groeien minder hard mee dan de afstanden.
+      const dun = padZoom !== 1 ? 1 / Math.pow(padZoom, 0.62) : 1;
+      const inPad = (sceneId) => !!regie.pad && (sceneId === regie.pad.a || sceneId === regie.pad.b);
       const pos = new Map();
       (networkMap.nodes || []).forEach((node) => {
         const punt = podiumPunt(node.sceneId, tijd);
@@ -3589,7 +3605,7 @@
       const focus = regie.focus;
 
       // Lijnen
-      if (state.tweaks.lines && fade > 0.01) {
+      if (state.tweaks.lines && (fade > 0.01 || regie.pad)) {
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         for (const edge of networkMap.edges || []) {
@@ -3606,9 +3622,11 @@
           if (vanStatus === "current" || naarStatus === "current") alpha = 1;
           if (!edgeIsReleased(edge)) alpha = 0.09;
           const bocht = networkEdgeCurve(a, b, edge);
-          ctx.lineWidth = Math.min(0.85 + Math.max(Number(edge.pathCount || edge.count || 1), 1) * 0.34, 3.2);
+          // Het pad waar de camera op staat is de helderste lijn in beeld.
+          const padLijn = !!regie.pad && regie.pad.a !== regie.pad.b && inPad(Number(edge.fromSceneId)) && inPad(Number(edge.toSceneId));
+          ctx.lineWidth = (padLijn ? 2.6 : Math.min(0.85 + Math.max(Number(edge.pathCount || edge.count || 1), 1) * 0.34, 3.2)) * dun;
           ctx.strokeStyle = kleur;
-          ctx.globalAlpha = alpha * fade;
+          ctx.globalAlpha = padLijn ? 1 : alpha * fade;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
           ctx.bezierCurveTo(bocht.c1.x, bocht.c1.y, bocht.c2.x, bocht.c2.y, b.x, b.y);
@@ -3654,7 +3672,8 @@
         const punt = pos.get(sceneId);
         if (!punt) continue;
         const isFocus = focus === sceneId;
-        if (!isFocus && fade <= 0.01) continue;
+        const opPad = inPad(sceneId);
+        if (!isFocus && !opPad && fade <= 0.01) continue;
         const vrij = isSceneReleased(sceneId);
         const status = statusForScene(sceneId);
         const stem = stemVoorScene(sceneId);
@@ -3663,6 +3682,7 @@
         const pop = regie.pops.get(sceneId);
         const popDeel = pop ? Math.min(1, (nu - pop) / 700) : 1;
         if (popDeel < 1) straal *= 1 + 1.6 * Math.pow(1 - popDeel, 3);
+        straal *= dun;
 
         let vulling = "#ffffff";
         let rand = "rgba(255,255,255,0.42)";
@@ -3692,9 +3712,10 @@
           if (stem.winnaar) alpha *= 0.81 + 0.19 * Math.cos(nu / 255);
         }
         if (stem && stem.verloren) alpha *= 0.45;
-        if (!isFocus) alpha *= fade;
+        if (opPad) alpha = 1;
+        else if (!isFocus) alpha *= fade;
 
-        if (isFocus) {
+        if (isFocus && !regie.pad) {
           // De ster waar de camera in gaat is een zachte lichtbol, geen platte schijf.
           const bol = straal * 1.7;
           const verloop = ctx.createRadialGradient(punt.x, punt.y, 0, punt.x, punt.y, bol);
@@ -3773,7 +3794,7 @@
             alpha: stem.verloren ? 0.45 : 1,
           });
           if (groot) stemKoplopers.push({ node, stem });
-        } else if (regie.gekozen === sceneId && !isFocus) {
+        } else if ((regie.gekozen === sceneId || regie.ring === sceneId) && !isFocus) {
           const regels = regieTitelRegels(node.title);
           etiketten.push({ regels, x: punt.x, y: punt.y - straal - 20 - (regels.length - 1) * 19, grootte: 15, kleur: "#ffffff", alpha: 1, regelhoogte: 19 });
         } else if (state.tweaks.labels) {
@@ -3891,9 +3912,9 @@
     }
 
     // Een tik voor het geluid op het hoofdscherm: "stap" bij elke sprong van de kiezer, "slot" bij de keuze.
-    function regieTik(soort) {
+    function regieTik(soort, sceneId) {
       if (window.parent === window) return;
-      try { window.parent.postMessage({ bron: "for_you-universum", tik: soort }, "*"); } catch (_err) {}
+      try { window.parent.postMessage({ bron: "for_you-universum", tik: soort, sceneId: sceneId || 0, titel: sceneId ? sceneTitle(sceneId) : "" }, "*"); } catch (_err) {}
     }
 
     // Na een scène wacht het universum tot het hoofdscherm het rapport heeft laten zien. Het scherm
@@ -3943,20 +3964,51 @@
       podium.vuil = true;
     }
 
+    // Waar de camera op staat: de ster, of het midden van het pad naar de gekozen scène.
+    function regieCameraPunt(tijd) {
+      if (regie.pad) {
+        const a = podiumPunt(regie.pad.a, tijd);
+        const b = podiumPunt(regie.pad.b, tijd);
+        if (a && b) return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      }
+      return regie.focus ? podiumPunt(regie.focus, tijd) : null;
+    }
+
+    // Het pad naar de gekozen scène: vanaf de scène die net gespeeld is, anders vanaf een andere
+    // gespeelde scène die eraan vastzit. Zit er geen aan vast, dan staat de camera op de ster zelf.
+    function regiePadVoor(wil, played) {
+      const kandidaten = [regie.herkomst, ...Array.from(played || []).reverse()].filter((id) => id && id !== wil);
+      const van = kandidaten.find((id) => regieRand(id, wil));
+      return { a: van || wil, b: wil };
+    }
+
+    // Zo ver inzoomen dat het pad een flink deel van het beeld vult.
+    function regiePadZoom() {
+      const tijd = podiumTijd(Date.now());
+      const a = regie.pad ? podiumPunt(regie.pad.a, tijd) : null;
+      const b = regie.pad ? podiumPunt(regie.pad.b, tijd) : null;
+      const afstand = a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+      const maat = Math.min(podium.breedte || 0, podium.hoogte || 0);
+      if (!afstand || !maat) return 4.5;
+      return clamp((0.46 * maat) / (afstand * podiumSchaal()), 2.2, 9);
+    }
+
     // De camera schuift, schaalt en draait het hele doek als één vlak. Zo hoeft er tijdens het zoomen
     // niets opnieuw getekend te worden.
     function regieCameraToepassen() {
       if (!podium.doek) return;
-      const punt = regie.focus ? podiumPunt(regie.focus, podiumTijd(Date.now())) : null;
+      const punt = regieCameraPunt(podiumTijd(Date.now()));
       const dx = punt ? (punt.x - SKY_CX) * regie.cam.mix : 0;
       const dy = punt ? (punt.y - SKY_CY) * regie.cam.mix : 0;
       const zoom = Math.exp(regie.cam.lz);
-      if (zoom === 1 && !regie.cam.rot && !dx && !dy) {
+      // Aangekomen bij het pad: het doek tekent zelf op die stand, zodat lijnen en sterren scherp zijn.
+      if (regie.scherp || (zoom === 1 && !regie.cam.rot && !dx && !dy)) {
         podium.doek.style.transform = "";
         return;
       }
       const schaal = podiumSchaal();
-      podium.doek.style.transform = `rotate(${regie.cam.rot}rad) scale(${zoom}) translate(${-dx * schaal}px, ${-dy * schaal}px)`;
+      const omhoog = regie.pad ? -REGIE_PAD_OMHOOG * podium.hoogte * regie.cam.mix : 0;
+      podium.doek.style.transform = `translate(0px, ${omhoog}px) rotate(${regie.cam.rot}rad) scale(${zoom}) translate(${-dx * schaal}px, ${-dy * schaal}px)`;
     }
 
     function regieCamera(naar, ms) {
@@ -4044,6 +4096,8 @@
       regie.ring = 0;
       regie.lijn = null;
       regie.herkomst = 0;
+      regie.pad = null;
+      regie.scherp = false;
     }
 
     function regieSpring(model, stand) {
@@ -4055,6 +4109,17 @@
       regieStil(false);
       regieToon(model, stand, true);
       regieStil(!!wil);
+      if (REGIE_PAD && wil) {
+        regie.pad = regiePadVoor(wil, stand.played);
+        regie.fade = REGIE_PAD_FADE;
+        regie.cam = { mix: 1, lz: Math.log(regiePadZoom()), rot: 0 };
+        regie.scherp = true;
+        regieCameraToepassen();
+        regieBinnen(false);
+        regie.binnenAan = true;
+        regieMeld();
+        return;
+      }
       regieCameraToepassen();
       regieBinnen(!!wil);
     }
@@ -4085,10 +4150,14 @@
         else await regieWacht(REGIE_NA_SCENE);
         if (gen !== regie.gen) return;
       }
+      regie.scherp = false;
+      regieCameraToepassen();
+      podium.vuil = true;
       regieBinnen(false);
-      window.setTimeout(() => { if (gen === regie.gen) regieTween(regie, "fade", 1, 800, regieUit); }, 1450);
+      window.setTimeout(() => { if (gen === regie.gen) regieTween(regie, "fade", 1, 800, regieUit); }, regie.pad ? 300 : 1450);
       await regieCamera({ mix: 0, lz: 0, rot: 0 }, 2900);
       if (gen !== regie.gen) return;
+      regie.pad = null;
       regie.focus = 0;
       regieStil(false);
       regieCameraToepassen();
@@ -4136,7 +4205,7 @@
         const id = keuze.length ? keuze[Math.floor(Math.random() * keuze.length)] : wil;
         regie.ring = id;
         podium.vuil = true;
-        regieTik("stap");
+        regieTik("stap", id);
         vorige = id;
         await regieWacht(70 + i * i * 2.4);
         if (gen !== regie.gen) return;
@@ -4151,7 +4220,7 @@
       if (gen !== regie.gen) return;
       regie.ring = 0;
       regie.gekozen = wil;
-      if (zichtbaarKiezen) regieTik("slot");
+      if (!doel.cur) regieTik("slot", wil);
       regieToon(model, doel, true);
       await regieWacht(doel.cur ? 400 : doel.stemWinnaar === wil ? 3500 : 2500);
       if (gen !== regie.gen) return;
@@ -4160,6 +4229,19 @@
       regieStil(true);
       regie.focus = wil;
       regie.gekozen = 0;
+      if (REGIE_PAD) {
+        // Niet de ster in: de camera zoomt tot het pad naar deze scène in beeld staat.
+        regie.pad = regiePadVoor(wil, doel.played);
+        regieTween(regie, "fade", REGIE_PAD_FADE, 900);
+        await regieCamera({ mix: 1, lz: Math.log(regiePadZoom()), rot: 0 }, 2600);
+        if (gen !== regie.gen) return;
+        regie.scherp = true;
+        regieCameraToepassen();
+        podium.vuil = true;
+        regie.binnenAan = true;
+        regieMeld();
+        return;
+      }
       regieTween(regie, "fade", 0, 800);
       window.setTimeout(() => { if (gen === regie.gen && regie.focus === wil) regieBinnen(true); }, 2200);
       await regieCamera({ mix: 1, lz: Math.log(REGIE_ZOOM), rot: REGIE_DRAAI }, 3100);

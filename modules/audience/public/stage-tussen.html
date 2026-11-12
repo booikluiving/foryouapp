@@ -234,6 +234,12 @@
       }
       #rapport[hidden] { display: none; }
       #rapport.klein { top: 300px; height: auto; }
+      /* Tijdens het kiezen: een klein venster boven het universum waarin de volgende scène onthuld wordt. */
+      #rapport.kiest { top: 300px; height: auto; background: rgba(7, 8, 11, 0.97); }
+      #rapport.kiest .rp-inhoud { flex: none; height: 30cqw; }
+      #rapport.kiest .rp-laag { inset: 4cqw 6cqw 3cqw; }
+      #rapport.kiest #rp0, #rapport.kiest #rp1, #rapport.kiest #rp2 { display: none; }
+      #rapport:not(.kiest) #rp3 { display: none; }
       #rapport.klein .rp-inhoud, #rapport.klein .rp-balk.onder { display: none; }
       #rapport.klein .rp-balk.boven { border-bottom: 0; }
       @keyframes rapport-zweef { from { transform: translate(-6px, -9px); } to { transform: translate(6px, 9px); } }
@@ -248,6 +254,13 @@
       .rp-laag { position: absolute; inset: 6cqw 6cqw 5cqw; display: flex; flex-direction: column; }
       .rp-laag.weg { visibility: hidden; }
       .rp-kop { font-weight: 700; font-size: 7.4cqw; line-height: 1.04; letter-spacing: -0.025em; margin: 0; text-wrap: balance; }
+      /* Naast de titel: klein het beeld van de omgeving van de scène, in kleur. */
+      .rp-kopregel { display: flex; align-items: flex-start; justify-content: space-between; gap: 4cqw; }
+      .rp-kopregel > div:first-child { min-width: 0; }
+      #rpBeeld { flex: none; position: relative; width: 17cqw; height: 17cqw; overflow: hidden; opacity: 0.9; }
+      #rpBeeld[hidden] { display: none; }
+      #rpBeeld img, #rpBeeld video { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+      #rpBeeld[data-uitsnede="midden"] img, #rpBeeld[data-uitsnede="midden"] video { left: -100%; top: 50%; width: 300%; height: auto; object-fit: fill; transform: translateY(-50%); }
       .rp-onderkop { font-size: 3cqw; color: rgba(255, 255, 255, 0.66); margin-top: 1.6cqw; }
       .rp-rijen { margin-top: auto; display: grid; }
       .rp-rij { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 0 4cqw; padding: 2cqw 0; border-top: 1px solid rgba(255, 255, 255, 0.3); opacity: 0; }
@@ -274,7 +287,6 @@
       .rp-spoor { position: relative; height: 2cqw; }
       .rp-spoor i { position: absolute; left: 0; top: 0; height: 100%; width: 0; background: rgba(255, 255, 255, 0.3); transition: width 500ms cubic-bezier(.65, 0, .35, 1); }
       .rp-staaf.nu .rp-spoor i { background: #fff; }
-      #rpHiernaKop { font-size: 3cqw; color: rgba(255, 255, 255, 0.66); margin-top: 3cqw; visibility: hidden; }
       @keyframes erin {
         from { opacity: 0; transform: translateY(12px); }
         to { opacity: 1; transform: none; }
@@ -300,8 +312,13 @@
         <div class="rp-balk boven"><span>Rapport</span><span id="rpScene"></span></div>
         <div class="rp-inhoud">
           <div id="rp0" class="rp-laag">
-            <h2 id="rpTitel" class="rp-kop"></h2>
-            <div id="rpMeta" class="rp-onderkop"></div>
+            <div class="rp-kopregel">
+              <div>
+                <h2 id="rpTitel" class="rp-kop"></h2>
+                <div id="rpMeta" class="rp-onderkop"></div>
+              </div>
+              <div id="rpBeeld" hidden></div>
+            </div>
             <div id="rpReacties" class="rp-rijen"></div>
           </div>
           <div id="rp1" class="rp-laag weg">
@@ -312,8 +329,10 @@
           <div id="rp2" class="rp-laag weg">
             <h2 class="rp-kop">Dit publiek</h2>
             <div id="rpLabels" class="rp-rijen"></div>
-            <div id="rpHiernaKop">Hierna</div>
-            <div id="rpTop" class="rp-rijen" style="margin-top:0"></div>
+          </div>
+          <div id="rp3" class="rp-laag">
+            <div class="rp-onderkop" style="margin-top:0">Hierna</div>
+            <div id="rpTop" class="rp-rijen"></div>
           </div>
         </div>
         <div class="rp-balk onder">
@@ -344,7 +363,7 @@
       const NA_SCENE_MAX = 30000;
       // De poort van het universum is alleen op een proefopstelling anders (?universumPoort=…).
       const UNIVERSUM_POORT = Number(new URLSearchParams(location.search).get("universumPoort")) || 3022;
-      el("universum").src = `${location.protocol}//${location.hostname}:${UNIVERSUM_POORT}/universe/stage.html?naScene=${NA_SCENE_MAX}&vrijgave=1&binnenTitel=0`;
+      el("universum").src = `${location.protocol}//${location.hostname}:${UNIVERSUM_POORT}/universe/stage.html?naScene=${NA_SCENE_MAX}&vrijgave=1&padZoom=1&binnenTitel=0`;
       function universumVerder() {
         try { el("universum").contentWindow.postMessage({ bron: "for_you-scherm", verder: true }, "*"); } catch (_err) {}
       }
@@ -361,7 +380,11 @@
         const stand = ev.data;
         if (!stand || stand.bron !== "for_you-universum") return;
         // De kiezer in het universum: een tik per sprong, een klap met bel bij de keuze.
-        if (stand.tik) { if (stand.tik === "slot") geluid.slot(); else geluid.stap(); return; }
+        if (stand.tik) {
+          if (stand.tik === "slot") geluid.slot(); else geluid.stap();
+          rapportKeuze(stand.titel || "", stand.tik === "slot");
+          return;
+        }
         clearTimeout(universumStil);
         const speelde = !!(universum && universum.speelt);
         universum = stand;
@@ -519,13 +542,24 @@
         const scene = data.scene, som = data.som;
         const tempo = Math.max(0.45, 1 - 0.14 * (Math.max(1, scene.nr) - 1));
         const straks = (ms, fn) => rpTimers.push(setTimeout(fn, ms * tempo));
-        venster.classList.remove("klein");
+        venster.classList.remove("klein", "kiest");
+        rpHierna = data.hierna;
         venster.hidden = false;
         el("rpScene").textContent = `Scène ${String(scene.nr).padStart(2, "0")}`;
         el("rpTitel").textContent = scene.titel;
         el("rpMeta").textContent = `${scene.seconden} seconden · ${scene.kijkers} kijkers`;
+        // Het beeld van de omgeving van deze scène: hetzelfde als linksboven op het scherm.
+        const bronBeeld = el("beeld");
+        const rpBeeld = el("rpBeeld");
+        rpBeeld.textContent = "";
+        rpBeeld.hidden = bronBeeld.hidden || !bronBeeld.firstElementChild;
+        if (!rpBeeld.hidden) {
+          rpBeeld.dataset.uitsnede = bronBeeld.dataset.uitsnede || "hoog";
+          const kopie = bronBeeld.firstElementChild.cloneNode(true);
+          if (kopie.tagName === "VIDEO") { kopie.muted = true; kopie.play && kopie.play().catch(() => {}); }
+          rpBeeld.appendChild(kopie);
+        }
         ["rpReacties", "rpSom", "rpLabels", "rpTop"].forEach((id) => el(id).replaceChildren());
-        el("rpHiernaKop").style.visibility = "hidden";
         const score = el("rpScore");
         score.classList.remove("aan");
         score.textContent = "";
@@ -616,20 +650,37 @@
             requestAnimationFrame(() => { vulling.style.width = `${(Math.abs(label.score) / bereik) * 100}%`; });
           });
         });
-        t += 300 + data.labels.length * 220 + 500;
-        if (data.hierna) {
-          const rij = rpRij(data.hierna.titel, data.hierna.score == null ? "" : rpTeken(data.hierna.score), "top streep");
-          el("rpTop").append(rij);
-          straks(t, () => { el("rpHiernaKop").style.visibility = "visible"; rij.classList.add("aan"); geluid.relais(); });
-        }
-        t += 2200;
-        // Het venster klapt dicht tot zijn titelbalk; het universum gaat verder met kiezen.
+        t += 300 + data.labels.length * 220 + 2400;
         straks(t, () => {
-          venster.classList.add("klein");
           el("rpScene").textContent = `Scène ${String(scene.nr).padStart(2, "0")} · ${rpTeken(scene.score)}`;
+          if (data.hierna) {
+            // Het venster wordt klein en blijft staan: de kiezer in het universum onthult de volgende scène.
+            const rij = rpRij("…", "", "top streep aan");
+            el("rpTop").append(rij);
+            venster.classList.add("kiest");
+            el("rpStap").textContent = "Volgende scène berekenen";
+            el("rpStapNr").textContent = "";
+            el("rpBaan").style.width = "0";
+          } else {
+            // Tijdens de startscènes kiest het publiek: alleen de titelbalk blijft staan.
+            venster.classList.add("klein");
+          }
           geluid.schakel();
           klaar();
         });
+      }
+      // De kiezer staat op een scène: de titel loopt mee in het venster. Bij de keuze komt de score erbij.
+      let rpHierna = null;
+      function rapportKeuze(titel, gekozen) {
+        const rij = el("rpTop").firstElementChild;
+        if (!rij || !el("rapport").classList.contains("kiest")) return;
+        rij.querySelector("span").textContent = titel || "…";
+        const score = gekozen && rpHierna && rpHierna.score != null ? rpTeken(rpHierna.score) : "";
+        rij.querySelector("b").textContent = score;
+        if (gekozen) {
+          el("rpStap").textContent = "Volgende scène";
+          el("rpBaan").style.width = "100%";
+        }
       }
       // Scène afgelopen: het rapport ophalen. Het algoritme heeft even nodig om de scène te verwerken;
       // komt het rapport niet op tijd, dan staan de tellingen in beeld zoals voorheen.
@@ -754,8 +805,10 @@
       // staat in beeld; het vlak begint onder de titel.
       el("scriptFrame").src = `${location.protocol}//${location.hostname}:3027/script-agent/operator/stage?doorzichtig=1`;
       function plaatsScript() {
-        const top = Math.max(300, getal(settings.tussenScriptY, 230));
-        const hoogte = Math.max(200, getal(settings.tussenScriptY, 230) + getal(settings.tussenScriptHoogte, 860) - top + 250);
+        // Het universum staat ingezoomd op het pad naar de scène, boven het midden van het scherm.
+        // De tekst loopt eronder binnen, tot aan de chat.
+        const top = 900;
+        const hoogte = Math.max(200, getal(settings.tussenChatY, 1380) - top - 20);
         el("script").style.top = top + "px";
         el("script").style.height = hoogte + "px";
         el("scriptFrame").style.top = (hoogte - H) + "px";
