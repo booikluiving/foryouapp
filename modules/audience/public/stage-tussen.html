@@ -59,7 +59,7 @@
         height: 218px;
         border-radius: 14px;
         overflow: hidden;
-        background: #050813;
+        background: #07080b;
       }
       #beeld[hidden] { display: none; }
       #beeld img, #beeld video {
@@ -180,7 +180,7 @@
         width: 1080px;
         height: 1920px;
         border: 0;
-        background: #050813;
+        background: #07080b;
         pointer-events: none;
       }
       /* Het genereren (beeld en script) staat alleen in beeld als de camera in de gekozen ster zit. */
@@ -199,7 +199,7 @@
         width: 1080px;
         bottom: 0;
         height: 760px;
-        background: linear-gradient(to bottom, rgba(5, 8, 19, 0) 0%, rgba(5, 8, 19, 0.82) 38%, rgba(5, 8, 19, 0.94) 100%);
+        background: linear-gradient(to bottom, rgba(7, 8, 11, 0) 0%, rgba(7, 8, 11, 0.82) 38%, rgba(7, 8, 11, 0.94) 100%);
       }
       #qr {
         position: absolute;
@@ -214,6 +214,67 @@
       #qr img { width: 190px; height: 190px; }
       #stats { opacity: 0; transition: opacity 1400ms ease; }
       #stats.toon { opacity: 1; }
+      /* Rapportvenster na een scène, in de stijl van foryouniverse.nl: wit op nacht, dunne lijn,
+         taakbalk onderin. Het zweeft groot boven het universum en klapt dicht tot zijn titelbalk
+         zodra het universum de volgende scène gaat kiezen. */
+      #rapport {
+        position: absolute;
+        left: 119px;
+        top: 365px;
+        width: 842px;
+        height: 1098px;
+        border: 1px solid #fff;
+        background: rgba(7, 8, 11, 0.9);
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        container-type: inline-size;
+        animation: rapport-zweef 13s ease-in-out infinite alternate;
+        z-index: 3;
+      }
+      #rapport[hidden] { display: none; }
+      #rapport.klein { top: 300px; height: auto; }
+      #rapport.klein .rp-inhoud, #rapport.klein .rp-balk.onder { display: none; }
+      #rapport.klein .rp-balk.boven { border-bottom: 0; }
+      @keyframes rapport-zweef { from { transform: translate(-6px, -9px); } to { transform: translate(6px, 9px); } }
+      .rp-balk { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 3cqw; padding: 0 2.4cqw; font-size: 3cqw; }
+      .rp-balk.boven { height: 7cqw; border-bottom: 1px solid #fff; }
+      .rp-balk.onder { height: 9.4cqw; border-top: 1px solid #fff; }
+      .rp-balk span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .rp-voortgang { display: flex; align-items: center; gap: 2.6cqw; color: rgba(255, 255, 255, 0.66); font-variant-numeric: tabular-nums; flex: none; }
+      .rp-baan { width: 12cqw; height: 1px; background: rgba(255, 255, 255, 0.3); position: relative; }
+      .rp-baan i { position: absolute; left: 0; top: 0; height: 1px; width: 0; background: #fff; }
+      .rp-inhoud { position: relative; flex: 1; min-height: 0; }
+      .rp-laag { position: absolute; inset: 6cqw 6cqw 5cqw; display: flex; flex-direction: column; }
+      .rp-laag.weg { visibility: hidden; }
+      .rp-kop { font-weight: 700; font-size: 7.4cqw; line-height: 1.04; letter-spacing: -0.025em; margin: 0; text-wrap: balance; }
+      .rp-onderkop { font-size: 3cqw; color: rgba(255, 255, 255, 0.66); margin-top: 1.6cqw; }
+      .rp-rijen { margin-top: auto; display: grid; }
+      .rp-rij { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 0 4cqw; padding: 2cqw 0; border-top: 1px solid rgba(255, 255, 255, 0.3); opacity: 0; }
+      .rp-rij.aan { opacity: 1; }
+      .rp-rij.streep { border-top: 1px solid #fff; }
+      .rp-rij span { font-size: 3cqw; color: rgba(255, 255, 255, 0.66); min-width: 0; overflow-wrap: anywhere; }
+      .rp-rij b { font-size: 6.6cqw; font-weight: 700; letter-spacing: -0.025em; line-height: 1; font-variant-numeric: tabular-nums; }
+      .rp-rij.som { padding: 1.5cqw 0; }
+      .rp-rij.som span { font-size: 3.6cqw; color: #fff; line-height: 1.15; }
+      .rp-rij.som b { font-size: 4.8cqw; }
+      .rp-rij.top span { font-size: 4.6cqw; color: #fff; font-weight: 700; letter-spacing: -0.025em; line-height: 1.1; }
+      .rp-meter { grid-column: 1 / -1; height: 3px; margin-top: 1.4cqw; position: relative; }
+      .rp-meter::before { content: ""; position: absolute; left: 0; right: 0; top: 1px; height: 1px; background: rgba(255, 255, 255, 0.3); }
+      .rp-meter i { position: absolute; left: 0; top: 0; height: 3px; width: 0; background: #fff; transition: width 500ms cubic-bezier(.65, 0, .35, 1); }
+      .rp-golf { grid-column: 1 / -1; width: 100%; height: 15cqw; margin-top: 1.4cqw; display: block; }
+      .rp-golf rect { fill: #fff; }
+      .rp-groot { font-weight: 700; font-size: 27cqw; line-height: 0.86; letter-spacing: -0.045em; margin: 2cqw 0 0 -0.05em; font-variant-numeric: tabular-nums; opacity: 0; }
+      .rp-groot.aan { opacity: 1; }
+      .rp-staaf { display: grid; grid-template-columns: 37% 1fr 15%; align-items: center; gap: 3cqw; padding: 1.5cqw 0; opacity: 0; }
+      .rp-staaf.aan { opacity: 1; }
+      .rp-staaf span { font-size: 3.8cqw; color: rgba(255, 255, 255, 0.66); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .rp-staaf b { font-size: 4.4cqw; font-weight: 700; letter-spacing: -0.025em; text-align: right; font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, 0.66); }
+      .rp-staaf.nu span, .rp-staaf.nu b { color: #fff; }
+      .rp-spoor { position: relative; height: 2cqw; }
+      .rp-spoor i { position: absolute; left: 0; top: 0; height: 100%; width: 0; background: rgba(255, 255, 255, 0.3); transition: width 500ms cubic-bezier(.65, 0, .35, 1); }
+      .rp-staaf.nu .rp-spoor i { background: #fff; }
+      #rpHiernaKop { font-size: 3cqw; color: rgba(255, 255, 255, 0.66); margin-top: 3cqw; visibility: hidden; }
       @keyframes erin {
         from { opacity: 0; transform: translateY(12px); }
         to { opacity: 1; transform: none; }
@@ -235,6 +296,31 @@
         <div id="statsScene"></div>
         <div id="statsRij"></div>
       </div>
+      <div id="rapport" hidden>
+        <div class="rp-balk boven"><span>Rapport</span><span id="rpScene"></span></div>
+        <div class="rp-inhoud">
+          <div id="rp0" class="rp-laag">
+            <h2 id="rpTitel" class="rp-kop"></h2>
+            <div id="rpMeta" class="rp-onderkop"></div>
+            <div id="rpReacties" class="rp-rijen"></div>
+          </div>
+          <div id="rp1" class="rp-laag weg">
+            <h2 class="rp-kop">Berekening</h2>
+            <div id="rpScore" class="rp-groot"></div>
+            <div id="rpSom" class="rp-rijen"></div>
+          </div>
+          <div id="rp2" class="rp-laag weg">
+            <h2 class="rp-kop">Dit publiek</h2>
+            <div id="rpLabels" class="rp-rijen"></div>
+            <div id="rpHiernaKop">Hierna</div>
+            <div id="rpTop" class="rp-rijen" style="margin-top:0"></div>
+          </div>
+        </div>
+        <div class="rp-balk onder">
+          <span id="rpStap"></span>
+          <span class="rp-voortgang"><span id="rpStapNr"></span><span class="rp-baan"><i id="rpBaan"></i></span></span>
+        </div>
+      </div>
       <div id="top" hidden></div>
       <div id="chat"></div>
      </div>
@@ -252,28 +338,43 @@
 
       // Het universum (padendienst, poort 3022) vult het scherm en speelt de reeks: stemmen of kiezen,
       // inzoomen, en na elke scène uitzoomen en nieuwe scènes laten vrijkomen. Het meldt waar het is.
-      const NA_SCENE_MS = 3000; // zo lang staan titel en tellingen van de gespeelde scène in beeld voor het uitzoomen begint
-      el("universum").src = `${location.protocol}//${location.hostname}:3022/universe/stage.html?naScene=${NA_SCENE_MS}&binnenTitel=0`;
+      // Na een scène wacht het universum met uitzoomen tot het rapport is getoond en dit scherm het vrijgeeft.
+      // NA_SCENE_MAX is het vangnet: komt de vrijgave niet, dan gaat het universum na die tijd vanzelf verder.
+      const NA_SCENE_MS = 3000; // zo lang staan titel en tellingen in beeld als er geen rapport is
+      const NA_SCENE_MAX = 30000;
+      // De poort van het universum is alleen op een proefopstelling anders (?universumPoort=…).
+      const UNIVERSUM_POORT = Number(new URLSearchParams(location.search).get("universumPoort")) || 3022;
+      el("universum").src = `${location.protocol}//${location.hostname}:${UNIVERSUM_POORT}/universe/stage.html?naScene=${NA_SCENE_MAX}&vrijgave=1&binnenTitel=0`;
+      function universumVerder() {
+        try { el("universum").contentWindow.postMessage({ bron: "for_you-scherm", verder: true }, "*"); } catch (_err) {}
+      }
       let universum = null, statsWeg = null, statsAan = false;
+      let rapportFase = 0; // 0 geen rapport, 1 rapport in beeld (camera nog in de ster), 2 universum is uitgezoomd
       // Vangnet: meldt het universum zich niet, dan staat het genereren gewoon in beeld.
       let universumStil = setTimeout(() => { universum = { stil: true }; zetLagen(); }, 12000);
       function zetLagen() {
         const inSter = !!(universum && (universum.stil || (universum.binnen && !universum.speelt)));
-        el("gen").classList.toggle("toon", inSter && !statsAan);
+        el("gen").classList.toggle("toon", inSter && !statsAan && !rapportFase);
         el("stats").classList.toggle("toon", statsAan);
       }
       window.addEventListener("message", (ev) => {
         const stand = ev.data;
         if (!stand || stand.bron !== "for_you-universum") return;
+        // De kiezer in het universum: een tik per sprong, een klap met bel bij de keuze.
+        if (stand.tik) { if (stand.tik === "slot") geluid.slot(); else geluid.stap(); return; }
         clearTimeout(universumStil);
         const speelde = !!(universum && universum.speelt);
         universum = stand;
         if (stand.omgeving || !stand.sceneId) zetBeeld(stand.omgeving);
         // Scène afgelopen: titel en tellingen in de ster. Ze vervagen zodra het universum gaat uitzoomen.
+        // Het rapport hoort bij de scène die net gespeeld is. Zodra het universum is uitgezoomd en
+        // daarna in de volgende ster zit, is ook de titelbalk weg.
+        if (rapportFase && !stand.binnen) rapportFase = 2;
+        else if (rapportFase === 2 && stand.binnen) rapportWeg();
         if (speelde && !stand.speelt && stand.binnen) {
-          statsAan = true;
-          clearTimeout(statsWeg);
-          statsWeg = setTimeout(() => { statsAan = false; zetLagen(); }, NA_SCENE_MS + 4000);
+          toonRapport();
+        } else if (stand.binnen && stand.speelt) {
+          rapportWeg();
         } else if (statsAan && !stand.binnen) {
           statsAan = false;
           clearTimeout(statsWeg);
@@ -283,6 +384,278 @@
         }
         zetLagen();
       });
+
+      // ── Rapportvenster ────────────────────────────────────────────────────────────────────────
+      // Geluid als een analoog rekentoestel: telwerk, relais, stappenschakelaar, magneet met bel.
+      // Alles is ruis door filters met een doffe klap eronder. Een browser laat geluid pas toe na een
+      // klik of toets; lukt het starten niet, dan blijft het scherm stil en werkt de rest gewoon.
+      let audio = null, ruis = null, laatsteTik = 0;
+      function geluidAan() {
+        if (audio) { if (audio.state === "suspended") audio.resume().catch(() => {}); return; }
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        try {
+          audio = new Ctx();
+          ruis = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
+          const data = ruis.getChannelData(0);
+          for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+          audio.resume().catch(() => {});
+        } catch (_err) { audio = null; }
+      }
+      geluidAan();
+      ["pointerdown", "keydown"].forEach((naam) => window.addEventListener(naam, geluidAan));
+      function klik({ hoogte = 3000, scherpte = 2, duur = 0.008, sterkte = 0.3, dof = 0, wanneer = 0 }) {
+        if (!audio || audio.state !== "running") return;
+        const nu = audio.currentTime + wanneer;
+        const bronGeluid = audio.createBufferSource();
+        bronGeluid.buffer = ruis;
+        const filter = audio.createBiquadFilter();
+        filter.type = "bandpass";
+        filter.frequency.value = hoogte * (0.9 + Math.random() * 0.2);
+        filter.Q.value = scherpte;
+        const gain = audio.createGain();
+        gain.gain.setValueAtTime(sterkte, nu);
+        gain.gain.exponentialRampToValueAtTime(0.0001, nu + duur);
+        bronGeluid.connect(filter).connect(gain).connect(audio.destination);
+        bronGeluid.start(nu, Math.random() * 0.5, duur + 0.02);
+        if (dof) {
+          const osc = audio.createOscillator();
+          const laag = audio.createGain();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(dof * 1.6, nu);
+          osc.frequency.exponentialRampToValueAtTime(dof, nu + 0.03);
+          laag.gain.setValueAtTime(sterkte * 0.9, nu);
+          laag.gain.exponentialRampToValueAtTime(0.0001, nu + 0.07);
+          osc.connect(laag).connect(audio.destination);
+          osc.start(nu);
+          osc.stop(nu + 0.09);
+        }
+      }
+      const geluid = {
+        tel() {
+          const nu = performance.now();
+          if (nu - laatsteTik < 38) return;
+          laatsteTik = nu;
+          klik({ hoogte: 3800, scherpte: 3, duur: 0.006, sterkte: 0.22 });
+        },
+        relais() {
+          klik({ hoogte: 2400, scherpte: 2, duur: 0.007, sterkte: 0.4 });
+          klik({ hoogte: 750, scherpte: 4, duur: 0.03, sterkte: 0.45, dof: 120, wanneer: 0.024 });
+        },
+        stap() {
+          klik({ hoogte: 1500, scherpte: 5, duur: 0.02, sterkte: 0.5, dof: 160 });
+          klik({ hoogte: 4200, scherpte: 2, duur: 0.004, sterkte: 0.18, wanneer: 0.03 });
+        },
+        schakel() {
+          for (let i = 0; i < 5; i++) klik({ hoogte: 1300 - i * 90, scherpte: 5, duur: 0.018, sterkte: 0.38, dof: 150, wanneer: i * 0.05 });
+        },
+        slot() {
+          klik({ hoogte: 320, scherpte: 1.2, duur: 0.09, sterkte: 0.8, dof: 68 });
+          if (!audio || audio.state !== "running") return;
+          const nu = audio.currentTime + 0.05;
+          [2093, 3322, 5210].forEach((hoogte, index) => {
+            const osc = audio.createOscillator();
+            const gain = audio.createGain();
+            osc.type = "sine";
+            osc.frequency.value = hoogte;
+            gain.gain.setValueAtTime(0.07 / (index + 1), nu);
+            gain.gain.exponentialRampToValueAtTime(0.0001, nu + 1.1 - index * 0.25);
+            osc.connect(gain).connect(audio.destination);
+            osc.start(nu);
+            osc.stop(nu + 1.2);
+          });
+        },
+      };
+
+      const RP_STAPPEN = ["Reacties tellen", "Berekening", "Conclusie"];
+      const rpNl = (n, cijfers = 1) => Math.abs(n).toLocaleString("nl-NL", { minimumFractionDigits: cijfers, maximumFractionDigits: cijfers });
+      const rpTeken = (n) => (n > 0 ? "+" : n < 0 ? "−" : "") + rpNl(n);
+      let rpTimers = [], rpRonde = 0;
+      function rpMaak(tag, klasse, tekst) {
+        const node = document.createElement(tag);
+        if (klasse) node.className = klasse;
+        if (tekst != null) node.textContent = tekst;
+        return node;
+      }
+      function rpRij(links, rechts, klasse) {
+        const node = rpMaak("div", "rp-rij" + (klasse ? " " + klasse : ""));
+        node.append(rpMaak("span", "", links), rpMaak("b", "", rechts));
+        return node;
+      }
+      function rpTelOp(node, doel, ms, vorm) {
+        const begin = performance.now();
+        const mijn = rpRonde;
+        let vorige = "";
+        const stapje = (nu) => {
+          if (mijn !== rpRonde) return;
+          const deel = Math.min(1, (nu - begin) / ms);
+          const tekst = vorm(doel * (1 - Math.pow(1 - deel, 3)));
+          if (tekst !== vorige) { node.textContent = tekst; vorige = tekst; geluid.tel(); }
+          if (deel < 1) requestAnimationFrame(stapje);
+        };
+        requestAnimationFrame(stapje);
+      }
+      function rpStap(nr) {
+        el("rpStap").textContent = RP_STAPPEN[nr];
+        el("rpStapNr").textContent = `0${nr + 1} / 0${RP_STAPPEN.length}`;
+        el("rpBaan").style.width = `${((nr + 1) / RP_STAPPEN.length) * 100}%`;
+        RP_STAPPEN.forEach((_naam, index) => el("rp" + index).classList.toggle("weg", index !== nr));
+        geluid.schakel();
+      }
+      function rapportWeg() {
+        rpTimers.forEach(clearTimeout);
+        rpTimers = [];
+        rpRonde++;
+        rapportFase = 0;
+        el("rapport").hidden = true;
+        zetLagen();
+      }
+      // Speelt het rapport af. De eerste keer rustig; elke volgende scène iets sneller.
+      function speelRapport(data, klaar) {
+        rapportWeg();
+        rapportFase = 1;
+        zetLagen();
+        const venster = el("rapport");
+        const scene = data.scene, som = data.som;
+        const tempo = Math.max(0.45, 1 - 0.14 * (Math.max(1, scene.nr) - 1));
+        const straks = (ms, fn) => rpTimers.push(setTimeout(fn, ms * tempo));
+        venster.classList.remove("klein");
+        venster.hidden = false;
+        el("rpScene").textContent = `Scène ${String(scene.nr).padStart(2, "0")}`;
+        el("rpTitel").textContent = scene.titel;
+        el("rpMeta").textContent = `${scene.seconden} seconden · ${scene.kijkers} kijkers`;
+        ["rpReacties", "rpSom", "rpLabels", "rpTop"].forEach((id) => el(id).replaceChildren());
+        el("rpHiernaKop").style.visibility = "hidden";
+        const score = el("rpScore");
+        score.classList.remove("aan");
+        score.textContent = "";
+        rpStap(0);
+        let t = 400;
+
+        // 1. Reacties tellen, en het zaalgeluid als golfvorm zodra dat gemeten wordt.
+        const meeste = Math.max(scene.hartjes, scene.verveeld, scene.berichten, 1);
+        [["hartjes", scene.hartjes], ["verveeld", scene.verveeld], ["berichten", scene.berichten]].forEach(([naam, waarde]) => {
+          const rij = rpRij(naam, "0");
+          const meter = rpMaak("div", "rp-meter");
+          const vulling = rpMaak("i");
+          meter.append(vulling);
+          rij.append(meter);
+          el("rpReacties").append(rij);
+          straks(t, () => {
+            rij.classList.add("aan");
+            rpTelOp(rij.querySelector("b"), waarde, 450 * tempo, (n) => String(Math.round(n)));
+            requestAnimationFrame(() => { vulling.style.width = `${(waarde / meeste) * 100}%`; });
+          });
+          t += 520;
+        });
+        if (scene.geluid) {
+          const NS = "http://www.w3.org/2000/svg";
+          const rij = rpRij(`zaalgeluid, piek (rust ${Math.round(scene.geluid.rustDb)} dB)`, "0 dB");
+          const golf = document.createElementNS(NS, "svg");
+          golf.setAttribute("class", "rp-golf");
+          golf.setAttribute("viewBox", `0 0 ${scene.geluid.golf.length * 4} 60`);
+          golf.setAttribute("preserveAspectRatio", "none");
+          rij.append(golf);
+          el("rpReacties").append(rij);
+          straks(t, () => {
+            rij.classList.add("aan");
+            rpTelOp(rij.querySelector("b"), scene.geluid.piekDb, 1000 * tempo, (n) => `${Math.round(n)} dB`);
+          });
+          scene.geluid.golf.forEach((db, index) => {
+            straks(t + index * (1000 / scene.geluid.golf.length), () => {
+              const hoogte = Math.max(1, Math.min(1, Math.max(0.04, (db - 50) / 35)) * 56);
+              const staaf = document.createElementNS(NS, "rect");
+              staaf.setAttribute("x", index * 4);
+              staaf.setAttribute("y", 30 - hoogte / 2);
+              staaf.setAttribute("width", 2);
+              staaf.setAttribute("height", hoogte);
+              golf.append(staaf);
+            });
+          });
+          t += 1000;
+        }
+        t += 1300;
+
+        // 2. Berekening: de som, regel voor regel, tot de score.
+        straks(t, () => rpStap(1));
+        const maal = (n) => (n < 0 ? "−" : "") + rpNl(n, Number.isInteger(n) ? 0 : 2);
+        const regels = [
+          [`${scene.hartjes} hartjes × ${maal(som.wHart)}`, rpTeken(scene.hartjes * som.wHart), "som"],
+          [`${scene.verveeld} verveeld × ${maal(som.wVerveeld)}`, rpTeken(scene.verveeld * som.wVerveeld), "som"],
+          [`${scene.berichten} berichten × ${maal(som.wBericht)}`, rpTeken(scene.berichten * som.wBericht), "som"],
+        ];
+        if (scene.geluid && som.wGeluid) regels.push([`zaalgeluid ${rpNl(scene.geluid.liftDb)} dB boven rust × ${maal(som.wGeluid)}`, rpTeken(som.geluid), "som"]);
+        regels.push(
+          ["som", rpTeken(som.ruw), "som streep"],
+          [`× duur (${scene.seconden} s)`, rpNl(som.duur, 2), "som"],
+          [`× publiek (${scene.kijkers} kijkers)`, rpNl(som.publiek, 2), "som"],
+        );
+        regels.forEach(([links, rechts, klasse], index) => {
+          const rij = rpRij(links, rechts, klasse);
+          el("rpSom").append(rij);
+          straks(t + 300 + index * 280, () => { rij.classList.add("aan"); geluid.relais(); });
+        });
+        t += 300 + regels.length * 280 + 100;
+        straks(t, () => { score.classList.add("aan"); rpTelOp(score, scene.score, 800 * tempo, rpTeken); });
+        straks(t + 850, () => geluid.slot());
+        t += 2400;
+
+        // 3. Conclusie: de stand per label, en de scène die hierna komt (niet tijdens het stemmen).
+        straks(t, () => rpStap(2));
+        const bereik = Math.max(...data.labels.map((label) => Math.abs(label.score)), 0.01);
+        data.labels.forEach((label, index) => {
+          const staaf = rpMaak("div", "rp-staaf" + (label.nu ? " nu" : ""));
+          const spoor = rpMaak("div", "rp-spoor");
+          const vulling = rpMaak("i");
+          spoor.append(vulling);
+          staaf.append(rpMaak("span", "", label.naam), spoor, rpMaak("b", "", rpTeken(label.score)));
+          el("rpLabels").append(staaf);
+          straks(t + 300 + index * 220, () => {
+            staaf.classList.add("aan");
+            geluid.relais();
+            requestAnimationFrame(() => { vulling.style.width = `${(Math.abs(label.score) / bereik) * 100}%`; });
+          });
+        });
+        t += 300 + data.labels.length * 220 + 500;
+        if (data.hierna) {
+          const rij = rpRij(data.hierna.titel, data.hierna.score == null ? "" : rpTeken(data.hierna.score), "top streep");
+          el("rpTop").append(rij);
+          straks(t, () => { el("rpHiernaKop").style.visibility = "visible"; rij.classList.add("aan"); geluid.relais(); });
+        }
+        t += 2200;
+        // Het venster klapt dicht tot zijn titelbalk; het universum gaat verder met kiezen.
+        straks(t, () => {
+          venster.classList.add("klein");
+          el("rpScene").textContent = `Scène ${String(scene.nr).padStart(2, "0")} · ${rpTeken(scene.score)}`;
+          geluid.schakel();
+          klaar();
+        });
+      }
+      // Scène afgelopen: het rapport ophalen. Het algoritme heeft even nodig om de scène te verwerken;
+      // komt het rapport niet op tijd, dan staan de tellingen in beeld zoals voorheen.
+      let rapportVraag = 0;
+      async function toonRapport() {
+        const vraag = ++rapportVraag;
+        // Het genereren van de vorige scène verdwijnt meteen; het rapport volgt zodra het er is.
+        rapportFase = 1;
+        zetLagen();
+        const situationRunId = ronde && ronde.situationRunId ? ronde.situationRunId : "";
+        let data = null;
+        for (let poging = 0; poging < 8 && vraag === rapportVraag; poging++) {
+          try {
+            const antwoord = await fetch(`/audience/stage/rapport?situationRunId=${encodeURIComponent(situationRunId)}&ts=${Date.now()}`, { cache: "no-store" }).then((res) => res.json());
+            if (antwoord && antwoord.klaar) { data = antwoord; break; }
+          } catch (_err) {}
+          await new Promise((resolve) => setTimeout(resolve, 600));
+        }
+        if (vraag !== rapportVraag) return;
+        if (data) { speelRapport(data, universumVerder); return; }
+        rapportFase = 0;
+        statsAan = true;
+        zetLagen();
+        clearTimeout(statsWeg);
+        statsWeg = setTimeout(() => { statsAan = false; zetLagen(); universumVerder(); }, NA_SCENE_MS);
+      }
 
       // QR-code om mee te doen: altijd klein in de hoek.
       async function tekenQr() {

@@ -360,6 +360,7 @@
     // Ingebed in het scherm van inloop en loading: even wachten na een scène (tellingen), waarom-blok hoger.
     const REGIE_NA_SCENE = Math.max(0, Number(REGIE_OPTIES.get("naScene")) || 0);
     const REGIE_BINNEN_TITEL = REGIE_OPTIES.get("binnenTitel") !== "0";
+    const REGIE_VRIJGAVE = REGIE_OPTIES.get("vrijgave") === "1";
     const REGIE_ZOOM = 60;
     const REGIE_DRAAI = Math.PI * 0.8;
     const regie = {
@@ -3408,7 +3409,9 @@
     // alle sterren kunnen blijven bewegen. De regie (stemmen, vrijkomen, kiezen, inzoomen) hoort bij
     // deze weergave.
 
-    const PODIUM_LETTER = 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    // Zaalscherm in de stijl van foryouniverse.nl: alleen wit op nacht, Helvetica.
+    const PODIUM_LETTER = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+    const PODIUM_NACHT = "#07080b";
     const PODIUM_NUL = { x: 0, y: 0 };
     const podium = {
       doek: null,
@@ -3597,10 +3600,10 @@
           const vanStatus = statusForScene(edge.fromSceneId);
           const naarStatus = statusForScene(edge.toSceneId);
           const inRun = ["current", "next", "available", "played"];
-          let kleur = edge.isMultiPath ? "rgba(246,247,244,0.62)" : "rgba(217,226,255,0.34)";
-          let alpha = edge.isMultiPath ? 0.72 : 0.52;
-          if (inRun.includes(vanStatus) || inRun.includes(naarStatus)) { kleur = "rgba(180,232,200,0.76)"; alpha = 0.86; }
-          if (vanStatus === "current" || naarStatus === "current") { kleur = "#f6d36a"; alpha = 0.95; }
+          let kleur = "#ffffff";
+          let alpha = edge.isMultiPath ? 0.3 : 0.2;
+          if (inRun.includes(vanStatus) || inRun.includes(naarStatus)) alpha = 0.5;
+          if (vanStatus === "current" || naarStatus === "current") alpha = 1;
           if (!edgeIsReleased(edge)) alpha = 0.09;
           const bocht = networkEdgeCurve(a, b, edge);
           ctx.lineWidth = Math.min(0.85 + Math.max(Number(edge.pathCount || edge.count || 1), 1) * 0.34, 3.2);
@@ -3616,7 +3619,7 @@
             const naar = regie.lijn.om ? a : b;
             const c1 = regie.lijn.om ? bocht.c2 : bocht.c1;
             const c2 = regie.lijn.om ? bocht.c1 : bocht.c2;
-            ctx.strokeStyle = "rgba(180,232,200,0.95)";
+            ctx.strokeStyle = "#ffffff";
             ctx.globalAlpha = fade;
             ctx.beginPath();
             ctx.moveTo(van.x, van.y);
@@ -3675,17 +3678,17 @@
           gloedSterkte = niveau >= 3 ? 0.92 : niveau === 2 ? 0.76 : 0.6;
         }
         if (node.isNetworkRoot) { rand = "rgba(255,255,255,0.95)"; randDikte = 0.85; }
-        if (node.isEndNode) vulling = "#d9e2ff";
         if (los) { vulling = "rgba(255,255,255,0.54)"; rand = "rgba(255,255,255,0.28)"; gloedMaat = 0; }
         if (!vrij) { alpha = 0.22; gloedMaat = 0; }
-        if (status === "played") { vulling = "rgba(167,163,154,0.8)"; gloedMaat = 0; }
-        else if (status === "next") { vulling = "#b4cde8"; gloedKleur = "180,205,232"; gloedMaat = 6; gloedSterkte = 0.55; }
-        else if (status === "available") { vulling = "rgba(246,247,244,0.94)"; rand = "rgba(180,232,200,0.82)"; gloedMaat = 6; gloedSterkte = 0.5; }
-        else if (status === "blocked") { vulling = "rgba(185,28,28,0.72)"; rand = "rgba(255,200,200,0.52)"; alpha = 0.36; }
+        // Gespeeld is een open ring, vrij een witte ster, dicht een flauwe stip.
+        if (status === "played") { vulling = PODIUM_NACHT; rand = "#ffffff"; randDikte = 1.4; gloedMaat = 0; }
+        else if (status === "next") { vulling = "#ffffff"; rand = "#ffffff"; gloedMaat = 6; gloedSterkte = 0.55; }
+        else if (status === "available") { vulling = "#ffffff"; rand = "#ffffff"; gloedMaat = 6; gloedSterkte = 0.5; }
+        else if (status === "blocked") { vulling = PODIUM_NACHT; rand = "rgba(255,255,255,0.6)"; randDikte = 1; alpha = 0.36; gloedMaat = 0; }
         else if (status === "locked") { alpha = 0.16; }
-        else if (status === "current") { vulling = "#b4e8c8"; rand = "#f6d36a"; randDikte = 1.7; gloedKleur = "180,232,200"; gloedMaat = 10; gloedSterkte = 0.64; }
+        else if (status === "current") { vulling = "#ffffff"; rand = "#ffffff"; randDikte = 1.7; gloedMaat = 10; gloedSterkte = 0.64; }
         if (stem && (stem.koploper || stem.winnaar)) {
-          vulling = "#fff8d6"; rand = "#ffffff"; gloedKleur = "255,248,214"; gloedMaat = 30; gloedSterkte = 0.95;
+          vulling = "#ffffff"; rand = "#ffffff"; gloedKleur = "255,255,255"; gloedMaat = 30; gloedSterkte = 0.95;
           if (stem.winnaar) alpha *= 0.81 + 0.19 * Math.cos(nu / 255);
         }
         if (stem && stem.verloren) alpha *= 0.45;
@@ -3696,9 +3699,9 @@
           const bol = straal * 1.7;
           const verloop = ctx.createRadialGradient(punt.x, punt.y, 0, punt.x, punt.y, bol);
           verloop.addColorStop(0, "#ffffff");
-          verloop.addColorStop(0.12, "rgba(220,246,232,0.95)");
-          verloop.addColorStop(0.6, "rgba(180,232,200,0.4)");
-          verloop.addColorStop(1, "rgba(180,232,200,0)");
+          verloop.addColorStop(0.12, "rgba(255,255,255,0.95)");
+          verloop.addColorStop(0.6, "rgba(255,255,255,0.4)");
+          verloop.addColorStop(1, "rgba(255,255,255,0)");
           ctx.globalAlpha = 1;
           ctx.fillStyle = verloop;
           ctx.beginPath();
@@ -3725,7 +3728,7 @@
         if (pop && nu - pop < 800) {
           const deel = (nu - pop) / 800;
           ctx.globalAlpha = (1 - deel) * fade;
-          ctx.strokeStyle = "#fff8d6";
+          ctx.strokeStyle = "#ffffff";
           ctx.lineWidth = 1.2;
           ctx.beginPath();
           ctx.arc(punt.x, punt.y, (networkNodeRadius(node) + 3) * (1 + deel * 4), 0, Math.PI * 2);
@@ -3734,12 +3737,23 @@
         }
         // Ring: springt langs de vrije scènes en blijft op de gekozen scène staan.
         if ((regie.ring === sceneId || regie.gekozen === sceneId) && !isFocus) {
+          // De kiezer: vier witte hoeken om de ster.
+          const m = straal + 9;
+          const h = m * 0.45;
           ctx.globalAlpha = fade;
-          ctx.strokeStyle = "#f6d36a";
-          ctx.lineWidth = 2;
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 1.6;
+          ctx.lineCap = "butt";
+          ctx.lineJoin = "miter";
           ctx.beginPath();
-          ctx.arc(punt.x, punt.y, straal + 7, 0, Math.PI * 2);
+          for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+            ctx.moveTo(punt.x + sx * m, punt.y + sy * (m - h));
+            ctx.lineTo(punt.x + sx * m, punt.y + sy * m);
+            ctx.lineTo(punt.x + sx * (m - h), punt.y + sy * m);
+          }
           ctx.stroke();
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
           ctx.globalAlpha = 1;
         }
 
@@ -3755,15 +3769,15 @@
             x: punt.x + (afstand > 1 ? dx / afstand : 0) * uit,
             y: punt.y + (afstand > 1 ? dy / afstand : -1) * uit + (groot ? 7 : 5),
             grootte: groot ? 21 : 15,
-            kleur: groot ? "#fff8d6" : "rgba(246,247,244,0.78)",
+            kleur: groot ? "#ffffff" : "rgba(255,255,255,0.66)",
             alpha: stem.verloren ? 0.45 : 1,
           });
           if (groot) stemKoplopers.push({ node, stem });
         } else if (regie.gekozen === sceneId && !isFocus) {
           const regels = regieTitelRegels(node.title);
-          etiketten.push({ regels, x: punt.x, y: punt.y - straal - 14 - (regels.length - 1) * 19, grootte: 15, kleur: "#fff8d6", alpha: 1, regelhoogte: 19 });
+          etiketten.push({ regels, x: punt.x, y: punt.y - straal - 20 - (regels.length - 1) * 19, grootte: 15, kleur: "#ffffff", alpha: 1, regelhoogte: 19 });
         } else if (state.tweaks.labels) {
-          etiketten.push({ regels: [node.title], x: punt.x, y: punt.y - straal - 9, grootte: 11, kleur: "rgba(246,247,244,0.82)", alpha: vrij ? 1 : 0.3 });
+          etiketten.push({ regels: [node.title], x: punt.x, y: punt.y - straal - 9, grootte: 11, kleur: "rgba(255,255,255,0.66)", alpha: vrij ? 1 : 0.3 });
         }
       }
 
@@ -3773,7 +3787,7 @@
         const regels = regieTitelRegels(stemKop.node.title);
         regels[regels.length - 1] += ` · ${stemKop.stem.votes}`;
         const top = Math.min(...stemPunten.map((punt) => punt.y));
-        etiketten.push({ regels, x: stemMidden.x, y: top - 50 - (regels.length - 1) * 24, grootte: 19, kleur: "#fff8d6", alpha: 1, regelhoogte: 24 });
+        etiketten.push({ regels, x: stemMidden.x, y: top - 50 - (regels.length - 1) * 24, grootte: 19, kleur: "#ffffff", alpha: 1, regelhoogte: 24 });
       }
       etiketten.forEach((etiket) => podiumTekst(ctx, etiket.regels, etiket.x, etiket.y, etiket.grootte, etiket.kleur, etiket.alpha * fade, etiket.regelhoogte));
     }
@@ -3874,6 +3888,26 @@
       render();
       regieCameraToepassen();
       regieMeld();
+    }
+
+    // Een tik voor het geluid op het hoofdscherm: "stap" bij elke sprong van de kiezer, "slot" bij de keuze.
+    function regieTik(soort) {
+      if (window.parent === window) return;
+      try { window.parent.postMessage({ bron: "for_you-universum", tik: soort }, "*"); } catch (_err) {}
+    }
+
+    // Na een scène wacht het universum tot het hoofdscherm het rapport heeft laten zien. Het scherm
+    // geeft het vrij met een bericht; komt dat niet, dan gaat het na de ingestelde tijd vanzelf verder.
+    let regieVrijgave = null;
+    window.addEventListener("message", (ev) => {
+      if (ev.data && ev.data.bron === "for_you-scherm" && ev.data.verder && regieVrijgave) regieVrijgave();
+    });
+    function regieWachtOpScherm(maxMs) {
+      return new Promise((resolve) => {
+        const klaar = () => { window.clearTimeout(timer); regieVrijgave = null; resolve(); };
+        const timer = window.setTimeout(klaar, maxMs);
+        regieVrijgave = klaar;
+      });
     }
 
     // Vertelt de pagina eromheen (het scherm van inloop en loading) waar de reeks is.
@@ -4047,7 +4081,8 @@
       regie.gekozen = 0;
       regieToon(model, Object.assign({}, doel, { cur: 0, next: 0, rel }));
       if (REGIE_NA_SCENE && doel.played.has(vorige)) {
-        await regieWacht(REGIE_NA_SCENE);
+        if (REGIE_VRIJGAVE) await regieWachtOpScherm(REGIE_NA_SCENE);
+        else await regieWacht(REGIE_NA_SCENE);
         if (gen !== regie.gen) return;
       }
       regieBinnen(false);
@@ -4101,6 +4136,7 @@
         const id = keuze.length ? keuze[Math.floor(Math.random() * keuze.length)] : wil;
         regie.ring = id;
         podium.vuil = true;
+        regieTik("stap");
         vorige = id;
         await regieWacht(70 + i * i * 2.4);
         if (gen !== regie.gen) return;
@@ -4115,6 +4151,7 @@
       if (gen !== regie.gen) return;
       regie.ring = 0;
       regie.gekozen = wil;
+      if (zichtbaarKiezen) regieTik("slot");
       regieToon(model, doel, true);
       await regieWacht(doel.cur ? 400 : doel.stemWinnaar === wil ? 3500 : 2500);
       if (gen !== regie.gen) return;

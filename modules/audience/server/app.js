@@ -8,7 +8,9 @@ const {
   AUDIENCE_SIGNAL_SCHEMA_VERSION,
   createAudienceSessionId,
 } = require("../../../shared/contracts/audience-v0");
+const { bouwStageRapport } = require("./stage-rapport");
 const {
+  algorithmBaseUrl,
   fetchCurrentRuntimeState,
   fetchRuntimeView,
   prepareChosenSituation,
@@ -105,6 +107,23 @@ function createAudienceApp(options = {}) {
   app.get("/audience/stage/tussen", (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "stage-tussen.html"));
   });
+
+  // Rapportvenster na een scène: reacties, de som, de stand per label en de scène die hierna komt.
+  app.get("/audience/stage/rapport", asyncRoute(async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    const result = await fetchRuntimeView();
+    const view = result && result.ok ? result.state : null;
+    if (!view || !view.showRunId) { res.json({ ok: true, klaar: false, reden: "geen_run" }); return; }
+    let report = null;
+    try {
+      const response = await fetch(`${algorithmBaseUrl()}/v0/algorithm/scoring-contexts/${encodeURIComponent(view.showRunId)}/report`, { signal: AbortSignal.timeout(2500) });
+      if (response.ok) report = await response.json();
+    } catch (_err) {
+      report = null;
+    }
+    if (!report) { res.json({ ok: true, klaar: false, reden: "algoritme_niet_bereikbaar" }); return; }
+    res.json(bouwStageRapport(report, view, req.query.situationRunId ? String(req.query.situationRunId) : null));
+  }));
 
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
   const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag"]);

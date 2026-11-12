@@ -179,6 +179,8 @@ function buildAudienceReport(state = {}) {
     forecast: {
       highest: forecast.slice(0, 5),
       lowest: forecast.length > 5 ? forecast.slice(-3).reverse() : [],
+      // Verwachte score van elke scène die nog niet gespeeld is, om de keuze van de runtime bij te tonen.
+      bySituation: Object.fromEntries(forecast.map((item) => [item.situationId, item.predictedScore])),
     },
     weights,
   };
