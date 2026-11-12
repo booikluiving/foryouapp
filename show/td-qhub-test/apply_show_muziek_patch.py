@@ -24,8 +24,10 @@ SHOW_MUZIEK_TERUG = False
 
 _p = op('/project1')
 _uit = _p.op('audiodevout2')
-_EXPR_AAN = ("0 if (lambda c: c is not None and c.eval() >= 0.5)"
-             "(op('/project1/OSC_knoppen_streamdeck/oscin1').chan('osc/showmuziek_uit')) else 1")
+# absTime.frame * 0: elke frame opnieuw kijken. Het kanaal bestaat pas na de eerste druk op de
+# knop; zonder dit ziet TouchDesigner nooit dat het erbij is gekomen.
+_EXPR_AAN = ("absTime.frame * 0 + (0 if (lambda c: c is not None and c.eval() >= 0.5)"
+             "(op('/project1/OSC_knoppen_streamdeck/oscin1').chan('osc/showmuziek_uit')) else 1)")
 
 if _uit is None:
     print('For_You show-muziek: audiodevout2 ontbreekt, niets gedaan')
