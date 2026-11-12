@@ -961,7 +961,23 @@ els.character.addEventListener("change", () => {
   }
   els.character.value = "";
 });
+// In de testmodus wisselt de situatie mee met de omgeving: er staat dan meteen een scène klaar
+// die bij die omgeving hoort. Past de gekozen situatie al bij de omgeving, dan blijft hij staan.
+function matchSituationToEnvironment() {
+  if (!sceneTestState.enabled) return;
+  const environmentId = String(els.environment.value || "");
+  if (!environmentId) return;
+  const situaties = catalogIndex.situaties || [];
+  const current = situaties.find((item) => String(item.id) === String(els.situation.value || ""));
+  if (current && String(current.environmentId || "") === environmentId) return;
+  const match = situaties.find((item) => String(item.environmentId || "") === environmentId);
+  if (!match || !selectHasValue(els.situation, match.id)) return;
+  els.situation.value = match.id;
+  updateSituationSelection({ preserveManualCharacters: false });
+}
+
 els.environment.addEventListener("change", () => {
+  matchSituationToEnvironment();
   els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
   manualSelectionDirty = true;
   updateEnvironmentPreview();
