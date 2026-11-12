@@ -1529,6 +1529,12 @@ body.stage-output {
   fill: #fff8d6;
 }
 
+.network-label.stem-label.stem-titel {
+  font-size: 19px;
+  font-weight: 720;
+  fill: #fff8d6;
+}
+
 @keyframes stem-winnaar-puls {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.62; }

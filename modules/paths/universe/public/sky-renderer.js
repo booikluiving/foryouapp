@@ -3144,6 +3144,15 @@
         }
       }
 
+      const stemRaw = state.model.runtime && state.model.runtime.raw && state.model.runtime.raw.stem;
+      const stemPunten = stemRaw && Array.isArray(stemRaw.stemmen)
+        ? stemRaw.stemmen.map((keuze) => layout.pos.get(Number(keuze.sceneId))).filter(Boolean)
+        : [];
+      const stemMidden = stemPunten.length
+        ? { x: stemPunten.reduce((som, punt) => som + punt.x, 0) / stemPunten.length, y: stemPunten.reduce((som, punt) => som + punt.y, 0) / stemPunten.length }
+        : null;
+      const stemKoplopers = [];
+
       for (const node of networkMap.nodes || []) {
         const pos = layout.pos.get(node.sceneId);
         if (!pos) continue;
@@ -3197,18 +3206,53 @@
         nodeLayer.appendChild(group);
         state.bb.networkNodeGroups.set(node.sceneId, group);
 
-        if (state.tweaks.labels || stem) {
+        if (stem && stemMidden) {
+          // De startscènes liggen dicht bij elkaar: bij elke ster staat alleen het aantal stemmen, aan de
+          // buitenkant van de kring. De titel van de koploper of winnaar staat op één vaste plek erboven.
+          const dx = pos.x - stemMidden.x;
+          const dy = pos.y - stemMidden.y;
+          const afstand = Math.hypot(dx, dy);
+          const uit = radius + 14;
+          const label = el("text", {
+            x: pos.x + (afstand > 1 ? dx / afstand : 0) * uit,
+            y: pos.y + (afstand > 1 ? dy / afstand : -1) * uit,
+            "text-anchor": "middle",
+            "dominant-baseline": "central",
+            class: "scene-label network-label stem-label",
+          });
+          label.textContent = String(stem.votes);
+          group.appendChild(label);
+          if (stem.koploper || stem.winnaar) stemKoplopers.push({ node, stem });
+        } else if (state.tweaks.labels) {
           const label = el("text", {
             x: pos.x,
             y: pos.y - radius - 9,
             "text-anchor": "middle",
-            class: `scene-label network-label${status ? " runtime-label" : ""}${stem ? " stem-label" : ""}`,
+            class: `scene-label network-label${status ? " runtime-label" : ""}`,
           });
-          // De startscènes liggen dicht bij elkaar: alleen de koploper of winnaar krijgt zijn titel,
-          // de andere tonen hun aantal stemmen.
-          label.textContent = !stem ? node.title : (stem.koploper || stem.winnaar) ? `${node.title} \u00b7 ${stem.votes}` : String(stem.votes);
+          label.textContent = node.title;
           group.appendChild(label);
         }
+      }
+
+      // Eén titel boven de kring: de winnaar, of de koploper als er precies één is.
+      const stemKop = stemKoplopers.find((item) => item.stem.winnaar) || (stemKoplopers.length === 1 ? stemKoplopers[0] : null);
+      if (stemKop && stemMidden) {
+        const regels = regieTitelRegels(stemKop.node.title);
+        regels[regels.length - 1] += ` \u00b7 ${stemKop.stem.votes}`;
+        const top = Math.min(...stemPunten.map((punt) => punt.y));
+        const label = el("text", {
+          x: stemMidden.x,
+          y: top - 50 - (regels.length - 1) * 24,
+          "text-anchor": "middle",
+          class: "scene-label network-label stem-label stem-titel",
+        });
+        regels.forEach((regel, index) => {
+          const tspan = el("tspan", { x: stemMidden.x, dy: index ? 24 : 0 });
+          tspan.textContent = regel;
+          label.appendChild(tspan);
+        });
+        nodeLayer.appendChild(label);
       }
 
       state.bb.labelsLayer = el("g", { class: "bb-labels" });
