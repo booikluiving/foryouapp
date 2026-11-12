@@ -31,6 +31,32 @@ function sceneIdVan(item) {
   return match ? Number(match[1]) : 0;
 }
 
+// Waarom de runtime deze scène klaarzet: plaats en score tussen de vrije scènes, en via welke paden.
+function keuzeVoor(view, prepared, preparedId) {
+  const pool = Array.isArray(view.eligiblePool) ? view.eligiblePool : [];
+  const waarde = (item) => {
+    if (!item) return 0;
+    if (item.scoreValue != null) return Number(item.scoreValue) || 0;
+    return Number(item.score && item.score.components && item.score.components.final) || 0;
+  };
+  const eigen = pool.find((item) => sceneIdVan(item) === preparedId) || null;
+  const evaluatie = view.pathEvaluation.items.find((item) => sceneIdVan(item) === preparedId) || null;
+  const components = (eigen && eigen.score && eigen.score.components) || {};
+  return {
+    reden: String((prepared && prepared.reason) || ""),
+    score: eigen ? waarde(eigen) : null,
+    rang: eigen ? pool.filter((item) => waarde(item) > waarde(eigen)).length + 1 : null,
+    gelijk: eigen ? pool.filter((item) => waarde(item) === waarde(eigen)).length : 0,
+    aantal: pool.length,
+    onderdelen: Object.entries(components)
+      .filter(([naam, getal]) => naam !== "final" && Number(getal))
+      .map(([naam, getal]) => ({ naam, waarde: Number(getal) }))
+      .sort((a, b) => Math.abs(b.waarde) - Math.abs(a.waarde))
+      .slice(0, 3),
+    paden: evaluatie ? (evaluatie.pathStatuses || []).filter((pad) => pad && pad.status === "available").map((pad) => pad.pathName).filter(Boolean) : [],
+  };
+}
+
 function buildRuntimeOverlay(view, stemming) {
   if (!view || !view.pathEvaluation || !Array.isArray(view.pathEvaluation.items)) return null;
   const items = view.pathEvaluation.items;
@@ -69,7 +95,7 @@ function buildRuntimeOverlay(view, stemming) {
     summary: { hasActiveRun: true },
     currentScene: currentId ? { sceneId: currentId } : null,
     playedSceneIds: [...played],
-    preparedNextScenes: toonPrepared ? [{ sceneId: preparedId }] : [],
+    preparedNextScenes: toonPrepared ? [{ sceneId: preparedId, keuze: keuzeVoor(view, prepared, preparedId) }] : [],
     availableScenes: metStatus("available").filter((id) => !played.has(id)).map((sceneId) => ({ sceneId })),
     blockedSceneIds: metStatus("blocked"),
     lockedSceneIds: metStatus("locked"),

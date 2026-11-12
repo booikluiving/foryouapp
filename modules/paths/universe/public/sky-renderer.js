@@ -369,6 +369,8 @@
       volTimer: 0,
       stil: false,
       stilSinds: 0,
+      waarom: null,
+      binnenAan: false,
     };
 
     function pathById(pathId) {
@@ -3379,7 +3381,7 @@
         runtime: Data.runtimeOverlay(Object.assign({}, raw, {
           currentScene: stand.cur ? { sceneId: stand.cur } : null,
           playedSceneIds: [...stand.played],
-          preparedNextScenes: stand.next ? [{ sceneId: stand.next }] : [],
+          preparedNextScenes: stand.next ? (raw.preparedNextScenes || []).filter((scene) => Number(scene.sceneId) === stand.next).slice(0, 1).concat([{ sceneId: stand.next }]).slice(0, 1) : [],
           graphNextScenes: [],
           availableScenes: vrij.map((sceneId) => ({ sceneId })),
           lockedSceneIds: (raw.lockedSceneIds || []).concat(nogDicht),
@@ -3392,6 +3394,78 @@
       regie.model = model;
       regie.getoond = Object.assign({}, stand, { played: new Set(stand.played), rel: new Set(stand.rel) });
       render();
+      regieMeld();
+    }
+
+    // Vertelt de pagina eromheen (het scherm van de loadingfase) waar de reeks is.
+    function regieMeld() {
+      if (window.parent === window) return;
+      const g = regie.getoond;
+      try {
+        window.parent.postMessage({
+          bron: "for_you-universum",
+          actief: !!g,
+          binnen: regie.binnenAan,
+          sceneId: regie.focus,
+          speelt: !!(g && regie.focus && g.cur === regie.focus),
+          gespeeld: g ? g.played.size : 0,
+        }, "*");
+      } catch (_err) {}
+    }
+
+    const REGIE_ONDERDEEL = {
+      liveAudience: "publiek nu",
+      observed: "eerdere reacties",
+      latestObservation: "laatste sc\u00e8ne",
+      affinity: "verwantschap",
+      profileLabel: "thema",
+      profileCharacter: "personage",
+      profileSituation: "situatie",
+      profileLabelAffinity: "thema-verwantschap",
+      profileCharacterAffinity: "personage-verwantschap",
+      diversityPenalty: "afwisseling",
+      explorationBonus: "nog niet gezien",
+      retryBonus: "herkansing",
+      sceneRepeatPenalty: "herhaling",
+      neutral: "basis",
+    };
+
+    function regieGetal(waarde) {
+      const tekst = Math.abs(waarde).toFixed(2).replace(".", ",");
+      return (waarde < 0 ? "\u2212" : "+") + tekst;
+    }
+
+    // Waarom deze scène: staat onder in beeld zodra de keuze gevallen is.
+    function regieWaarom(sceneId) {
+      const houder = sky.parentNode;
+      if (!houder) return;
+      if (!regie.waarom) {
+        regie.waarom = htmlEl("div", { class: "regie-waarom" });
+        houder.appendChild(regie.waarom);
+      }
+      if (!sceneId) {
+        regie.waarom.classList.remove("toon");
+        return;
+      }
+      const raw = regie.doel && regie.doel.runtime && regie.doel.runtime.raw;
+      const prepared = raw && (raw.preparedNextScenes || []).find((scene) => Number(scene.sceneId) === Number(sceneId));
+      const keuze = prepared && prepared.keuze;
+      const stemWinnaar = Number(raw && raw.stem && raw.stem.winnaar || 0) === Number(sceneId);
+      const regels = [];
+      if (stemWinnaar) regels.push("Gekozen door het publiek");
+      else if (keuze && keuze.reden === "operator_chosen") regels.push("Gekozen door de operator");
+      else if (keuze && keuze.rang === 1 && keuze.gelijk > 1) regels.push(`Gelijke score met ${keuze.gelijk - 1} andere: eerste in de volgorde`);
+      else if (keuze && keuze.rang === 1) regels.push(`Hoogste score van ${keuze.aantal} vrije sc\u00e8nes`);
+      else if (keuze && keuze.rang) regels.push(`Plaats ${keuze.rang} van ${keuze.aantal} vrije sc\u00e8nes`);
+      if (keuze && keuze.score != null && !stemWinnaar) {
+        const onderdelen = (keuze.onderdelen || []).map((item) => `${REGIE_ONDERDEEL[item.naam] || item.naam} ${regieGetal(item.waarde)}`);
+        regels.push(["score " + keuze.score.toFixed(2).replace(".", ",")].concat(onderdelen).join(" \u00b7 "));
+      }
+      if (keuze && keuze.paden && keuze.paden.length) regels.push((keuze.paden.length > 1 ? "Paden: " : "Pad: ") + keuze.paden.slice(0, 3).join(", "));
+      const maat = Math.min(houder.clientWidth || 1600, houder.clientHeight || 900);
+      regie.waarom.style.fontSize = `${Math.round(maat * 0.03)}px`;
+      regie.waarom.innerHTML = `<p class="regie-waarom-kop">Volgende sc\u00e8ne</p><p class="regie-waarom-titel">${escapeText(sceneTitle(sceneId))}</p>${regels.map((regel) => `<p>${escapeText(regel)}</p>`).join("")}`;
+      regie.waarom.classList.add("toon");
     }
 
     function regieSterVan(sceneId) {
@@ -3512,6 +3586,8 @@
       if (!aan) {
         sky.classList.remove("regie-binnen-vol");
         regie.binnen.classList.remove("toon");
+        regie.binnenAan = false;
+        regieMeld();
         return;
       }
       const breedte = houder.clientWidth || 1600;
@@ -3525,7 +3601,11 @@
       }
       regie.binnen.innerHTML = `<div class="regie-stof">${stof}</div><p style="font-size:${Math.round(maat * 0.05)}px">${escapeText(sceneTitle(regie.focus))}</p>`;
       regie.binnen.classList.add("toon");
-      regie.volTimer = window.setTimeout(() => sky.classList.add("regie-binnen-vol"), 1300);
+      regie.volTimer = window.setTimeout(() => {
+        sky.classList.add("regie-binnen-vol");
+        regie.binnenAan = true;
+        regieMeld();
+      }, 1300);
     }
 
     function regieRand(a, b) {
@@ -3562,6 +3642,7 @@
       sky.classList.toggle("regie-weg", !!wil);
       sky.classList.remove("regie-terug");
       regieStil(!!wil);
+      regieWaarom(0);
       regieToon(model, stand, true);
       regieBinnen(!!wil);
     }
@@ -3581,6 +3662,7 @@
       sky.classList.remove("regie-duikt", "regie-terug", "regie-weg");
       sky.style.transform = "";
       regieStil(false);
+      regieWaarom(0);
       regieBinnen(false);
     }
 
@@ -3667,7 +3749,9 @@
       if (gen !== regie.gen) return;
       regie.gekozen = wil;
       regieToon(model, doel, true);
-      await regieWacht(doel.cur ? 400 : doel.stemWinnaar === wil ? 3500 : 1700);
+      if (!doel.cur) regieWaarom(wil);
+      await regieWacht(doel.cur ? 400 : 4500);
+      regieWaarom(0);
       if (gen !== regie.gen) return;
       const laatste = regieStand(regie.doel);
       if (!laatste || (laatste.cur || laatste.next) !== wil) { regie.gekozen = 0; return; }

@@ -116,6 +116,26 @@
         justify-content: center;
         gap: 22px;
       }
+      /* Het universum ligt over het scherm tot de volgende scène gekozen en ingezoomd is. */
+      #universum {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+        border: 0;
+        background: #050813;
+        z-index: 5;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 900ms ease, visibility 0s linear 900ms;
+      }
+      #universum.toon {
+        opacity: 1;
+        visibility: visible;
+        transition: opacity 900ms ease;
+      }
       #stem[hidden] { display: none; }
       #stemKop { font-size: 34px; font-weight: 500; color: rgba(255, 255, 255, 0.66); }
       .stemRij { position: relative; opacity: 0.6; transition: opacity 300ms ease; }
@@ -142,6 +162,7 @@
       </div>
       <div id="top" hidden></div>
       <div id="chat"></div>
+      <iframe id="universum" title="Universum" scrolling="no"></iframe>
     </div>
     <script>
       const W = 1080, H = 1920, MAX_REGELS = 14;
@@ -153,6 +174,23 @@
 
       // Het script van de script-agent (poort 3027) op dezelfde machine.
       el("scriptFrame").src = `${location.protocol}//${location.hostname}:3027/script-agent/operator/stage`;
+
+      // Het universum (padendienst, poort 3022) speelt na elke scène zijn reeks: nieuwe scènes komen
+      // vrij, de volgende wordt gekozen, de camera zoomt in. Daarna komt dit scherm tevoorschijn.
+      // Vóór de eerste scène blijft dit scherm zelf in beeld (stemmen op de startscène).
+      el("universum").src = `${location.protocol}//${location.hostname}:3022/universe/stage.html`;
+      let universumWeg = null;
+      window.addEventListener("message", (ev) => {
+        const stand = ev.data;
+        if (!stand || stand.bron !== "for_you-universum") return;
+        const toon = !!(stand.actief && stand.gespeeld > 0 && !(stand.binnen && !stand.speelt));
+        const frame = el("universum");
+        if (toon === frame.classList.contains("toon")) return;
+        frame.classList.toggle("toon", toon);
+        clearTimeout(universumWeg);
+        // Vangnet: komt er geen volgende scène, dan geeft het universum het scherm vanzelf terug.
+        if (toon && !stand.speelt) universumWeg = setTimeout(() => frame.classList.remove("toon"), 90000);
+      });
 
       function pas() {
         const s = Math.min(window.innerWidth / W, window.innerHeight / H);

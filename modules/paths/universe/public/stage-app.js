@@ -177,6 +177,8 @@
     startRuntimePolling();
   }
 
+  if (window.parent !== window) document.body.classList.add("ingebed");
+
   loadStage().catch((err) => {
     $("sky").innerHTML = `
       <foreignObject x="420" y="330" width="760" height="190">
