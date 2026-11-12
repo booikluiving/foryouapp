@@ -1,0 +1,114 @@
+{
+  "uitleg": "Het vakje linksboven op het inloopscherm, per omgeving. midden = middelste derde van de achtergrond, hoog = achtergrond op volle hoogte, shot = het extra shot van de omgeving. Het beeld zelf komt altijd uit de catalogus. Keuze van Booi, 12 november 2026.",
+  "standaard": "hoog",
+  "omgevingen": {
+    "environment:26": {
+      "naam": "Antiekwinkel",
+      "uitsnede": "shot"
+    },
+    "environment:25": {
+      "naam": "Auto",
+      "uitsnede": "midden"
+    },
+    "environment:24": {
+      "naam": "Bioscoop",
+      "uitsnede": "shot"
+    },
+    "environment:4": {
+      "naam": "Cradam",
+      "uitsnede": "hoog"
+    },
+    "environment:10": {
+      "naam": "Eerste handboogstraat",
+      "uitsnede": "hoog"
+    },
+    "environment:23": {
+      "naam": "Fata morgana",
+      "uitsnede": "shot"
+    },
+    "environment:18": {
+      "naam": "Festival",
+      "uitsnede": "midden"
+    },
+    "environment:3": {
+      "naam": "Grimmige slaapkamer",
+      "uitsnede": "midden"
+    },
+    "environment:19": {
+      "naam": "Hotelkamer",
+      "uitsnede": "hoog"
+    },
+    "environment:20": {
+      "naam": "Keuken",
+      "uitsnede": "hoog"
+    },
+    "environment:9": {
+      "naam": "Kruipruimte",
+      "uitsnede": "hoog"
+    },
+    "environment:29": {
+      "naam": "Lingo studio",
+      "uitsnede": "shot"
+    },
+    "environment:21": {
+      "naam": "Linksvoor",
+      "uitsnede": "midden"
+    },
+    "environment:5": {
+      "naam": "Logeerkamer",
+      "uitsnede": "hoog"
+    },
+    "environment:14": {
+      "naam": "NOS Studio",
+      "uitsnede": "midden"
+    },
+    "environment:6": {
+      "naam": "Persconferentie",
+      "uitsnede": "shot"
+    },
+    "environment:17": {
+      "naam": "Podcaststudio",
+      "uitsnede": "hoog"
+    },
+    "environment:16": {
+      "naam": "Restaurant",
+      "uitsnede": "midden"
+    },
+    "environment:7": {
+      "naam": "Spelletjeskamer",
+      "uitsnede": "hoog"
+    },
+    "environment:15": {
+      "naam": "Supermarkt",
+      "uitsnede": "hoog"
+    },
+    "environment:13": {
+      "naam": "Tennis",
+      "uitsnede": "hoog"
+    },
+    "environment:28": {
+      "naam": "The Voice of Holland",
+      "uitsnede": "shot"
+    },
+    "environment:8": {
+      "naam": "Trampolinepark",
+      "uitsnede": "hoog"
+    },
+    "environment:11": {
+      "naam": "Trein",
+      "uitsnede": "hoog"
+    },
+    "environment:12": {
+      "naam": "Ziekenhuis",
+      "uitsnede": "hoog"
+    },
+    "environment:22": {
+      "naam": "Zonnebloemveld",
+      "uitsnede": "hoog"
+    },
+    "environment:27": {
+      "naam": "Zoom",
+      "uitsnede": "midden"
+    }
+  }
+}
