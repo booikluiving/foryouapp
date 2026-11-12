@@ -10,9 +10,14 @@ const { scriptAgentDbDir } = require("../../script-agent/script-output/state-sto
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 const STANDAARD_MODEL = "deepseek-v4-pro";
 const MAX_TEKENS = 140;
+const MAX_SCRIPT = 3500;
 
 function catalogBaseUrl() {
   return String(process.env.AUDIENCE_CATALOG_URL || "http://127.0.0.1:3021").replace(/\/+$/, "");
+}
+
+function scriptAgentBaseUrl() {
+  return String(process.env.AUDIENCE_SCRIPT_AGENT_URL || "http://127.0.0.1:3027").replace(/\/+$/, "");
 }
 
 async function leesJson(bestand) {
@@ -50,6 +55,20 @@ async function haalPersonages({ fetchImpl = fetch } = {}) {
     }));
 }
 
+// Het script dat voor deze scène gegenereerd is: dat is wat het publiek echt hoorde. "" als het er niet is.
+async function haalScript(scene, { fetchImpl = fetch } = {}) {
+  if (!scene || !scene.showRunId || !scene.situationId) return "";
+  const data = await metTimeout(4000, async (signal) => {
+    const url = `${scriptAgentBaseUrl()}/v0/script-agent/scripts?showRunId=${encodeURIComponent(scene.showRunId)}`;
+    const response = await fetchImpl(url, { signal });
+    if (!response.ok) throw new Error(`script-agent gaf ${response.status}`);
+    return response.json();
+  });
+  const passend = (data.scripts || []).filter((item) => item && item.situationId === scene.situationId);
+  const laatste = passend[passend.length - 1];
+  return laatste ? String(laatste.scriptText || "").trim().slice(0, MAX_SCRIPT) : "";
+}
+
 function kies(lijst, rng) {
   return lijst[Math.min(lijst.length - 1, Math.floor(rng() * lijst.length))];
 }
@@ -61,7 +80,12 @@ function kiesOpdracht(personage, { scene, chat, rng }) {
   const worp = rng();
   let waarover;
   if (scene && worp < 0.45) {
-    waarover = "Reageer op één concreet moment of detail uit het filmpje. Vat het niet samen.";
+    waarover = kies([
+      "Reageer op één concreet moment of detail uit het filmpje. Vat het niet samen.",
+      "Reageer op één zin die iemand in het filmpje zei. Je mag hem half aanhalen.",
+      "Reageer op de wending of op hoe het afliep: zag je het aankomen, vond je het terecht?",
+      "Kies partij voor of tegen iemand uit het filmpje.",
+    ], rng);
   } else if (anderen.length && worp < 0.8) {
     const doel = kies(anderen, rng);
     waarover = `Reageer op wat ${doel.naam} net schreef ("${doel.tekst.slice(0, 120)}"). Geef antwoord, wees het oneens, of maak er een grap over. Je mag de naam noemen, hoeft niet.`;
@@ -104,7 +128,9 @@ function bouwBerichten(personage, { scene = null, chat = [], onderwerp = "", eer
   const filmTekst = heeftFilm
     ? [
       `Het filmpje van zojuist: "${film.titel}"${film.omgeving ? ` (${film.omgeving})` : ""}.`,
-      film.verloop ? `Wat er gebeurde: ${film.verloop}` : "",
+      film.script
+        ? `Dit is wat er gezegd werd:\n${film.script}`
+        : (film.verloop ? `Wat er gebeurde: ${film.verloop}` : ""),
       (film.personages || []).length ? `Wie erin zaten: ${film.personages.join(", ")}.` : "",
       speeldeMee ? "Jij zat er zelf in. Je kijkt nu terug op je eigen optreden." : "",
     ].filter(Boolean).join("\n")
@@ -151,10 +177,27 @@ function maakPersonageStem({ fetchImpl = fetch, env = process.env } = {}) {
     return toegang;
   }
 
+  // Het script per scène onthouden; ontbreekt het, dan na een tijdje opnieuw kijken.
+  let script = { sleutel: "", tekst: "", tot: 0 };
+  async function metScript(scene) {
+    if (!scene || typeof scene !== "object" || !scene.situationId) return scene;
+    const sleutel = `${scene.showRunId}|${scene.situationId}`;
+    if (script.sleutel !== sleutel || (!script.tekst && Date.now() > script.tot)) {
+      script = { sleutel, tekst: "", tot: Date.now() + 20000 };
+      try {
+        script.tekst = await haalScript(scene, { fetchImpl });
+      } catch {
+        // Zonder script valt het personage terug op de beschrijving van de scène.
+      }
+    }
+    return script.tekst ? { ...scene, script: script.tekst } : scene;
+  }
+
   // Geeft de tekst, of "" als het model niets bruikbaars gaf. Gooit bij een fout.
   async function schrijf(personage, context = {}) {
     const { sleutel, model } = await leesToegang();
     if (!sleutel) throw new Error("geen_sleutel");
+    context = { ...context, scene: await metScript(context.scene) };
     const data = await metTimeout(12000, async (signal) => {
       const response = await fetchImpl(DEEPSEEK_URL, {
         method: "POST",
@@ -181,6 +224,7 @@ function maakPersonageStem({ fetchImpl = fetch, env = process.env } = {}) {
 module.exports = {
   bouwBerichten,
   haalPersonages,
+  haalScript,
   maakPersonageStem,
   maakSchoon,
 };
