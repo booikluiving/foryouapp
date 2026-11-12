@@ -476,7 +476,7 @@
           <h2>Stemmen op de startscène</h2>
           <div class="row">
             <label>Duur (s) <input id="startStemDuur" type="number" min="10" max="600" step="5" value="45" /></label>
-            <label>Minimum stemmen <input id="startStemMin" type="number" min="0" max="1000" step="1" value="3" /></label>
+            <label>Minimum stemmen <input id="startStemMin" type="number" min="0" max="1000" step="1" value="1" /></label>
           </div>
           <div class="row">
             <button id="startStemBtn" class="primary" type="button">Open stemming</button>
@@ -1691,6 +1691,14 @@
         }).then(() => { setActionMessage(""); return refresh(); })
           .catch((err) => setActionMessage(fouten[err.message] || ("Stemming openen mislukt: " + err.message), true));
       });
+      for (const id of ["startStemDuur", "startStemMin"]) {
+        document.getElementById(id).addEventListener("change", () => {
+          post("/audience/admin/start-stemming/instellingen", {
+            durationSeconds: Number(document.getElementById("startStemDuur").value || 45),
+            minVotes: Number(document.getElementById("startStemMin").value || 0),
+          }).catch(() => {});
+        });
+      }
       document.getElementById("sluitStemBtn").addEventListener("click", () => {
         runAction("/audience/admin/polls/close", {}, "Stemming gesloten.");
       });

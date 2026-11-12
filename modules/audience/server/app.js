@@ -363,6 +363,10 @@ function createAudienceApp(options = {}) {
     }
   });
 
+  app.post("/audience/admin/start-stemming/instellingen", (req, res) => {
+    res.json({ ok: true, instellingen: service.setStartStemmingInstellingen(req.body || {}) });
+  });
+
   app.post("/audience/admin/polls/close", (_req, res) => {
     const pollId = service.closePoll("admin_close");
     if (!pollId) {

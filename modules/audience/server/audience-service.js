@@ -54,7 +54,7 @@ function normalizeStartStemmingInstellingen(input) {
   const min = Number(bron.minVotes);
   return {
     durationSeconds: Number.isFinite(duur) ? Math.min(600, Math.max(10, Math.round(duur))) : 45,
-    minVotes: Number.isFinite(min) ? Math.min(1000, Math.max(0, Math.round(min))) : 3,
+    minVotes: Number.isFinite(min) ? Math.min(1000, Math.max(0, Math.round(min))) : 1,
   };
 }
 // Ronde = van de start van een scène tot de start van de volgende: daarover tellen we de emoji.
@@ -1712,6 +1712,13 @@ class AudienceService extends EventEmitter {
 
   getStartStemmingInstellingen() {
     return { ...this.startStemmingInstellingen };
+  }
+
+  setStartStemmingInstellingen(input = {}) {
+    this.startStemmingInstellingen = normalizeStartStemmingInstellingen({ ...this.startStemmingInstellingen, ...input });
+    this.store.setSetting(START_STEMMING_INSTELLINGEN_KEY, this.startStemmingInstellingen);
+    this.emit("admin-state-changed");
+    return this.getStartStemmingInstellingen();
   }
 
   getStartStemming() {

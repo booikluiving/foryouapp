@@ -78,7 +78,8 @@ function createPathsApp(options = {}) {
   app.use("/universe", express.static(universeRoot, {
     extensions: ["html"],
     index: "index.html",
-    maxAge: "30s",
+    // Geen bewaartijd: TouchDesigner haalt na een herlaad altijd de nieuwste pagina op.
+    maxAge: 0,
   }));
 
   app.get("/health", (_req, res) => {

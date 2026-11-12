@@ -361,7 +361,7 @@
       refreshRuntime().catch(() => {
         $("sourceStatus").textContent = "runtime fout";
       });
-    }, 3500);
+    }, 1000);
   }
 
   function wireControls() {
