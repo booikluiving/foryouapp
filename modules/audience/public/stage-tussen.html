@@ -56,20 +56,22 @@
         transform: translateY(-50%);
       }
       /* In de ster: de titel van de scène, met eronder de tekst die regel voor regel binnenloopt. */
+      /* De titel staat bovenaan, tussen het beeld van de omgeving (links) en de QR-code (rechts). */
       #genTitel, #statsScene {
         position: absolute;
-        left: 88px;
-        right: 88px;
-        top: 330px;
+        left: 298px;
+        right: 298px;
+        top: 56px;
+        height: 218px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         text-align: center;
-        font-size: 60px;
+        font-size: 42px;
         font-weight: 700;
-        line-height: 1.08;
+        line-height: 1.1;
         letter-spacing: -0.01em;
         text-wrap: balance;
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
         overflow: hidden;
         color: #fff8d6;
       }
@@ -77,8 +79,8 @@
         position: absolute;
         left: 88px;
         right: 88px;
-        top: 520px;
-        height: 790px;
+        top: 330px;
+        height: 980px;
         overflow: hidden;
         display: flex;
         flex-direction: column;
@@ -92,6 +94,19 @@
       .scriptRegel { overflow-wrap: anywhere; flex: none; }
       .scriptRegel.nieuw { animation: erin 260ms ease-out; }
       .scriptRegel b { font-weight: 700; color: #b4e8c8; }
+      /* Wat de operator vraagt of op dit moment typt. */
+      .scriptRegel.vraag { color: rgba(255, 255, 255, 0.62); }
+      .scriptRegel.typt::after {
+        content: "";
+        display: inline-block;
+        width: 0.55em;
+        height: 1em;
+        margin-left: 0.15em;
+        vertical-align: -0.12em;
+        background: #fff;
+        animation: knipper 1s steps(1) infinite;
+      }
+      @keyframes knipper { 50% { opacity: 0; } }
       /* Na een scène: de titel van de gespeelde scène op dezelfde plek, met de tellingen eronder. */
       #stats {
         position: absolute;
@@ -101,7 +116,7 @@
         position: absolute;
         left: 88px;
         right: 88px;
-        top: 520px;
+        top: 400px;
         display: flex;
         flex-wrap: wrap;
         justify-content: center;
@@ -294,29 +309,40 @@
 
       // De tekst van de scène komt rechtstreeks van de script-agent (poort 3027). Alleen het script dat
       // bij de gekozen scène hoort staat in beeld; de nieuwste regel staat onderaan.
-      let scriptBerichten = [], scriptGetoond = "";
-      function scriptTekst() {
+      let scriptBerichten = [], scriptConcept = "", scriptGetoond = "";
+      // De laatste vraag met het antwoord erop. Een script van een andere scène blijft niet staan; wat de
+      // operator zelf typt of vraagt staat er altijd.
+      function scriptGesprek() {
         const titel = universum && universum.titel ? String(universum.titel).trim() : "";
-        if (!titel) return "";
-        for (let i = scriptBerichten.length - 1; i >= 0; i--) {
+        let vraag = null, antwoord = null;
+        for (let i = scriptBerichten.length - 1; i >= 0 && !vraag; i--) {
           const m = scriptBerichten[i];
-          if (m.role !== "assistant") continue;
-          const vraag = scriptBerichten.slice(0, i).reverse().find((x) => x.role === "user");
-          if (vraag && String(vraag.content || "").includes("Situatie: " + titel)) return String(m.content || "");
+          if (m.role === "assistant" && !antwoord) antwoord = m;
+          else if (m.role === "user") vraag = m;
         }
-        return "";
+        if (!vraag) return { vraag: "", antwoord: "" };
+        const tekst = String(vraag.content || "");
+        const vanScene = tekst.includes("Situatie:");
+        if (vanScene && !(titel && tekst.includes("Situatie: " + titel))) return { vraag: "", antwoord: "" };
+        return { vraag: vanScene ? "" : tekst, antwoord: antwoord ? String(antwoord.content || "") : "" };
       }
       function tekenScript() {
-        const tekst = scriptTekst();
-        if (tekst === scriptGetoond) return;
+        const gesprek = scriptGesprek();
+        const sleutel = JSON.stringify([gesprek, scriptConcept]);
+        if (sleutel === scriptGetoond) return;
         const box = el("script");
-        const regels = tekst.split("\n").map((r) => r.trim()).filter((r) => r && !r.startsWith("#")).slice(-24);
-        const vervolg = scriptGetoond && tekst.startsWith(scriptGetoond.slice(0, Math.max(0, scriptGetoond.length - 1)));
-        const had = box.children.length;
+        const had = box.querySelectorAll(".scriptRegel:not(.vraag):not(.typt)").length;
         box.textContent = "";
-        regels.forEach((regel, i) => {
+        const regelsVan = (tekst) => String(tekst || "").split("\n").map((r) => r.trim()).filter((r) => r && !r.startsWith("#"));
+        for (const regel of regelsVan(gesprek.vraag).slice(0, 3)) {
           const div = document.createElement("div");
-          div.className = "scriptRegel" + (vervolg && i >= had ? " nieuw" : "");
+          div.className = "scriptRegel vraag";
+          div.textContent = "> " + regel;
+          box.appendChild(div);
+        }
+        regelsVan(gesprek.antwoord).slice(-24).forEach((regel, i) => {
+          const div = document.createElement("div");
+          div.className = "scriptRegel" + (had && i >= had ? " nieuw" : "");
           const m = /^([^:]{1,40}):\s*(.*)$/.exec(regel);
           if (m) {
             const naam = document.createElement("b");
@@ -325,7 +351,13 @@
           } else div.textContent = regel;
           box.appendChild(div);
         });
-        scriptGetoond = tekst;
+        if (scriptConcept) {
+          const div = document.createElement("div");
+          div.className = "scriptRegel vraag typt";
+          div.textContent = "> " + scriptConcept;
+          box.appendChild(div);
+        }
+        scriptGetoond = sleutel;
       }
       function scriptVerbinding() {
         let ws;
@@ -335,6 +367,8 @@
           let msg;
           try { msg = JSON.parse(ev.data); } catch { return; }
           if (msg.stage && Array.isArray(msg.stage.messages)) scriptBerichten = msg.stage.messages;
+          if (msg.stage && typeof msg.stage.draft === "string") scriptConcept = msg.stage.streaming ? "" : msg.stage.draft;
+          if (msg.type === "operator_stage_draft") scriptConcept = msg.streaming ? "" : String(msg.draft || "");
           if (msg.type === "operator_stage_delta") {
             const m = scriptBerichten.find((x) => x.id === msg.assistantId);
             if (m) m.content = msg.fullText || "";
