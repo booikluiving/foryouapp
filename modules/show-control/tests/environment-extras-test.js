@@ -14,7 +14,7 @@ process.env.SHOW_CONTROL_ADAPTER_MODE = "test";
 
 const { createShowControlApp } = require("../server/app");
 const { buildEnvironmentExtraCue, buildSfeerVolumeCue, environmentExtrasStatus, resetHoldState } = require("../cue-library/environment-extras");
-const { oscArgsForAction } = require("../target-adapters/touchdesigner-adapter");
+const { oscArgsForAction, sendTouchDesignerCommand, shotUitArgsFor } = require("../target-adapters/touchdesigner-adapter");
 
 const catalog = {
   environments: [
@@ -163,6 +163,41 @@ function testOscArgs() {
   assert.deepEqual(oscArgsForAction({ cueId: "c", command: "td.sfeer.volume", payloadId: "p", payload: { volume: 0.63 } }), ["c", "td.sfeer.volume", "p", "0.63"]);
 }
 
+// Een cameraknop wint van het extra shot: eerst gaat het shot weg, dan komt de camera.
+async function testCameraWintVanShot() {
+  assert.equal(shotUitArgsFor({ cueId: "c", command: "td.extra.shot" }), null);
+  assert.deepEqual(shotUitArgsFor({ cueId: "c", command: "td.camera.set" }), ["c-shot-uit", "td.extra.shot", "-", "", "0", "1"]);
+
+  // Een shot dat blijft staan (duur 0) is na een cameraknop weg: de volgende druk toont hem weer.
+  resetHoldState();
+  const runtime = runtimeFor("environment:12");
+  assert.equal(buildEnvironmentExtraCue(runtime, { soort: "shot" }, extrasOptions).actions[0].payload.uit, false);
+  assert.equal(environmentExtrasStatus(runtime, extrasOptions).shot.aan, true);
+
+  const { createOscServer } = require("../target-adapters/osc-lite");
+  const ontvangen = [];
+  const port = 39000 + (process.pid % 1000);
+  const server = createOscServer({ port, onMessage: (message) => ontvangen.push(message) });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await sendTouchDesignerCommand(
+      { cueId: "c", command: "td.camera.set", payloadId: "p", payload: { camera: 2 } },
+      { adapterOptions: { tdOscHost: "127.0.0.1", tdOscPort: port } },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  } finally {
+    server.close();
+  }
+  const args = ontvangen.map((message) => message.args.map((arg) => (arg && typeof arg === "object" && "value" in arg ? arg.value : arg)));
+  assert.deepEqual(args, [
+    ["c-shot-uit", "td.extra.shot", "-", "", "0", "1"],
+    ["c", "td.camera.set", "p"],
+  ]);
+  assert.equal(environmentExtrasStatus(runtime, extrasOptions).shot.aan, false);
+  assert.equal(buildEnvironmentExtraCue(runtime, { soort: "shot" }, extrasOptions).actions[0].payload.uit, false);
+  resetHoldState();
+}
+
 // In de zaal afstellen vanuit de catalogus.
 function testZaal() {
   const runtime = runtimeFor("environment:7");
@@ -185,6 +220,7 @@ function testZaal() {
   testStatus();
   testOscArgs();
   testZaal();
+  await testCameraWintVanShot();
   await testRoutes();
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log("environment-extras: ok");
