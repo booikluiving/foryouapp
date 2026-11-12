@@ -3413,10 +3413,17 @@
           binnen: regie.binnenAan,
           sceneId: regie.focus,
           titel: regie.focus ? sceneTitle(regie.focus) : "",
+          omgeving: regieOmgeving(regie.focus),
           speelt: !!(g && regie.focus && g.cur === regie.focus),
           gespeeld: g ? g.played.size : 0,
         }, "*");
       } catch (_err) {}
+    }
+
+    function regieOmgeving(sceneId) {
+      const raw = regie.doel && regie.doel.runtime && regie.doel.runtime.raw;
+      const prepared = sceneId && raw ? (raw.preparedNextScenes || []).find((scene) => Number(scene.sceneId) === Number(sceneId)) : null;
+      return (prepared && prepared.omgeving) || null;
     }
 
     const REGIE_ONDERDEEL = {
@@ -3560,16 +3567,6 @@
       if (gekozen) {
         gekozen.group.classList.add("regie-gekozen");
         gekozen.group.appendChild(el("circle", { cx: gekozen.x, cy: gekozen.y, r: gekozen.r + 7, class: "regie-ring" }));
-        if (!gekozen.group.querySelector(".network-label")) {
-          const regels = regieTitelRegels(sceneTitle(regie.gekozen));
-          const label = el("text", { x: gekozen.x, y: gekozen.y - gekozen.r - 14 - (regels.length - 1) * 19, "text-anchor": "middle", class: "scene-label network-label regie-label" });
-          regels.forEach((regel, index) => {
-            const tspan = el("tspan", { x: gekozen.x, dy: index ? 19 : 0 });
-            tspan.textContent = regel;
-            label.appendChild(tspan);
-          });
-          gekozen.group.appendChild(label);
-        }
       }
       const nu = Date.now();
       regie.pops.forEach((sinds, sceneId) => {
