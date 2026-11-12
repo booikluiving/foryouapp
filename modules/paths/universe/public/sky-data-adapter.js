@@ -380,6 +380,7 @@
   window.ForUniverseData = {
     buildSkyModel,
     labelForStatus,
+    runtimeOverlay,
     statusForScene,
   };
 })();

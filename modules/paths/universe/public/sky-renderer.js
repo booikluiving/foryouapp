@@ -348,6 +348,27 @@
       },
     };
 
+    // Regie op het zaalscherm: na een scène uitzoomen, nieuwe scènes laten vrijkomen,
+    // zichtbaar de volgende kiezen en er in een spiraal op inzoomen.
+    const REGIE_ZOOM = 60;
+    const REGIE_DRAAI = Math.PI * 0.8;
+    const regie = {
+      getoond: null,
+      doel: null,
+      model: null,
+      bezig: false,
+      gen: 0,
+      focus: 0,
+      focusOffset: null,
+      herkomst: 0,
+      gekozen: 0,
+      pops: new Map(),
+      cam: { mix: 0, lz: 0, rot: 0 },
+      frame: 0,
+      binnen: null,
+      volTimer: 0,
+    };
+
     function pathById(pathId) {
       return state.model && state.model.paths.find((pathItem) => pathItem.id === String(pathId));
     }
@@ -518,6 +539,10 @@
         const sceneId = Number(node && node.sceneId || 0);
         if (!sceneId) return { x: 0, y: 0 };
         if (offsets.has(sceneId)) return offsets.get(sceneId);
+        if (regie.focus === sceneId && regie.focusOffset) {
+          offsets.set(sceneId, regie.focusOffset);
+          return regie.focusOffset;
+        }
         const depth = Number(node.networkDepth || 0);
         if (depth === 0) {
           const fixedOffset = { x: 0, y: 0 };
@@ -3265,6 +3290,7 @@
       else if (state.mode === "selected" && state.selectedPathId) applySelected(state.selectedPathId);
       else if (state.mode === "selected" && state.selectedSceneId) selectLooseScene(state.selectedSceneId);
       else applyIdle();
+      if (state.view === "network") regieNaRender();
     }
 
     function setView(viewName) {
@@ -3275,6 +3301,7 @@
       }
       cancelFocusAnimation();
       stopSpin();
+      regieStop();
       state.view = nextView;
       state.mode = "idle";
       state.selectedPathId = "";
@@ -3298,6 +3325,7 @@
         state.pendingModel = model;
         return;
       }
+      if (state.view === "network" && regieNeemt(model)) return;
       state.model = model;
       if (state.selectedPathId && !pathById(state.selectedPathId)) {
         state.mode = "idle";
@@ -3311,6 +3339,381 @@
         state.focusedLooseSceneId = 0;
       }
       render();
+    }
+
+    // ---------- Regie ----------
+
+    const regieWacht = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+    const regieEase = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+    function regieStand(model) {
+      const runtime = model && model.runtime;
+      if (!runtime || !runtime.isReleaseLimited || !runtime.raw) return null;
+      const raw = runtime.raw;
+      const cur = Number(runtime.currentSceneId || 0);
+      const prepared = raw.preparedNextScenes && raw.preparedNextScenes[0] ? Number(raw.preparedNextScenes[0].sceneId || 0) : 0;
+      return {
+        sessie: String(raw.session && raw.session.id || ""),
+        cur,
+        next: prepared && prepared !== cur ? prepared : 0,
+        played: new Set(runtime.playedSceneIds),
+        rel: new Set(runtime.releasedSceneIds),
+        stemWinnaar: Number(raw.stem && raw.stem.winnaar || 0),
+      };
+    }
+
+    // Een tussenstand: het model van de pagina, maar met alleen wat het scherm al mag tonen.
+    function regieModel(model, stand) {
+      const raw = model.runtime.raw;
+      const vrij = [...stand.rel].filter((id) => !stand.played.has(id) && id !== stand.cur && id !== stand.next);
+      const nogDicht = [...model.runtime.releasedSceneIds].filter((id) => !stand.rel.has(id));
+      return Object.assign({}, model, {
+        runtime: Data.runtimeOverlay(Object.assign({}, raw, {
+          currentScene: stand.cur ? { sceneId: stand.cur } : null,
+          playedSceneIds: [...stand.played],
+          preparedNextScenes: stand.next ? [{ sceneId: stand.next }] : [],
+          graphNextScenes: [],
+          availableScenes: vrij.map((sceneId) => ({ sceneId })),
+          lockedSceneIds: (raw.lockedSceneIds || []).concat(nogDicht),
+        })),
+      });
+    }
+
+    function regieToon(model, stand, heel) {
+      state.model = heel ? model : regieModel(model, stand);
+      regie.model = model;
+      regie.getoond = Object.assign({}, stand, { played: new Set(stand.played), rel: new Set(stand.rel) });
+      render();
+    }
+
+    function regieSterVan(sceneId) {
+      const group = state.bb.networkNodeGroups.get(Number(sceneId));
+      const star = group ? group.querySelector(".network-star") : null;
+      if (!star) return null;
+      return { group, star, x: Number(star.getAttribute("cx")), y: Number(star.getAttribute("cy")), r: Number(star.getAttribute("r")) };
+    }
+
+    function regieCameraToepassen() {
+      const pos = regie.focus ? state.bb.networkBasePos.get(regie.focus) : null;
+      const off = regie.focusOffset || { x: 0, y: 0 };
+      const px = pos ? SKY_CX + (pos.x + off.x - SKY_CX) * regie.cam.mix : SKY_CX;
+      const py = pos ? SKY_CY + (pos.y + off.y - SKY_CY) * regie.cam.mix : SKY_CY;
+      const zoom = Math.exp(regie.cam.lz);
+      const cos = Math.cos(regie.cam.rot) * zoom;
+      const sin = Math.sin(regie.cam.rot) * zoom;
+      setCameraTransform(matrix(cos, sin, -sin, cos, SKY_CX - (cos * px - sin * py), SKY_CY - (sin * px + cos * py)));
+      const kern = sky.querySelector("#regieOrbKern");
+      const orb = sky.querySelector(".regie-orb");
+      if (kern && orb) kern.setAttribute("offset", String(Math.min(0.35, 39 / (Number(orb.getAttribute("r")) * zoom))));
+    }
+
+    function regieCamera(naar, ms) {
+      const van = Object.assign({}, regie.cam);
+      const start = performance.now();
+      const gen = regie.gen;
+      window.cancelAnimationFrame(regie.frame);
+      return new Promise((resolve) => {
+        const tick = (now) => {
+          if (gen !== regie.gen) { resolve(); return; }
+          const t = clamp((now - start) / ms, 0, 1);
+          const e = regieEase(t);
+          regie.cam = {
+            mix: van.mix + (naar.mix - van.mix) * e,
+            lz: van.lz + (naar.lz - van.lz) * e,
+            rot: van.rot + (naar.rot - van.rot) * e,
+          };
+          regieCameraToepassen();
+          if (t < 1) regie.frame = window.requestAnimationFrame(tick);
+          else resolve();
+        };
+        regie.frame = window.requestAnimationFrame(tick);
+      });
+    }
+
+    function regieTitelRegels(title) {
+      const text = String(title || "");
+      if (text.length <= 30) return [text];
+      const midden = text.length / 2;
+      let beste = -1;
+      for (let i = 0; i < text.length; i += 1) {
+        if (text[i] === " " && (beste < 0 || Math.abs(i - midden) < Math.abs(beste - midden))) beste = i;
+      }
+      return beste < 0 ? [text] : [text.slice(0, beste), text.slice(beste + 1)];
+    }
+
+    // Zet na elke render terug wat de regie op het scherm heeft staan.
+    function regieNaRender() {
+      if (!regie.getoond && !regie.focus) return;
+      regieCameraToepassen();
+      const focus = regie.focus ? regieSterVan(regie.focus) : null;
+      if (focus) {
+        const defs = el("defs");
+        const gradient = el("radialGradient", { id: "regieOrb" });
+        gradient.appendChild(el("stop", { offset: "0", "stop-color": "#ffffff" }));
+        gradient.appendChild(el("stop", { id: "regieOrbKern", offset: "0.35", "stop-color": "rgb(220,246,232)", "stop-opacity": "0.95" }));
+        gradient.appendChild(el("stop", { offset: "0.6", "stop-color": "rgb(180,232,200)", "stop-opacity": "0.4" }));
+        gradient.appendChild(el("stop", { offset: "1", "stop-color": "rgb(180,232,200)", "stop-opacity": "0" }));
+        defs.appendChild(gradient);
+        sky.insertBefore(defs, sky.firstChild);
+        focus.group.insertBefore(el("circle", { cx: focus.x, cy: focus.y, r: focus.r * 1.7, class: "regie-orb", fill: "url(#regieOrb)" }), focus.group.firstChild);
+        focus.group.classList.add("regie-focus");
+        regieCameraToepassen();
+      }
+      const gekozen = regie.gekozen && regie.gekozen !== regie.focus ? regieSterVan(regie.gekozen) : null;
+      if (gekozen) {
+        gekozen.group.classList.add("regie-gekozen");
+        gekozen.group.appendChild(el("circle", { cx: gekozen.x, cy: gekozen.y, r: gekozen.r + 7, class: "regie-ring" }));
+        if (!gekozen.group.querySelector(".network-label")) {
+          const regels = regieTitelRegels(sceneTitle(regie.gekozen));
+          const label = el("text", { x: gekozen.x, y: gekozen.y - gekozen.r - 14 - (regels.length - 1) * 19, "text-anchor": "middle", class: "scene-label network-label regie-label" });
+          regels.forEach((regel, index) => {
+            const tspan = el("tspan", { x: gekozen.x, dy: index ? 19 : 0 });
+            tspan.textContent = regel;
+            label.appendChild(tspan);
+          });
+          gekozen.group.appendChild(label);
+        }
+      }
+      const nu = Date.now();
+      regie.pops.forEach((sinds, sceneId) => {
+        const verstreken = nu - sinds;
+        const ster = verstreken < 900 ? regieSterVan(sceneId) : null;
+        if (!ster) { regie.pops.delete(sceneId); return; }
+        ster.group.classList.add("regie-nieuw");
+        ster.group.style.setProperty("--regie-vertraging", `${-verstreken}ms`);
+        ster.group.appendChild(el("circle", { cx: ster.x, cy: ster.y, r: ster.r + 3, class: "regie-golf" }));
+      });
+    }
+
+    function regieBinnen(aan) {
+      const houder = sky.parentNode;
+      if (!houder) return;
+      window.clearTimeout(regie.volTimer);
+      if (!regie.binnen) {
+        regie.binnen = htmlEl("div", { class: "regie-binnen" });
+        houder.appendChild(regie.binnen);
+      }
+      if (!aan) {
+        sky.classList.remove("regie-binnen-vol");
+        regie.binnen.classList.remove("toon");
+        return;
+      }
+      const breedte = houder.clientWidth || 1600;
+      const hoogte = houder.clientHeight || 900;
+      const maat = Math.min(breedte, hoogte);
+      const straal = Math.max(breedte, hoogte) * 0.62;
+      let stof = "";
+      for (let i = 0; i < 26; i += 1) {
+        const hoek = i * 2.399;
+        stof += `<span style="--dx:${Math.round(Math.cos(hoek) * straal)}px;--dy:${Math.round(Math.sin(hoek) * straal)}px;width:${Math.max(2, maat * 0.004)}px;height:${Math.max(2, maat * 0.004)}px;animation-delay:${-(i * 0.35).toFixed(2)}s"></span>`;
+      }
+      regie.binnen.innerHTML = `<div class="regie-stof">${stof}</div><p style="font-size:${Math.round(maat * 0.05)}px">${escapeText(sceneTitle(regie.focus))}</p>`;
+      regie.binnen.classList.add("toon");
+      regie.volTimer = window.setTimeout(() => sky.classList.add("regie-binnen-vol"), 1300);
+    }
+
+    function regieRand(a, b) {
+      let gevonden = null;
+      state.bb.networkEdgeGroups.forEach((group) => {
+        const edge = group.__edge;
+        if (!edge) return;
+        if ((edge.fromSceneId === a && edge.toSceneId === b) || (edge.fromSceneId === b && edge.toSceneId === a)) gevonden = group;
+      });
+      return gevonden;
+    }
+
+    async function regieTekenLijn(group, vanId, ms) {
+      const line = group.__edgeNode;
+      if (!line || typeof line.animate !== "function") return;
+      line.setAttribute("pathLength", "1");
+      line.classList.add("regie-tekent");
+      const begin = group.__edge.fromSceneId === vanId ? 1 : -1;
+      const animatie = line.animate([{ strokeDashoffset: begin }, { strokeDashoffset: 0 }], { duration: ms, easing: "cubic-bezier(0.2, 0.8, 0.3, 1)", fill: "forwards" });
+      await animatie.finished.catch(() => {});
+    }
+
+    function regieSpring(model, stand) {
+      regie.gen += 1;
+      window.cancelAnimationFrame(regie.frame);
+      regie.pops.clear();
+      regie.gekozen = 0;
+      regie.herkomst = 0;
+      const wil = stand.cur || stand.next;
+      regie.focus = wil;
+      regie.focusOffset = wil ? { x: 0, y: 0 } : null;
+      regie.cam = wil ? { mix: 1, lz: Math.log(REGIE_ZOOM), rot: REGIE_DRAAI } : { mix: 0, lz: 0, rot: 0 };
+      sky.classList.toggle("regie-duikt", !!wil);
+      sky.classList.remove("regie-terug");
+      regieToon(model, stand, true);
+      regieBinnen(!!wil);
+    }
+
+    function regieStop() {
+      if (!regie.getoond && !regie.focus) return;
+      regie.gen += 1;
+      window.cancelAnimationFrame(regie.frame);
+      regie.getoond = null;
+      regie.model = null;
+      regie.focus = 0;
+      regie.focusOffset = null;
+      regie.gekozen = 0;
+      regie.herkomst = 0;
+      regie.pops.clear();
+      regie.cam = { mix: 0, lz: 0, rot: 0 };
+      sky.classList.remove("regie-duikt", "regie-terug");
+      regieBinnen(false);
+    }
+
+    async function regieZoomUit(model, doel) {
+      const gen = regie.gen;
+      const vorige = regie.focus;
+      if (doel.played.has(vorige)) regie.herkomst = vorige;
+      const rel = new Set(regie.getoond.rel);
+      doel.played.forEach((id) => rel.add(id));
+      regieToon(model, Object.assign({}, doel, { cur: 0, next: 0, rel }));
+      regie.gekozen = 0;
+      regieBinnen(false);
+      sky.classList.add("regie-terug");
+      window.setTimeout(() => { if (gen === regie.gen) sky.classList.remove("regie-duikt"); }, 700);
+      await regieCamera({ mix: 0, lz: 0, rot: 0 }, 2900);
+      if (gen !== regie.gen) return;
+      const ster = regieSterVan(vorige);
+      if (ster) {
+        ster.group.__networkReleaseOffset = regie.focusOffset;
+        ster.group.__networkReleaseStartedAt = Date.now();
+        ster.group.classList.remove("regie-focus");
+      }
+      regie.focus = 0;
+      regie.focusOffset = null;
+      await regieWacht(900);
+      sky.classList.remove("regie-terug");
+    }
+
+    async function regieOntgrendel(model, doel) {
+      const gen = regie.gen;
+      const g = regie.getoond;
+      const pasGespeeld = [...doel.played].filter((id) => !g.played.has(id));
+      if (pasGespeeld.length) regie.herkomst = pasGespeeld[pasGespeeld.length - 1];
+      const stand = Object.assign({}, doel, { cur: 0, next: 0, played: new Set(doel.played), rel: new Set(g.rel) });
+      doel.played.forEach((id) => stand.rel.add(id));
+      const van = state.bb.networkBasePos.get(regie.herkomst);
+      const afstand = (id) => {
+        const pos = state.bb.networkBasePos.get(id);
+        return van && pos ? Math.hypot(pos.x - van.x, pos.y - van.y) : 0;
+      };
+      const nieuw = [...doel.rel].filter((id) => !stand.rel.has(id)).sort((a, b) => afstand(a) - afstand(b));
+      regieToon(model, stand);
+      await regieWacht(500);
+      const tempo = nieuw.length > 6 ? 6 / nieuw.length : 1;
+      for (const id of nieuw) {
+        const rand = regie.herkomst ? regieRand(regie.herkomst, id) : null;
+        if (rand) await regieTekenLijn(rand, regie.herkomst, 650 * tempo);
+        if (gen !== regie.gen) return;
+        stand.rel.add(id);
+        regie.pops.set(id, Date.now());
+        regieToon(model, stand);
+        await regieWacht(320 * tempo);
+        if (gen !== regie.gen) return;
+      }
+      await regieWacht(1000);
+    }
+
+    async function regieRoulette(kandidaten, wil) {
+      const gen = regie.gen;
+      const ring = el("circle", { class: "regie-ring" });
+      let vorige = 0;
+      for (let i = 0; i < 15; i += 1) {
+        const keuze = i === 14 ? [wil] : kandidaten.filter((id) => id !== vorige && (i < 13 || id !== wil));
+        const id = keuze.length ? keuze[Math.floor(Math.random() * keuze.length)] : wil;
+        const ster = regieSterVan(id);
+        if (ster) {
+          ring.setAttribute("cx", ster.x);
+          ring.setAttribute("cy", ster.y);
+          ring.setAttribute("r", ster.r + 7);
+          ster.group.appendChild(ring);
+        }
+        vorige = id;
+        await regieWacht(70 + i * i * 2.4);
+        if (gen !== regie.gen) return;
+      }
+    }
+
+    async function regieKiesEnZoomIn(model, doel, wil) {
+      const gen = regie.gen;
+      const kandidaten = [...regie.getoond.rel].filter((id) => !doel.played.has(id));
+      const zichtbaarKiezen = !doel.cur && doel.stemWinnaar !== wil && kandidaten.length > 1 && kandidaten.includes(wil);
+      if (zichtbaarKiezen) await regieRoulette(kandidaten, wil);
+      if (gen !== regie.gen) return;
+      regie.gekozen = wil;
+      regieToon(model, doel, true);
+      await regieWacht(doel.cur ? 400 : doel.stemWinnaar === wil ? 3500 : 1700);
+      if (gen !== regie.gen) return;
+      const laatste = regieStand(regie.doel);
+      if (!laatste || (laatste.cur || laatste.next) !== wil) { regie.gekozen = 0; return; }
+      const ster = regieSterVan(wil);
+      regie.focusOffset = ster && ster.group.__lastNetworkOffset ? Object.assign({}, ster.group.__lastNetworkOffset) : { x: 0, y: 0 };
+      regie.focus = wil;
+      regie.gekozen = 0;
+      render();
+      sky.classList.add("regie-duikt");
+      window.setTimeout(() => { if (gen === regie.gen && regie.focus === wil) regieBinnen(true); }, 2200);
+      await regieCamera({ mix: 1, lz: Math.log(REGIE_ZOOM), rot: REGIE_DRAAI }, 3100);
+    }
+
+    async function regieLoop() {
+      if (regie.bezig) return;
+      regie.bezig = true;
+      const gen = regie.gen;
+      try {
+        for (let ronde = 0; ronde < 60; ronde += 1) {
+          const model = regie.doel;
+          const doel = regieStand(model);
+          const g = regie.getoond;
+          if (!doel || !g || gen !== regie.gen) return;
+          const wil = doel.cur || doel.next;
+          if (regie.focus && regie.focus !== wil) {
+            await regieZoomUit(model, doel);
+          } else if (!regie.focus && [...doel.rel].some((id) => !g.rel.has(id))) {
+            await regieOntgrendel(model, doel);
+          } else if (wil && regie.focus !== wil) {
+            await regieKiesEnZoomIn(model, doel, wil);
+          } else {
+            if (regie.model !== model) {
+              if (regie.focus) {
+                // Wat tijdens een scène vrijkomt, blijft bewaard voor na het uitzoomen.
+                const rel = new Set(g.rel);
+                doel.played.forEach((id) => rel.add(id));
+                if (doel.cur) rel.add(doel.cur);
+                if (doel.next) rel.add(doel.next);
+                regieToon(model, Object.assign({}, doel, { rel }));
+              } else {
+                regieToon(model, doel, true);
+              }
+            }
+            if (regie.doel === model) return;
+          }
+        }
+      } finally {
+        regie.bezig = false;
+        if (gen !== regie.gen && regie.getoond) window.setTimeout(regieLoop, 0);
+      }
+    }
+
+    // Krijgt elk nieuw model van de pagina. Geeft true terug als de regie het tekenen overneemt.
+    function regieNeemt(model) {
+      const stand = regieStand(model);
+      regie.doel = model;
+      if (!stand) {
+        regieStop();
+        return false;
+      }
+      const g = regie.getoond;
+      if (!g || g.sessie !== stand.sessie || [...g.played].some((id) => !stand.played.has(id))) {
+        regieSpring(model, stand);
+        return true;
+      }
+      regieLoop();
+      return true;
     }
 
     function setTweak(key, value) {
