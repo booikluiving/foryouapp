@@ -114,6 +114,46 @@
         font-weight: 500;
         overflow-wrap: anywhere;
       }
+      /* Eén scherm voor inloop en loading: het universum vult het beeld, de rest ligt eroverheen. */
+      #universum {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+        border: 0;
+        background: #050813;
+        pointer-events: none;
+      }
+      /* Het genereren (titel en script) staat alleen in beeld als de camera in de gekozen ster zit. */
+      #gen {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        transition: opacity 900ms ease;
+      }
+      #gen.toon { opacity: 1; }
+      #chatBak {
+        position: absolute;
+        left: 0;
+        width: 1080px;
+        bottom: 0;
+        height: 760px;
+        background: linear-gradient(to bottom, rgba(5, 8, 19, 0) 0%, rgba(5, 8, 19, 0.82) 38%, rgba(5, 8, 19, 0.94) 100%);
+      }
+      #qr {
+        position: absolute;
+        right: 56px;
+        top: 56px;
+        padding: 14px;
+        background: rgba(255, 255, 255, 0.94);
+        border-radius: 14px;
+        line-height: 0;
+      }
+      #qr[hidden] { display: none; }
+      #qr img { width: 190px; height: 190px; }
+      #stats { opacity: 0; transition: opacity 600ms ease; }
+      #stats.toon { opacity: 1; }
       @keyframes erin {
         from { opacity: 0; transform: translateY(12px); }
         to { opacity: 1; transform: none; }
