@@ -41,3 +41,4 @@ modules/runtime/.tmp-ui-db/
 # blijven lokaal (model van derden, wordt opnieuw gemaakt vanuit de greenscreen-bron).
 show/greenscreen/status/
 show/greenscreen/models/*.mlpackage/
+modules/show-control/tools/speel-fade/speel-fade

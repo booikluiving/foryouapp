@@ -6,12 +6,29 @@
 
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
+const path = require("node:path");
 const { sendOsc } = require("./osc-lite");
 const { tdOscHost, tdOscPort } = require("./touchdesigner-adapter");
 
 const AUDIO_EXTENSIONS = /\.(mp3|wav|aif|aiff|m4a|aac|flac)$/i;
 function player(options = {}) {
   return String(options.macAudioPlayer || process.env.SHOW_CONTROL_AUDIO_PLAYER || "/usr/bin/afplay");
+}
+
+// Het extra geluid van de omgeving (de wisselknop) speelt via speel-fade als die gebouwd is:
+// zelfde aanroep als afplay, maar bij uitzetten zakt het geluid in anderhalve seconde weg in
+// plaats van hard te stoppen. Bouwen: swiftc -O speel-fade.swift -o speel-fade (in tools/speel-fade).
+// Stappen, fases en de intro blijven via afplay lopen.
+const FADE_PLAYER = path.resolve(__dirname, "../tools/speel-fade/speel-fade");
+function playerVoor(naam, options = {}) {
+  if (naam !== "lied" || options.macAudioPlayer || process.env.SHOW_CONTROL_AUDIO_PLAYER) return player(options);
+  const fade = String(process.env.SHOW_CONTROL_FADE_PLAYER || FADE_PLAYER);
+  try {
+    fs.accessSync(fade, fs.constants.X_OK);
+    return fade;
+  } catch (_err) {
+    return player(options);
+  }
 }
 
 function audioDisabled(options = {}) {
@@ -112,7 +129,7 @@ async function sendMacAudioCommand(action, context = {}) {
   const spoor = sporen[naam];
   const lus = payload.lus === true && naam === "lied";
   const start = () => {
-    const child = spawn(player(options), ["-v", String(volume), filePath], { stdio: "ignore", detached: false });
+    const child = spawn(playerVoor(naam, options), ["-v", String(volume), filePath], { stdio: "ignore", detached: false });
     child.on("error", () => {});
     child.on("exit", (code) => {
       if (spoor.child !== child) return;
