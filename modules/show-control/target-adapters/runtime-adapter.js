@@ -8,6 +8,7 @@ const {
 } = require("../cue-library/runtime-output");
 const { compactRuntimeStateForCue } = require("../cue-engine/compact-results");
 const { channelsForAccentFixtures } = require("../../../shared/lighting/environment-lighting-v0");
+const { startGeluidAction } = require("../cue-library/environment-startgeluid");
 
 const DEFAULT_RUNTIME_BASE_URL = "http://127.0.0.1:3024";
 
@@ -154,6 +155,21 @@ function generatedTeleprompterRevealAction(action, runtimeState, context = {}) {
   };
 }
 
+// Leest de catalogus; in tests zonder live catalogus (disableLiveCatalog) is er geen startgeluid.
+function generatedStartGeluidAction(runtimeState, context = {}) {
+  const options = context.adapterOptions || {};
+  if (options.disableLiveCatalog === true && !options.liveCatalog) return null;
+  try {
+    return startGeluidAction(runtimeState, {
+      ...(options.liveCatalog ? { catalog: options.liveCatalog } : {}),
+      ...(options.catalogDbPath ? { catalogDbPath: options.catalogDbPath } : {}),
+      ...(options.catalogMediaRoot ? { catalogMediaRoot: options.catalogMediaRoot } : {}),
+    });
+  } catch (_err) {
+    return null;
+  }
+}
+
 function canGeneratePrepare(runtimeState) {
   return !!(runtimeState && runtimeState.resolvedPreparedNext);
 }
@@ -267,6 +283,21 @@ async function sendRuntimeCommand(action, context = {}) {
     }
     if (command === "runtime.startSituation" && payload.autoRevealTeleprompter !== false && canGenerateGo(result.body)) {
       generatedActions.push(generatedTeleprompterRevealAction(action, result.body, context));
+    }
+    // Startgeluid van de omgeving (de intro) begint vanzelf met de scène.
+    if (command === "runtime.startSituation" && payload.autoStartGeluid !== false && canGenerateGo(result.body)) {
+      const startGeluid = generatedStartGeluidAction(result.body, context);
+      if (startGeluid) generatedActions.push(startGeluid);
+    }
+    // Aan het eind van de scène: de intro en een lied dat het sfeergeluid dempt gaan uit.
+    if (command === "runtime.stopSituation") {
+      generatedActions.push({
+        command: "audio.extra.stop",
+        targetId: "mac-audio",
+        ackMode: "fire-and-forget",
+        timeoutMs: 900,
+        payload: { alleen: "scene", cueIntent: "scene_stop_geluid", generatedBy: action.command },
+      });
     }
     if (command === "runtime.stopSituation" && payload.autoPrepareNext !== false && canGeneratePrepare(result.body)) {
       generatedActions.push(generatedTeleprompterPrepareAction(action, result.body, context));
