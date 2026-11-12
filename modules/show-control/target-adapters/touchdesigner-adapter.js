@@ -27,6 +27,20 @@ function oscArgsForAction(action) {
     const payload = action.payload || {};
     args.push(String(payload.filePath || ""), String(Number(payload.duur) || 0), payload.uit ? "1" : "0");
   }
+  // td.samen.shot: twee camera's naast elkaar; alles in de OSC-args.
+  if (action.command === "td.samen.shot") {
+    const payload = action.payload || {};
+    const cameras = Array.isArray(payload.cameras) ? payload.cameras : [];
+    args.push(
+      payload.uit ? "1" : "0",
+      String(Number(cameras[0]) || 2),
+      String(Number(cameras[1]) || 3),
+      String(payload.achtergrond || ""),
+      String(payload.voorgrond || ""),
+      String(Number(payload.schaal) || 0.6),
+      String(Number(payload.omhoog) || 0),
+    );
+  }
   // td.sfeer.volume: het volume (0-1) van het sfeergeluid dat nu klaarstaat.
   if (action.command === "td.sfeer.volume") {
     const payload = action.payload || {};
@@ -99,8 +113,14 @@ async function sendTouchDesignerCommand(action, context = {}) {
   const shotUitArgs = shotUitArgsFor(action);
   if (shotUitArgs) {
     // Een shot dat bleef staan (duur 0) is nu ook weg: de volgende druk toont hem weer.
-    require("../cue-library/environment-extras").resetHoldState();
+    const extras = require("../cue-library/environment-extras");
+    const samenAan = extras.samenStaatAan();
+    extras.resetHoldState();
     await sendOscMessage(options, { address: "/td/cue", args: shotUitArgs }).catch(() => {});
+    // Hetzelfde voor het gezamenlijke shot, alleen als dat aan staat.
+    if (samenAan) {
+      await sendOscMessage(options, { address: "/td/cue", args: [`${action.cueId}-samen-uit`, "td.samen.shot", "-", "1"] }).catch(() => {});
+    }
   }
   const args = oscArgsForAction(action);
   await sendOscMessage(options, {

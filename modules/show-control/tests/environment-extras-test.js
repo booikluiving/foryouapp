@@ -13,7 +13,7 @@ process.env.SHOW_CONTROL_DB_DIR = path.join(tmp, "db");
 process.env.SHOW_CONTROL_ADAPTER_MODE = "test";
 
 const { createShowControlApp } = require("../server/app");
-const { buildEnvironmentExtraCue, buildSfeerVolumeCue, environmentExtrasStatus, resetHoldState } = require("../cue-library/environment-extras");
+const { buildEnvironmentExtraCue, buildSfeerVolumeCue, environmentExtrasStatus, publicExtrasStatus, resetHoldState, samenStaatAan } = require("../cue-library/environment-extras");
 const { oscArgsForAction, sendTouchDesignerCommand, shotUitArgsFor } = require("../target-adapters/touchdesigner-adapter");
 
 const catalog = {
@@ -198,6 +198,67 @@ async function testCameraWintVanShot() {
   resetHoldState();
 }
 
+// Gezamenlijk shot: samen/samen.json bij de media maakt van de shotknop een aan/uit voor twee camera's.
+async function testSamen() {
+  resetHoldState();
+  const samenJson = JSON.stringify({ label: "SAMEN", cameras: [2, 3], achtergrond: "bg.jpg", voorgrond: "desk.png", schaal: 0.6, omhoog: 0.08 });
+  const options = {
+    ...extrasOptions,
+    readFile: (file) => {
+      if (file === "/media/environments/environment_7/samen/samen.json") return samenJson;
+      throw new Error("ENOENT");
+    },
+  };
+  const runtime = runtimeFor("environment:7");
+  const status = environmentExtrasStatus(runtime, options);
+  assert.equal(status.shot.label, "SAMEN");
+  assert.equal(status.shot.bron, "samen");
+  assert.equal(status.shot.klaar, true);
+  assert.equal(publicExtrasStatus(status).shot.samen, undefined);
+  // Andere omgevingen houden hun gewone shot.
+  assert.equal(environmentExtrasStatus(runtimeFor("environment:12"), options).shot.bron, "achtergrond");
+
+  const aan = buildEnvironmentExtraCue(runtime, { soort: "shot" }, options).actions[0];
+  assert.equal(aan.command, "td.samen.shot");
+  assert.equal(aan.payload.uit, false);
+  assert.deepEqual(oscArgsForAction({ ...aan, cueId: "c", payloadId: "p" }), [
+    "c", "td.samen.shot", "p", "0", "2", "3",
+    "/media/environments/environment_7/samen/bg.jpg", "/media/environments/environment_7/samen/desk.png", "0.6", "0.08",
+  ]);
+  assert.equal(samenStaatAan(), true);
+  assert.equal(environmentExtrasStatus(runtime, options).shot.aan, true);
+  assert.equal(buildEnvironmentExtraCue(runtime, { soort: "shot" }, options).actions[0].payload.uit, true);
+  assert.equal(samenStaatAan(), false);
+
+  // Een cameraknop haalt het gezamenlijke shot weg.
+  assert.equal(buildEnvironmentExtraCue(runtime, { soort: "shot" }, options).actions[0].payload.uit, false);
+  const { createOscServer } = require("../target-adapters/osc-lite");
+  const ontvangen = [];
+  const port = 40000 + (process.pid % 1000);
+  const server = createOscServer({ port, onMessage: (message) => ontvangen.push(message) });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await sendTouchDesignerCommand(
+      { cueId: "c", command: "td.camera.set", payloadId: "p", payload: { camera: 2 } },
+      { adapterOptions: { tdOscHost: "127.0.0.1", tdOscPort: port } },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  } finally {
+    server.close();
+  }
+  const args = ontvangen.map((message) => message.args.map((arg) => (arg && typeof arg === "object" && "value" in arg ? arg.value : arg)));
+  assert.deepEqual(args[1], ["c-samen-uit", "td.samen.shot", "-", "1"]);
+  assert.equal(args.length, 3);
+  assert.equal(samenStaatAan(), false);
+
+  // Kapot of onvolledig bestand: gewoon het shot uit de catalogus.
+  const kapot = { ...extrasOptions, readFile: () => "{ kapot" };
+  assert.equal(environmentExtrasStatus(runtime, kapot).shot.label, "Shot spelbord");
+  const zonderBeeld = { ...options, fileExists: (file) => !file.endsWith("bg.jpg") };
+  assert.equal(environmentExtrasStatus(runtime, zonderBeeld).shot.reden, "bestand_ontbreekt");
+  resetHoldState();
+}
+
 // In de zaal afstellen vanuit de catalogus.
 function testZaal() {
   const runtime = runtimeFor("environment:7");
@@ -221,6 +282,7 @@ function testZaal() {
   testOscArgs();
   testZaal();
   await testCameraWintVanShot();
+  await testSamen();
   await testRoutes();
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log("environment-extras: ok");

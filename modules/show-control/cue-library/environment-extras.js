@@ -109,6 +109,63 @@ function fileExists(filePath, options = {}) {
   }
 }
 
+// Gezamenlijk shot: twee camera's naast elkaar op het staande scherm. Staat niet in de
+// catalogus maar als bestand bij de media van de omgeving:
+//   <media>/environments/environment_<nr>/samen/samen.json
+//   { "label": "SAMEN", "cameras": [2, 3], "achtergrond": "…jpg", "voorgrond": "…png",
+//     "schaal": 0.6, "omhoog": 0.08 }
+// Bestaat dat bestand, dan toont de knop van het extra shot dit shot (aan/uit).
+function samenDir(environmentId, options = {}) {
+  const nummer = String(environmentId || "").split(":").pop();
+  return path.join(mediaRoot(options), "environments", `environment_${nummer}`, "samen");
+}
+
+function readSamen(environmentId, options = {}) {
+  if (!environmentId) return null;
+  const dir = samenDir(environmentId, options);
+  let manifest = null;
+  try {
+    const read = typeof options.readFile === "function" ? options.readFile : (file) => require("node:fs").readFileSync(file, "utf8");
+    manifest = JSON.parse(read(path.join(dir, "samen.json")));
+  } catch (_err) {
+    return null;
+  }
+  if (!manifest || typeof manifest !== "object") return null;
+  const cameras = (Array.isArray(manifest.cameras) ? manifest.cameras : [2, 3])
+    .map((value) => Math.round(Number(value)))
+    .filter((value) => value >= 1 && value <= 3)
+    .slice(0, 2);
+  if (cameras.length !== 2 || cameras[0] === cameras[1]) return null;
+  const bestand = (naam) => (naam ? path.join(dir, path.basename(String(naam))) : "");
+  const getal = (value, min, max, fallback) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+  };
+  return {
+    label: String(manifest.label || "SAMEN").slice(0, 24),
+    cameras,
+    achtergrond: bestand(manifest.achtergrond),
+    voorgrond: bestand(manifest.voorgrond),
+    schaal: getal(manifest.schaal, 0.2, 1, 0.6),
+    omhoog: getal(manifest.omhoog, -0.5, 0.5, 0),
+  };
+}
+
+function resolveSamen(samen, options = {}) {
+  const base = {
+    label: samen.label,
+    omschrijving: "",
+    bron: "samen",
+    actie: `Toont camera ${samen.cameras[0]} en ${samen.cameras[1]} naast elkaar tot je opnieuw drukt.`,
+    klaar: false,
+    reden: "",
+    filePath: "",
+  };
+  if (!fileExists(samen.achtergrond, options)) return { ...base, reden: "bestand_ontbreekt" };
+  if (samen.voorgrond && !fileExists(samen.voorgrond, options)) return { ...base, reden: "bestand_ontbreekt" };
+  return { ...base, klaar: true, filePath: samen.achtergrond, samen, duur: 0 };
+}
+
 // Bepaalt per extra of hij af te vuren is, en met welk bestand.
 function resolveExtra(kind, extra, mediaAssets, options = {}) {
   const base = {
@@ -151,12 +208,13 @@ function environmentExtrasStatus(runtimeState, options = {}) {
   const record = read.environment || {};
   const extras = normalizeEnvironmentExtras(record.extras);
   const resolvedName = ref.resolved && ref.resolved.environment ? ref.resolved.environment.name : "";
+  const samen = readSamen(ref.environmentId, options);
   const result = {
     ok: true,
     environmentId: ref.environmentId,
     environmentName: record.name || resolvedName || ref.environmentId,
     bron: ref.bron,
-    shot: resolveExtra("shot", extras.shot, read.mediaAssets || [], options),
+    shot: samen ? resolveSamen(samen, options) : resolveExtra("shot", extras.shot, read.mediaAssets || [], options),
     geluid: resolveExtra("geluid", extras.geluid, read.mediaAssets || [], options),
     sfeerVolume: extras.sfeer.volume,
   };
@@ -167,12 +225,12 @@ function environmentExtrasStatus(runtimeState, options = {}) {
 }
 
 // Een shot met duur 0 blijft staan; de volgende druk haalt hem weg.
-const holdState = { environmentId: "", aan: false };
+const holdState = { environmentId: "", aan: false, samen: false };
 
 // Kort voor deck-status: geen bestandspaden.
 function publicExtrasStatus(status) {
   const strip = (extra) => {
-    const { filePath, assetId, ...rest } = extra || {};
+    const { filePath, assetId, samen, ...rest } = extra || {};
     return rest;
   };
   return { ...status, shot: strip(status.shot), geluid: strip(status.geluid) };
@@ -246,6 +304,21 @@ function buildEnvironmentExtraCue(runtimeState, input = {}, options = {}) {
       // Dempen: het sfeergeluid in TouchDesigner gaat naar nul zolang dit geluid speelt en komt
       // daarna terug op het niveau van de omgeving.
       ...(extra.dempSfeer ? { dempSfeer: { terug: status.sfeerVolume } } : {}),
+    }));
+  } else if (extra.samen) {
+    // Aan/uit: de eerste druk zet het gezamenlijke shot neer, de volgende haalt het weg.
+    const uit = holdState.aan && holdState.environmentId === status.environmentId;
+    holdState.environmentId = status.environmentId;
+    holdState.aan = !uit;
+    holdState.samen = !uit;
+    actions.push(cueAction(cueId, 0, "touchdesigner", "td.samen.shot", "fire-and-forget", {
+      ...common,
+      cameras: extra.samen.cameras,
+      achtergrond: extra.samen.achtergrond,
+      voorgrond: extra.samen.voorgrond,
+      schaal: extra.samen.schaal,
+      omhoog: extra.samen.omhoog,
+      uit,
     }));
   } else if (extra.camera) {
     actions.push(cueAction(cueId, 0, "touchdesigner", "td.camera.set", "acknowledged-async", {
@@ -328,6 +401,12 @@ function buildSfeerVolumeCue(runtimeState, input = {}, options = {}) {
 function resetHoldState() {
   holdState.environmentId = "";
   holdState.aan = false;
+  holdState.samen = false;
+}
+
+// Staat het gezamenlijke shot nu aan? Dan haalt een cameraknop het weg.
+function samenStaatAan() {
+  return holdState.aan && holdState.samen;
 }
 
 module.exports = {
@@ -337,4 +416,5 @@ module.exports = {
   environmentExtrasStatus,
   publicExtrasStatus,
   resetHoldState,
+  samenStaatAan,
 };
