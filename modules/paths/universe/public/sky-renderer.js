@@ -3164,7 +3164,9 @@
             "text-anchor": "middle",
             class: `scene-label network-label${status ? " runtime-label" : ""}${stem ? " stem-label" : ""}`,
           });
-          label.textContent = stem ? `${node.title} \u00b7 ${stem.votes}` : node.title;
+          // De startscènes liggen dicht bij elkaar: alleen de koploper of winnaar krijgt zijn titel,
+          // de andere tonen hun aantal stemmen.
+          label.textContent = !stem ? node.title : (stem.koploper || stem.winnaar) ? `${node.title} \u00b7 ${stem.votes}` : String(stem.votes);
           group.appendChild(label);
         }
       }
