@@ -350,6 +350,11 @@
 
     // Regie op het zaalscherm: na een scène uitzoomen, nieuwe scènes laten vrijkomen,
     // zichtbaar de volgende kiezen en er in een spiraal op inzoomen.
+    const REGIE_OPTIES = new URLSearchParams(window.location.search);
+    // Ingebed in het scherm van inloop en loading: even wachten na een scène (tellingen), waarom-blok hoger.
+    const REGIE_NA_SCENE = Math.max(0, Number(REGIE_OPTIES.get("naScene")) || 0);
+    const REGIE_WAAROM_ONDER = Number(REGIE_OPTIES.get("waaromOnder")) || 0;
+    const REGIE_BINNEN_TITEL = REGIE_OPTIES.get("binnenTitel") !== "0";
     const REGIE_ZOOM = 60;
     const REGIE_DRAAI = Math.PI * 0.8;
     const regie = {
@@ -3407,6 +3412,7 @@
           actief: !!g,
           binnen: regie.binnenAan,
           sceneId: regie.focus,
+          titel: regie.focus ? sceneTitle(regie.focus) : "",
           speelt: !!(g && regie.focus && g.cur === regie.focus),
           gespeeld: g ? g.played.size : 0,
         }, "*");
@@ -3441,6 +3447,7 @@
       if (!houder) return;
       if (!regie.waarom) {
         regie.waarom = htmlEl("div", { class: "regie-waarom" });
+        if (REGIE_WAAROM_ONDER) regie.waarom.style.bottom = `${REGIE_WAAROM_ONDER}%`;
         houder.appendChild(regie.waarom);
       }
       if (!sceneId) {
@@ -3599,7 +3606,7 @@
         const hoek = i * 2.399;
         stof += `<span style="--dx:${Math.round(Math.cos(hoek) * straal)}px;--dy:${Math.round(Math.sin(hoek) * straal)}px;width:${Math.max(2, maat * 0.004)}px;height:${Math.max(2, maat * 0.004)}px;animation-delay:${-(i * 0.35).toFixed(2)}s"></span>`;
       }
-      regie.binnen.innerHTML = `<div class="regie-stof">${stof}</div><p style="font-size:${Math.round(maat * 0.05)}px">${escapeText(sceneTitle(regie.focus))}</p>`;
+      regie.binnen.innerHTML = `<div class="regie-stof">${stof}</div>${REGIE_BINNEN_TITEL ? `<p style="font-size:${Math.round(maat * 0.05)}px">${escapeText(sceneTitle(regie.focus))}</p>` : ""}`;
       regie.binnen.classList.add("toon");
       regie.volTimer = window.setTimeout(() => {
         sky.classList.add("regie-binnen-vol");
@@ -3674,6 +3681,10 @@
       doel.played.forEach((id) => rel.add(id));
       regieToon(model, Object.assign({}, doel, { cur: 0, next: 0, rel }));
       regie.gekozen = 0;
+      if (REGIE_NA_SCENE && doel.played.has(vorige)) {
+        await regieWacht(REGIE_NA_SCENE);
+        if (gen !== regie.gen) return;
+      }
       regieBinnen(false);
       sky.classList.add("regie-terug");
       window.setTimeout(() => { if (gen === regie.gen) sky.classList.remove("regie-duikt", "regie-weg"); }, 1450);
