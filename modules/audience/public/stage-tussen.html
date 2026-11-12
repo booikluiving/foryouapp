@@ -55,43 +55,57 @@
         object-fit: fill;
         transform: translateY(-50%);
       }
-      #script {
-        position: absolute;
-        left: 0;
-        width: 1080px;
-        overflow: hidden;
-      }
-      #script iframe {
-        position: absolute;
-        left: 0;
-        width: 1080px;
-        height: 1920px;
-        border: 0;
-        background: #000;
-      }
-      /* Het script heeft een zwarte ondergrond; zo valt die weg en blijft alleen de tekst over de ster staan. */
-      #script {
-        mix-blend-mode: screen;
-        -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 45%);
-        mask-image: linear-gradient(to bottom, transparent 0, #000 45%);
-      }
-      #stats {
+      /* In de ster: de titel van de scène, met eronder de tekst die regel voor regel binnenloopt. */
+      #genTitel, #statsScene {
         position: absolute;
         left: 88px;
         right: 88px;
-      }
-      #statsScene {
-        color: rgba(255, 255, 255, 0.66);
-        font-weight: 500;
-        margin-bottom: 0.4em;
-        white-space: nowrap;
+        top: 330px;
+        text-align: center;
+        font-size: 60px;
+        font-weight: 700;
+        line-height: 1.08;
+        letter-spacing: -0.01em;
+        text-wrap: balance;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
         overflow: hidden;
-        text-overflow: ellipsis;
+        color: #fff8d6;
+      }
+      #script {
+        position: absolute;
+        left: 88px;
+        right: 88px;
+        top: 520px;
+        height: 790px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        gap: 0.5em;
+        font-size: 34px;
+        line-height: 1.28;
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 55%);
+        mask-image: linear-gradient(to bottom, transparent 0, #000 55%);
+      }
+      .scriptRegel { overflow-wrap: anywhere; flex: none; }
+      .scriptRegel.nieuw { animation: erin 260ms ease-out; }
+      .scriptRegel b { font-weight: 700; color: #b4e8c8; }
+      /* Na een scène: de titel van de gespeelde scène op dezelfde plek, met de tellingen eronder. */
+      #stats {
+        position: absolute;
+        inset: 0;
       }
       #statsRij {
+        position: absolute;
+        left: 88px;
+        right: 88px;
+        top: 520px;
         display: flex;
-        flex-wrap: nowrap;
-        gap: 0 0.9em;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.3em 0.9em;
         align-items: baseline;
       }
       .telling {
@@ -171,7 +185,7 @@
       }
       #qr[hidden] { display: none; }
       #qr img { width: 190px; height: 190px; }
-      #stats { opacity: 0; transition: opacity 600ms ease; }
+      #stats { opacity: 0; transition: opacity 1400ms ease; }
       #stats.toon { opacity: 1; }
       @keyframes erin {
         from { opacity: 0; transform: translateY(12px); }
@@ -185,7 +199,8 @@
       <div id="chatBak"></div>
       <div id="gen">
         <div id="beeld" hidden></div>
-        <div id="script"><iframe id="scriptFrame" title="Script" scrolling="no"></iframe></div>
+        <div id="genTitel"></div>
+        <div id="script"></div>
       </div>
       <div id="qr" hidden></div>
       <div id="stats" hidden>
@@ -204,12 +219,9 @@
       let reacties = [];
       let ronde = { start: null, titel: null, emoji: {} };
 
-      // Het script van de script-agent (poort 3027) op dezelfde machine.
-      el("scriptFrame").src = `${location.protocol}//${location.hostname}:3027/script-agent/operator/stage`;
-
       // Het universum (padendienst, poort 3022) vult het scherm en speelt de reeks: stemmen of kiezen,
       // inzoomen, en na elke scène uitzoomen en nieuwe scènes laten vrijkomen. Het meldt waar het is.
-      const NA_SCENE_MS = 6000; // zo lang staan de tellingen van de gespeelde scène in beeld
+      const NA_SCENE_MS = 3000; // zo lang staan titel en tellingen van de gespeelde scène in beeld voor het uitzoomen begint
       el("universum").src = `${location.protocol}//${location.hostname}:3022/universe/stage.html?naScene=${NA_SCENE_MS}&binnenTitel=0`;
       let universum = null, statsWeg = null, statsAan = false;
       // Vangnet: meldt het universum zich niet, dan staat het genereren gewoon in beeld.
@@ -226,11 +238,18 @@
         const speelde = !!(universum && universum.speelt);
         universum = stand;
         if (stand.omgeving || !stand.sceneId) zetBeeld(stand.omgeving);
-        // Scène afgelopen: eerst kort de tellingen, daarna zoomt het universum uit.
+        // Scène afgelopen: titel en tellingen in de ster. Ze vervagen zodra het universum gaat uitzoomen.
         if (speelde && !stand.speelt && stand.binnen) {
           statsAan = true;
           clearTimeout(statsWeg);
-          statsWeg = setTimeout(() => { statsAan = false; zetLagen(); }, NA_SCENE_MS);
+          statsWeg = setTimeout(() => { statsAan = false; zetLagen(); }, NA_SCENE_MS + 4000);
+        } else if (statsAan && !stand.binnen) {
+          statsAan = false;
+          clearTimeout(statsWeg);
+        }
+        if (stand.binnen && !stand.speelt && !statsAan) {
+          el("genTitel").textContent = stand.titel || "";
+          tekenScript();
         }
         zetLagen();
       });
@@ -264,10 +283,7 @@
 
       function toepassen(next) {
         settings = next || settings || {};
-        plaatsScript();
-        el("stats").style.top = getal(settings.tussenStatsY, 1150) + "px";
-        el("stats").style.fontSize = getal(settings.tussenStatsGrootte, 88) + "px";
-        el("statsScene").style.fontSize = "0.36em";
+        el("statsRij").style.fontSize = Math.max(72, getal(settings.tussenStatsGrootte, 88)) + "px";
         const c = el("chat");
         c.style.top = getal(settings.tussenChatY, 1380) + "px";
         c.style.height = getal(settings.tussenChatHoogte, 480) + "px";
@@ -276,13 +292,59 @@
         tekenChat();
       }
 
-      // Alleen de laatste regels van het script staan in beeld, onder het beeld van de omgeving.
-      const SCRIPT_Y = 1080, SCRIPT_HOOGTE = 270;
-      function plaatsScript() {
-        el("script").style.top = SCRIPT_Y + "px";
-        el("script").style.height = SCRIPT_HOOGTE + "px";
-        el("scriptFrame").style.top = (SCRIPT_HOOGTE - H) + "px";
+      // De tekst van de scène komt rechtstreeks van de script-agent (poort 3027). Alleen het script dat
+      // bij de gekozen scène hoort staat in beeld; de nieuwste regel staat onderaan.
+      let scriptBerichten = [], scriptGetoond = "";
+      function scriptTekst() {
+        const titel = universum && universum.titel ? String(universum.titel).trim() : "";
+        if (!titel) return "";
+        for (let i = scriptBerichten.length - 1; i >= 0; i--) {
+          const m = scriptBerichten[i];
+          if (m.role !== "assistant") continue;
+          const vraag = scriptBerichten.slice(0, i).reverse().find((x) => x.role === "user");
+          if (vraag && String(vraag.content || "").includes("Situatie: " + titel)) return String(m.content || "");
+        }
+        return "";
       }
+      function tekenScript() {
+        const tekst = scriptTekst();
+        if (tekst === scriptGetoond) return;
+        const box = el("script");
+        const regels = tekst.split("\n").map((r) => r.trim()).filter((r) => r && !r.startsWith("#")).slice(-24);
+        const vervolg = scriptGetoond && tekst.startsWith(scriptGetoond.slice(0, Math.max(0, scriptGetoond.length - 1)));
+        const had = box.children.length;
+        box.textContent = "";
+        regels.forEach((regel, i) => {
+          const div = document.createElement("div");
+          div.className = "scriptRegel" + (vervolg && i >= had ? " nieuw" : "");
+          const m = /^([^:]{1,40}):\s*(.*)$/.exec(regel);
+          if (m) {
+            const naam = document.createElement("b");
+            naam.textContent = m[1] + " ";
+            div.append(naam, document.createTextNode(m[2]));
+          } else div.textContent = regel;
+          box.appendChild(div);
+        });
+        scriptGetoond = tekst;
+      }
+      function scriptVerbinding() {
+        let ws;
+        try { ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.hostname}:3027/v0/script-agent/operator/stage/ws`); }
+        catch { setTimeout(scriptVerbinding, 3000); return; }
+        ws.onmessage = (ev) => {
+          let msg;
+          try { msg = JSON.parse(ev.data); } catch { return; }
+          if (msg.stage && Array.isArray(msg.stage.messages)) scriptBerichten = msg.stage.messages;
+          if (msg.type === "operator_stage_delta") {
+            const m = scriptBerichten.find((x) => x.id === msg.assistantId);
+            if (m) m.content = msg.fullText || "";
+          }
+          tekenScript();
+        };
+        ws.onclose = () => setTimeout(scriptVerbinding, 3000);
+        ws.onerror = () => { try { ws.close(); } catch {} };
+      }
+      scriptVerbinding();
 
       // Beeld van de omgeving: foto of video uit de catalogus (poort 3021).
       let beeldNu = "";
@@ -375,12 +437,8 @@
         plaatsChat();
       }
       function plaatsChat() {
-        // De chat begint nooit boven de onderkant van de tellingen.
-        const stats = el("stats");
-        const statsOnder = stats.hidden ? 0 : stats.offsetTop + stats.offsetHeight + 32;
-        const chatY = getal(settings.tussenChatY, 1380);
-        const chatTop = Math.max(chatY, statsOnder);
-        const chatHoogte = Math.max(0, getal(settings.tussenChatHoogte, 480) - (chatTop - chatY));
+        const chatTop = getal(settings.tussenChatY, 1380);
+        const chatHoogte = getal(settings.tussenChatHoogte, 480);
         const t = el("top");
         t.style.top = chatTop + "px";
         const topHoogte = t.hidden ? 0 : t.offsetHeight + 24;
