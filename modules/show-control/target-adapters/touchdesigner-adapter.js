@@ -87,8 +87,21 @@ function expectedStagesFor(action) {
   return ["received", "applied", "loaded", "visible", "warning", "failed", "error"];
 }
 
+// Een cameraknop wint altijd van het extra shot: staat er nog een shot van een
+// omgeving over het beeld, dan gaat dat eerst weg. Zonder shot doet dit niets.
+function shotUitArgsFor(action) {
+  if (action.command !== "td.camera.set") return null;
+  return [`${action.cueId}-shot-uit`, "td.extra.shot", "-", "", "0", "1"];
+}
+
 async function sendTouchDesignerCommand(action, context = {}) {
   const options = context.adapterOptions || {};
+  const shotUitArgs = shotUitArgsFor(action);
+  if (shotUitArgs) {
+    // Een shot dat bleef staan (duur 0) is nu ook weg: de volgende druk toont hem weer.
+    require("../cue-library/environment-extras").resetHoldState();
+    await sendOscMessage(options, { address: "/td/cue", args: shotUitArgs }).catch(() => {});
+  }
   const args = oscArgsForAction(action);
   await sendOscMessage(options, {
     address: "/td/cue",
@@ -120,6 +133,7 @@ module.exports = {
   normalizeTdAck,
   oscArgsForAction,
   sendTouchDesignerCommand,
+  shotUitArgsFor,
   showControlAckPort,
   tdOscHost,
   tdOscPort,
