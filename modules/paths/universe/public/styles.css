@@ -1548,11 +1548,6 @@ body.stage-output {
   pointer-events: none;
 }
 
-.network-label.regie-label {
-  font-size: 15px;
-  fill: #fff8d6;
-}
-
 .regie-nieuw .network-star {
   transform-box: fill-box;
   transform-origin: center;

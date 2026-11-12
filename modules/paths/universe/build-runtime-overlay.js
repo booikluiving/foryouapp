@@ -57,6 +57,37 @@ function keuzeVoor(view, prepared, preparedId) {
   };
 }
 
+// Achtergrondbeeld per omgeving uit de catalogus. De lijst is groot en verandert zelden: hij wordt
+// op de achtergrond ververst en nooit afgewacht, zodat de stand van de run er niet trager van wordt.
+const omgevingsBeelden = { at: 0, bezig: false, perOmgeving: new Map() };
+
+function ververOmgevingsBeelden() {
+  if (omgevingsBeelden.bezig || Date.now() - omgevingsBeelden.at < 60000) return;
+  omgevingsBeelden.bezig = true;
+  fetchJson(`${baseUrl("PATHS_CATALOG_URL", "http://127.0.0.1:3021")}/v0/catalog/media-assets`, 5000)
+    .then((payload) => {
+      if (!payload || !Array.isArray(payload.mediaAssets)) return;
+      const perOmgeving = new Map();
+      for (const asset of payload.mediaAssets) {
+        if (!asset || asset.role !== "background" || asset.status !== "present" || !asset.url) continue;
+        const mime = String(asset.mimeType || asset.mediaType || "");
+        perOmgeving.set(String(asset.environmentId), { beeld: asset.url, soort: mime.startsWith("video/") || /\.(mp4|mov|webm)$/i.test(String(asset.filename || "")) ? "video" : "beeld" });
+      }
+      omgevingsBeelden.perOmgeving = perOmgeving;
+      omgevingsBeelden.at = Date.now();
+    })
+    .finally(() => { omgevingsBeelden.bezig = false; });
+}
+
+function omgevingVoor(view) {
+  ververOmgevingsBeelden();
+  const resolved = view && view.resolvedPreparedNext;
+  const id = resolved && String(resolved.environmentId || (resolved.environment && resolved.environment.id) || "");
+  if (!id) return null;
+  const beeld = omgevingsBeelden.perOmgeving.get(id) || null;
+  return { naam: String((resolved.environment && resolved.environment.name) || "").replace(/_/g, " "), beeld: beeld ? beeld.beeld : "", soort: beeld ? beeld.soort : "" };
+}
+
 function buildRuntimeOverlay(view, stemming) {
   if (!view || !view.pathEvaluation || !Array.isArray(view.pathEvaluation.items)) return null;
   const items = view.pathEvaluation.items;
@@ -95,7 +126,7 @@ function buildRuntimeOverlay(view, stemming) {
     summary: { hasActiveRun: true },
     currentScene: currentId ? { sceneId: currentId } : null,
     playedSceneIds: [...played],
-    preparedNextScenes: toonPrepared ? [{ sceneId: preparedId, keuze: keuzeVoor(view, prepared, preparedId) }] : [],
+    preparedNextScenes: toonPrepared ? [{ sceneId: preparedId, keuze: keuzeVoor(view, prepared, preparedId), omgeving: omgevingVoor(view) }] : [],
     availableScenes: metStatus("available").filter((id) => !played.has(id)).map((sceneId) => ({ sceneId })),
     blockedSceneIds: metStatus("blocked"),
     lockedSceneIds: metStatus("locked"),

@@ -24,21 +24,25 @@
         background: #000;
         transform-origin: 0 0;
       }
-      #titel {
+      /* In de ster: het beeld van de omgeving van de volgende scène, met eronder de laatste regels van het script. */
+      #beeld {
         position: absolute;
-        left: 88px;
-        right: 330px;
-        font-weight: 700;
-        line-height: 1.05;
-        letter-spacing: -0.01em;
+        left: 170px;
+        top: 300px;
+        width: 740px;
+        height: 740px;
+        border-radius: 50%;
+        overflow: hidden;
+        border: 3px solid rgba(255, 248, 214, 0.55);
+        box-shadow: 0 0 140px rgba(180, 232, 200, 0.4);
+        background: #050813;
       }
-      #titelScene {
-        margin-top: 0.35em;
-        font-size: 0.56em;
-        font-weight: 500;
-        line-height: 1.2;
-        letter-spacing: 0;
-        color: #fff8d6;
+      #beeld[hidden] { display: none; }
+      #beeld img, #beeld video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
       }
       #script {
         position: absolute;
@@ -55,7 +59,11 @@
         background: #000;
       }
       /* Het script heeft een zwarte ondergrond; zo valt die weg en blijft alleen de tekst over de ster staan. */
-      #script { mix-blend-mode: screen; }
+      #script {
+        mix-blend-mode: screen;
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 45%);
+        mask-image: linear-gradient(to bottom, transparent 0, #000 45%);
+      }
       #stats {
         position: absolute;
         left: 88px;
@@ -125,7 +133,7 @@
         background: #050813;
         pointer-events: none;
       }
-      /* Het genereren (titel en script) staat alleen in beeld als de camera in de gekozen ster zit. */
+      /* Het genereren (beeld en script) staat alleen in beeld als de camera in de gekozen ster zit. */
       #gen {
         position: absolute;
         inset: 0;
@@ -165,7 +173,7 @@
       <iframe id="universum" title="Universum" scrolling="no"></iframe>
       <div id="chatBak"></div>
       <div id="gen">
-        <div id="titel"><div id="titelKop"></div><div id="titelScene"></div></div>
+        <div id="beeld" hidden></div>
         <div id="script"><iframe id="scriptFrame" title="Script" scrolling="no"></iframe></div>
       </div>
       <div id="qr" hidden></div>
@@ -206,7 +214,7 @@
         clearTimeout(universumStil);
         const speelde = !!(universum && universum.speelt);
         universum = stand;
-        if (el("titelScene").textContent !== (stand.titel || "")) { el("titelScene").textContent = stand.titel || ""; plaatsScript(); }
+        if (stand.omgeving || !stand.sceneId) zetBeeld(stand.omgeving);
         // Scène afgelopen: eerst kort de tellingen, daarna zoomt het universum uit.
         if (speelde && !stand.speelt && stand.binnen) {
           statsAan = true;
@@ -245,10 +253,6 @@
 
       function toepassen(next) {
         settings = next || settings || {};
-        const t = el("titel");
-        el("titelKop").textContent = settings.tussenTitel ?? "Generating next scene";
-        t.style.top = getal(settings.tussenTitelY, 110) + "px";
-        t.style.fontSize = getal(settings.tussenTitelGrootte, 64) + "px";
         plaatsScript();
         el("stats").style.top = getal(settings.tussenStatsY, 1150) + "px";
         el("stats").style.fontSize = getal(settings.tussenStatsGrootte, 88) + "px";
@@ -261,15 +265,29 @@
         tekenChat();
       }
 
-      // Het script begint onder de titel en de naam van de scène; de onderkant (nieuwste tekst) blijft in beeld.
+      // Alleen de laatste regels van het script staan in beeld, onder het beeld van de omgeving.
+      const SCRIPT_Y = 1080, SCRIPT_HOOGTE = 270;
       function plaatsScript() {
-        const y = getal(settings.tussenScriptY, 230), sh = getal(settings.tussenScriptHoogte, 860);
-        const t = el("titel");
-        const top = Math.max(y, t.offsetTop + t.offsetHeight + 28);
-        const hoogte = Math.max(120, sh - (top - y));
-        el("script").style.top = top + "px";
-        el("script").style.height = hoogte + "px";
-        el("scriptFrame").style.top = (hoogte - H) + "px";
+        el("script").style.top = SCRIPT_Y + "px";
+        el("script").style.height = SCRIPT_HOOGTE + "px";
+        el("scriptFrame").style.top = (SCRIPT_HOOGTE - H) + "px";
+      }
+
+      // Beeld van de omgeving: foto of video uit de catalogus (poort 3021).
+      let beeldNu = "";
+      function zetBeeld(omgeving) {
+        const adres = omgeving && omgeving.beeld ? `${location.protocol}//${location.hostname}:3021${omgeving.beeld}` : "";
+        if (adres === beeldNu) return;
+        beeldNu = adres;
+        const box = el("beeld");
+        box.textContent = "";
+        box.hidden = !adres;
+        if (!adres) return;
+        const media = document.createElement(omgeving.soort === "video" ? "video" : "img");
+        if (omgeving.soort === "video") { media.muted = true; media.loop = true; media.autoplay = true; media.playsInline = true; }
+        media.addEventListener("error", () => { box.hidden = true; });
+        media.src = adres;
+        box.appendChild(media);
       }
 
       function tekenStats() {
