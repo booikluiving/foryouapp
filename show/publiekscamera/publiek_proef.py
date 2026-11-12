@@ -51,6 +51,56 @@ class Grabber(threading.Thread):
             return self.frame, self.t, self.n
 
 
+class HwGrabber(Grabber):
+    """FFmpeg met de hardware-decoder van de Mac (VideoToolbox); levert fps beelden per seconde.
+    Het streamadres gaat via stdin (ffconcat), zodat het niet in `ps` staat."""
+
+    def __init__(self, url: str, fps: float, size: tuple[int, int]):
+        threading.Thread.__init__(self, daemon=True)
+        self.lock = threading.Lock()
+        self.frame, self.t, self.n = None, 0.0, 0
+        self.w, self.h = size
+        esc = url.replace("'", "'\\''")
+        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-hwaccel", "videotoolbox",
+               "-fflags", "nobuffer", "-flags", "low_delay", "-threads", "1",
+               "-f", "concat", "-safe", "0",
+               "-protocol_whitelist", "file,pipe,rtsp,rtsps,tcp,tls,crypto,udp,rtp",
+               "-i", "pipe:0", "-map", "0:v:0", "-an",
+               "-vf", f"fps={fps}", "-filter_threads", "1", "-pix_fmt", "bgr24", "-f", "rawvideo", "-"]
+        self.p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
+        self.p.stdin.write(f"ffconcat version 1.0\nfile '{esc}'\noption rtsp_transport tcp\n".encode())
+        self.p.stdin.close()
+        self.ok = True
+
+    def run(self):
+        n = self.w * self.h * 3
+        buf = bytearray(n)
+        mv = memoryview(buf)
+        while True:
+            got = 0
+            while got < n:
+                k = self.p.stdout.readinto(mv[got:])
+                if not k:
+                    return
+                got += k
+            f = np.frombuffer(bytes(buf), np.uint8).reshape(self.h, self.w, 3)
+            with self.lock:
+                self.frame, self.t = f, time.time()
+                self.n += 1
+
+
+def probe_size(url: str) -> tuple[int, int]:
+    esc = url.replace("'", "'\\''")
+    out = subprocess.run(["ffprobe", "-v", "error", "-f", "concat", "-safe", "0",
+                          "-protocol_whitelist", "file,pipe,rtsp,rtsps,tcp,tls,crypto,udp,rtp",
+                          "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0",
+                          "-i", "pipe:0"],
+                         input=f"ffconcat version 1.0\nfile '{esc}'\noption rtsp_transport tcp\n".encode(),
+                         capture_output=True).stdout.decode().strip().splitlines()[0]
+    w, h = out.split(",")[:2]
+    return int(w), int(h)
+
+
 class Vision:
     def __init__(self, w: int, h: int):
         self.w, self.h = w, h
@@ -219,10 +269,11 @@ def main():
     ap.add_argument("--url-file", default=".rtsp_hoog")
     ap.add_argument("--tiles", type=int, default=0, help="0 = hele beeld verkleind; 3 = volle resolutie in 3 tegels")
     ap.add_argument("--tile-scale", type=float, default=1.0)
+    ap.add_argument("--hw", action="store_true", help="FFmpeg met hardware-decoder (VideoToolbox)")
     a = ap.parse_args()
 
     url = (HERE / a.url_file).read_text().strip()
-    g = Grabber(url)
+    g = HwGrabber(url, a.fps, probe_size(url)) if a.hw else Grabber(url)
     if not g.ok:
         raise SystemExit("stream niet te openen")
     g.start()

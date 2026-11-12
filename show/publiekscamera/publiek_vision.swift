@@ -11,19 +11,21 @@ guard args.count >= 3, let W = Int(args[1]), let H = Int(args[2]) else {
     exit(2)
 }
 let frameBytes = W * H * 4
+let skip = Set((ProcessInfo.processInfo.environment["PV_SKIP"] ?? "").split(separator: ",").map(String.init))
 let stdin = FileHandle.standardInput
 let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 let smileDetector = CIDetector(ofType: CIDetectorTypeFace, context: ciContext,
                                options: [CIDetectorAccuracy: CIDetectorAccuracyHigh])!
 
-func readExactly(_ n: Int) -> Data? {
-    var buf = Data(capacity: n)
-    while buf.count < n {
-        let chunk = stdin.readData(ofLength: n - buf.count)
-        if chunk.isEmpty { return nil }
-        buf.append(chunk)
+// Leest precies n bytes van stdin naar dst; false bij einde invoer.
+func readInto(_ dst: UnsafeMutableRawPointer, _ n: Int) -> Bool {
+    var got = 0
+    while got < n {
+        let k = read(0, dst + got, n - got)
+        if k <= 0 { return false }
+        got += k
     }
-    return buf
+    return true
 }
 
 func r(_ v: CGFloat) -> Double { (Double(v) * 1000).rounded() / 1000 }
@@ -31,33 +33,41 @@ func r(_ v: CGFloat) -> Double { (Double(v) * 1000).rounded() / 1000 }
 // Vision: genormaliseerd, oorsprong linksonder. Wij geven linksboven terug.
 func box(_ b: CGRect) -> [Double] { [r(b.minX), r(1 - b.maxY), r(b.width), r(b.height)] }
 
-while true {
-    guard let data = readExactly(frameBytes) else { break }
-    let t0 = Date()
-    var pb: CVPixelBuffer?
-    CVPixelBufferCreate(nil, W, H, kCVPixelFormatType_32BGRA,
-                        [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &pb)
-    guard let pixel = pb else { continue }
+var pbOut: CVPixelBuffer?
+CVPixelBufferCreate(nil, W, H, kCVPixelFormatType_32BGRA,
+                    [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &pbOut)
+let sharedPixel = pbOut!
+var running = true
+while running {
+  autoreleasepool {
+    let pixel = sharedPixel
     CVPixelBufferLockBaseAddress(pixel, [])
     let dst = CVPixelBufferGetBaseAddress(pixel)!
     let rowBytes = CVPixelBufferGetBytesPerRow(pixel)
-    data.withUnsafeBytes { (src: UnsafeRawBufferPointer) in
-        for y in 0..<H {
-            memcpy(dst + y * rowBytes, src.baseAddress! + y * W * 4, W * 4)
-        }
+    var ok = true
+    if rowBytes == W * 4 {
+        ok = readInto(dst, frameBytes)
+    } else {
+        for y in 0..<H where ok { ok = readInto(dst + y * rowBytes, W * 4) }
     }
     CVPixelBufferUnlockBaseAddress(pixel, [])
+    if !ok { running = false; return }
+    let t0 = Date()
 
     let faceReq = VNDetectFaceRectanglesRequest()
     let humanReq = VNDetectHumanRectanglesRequest()
     humanReq.upperBodyOnly = false
     let poseReq = VNDetectHumanBodyPoseRequest()
     let handler = VNImageRequestHandler(cvPixelBuffer: pixel, options: [:])
-    try? handler.perform([faceReq, humanReq, poseReq])
+    var reqs: [VNRequest] = []
+    if !skip.contains("face") { reqs.append(faceReq) }
+    if !skip.contains("human") { reqs.append(humanReq) }
+    if !skip.contains("pose") { reqs.append(poseReq) }
+    try? handler.perform(reqs)
 
     // Glimlach via CIDetector op het hele beeld (oorsprong linksonder, pixels).
     let ci = CIImage(cvPixelBuffer: pixel)
-    let smiles = (smileDetector.features(in: ci, options: [CIDetectorSmile: true]) as? [CIFaceFeature]) ?? []
+    let smiles = skip.contains("smile") ? [] : ((smileDetector.features(in: ci, options: [CIDetectorSmile: true]) as? [CIFaceFeature]) ?? [])
     let smileBoxes: [CGRect] = smiles.filter { $0.hasSmile }.map {
         CGRect(x: $0.bounds.minX / CGFloat(W), y: $0.bounds.minY / CGFloat(H),
                width: $0.bounds.width / CGFloat(W), height: $0.bounds.height / CGFloat(H))
@@ -93,8 +103,10 @@ while true {
         "faces": faces, "persons": persons, "poses": poses,
         "ms": Int(Date().timeIntervalSince(t0) * 1000),
     ]
+    ciContext.clearCaches()
     if let json = try? JSONSerialization.data(withJSONObject: out) {
         FileHandle.standardOutput.write(json)
         FileHandle.standardOutput.write("\n".data(using: .utf8)!)
     }
+  }
 }
