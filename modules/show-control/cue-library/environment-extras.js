@@ -135,7 +135,7 @@ function resolveExtra(kind, extra, mediaAssets, options = {}) {
     klaar: true,
     assetId: asset.id,
     filePath,
-    ...(kind === "shot" ? { duur: extra.duur } : { volume: extra.volume, lus: extra.lus === true }),
+    ...(kind === "shot" ? { duur: extra.duur } : { volume: extra.volume, lus: extra.lus === true, dempSfeer: extra.dempSfeer === true }),
   };
 }
 
@@ -158,6 +158,7 @@ function environmentExtrasStatus(runtimeState, options = {}) {
     bron: ref.bron,
     shot: resolveExtra("shot", extras.shot, read.mediaAssets || [], options),
     geluid: resolveExtra("geluid", extras.geluid, read.mediaAssets || [], options),
+    sfeerVolume: extras.sfeer.volume,
   };
   // Staat er nu een shot dat blijft staan (duur 0)? Dan kan het deck dat tonen.
   result.shot.aan = holdState.aan && holdState.environmentId === ref.environmentId;
@@ -242,6 +243,9 @@ function buildEnvironmentExtraCue(runtimeState, input = {}, options = {}) {
       wissel: true,
       // In een lus: het geluid begint vanzelf opnieuw tot de knop weer wordt ingedrukt.
       ...(extra.lus ? { lus: true } : {}),
+      // Dempen: het sfeergeluid in TouchDesigner gaat naar nul zolang dit geluid speelt en komt
+      // daarna terug op het niveau van de omgeving.
+      ...(extra.dempSfeer ? { dempSfeer: { terug: status.sfeerVolume } } : {}),
     }));
   } else if (extra.camera) {
     actions.push(cueAction(cueId, 0, "touchdesigner", "td.camera.set", "acknowledged-async", {

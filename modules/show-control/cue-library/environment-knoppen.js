@@ -12,6 +12,7 @@
 
 const { buildEnvironmentFaseCue, environmentFasesStatus } = require("./environment-fases");
 const { buildEnvironmentOmvallenCue, environmentOmvallenStatus } = require("./environment-omvallen");
+const { buildStartGeluidCue, startGeluidStatus } = require("./environment-startgeluid");
 const { buildEnvironmentHaperCue, environmentHaperenStatus } = require("./environment-haperen");
 
 const MAX_KNOPPEN = 3;
@@ -66,6 +67,9 @@ function environmentKnoppenStatus(runtimeState, options = {}) {
     verzet = verzet || haperen.aan;
   }
   if (knoppen.length) knoppen.push({ soort: "begin", actie: "begin", label: "BEGIN", nu: "", teller: "", staat: verzet ? "klaar" : "uit" });
+  // INTRO: het startgeluid van de omgeving opnieuw. Komt achteraan, dus alleen als er plek is.
+  const intro = startGeluidStatus(runtimeState, options.environmentFases || {});
+  if (intro.klaar) knoppen.push({ soort: "intro", actie: "intro", label: "INTRO", nu: "", teller: "", staat: "klaar" });
   return {
     ok: true,
     environmentId: fases.environmentId || omvallen.environmentId || "",
@@ -99,6 +103,7 @@ function buildEnvironmentKnopCue(runtimeState, input = {}, options = {}) {
   }
   const faseOptions = options.environmentFases || {};
   const omvallenOptions = options.environmentOmvallen || {};
+  if (knop.soort === "intro") return buildStartGeluidCue(runtimeState, { source: input.source }, faseOptions);
   if (knop.soort === "fase") return buildEnvironmentFaseCue(runtimeState, { actie: "volgende", source: input.source }, faseOptions);
   if (knop.soort === "omvallen") return buildEnvironmentOmvallenCue(runtimeState, { actie: "volgende", source: input.source }, omvallenOptions);
   if (knop.soort === "haperen") return buildEnvironmentHaperCue(runtimeState, { actie: druk === "druk" ? "aan" : druk === "los" ? "uit" : "wissel", source: input.source }, omvallenOptions);
