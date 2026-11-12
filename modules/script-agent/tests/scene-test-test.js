@@ -35,6 +35,10 @@ function fakeServices() {
       run = { ...run, activeSituation: null, finalizationStatus: { status: "idle" } };
       return json(201, { ok: true });
     }
+    if (pathname === "/v0/show-control/cues/prepare") {
+      assert.equal(body.runtimeState.preparedNext.situationId, run.preparedNext.situationId);
+      return json(201, { ok: true });
+    }
     if (pathname === "/v0/show-control/cues/start-situation") {
       assert.equal(body.showRunId, "run-1");
       run = { ...run, activeSituation: { situationId: run.preparedNext.situationId, title: run.preparedNext.title }, preparedNext: null };
@@ -70,6 +74,7 @@ async function main() {
   assert.deepEqual(order, [
     "POST /v0/show-control/cues/stop-situation",
     "POST /v0/runtime/runs/run-1/prepare-situation",
+    "POST /v0/show-control/cues/prepare",
     "POST /v0/show-control/cues/start-situation",
   ]);
 

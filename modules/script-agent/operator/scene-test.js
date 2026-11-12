@@ -126,6 +126,14 @@ function createSceneTest(options = {}) {
       throw sceneTestError(502, "klaarzetten_mislukt", "De scène klaarzetten lukte niet.");
     }
 
+    // De gekozen scène ook klaarzetten in TouchDesigner, de teleprompter en de operator. Zonder
+    // deze stap staat daar nog de volgende scène van het pad klaar en springt het beeld daarheen.
+    const readied = await request(showControlUrl, "/v0/show-control/cues/prepare", {
+      method: "POST",
+      body: { runtimeState: prepared.json },
+    });
+    if (!readied.ok) throw sceneTestError(502, "klaarzetten_mislukt", "De scène klaarzetten in TouchDesigner lukte niet.");
+
     const started = await request(showControlUrl, "/v0/show-control/cues/start-situation", {
       method: "POST",
       body: { name: "Scènes testen: start situatie", showRunId: run.showRunId, runtimeState: prepared.json },
