@@ -1593,19 +1593,34 @@ body.stage-output {
   filter: none;
 }
 
-.sky.regie-duikt .network-edge-wrap,
+.sky.regie-duikt,
+.sky.regie-terug {
+  will-change: transform;
+}
+
+.sky.regie-duikt .star,
+.sky.regie-terug .star {
+  filter: none;
+}
+
+.sky.regie-duikt .network-edge-layer,
 .sky.regie-duikt .network-node-wrap:not(.regie-focus) {
   opacity: 0;
-  transition: opacity 1.5s ease-in;
+  transition: opacity 0.8s ease-in;
+}
+
+.sky.regie-weg .network-edge-layer,
+.sky.regie-weg .network-node-wrap:not(.regie-focus) {
+  display: none;
 }
 
 .sky.regie-duikt .network-label {
   opacity: 0;
 }
 
-.sky.regie-terug .network-edge-wrap,
+.sky.regie-terug .network-edge-layer,
 .sky.regie-terug .network-node-wrap {
-  transition: opacity 1.6s ease-out;
+  transition: opacity 0.8s ease-out;
 }
 
 .sky.regie-binnen-vol .network-camera-layer {

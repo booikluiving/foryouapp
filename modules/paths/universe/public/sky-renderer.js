@@ -367,6 +367,8 @@
       frame: 0,
       binnen: null,
       volTimer: 0,
+      stil: false,
+      stilSinds: 0,
     };
 
     function pathById(pathId) {
@@ -529,8 +531,14 @@
       else group.setAttribute("transform", matrixToSvgTransform(transform));
     }
 
-    function applyNetworkMotion(now = Date.now()) {
+    function applyNetworkMotion(now = Date.now(), force = false) {
       if (!state.bb.orbitLayer) return;
+      if (regie.stil) {
+        // Tijdens het zoomen staat de kaart stil: de klok schuift mee, zodat er daarna niets verspringt.
+        state.orbitStartedAt += now - regie.stilSinds;
+        regie.stilSinds = now;
+        if (!force) return;
+      }
       state.bb.orbitLayer.removeAttribute("transform");
       const elapsed = ((now - state.orbitStartedAt) / 1000) * Math.max(state.motion.speed || 1, 0.18);
       const offsets = new Map();
@@ -3393,18 +3401,26 @@
       return { group, star, x: Number(star.getAttribute("cx")), y: Number(star.getAttribute("cy")), r: Number(star.getAttribute("r")) };
     }
 
+    function regieStil(aan) {
+      if (aan && !regie.stil) regie.stilSinds = Date.now();
+      regie.stil = aan;
+    }
+
+    // De camera schuift, schaalt en draait de hele kaart als één vlak. Zo hoeft de browser
+    // tijdens het zoomen niets opnieuw te tekenen.
     function regieCameraToepassen() {
       const pos = regie.focus ? state.bb.networkBasePos.get(regie.focus) : null;
       const off = regie.focusOffset || { x: 0, y: 0 };
-      const px = pos ? SKY_CX + (pos.x + off.x - SKY_CX) * regie.cam.mix : SKY_CX;
-      const py = pos ? SKY_CY + (pos.y + off.y - SKY_CY) * regie.cam.mix : SKY_CY;
+      const dx = pos ? (pos.x + off.x - SKY_CX) * regie.cam.mix : 0;
+      const dy = pos ? (pos.y + off.y - SKY_CY) * regie.cam.mix : 0;
       const zoom = Math.exp(regie.cam.lz);
-      const cos = Math.cos(regie.cam.rot) * zoom;
-      const sin = Math.sin(regie.cam.rot) * zoom;
-      setCameraTransform(matrix(cos, sin, -sin, cos, SKY_CX - (cos * px - sin * py), SKY_CY - (sin * px + cos * py)));
-      const kern = sky.querySelector("#regieOrbKern");
-      const orb = sky.querySelector(".regie-orb");
-      if (kern && orb) kern.setAttribute("offset", String(Math.min(0.35, 39 / (Number(orb.getAttribute("r")) * zoom))));
+      if (zoom === 1 && !regie.cam.rot && !dx && !dy) {
+        sky.style.transform = "";
+        return;
+      }
+      const houder = sky.parentNode;
+      const schaal = Math.max((houder && houder.clientWidth || W) / W, (houder && houder.clientHeight || H) / H);
+      sky.style.transform = `rotate(${regie.cam.rot}rad) scale(${zoom}) translate(${-dx * schaal}px, ${-dy * schaal}px)`;
     }
 
     function regieCamera(naar, ms) {
@@ -3450,15 +3466,15 @@
         const defs = el("defs");
         const gradient = el("radialGradient", { id: "regieOrb" });
         gradient.appendChild(el("stop", { offset: "0", "stop-color": "#ffffff" }));
-        gradient.appendChild(el("stop", { id: "regieOrbKern", offset: "0.35", "stop-color": "rgb(220,246,232)", "stop-opacity": "0.95" }));
+        gradient.appendChild(el("stop", { offset: "0.12", "stop-color": "rgb(220,246,232)", "stop-opacity": "0.95" }));
         gradient.appendChild(el("stop", { offset: "0.6", "stop-color": "rgb(180,232,200)", "stop-opacity": "0.4" }));
         gradient.appendChild(el("stop", { offset: "1", "stop-color": "rgb(180,232,200)", "stop-opacity": "0" }));
         defs.appendChild(gradient);
         sky.insertBefore(defs, sky.firstChild);
         focus.group.insertBefore(el("circle", { cx: focus.x, cy: focus.y, r: focus.r * 1.7, class: "regie-orb", fill: "url(#regieOrb)" }), focus.group.firstChild);
         focus.group.classList.add("regie-focus");
-        regieCameraToepassen();
       }
+      if (regie.stil) applyNetworkMotion(Date.now(), true);
       const gekozen = regie.gekozen && regie.gekozen !== regie.focus ? regieSterVan(regie.gekozen) : null;
       if (gekozen) {
         gekozen.group.classList.add("regie-gekozen");
@@ -3543,7 +3559,9 @@
       regie.focusOffset = wil ? { x: 0, y: 0 } : null;
       regie.cam = wil ? { mix: 1, lz: Math.log(REGIE_ZOOM), rot: REGIE_DRAAI } : { mix: 0, lz: 0, rot: 0 };
       sky.classList.toggle("regie-duikt", !!wil);
+      sky.classList.toggle("regie-weg", !!wil);
       sky.classList.remove("regie-terug");
+      regieStil(!!wil);
       regieToon(model, stand, true);
       regieBinnen(!!wil);
     }
@@ -3560,7 +3578,9 @@
       regie.herkomst = 0;
       regie.pops.clear();
       regie.cam = { mix: 0, lz: 0, rot: 0 };
-      sky.classList.remove("regie-duikt", "regie-terug");
+      sky.classList.remove("regie-duikt", "regie-terug", "regie-weg");
+      sky.style.transform = "";
+      regieStil(false);
       regieBinnen(false);
     }
 
@@ -3574,9 +3594,10 @@
       regie.gekozen = 0;
       regieBinnen(false);
       sky.classList.add("regie-terug");
-      window.setTimeout(() => { if (gen === regie.gen) sky.classList.remove("regie-duikt"); }, 700);
+      window.setTimeout(() => { if (gen === regie.gen) sky.classList.remove("regie-duikt", "regie-weg"); }, 1450);
       await regieCamera({ mix: 0, lz: 0, rot: 0 }, 2900);
       if (gen !== regie.gen) return;
+      regieStil(false);
       const ster = regieSterVan(vorige);
       if (ster) {
         ster.group.__networkReleaseOffset = regie.focusOffset;
@@ -3655,7 +3676,11 @@
       regie.focus = wil;
       regie.gekozen = 0;
       render();
+      await regieWacht(60);
+      if (gen !== regie.gen) return;
+      regieStil(true);
       sky.classList.add("regie-duikt");
+      window.setTimeout(() => { if (gen === regie.gen && regie.focus === wil) sky.classList.add("regie-weg"); }, 900);
       window.setTimeout(() => { if (gen === regie.gen && regie.focus === wil) regieBinnen(true); }, 2200);
       await regieCamera({ mix: 1, lz: Math.log(REGIE_ZOOM), rot: REGIE_DRAAI }, 3100);
     }
