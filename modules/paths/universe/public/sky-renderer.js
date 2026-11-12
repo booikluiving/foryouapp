@@ -353,7 +353,6 @@
     const REGIE_OPTIES = new URLSearchParams(window.location.search);
     // Ingebed in het scherm van inloop en loading: even wachten na een scène (tellingen), waarom-blok hoger.
     const REGIE_NA_SCENE = Math.max(0, Number(REGIE_OPTIES.get("naScene")) || 0);
-    const REGIE_WAAROM_ONDER = Number(REGIE_OPTIES.get("waaromOnder")) || 0;
     const REGIE_BINNEN_TITEL = REGIE_OPTIES.get("binnenTitel") !== "0";
     const REGIE_ZOOM = 60;
     const REGIE_DRAAI = Math.PI * 0.8;
@@ -374,7 +373,6 @@
       volTimer: 0,
       stil: false,
       stilSinds: 0,
-      waarom: null,
       binnenAan: false,
     };
 
@@ -3426,62 +3424,6 @@
       return (prepared && prepared.omgeving) || null;
     }
 
-    const REGIE_ONDERDEEL = {
-      liveAudience: "publiek nu",
-      observed: "eerdere reacties",
-      latestObservation: "laatste sc\u00e8ne",
-      affinity: "verwantschap",
-      profileLabel: "thema",
-      profileCharacter: "personage",
-      profileSituation: "situatie",
-      profileLabelAffinity: "thema-verwantschap",
-      profileCharacterAffinity: "personage-verwantschap",
-      diversityPenalty: "afwisseling",
-      explorationBonus: "nog niet gezien",
-      retryBonus: "herkansing",
-      sceneRepeatPenalty: "herhaling",
-      neutral: "basis",
-    };
-
-    function regieGetal(waarde) {
-      const tekst = Math.abs(waarde).toFixed(2).replace(".", ",");
-      return (waarde < 0 ? "\u2212" : "+") + tekst;
-    }
-
-    // Waarom deze scène: staat onder in beeld zodra de keuze gevallen is.
-    function regieWaarom(sceneId) {
-      const houder = sky.parentNode;
-      if (!houder) return;
-      if (!regie.waarom) {
-        regie.waarom = htmlEl("div", { class: "regie-waarom" });
-        if (REGIE_WAAROM_ONDER) regie.waarom.style.bottom = `${REGIE_WAAROM_ONDER}%`;
-        houder.appendChild(regie.waarom);
-      }
-      if (!sceneId) {
-        regie.waarom.classList.remove("toon");
-        return;
-      }
-      const raw = regie.doel && regie.doel.runtime && regie.doel.runtime.raw;
-      const prepared = raw && (raw.preparedNextScenes || []).find((scene) => Number(scene.sceneId) === Number(sceneId));
-      const keuze = prepared && prepared.keuze;
-      const stemWinnaar = Number(raw && raw.stem && raw.stem.winnaar || 0) === Number(sceneId);
-      const regels = [];
-      if (stemWinnaar) regels.push("Gekozen door het publiek");
-      else if (keuze && keuze.reden === "operator_chosen") regels.push("Gekozen door de operator");
-      else if (keuze && keuze.rang === 1 && keuze.gelijk > 1) regels.push(`Gelijke score met ${keuze.gelijk - 1} andere: eerste in de volgorde`);
-      else if (keuze && keuze.rang === 1) regels.push(`Hoogste score van ${keuze.aantal} vrije sc\u00e8nes`);
-      else if (keuze && keuze.rang) regels.push(`Plaats ${keuze.rang} van ${keuze.aantal} vrije sc\u00e8nes`);
-      if (keuze && keuze.score != null && !stemWinnaar) {
-        const onderdelen = (keuze.onderdelen || []).map((item) => `${REGIE_ONDERDEEL[item.naam] || item.naam} ${regieGetal(item.waarde)}`);
-        regels.push(["score " + keuze.score.toFixed(2).replace(".", ",")].concat(onderdelen).join(" \u00b7 "));
-      }
-      if (keuze && keuze.paden && keuze.paden.length) regels.push((keuze.paden.length > 1 ? "Paden: " : "Pad: ") + keuze.paden.slice(0, 3).join(", "));
-      const maat = Math.min(houder.clientWidth || 1600, houder.clientHeight || 900);
-      regie.waarom.style.fontSize = `${Math.round(maat * 0.03)}px`;
-      regie.waarom.innerHTML = `<p class="regie-waarom-kop">Volgende sc\u00e8ne</p><p class="regie-waarom-titel">${escapeText(sceneTitle(sceneId))}</p>${regels.map((regel) => `<p>${escapeText(regel)}</p>`).join("")}`;
-      regie.waarom.classList.add("toon");
-    }
-
     function regieSterVan(sceneId) {
       const group = state.bb.networkNodeGroups.get(Number(sceneId));
       const star = group ? group.querySelector(".network-star") : null;
@@ -3567,6 +3509,16 @@
       if (gekozen) {
         gekozen.group.classList.add("regie-gekozen");
         gekozen.group.appendChild(el("circle", { cx: gekozen.x, cy: gekozen.y, r: gekozen.r + 7, class: "regie-ring" }));
+        if (!gekozen.group.querySelector(".network-label")) {
+          const regels = regieTitelRegels(sceneTitle(regie.gekozen));
+          const label = el("text", { x: gekozen.x, y: gekozen.y - gekozen.r - 14 - (regels.length - 1) * 19, "text-anchor": "middle", class: "scene-label network-label regie-label" });
+          regels.forEach((regel, index) => {
+            const tspan = el("tspan", { x: gekozen.x, dy: index ? 19 : 0 });
+            tspan.textContent = regel;
+            label.appendChild(tspan);
+          });
+          gekozen.group.appendChild(label);
+        }
       }
       const nu = Date.now();
       regie.pops.forEach((sinds, sceneId) => {
@@ -3646,7 +3598,6 @@
       sky.classList.toggle("regie-weg", !!wil);
       sky.classList.remove("regie-terug");
       regieStil(!!wil);
-      regieWaarom(0);
       regieToon(model, stand, true);
       regieBinnen(!!wil);
     }
@@ -3666,7 +3617,6 @@
       sky.classList.remove("regie-duikt", "regie-terug", "regie-weg");
       sky.style.transform = "";
       regieStil(false);
-      regieWaarom(0);
       regieBinnen(false);
     }
 
@@ -3757,9 +3707,7 @@
       if (gen !== regie.gen) return;
       regie.gekozen = wil;
       regieToon(model, doel, true);
-      if (!doel.cur) regieWaarom(wil);
-      await regieWacht(doel.cur ? 400 : 4500);
-      regieWaarom(0);
+      await regieWacht(doel.cur ? 400 : doel.stemWinnaar === wil ? 3500 : 2500);
       if (gen !== regie.gen) return;
       const laatste = regieStand(regie.doel);
       if (!laatste || (laatste.cur || laatste.next) !== wil) { regie.gekozen = 0; return; }
