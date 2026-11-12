@@ -185,6 +185,15 @@ const DEFINITIONS = Object.freeze([
     description: "Toont het extra shot van de omgeving schermvullend (payload: filePath, duur, uit). Wordt per omgeving in de catalogus ingevuld.",
   }),
   command({
+    name: "td.samen.shot",
+    title: "TD gezamenlijk shot",
+    targetId: "touchdesigner",
+    adapter: "touchdesigner",
+    ackMode: "fire-and-forget",
+    transport: "osc-control-port",
+    description: "Toont twee camera's naast elkaar op het staande scherm (payload: cameras, achtergrond, voorgrond, schaal, omhoog, uit). Per omgeving in samen/samen.json bij de media.",
+  }),
+  command({
     name: "td.sfeer.volume",
     title: "TD volume sfeergeluid",
     targetId: "touchdesigner",
