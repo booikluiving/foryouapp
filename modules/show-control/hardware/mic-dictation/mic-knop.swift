@@ -82,6 +82,7 @@ func claudeNeemtOp() -> Bool? {
 // (lampje rood, digitale stilte); de knop werkt daarna gewoon. De waarde die macOS onthoudt loopt
 // uit de pas na een knopdruk, daarom eerst 0 en dan 1.
 var gedemptDoorMac = 0
+var geopendDoorMac = 0
 func zetMicMute(_ aan: Bool) -> Bool {
   let sys = AudioObjectID(kAudioObjectSystemObject)
   var a = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
@@ -196,7 +197,24 @@ var claudeNamOp = false
 var nietOpSinds: Date? = nil
 Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
   guard verbonden, let op = claudeNeemtOp() else { return }
-  if op { claudeNamOp = true; nietOpSinds = nil; return }
+  if op {
+    nietOpSinds = nil
+    if !claudeNamOp {
+      claudeNamOp = true
+      // Dicteren gestart met de muis of Cmd+D terwijl de mic rood is: de mic zelf open zetten.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+        guard claudeNeemtOp() == true, gemeten() == "rood" else { return }
+        if let l = laatsteDruk, Date().timeIntervalSince(l) < 1.0 { return }
+        _ = zetMicMute(true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+          let ok = zetMicMute(false)
+          if ok { stand = "blauw"; geopendDoorMac += 1 }
+          log("Claude dicteert, mic was rood → mic vanaf de Mac op blauw gezet\(ok ? "" : " MISLUKT")")
+        }
+      }
+    }
+    return
+  }
   guard claudeNamOp else { return }
   if nietOpSinds == nil { nietOpSinds = Date() }
   // Bij het starten flappert de opname van Claude kort; pas handelen als hij 1,2 s echt uit is
@@ -234,7 +252,7 @@ func stateJSON() -> Data {
   let o: [String: Any] = ["stand": stand, "dicteren": stand == "blauw", "verbonden": verbonden,
                           "laatsteDruk": iso(laatsteDruk), "laatsteMacro": laatsteMacro ?? NSNull(), "drukken": drukken,
                           "macroAan": macroAan, "macroUit": macroUit,
-                          "claudeNeemtOp": claudeNeemtOp() ?? NSNull(), "gedemptDoorMac": gedemptDoorMac,
+                          "claudeNeemtOp": claudeNeemtOp() ?? NSNull(), "gedemptDoorMac": gedemptDoorMac, "geopendDoorMac": geopendDoorMac,
                           "gehoord": gemeten() ?? NSNull(),"geluidActief": geluidActief, "piekPerSeconde": piekLog]
   return (try? JSONSerialization.data(withJSONObject: o, options: [.prettyPrinted, .sortedKeys])) ?? Data()
 }
