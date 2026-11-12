@@ -107,7 +107,7 @@ function createAudienceApp(options = {}) {
   });
 
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
-  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag"]);
+  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag"]);
   // Stand van de stemming op de startscène, voor het zaalscherm en het universum.
   app.get("/audience/stage/start-stemming", (_req, res) => {
     const stemming = service.getStartStemming();
@@ -262,6 +262,11 @@ function createAudienceApp(options = {}) {
 
   app.post("/audience/admin/stage/settings", (req, res) => {
     res.json({ ok: true, stage: service.updateStageSettings(req.body || {}, req) });
+  });
+
+  // Chat leegmaken op de telefoons en het zaalscherm (gebeurt vanzelf bij RESET RUN).
+  app.post("/audience/admin/chat/wis", (_req, res) => {
+    res.json(service.wisChat("admin"));
   });
 
   // Podiumpagina's (emoji, chat, tussen) laten herladen, bv. na een update; TD hoeft niets te doen.

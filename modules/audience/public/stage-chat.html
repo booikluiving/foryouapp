@@ -88,7 +88,7 @@
             for (const m of msg.berichten || []) regel(m);
           } else if (msg.type === "stage_settings") toepassen(msg.stage && msg.stage.settings);
           else if (msg.type === "comment") regel(msg);
-          else if (msg.type === "session_reset" || msg.type === "session_closed") chat.textContent = "";
+          else if (msg.type === "session_reset" || msg.type === "session_closed" || msg.type === "chat_reset") chat.textContent = "";
         };
       }
       verbind();

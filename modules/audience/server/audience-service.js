@@ -59,6 +59,10 @@ function normalizeStartStemmingInstellingen(input) {
 }
 // Ronde = van de start van een scène tot de start van de volgende: daarover tellen we de emoji.
 const RONDE_KEY = "ronde";
+// Chat wissen: berichten t/m dit nummer tellen niet meer mee (ze blijven in de database staan).
+const CHAT_GEWIST_KEY = "chat_gewist";
+// De run waar de chat bij hoort; verdwijnt die (RESET RUN), dan wordt de chat gewist.
+const CHAT_RUN_KEY = "chat_show_run";
 const NA_SCENE_VRAAG_STANDAARD = "En?";
 
 function normalizeNaSceneVraag(raw) {
@@ -500,6 +504,7 @@ class AudienceService extends EventEmitter {
     this.fase = { fase: "tussen", titel: null, situationRunId: null, sinds: nowIso(), bekend: false };
     this.faseTimer = null;
     this.ronde = this.laadRonde();
+    this.chatRun = this.store.getSetting(CHAT_RUN_KEY, null) || null;
     this.pollAutoCloseTimer = null;
     this.internalSimulatorKey = crypto.randomBytes(16).toString("hex");
     this.liveScoreDispatchWork = Promise.resolve();
@@ -670,10 +675,39 @@ class AudienceService extends EventEmitter {
     const result = await fetchView();
     // Runtime onbereikbaar: laatste stand houden.
     if (!result || !result.ok || !result.state) return this.getFase();
+    this.volgRun(result.state);
     const active = result.state.activeSituation;
     return this.setFase(active
       ? { fase: "scene", titel: active.title, situationRunId: active.situationRunId || active.situationId || "actief" }
       : { fase: "tussen" });
+  }
+
+  // Reset van de run, langs welke weg ook (Stream Deck, operator, runtime): de run die liep is weg.
+  volgRun(state = {}) {
+    const run = state.showRunId && !["idle", "reset"].includes(String(state.status || "")) ? String(state.showRunId) : null;
+    if (run === this.chatRun) return;
+    const vorige = this.chatRun;
+    this.chatRun = run;
+    this.store.setSetting(CHAT_RUN_KEY, run);
+    if (vorige) this.wisChat("reset_run");
+  }
+
+  chatGewistTot(session = this.getActiveSession()) {
+    const gewist = this.store.getSetting(CHAT_GEWIST_KEY, null);
+    if (!session || !gewist || Number(gewist.sessionId || 0) !== Number(session.id)) return 0;
+    return Number(gewist.totId || 0);
+  }
+
+  // Lege chat op de telefoons en op het zaalscherm; ook de tellingen van de laatste scène gaan weg.
+  wisChat(reden = "admin") {
+    const session = this.getActiveSession();
+    const totId = this.store.laatsteChatMessageId();
+    if (session) this.store.setSetting(CHAT_GEWIST_KEY, { sessionId: session.id, totId, at: nowIso(), reden: String(reden) });
+    this.ronde = { start: null, eind: null, titel: null, situationRunId: null, emoji: {} };
+    this.bewaarRonde();
+    this.emit("broadcast", { type: "chat_reset", tot: totId, reden: String(reden) });
+    this.emit("admin-state-changed");
+    return { ok: true, tot: totId };
   }
 
   startFaseWatch(intervalMs = Number(process.env.AUDIENCE_FASE_POLL_MS || FASE_POLL_MS)) {
@@ -1908,7 +1942,9 @@ class AudienceService extends EventEmitter {
     const session = this.getActiveSession();
     if (!session || this.fase.fase === "scene") return [];
     const likes = this.store.commentLikeCounts(session.id);
+    const gewistTot = this.chatGewistTot(session);
     return this.store.recentChatMessages({ sessionId: session.id, limit, status: "accepted" })
+      .filter((m) => m.id > gewistTot)
       .filter((m) => !String(m.detail || "").startsWith("moderation_notice:"))
       .reverse()
       .map((m) => ({ id: m.id, clientKey: m.clientKey, likes: Number(likes[m.id] || 0) }));
@@ -1965,7 +2001,9 @@ class AudienceService extends EventEmitter {
     const session = this.getActiveSession();
     if (!session) return { ok: false, error: "session_inactive", messages: [] };
     const likes = this.store.commentLikeCounts(session.id);
+    const gewistTot = this.chatGewistTot(session);
     const messages = this.store.recentChatMessages({ sessionId: session.id, limit, status: "accepted" })
+      .filter((message) => message.id > gewistTot)
       .reverse()
       .map((message) => ({
         type: "comment",
@@ -1978,7 +2016,7 @@ class AudienceService extends EventEmitter {
         system: String(message.detail || "").startsWith("moderation_notice:"),
         isBot: message.isBot,
       }));
-    return { ok: true, sessionId: session.id, messages };
+    return { ok: true, sessionId: session.id, gewistTot, messages };
   }
 
   async adminState(req) {

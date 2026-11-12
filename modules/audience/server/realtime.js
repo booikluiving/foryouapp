@@ -181,6 +181,7 @@ function attachAudienceRealtime(server, service, options = {}) {
       buildLabel: service.health().buildLabel,
       poll: service.getActivePollSnapshot(),
       fase: service.getFase(),
+      chatGewistTot: service.chatGewistTot(session),
       reacties: service.getReacties(),
       naSceneVraag: service.getNaSceneVraag(),
     });

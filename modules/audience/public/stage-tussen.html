@@ -369,7 +369,7 @@
           const m = berichten.find((b) => b.id === Number(msg.id));
           if (m) { m.likes = Number(msg.likes) || 0; tekenChat(); }
         }
-        else if (msg.type === "session_reset" || msg.type === "session_closed") {
+        else if (msg.type === "session_reset" || msg.type === "session_closed" || msg.type === "chat_reset") {
           berichten = [];
           tekenChat();
           ronde.emoji = {};
