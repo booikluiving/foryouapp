@@ -710,11 +710,11 @@ function renderSceneTest(message, error = false) {
   els.sceneTestToggle.disabled = !running;
   els.sceneTestToggle.closest(".scene-test").classList.toggle("on", enabled);
   els.sceneTestStart.hidden = !enabled;
-  els.sceneTestStart.disabled = !els.situation.value;
+  els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
   const standaard = !running
     ? "Kan alleen als er een run loopt."
     : enabled
-      ? `Testrun. ${activeSituation ? `Nu: ${activeSituation.title}. ` : ""}Kies een situatie en start hem, los van de paden.`
+      ? `Testrun. ${activeSituation ? `Nu: ${activeSituation.title}. ` : ""}Kies een situatie, een omgeving of allebei en druk op Start scène.`
       : "";
   els.sceneTestMsg.textContent = message || standaard;
   els.sceneTestMsg.style.color = error ? "var(--bad)" : "";
@@ -777,21 +777,21 @@ async function toggleSceneTest() {
 }
 
 async function startTestScene() {
-  if (!els.situation.value) return;
+  if (!els.situation.value && !els.environment.value) return;
   els.sceneTestStart.disabled = true;
   renderSceneTest("Scène starten...");
   try {
     const body = await api("/v0/script-agent/operator/scene-test/start", {
       method: "POST",
-      body: JSON.stringify({ situationId: els.situation.value }),
+      body: JSON.stringify({ situationId: els.situation.value, environmentId: els.environment.value }),
     });
     sceneTestState = body.status || sceneTestState;
     manualSelectionDirty = false;
-    renderSceneTest(`Gestart: ${body.title || "scène"}.`);
+    renderSceneTest(`Gestart: ${body.title || "scène"}${body.environment ? ` in ${body.environment}` : ""}.`);
   } catch (err) {
     renderSceneTest(err.message || "Scène starten lukte niet.", true);
   } finally {
-    els.sceneTestStart.disabled = !els.situation.value;
+    els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
   }
 }
 
@@ -945,7 +945,7 @@ els.model.addEventListener("change", () => withUiError(saveModel));
 els.sceneTestToggle.addEventListener("change", () => toggleSceneTest());
 els.sceneTestStart.addEventListener("click", () => startTestScene());
 els.situation.addEventListener("change", () => {
-  els.sceneTestStart.disabled = !els.situation.value;
+  els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
   manualSelectionDirty = true;
   updateSituationSelection({ preserveManualCharacters: false });
   sendManualDraftPreview();
@@ -962,6 +962,7 @@ els.character.addEventListener("change", () => {
   els.character.value = "";
 });
 els.environment.addEventListener("change", () => {
+  els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
   manualSelectionDirty = true;
   updateEnvironmentPreview();
   sendManualDraftPreview();

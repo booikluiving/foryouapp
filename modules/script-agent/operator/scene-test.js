@@ -104,20 +104,24 @@ function createSceneTest(options = {}) {
     return latest;
   }
 
-  async function startScene(situationId) {
+  // Met een omgeving erbij speelt de situatie in die omgeving. Alleen een omgeving kan ook:
+  // de runtime kiest er dan een situatie bij.
+  async function startScene(situationId, environmentId) {
     const wanted = String(situationId || "").trim();
-    if (!wanted) throw sceneTestError(400, "geen_situatie", "Kies eerst een situatie.");
+    const wantedEnvironment = String(environmentId || "").trim();
+    if (!wanted && !wantedEnvironment) throw sceneTestError(400, "geen_situatie", "Kies eerst een situatie of een omgeving.");
     let run = await currentRun();
     if (!statusFrom(run).enabled) throw sceneTestError(409, "geen_testrun", "Zet eerst 'Scènes testen' aan.");
     if (busy(run)) run = await stopActive(run);
 
     const prepared = await request(runtimeUrl, `/v0/runtime/runs/${encodeURIComponent(run.showRunId)}/prepare-situation`, {
       method: "POST",
-      body: { situationId: wanted, testRun: true },
+      body: { situationId: wanted, ...(wantedEnvironment ? { environmentId: wantedEnvironment } : {}), testRun: true },
     });
     if (!prepared.ok) {
       const code = prepared.json && prepared.json.error;
       if (code === "runtime_unknown_situation") throw sceneTestError(404, "onbekend", "Deze situatie staat niet (actief) in de catalogus.");
+      if (code === "runtime_unknown_environment") throw sceneTestError(404, "onbekend", "Deze omgeving staat niet in de catalogus.");
       if (code === "runtime_not_test_run") throw sceneTestError(409, "geen_testrun", "Zet eerst 'Scènes testen' aan.");
       throw sceneTestError(502, "klaarzetten_mislukt", "De scène klaarzetten lukte niet.");
     }
@@ -127,8 +131,15 @@ function createSceneTest(options = {}) {
       body: { name: "Scènes testen: start situatie", showRunId: run.showRunId, runtimeState: prepared.json },
     });
     if (!started.ok) throw sceneTestError(502, "start_mislukt", "De scène staat klaar, maar starten via show control lukte niet.");
-    const title = prepared.json && prepared.json.preparedNext ? prepared.json.preparedNext.title || "" : "";
-    return { ok: true, situationId: wanted, title, status: await status() };
+    const next = prepared.json && prepared.json.preparedNext ? prepared.json.preparedNext : {};
+    const resolved = prepared.json && prepared.json.resolvedPreparedNext ? prepared.json.resolvedPreparedNext : {};
+    return {
+      ok: true,
+      situationId: next.situationId || wanted,
+      title: next.title || "",
+      environment: resolved.environment ? resolved.environment.name || "" : "",
+      status: await status(),
+    };
   }
 
   return { setEnabled, startScene, status };

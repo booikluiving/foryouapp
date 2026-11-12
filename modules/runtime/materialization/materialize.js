@@ -18,7 +18,7 @@ function activeEnvironments(catalog) {
   return (catalog.environments || []).filter((item) => item.active && !item.archivedAt);
 }
 
-function materializePreparedNext({ catalog, preparedNext, seed = "" }) {
+function materializePreparedNext({ catalog, preparedNext, seed = "", environmentId = "" }) {
   if (!preparedNext || !preparedNext.situationId) return null;
   const situation = situationById(catalog, preparedNext.situationId);
   if (!situation) throw new Error(`runtime_materialize_missing_situation:${preparedNext.situationId}`);
@@ -29,6 +29,9 @@ function materializePreparedNext({ catalog, preparedNext, seed = "" }) {
   if (!environment && situation.environmentMode === "random") {
     environment = activeEnvironments(catalog)[0] || null;
   }
+  // Scènes testen: de operator kiest zelf de omgeving bij deze situatie.
+  const chosenEnvironment = environmentId ? environmentById(catalog, environmentId) : null;
+  if (chosenEnvironment) environment = chosenEnvironment;
   const castAssignment = assignPerformerSlots({
     characters,
     performers: catalog.performers || [],

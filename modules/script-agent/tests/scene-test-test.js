@@ -24,7 +24,11 @@ function fakeServices() {
       if (!run.testRun || !run.testRun.enabled) return json(409, { ok: false, error: "runtime_not_test_run" });
       if (body.situationId === "situation:weg") return json(404, { ok: false, error: "runtime_unknown_situation" });
       assert.equal(body.testRun, true);
-      run = { ...run, preparedNext: { situationId: body.situationId, title: "Lingo met Myrthe" } };
+      run = {
+        ...run,
+        preparedNext: { situationId: body.situationId || "situation:1", title: "Lingo met Myrthe" },
+        resolvedPreparedNext: { environment: body.environmentId ? { id: body.environmentId, name: "Trein" } : null },
+      };
       return json(200, run);
     }
     if (pathname === "/v0/show-control/cues/stop-situation") {
@@ -71,6 +75,13 @@ async function main() {
 
   await assert.rejects(() => sceneTest.startScene("situation:weg"), /catalogus/);
   await assert.rejects(() => sceneTest.startScene(""), /Kies eerst/);
+
+  // Met een omgeving erbij, of alleen een omgeving.
+  const inTrein = await sceneTest.startScene("situation:84", "environment:7");
+  assert.equal(inTrein.environment, "Trein");
+  const alleenOmgeving = await sceneTest.startScene("", "environment:7");
+  assert.equal(alleenOmgeving.situationId, "situation:1");
+  assert.equal(alleenOmgeving.environment, "Trein");
 
   assert.equal((await sceneTest.setEnabled(false)).enabled, false);
   await assert.rejects(() => sceneTest.startScene("situation:84"), /Scènes testen/);

@@ -205,7 +205,7 @@ function createScriptAgentApp(options = {}) {
   }));
 
   app.post("/v0/script-agent/operator/scene-test/start", asyncRoute(async (req, res) => {
-    res.json(await sceneTest.startScene(req.body && req.body.situationId));
+    res.json(await sceneTest.startScene(req.body && req.body.situationId, req.body && req.body.environmentId));
   }));
 
   app.get("/v0/script-agent/operator/catalog/index", asyncRoute(async (_req, res) => {

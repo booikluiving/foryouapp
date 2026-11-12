@@ -1148,8 +1148,18 @@ async function prepareChosenSituation(state, clients, options = {}) {
   const catalog = state.showRunSnapshot.catalog;
   const situations = activeCatalogSituations(catalog);
   const activeId = state.activeSituation ? state.activeSituation.situationId : null;
+  // Alleen in een testrun: een eigen omgeving bij de situatie, of alleen een omgeving kiezen.
+  const wantedEnvironmentId = options.testRun === true ? String(options.environmentId || "").trim() : "";
+  if (wantedEnvironmentId && !(catalog.environments || []).some((item) => item.id === wantedEnvironmentId)) {
+    const err = new Error("runtime_unknown_environment");
+    err.statusCode = 404;
+    throw err;
+  }
   let situation = null;
-  if (options.willekeurig === true || options.random === true) {
+  if (wantedEnvironmentId && !String(options.situationId || "").trim()) {
+    const keuze = situations.filter((item) => item.id !== activeId);
+    situation = keuze.find((item) => item.environmentId === wantedEnvironmentId) || keuze[0] || null;
+  } else if (options.willekeurig === true || options.random === true) {
     const keuze = situations.filter((item) => item.id !== activeId);
     situation = keuze.length ? keuze[Math.floor(Math.random() * keuze.length)] : null;
   } else {
@@ -1172,7 +1182,7 @@ async function prepareChosenSituation(state, clients, options = {}) {
     .digest("hex")
     .slice(0, 16);
   const candidate = { situationId: situation.id, legacySituationId: situation.legacyId, title: situation.title };
-  state.resolvedPreparedNext = materializePreparedNext({ catalog, preparedNext: candidate, seed });
+  state.resolvedPreparedNext = materializePreparedNext({ catalog, preparedNext: candidate, seed, environmentId: wantedEnvironmentId });
   state.preparedNext = { ...candidate, chosenAt, reason: "operator_chosen", seed };
   state.updatedAt = chosenAt;
   appendRunLog(state, {
@@ -1180,6 +1190,7 @@ async function prepareChosenSituation(state, clients, options = {}) {
     at: chosenAt,
     reason: options.willekeurig === true || options.random === true ? "operator_random" : "operator_chosen",
     situationId: situation.id,
+    ...(wantedEnvironmentId ? { environmentId: wantedEnvironmentId } : {}),
   });
   if (!options.skipSave) await saveRunState(state);
   return state;

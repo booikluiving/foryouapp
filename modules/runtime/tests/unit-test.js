@@ -647,6 +647,29 @@ async function main() {
     "verse prompt",
     "test run uses the current catalog"
   );
+  // Een eigen omgeving bij de situatie, of alleen een omgeving: alleen in een testrun.
+  const otherEnvironment = freshCatalog.environments.find(
+    (item) => item.id !== testState.resolvedPreparedNext.environmentId
+  );
+  await prepareChosenSituation(testState, { ...clients, fetchCatalogSnapshot: async () => freshCatalog }, {
+    situationId: "situation:2",
+    environmentId: otherEnvironment.id,
+    testRun: true,
+    skipSave: true,
+  });
+  assert.equal(testState.resolvedPreparedNext.situationId, "situation:2");
+  assert.equal(testState.resolvedPreparedNext.environmentId, otherEnvironment.id, "test run plays the situation in the chosen environment");
+  await prepareChosenSituation(testState, { ...clients, fetchCatalogSnapshot: async () => freshCatalog }, {
+    environmentId: otherEnvironment.id,
+    testRun: true,
+    skipSave: true,
+  });
+  assert.ok(testState.preparedNext.situationId, "only an environment still prepares a situation");
+  assert.equal(testState.resolvedPreparedNext.environmentId, otherEnvironment.id);
+  await assert.rejects(
+    () => prepareChosenSituation(testState, clients, { environmentId: "environment:bestaat-niet", testRun: true, skipSave: true }),
+    /runtime_unknown_environment/
+  );
   const markedAt = testState.testRun.markedAt;
   await setTestRun(testState, { enabled: false, skipSave: true });
   assert.equal(testState.testRun.enabled, false);
