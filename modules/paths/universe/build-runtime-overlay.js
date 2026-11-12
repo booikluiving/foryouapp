@@ -50,7 +50,8 @@ function buildRuntimeOverlay(view, stemming) {
 
   let stem = null;
   if (stemming && Array.isArray(stemming.keuzes) && stemming.keuzes.length
-    && (!stemming.showRunId || !view.showRunId || stemming.showRunId === view.showRunId)
+    // Alleen de stemming van deze run: na een reset of een nieuwe run is de oude uitslag weg.
+    && stemming.showRunId && view.showRunId && stemming.showRunId === view.showRunId
     && begin && (stemming.actief || stemming.uitslag)) {
     const stemmen = stemming.keuzes.map((keuze) => ({ sceneId: sceneIdVan(keuze), votes: Number(keuze.votes || 0) })).filter((keuze) => keuze.sceneId);
     const hoogste = Math.max(0, ...stemmen.map((keuze) => keuze.votes));
