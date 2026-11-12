@@ -243,6 +243,22 @@ async function getScoreFeed(showRunId) {
   return state.scoreFeed;
 }
 
+// Zaalgeluid van een scène: gemiddelde, piek, het verschil daartussen en een korte reeks voor de golfvorm.
+function normalizeRoomSound(input) {
+  if (!input || typeof input !== "object") return null;
+  const number = (value) => (Number.isFinite(Number(value)) ? Math.round(Number(value) * 10) / 10 : null);
+  const averageDb = number(input.averageDb);
+  const peakDb = number(input.peakDb);
+  if (averageDb == null || peakDb == null) return null;
+  return {
+    source: String(input.source || "onbekend").slice(0, 40),
+    averageDb,
+    peakDb,
+    liftDb: Math.max(0, number(input.liftDb) ?? peakDb - averageDb),
+    samples: Array.isArray(input.samples) ? input.samples.slice(0, 240).map(number).filter((value) => value != null) : [],
+  };
+}
+
 async function buildObservation(event, state) {
   assertNoRuntimeOwnershipFields(event);
   if (!event || event.type !== "situationObserved") throw new Error("algorithm_invalid_observed_event_type");
@@ -266,6 +282,7 @@ async function buildObservation(event, state) {
     audience: sourceEvent.audience || {},
     chatAppSignals: sourceEvent.chatAppSignals || {},
     reactionLabSignals: sourceEvent.reactionLabSignals || {},
+    roomSound: normalizeRoomSound(sourceEvent.roomSound),
     rawChat: Array.isArray(sourceEvent.rawChat) ? cloneJson(sourceEvent.rawChat) : [],
     finalizedFromAudienceAggregate: !!sourceEvent.finalizedFromAudienceAggregate,
     finalizedFromLiveAudience: !!sourceEvent.finalizedFromLiveAudience,

@@ -61,7 +61,13 @@ assert.equal(report.stats.heartsPerMinute, 7);
 assert.equal(report.stats.heartShare, 67);
 assert.equal(report.stats.best.title, "Een");
 assert.equal(report.stats.worst.title, "Twee");
-assert.deepEqual(report.scenes[0].calculation, { raw: 11.05, durationFactor: 1, audienceFactor: 0.32 });
+assert.deepEqual(report.scenes[0].calculation, { raw: 11.05, roomSound: 0, durationFactor: 1, audienceFactor: 0.32 });
 assert.equal(leeg.stats.heartShare, null);
+
+// Zaalgeluid telt alleen mee als het gewicht is ingesteld.
+const { observedScoreForEvent } = require("../scoring/score-engine");
+const metGeluid = { durationSeconds: 60, audience: { activeClients: 1 }, chatAppSignals: { heartCount: 10, boredCount: 0, rawMessages: [] }, roomSound: { averageDb: 60, peakDb: 80, liftDb: 20 } };
+assert.equal(observedScoreForEvent(metGeluid, {}), 10);
+assert.equal(observedScoreForEvent(metGeluid, { weights: { roomSound: 0.5 } }), 20);
 
 console.log("publieksrapport: ok");

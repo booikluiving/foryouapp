@@ -7,6 +7,7 @@ const {
   audienceFactor,
   durationFactor,
   normalizeAlgorithmConfig,
+  roomSoundLift,
   signalCounts,
 } = require("../scoring/score-engine");
 
@@ -86,7 +87,9 @@ function buildAudienceReport(state = {}) {
       heartsPerMinute: round(counts.hearts / (counts.durationSeconds / 60), 1),
       // De som achter de score, zodat te zien is waar het getal vandaan komt.
       calculation: {
-        raw: round((counts.hearts * Number(weights.heart)) + (counts.bored * Number(weights.bored)) + (counts.messages * Number(weights.message))),
+        raw: round((counts.hearts * Number(weights.heart)) + (counts.bored * Number(weights.bored)) + (counts.messages * Number(weights.message))
+          + (roomSoundLift(observation) * Number(weights.roomSound || 0))),
+        roomSound: round(roomSoundLift(observation) * Number(weights.roomSound || 0)),
         durationFactor: round(durationFactor(counts.durationSeconds, config)),
         audienceFactor: round(audienceFactor(counts.activeClients, config)),
       },
