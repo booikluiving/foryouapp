@@ -75,38 +75,23 @@
         overflow: hidden;
         color: #fff8d6;
       }
+      /* De operator-chat is de pagina van de script-agent zelf, zoals die altijd was. De zwarte
+         ondergrond valt weg, zodat alleen de tekst over de ster staat. */
       #script {
         position: absolute;
-        left: 88px;
-        right: 88px;
-        top: 330px;
-        height: 980px;
+        left: 0;
+        width: 1080px;
         overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-end;
-        gap: 0.5em;
-        font-size: 34px;
-        line-height: 1.28;
-        -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 55%);
-        mask-image: linear-gradient(to bottom, transparent 0, #000 55%);
+        mix-blend-mode: screen;
       }
-      .scriptRegel { overflow-wrap: anywhere; flex: none; }
-      .scriptRegel.nieuw { animation: erin 260ms ease-out; }
-      .scriptRegel b { font-weight: 700; color: #b4e8c8; }
-      /* Wat de operator vraagt of op dit moment typt. */
-      .scriptRegel.vraag { color: rgba(255, 255, 255, 0.62); }
-      .scriptRegel.typt::after {
-        content: "";
-        display: inline-block;
-        width: 0.55em;
-        height: 1em;
-        margin-left: 0.15em;
-        vertical-align: -0.12em;
-        background: #fff;
-        animation: knipper 1s steps(1) infinite;
+      #script iframe {
+        position: absolute;
+        left: 0;
+        width: 1080px;
+        height: 1920px;
+        border: 0;
+        background: #000;
       }
-      @keyframes knipper { 50% { opacity: 0; } }
       /* Na een scène: de titel van de gespeelde scène op dezelfde plek, met de tellingen eronder. */
       #stats {
         position: absolute;
@@ -215,7 +200,7 @@
       <div id="gen">
         <div id="beeld" hidden></div>
         <div id="genTitel"></div>
-        <div id="script"></div>
+        <div id="script"><iframe id="scriptFrame" title="Script" scrolling="no"></iframe></div>
       </div>
       <div id="qr" hidden></div>
       <div id="stats" hidden>
@@ -264,7 +249,6 @@
         }
         if (stand.binnen && !stand.speelt && !statsAan) {
           el("genTitel").textContent = stand.titel || "";
-          tekenScript();
         }
         zetLagen();
       });
@@ -298,6 +282,7 @@
 
       function toepassen(next) {
         settings = next || settings || {};
+        plaatsScript();
         el("statsRij").style.fontSize = Math.max(72, getal(settings.tussenStatsGrootte, 88)) + "px";
         const c = el("chat");
         c.style.top = getal(settings.tussenChatY, 1380) + "px";
@@ -307,78 +292,16 @@
         tekenChat();
       }
 
-      // De tekst van de scène komt rechtstreeks van de script-agent (poort 3027). Alleen het script dat
-      // bij de gekozen scène hoort staat in beeld; de nieuwste regel staat onderaan.
-      let scriptBerichten = [], scriptConcept = "", scriptGetoond = "";
-      // De laatste vraag met het antwoord erop. Een script van een andere scène blijft niet staan; wat de
-      // operator zelf typt of vraagt staat er altijd.
-      function scriptGesprek() {
-        const titel = universum && universum.titel ? String(universum.titel).trim() : "";
-        let vraag = null, antwoord = null;
-        for (let i = scriptBerichten.length - 1; i >= 0 && !vraag; i--) {
-          const m = scriptBerichten[i];
-          if (m.role === "assistant" && !antwoord) antwoord = m;
-          else if (m.role === "user") vraag = m;
-        }
-        if (!vraag) return { vraag: "", antwoord: "" };
-        const tekst = String(vraag.content || "");
-        const vanScene = tekst.includes("Situatie:");
-        if (vanScene && !(titel && tekst.includes("Situatie: " + titel))) return { vraag: "", antwoord: "" };
-        return { vraag: vanScene ? "" : tekst, antwoord: antwoord ? String(antwoord.content || "") : "" };
+      // De operator-chat: de pagina van de script-agent (poort 3027). De onderkant, met de nieuwste tekst,
+      // staat in beeld; het vlak begint onder de titel.
+      el("scriptFrame").src = `${location.protocol}//${location.hostname}:3027/script-agent/operator/stage`;
+      function plaatsScript() {
+        const top = Math.max(300, getal(settings.tussenScriptY, 230));
+        const hoogte = Math.max(200, getal(settings.tussenScriptY, 230) + getal(settings.tussenScriptHoogte, 860) - top + 250);
+        el("script").style.top = top + "px";
+        el("script").style.height = hoogte + "px";
+        el("scriptFrame").style.top = (hoogte - H) + "px";
       }
-      function tekenScript() {
-        const gesprek = scriptGesprek();
-        const sleutel = JSON.stringify([gesprek, scriptConcept]);
-        if (sleutel === scriptGetoond) return;
-        const box = el("script");
-        const had = box.querySelectorAll(".scriptRegel:not(.vraag):not(.typt)").length;
-        box.textContent = "";
-        const regelsVan = (tekst) => String(tekst || "").split("\n").map((r) => r.trim()).filter((r) => r && !r.startsWith("#"));
-        for (const regel of regelsVan(gesprek.vraag).slice(0, 3)) {
-          const div = document.createElement("div");
-          div.className = "scriptRegel vraag";
-          div.textContent = "> " + regel;
-          box.appendChild(div);
-        }
-        regelsVan(gesprek.antwoord).slice(-24).forEach((regel, i) => {
-          const div = document.createElement("div");
-          div.className = "scriptRegel" + (had && i >= had ? " nieuw" : "");
-          const m = /^([^:]{1,40}):\s*(.*)$/.exec(regel);
-          if (m) {
-            const naam = document.createElement("b");
-            naam.textContent = m[1] + " ";
-            div.append(naam, document.createTextNode(m[2]));
-          } else div.textContent = regel;
-          box.appendChild(div);
-        });
-        if (scriptConcept) {
-          const div = document.createElement("div");
-          div.className = "scriptRegel vraag typt";
-          div.textContent = "> " + scriptConcept;
-          box.appendChild(div);
-        }
-        scriptGetoond = sleutel;
-      }
-      function scriptVerbinding() {
-        let ws;
-        try { ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.hostname}:3027/v0/script-agent/operator/stage/ws`); }
-        catch { setTimeout(scriptVerbinding, 3000); return; }
-        ws.onmessage = (ev) => {
-          let msg;
-          try { msg = JSON.parse(ev.data); } catch { return; }
-          if (msg.stage && Array.isArray(msg.stage.messages)) scriptBerichten = msg.stage.messages;
-          if (msg.stage && typeof msg.stage.draft === "string") scriptConcept = msg.stage.streaming ? "" : msg.stage.draft;
-          if (msg.type === "operator_stage_draft") scriptConcept = msg.streaming ? "" : String(msg.draft || "");
-          if (msg.type === "operator_stage_delta") {
-            const m = scriptBerichten.find((x) => x.id === msg.assistantId);
-            if (m) m.content = msg.fullText || "";
-          }
-          tekenScript();
-        };
-        ws.onclose = () => setTimeout(scriptVerbinding, 3000);
-        ws.onerror = () => { try { ws.close(); } catch {} };
-      }
-      scriptVerbinding();
 
       // Beeld van de omgeving: foto of video uit de catalogus (poort 3021).
       let beeldNu = "";
