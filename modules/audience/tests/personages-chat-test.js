@@ -73,6 +73,8 @@ async function main() {
   const metFilm = bouwBerichten({ naam: "Adolf", beschrijving: "Duits accent" }, { scene: film, chat: [], eerder: ["ja ja"], rng: () => 0.1 });
   assert(metFilm[1].content.includes("Adolf draait zijn stoel om.") && metFilm[1].content.includes("Jij zat er zelf in"));
   assert(metFilm[1].content.includes("- ja ja") && metFilm[1].content.includes("concreet moment"));
+  const metScript = bouwBerichten({ naam: "Mark", beschrijving: "" }, { scene: { ...film, script: "Adolf: Ich dreh mich um." }, chat: [], rng: () => 0.1 });
+  assert(metScript[1].content.includes("Ich dreh mich um.") && !metScript[1].content.includes("Adolf draait zijn stoel om."));
   const zonderFilm = bouwBerichten({ naam: "Mark", beschrijving: "" }, { scene: null, chat: [{ naam: "Noor", tekst: "hoi" }], rng: () => 0.5 });
   assert(zonderFilm[1].content.includes("nog geen filmpje") && zonderFilm[1].content.includes("wat Noor net schreef"));
   assert.strictEqual(gevraagd[0].context.chat[0].naam, "Noor");

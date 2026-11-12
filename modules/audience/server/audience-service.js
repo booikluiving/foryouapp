@@ -693,6 +693,8 @@ class AudienceService extends EventEmitter {
     const bron = (laatste && laatste.resolved) || null;
     if (!bron) { this.laatsteScene = null; return; }
     this.laatsteScene = {
+      showRunId: String(state.showRunId || ""),
+      situationId: String(bron.situationId || laatste.situationId || ""),
       titel: String(bron.title || laatste.title || "").trim(),
       verloop: String(bron.promptText || "").trim().slice(0, 700),
       omgeving: String((bron.environment && bron.environment.name) || "").trim(),
