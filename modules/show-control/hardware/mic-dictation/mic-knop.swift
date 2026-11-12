@@ -1,5 +1,6 @@
 // For_You mic-knop: leest de Mute-knop van de Delock USB-microfoon (C-Media 0x0D8C/0x0000)
 // en start bij elke druk een Keyboard Maestro-macro: blauw = dicteren aan, rood = dicteren uit.
+// Twee keer snel drukken na het dicteren = stoppen en versturen (macro "For_You mic: versturen" → mic-versturen).
 // De microfoon meldt alleen "er is gedrukt", niet zijn stand. Daarom luistert de helper naar het
 // signaal: gedempt (rood) = digitale stilte, aan (blauw) = altijd wat ruis. Na een druk wacht hij even
 // en kiest de macro op wat hij hoort. Zonder geluid (geen toestemming) valt hij terug op omdraaien.
@@ -26,9 +27,11 @@ let port = UInt16(env["MIC_KNOP_PORT"] ?? "3231") ?? 3231
 let startStand = (env["MIC_KNOP_START"] ?? "rood") == "blauw" ? "blauw" : "rood"
 let macroAan = env["MIC_KNOP_MACRO_AAN"] ?? "For_You mic: dicteren aan"
 let macroUit = env["MIC_KNOP_MACRO_UIT"] ?? "For_You mic: dicteren uit"
+let macroVerstuur = env["MIC_KNOP_MACRO_VERSTUUR"] ?? "For_You mic: versturen"
 let vendorID = 0x0D8C, productID = 0x0000
 let graceNaAansluiten = 1.5   // bij aansluiten stuurt de mic zelf één rapport
-let debounce = 0.3
+let debounce = 0.15
+let dubbelBinnen = 0.9   // tweede druk binnen deze tijd na "dicteren uit" = versturen
 // Rood is exact nul; de ruis van een stille open mic ligt rond 0,001. Daarom een lage drempel.
 let drempel: Float = Float(env["MIC_KNOP_DREMPEL"] ?? "0.0002") ?? 0.0002  // piek boven drempel = geluid
 let wachtNaDruk = 0.5
@@ -39,6 +42,8 @@ var verbonden = false
 var aangeslotenOp = Date.distantPast
 var laatsteDruk: Date? = nil
 var laatsteMacro: String? = nil
+var uitGedruktOp = Date.distantPast   // laatste druk die het dicteren stopte
+var verstuurd = 0
 var drukken = 0
 var geluidActief = false
 var laatsteGeluid = Date.distantPast
@@ -122,13 +127,23 @@ func voerUit() {
   }
   if neemtOp == false { log("Claude dicteert niet, geen macro"); return }
   let voor = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"
-  if voor == claudeID { startMacro(macroUit) } else { log("dicteren uit overgeslagen: \(voor) staat vooraan, niet Claude") }
+  if voor == claudeID { startMacro(macroUit); uitGedruktOp = Date() } else { log("dicteren uit overgeslagen: \(voor) staat vooraan, niet Claude") }
 }
 
 func druk(bron: String) {
   let nu = Date()
   if let l = laatsteDruk, nu.timeIntervalSince(l) < debounce { return }
   laatsteDruk = nu; drukken += 1
+  // Twee keer snel drukken na het dicteren: de eerste druk heeft het dicteren gestopt, de tweede verstuurt.
+  // De tweede druk zet de mic zelf weer open, dus die gaat vanaf de Mac terug op rood.
+  if bron == "mic", nu.timeIntervalSince(uitGedruktOp) < dubbelBinnen {
+    uitGedruktOp = Date.distantPast; verstuurd += 1
+    log("dubbele druk → versturen, mic terug op rood")
+    startMacro(macroVerstuur)
+    _ = zetMicMute(false)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { if zetMicMute(true) { stand = "rood" } else { log("mic terug op rood MISLUKT") } }
+    return
+  }
   if bron == "mic", let voor = gemeten() {
     // De stand vlak vóór de druk is gehoord; de druk draait hem om. Meteen handelen, niet wachten.
     stand = (voor == "rood") ? "blauw" : "rood"
@@ -252,7 +267,7 @@ func stateJSON() -> Data {
   let o: [String: Any] = ["stand": stand, "dicteren": stand == "blauw", "verbonden": verbonden,
                           "laatsteDruk": iso(laatsteDruk), "laatsteMacro": laatsteMacro ?? NSNull(), "drukken": drukken,
                           "macroAan": macroAan, "macroUit": macroUit,
-                          "claudeNeemtOp": claudeNeemtOp() ?? NSNull(), "gedemptDoorMac": gedemptDoorMac, "geopendDoorMac": geopendDoorMac,
+                          "claudeNeemtOp": claudeNeemtOp() ?? NSNull(), "gedemptDoorMac": gedemptDoorMac, "verstuurd": verstuurd, "geopendDoorMac": geopendDoorMac,
                           "gehoord": gemeten() ?? NSNull(),"geluidActief": geluidActief, "piekPerSeconde": piekLog]
   return (try? JSONSerialization.data(withJSONObject: o, options: [.prettyPrinted, .sortedKeys])) ?? Data()
 }
