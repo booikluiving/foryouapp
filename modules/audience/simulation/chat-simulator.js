@@ -272,11 +272,16 @@ class ChatSimulator {
     const chat = typeof this.service.recenteChatVoorPersonages === "function"
       ? this.service.recenteChatVoorPersonages(12)
       : [];
-    this.stem.schrijf(bot.personage, { scene: this.laatsteScene, chat, onderwerp: this.config.topic })
+    // De scène komt van de run zelf; de titel die de simulator zag is alleen de terugval.
+    const scene = (typeof this.service.laatsteSceneVoorPersonages === "function" && this.service.laatsteSceneVoorPersonages())
+      || (this.laatsteScene ? { titel: this.laatsteScene } : null);
+    bot.eerder = bot.eerder || [];
+    this.stem.schrijf(bot.personage, { scene, chat, onderwerp: this.config.topic, eerder: bot.eerder })
       .then((tekst) => {
         if (!tekst || !this.running || !this.bots.includes(bot)) return null;
         return this.service.acceptSimulatedComment(bot, tekst).then((result) => {
           if (result && result.error) return;
+          bot.eerder = [...bot.eerder, tekst].slice(-4);
           this.stats.sentComments += 1;
           this.stats.personageComments += 1;
         });

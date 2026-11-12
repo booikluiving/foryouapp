@@ -28,6 +28,7 @@ function maakService() {
 
 async function main() {
   assert.strictEqual(maakSchoon('Adolf: "Ach so, wunderbar"\ntweede regel', "Adolf"), "Ach so, wunderbar");
+  assert.strictEqual(maakSchoon("nadia", "Nadia"), "");
   const berichten = bouwBerichten({ naam: "Adolf", beschrijving: "Duits accent" }, { scene: "De trein", chat: [{ naam: "Noor", tekst: "hoi" }] });
   assert(berichten[0].content.includes("Duits accent"));
   assert(berichten[1].content.includes("De trein") && berichten[1].content.includes("Noor: hoi"));
@@ -65,7 +66,15 @@ async function main() {
   await wacht(20);
   assert(service.comments.length >= 1, "personage heeft iets gezegd");
   assert(service.comments.every((c) => c.text === `ik ben ${c.naam}`));
-  assert.strictEqual(gevraagd[0].context.scene, "De trein");
+  assert.strictEqual(gevraagd[0].context.scene.titel, "De trein");
+
+  // De scène van de run gaat voor op de titel die de simulator zelf zag.
+  const film = { titel: "Blind audition", verloop: "Adolf draait zijn stoel om.", omgeving: "The Voice", personages: ["Adolf"] };
+  const metFilm = bouwBerichten({ naam: "Adolf", beschrijving: "Duits accent" }, { scene: film, chat: [], eerder: ["ja ja"], rng: () => 0.1 });
+  assert(metFilm[1].content.includes("Adolf draait zijn stoel om.") && metFilm[1].content.includes("Jij zat er zelf in"));
+  assert(metFilm[1].content.includes("- ja ja") && metFilm[1].content.includes("concreet moment"));
+  const zonderFilm = bouwBerichten({ naam: "Mark", beschrijving: "" }, { scene: null, chat: [{ naam: "Noor", tekst: "hoi" }], rng: () => 0.5 });
+  assert(zonderFilm[1].content.includes("nog geen filmpje") && zonderFilm[1].content.includes("wat Noor net schreef"));
   assert.strictEqual(gevraagd[0].context.chat[0].naam, "Noor");
 
   // Personages uit: ze verlaten de chat, de simulatie loopt door.
