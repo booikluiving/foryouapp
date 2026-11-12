@@ -209,6 +209,34 @@ async function main() {
     scoreFeed: neutralScoreFeed(tieBreakShowRunId),
     orderSettings: { randomizeEqualScores: false },
   }).map((item) => item.situationId);
+  // Startfase: eerst een vast aantal startscènes, daarna alles wat vrij is.
+  const fasePool = (statuses, startSceneCount) => buildEligiblePool({
+    catalog: { situations: Object.keys(statuses).map((id) => ({ id, legacyId: Number(id.split(":")[1]), title: id, active: true, characterIds: [] })) },
+    pathEvaluation: {
+      items: Object.entries(statuses).map(([situationId, [status, start]]) => ({
+        situationId,
+        status,
+        isPathStart: start,
+        pathStatuses: [{ status, isPathStart: start }],
+      })),
+    },
+    playedSituations: Object.entries(statuses).filter(([, [status]]) => status === "played").map(([situationId]) => ({ situationId })),
+    activeSituation: null,
+    lastPlayedSituation: null,
+    scoreFeed: null,
+    orderSettings: { startSceneCount },
+  }).map((item) => item.situationId).sort();
+  const tweeGespeeld = {
+    "situation:901": ["played", true],
+    "situation:902": ["played", true],
+    "situation:903": ["available", true],
+    "situation:904": ["available", true],
+    "situation:905": ["available", false],
+  };
+  assert.deepEqual(fasePool(tweeGespeeld, 3), ["situation:903", "situation:904"], "tijdens de startfase alleen startscènes");
+  assert.deepEqual(fasePool(tweeGespeeld, 2), ["situation:903", "situation:904", "situation:905"], "na de startfase alles wat vrij is, ook de overige starts");
+  assert.deepEqual(fasePool(tweeGespeeld, 0), ["situation:903", "situation:904", "situation:905"]);
+
   const originalRandom = Math.random;
   Math.random = () => 0;
   let randomizedEqualScores;
@@ -387,6 +415,7 @@ async function main() {
     "resolvedPreparedNext should carry performer slot display records"
   );
   assert.equal(state.orderSettings.randomizeEqualScores, false);
+  assert.equal(state.orderSettings.startSceneCount, 3, "standaard drie startscènes");
   assert(state.rankingRevision > 0, "Runtime should track ranking revisions");
 
   const preparedBeforeOrderToggle = state.preparedNext.situationId;

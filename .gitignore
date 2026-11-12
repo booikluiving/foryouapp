@@ -23,6 +23,7 @@ modules/catalog/db/*.sqlite*
 modules/catalog/db/catalog-store.json
 modules/paths/db/paths-store.json
 modules/runtime/db/current-run.json
+modules/runtime/db/order-settings.json
 modules/runtime/db/runs/
 modules/script-agent/db/*.json
 modules/show-control/db/*.json

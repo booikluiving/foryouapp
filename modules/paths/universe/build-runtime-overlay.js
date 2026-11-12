@@ -150,14 +150,16 @@ function buildRuntimeOverlay(view, stemming) {
   const preparedId = sceneIdVan(prepared);
   // Vóór de eerste scène staat de automatische keuze van de runtime niet uitgelicht: alle
   // startscènes zijn dan gelijk. Pas een gekozen scène (de winnaar) licht op als volgende.
-  const begin = !currentId && played.size === 0;
+  // Dat geldt voor elke startscène: zolang de run nog startscènes moet spelen, kiest het publiek.
+  const begin = !currentId && (played.size === 0 || !!(view.startPhase && view.startPhase.active));
   const toonPrepared = preparedId && (!begin || prepared.reason === "operator_chosen");
 
   let stem = null;
   if (stemming && Array.isArray(stemming.keuzes) && stemming.keuzes.length
     // Alleen de stemming van deze run: na een reset of een nieuwe run is de oude uitslag weg.
     && stemming.showRunId && view.showRunId && stemming.showRunId === view.showRunId
-    && begin && (stemming.actief || stemming.uitslag)) {
+    // Een uitslag waarvan de winnaar al gespeeld is, hoort bij een eerdere startscène.
+    && begin && (stemming.actief || (stemming.uitslag && !played.has(sceneIdVan(stemming.uitslag))))) {
     const stemmen = stemming.keuzes.map((keuze) => ({ sceneId: sceneIdVan(keuze), votes: Number(keuze.votes || 0) })).filter((keuze) => keuze.sceneId);
     const hoogste = Math.max(0, ...stemmen.map((keuze) => keuze.votes));
     stem = {

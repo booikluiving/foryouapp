@@ -138,6 +138,19 @@ let child, logs = "";
     assert.ok(["situation:3", "situation:39"].includes(klaargezet[2]));
     ok("gelijke stand: geloot tussen de twee koplopers, stemming sloot vanzelf");
 
+    // 3b. Startfase: alleen startscènes in de stemming; daarna weer alles wat vrij is
+    await sleep(300);
+    const alleItems = view.pathEvaluation.items;
+    view.pathEvaluation = { items: alleItems.map((item) => ({ ...item, isPathStart: ["situation:2", "situation:6"].includes(item.situationId) })) };
+    view.startPhase = { required: 3, played: 1, open: 2, active: true };
+    s = await post("/audience/admin/start-stemming/start", { durationSeconds: 10, minVotes: 0 });
+    assert.equal(s.ok, true, JSON.stringify(s));
+    assert.deepEqual(s.poll.options, ["Scène 2", "Scène 6"]);
+    view.startPhase = { required: 3, played: 3, open: 2, active: false };
+    s = await post("/audience/admin/start-stemming/start", { durationSeconds: 10, minVotes: 0 });
+    assert.equal(s.poll.options.length, 4);
+    ok("startfase: stemming alleen over startscènes, daarna over alles wat vrij is");
+
     // 4. Geen run of lopende scène: weigeren
     view.activeSituation = { situationId: "situation:2" };
     s = await post("/audience/admin/start-stemming/start", {});

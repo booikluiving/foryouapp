@@ -35,8 +35,12 @@ function displayError(err, fallback) {
 }
 
 function normalizeOrderSettings(input = {}) {
+  const count = Number(input && input.startSceneCount);
   return {
     randomizeEqualScores: !!(input && input.randomizeEqualScores),
+    startSceneCount: input && input.startSceneCount !== "" && input.startSceneCount != null && Number.isFinite(count)
+      ? Math.min(20, Math.max(0, Math.round(count)))
+      : 3,
   };
 }
 
@@ -59,8 +63,10 @@ function currentOrderSettings() {
 
 function orderSettingsFromUi() {
   const toggle = $("randomizeEqualScoresToggle");
+  const count = $("startSceneCountInput");
   return normalizeOrderSettings({
     randomizeEqualScores: !!(toggle && toggle.checked),
+    startSceneCount: count ? count.value : undefined,
   });
 }
 
@@ -478,6 +484,16 @@ function renderOrderSettings() {
   if (!toggle) return;
   toggle.checked = !!currentOrderSettings().randomizeEqualScores;
   toggle.disabled = actionPending;
+  const count = $("startSceneCountInput");
+  if (count) {
+    if (document.activeElement !== count) count.value = String(currentOrderSettings().startSceneCount);
+    count.disabled = actionPending;
+  }
+  const stand = $("startSceneCountStatus");
+  if (stand) {
+    const fase = state && state.showRunId && state.startPhase;
+    stand.textContent = fase ? `${Math.min(fase.played, fase.required)} van ${fase.required} gespeeld` : "";
+  }
 }
 
 function render() {
@@ -566,7 +582,7 @@ function bindActions() {
     setMessage("");
     return next;
   }));
-  $("randomizeEqualScoresToggle").addEventListener("change", () => withAction(async () => {
+  const bewaarVolgorde = () => withAction(async () => {
     const orderSettings = orderSettingsFromUi();
     saveLocalOrderSettings(orderSettings);
     if (!(state && state.showRunId)) {
@@ -580,7 +596,9 @@ function bindActions() {
     });
     setMessage("");
     return next;
-  }));
+  });
+  $("randomizeEqualScoresToggle").addEventListener("change", bewaarVolgorde);
+  $("startSceneCountInput").addEventListener("change", bewaarVolgorde);
 }
 
 document.addEventListener("DOMContentLoaded", () => {

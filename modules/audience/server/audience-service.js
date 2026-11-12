@@ -1782,9 +1782,12 @@ class AudienceService extends EventEmitter {
     const catalog = (state.showRunSnapshot && state.showRunSnapshot.catalog) || state.catalogPreview || {};
     const titels = new Map((catalog.situations || []).map((item) => [item.id, String(item.title || "").trim()]));
     const items = state.pathEvaluation && Array.isArray(state.pathEvaluation.items) ? state.pathEvaluation.items : [];
+    // Zolang de run nog startscènes moet spelen, gaat de stemming alleen over startscènes.
+    const alleenStarts = !!(state.startPhase && state.startPhase.active);
     const keuzes = [];
     for (const item of items) {
       if (!item || item.status !== "available" || item.pathAvailable === false) continue;
+      if (alleenStarts && !item.isPathStart) continue;
       const titel = (titels.get(item.situationId) || "").slice(0, 80);
       if (!titel || keuzes.some((keuze) => keuze.titel === titel)) continue;
       keuzes.push({ situationId: item.situationId, titel });

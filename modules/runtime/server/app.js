@@ -22,6 +22,7 @@ const {
   setTestRun,
   resetRun,
   restoreAlgorithmScoringContext,
+  startPhaseFor,
   startRun,
   startSituation,
   stopSituation,
@@ -143,6 +144,7 @@ function compactPathEvaluation(pathEvaluation = null) {
       status: item.status,
       pathAvailable: !!item.pathAvailable,
       pathLocked: !!item.pathLocked,
+      isPathStart: !!item.isPathStart,
       pathStatuses: Array.isArray(item.pathStatuses)
         ? item.pathStatuses.map((pathStatus) => ({
           pathId: pathStatus.pathId,
@@ -191,6 +193,11 @@ function compactRuntimeView(state = {}) {
     eligiblePool: normalized.eligiblePool || [],
     lastScoreFeed: normalized.lastScoreFeed || null,
     orderSettings: normalized.orderSettings,
+    startPhase: startPhaseFor(
+      normalized.pathEvaluation,
+      normalized.orderSettings,
+      normalized.activeSituation ? normalized.activeSituation.situationId : null
+    ),
     rankingRevision: normalized.rankingRevision,
     lastRankChangeSummary: normalized.lastRankChangeSummary,
     finalizationStatus: normalized.finalizationStatus,
