@@ -59,6 +59,9 @@ function normalizeSound(input) {
     volume: clampNumber(source.volume, 0, 1, 1),
     // lus = het geluid begint vanzelf opnieuw tot de knop weer wordt ingedrukt (een eindeloze plas).
     ...(source.lus === true ? { lus: true } : {}),
+    // dempSfeer = zolang dit geluid speelt staat het sfeergeluid van de omgeving op nul; gaat het
+    // uit of is het afgelopen, dan komt het sfeergeluid terug (het lied bij The Voice).
+    ...(source.dempSfeer === true ? { dempSfeer: true } : {}),
   };
 }
 

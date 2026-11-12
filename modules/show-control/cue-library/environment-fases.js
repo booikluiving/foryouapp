@@ -251,8 +251,12 @@ function buildEnvironmentFaseCue(runtimeState, input = {}, options = {}) {
 }
 
 module.exports = {
+  assetFilePath,
   buildEnvironmentFaseCue,
   environmentFasesStatus,
+  fileExists,
+  isPresent,
   publicFasesStatus,
+  readFromCatalog,
   resetFasesState,
 };
