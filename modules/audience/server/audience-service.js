@@ -1950,6 +1950,18 @@ class AudienceService extends EventEmitter {
       .map((m) => ({ id: m.id, clientKey: m.clientKey, likes: Number(likes[m.id] || 0) }));
   }
 
+  // Voor personages in de chat: de laatste berichten (oud → nieuw) als naam + tekst.
+  recenteChatVoorPersonages(limit = 12) {
+    const session = this.getActiveSession();
+    if (!session) return [];
+    const gewistTot = this.chatGewistTot(session);
+    return this.store.recentChatMessages({ sessionId: session.id, limit, status: "accepted" })
+      .filter((m) => m.id > gewistTot)
+      .filter((m) => !String(m.detail || "").startsWith("moderation_notice:"))
+      .reverse()
+      .map((m) => ({ naam: String(m.name || ""), tekst: String(m.text || "") }));
+  }
+
   async acceptSimulatedLike(bot, messageId) {
     const session = this.getActiveSession();
     if (!session) return null;

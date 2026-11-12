@@ -8,6 +8,10 @@ const {
   normalizeCrowdCue,
   normalizeCrowdMode,
 } = require("../crowd-system");
+const { haalPersonages, maakPersonageStem } = require("./personage-stem");
+
+// Hoeveel personages tegelijk op het taalmodel mogen wachten.
+const PERSONAGES_TEGELIJK = 2;
 
 const DEFAULTS = Object.freeze({
   clients: 20,
@@ -33,6 +37,7 @@ const DEFAULTS = Object.freeze({
   warmth: 0.48,
   skepticism: 0.54,
   botLabelMode: "hidden",
+  personages: false,
 });
 
 const FIRST_NAMES = Object.freeze([
@@ -78,7 +83,7 @@ function normalizeConfig(raw = {}, base = DEFAULTS) {
   const negative = clampFloat(raw.negative ?? raw.sarcasm ?? raw.absurdity, 0, 1, base.negative);
   const positive = clampFloat(raw.positive, 0, 1, base.positive);
   return {
-    clients: clampInt(raw.clients, 1, 200, base.clients),
+    clients: clampInt(raw.clients, 0, 200, base.clients),
     durationSec: clampInt(raw.durationSec, 0, 24 * 60 * 60, base.durationSec),
     msgRate: clampFloat(raw.msgRate, 0, 0.1, base.msgRate),
     reactionRate: clampFloat(raw.reactionRate, 0, 4, base.reactionRate),
@@ -101,6 +106,7 @@ function normalizeConfig(raw = {}, base = DEFAULTS) {
     warmth: clampFloat(raw.warmth ?? raw.positive, 0, 1, base.warmth),
     skepticism: clampFloat(raw.skepticism ?? raw.negative, 0, 1, base.skepticism),
     botLabelMode: normalizeBotLabelMode(raw.botLabelMode, base.botLabelMode || "hidden"),
+    personages: parseBooleanLike(raw.personages, !!base.personages),
   };
 }
 
@@ -121,12 +127,21 @@ function createStats() {
     serverErrors: 0,
     blockedErrors: 0,
     mutedErrors: 0,
+    personages: 0,
+    personageComments: 0,
+    personageFouten: 0,
+    personageLaatsteFout: "",
   };
 }
 
 class ChatSimulator {
-  constructor(service) {
+  constructor(service, options = {}) {
     this.service = service;
+    this.haalPersonages = options.haalPersonages || haalPersonages;
+    this.stem = options.personageStem || maakPersonageStem();
+    this.personagesBezig = 0;
+    this.personagesRonde = 0;
+    this.laatsteScene = "";
     this.running = false;
     this.config = normalizeConfig();
     this.stats = createStats();
@@ -153,7 +168,7 @@ class ChatSimulator {
     return `${first} (bot)`.slice(0, 24);
   }
 
-  createBot(index) {
+  createBot(index, personage = null) {
     const traits = this.engine.createBotTraits();
     const clientTag = `sim-${String(index).padStart(3, "0")}-${Math.random().toString(36).slice(2, 6)}`;
     return {
@@ -161,7 +176,8 @@ class ChatSimulator {
       clientId: 100000 + index,
       clientTag,
       clientKey: `127.0.0.1|${clientTag}`,
-      name: this.formatName(index),
+      name: personage ? personage.naam : this.formatName(index),
+      personage,
       ip: "127.0.0.1",
       ua: "audience-internal-simulator",
       isBot: true,
@@ -199,16 +215,9 @@ class ChatSimulator {
     this.bots = [];
 
     for (let i = 1; i <= this.config.clients; i += 1) {
-      const bot = this.createBot(i);
-      this.bots.push(bot);
-      setTimeout(() => {
-        if (!this.running) return;
-        this.service.registerSimulatedClient(bot);
-        this.stats.opened += 1;
-        this.stats.connectedNow += 1;
-        this.stats.maxConnected = Math.max(this.stats.maxConnected, this.stats.connectedNow);
-      }, Math.max(0, this.config.spawnMs * (i - 1)));
+      this.laatBinnen(this.createBot(i), this.config.spawnMs * (i - 1));
     }
+    if (this.config.personages) this.startPersonages();
 
     if (this.config.durationSec > 0) {
       this.stopTimer = setTimeout(() => this.stop("duration_elapsed"), this.config.durationSec * 1000);
@@ -218,13 +227,80 @@ class ChatSimulator {
     return this.getState();
   }
 
+  // Bot of personage komt de chat binnen, na een korte wachttijd zodat niet iedereen tegelijk joint.
+  laatBinnen(bot, wachtMs = 0) {
+    this.bots.push(bot);
+    setTimeout(() => {
+      if (!this.running || !this.bots.includes(bot)) return;
+      this.service.registerSimulatedClient(bot);
+      this.stats.opened += 1;
+      this.stats.connectedNow += 1;
+      this.stats.maxConnected = Math.max(this.stats.maxConnected, this.stats.connectedNow);
+    }, Math.max(0, wachtMs));
+  }
+
+  // Alle actieve personages uit de catalogus komen erbij, naast de bots.
+  startPersonages() {
+    const ronde = ++this.personagesRonde;
+    Promise.resolve().then(() => this.haalPersonages()).then((personages) => {
+      if (!this.running || !this.config.personages || ronde !== this.personagesRonde) return;
+      personages.forEach((personage, i) => {
+        this.laatBinnen(this.createBot(1000 + i, personage), this.config.spawnMs * i);
+      });
+      this.stats.personages = personages.length;
+    }).catch((err) => {
+      this.stats.personageFouten += 1;
+      this.stats.personageLaatsteFout = `personages ophalen: ${err && err.message ? err.message : "mislukt"}`;
+    });
+  }
+
+  stopPersonages() {
+    this.personagesRonde += 1;
+    const weg = this.bots.filter((bot) => bot.personage);
+    this.bots = this.bots.filter((bot) => !bot.personage);
+    for (const bot of weg) this.service.disconnectSimulatedClient(bot);
+    this.stats.closed += weg.length;
+    this.stats.connectedNow = Math.max(0, this.stats.connectedNow - weg.length);
+    this.stats.personages = 0;
+  }
+
+  // Het personage vraagt het taalmodel om één comment in zijn eigen karakter.
+  schrijfAlsPersonage(bot) {
+    if (bot.bezig || this.personagesBezig >= PERSONAGES_TEGELIJK) return;
+    bot.bezig = true;
+    this.personagesBezig += 1;
+    const chat = typeof this.service.recenteChatVoorPersonages === "function"
+      ? this.service.recenteChatVoorPersonages(12)
+      : [];
+    this.stem.schrijf(bot.personage, { scene: this.laatsteScene, chat, onderwerp: this.config.topic })
+      .then((tekst) => {
+        if (!tekst || !this.running || !this.bots.includes(bot)) return null;
+        return this.service.acceptSimulatedComment(bot, tekst).then((result) => {
+          if (result && result.error) return;
+          this.stats.sentComments += 1;
+          this.stats.personageComments += 1;
+        });
+      })
+      .catch((err) => {
+        this.stats.personageFouten += 1;
+        this.stats.personageLaatsteFout = String(err && err.message ? err.message : "model_fout").slice(0, 120);
+      })
+      .finally(() => {
+        bot.bezig = false;
+        this.personagesBezig -= 1;
+      });
+  }
+
   update(rawConfig = {}) {
+    const hadPersonages = this.config.personages;
     this.config = normalizeConfig(rawConfig, this.config);
     this.engine.updateConfig(this.config);
     for (const bot of this.bots) {
-      bot.name = this.formatName(bot.id);
+      if (!bot.personage) bot.name = this.formatName(bot.id);
       this.service.registerSimulatedClient(bot);
     }
+    if (this.running && this.config.personages && !hadPersonages) this.startPersonages();
+    if (this.running && !this.config.personages && hadPersonages) this.stopPersonages();
     this.service.recordSimulationEvent("simulation_update", { config: this.config });
     return this.getState();
   }
@@ -250,6 +326,7 @@ class ChatSimulator {
     this.stopTimer = null;
     const wasRunning = this.running;
     this.running = false;
+    this.personagesRonde += 1;
     if (wasRunning) {
       for (const bot of this.bots) this.service.disconnectSimulatedClient(bot);
       this.stats.closed += this.stats.connectedNow;
@@ -265,6 +342,9 @@ class ChatSimulator {
     if (!this.running) return;
     const now = Date.now();
     const poll = this.service.getActivePollSnapshot();
+    const fase = this.service.fase || {};
+    const inScene = fase.fase === "scene";
+    if (inScene && fase.titel) this.laatsteScene = String(fase.titel);
 
     for (const bot of this.bots) {
       if (now >= bot.nextReactionAt && Math.random() < this.config.reactionRate / 4) {
@@ -296,7 +376,10 @@ class ChatSimulator {
           baseChance: this.config.msgRate,
           estimatedChars: 28,
         });
-        if (plan && !plan.abandon) {
+        if (plan && !plan.abandon && bot.personage) {
+          // Tijdens een scène wordt er niet getypt; dan ook het model niet vragen.
+          if (!inScene) this.schrijfAlsPersonage(bot);
+        } else if (plan && !plan.abandon) {
           const text = this.makeMessage(plan);
           this.service.acceptSimulatedComment(bot, text).catch(() => {
             this.stats.serverErrors += 1;

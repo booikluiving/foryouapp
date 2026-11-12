@@ -556,8 +556,13 @@
           <div class="simControls">
             <label class="sliderField">
               <span class="sliderLabel"><span>Bot-deelnemers</span><span id="simClientsValue" class="sliderValue">20 bots</span></span>
-              <input id="simClients" type="range" min="1" max="200" step="1" value="20" />
+              <input id="simClients" type="range" min="0" max="200" step="1" value="20" />
               <span class="fieldHint">Aantal nepdeelnemers dat joint en signalen stuurt.</span>
+            </label>
+            <label class="sliderField">
+              <span class="sliderLabel"><span>Personages</span></span>
+              <span><input id="simPersonages" type="checkbox" /> Alle personages chatten mee</span>
+              <span class="fieldHint">Elk personage typt in zijn eigen karakter, via het taalmodel.</span>
             </label>
             <label class="sliderField">
               <span class="sliderLabel"><span>Gedrag</span></span>
@@ -698,7 +703,7 @@
         "usersBody", "enforcementBody", "actionsLog", "liveChatLog", "liveChatResizeHandle", "emojiLeaderboardMeta",
         "emojiLeaderboardBody", "engagementCommentPoints", "engagementCommentPointsValue", "engagementRulesMeta",
         "pollQuestion", "pollOptionsList", "pollDurationSeconds", "pollState", "messageSlowdownMs",
-        "messageSlowdownValue", "simClients", "simClientsValue", "simMode", "simTopic", "simMsgRate", "simMsgRateValue",
+        "messageSlowdownValue", "simClients", "simClientsValue", "simPersonages", "simMode", "simTopic", "simMsgRate", "simMsgRateValue",
         "simReactionRate", "simReactionRateValue", "simCue",
         "simToggleBtn", "simState", "stageUrl", "stageShowQr", "stageShowChat", "stageShowEmojis", "stageShowLeaderboard",
         "stageBackground", "stageChatScale", "stageChatHeight", "stageChatBottom", "stageChatX", "stageChatFade", "stageQrScale",
@@ -1186,13 +1191,14 @@
         els.engagementRulesMeta.textContent = `Emoji = ${Number(runtime.engagementEmojiPoints || 1)} punt, comments = ${els.engagementCommentPointsValue.textContent} punten, duplicate binnen ${Math.round(Number(runtime.engagementDuplicateWindowMs || 0) / 1000)}s en comments korter dan ${Number(runtime.engagementCommentMinChars || 4)} tekens tellen niet mee.`;
       }
       function updateSimulationValueLabels() {
-        els.simClientsValue.textContent = `${clampInt(els.simClients.value, 1, 200, 20)} bots`;
+        els.simClientsValue.textContent = `${clampInt(els.simClients.value, 0, 200, 20)} bots`;
         els.simMsgRateValue.textContent = formatDecimal(clampFloat(els.simMsgRate.value, 0, 0.1, 0.025), 3);
         els.simReactionRateValue.textContent = formatDecimal(clampFloat(els.simReactionRate.value, 0, 4, 0.25), 2);
       }
       function normalizeSimulationUiConfig(config = {}) {
         return {
-          clients: clampInt(config.clients, 1, 200, 20),
+          clients: clampInt(config.clients, 0, 200, 20),
+          personages: !!config.personages,
           crowdMode: String(config.crowdMode || "normal"),
           topic: String(config.topic || ""),
           msgRate: clampFloat(config.msgRate, 0, 0.1, 0.025),
@@ -1203,6 +1209,7 @@
         const left = normalizeSimulationUiConfig(a);
         const right = normalizeSimulationUiConfig(b);
         return left.clients === right.clients
+          && left.personages === right.personages
           && left.crowdMode === right.crowdMode
           && left.topic === right.topic
           && Math.abs(left.msgRate - right.msgRate) < 0.000001
@@ -1229,8 +1236,9 @@
           els.simMode.value = String(config.crowdMode || "normal");
         }
         if (document.activeElement !== els.simClients) {
-          els.simClients.value = String(clampInt(config.clients, 1, 200, 20));
+          els.simClients.value = String(clampInt(config.clients, 0, 200, 20));
         }
+        els.simPersonages.checked = !!config.personages;
         if (document.activeElement !== els.simMsgRate) {
           els.simMsgRate.value = String(clampFloat(config.msgRate, 0, 0.1, 0.025));
         }
@@ -1296,8 +1304,12 @@
         els.simToggleBtn.classList.toggle("danger", !!sim.running);
         els.simToggleBtn.disabled = simulationTogglePending;
         els.simToggleBtn.setAttribute("aria-pressed", sim.running ? "true" : "false");
+        const fout = stats.personageLaatsteFout ? ` | fout: ${stats.personageLaatsteFout}` : "";
+        const personageTekst = sim.config && sim.config.personages
+          ? ` | personages ${Number(stats.personages || 0)}, comments ${Number(stats.personageComments || 0)}${fout}`
+          : "";
         const pendingText = simulationUpdatePending || simulationUpdateTimer ? " | wijzigingen opslaan..." : "";
-        els.simState.textContent = `${sim.running ? "aan" : "uit"} | comments ${Number(stats.sentComments || 0)} | reactions ${Number(stats.sentReactions || 0)} | votes ${Number(stats.sentVotes || 0)}${pendingText}`;
+        els.simState.textContent = `${sim.running ? "aan" : "uit"} | comments ${Number(stats.sentComments || 0)} | reactions ${Number(stats.sentReactions || 0)} | votes ${Number(stats.sentVotes || 0)}${personageTekst}${pendingText}`;
       }
       function stageSettingsFromControls() {
         return {
@@ -1594,7 +1606,8 @@
       }
       function simConfig() {
         return {
-          clients: Number(els.simClients.value || 20),
+          clients: Number(els.simClients.value || 0),
+          personages: els.simPersonages.checked,
           crowdMode: els.simMode.value || "normal",
           topic: els.simTopic.value,
           msgRate: Number(els.simMsgRate.value || 0.025),
@@ -1743,6 +1756,11 @@
         });
       }
       els.simMode.addEventListener("change", () => {
+        markSimulationDraftDirty();
+        queueSimulationUpdate();
+        if (lastState) renderSimulation(lastState);
+      });
+      els.simPersonages.addEventListener("change", () => {
         markSimulationDraftDirty();
         queueSimulationUpdate();
         if (lastState) renderSimulation(lastState);
