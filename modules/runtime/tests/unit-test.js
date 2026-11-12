@@ -670,9 +670,20 @@ async function main() {
     () => prepareChosenSituation(testState, clients, { environmentId: "environment:bestaat-niet", testRun: true, skipSave: true }),
     /runtime_unknown_environment/
   );
+  // Na de start blijft de gekozen scène klaarstaan: er springt niets terug naar het pad.
+  if (testState.activeSituation) await stopSituation(testState, clients, { skipSave: true });
+  const heldId = testState.preparedNext.situationId;
+  await startSituation(testState, clients, { skipSave: true });
+  assert.equal(testState.activeSituation.situationId, heldId);
+  assert.equal(testState.preparedNext.situationId, heldId, "test run keeps the chosen scene prepared after start");
+  assert.equal(testState.preparedNext.reason, "test_run_hold");
+  assert.equal(testState.resolvedPreparedNext.environmentId, otherEnvironment.id, "the chosen environment is kept too");
+  await stopSituation(testState, clients, { skipSave: true });
+  assert.equal(testState.preparedNext.situationId, heldId, "stopping keeps the chosen scene prepared");
   const markedAt = testState.testRun.markedAt;
-  await setTestRun(testState, { enabled: false, skipSave: true });
+  await setTestRun(testState, { enabled: false, clients, skipSave: true });
   assert.equal(testState.testRun.enabled, false);
+  assert.notEqual(testState.preparedNext && testState.preparedNext.reason, "test_run_hold", "test run off returns to the paths");
   assert.equal(testState.testRun.markedAt, markedAt, "a run stays marked as test run until reset");
   assert.equal(state.testRun, undefined, "the real run state is untouched by the test copy");
 

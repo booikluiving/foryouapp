@@ -742,6 +742,12 @@ async function startSituation(state, clients, options = {}) {
   const sequence = state.situationRuns.length + 1;
   const situationRunId = createSituationRunId(state.showRunId, sequence);
   const startedAt = new Date().toISOString();
+  // Testrun: een zelf gekozen scène blijft ook als volgende klaarstaan. Zo springt er niets
+  // terug naar het pad: Scène naar chat, de teleprompter en TouchDesigner houden deze scène.
+  const heldReason = state.preparedNext ? state.preparedNext.reason : null;
+  const held = isTestRun(state) && (heldReason === "operator_chosen" || heldReason === "test_run_hold")
+    ? { preparedNext: cloneJson(state.preparedNext), resolved: cloneJson(state.resolvedPreparedNext) }
+    : null;
   const activeSituation = {
     situationRunId,
     situationId: state.resolvedPreparedNext.situationId,
@@ -771,7 +777,18 @@ async function startSituation(state, clients, options = {}) {
     situationRunId,
     situationId: activeSituation.situationId,
   });
-  await computeAndSetPreparedNext(state, clients, "after_start_situation");
+  if (held) {
+    state.preparedNext = { ...held.preparedNext, chosenAt: startedAt, reason: "test_run_hold" };
+    state.resolvedPreparedNext = held.resolved;
+    appendRunLog(state, {
+      type: "prepared_next_set",
+      at: startedAt,
+      reason: "test_run_hold",
+      situationId: held.preparedNext.situationId,
+    });
+  } else {
+    await computeAndSetPreparedNext(state, clients, "after_start_situation");
+  }
   if (!options.skipSave) await saveRunState(state);
   return state;
 }
@@ -1119,6 +1136,12 @@ async function setTestRun(state, options = {}) {
   state.testRun = { enabled, markedAt, changedAt: at };
   state.updatedAt = at;
   appendRunLog(state, { type: "test_run_changed", at, enabled });
+  // Testmodus uit: de vastgehouden scène maakt weer plaats voor de volgende van het pad.
+  if (!enabled && state.preparedNext && state.preparedNext.reason === "test_run_hold" && options.clients) {
+    state.preparedNext = null;
+    state.resolvedPreparedNext = null;
+    await computeAndSetPreparedNext(state, options.clients, "after_test_run_off");
+  }
   if (!options.skipSave) await saveRunState(state);
   return state;
 }
@@ -1171,7 +1194,7 @@ async function prepareChosenSituation(state, clients, options = {}) {
     err.statusCode = 404;
     throw err;
   }
-  if (situation.id === activeId) {
+  if (situation.id === activeId && options.testRun !== true) {
     const err = new Error("runtime_situation_already_active");
     err.statusCode = 409;
     throw err;
