@@ -29,7 +29,8 @@ let macroUit = env["MIC_KNOP_MACRO_UIT"] ?? "For_You mic: dicteren uit"
 let vendorID = 0x0D8C, productID = 0x0000
 let graceNaAansluiten = 1.5   // bij aansluiten stuurt de mic zelf één rapport
 let debounce = 0.3
-let drempel: Float = Float(env["MIC_KNOP_DREMPEL"] ?? "0.002") ?? 0.002  // piek boven drempel = geluid
+// Rood is exact nul; de ruis van een stille open mic ligt rond 0,001. Daarom een lage drempel.
+let drempel: Float = Float(env["MIC_KNOP_DREMPEL"] ?? "0.0002") ?? 0.0002  // piek boven drempel = geluid
 let wachtNaDruk = 0.5
 let claudeID = "com.anthropic.claudefordesktop"
 
@@ -75,6 +76,39 @@ func claudeNeemtOp() -> Bool? {
     if let inp = lees(id, kAudioProcessPropertyIsRunningInput, UInt32(0)), inp != 0 { return true }
   }
   return false
+}
+
+// De mic vanaf de Mac op rood zetten: de gewone CoreAudio-mute zet ook de mute in de mic zelf om
+// (lampje rood, digitale stilte); de knop werkt daarna gewoon. De waarde die macOS onthoudt loopt
+// uit de pas na een knopdruk, daarom eerst 0 en dan 1.
+var gedemptDoorMac = 0
+func zetMicMute(_ aan: Bool) -> Bool {
+  let sys = AudioObjectID(kAudioObjectSystemObject)
+  var a = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+  var size: UInt32 = 0
+  guard AudioObjectGetPropertyDataSize(sys, &a, 0, nil, &size) == noErr, size > 0 else { return false }
+  var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+  guard AudioObjectGetPropertyData(sys, &a, 0, nil, &size, &ids) == noErr else { return false }
+  for id in ids {
+    var n = AudioObjectPropertyAddress(mSelector: kAudioObjectPropertyName, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var naam: Unmanaged<CFString>?; var ns = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+    guard AudioObjectGetPropertyData(id, &n, 0, nil, &ns, &naam) == noErr, let s = naam?.takeRetainedValue() as String?, s == "USB Microphone" else { continue }
+    var m = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyMute, mScope: kAudioDevicePropertyScopeInput, mElement: 0)
+    var v: UInt32 = aan ? 1 : 0
+    return AudioObjectSetPropertyData(id, &m, 0, nil, 4, &v) == noErr
+  }
+  return false
+}
+func dempMic(reden: String) {
+  _ = zetMicMute(false)
+  DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+    // Niet dempen als er intussen gedrukt is of Claude toch weer opneemt
+    if let l = laatsteDruk, Date().timeIntervalSince(l) < 1.5 { log("dempen afgebroken: net gedrukt"); return }
+    if claudeNeemtOp() == true { log("dempen afgebroken: Claude neemt weer op"); return }
+    let ok = zetMicMute(true)
+    if ok { stand = "rood"; gedemptDoorMac += 1 }
+    log("\(reden) → mic vanaf de Mac op rood gezet\(ok ? "" : " MISLUKT")")
+  }
 }
 
 func voerUit() {
@@ -156,6 +190,22 @@ Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
   stand = g; log("stand bijgesteld op geluid → \(stand)")
 }
 
+// Claude gestopt met dicteren zonder knopdruk (bericht verstuurd met Enter) terwijl de mic nog blauw is:
+// de mic zelf op rood zetten, zodat de volgende druk meteen weer start.
+var claudeNamOp = false
+var nietOpSinds: Date? = nil
+Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
+  guard verbonden, let op = claudeNeemtOp() else { return }
+  if op { claudeNamOp = true; nietOpSinds = nil; return }
+  guard claudeNamOp else { return }
+  if nietOpSinds == nil { nietOpSinds = Date() }
+  // Bij het starten flappert de opname van Claude kort; pas handelen als hij 1,2 s echt uit is
+  guard Date().timeIntervalSince(nietOpSinds!) >= 1.2 else { return }
+  claudeNamOp = false; nietOpSinds = nil
+  if let l = laatsteDruk, Date().timeIntervalSince(l) < 2.5 { return }  // gestopt met de knop
+  if gemeten() == "blauw" { dempMic(reden: "Claude gestopt zonder druk, mic nog blauw") }
+}
+
 // HID
 let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
 IOHIDManagerSetDeviceMatching(manager, [kIOHIDVendorIDKey: vendorID, kIOHIDProductIDKey: productID] as CFDictionary)
@@ -184,7 +234,7 @@ func stateJSON() -> Data {
   let o: [String: Any] = ["stand": stand, "dicteren": stand == "blauw", "verbonden": verbonden,
                           "laatsteDruk": iso(laatsteDruk), "laatsteMacro": laatsteMacro ?? NSNull(), "drukken": drukken,
                           "macroAan": macroAan, "macroUit": macroUit,
-                          "claudeNeemtOp": claudeNeemtOp() ?? NSNull(),
+                          "claudeNeemtOp": claudeNeemtOp() ?? NSNull(), "gedemptDoorMac": gedemptDoorMac,
                           "gehoord": gemeten() ?? NSNull(),"geluidActief": geluidActief, "piekPerSeconde": piekLog]
   return (try? JSONSerialization.data(withJSONObject: o, options: [.prettyPrinted, .sortedKeys])) ?? Data()
 }
