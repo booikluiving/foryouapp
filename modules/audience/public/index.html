@@ -2896,6 +2896,11 @@
               noteServerSeen();
               return;
             }
+            if (msg.type === "start_stemming_uitslag") {
+              if (msg.uitslag && msg.uitslag.titel) appendChat("De eerste scène: " + msg.uitslag.titel);
+              noteServerSeen();
+              return;
+            }
             if (msg.type === "poll_closed") {
               const closedId = Number(msg.pollId);
               if (Number.isInteger(closedId) && getStoredVotedPollId() === closedId) {

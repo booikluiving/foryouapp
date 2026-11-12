@@ -43,6 +43,20 @@ const REACTIES_STANDAARD = Object.freeze([
 const FASE_POLL_MS = 1000;
 // Vraag die na de scène op de telefoon verschijnt (met een paar trillingen); instelbaar in Admin.
 const NA_SCENE_VRAAG_KEY = "na_scene_vraag";
+// Stemmen op de startscène: welke stemming het is, bij welke run, en de uitslag.
+const START_STEMMING_KEY = "start_stemming";
+const START_STEMMING_INSTELLINGEN_KEY = "start_stemming_instellingen";
+const START_STEMMING_VRAAG = "Welke scène wil je als eerste zien?";
+
+function normalizeStartStemmingInstellingen(input) {
+  const bron = input && typeof input === "object" ? input : {};
+  const duur = Number(bron.durationSeconds);
+  const min = Number(bron.minVotes);
+  return {
+    durationSeconds: Number.isFinite(duur) ? Math.min(600, Math.max(10, Math.round(duur))) : 45,
+    minVotes: Number.isFinite(min) ? Math.min(1000, Math.max(0, Math.round(min))) : 3,
+  };
+}
 // Ronde = van de start van een scène tot de start van de volgende: daarover tellen we de emoji.
 const RONDE_KEY = "ronde";
 const NA_SCENE_VRAAG_STANDAARD = "En?";
@@ -480,6 +494,8 @@ class AudienceService extends EventEmitter {
     this.wifiQrSettings = normalizeWifiQrSettings(this.store.getSetting(WIFI_QR_SETTINGS_KEY, {}));
     this.reacties = normalizeReacties(this.store.getSetting(REACTIES_KEY, null));
     this.naSceneVraag = normalizeNaSceneVraag(this.store.getSetting(NA_SCENE_VRAAG_KEY, null));
+    this.startStemming = this.store.getSetting(START_STEMMING_KEY, null);
+    this.startStemmingInstellingen = normalizeStartStemmingInstellingen(this.store.getSetting(START_STEMMING_INSTELLINGEN_KEY, null));
     // Fase van de voorstelling, uit de runtime: "scene" (situatie loopt) of "tussen".
     this.fase = { fase: "tussen", titel: null, situationRunId: null, sinds: nowIso(), bekend: false };
     this.faseTimer = null;
@@ -1618,6 +1634,7 @@ class AudienceService extends EventEmitter {
       endedAt: poll.endedAt,
       endsAt,
       durationSeconds: poll.durationSeconds,
+      start: !!(this.startStemming && Number(this.startStemming.pollId) === Number(poll.id)),
       remainingMs: Number.isFinite(endsAtTs) ? Math.max(0, endsAtTs - Date.now()) : null,
     };
   }
@@ -1644,7 +1661,7 @@ class AudienceService extends EventEmitter {
     this.pollAutoCloseTimer = setTimeout(() => this.closePoll("timeout"), delay);
   }
 
-  startPoll({ question, options, optionsText, durationSeconds = 60 } = {}) {
+  startPoll({ question, options, optionsText, durationSeconds = 60, maxOptions = 6 } = {}) {
     const session = this.activeSessionRequired();
     const pollQuestion = String(question || "").trim().slice(0, 180);
     let pollOptions = Array.isArray(options)
@@ -1656,7 +1673,7 @@ class AudienceService extends EventEmitter {
       err.statusCode = 400;
       throw err;
     }
-    if (pollOptions.length < 2 || pollOptions.length > 6) {
+    if (pollOptions.length < 2 || pollOptions.length > Math.max(6, Number(maxOptions) || 6)) {
       const err = new Error("options_invalid");
       err.statusCode = 400;
       throw err;
@@ -1687,7 +1704,117 @@ class AudienceService extends EventEmitter {
     this.clearPollAutoCloseTimer();
     this.emit("broadcast", { type: "poll_closed", pollId: active.id, reason });
     this.emit("admin-state-changed");
+    if (this.startStemming && Number(this.startStemming.pollId) === Number(active.id) && !this.startStemming.uitslag) {
+      this.rondStartStemmingAf(active).catch(() => {});
+    }
     return active.id;
+  }
+
+  getStartStemmingInstellingen() {
+    return { ...this.startStemmingInstellingen };
+  }
+
+  getStartStemming() {
+    return this.startStemming ? { ...this.startStemming } : null;
+  }
+
+  bewaarStartStemming(next) {
+    this.startStemming = next;
+    this.store.setSetting(START_STEMMING_KEY, next);
+  }
+
+  // De operator opent de stemming op de startscène: alle scènes die nu vrij zijn in de paden.
+  async startStartStemming(input = {}) {
+    this.activeSessionRequired();
+    const fout = (code, status = 409) => {
+      const err = new Error(code);
+      err.statusCode = status;
+      return err;
+    };
+    const fetchView = this.clients && this.clients.fetchRuntimeView;
+    if (typeof fetchView !== "function") throw fout("runtime_niet_bereikbaar", 502);
+    const result = await fetchView();
+    const state = result && result.ok ? result.state : null;
+    if (!state) throw fout("runtime_niet_bereikbaar", 502);
+    if (!state.showRunId || state.status !== "running") throw fout("geen_run");
+    if (state.activeSituation) throw fout("scene_loopt");
+    const catalog = (state.showRunSnapshot && state.showRunSnapshot.catalog) || state.catalogPreview || {};
+    const titels = new Map((catalog.situations || []).map((item) => [item.id, String(item.title || "").trim()]));
+    const items = state.pathEvaluation && Array.isArray(state.pathEvaluation.items) ? state.pathEvaluation.items : [];
+    const keuzes = [];
+    for (const item of items) {
+      if (!item || item.status !== "available" || item.pathAvailable === false) continue;
+      const titel = (titels.get(item.situationId) || "").slice(0, 80);
+      if (!titel || keuzes.some((keuze) => keuze.titel === titel)) continue;
+      keuzes.push({ situationId: item.situationId, titel });
+    }
+    if (keuzes.length < 2) throw fout("te_weinig_scenes");
+    const instellingen = normalizeStartStemmingInstellingen({ ...this.startStemmingInstellingen, ...input });
+    this.startStemmingInstellingen = instellingen;
+    this.store.setSetting(START_STEMMING_INSTELLINGEN_KEY, instellingen);
+    // Eerst leegmaken: een stemming die nog openstaat sluit dan als gewone poll.
+    this.bewaarStartStemming(null);
+    const snapshot = this.startPoll({
+      question: START_STEMMING_VRAAG,
+      options: keuzes.slice(0, 12).map((keuze) => keuze.titel),
+      durationSeconds: instellingen.durationSeconds,
+      maxOptions: 12,
+    });
+    this.bewaarStartStemming({
+      pollId: snapshot.id,
+      showRunId: state.showRunId,
+      keuzes: keuzes.slice(0, 12),
+      minVotes: instellingen.minVotes,
+      startedAt: snapshot.startedAt,
+      uitslag: null,
+    });
+    const metVlag = { ...snapshot, start: true };
+    this.emit("broadcast", { type: "start_stemming", poll: metVlag });
+    this.emit("admin-state-changed");
+    return metVlag;
+  }
+
+  // Stemming dicht: de scène met de meeste stemmen wint. Bij een gelijke stand, of bij te
+  // weinig stemmen, wordt geloot. De winnaar wordt klaargezet als volgende scène.
+  async rondStartStemmingAf(poll) {
+    const stemming = this.startStemming;
+    if (!stemming || !Array.isArray(stemming.keuzes) || !stemming.keuzes.length) return null;
+    const { counts, totalVotes } = this.store.pollResults(poll.id, stemming.keuzes.length);
+    const teWeinig = totalVotes < Math.max(0, Number(stemming.minVotes) || 0) || totalVotes === 0;
+    let kandidaten;
+    if (teWeinig) {
+      kandidaten = stemming.keuzes.map((_keuze, index) => index);
+    } else {
+      const hoogste = Math.max(...counts);
+      kandidaten = counts.map((n, index) => (n === hoogste ? index : -1)).filter((index) => index >= 0);
+    }
+    const index = kandidaten[Math.floor(Math.random() * kandidaten.length)];
+    const winnaar = stemming.keuzes[index];
+    const uitslag = {
+      index,
+      situationId: winnaar.situationId,
+      titel: winnaar.titel,
+      counts,
+      totalVotes,
+      geloot: teWeinig ? "te_weinig_stemmen" : kandidaten.length > 1 ? "gelijke_stand" : null,
+      at: nowIso(),
+      klaargezet: null,
+      fout: null,
+    };
+    this.bewaarStartStemming({ ...stemming, uitslag });
+    this.emit("broadcast", { type: "start_stemming_uitslag", pollId: poll.id, opties: stemming.keuzes.map((keuze) => keuze.titel), uitslag });
+    const prepare = this.clients && this.clients.prepareChosenSituation;
+    try {
+      if (typeof prepare !== "function") throw new Error("geen_koppeling");
+      const klaar = await prepare({ showRunId: stemming.showRunId, situationId: winnaar.situationId });
+      uitslag.klaargezet = klaar && klaar.showControl === false ? "alleen_runtime" : "ja";
+    } catch (err) {
+      uitslag.klaargezet = "nee";
+      uitslag.fout = err && err.message ? String(err.message).slice(0, 200) : "onbekend";
+    }
+    this.bewaarStartStemming({ ...this.startStemming, uitslag });
+    this.emit("admin-state-changed");
+    return uitslag;
   }
 
   async acceptPollVote(meta, pollId, optionIndex) {
@@ -1942,6 +2069,8 @@ class AudienceService extends EventEmitter {
       naSceneVraag: this.naSceneVraag,
       ronde: this.getRonde(),
       activePoll: this.pollSnapshot(activePoll),
+      startStemming: this.getStartStemming(),
+      startStemmingInstellingen: this.getStartStemmingInstellingen(),
       lastPoll: this.pollSnapshot(latestPoll),
       engagementLeaderboard,
       emojiLeaderboard: engagementLeaderboard,

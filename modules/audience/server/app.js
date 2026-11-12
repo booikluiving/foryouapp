@@ -11,6 +11,7 @@ const {
 const {
   fetchCurrentRuntimeState,
   fetchRuntimeView,
+  prepareChosenSituation,
   restoreRuntimeAlgorithmContext,
   sendAudienceSignalsToAlgorithm,
   sendScoreFeedToRuntime,
@@ -45,6 +46,7 @@ function audienceClients() {
   return {
     fetchCurrentRuntimeState,
     fetchRuntimeView,
+    prepareChosenSituation,
     restoreRuntimeAlgorithmContext,
     sendAudienceSignalsToAlgorithm,
     sendScoreFeedToRuntime,
@@ -105,7 +107,25 @@ function createAudienceApp(options = {}) {
   });
 
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
-  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed"]);
+  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag"]);
+  // Stand van de stemming op de startscène, voor het zaalscherm en het universum.
+  app.get("/audience/stage/start-stemming", (_req, res) => {
+    const stemming = service.getStartStemming();
+    const poll = service.getActivePollSnapshot();
+    const actief = !!(stemming && poll && poll.start);
+    const counts = actief ? poll.counts : stemming && stemming.uitslag ? stemming.uitslag.counts : [];
+    res.set("Cache-Control", "no-store");
+    res.json({
+      ok: true,
+      actief,
+      showRunId: stemming ? stemming.showRunId : null,
+      endsAt: actief ? poll.endsAt : null,
+      totalVotes: actief ? poll.totalVotes : stemming && stemming.uitslag ? stemming.uitslag.totalVotes : 0,
+      keuzes: stemming ? (stemming.keuzes || []).map((keuze, index) => ({ ...keuze, votes: Number(counts[index] || 0) })) : [],
+      uitslag: stemming ? stemming.uitslag || null : null,
+    });
+  });
+
   app.get("/audience/stage/stroom", (req, res) => {
     res.set({
       "Content-Type": "text/event-stream",
@@ -127,6 +147,10 @@ function createAudienceApp(options = {}) {
       fase: service.getFase(),
       reacties: service.getReacties(),
       ronde: service.getRonde(),
+      startStemming: (() => {
+        const poll = service.getActivePollSnapshot();
+        return poll && poll.start ? poll : null;
+      })(),
       settings: service.getStageControl(req).settings,
       berichten,
     });
@@ -327,6 +351,16 @@ function createAudienceApp(options = {}) {
   app.post("/audience/admin/polls/start", (req, res) => {
     const poll = service.startPoll(req.body || {});
     res.status(201).json({ ok: true, poll });
+  });
+
+  // Stemmen op de startscène: opent de stemming met alle scènes die nu vrij zijn.
+  app.post("/audience/admin/start-stemming/start", async (req, res) => {
+    try {
+      const poll = await service.startStartStemming(req.body || {});
+      res.status(201).json({ ok: true, poll });
+    } catch (err) {
+      res.status(err && err.statusCode ? err.statusCode : 500).json({ ok: false, error: err && err.message ? err.message : "fout" });
+    }
   });
 
   app.post("/audience/admin/polls/close", (_req, res) => {

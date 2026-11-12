@@ -1501,3 +1501,35 @@ body.stage-output {
     bottom: 16px;
   }
 }
+
+/* Stemmen op de startscène: koploper en winnaar lichten sterker op. */
+.network-node-wrap.stem-koploper .network-star,
+.network-node-wrap.stem-winnaar .network-star {
+  fill: #fff8d6;
+  stroke: #ffffff;
+  filter: drop-shadow(0 0 14px rgba(255, 248, 214, 0.95)) drop-shadow(0 0 34px rgba(255, 248, 214, 0.55));
+}
+
+.network-node-wrap.stem-winnaar .network-star {
+  animation: stem-winnaar-puls 1.6s ease-in-out infinite;
+}
+
+.network-node-wrap.stem-verloren {
+  opacity: 0.45;
+}
+
+.network-label.stem-label {
+  font-size: 15px;
+  fill: rgba(246, 247, 244, 0.78);
+}
+
+.stem-koploper .network-label.stem-label,
+.stem-winnaar .network-label.stem-label {
+  font-size: 21px;
+  fill: #fff8d6;
+}
+
+@keyframes stem-winnaar-puls {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.62; }
+}

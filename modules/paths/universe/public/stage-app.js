@@ -46,6 +46,7 @@
       playedSceneIds: runtime.playedSceneIds || [],
       preparedSceneIds: (runtime.preparedNextScenes || []).map((scene) => scene.sceneId),
       availableSceneIds: (runtime.availableScenes || []).map((scene) => scene.sceneId),
+      stem: runtime.stem || null,
     });
   }
 
@@ -115,7 +116,7 @@
     if (state.runtimeTimer) window.clearInterval(state.runtimeTimer);
     state.runtimeTimer = window.setInterval(() => {
       refreshRuntime().catch(() => {});
-    }, 3500);
+    }, 1000);
   }
 
   function setMenuOpen(open) {

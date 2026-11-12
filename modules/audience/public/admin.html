@@ -472,6 +472,18 @@
           </div>
           <div id="pollState" class="muted">Geen poll.</div>
         </section>
+        <section class="card">
+          <h2>Stemmen op de startscène</h2>
+          <div class="row">
+            <label>Duur (s) <input id="startStemDuur" type="number" min="10" max="600" step="5" value="45" /></label>
+            <label>Minimum stemmen <input id="startStemMin" type="number" min="0" max="1000" step="1" value="3" /></label>
+          </div>
+          <div class="row">
+            <button id="startStemBtn" class="primary" type="button">Open stemming</button>
+            <button id="sluitStemBtn" type="button">Sluit nu</button>
+          </div>
+          <div id="startStemState" class="muted"></div>
+        </section>
 
         <section class="card">
           <h2>Live chat (recent)</h2>
@@ -1120,6 +1132,24 @@
           .map((input) => input.value.trim())
           .filter(Boolean);
       }
+      let startStemGevuld = false;
+      function renderStartStem(data) {
+        const box = document.getElementById("startStemState");
+        const inst = data.startStemmingInstellingen;
+        if (inst && !startStemGevuld) {
+          document.getElementById("startStemDuur").value = inst.durationSeconds;
+          document.getElementById("startStemMin").value = inst.minVotes;
+          startStemGevuld = true;
+        }
+        const stemming = data.startStemming;
+        if (!stemming) { box.textContent = ""; return; }
+        if (data.activePoll && data.activePoll.start) { box.textContent = "Stemming loopt."; return; }
+        const u = stemming.uitslag;
+        if (!u) { box.textContent = ""; return; }
+        const lot = u.geloot === "te_weinig_stemmen" ? " (geloot: te weinig stemmen)" : u.geloot === "gelijke_stand" ? " (geloot: gelijke stand)" : "";
+        const klaar = u.klaargezet === "ja" ? "Staat klaar." : u.klaargezet === "alleen_runtime" ? "Staat klaar in de runtime, niet in TouchDesigner." : u.klaargezet === "nee" ? "Klaarzetten mislukt: " + (u.fout || "") : "Wordt klaargezet…";
+        box.textContent = "Winnaar: " + u.titel + lot + " — " + u.totalVotes + " stemmen. " + klaar;
+      }
       function renderPollState(data) {
         const poll = data.activePoll || data.lastPoll || null;
         els.pollPill.textContent = data.activePoll ? "Poll: actief" : "Poll: nee";
@@ -1488,6 +1518,7 @@
         renderSettings(data);
         renderLeaderboard(data);
         renderPollState(data);
+        renderStartStem(data);
         renderLiveChat(data.recentMessages || []);
         renderUsersTable(data);
         renderEnforcement(data);
@@ -1645,6 +1676,23 @@
           options: pollOptionsPayload(),
           durationSeconds: Number(els.pollDurationSeconds.value || 60),
         }, "Poll gestart.");
+      });
+      document.getElementById("startStemBtn").addEventListener("click", () => {
+        const fouten = {
+          geen_run: "Er loopt geen run. Druk eerst op RUN.",
+          scene_loopt: "Er speelt nog een scène.",
+          te_weinig_scenes: "Er zijn minder dan twee scènes vrij.",
+          runtime_niet_bereikbaar: "De runtime is niet bereikbaar.",
+          session_inactive: "Er is geen publiekssessie gestart.",
+        };
+        post("/audience/admin/start-stemming/start", {
+          durationSeconds: Number(document.getElementById("startStemDuur").value || 45),
+          minVotes: Number(document.getElementById("startStemMin").value || 0),
+        }).then(() => { setActionMessage(""); return refresh(); })
+          .catch((err) => setActionMessage(fouten[err.message] || ("Stemming openen mislukt: " + err.message), true));
+      });
+      document.getElementById("sluitStemBtn").addEventListener("click", () => {
+        runAction("/audience/admin/polls/close", {}, "Stemming gesloten.");
       });
       document.getElementById("closePollBtn").addEventListener("click", () => {
         runAction("/audience/admin/polls/close", {}, "Poll gesloten.");

@@ -375,6 +375,22 @@
       return !!(state.model && state.model.runtime && state.model.runtime.isReleaseLimited);
     }
 
+    function stemVoorScene(sceneId) {
+      const raw = state.model && state.model.runtime && state.model.runtime.raw;
+      const stem = raw && raw.stem;
+      if (!stem || !Array.isArray(stem.stemmen)) return null;
+      const id = Number(sceneId);
+      const keuze = stem.stemmen.find((item) => Number(item.sceneId) === id);
+      if (!keuze) return null;
+      const winnaar = Number(stem.winnaar) === id;
+      return {
+        votes: Number(keuze.votes || 0),
+        koploper: !stem.winnaar && (stem.koplopers || []).some((item) => Number(item) === id),
+        winnaar,
+        verloren: !!stem.winnaar && !winnaar,
+      };
+    }
+
     function isSceneReleased(sceneId) {
       if (!isReleaseLimited()) return true;
       return state.model.runtime.releasedSceneIds.has(Number(sceneId));
@@ -3094,10 +3110,16 @@
         const isReleased = isSceneReleased(node.sceneId);
         const status = statusForScene(node.sceneId);
         const crossLevel = Math.round(clamp(Number(node.crossingLevel || 0), 0, 3));
-        const radius = networkNodeRadius(node);
+        // Stemmen op de startscène: de koploper (en straks de winnaar) licht sterker op.
+        const stem = stemVoorScene(node.sceneId);
+        const radius = networkNodeRadius(node) * (stem ? (stem.winnaar ? 2.1 : stem.koploper ? 1.7 : 1.15) : 1);
         const group = el("g", {
           class: [
             "network-node-wrap",
+            stem ? "stem-keuze" : "",
+            stem && stem.koploper ? "stem-koploper" : "",
+            stem && stem.winnaar ? "stem-winnaar" : "",
+            stem && stem.verloren ? "stem-verloren" : "",
             node.isNetworkRoot ? "entry-node" : "",
             node.isCrossingNode ? "crossing-node" : "",
             Number(node.degree || 0) === 0 ? "loose-node" : "",
@@ -3135,14 +3157,14 @@
         nodeLayer.appendChild(group);
         state.bb.networkNodeGroups.set(node.sceneId, group);
 
-        if (state.tweaks.labels) {
+        if (state.tweaks.labels || stem) {
           const label = el("text", {
             x: pos.x,
             y: pos.y - radius - 9,
             "text-anchor": "middle",
-            class: `scene-label network-label${status ? " runtime-label" : ""}`,
+            class: `scene-label network-label${status ? " runtime-label" : ""}${stem ? " stem-label" : ""}`,
           });
-          label.textContent = node.title;
+          label.textContent = stem ? `${node.title} \u00b7 ${stem.votes}` : node.title;
           group.appendChild(label);
         }
       }

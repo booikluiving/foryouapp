@@ -4,6 +4,7 @@ const { PATHS_UNIVERSE_STATE_SCHEMA_VERSION } = require("../contracts/paths-univ
 const Graph = require("../rules-engine/paden-graph");
 const { buildPathsEditorState } = require("../read-model/build-editor-state");
 const { buildGraph } = require("./domain/normalize-paths");
+const { fetchRuntimeOverlay } = require("./build-runtime-overlay");
 
 function stableRowId(pathId, index, offset = 0) {
   return (Number(pathId || 0) * 100000) + offset + index + 1;
@@ -133,6 +134,7 @@ async function buildPathsUniverseState(options = {}) {
   const editorState = await buildPathsEditorState(options);
   const raw = buildAlgorithmSourceFromEditorState(editorState);
   const graph = buildGraph(raw);
+  const runtime = options.runtimeOverlay === false ? null : await fetchRuntimeOverlay().catch(() => null);
   const paths = editorState.catalog && Array.isArray(editorState.catalog.paths)
     ? editorState.catalog.paths
     : [];
@@ -146,7 +148,7 @@ async function buildPathsUniverseState(options = {}) {
       pathsReadModel: "/v0/paths/editor-state",
       pathsStoreReadOnly: false,
       catalogReadOnly: true,
-      runtimeOverlay: "not_connected",
+      runtimeOverlay: runtime ? "runtime-view" : "not_connected",
       seededFrom: editorState.source ? editorState.source.seededFrom || null : null,
     },
     counts: {
@@ -163,7 +165,7 @@ async function buildPathsUniverseState(options = {}) {
       networkEdges: graph.networkMap.summary.edgeCount,
     },
     graph,
-    runtime: null,
+    runtime,
   };
 }
 

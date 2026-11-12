@@ -72,6 +72,47 @@ async function fetchRuntimeView() {
   }
 }
 
+function showControlBaseUrl() {
+  return String(process.env.AUDIENCE_SHOW_CONTROL_URL || "http://127.0.0.1:3025").replace(/\/+$/, "");
+}
+
+async function postJsonRuim(url, body, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    try { controller.abort(); } catch {}
+  }, timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body || {}),
+      signal: controller.signal,
+    });
+    const json = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(`${url} returned ${response.status}`);
+    return json;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// De winnaar van de stemming klaarzetten: eerst in de runtime, daarna via show control in
+// TouchDesigner, de teleprompter en de operator.
+async function prepareChosenSituation({ showRunId, situationId } = {}) {
+  if (!showRunId || !situationId) throw new Error("audience_missing_prepare_input");
+  const state = await postJsonRuim(
+    `${runtimeBaseUrl()}/v0/runtime/runs/${encodeURIComponent(showRunId)}/prepare-situation`,
+    { situationId }
+  );
+  let showControl = true;
+  try {
+    await postJsonRuim(`${showControlBaseUrl()}/v0/show-control/cues/prepare`, { runtimeState: state });
+  } catch (_err) {
+    showControl = false;
+  }
+  return { ok: true, showControl, state };
+}
+
 async function sendAudienceSignalsToAlgorithm(input = {}) {
   return fetchJsonWithTimeout(`${algorithmBaseUrl()}/v0/algorithm/events/audience-signals`, {
     method: "POST",
@@ -104,6 +145,7 @@ module.exports = {
   algorithmBaseUrl,
   fetchCurrentRuntimeState,
   fetchRuntimeView,
+  prepareChosenSituation,
   restoreRuntimeAlgorithmContext,
   sendAudienceSignalsToAlgorithm,
   sendScoreFeedToRuntime,

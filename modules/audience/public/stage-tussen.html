@@ -104,6 +104,27 @@
         font-weight: 500;
         overflow-wrap: anywhere;
       }
+      #stem {
+        position: absolute;
+        left: 0;
+        width: 1080px;
+        box-sizing: border-box;
+        padding: 0 88px;
+        background: #000;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 22px;
+      }
+      #stem[hidden] { display: none; }
+      #stemKop { font-size: 34px; font-weight: 500; color: rgba(255, 255, 255, 0.66); }
+      .stemRij { position: relative; opacity: 0.6; transition: opacity 300ms ease; }
+      .stemRij.koploper, .stemRij.winnaar { opacity: 1; }
+      .stemRij.verloren { opacity: 0.22; }
+      .stemTekst { display: flex; justify-content: space-between; gap: 24px; font-size: 38px; font-weight: 700; line-height: 1.12; }
+      .stemTekst .n { font-variant-numeric: tabular-nums; }
+      .stemBalk { height: 8px; margin-top: 10px; background: rgba(255, 255, 255, 0.14); }
+      .stemBalk > span { display: block; height: 100%; width: 0; background: #fff; transition: width 400ms ease; }
       @keyframes erin {
         from { opacity: 0; transform: translateY(12px); }
         to { opacity: 1; transform: none; }
@@ -114,6 +135,7 @@
     <div id="stage">
       <div id="titel"></div>
       <div id="script"><iframe id="scriptFrame" title="Script" scrolling="no"></iframe></div>
+      <div id="stem" hidden></div>
       <div id="stats" hidden>
         <div id="statsScene"></div>
         <div id="statsRij"></div>
@@ -152,6 +174,8 @@
         el("script").style.top = getal(settings.tussenScriptY, 230) + "px";
         el("script").style.height = sh + "px";
         el("scriptFrame").style.top = (sh - H) + "px"; // onderkant van het script (nieuwste tekst) in beeld
+        el("stem").style.top = getal(settings.tussenScriptY, 230) + "px";
+        el("stem").style.height = sh + "px";
         el("stats").style.top = getal(settings.tussenStatsY, 1150) + "px";
         el("stats").style.fontSize = getal(settings.tussenStatsGrootte, 88) + "px";
         el("statsScene").style.fontSize = "0.36em";
@@ -265,6 +289,54 @@
         tekenStats();
       }
 
+      // Stemmen op de startscène: de stand staat op de plek van het script. Na de uitslag blijft
+      // de winnaar even staan, daarna komt het script terug.
+      let stem = null, stemTimer = null, stemWeg = null;
+      function tekenStem() {
+        const box = el("stem");
+        if (!stem) { box.hidden = true; el("titel").textContent = settings.tussenTitel ?? "Generating next scene"; return; }
+        box.hidden = false;
+        const counts = stem.counts || [];
+        const hoogste = Math.max(0, ...counts);
+        const totaal = counts.reduce((a, b) => a + b, 0);
+        const over = stem.endsAt ? Math.max(0, Math.ceil((Date.parse(stem.endsAt) - Date.now()) / 1000)) : 0;
+        el("titel").textContent = stem.uitslag ? "De eerste scène" : "Kies de eerste scène";
+        box.textContent = "";
+        const kop = document.createElement("div");
+        kop.id = "stemKop";
+        kop.textContent = stem.uitslag
+          ? (stem.uitslag.geloot === "te_weinig_stemmen" ? "Te weinig stemmen: het lot besliste" : stem.uitslag.geloot === "gelijke_stand" ? "Gelijke stand: het lot besliste" : totaal + " stemmen")
+          : "Stem op je telefoon \u00b7 nog " + over + " s \u00b7 " + totaal + " stemmen";
+        box.appendChild(kop);
+        (stem.options || []).forEach((optie, i) => {
+          const n = Number(counts[i] || 0);
+          const rij = document.createElement("div");
+          rij.className = "stemRij" + (stem.uitslag ? (stem.uitslag.index === i ? " winnaar" : " verloren") : (n > 0 && n === hoogste ? " koploper" : ""));
+          const tekst = document.createElement("div");
+          tekst.className = "stemTekst";
+          const t = document.createElement("span");
+          t.textContent = optie;
+          const c = document.createElement("span");
+          c.className = "n";
+          c.textContent = String(n);
+          tekst.append(t, c);
+          const balk = document.createElement("div");
+          balk.className = "stemBalk";
+          const vul = document.createElement("span");
+          vul.style.width = (hoogste ? Math.round((n / hoogste) * 100) : 0) + "%";
+          balk.appendChild(vul);
+          rij.append(tekst, balk);
+          box.appendChild(rij);
+        });
+      }
+      function zetStem(poll) {
+        clearInterval(stemTimer);
+        clearTimeout(stemWeg);
+        stem = poll ? { id: poll.id, options: poll.options, counts: poll.counts || [], endsAt: poll.endsAt, uitslag: null } : null;
+        if (stem) stemTimer = setInterval(tekenStem, 1000);
+        tekenStem();
+      }
+
       const bron = new EventSource("/audience/stage/stroom");
       bron.onmessage = (ev) => {
         let msg;
@@ -276,9 +348,19 @@
           ronde = msg.ronde || ronde;
           berichten = [];
           for (const m of msg.berichten || []) regel(m);
+          zetStem(msg.startStemming || null);
           tekenChat();
           tekenStats();
         } else if (msg.type === "stage_settings") toepassen(msg.stage && msg.stage.settings);
+        else if (msg.type === "start_stemming") zetStem(msg.poll);
+        else if (msg.type === "poll_update" && stem && Number(msg.pollId) === Number(stem.id)) { stem.counts = msg.counts || stem.counts; tekenStem(); }
+        else if (msg.type === "start_stemming_uitslag" && stem && Number(msg.pollId) === Number(stem.id)) {
+          clearInterval(stemTimer);
+          stem.counts = msg.uitslag.counts || stem.counts;
+          stem.uitslag = msg.uitslag;
+          tekenStem();
+          stemWeg = setTimeout(() => zetStem(null), 12000);
+        }
         else if (msg.type === "reacties") { reacties = msg.reacties || []; tekenStats(); }
         else if (msg.type === "fase") nieuweRonde(msg.ronde);
         else if (msg.type === "reaction_update" && msg.ronde) { ronde.emoji = msg.ronde; tekenStats(); }

@@ -120,6 +120,7 @@
       playedSceneIds: runtime.playedSceneIds || [],
       preparedSceneIds: (runtime.preparedNextScenes || []).map((scene) => scene.sceneId),
       availableSceneIds: (runtime.availableScenes || []).map((scene) => scene.sceneId),
+      stem: runtime.stem || null,
     });
   }
 
