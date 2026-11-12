@@ -476,7 +476,6 @@
           <h2>Stemmen op de startscène</h2>
           <div class="row">
             <label>Duur (s) <input id="startStemDuur" type="number" min="10" max="600" step="5" value="45" /></label>
-            <label>Minimum stemmen <input id="startStemMin" type="number" min="0" max="1000" step="1" value="1" /></label>
           </div>
           <div class="row">
             <button id="startStemBtn" class="primary" type="button">Open stemming</button>
@@ -1138,7 +1137,6 @@
         const inst = data.startStemmingInstellingen;
         if (inst && !startStemGevuld) {
           document.getElementById("startStemDuur").value = inst.durationSeconds;
-          document.getElementById("startStemMin").value = inst.minVotes;
           startStemGevuld = true;
         }
         const stemming = data.startStemming;
@@ -1146,7 +1144,7 @@
         if (data.activePoll && data.activePoll.start) { box.textContent = "Stemming loopt."; return; }
         const u = stemming.uitslag;
         if (!u) { box.textContent = ""; return; }
-        const lot = u.geloot === "te_weinig_stemmen" ? " (geloot: te weinig stemmen)" : u.geloot === "gelijke_stand" ? " (geloot: gelijke stand)" : "";
+        const lot = u.geloot === "te_weinig_stemmen" ? " (geloot: geen stemmen)" : u.geloot === "gelijke_stand" ? " (geloot: gelijke stand)" : "";
         const klaar = u.klaargezet === "ja" ? "Staat klaar." : u.klaargezet === "alleen_runtime" ? "Staat klaar in de runtime, niet in TouchDesigner." : u.klaargezet === "nee" ? "Klaarzetten mislukt: " + (u.fout || "") : "Wordt klaargezet…";
         box.textContent = "Winnaar: " + u.titel + lot + " — " + u.totalVotes + " stemmen. " + klaar;
       }
@@ -1687,18 +1685,14 @@
         };
         post("/audience/admin/start-stemming/start", {
           durationSeconds: Number(document.getElementById("startStemDuur").value || 45),
-          minVotes: Number(document.getElementById("startStemMin").value || 0),
         }).then(() => { setActionMessage(""); return refresh(); })
           .catch((err) => setActionMessage(fouten[err.message] || ("Stemming openen mislukt: " + err.message), true));
       });
-      for (const id of ["startStemDuur", "startStemMin"]) {
-        document.getElementById(id).addEventListener("change", () => {
-          post("/audience/admin/start-stemming/instellingen", {
-            durationSeconds: Number(document.getElementById("startStemDuur").value || 45),
-            minVotes: Number(document.getElementById("startStemMin").value || 0),
-          }).catch(() => {});
-        });
-      }
+      document.getElementById("startStemDuur").addEventListener("change", () => {
+        post("/audience/admin/start-stemming/instellingen", {
+          durationSeconds: Number(document.getElementById("startStemDuur").value || 45),
+        }).catch(() => {});
+      });
       document.getElementById("sluitStemBtn").addEventListener("click", () => {
         runAction("/audience/admin/polls/close", {}, "Stemming gesloten.");
       });

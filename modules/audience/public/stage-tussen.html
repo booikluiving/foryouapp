@@ -305,7 +305,7 @@
         const kop = document.createElement("div");
         kop.id = "stemKop";
         kop.textContent = stem.uitslag
-          ? (stem.uitslag.geloot === "te_weinig_stemmen" ? "Te weinig stemmen: het lot besliste" : stem.uitslag.geloot === "gelijke_stand" ? "Gelijke stand: het lot besliste" : totaal + " stemmen")
+          ? (stem.uitslag.geloot === "te_weinig_stemmen" ? "Geen stemmen: het lot besliste" : stem.uitslag.geloot === "gelijke_stand" ? "Gelijke stand: het lot besliste" : totaal + " stemmen")
           : "Stem op je telefoon \u00b7 nog " + over + " s \u00b7 " + totaal + " stemmen";
         box.appendChild(kop);
         (stem.options || []).forEach((optie, i) => {
