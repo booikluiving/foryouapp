@@ -15,11 +15,28 @@ umask 077; echo 'rtsps://192.168.1.1:7441/<token>?enableSrtp' > .rtsp_hoog
 /opt/homebrew/bin/python3 publiek_proef.py --tiles 3 --width 3840 --hw
 ```
 
-Live beeld met overlay: http://127.0.0.1:3322/ — getallen: `/stats`, per seconde ook in `per_seconde.jsonl`.
+Live beeld met overlay (om te kijken): http://127.0.0.1:3322/ — getallen: `/stats`, per seconde ook in `per_seconde.jsonl`.
 
 `--tiles 3` analyseert de 7680×2160 op volle resolutie in 3 tegels; nodig voor gezichten op afstand.
 
+## Zuinig, zonder beeld (basis voor de show)
+
+```bash
+/opt/homebrew/bin/python3 publiek_sensor.py
+```
+
+FFmpeg (hardware-decoder, grijs, 5/s) geeft het beeld direct aan één `publiek_vision`-proces, dat zelf in 3 tegels kijkt
+(vensters op hetzelfde geheugen). Python ziet geen beeld, alleen de getallen. Eén JSON-regel per seconde.
+Glimlach wordt alleen op een uitsnede rond elk gezicht bekeken.
+
 ## Belasting (gemeten 12 nov, M4 Max, TouchDesigner open)
+
+| instelling | CPU | geheugen | gezichten |
+|---|---|---|---|
+| `publiek_sensor.py` (zuinig), 5/s | ± 0,3 kern | ± 0,6 GB (FFmpeg ± 0,45) | allemaal |
+
+Overlayversie `publiek_proef.py`:
+
 
 | instelling | CPU | geheugen | gezichten |
 |---|---|---|---|
