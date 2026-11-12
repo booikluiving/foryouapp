@@ -25,7 +25,7 @@
         transform-origin: 0 0;
       }
       /* Beeld van de omgeving van de volgende scène: klein linksboven, even groot als de QR-code.
-         De achtergrond van een omgeving is drie schermen breed; hier staat alleen het middelste deel. */
+         Eén beeld per omgeving. Welke uitsnede staat per omgeving in omgevingsbeeld.json (universum). */
       #beeld {
         position: absolute;
         left: 56px;
@@ -39,12 +39,21 @@
       #beeld[hidden] { display: none; }
       #beeld img, #beeld video {
         position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      /* De achtergrond is drie schermen breed; "midden" toont alleen het middelste deel. */
+      #beeld[data-uitsnede="midden"] img, #beeld[data-uitsnede="midden"] video {
         left: -100%;
         top: 50%;
         width: 300%;
         height: auto;
+        object-fit: fill;
         transform: translateY(-50%);
-        display: block;
       }
       #script {
         position: absolute;
@@ -279,9 +288,10 @@
       let beeldNu = "";
       function zetBeeld(omgeving) {
         const adres = omgeving && omgeving.beeld ? `${location.protocol}//${location.hostname}:3021${omgeving.beeld}` : "";
+        const box = el("beeld");
+        box.dataset.uitsnede = (omgeving && omgeving.uitsnede) || "hoog";
         if (adres === beeldNu) return;
         beeldNu = adres;
-        const box = el("beeld");
         box.textContent = "";
         box.hidden = !adres;
         if (!adres) return;

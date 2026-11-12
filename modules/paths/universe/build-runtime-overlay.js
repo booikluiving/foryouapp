@@ -1,5 +1,8 @@
 "use strict";
 
+const fs = require("node:fs");
+const path = require("node:path");
+
 // Stand van de lopende voorstelling voor het universum: wat is vrij, wat is gespeeld, wat
 // speelt nu. Tijdens de stemming op de startscène komen de stemmen per scène erbij.
 
@@ -57,9 +60,55 @@ function keuzeVoor(view, prepared, preparedId) {
   };
 }
 
-// Achtergrondbeeld per omgeving uit de catalogus. De lijst is groot en verandert zelden: hij wordt
-// op de achtergrond ververst en nooit afgewacht, zodat de stand van de run er niet trager van wordt.
+// Beeld per omgeving voor het vakje op het inloopscherm. Welk beeld en welke uitsnede staat per
+// omgeving in omgevingsbeeld.json; het beeld zelf komt uit de catalogus (achtergrond of extra shot).
+// De lijst is groot en verandert zelden: hij wordt op de achtergrond ververst en nooit afgewacht,
+// zodat de stand van de run er niet trager van wordt.
 const omgevingsBeelden = { at: 0, bezig: false, perOmgeving: new Map() };
+
+function beeldKeuze() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, "omgevingsbeeld.json"), "utf8"));
+  } catch (_err) {
+    return {};
+  }
+}
+
+function soortVan(asset) {
+  const mime = String(asset.mimeType || asset.mediaType || "");
+  return mime.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(String(asset.filename || "")) ? "video" : "beeld";
+}
+
+function beeldenPerOmgeving(payload, keuze) {
+  const perOmgeving = new Map();
+  if (!payload || !Array.isArray(payload.mediaAssets)) return perOmgeving;
+  const aanwezig = payload.mediaAssets.filter((asset) => asset && asset.status === "present" && asset.url);
+  const perId = new Map(aanwezig.map((asset) => [asset.id, asset]));
+  const achtergrond = new Map();
+  for (const asset of aanwezig) if (asset.role === "background") achtergrond.set(String(asset.environmentId), asset);
+  const shot = new Map();
+  for (const omgeving of payload.environments || []) {
+    const id = omgeving && omgeving.extras && omgeving.extras.shot && omgeving.extras.shot.bestand;
+    const asset = id && perId.get(id);
+    if (asset && asset.role === "extraShot") shot.set(String(omgeving.id), asset);
+  }
+  // Geen extra shot ingevuld bij de omgeving: dan het losse shot dat er staat (geen fasebeeld).
+  for (const asset of aanwezig) {
+    const id = String(asset.environmentId);
+    if (asset.role !== "extraShot" || shot.has(id) || (asset.tags || []).includes("fase")) continue;
+    shot.set(id, asset);
+  }
+  const gekozen = (keuze && keuze.omgevingen) || {};
+  const standaard = (keuze && keuze.standaard) || "hoog";
+  for (const id of new Set([...achtergrond.keys(), ...shot.keys()])) {
+    let uitsnede = (gekozen[id] && gekozen[id].uitsnede) || standaard;
+    let asset = uitsnede === "shot" ? shot.get(id) : achtergrond.get(id);
+    // Ontbreekt het gekozen beeld, dan het andere, op volle hoogte: nooit een leeg vakje.
+    if (!asset) { asset = achtergrond.get(id) || shot.get(id); uitsnede = asset.role === "extraShot" ? "shot" : "hoog"; }
+    perOmgeving.set(id, { beeld: asset.url, soort: soortVan(asset), uitsnede });
+  }
+  return perOmgeving;
+}
 
 function ververOmgevingsBeelden() {
   if (omgevingsBeelden.bezig || Date.now() - omgevingsBeelden.at < 60000) return;
@@ -67,13 +116,7 @@ function ververOmgevingsBeelden() {
   fetchJson(`${baseUrl("PATHS_CATALOG_URL", "http://127.0.0.1:3021")}/v0/catalog/media-assets`, 5000)
     .then((payload) => {
       if (!payload || !Array.isArray(payload.mediaAssets)) return;
-      const perOmgeving = new Map();
-      for (const asset of payload.mediaAssets) {
-        if (!asset || asset.role !== "background" || asset.status !== "present" || !asset.url) continue;
-        const mime = String(asset.mimeType || asset.mediaType || "");
-        perOmgeving.set(String(asset.environmentId), { beeld: asset.url, soort: mime.startsWith("video/") || /\.(mp4|mov|webm)$/i.test(String(asset.filename || "")) ? "video" : "beeld" });
-      }
-      omgevingsBeelden.perOmgeving = perOmgeving;
+      omgevingsBeelden.perOmgeving = beeldenPerOmgeving(payload, beeldKeuze());
       omgevingsBeelden.at = Date.now();
     })
     .finally(() => { omgevingsBeelden.bezig = false; });
@@ -85,7 +128,12 @@ function omgevingVoor(view) {
   const id = resolved && String(resolved.environmentId || (resolved.environment && resolved.environment.id) || "");
   if (!id) return null;
   const beeld = omgevingsBeelden.perOmgeving.get(id) || null;
-  return { naam: String((resolved.environment && resolved.environment.name) || "").replace(/_/g, " "), beeld: beeld ? beeld.beeld : "", soort: beeld ? beeld.soort : "" };
+  return {
+    naam: String((resolved.environment && resolved.environment.name) || "").replace(/_/g, " "),
+    beeld: beeld ? beeld.beeld : "",
+    soort: beeld ? beeld.soort : "",
+    uitsnede: beeld ? beeld.uitsnede : "",
+  };
 }
 
 function buildRuntimeOverlay(view, stemming) {
@@ -142,4 +190,4 @@ async function fetchRuntimeOverlay() {
   return buildRuntimeOverlay(view, stemming && stemming.ok ? stemming : null);
 }
 
-module.exports = { buildRuntimeOverlay, fetchRuntimeOverlay };
+module.exports = { buildRuntimeOverlay, fetchRuntimeOverlay, beeldenPerOmgeving };
