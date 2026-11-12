@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>For_You publieksrapport</title>
+    <link rel="stylesheet" href="/shared/ui/foryou.css">
+    <link rel="stylesheet" href="/algorithm/styles.css?v=algorithm-ui-2">
+    <style>
+      .rapport-main { max-width: 1180px; }
+      .rapport-conclusie { font-size: clamp(22px, 3.2vw, 38px); font-weight: 800; line-height: 1.15; margin: 0; }
+      .rapport-conclusie em { font-style: normal; color: var(--fy-accent); }
+      .rapport-tellers { display: flex; flex-wrap: wrap; gap: 8px 22px; color: var(--fy-muted); font-size: 13px; }
+      .rapport-tellers strong { color: var(--fy-ink); font-size: 18px; margin-right: 5px; }
+      .rapport-twee { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; align-items: start; }
+      .rapport-main .fy-panel { align-content: start; }
+      #runSelect { width: auto; max-width: 260px; }
+      .balk-rij { display: grid; grid-template-columns: minmax(110px, 180px) 1fr 64px; gap: 10px; align-items: center; font-size: 13px; }
+      .balk-rij .naam { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+      .balk-rij .naam small { color: var(--fy-muted); font-weight: 500; margin-left: 5px; }
+      .balk-rij .getal { text-align: right; font-variant-numeric: tabular-nums; }
+      .balk { position: relative; height: 14px; background: var(--fy-panel-2); border-radius: 3px; }
+      .balk::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--fy-line-strong); }
+      .balk span { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+      .balk .plus { left: 50%; background: var(--fy-accent); }
+      .balk .min { right: 50%; background: var(--fy-danger); }
+      .scene-kaart { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--fy-line); border-radius: var(--fy-radius); background: var(--fy-surface); }
+      .scene-kop { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+      .scene-kop strong { font-size: 15px; }
+      .scene-kop .score { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .scene-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--fy-muted); font-size: 12px; }
+      .scene-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+      .scene-lijst { display: grid; gap: 8px; }
+      .leeg { color: var(--fy-muted); font-size: 13px; }
+      .verwacht-rij { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--fy-line); }
+      .verwacht-rij:last-child { border-bottom: 0; }
+      .verwacht-rij small { grid-column: 1 / -1; color: var(--fy-muted); }
+      .verwacht-rij .getal { font-weight: 800; font-variant-numeric: tabular-nums; }
+    </style>
+  </head>
+  <body class="fy-page">
+    <header class="fy-topbar">
+      <div class="fy-bar">
+        <div class="fy-brand">
+          <span class="fy-brand-mark">FY</span>
+          <div class="fy-brand-text">
+            <strong>For_You publieksrapport</strong>
+            <span id="topMeta"></span>
+          </div>
+        </div>
+        <div class="fy-actions fy-actions-end">
+          <nav class="service-nav" aria-label="service links">
+            <a href="/algorithm/">Algoritme</a>
+            <a href="/algorithm/rapport" aria-current="page">Publieksrapport</a>
+          </nav>
+          <select id="runSelect" class="fy-select" aria-label="Run"></select>
+        </div>
+      </div>
+    </header>
+    <main class="fy-main rapport-main">
+      <section class="fy-panel">
+        <p id="conclusie" class="rapport-conclusie"></p>
+        <div id="tellers" class="rapport-tellers"></div>
+      </section>
+      <div class="rapport-twee">
+        <section class="fy-panel">
+          <div class="fy-panel-header"><strong>Per label</strong><span class="fy-eyebrow">gemiddelde score</span></div>
+          <div id="labels" class="fy-stack"></div>
+        </section>
+        <section class="fy-panel">
+          <div class="fy-panel-header"><strong>Per personage</strong><span class="fy-eyebrow">gemiddelde score</span></div>
+          <div id="personages" class="fy-stack"></div>
+        </section>
+      </div>
+      <div class="rapport-twee">
+        <section class="fy-panel">
+          <div class="fy-panel-header"><strong>Per scène</strong><span class="fy-eyebrow">laatste bovenaan</span></div>
+          <div id="scenes" class="scene-lijst"></div>
+        </section>
+        <section class="fy-panel">
+          <div class="fy-panel-header"><strong>Verwachting</strong><span class="fy-eyebrow">scènes die nog niet gespeeld zijn</span></div>
+          <div id="verwachtHoog"></div>
+          <div class="fy-panel-header"><strong>Laagste verwachting</strong></div>
+          <div id="verwachtLaag"></div>
+        </section>
+      </div>
+    </main>
+    <script src="/algorithm/rapport.js"></script>
+  </body>
+</html>

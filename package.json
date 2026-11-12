@@ -22,6 +22,7 @@
     "algorithm:start": "node modules/algorithm/server/server.js",
     "algorithm:smoke": "node modules/algorithm/tests/smoke-test.js",
     "algorithm:test": "node modules/algorithm/tests/unit-test.js",
+    "algorithm:test:rapport": "node modules/algorithm/tests/report-test.js",
     "audience:start": "node modules/audience/server/server.js",
     "audience:smoke": "node modules/audience/tests/smoke-test.js",
     "audience:test": "node modules/audience/tests/unit-test.js",
