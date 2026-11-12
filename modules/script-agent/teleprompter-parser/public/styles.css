@@ -826,9 +826,12 @@ label {
   );
 }
 
+/* De titel van de scène staat groot bovenin, los van de plek en grootte van de ondertitel. */
 .caption-card.title {
+  top: 12%;
+  width: 86%;
   max-height: 520px;
-  font-size: calc(74px * var(--caption-size-scale));
+  font-size: 90px;
   font-weight: 500;
   line-height: 1.34;
   color: #141414;
