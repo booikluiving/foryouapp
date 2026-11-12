@@ -759,6 +759,41 @@ class AudienceStore {
     return this.db.prepare(`SELECT * FROM signals ${where} ORDER BY id`).all(...args).map(parseSignalRow);
   }
 
+  // Tellingen in de database zelf. readSignals leest en parset elke rij; bij een lange sessie
+  // (tienduizenden signalen) is dat honderden MB per aanroep.
+  countSignalsByType(sessionId) {
+    const counts = {};
+    for (const row of this.db.prepare("SELECT type, COUNT(*) AS n FROM signals WHERE session_id = ? GROUP BY type")
+      .all(Number(sessionId || 0))) {
+      counts[String(row.type || "")] = Number(row.n || 0);
+    }
+    return counts;
+  }
+
+  // Hartjes en verveeld per afzender (voor het scorebord): aantal en laatste moment.
+  reactionTotalsBySender(sessionId) {
+    return this.db.prepare(
+      "SELECT client_key, is_bot, COUNT(*) AS n, MAX(received_at) AS last_at FROM signals "
+      + "WHERE session_id = ? AND type IN ('heart', 'bored') GROUP BY client_key, is_bot ORDER BY MIN(id)"
+    ).all(Number(sessionId || 0)).map((row) => ({
+      clientKey: String(row.client_key || ""),
+      isBot: !!row.is_bot,
+      count: Number(row.n || 0),
+      lastAt: String(row.last_at || ""),
+    }));
+  }
+
+  // Alleen soort, emoji en tijd van de reacties, zonder de rest van elk signaal.
+  reactionSignals(sessionId) {
+    return this.db.prepare(
+      "SELECT type, reaction, received_at FROM signals WHERE session_id = ? AND type IN ('heart', 'bored', 'emoji') ORDER BY id"
+    ).all(Number(sessionId || 0)).map((row) => ({
+      type: String(row.type || ""),
+      reaction: row.reaction ? String(row.reaction) : null,
+      receivedAt: String(row.received_at || ""),
+    }));
+  }
+
   createPoll({ sessionId, question, options, durationSeconds, createdBy = "admin", now = nowIso() } = {}) {
     this.closeActivePoll(sessionId, { reason: "replaced", now });
     const insert = this.db.prepare(

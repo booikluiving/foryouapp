@@ -632,8 +632,8 @@ class AudienceService extends EventEmitter {
     const session = this.getActiveSession();
     if (!session || !ronde.start) return ronde;
     const vanaf = Date.parse(ronde.start);
-    for (const signal of this.store.readSignals({ sessionId: session.id })) {
-      if (!signal || !signal.reaction || !["heart", "bored", "emoji"].includes(String(signal.type || ""))) continue;
+    for (const signal of this.store.reactionSignals(session.id)) {
+      if (!signal.reaction) continue;
       if (Date.parse(signal.receivedAt) < vanaf) continue;
       ronde.emoji[signal.reaction] = Number(ronde.emoji[signal.reaction] || 0) + 1;
     }
@@ -759,10 +759,9 @@ class AudienceService extends EventEmitter {
     const session = this.getActiveSession();
     this.reactionCounts = { heart: 0, bored: 0 };
     if (!session) return this.reactionCounts;
-    for (const signal of this.store.readSignals({ sessionId: session.id })) {
-      if (signal && signal.type === "heart") this.reactionCounts.heart += 1;
-      if (signal && signal.type === "bored") this.reactionCounts.bored += 1;
-    }
+    const counts = this.store.countSignalsByType(session.id);
+    this.reactionCounts.heart = Number(counts.heart || 0);
+    this.reactionCounts.bored = Number(counts.bored || 0);
     return this.reactionCounts;
   }
 
@@ -849,16 +848,16 @@ class AudienceService extends EventEmitter {
       entry.commentPoints += settings.engagementCommentPoints;
     }
 
-    for (const signal of this.store.readSignals({ sessionId: session.id })) {
-      if (!signal || !["heart", "bored"].includes(String(signal.type || ""))) continue;
+    // Per afzender opgeteld in de database (dit draait bij elke admin-stand, een paar keer per seconde).
+    for (const sender of this.store.reactionTotalsBySender(session.id)) {
       const entry = ensureEntry({
-        clientKey: signal.clientKey,
+        clientKey: sender.clientKey,
         name: "Anoniem",
-        isBot: signal.isBot,
-        activityAt: signal.receivedAt,
+        isBot: sender.isBot,
+        activityAt: sender.lastAt,
       });
-      entry.emojiCount += 1;
-      entry.emojiPoints += ENGAGEMENT_EMOJI_POINTS;
+      entry.emojiCount += sender.count;
+      entry.emojiPoints += ENGAGEMENT_EMOJI_POINTS * sender.count;
     }
 
     const top = Array.from(entries.values())
