@@ -652,6 +652,11 @@ class AudienceStore {
       .all(Number(sessionId || 0), String(clientKey || "")).map((r) => Number(r.message_id));
   }
 
+  laatsteChatMessageId() {
+    const row = this.db.prepare("SELECT MAX(id) AS id FROM chat_messages").get();
+    return Number(row && row.id || 0);
+  }
+
   recentChatMessages({ sessionId, limit = 80, status } = {}) {
     const safeLimit = Math.max(1, Math.min(240, Number(limit || 80)));
     const rows = status

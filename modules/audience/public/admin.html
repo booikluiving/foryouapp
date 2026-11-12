@@ -604,6 +604,7 @@
           <button id="openStageBtn" type="button">Open stage</button>
           <button id="testEmojiBtn" type="button">Test emoji</button>
           <button id="herlaadPodiumBtn" type="button">Podium herladen</button>
+          <button id="wisChatBtn" type="button">Chat wissen</button>
         </div>
         <div class="row">
           <label class="rememberRow"><input id="stageShowQr" type="checkbox" />QR</label>
@@ -1760,6 +1761,7 @@
         window.open(els.stageUrl.value, "_blank", "noopener");
       });
       document.getElementById("testEmojiBtn").addEventListener("click", () => runAction("/audience/admin/stage/test-emoji", {}, "Test emoji verstuurd."));
+      document.getElementById("wisChatBtn").addEventListener("click", () => runAction("/audience/admin/chat/wis", {}, "Chat gewist."));
       document.getElementById("herlaadPodiumBtn").addEventListener("click", () => runAction("/audience/admin/stage/herlaad", {}, "Podiumpagina's herladen."));
       for (const control of [
         els.stageShowQr, els.stageShowChat, els.stageShowEmojis, els.stageShowLeaderboard, els.stageBackground,

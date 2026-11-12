@@ -1206,6 +1206,19 @@
         return true;
       }
 
+      // Chat leeg (RESET RUN). Was de telefoon even weg, dan ziet hij het bij het herverbinden.
+      let chatGewistTot = null;
+      function wisChatFeed() {
+        chatLogEntries.length = 0;
+        chatEntryKeys.clear();
+        renderChatFeed();
+      }
+      function volgChatGewist(tot) {
+        const nieuw = Number(tot) || 0;
+        if (chatGewistTot !== null && nieuw > chatGewistTot) wisChatFeed();
+        if (chatGewistTot === null || nieuw > chatGewistTot) chatGewistTot = nieuw;
+      }
+
       function appendChat(line, options = {}) {
         const text = String(line || "").trim();
         if (!text) return false;
@@ -2793,6 +2806,7 @@
             const msg = JSON.parse(ev.data);
             if (msg.type === "hello") {
               if (Number(msg.sessionId || 0) !== likeSessieId) laadMijnLikes(msg.sessionId);
+              volgChatGewist(msg.chatGewistTot);
               observeServerInstanceId(msg.serverInstanceId, "ws_hello");
               applyBuildLabel(msg.buildVersion, msg.buildLabel, "ws_hello");
               noteServerSeen();
@@ -2803,6 +2817,12 @@
                 faseNu = msg.fase.fase === "scene" ? "scene" : "tussen";
                 renderInteractionMode();
               }
+              return;
+            }
+            if (msg.type === "chat_reset") {
+              chatGewistTot = Number(msg.tot) || 0;
+              wisChatFeed();
+              noteServerSeen();
               return;
             }
             if (msg.type === "comment_likes") {
