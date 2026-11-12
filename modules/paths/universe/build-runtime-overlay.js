@@ -152,12 +152,7 @@ function buildRuntimeOverlay(view, stemming) {
   // startscènes zijn dan gelijk. Pas een gekozen scène (de winnaar) licht op als volgende.
   // Dat geldt voor elke startscène: zolang de run nog startscènes moet spelen, kiest het publiek.
   const begin = !currentId && (played.size === 0 || !!(view.startPhase && view.startPhase.active));
-  // Uitzondering: is er al een scène gespeeld en loopt er geen stemming, dan toont het scherm de keuze
-  // van het padensysteem. Start iemand daarna toch een stemming, dan verdwijnt die keuze weer.
-  const stemBezig = !!(stemming && stemming.showRunId && view.showRunId && stemming.showRunId === view.showRunId
-    && (stemming.actief || (stemming.uitslag && !played.has(sceneIdVan(stemming.uitslag)))));
-  const startKeuze = begin && played.size > 0 && !stemBezig;
-  const toonPrepared = preparedId && (!begin || prepared.reason === "operator_chosen" || startKeuze);
+  const toonPrepared = preparedId && (!begin || prepared.reason === "operator_chosen");
 
   let stem = null;
   if (stemming && Array.isArray(stemming.keuzes) && stemming.keuzes.length
@@ -181,7 +176,7 @@ function buildRuntimeOverlay(view, stemming) {
     summary: { hasActiveRun: true },
     currentScene: currentId ? { sceneId: currentId } : null,
     playedSceneIds: [...played],
-    preparedNextScenes: toonPrepared ? [{ sceneId: preparedId, start: startKeuze && prepared.reason !== "operator_chosen", keuze: keuzeVoor(view, prepared, preparedId), omgeving: omgevingVoor(view) }] : [],
+    preparedNextScenes: toonPrepared ? [{ sceneId: preparedId, keuze: keuzeVoor(view, prepared, preparedId), omgeving: omgevingVoor(view) }] : [],
     availableScenes: metStatus("available").filter((id) => !played.has(id)).map((sceneId) => ({ sceneId })),
     blockedSceneIds: metStatus("blocked"),
     lockedSceneIds: metStatus("locked"),

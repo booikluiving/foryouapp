@@ -354,8 +354,6 @@
     // Ingebed in het scherm van inloop en loading: even wachten na een scène (tellingen), waarom-blok hoger.
     const REGIE_NA_SCENE = Math.max(0, Number(REGIE_OPTIES.get("naScene")) || 0);
     const REGIE_BINNEN_TITEL = REGIE_OPTIES.get("binnenTitel") !== "0";
-    // Bij een startscène zonder stemming wacht het scherm even met kiezen: er kan nog een stemming komen.
-    const REGIE_START_WACHT = 6000;
     const REGIE_ZOOM = 60;
     const REGIE_DRAAI = Math.PI * 0.8;
     const regie = {
@@ -3749,13 +3747,6 @@
       const gen = regie.gen;
       const kandidaten = [...regie.getoond.rel].filter((id) => !doel.played.has(id));
       const zichtbaarKiezen = !doel.cur && doel.stemWinnaar !== wil && kandidaten.length > 1 && kandidaten.includes(wil);
-      const klaargezet = ((model.runtime.raw && model.runtime.raw.preparedNextScenes) || []).find((scene) => Number(scene.sceneId) === Number(wil));
-      if (!doel.cur && klaargezet && klaargezet.start) {
-        await regieWacht(REGIE_START_WACHT);
-        if (gen !== regie.gen) return;
-        const nu = regieStand(regie.doel);
-        if (!nu || (nu.cur || nu.next) !== wil) return;
-      }
       if (zichtbaarKiezen) await regieRoulette(kandidaten, wil);
       if (gen !== regie.gen) return;
       regie.gekozen = wil;
