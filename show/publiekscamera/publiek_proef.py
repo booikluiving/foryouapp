@@ -154,7 +154,7 @@ class TiledVision:
                 if not dup(merged["persons"], b):
                     merged["persons"].append(b)
             for p in o["poses"]:
-                q = {k: [fx(x0, v[0]), v[1], v[2]] for k, v in p.items()}
+                q = {k: ([fx(x0, v[0]), v[1], v[2]] if len(v) == 3 else v) for k, v in p.items()}
                 anchor = q.get("neck") or next(iter(q.values()))
                 if not any(abs((m.get("neck") or next(iter(m.values())))[0] - anchor[0]) < 0.01 and
                            abs((m.get("neck") or next(iter(m.values())))[1] - anchor[1]) < 0.03 for m in merged["poses"]):
