@@ -422,6 +422,15 @@ async function main() {
   await updateOrderSettings(state, clients, { randomizeEqualScores: true });
   assert.equal(state.orderSettings.randomizeEqualScores, true);
   assert.equal(state.preparedNext.situationId, preparedBeforeOrderToggle, "order toggle must not replace preparedNext");
+  await updateOrderSettings(state, clients, { startSceneCount: 2 });
+  assert.equal(state.orderSettings.startSceneCount, 2);
+  assert.equal(state.orderSettings.randomizeEqualScores, true, "een deel van de instellingen wijzigen laat de rest staan");
+  assert.deepEqual(
+    await require("../run-control/state-store").readSavedOrderSettings(),
+    { startSceneCount: 2 },
+    "alleen het aantal startscènes blijft bewaard voor de volgende run"
+  );
+  await updateOrderSettings(state, clients, { startSceneCount: 3 });
 
   assert.equal(algorithmInitPayloads.length, 1, "Runtime may initialize Algorithm with an existing run id");
   assert.equal(algorithmInitPayloads[0].showRunId, state.showRunId);
