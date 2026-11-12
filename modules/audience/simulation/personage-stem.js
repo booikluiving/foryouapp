@@ -50,20 +50,71 @@ async function haalPersonages({ fetchImpl = fetch } = {}) {
     }));
 }
 
-function bouwBerichten(personage, { scene = "", chat = [], onderwerp = "" } = {}) {
+function kies(lijst, rng) {
+  return lijst[Math.min(lijst.length - 1, Math.floor(rng() * lijst.length))];
+}
+
+// Per bericht wordt hier gedobbeld waar het over gaat, hoe lang het is en hoeveel karakter erin zit.
+// Dat geeft meer afwisseling dan het model zelf laten kiezen.
+function kiesOpdracht(personage, { scene, chat, rng }) {
+  const anderen = chat.slice(-6).filter((item) => item.naam && item.naam !== personage.naam);
+  const worp = rng();
+  let waarover;
+  if (scene && worp < 0.45) {
+    waarover = "Reageer op één concreet moment of detail uit het filmpje. Vat het niet samen.";
+  } else if (anderen.length && worp < 0.8) {
+    const doel = kies(anderen, rng);
+    waarover = `Reageer op wat ${doel.naam} net schreef ("${doel.tekst.slice(0, 120)}"). Geef antwoord, wees het oneens, of maak er een grap over. Je mag de naam noemen, hoeft niet.`;
+  } else {
+    waarover = "Zeg iets wat los staat van het filmpje: wat je nu doet, denkt of wilt, of iets over de zaal of de avond.";
+  }
+  const lengte = kies([
+    "Hooguit 4 woorden.",
+    "Hooguit 4 woorden.",
+    "Hooguit 9 woorden.",
+    "Hooguit 9 woorden.",
+    "Hooguit 9 woorden.",
+    "Hooguit 15 woorden.",
+  ], rng);
+  const karakter = rng() < 0.25
+    ? "Dit keer mag je karakter er dik bovenop liggen: iets wat alleen jij zou zeggen."
+    : "Dit keer ben je gewoon een kijker. Je karakter zit alleen in je toon en woordkeus, niet in waar je het over hebt.";
+  return [waarover, lengte, karakter].join(" ");
+}
+
+function bouwBerichten(personage, { scene = null, chat = [], onderwerp = "", eerder = [], rng = Math.random } = {}) {
+  const film = typeof scene === "string" ? { titel: scene } : (scene || null);
+  const heeftFilm = Boolean(film && film.titel);
+  const speeldeMee = heeftFilm && (film.personages || []).includes(personage.naam);
   const systeem = [
-    `Je bent ${personage.naam}, een personage uit de voorstelling For_You. Je zit tussen het publiek en typt mee in de live chat op je telefoon.`,
+    `Je bent ${personage.naam}. Je zit in de zaal bij For_You en typt op je telefoon mee in de live chat. Op het grote scherm is net een filmpje vertoond; iedereen in de chat heeft hetzelfde gezien.`,
     personage.beschrijving ? `Wie je bent:\n${personage.beschrijving}` : "",
-    "Schrijf precies één chatbericht van hooguit 12 woorden, in het Nederlands, zoals iemand snel op een telefoon typt.",
-    "Blijf in je karakter en reageer op de scène of op wat er in de chat staat. Herhaal geen eerder bericht.",
-    "Geef alleen het bericht: geen naam ervoor, geen aanhalingstekens, geen uitleg.",
-    "Grof taalgebruik alleen als het bij jouw beschrijving hoort. Nooit discriminerende scheldwoorden over afkomst, geloof, geaardheid of handicap.",
+    [
+      "Zo schrijf je:",
+      "- Als een echt mens in een groepschat: kort, slordig, spreektaal. Kleine letters mag, punt aan het eind hoeft niet, af en toe één emoji.",
+      "- Zeg nooit wie of wat je bent. Dus niet \"als arts zeg ik\" of \"ik als hond\". De anderen kennen je al; laat het merken aan hoe je praat.",
+      "- Heb een mening. Liever flauw, bot, verward of jaloers dan beleefd en enthousiast.",
+      "- Geen uitroepen als \"wat een scène\", \"geweldig\" of \"prachtig\", geen hashtags, geen vraag aan iedereen, geen uitleg van je eigen grap.",
+      "- Verzin niets over het filmpje wat er niet in zat.",
+      "- Grof taalgebruik alleen als het bij jou hoort. Nooit discriminerende scheldwoorden over afkomst, geloof, geaardheid of handicap.",
+    ].join("\n"),
+    "Geef alleen het bericht: één regel, geen naam ervoor, geen aanhalingstekens.",
   ].filter(Boolean).join("\n\n");
   const regels = chat.slice(-12).map((item) => `${item.naam}: ${item.tekst}`);
+  const filmTekst = heeftFilm
+    ? [
+      `Het filmpje van zojuist: "${film.titel}"${film.omgeving ? ` (${film.omgeving})` : ""}.`,
+      film.verloop ? `Wat er gebeurde: ${film.verloop}` : "",
+      (film.personages || []).length ? `Wie erin zaten: ${film.personages.join(", ")}.` : "",
+      speeldeMee ? "Jij zat er zelf in. Je kijkt nu terug op je eigen optreden." : "",
+    ].filter(Boolean).join("\n")
+    : "Er is nog geen filmpje vertoond; iedereen wacht tot het begint.";
   const gebruiker = [
-    scene ? `Laatste scène: ${scene}` : "",
-    onderwerp ? `Onderwerp: ${onderwerp}` : "",
+    filmTekst,
+    onderwerp ? `Waar de avond over gaat: ${onderwerp}` : "",
     regels.length ? `Chat tot nu toe:\n${regels.join("\n")}` : "De chat is nog leeg.",
+    eerder.length ? `Dit schreef je zelf al, herhaal het niet en begin anders:\n${eerder.map((regel) => `- ${regel}`).join("\n")}` : "",
+    `Opdracht voor dit bericht: ${kiesOpdracht(personage, { scene: heeftFilm ? film : null, chat, rng })}`,
     `Jouw bericht als ${personage.naam}:`,
   ].filter(Boolean).join("\n\n");
   return [
@@ -77,6 +128,8 @@ function maakSchoon(tekst, naam = "") {
   let regel = String(tekst || "").split(/\r?\n/).map((deel) => deel.trim()).find(Boolean) || "";
   if (naam && regel.toLowerCase().startsWith(`${naam.toLowerCase()}:`)) regel = regel.slice(naam.length + 1).trim();
   regel = regel.replace(/^["'“”‘’«»]+|["'“”‘’«»]+$/g, "").trim();
+  // Alleen de eigen naam is geen bericht.
+  if (naam && regel.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "") === naam.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")) return "";
   return regel.slice(0, MAX_TEKENS);
 }
 
@@ -111,7 +164,7 @@ function maakPersonageStem({ fetchImpl = fetch, env = process.env } = {}) {
           model,
           messages: bouwBerichten(personage, context),
           max_tokens: 60,
-          temperature: 1,
+          temperature: 1.2,
           thinking: { type: "disabled" },
         }),
       });

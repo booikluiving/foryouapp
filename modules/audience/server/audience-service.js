@@ -679,10 +679,29 @@ class AudienceService extends EventEmitter {
     // Runtime onbereikbaar: laatste stand houden.
     if (!result || !result.ok || !result.state) return this.getFase();
     this.volgRun(result.state);
+    this.onthoudScene(result.state);
     const active = result.state.activeSituation;
     return this.setFase(active
       ? { fase: "scene", titel: active.title, situationRunId: active.situationRunId || active.situationId || "actief" }
       : { fase: "tussen" });
+  }
+
+  // Wat het publiek het laatst zag (of nu ziet): titel, verloop, omgeving en wie erin speelden.
+  onthoudScene(state = {}) {
+    const runs = Array.isArray(state.situationRuns) ? state.situationRuns : [];
+    const laatste = runs[runs.length - 1];
+    const bron = (laatste && laatste.resolved) || null;
+    if (!bron) { this.laatsteScene = null; return; }
+    this.laatsteScene = {
+      titel: String(bron.title || laatste.title || "").trim(),
+      verloop: String(bron.promptText || "").trim().slice(0, 700),
+      omgeving: String((bron.environment && bron.environment.name) || "").trim(),
+      personages: (bron.characters || []).map((item) => String((item && item.name) || "").trim()).filter(Boolean),
+    };
+  }
+
+  laatsteSceneVoorPersonages() {
+    return this.laatsteScene || null;
   }
 
   // Reset van de run, langs welke weg ook (Stream Deck, operator, runtime): de run die liep is weg.
