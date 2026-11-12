@@ -24,24 +24,26 @@
         background: #000;
         transform-origin: 0 0;
       }
-      /* In de ster: het beeld van de omgeving van de volgende scène, met eronder de laatste regels van het script. */
+      /* Beeld van de omgeving van de volgende scène: klein linksboven, even groot als de QR-code.
+         De achtergrond van een omgeving is drie schermen breed; hier staat alleen het middelste deel. */
       #beeld {
         position: absolute;
-        left: 170px;
-        top: 300px;
-        width: 740px;
-        height: 740px;
-        border-radius: 50%;
+        left: 56px;
+        top: 56px;
+        width: 218px;
+        height: 218px;
+        border-radius: 14px;
         overflow: hidden;
-        border: 3px solid rgba(255, 248, 214, 0.55);
-        box-shadow: 0 0 140px rgba(180, 232, 200, 0.4);
         background: #050813;
       }
       #beeld[hidden] { display: none; }
       #beeld img, #beeld video {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
+        position: absolute;
+        left: -100%;
+        top: 50%;
+        width: 300%;
+        height: auto;
+        transform: translateY(-50%);
         display: block;
       }
       #script {
@@ -199,7 +201,7 @@
       // Het universum (padendienst, poort 3022) vult het scherm en speelt de reeks: stemmen of kiezen,
       // inzoomen, en na elke scène uitzoomen en nieuwe scènes laten vrijkomen. Het meldt waar het is.
       const NA_SCENE_MS = 6000; // zo lang staan de tellingen van de gespeelde scène in beeld
-      el("universum").src = `${location.protocol}//${location.hostname}:3022/universe/stage.html?naScene=${NA_SCENE_MS}&waaromOnder=33&binnenTitel=0`;
+      el("universum").src = `${location.protocol}//${location.hostname}:3022/universe/stage.html?naScene=${NA_SCENE_MS}&binnenTitel=0`;
       let universum = null, statsWeg = null, statsAan = false;
       // Vangnet: meldt het universum zich niet, dan staat het genereren gewoon in beeld.
       let universumStil = setTimeout(() => { universum = { stil: true }; zetLagen(); }, 12000);
