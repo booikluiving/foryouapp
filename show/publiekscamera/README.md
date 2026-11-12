@@ -46,3 +46,16 @@ Overlayversie `publiek_proef.py`:
 | medium-stream 2560×720 | ± 0,2 kern | ± 0,3 GB | mist ze |
 
 GPU blijft ± 0 %: Apple Vision draait op de Neural Engine.
+
+## Rapport: hoeveel mensen, lachen, saai
+
+```bash
+/opt/homebrew/bin/python3 publiek_sensor.py --fase --log avond.jsonl --rapport
+/opt/homebrew/bin/python3 publiek_rapport.py avond.jsonl --per-minuut
+```
+
+Per seconde (alleen getallen): personen, gezichten, lachen, aandacht (kijkt naar voren), weg (kijkt opzij, |yaw| > 30°),
+omlaag (hoofd voorover, pitch > 20°), ogen dicht, saai (weg, omlaag of ogen dicht), handen omhoog, klappen, beweging.
+`--fase` leest fase en scènetitel uit de publieksdienst (alleen lezen), zodat het rapport per scène kan.
+Rapport: totaal, per scène en per minuut; percentages zijn een deel van de gezichten, `#` is het aantal momenten.
+Drempels zijn voorlopig: nog niet geijkt met mensen in de zaal.

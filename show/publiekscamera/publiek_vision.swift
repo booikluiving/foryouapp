@@ -127,13 +127,14 @@ while running {
         return Double(m) / Double(n)
     }
 
-    var faceBoxes: [CGRect] = [], faceConf: [Float] = [], personBoxes: [CGRect] = []
+    var faceBoxes: [CGRect] = [], faceConf: [Float] = [], faceAngles: [[Double]] = [], personBoxes: [CGRect] = []
     var poses: [[String: [Double]]] = []
     var poseAnchors: [CGPoint] = []
 
     for (roi, tile) in zip(rois, tileBuffers) {
         let handler = VNImageRequestHandler(cvPixelBuffer: tile, options: [:])
         let faceReq = VNDetectFaceRectanglesRequest()
+        faceReq.revision = VNDetectFaceRectanglesRequestRevision3   // geeft ook pitch (hoofd omlaag/omhoog)
         let humanReq = VNDetectHumanRectanglesRequest()
         humanReq.upperBodyOnly = false
         let poseReq = VNDetectHumanBodyPoseRequest()
@@ -145,7 +146,12 @@ while running {
 
         for f in faceReq.results ?? [] {
             let b = full(f.boundingBox, roi)
-            if !isDup(faceBoxes, b) { faceBoxes.append(b); faceConf.append(f.confidence) }
+            if !isDup(faceBoxes, b) {
+                faceBoxes.append(b); faceConf.append(f.confidence)
+                // graden; yaw = opzij kijken, pitch = omlaag/omhoog
+                let deg = { (v: NSNumber?) -> Double in v.map { (($0.doubleValue * 180 / .pi) * 10).rounded() / 10 } ?? 0 }
+                faceAngles.append([deg(f.yaw), deg(f.pitch), deg(f.roll)])
+            }
         }
         for h in humanReq.results ?? [] {
             let b = full(h.boundingBox, roi)
@@ -173,16 +179,17 @@ while running {
         }
     }
 
-    // Glimlach: alleen een klein uitsnede rond elk gezicht (kopie van een paar KB) naar CIDetector.
-    func smileAt(_ b: CGRect) -> Bool {
-        if skip.contains("smile") { return false }
+    // Glimlach en ogen dicht: alleen een kleine uitsnede rond elk gezicht (kopie van een paar KB) naar CIDetector.
+    // Uitkomst: (glimlach, ogen dicht, gezicht gevonden in de uitsnede)
+    func smileAt(_ b: CGRect) -> (Bool, Bool, Bool) {
+        if skip.contains("smile") { return (false, false, false) }
         let pad = 0.4
         let x0 = max(0, Int((b.minX - b.width * pad) * CGFloat(W)))
         let x1 = min(W, Int((b.maxX + b.width * pad) * CGFloat(W)))
         let y0 = max(0, Int((1 - b.maxY - b.height * pad) * CGFloat(H)))   // linksboven
         let y1 = min(H, Int((1 - b.minY + b.height * pad) * CGFloat(H)))
         let cw = x1 - x0, chh = y1 - y0
-        guard cw > 8, chh > 8 else { return false }
+        guard cw > 8, chh > 8 else { return (false, false, false) }
         var data = Data(count: cw * chh * bpp)
         CVPixelBufferLockBaseAddress(pixel, .readOnly)
         data.withUnsafeMutableBytes { (d: UnsafeMutableRawBufferPointer) in
@@ -193,14 +200,16 @@ while running {
         CVPixelBufferUnlockBaseAddress(pixel, .readOnly)
         let img = CIImage(bitmapData: data, bytesPerRow: cw * bpp, size: CGSize(width: cw, height: chh),
                           format: gray ? .L8 : .BGRA8, colorSpace: gray ? CGColorSpaceCreateDeviceGray() : CGColorSpaceCreateDeviceRGB())
-        let feats = (smileDetector.features(in: img, options: [CIDetectorSmile: true]) as? [CIFaceFeature]) ?? []
-        return feats.contains { $0.hasSmile }
+        let feats = (smileDetector.features(in: img, options: [CIDetectorSmile: true, CIDetectorEyeBlink: true]) as? [CIFaceFeature]) ?? []
+        guard let f = feats.max(by: { $0.bounds.width < $1.bounds.width }) else { return (false, false, false) }
+        return (f.hasSmile, f.leftEyeClosed && f.rightEyeClosed, true)
     }
 
     var faces: [[String: Any]] = []
-    for (b, c) in zip(faceBoxes, faceConf) {
-        let smile = smileAt(b)
-        faces.append(["b": box(b), "smile": smile, "c": r(CGFloat(c))])
+    for (i, b) in faceBoxes.enumerated() {
+        let (smile, eyesClosed, seen) = smileAt(b)
+        faces.append(["b": box(b), "smile": smile, "eyes": seen ? (eyesClosed ? "dicht" : "open") : "?",
+                      "c": r(CGFloat(faceConf[i])), "yaw": faceAngles[i][0], "pitch": faceAngles[i][1], "roll": faceAngles[i][2]])
     }
     let out: [String: Any] = [
         "faces": faces, "persons": personBoxes.map(box), "poses": poses,
