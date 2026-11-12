@@ -22,7 +22,8 @@ const view = {
   showRunId: "show-test",
   activeSituation: null,
   catalogPreview: { situations: [...situaties, { id: "situation:9", title: "Dicht" }] },
-  pathEvaluation: { items: [...situaties.map((s) => ({ situationId: s.id, status: "available", pathAvailable: true })), { situationId: "situation:9", status: "locked" }] },
+  pathEvaluation: { items: [...situaties.map((s) => ({ situationId: s.id, status: "available", pathAvailable: true, isPathStart: true })), { situationId: "situation:9", status: "locked" }] },
+  startPhase: { required: 3, played: 0, open: 4, active: true },
 };
 const klaargezet = [];
 const cues = [];
@@ -138,7 +139,7 @@ let child, logs = "";
     assert.ok(["situation:3", "situation:39"].includes(klaargezet[2]));
     ok("gelijke stand: geloot tussen de twee koplopers, stemming sloot vanzelf");
 
-    // 3b. Startfase: alleen startscènes in de stemming; daarna weer alles wat vrij is
+    // 3b. Alleen startscènes in de stemming; na de startfase kan er niet meer gestemd worden
     await sleep(300);
     const alleItems = view.pathEvaluation.items;
     view.pathEvaluation = { items: alleItems.map((item) => ({ ...item, isPathStart: ["situation:2", "situation:6"].includes(item.situationId) })) };
@@ -148,8 +149,9 @@ let child, logs = "";
     assert.deepEqual(s.poll.options, ["Scène 2", "Scène 6"]);
     view.startPhase = { required: 3, played: 3, open: 2, active: false };
     s = await post("/audience/admin/start-stemming/start", { durationSeconds: 10, minVotes: 0 });
-    assert.equal(s.poll.options.length, 4);
-    ok("startfase: stemming alleen over startscènes, daarna over alles wat vrij is");
+    assert.equal(s.status, 409); assert.equal(s.error, "startfase_voorbij");
+    view.startPhase = { required: 3, played: 1, open: 2, active: true };
+    ok("alleen startscènes in de stemming; na de startfase opent de stemming niet");
 
     // 4. Geen run of lopende scène: weigeren
     view.activeSituation = { situationId: "situation:2" };
