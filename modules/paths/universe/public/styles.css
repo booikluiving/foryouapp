@@ -1541,96 +1541,14 @@ body.stage-output {
 }
 
 /* Regie op het zaalscherm: ontgrendelen, kiezen, inzoomen en uitzoomen. */
-.network-edge.regie-tekent {
-  opacity: 1;
-  stroke: rgba(180, 232, 200, 0.95);
-  stroke-dasharray: 1 1;
-}
-
-.regie-ring {
-  fill: none;
-  stroke: var(--highlight);
-  stroke-width: 2;
-  pointer-events: none;
-}
-
-.network-label.regie-label {
-  font-size: 15px;
-  fill: #fff8d6;
-}
-
-.regie-nieuw .network-star {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: regie-pop 0.7s ease-out var(--regie-vertraging, 0ms) both;
-}
-
-.regie-golf {
-  fill: none;
-  stroke: #fff8d6;
-  stroke-width: 1.2;
-  pointer-events: none;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: regie-golf 0.8s ease-out var(--regie-vertraging, 0ms) both;
-}
-
-@keyframes regie-pop {
-  from { transform: scale(2.6); }
-  to { transform: scale(1); }
-}
-
-@keyframes regie-golf {
-  from { transform: scale(1); opacity: 1; }
-  to { transform: scale(5); opacity: 0; }
-}
-
-.regie-orb {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.regie-focus .regie-orb {
-  opacity: 1;
-}
-
-.regie-focus .network-star {
-  opacity: 0;
-  filter: none;
-}
-
-.sky.regie-duikt,
-.sky.regie-terug {
+/* Podiumweergave: de netwerkkaart op canvas. De camera schuift en schaalt het doek als één vlak. */
+.podium-doek {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 50%;
   will-change: transform;
-}
-
-.sky.regie-duikt .star,
-.sky.regie-terug .star {
-  filter: none;
-}
-
-.sky.regie-duikt .network-edge-layer,
-.sky.regie-duikt .network-node-wrap:not(.regie-focus) {
-  opacity: 0;
-  transition: opacity 0.8s ease-in;
-}
-
-.sky.regie-weg .network-edge-layer,
-.sky.regie-weg .network-node-wrap:not(.regie-focus) {
-  display: none;
-}
-
-.sky.regie-duikt .network-label {
-  opacity: 0;
-}
-
-.sky.regie-terug .network-edge-layer,
-.sky.regie-terug .network-node-wrap {
-  transition: opacity 0.8s ease-out;
-}
-
-.sky.regie-binnen-vol .network-camera-layer {
-  display: none;
 }
 
 .regie-binnen {

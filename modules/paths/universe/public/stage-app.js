@@ -53,6 +53,7 @@
   function buildRenderer() {
     state.renderer = Sky.createSkyRenderer({
       sky: $("sky"),
+      podium: true,
       stage: $("stage"),
       tooltip: $("hoverPanel"),
       infoPanel: null,
