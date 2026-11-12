@@ -90,7 +90,7 @@
         width: 1080px;
         height: 1920px;
         border: 0;
-        background: #000;
+        background: transparent;
       }
       /* Na een scène: de titel van de gespeelde scène op dezelfde plek, met de tellingen eronder. */
       #stats {
@@ -159,13 +159,15 @@
         pointer-events: none;
       }
       /* Het genereren (beeld en script) staat alleen in beeld als de camera in de gekozen ster zit. */
+      /* De onderdelen vervagen elk apart. Zou het hele blok vervagen, dan staat de operator-chat tijdens
+         het invloeien even als zwart vlak in beeld: zijn zwarte ondergrond valt alleen weg zolang hij
+         rechtstreeks over het universum ligt. */
       #gen {
         position: absolute;
         inset: 0;
-        opacity: 0;
-        transition: opacity 900ms ease;
       }
-      #gen.toon { opacity: 1; }
+      #gen > * { opacity: 0; transition: opacity 900ms ease; }
+      #gen.toon > * { opacity: 1; }
       #chatBak {
         position: absolute;
         left: 0;
@@ -294,7 +296,7 @@
 
       // De operator-chat: de pagina van de script-agent (poort 3027). De onderkant, met de nieuwste tekst,
       // staat in beeld; het vlak begint onder de titel.
-      el("scriptFrame").src = `${location.protocol}//${location.hostname}:3027/script-agent/operator/stage`;
+      el("scriptFrame").src = `${location.protocol}//${location.hostname}:3027/script-agent/operator/stage?doorzichtig=1`;
       function plaatsScript() {
         const top = Math.max(300, getal(settings.tussenScriptY, 230));
         const hoogte = Math.max(200, getal(settings.tussenScriptY, 230) + getal(settings.tussenScriptHoogte, 860) - top + 250);

@@ -1,5 +1,11 @@
 "use strict";
 
+// Ingebed in het scherm van inloop en loading (?doorzichtig=1): geen eigen ondergrond, zodat de tekst
+// direct over het universum staat.
+if (new URLSearchParams(window.location.search).get("doorzichtig") === "1") {
+  document.documentElement.style.setProperty("--stage-bg", "transparent");
+}
+
 const STAGE_W = 1080;
 const STAGE_H = 1920;
 const RECONNECT_MIN_MS = 500;
