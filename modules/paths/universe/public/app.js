@@ -343,7 +343,8 @@
     state.runtime = universePayload.runtime || null;
     state.runtimeSignature = runtimeSignature(state.runtime);
     renderModel();
-    if (RUNTIME_OVERLAY_ENABLED) startRuntimePolling();
+    // Altijd meebewegen met de voorstelling: deze pagina staat ook op het zaalscherm.
+    startRuntimePolling();
   }
 
   async function refreshRuntime() {
@@ -359,7 +360,8 @@
     if (state.runtimeTimer) window.clearInterval(state.runtimeTimer);
     state.runtimeTimer = window.setInterval(() => {
       refreshRuntime().catch(() => {
-        $("sourceStatus").textContent = "runtime fout";
+        const status = $("sourceStatus");
+        if (status) status.textContent = "runtime fout";
       });
     }, 1000);
   }
