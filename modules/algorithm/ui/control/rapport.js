@@ -22,6 +22,36 @@ function getal(value) {
   return (number > 0 ? "+" : "") + number.toLocaleString("nl-NL", { maximumFractionDigits: 1 });
 }
 
+function plat(value) {
+  return Number(value || 0).toLocaleString("nl-NL", { maximumFractionDigits: 2 });
+}
+
+// Eén kolom per scène: omhoog is positief, omlaag negatief.
+function verloop(target, scenes) {
+  target.replaceChildren();
+  if (!scenes.length) { target.append(leeg("Nog geen scènes gespeeld.")); return; }
+  const grootste = Math.max(...scenes.map((scene) => Math.abs(scene.score)), 0.01);
+  for (const scene of scenes) {
+    const hoogte = `${Math.max(2, (Math.abs(scene.score) / grootste) * 100)}%`;
+    target.append(el("div", { class: "verloop-kolom", title: `${scene.nr}. ${scene.title}` }, [
+      el("div", { class: "boven" }, scene.score >= 0 ? [el("b", { text: getal(scene.score) }), el("i", { style: `height:${hoogte}` })] : []),
+      el("div", { class: "onder" }, scene.score < 0 ? [el("i", { style: `height:${hoogte}` }), el("b", { text: getal(scene.score) })] : []),
+      el("span", { text: String(scene.nr) }),
+    ]));
+  }
+}
+
+function uitleg(target, weights) {
+  const regels = [
+    `Som per scène: elk hartje ${getal(weights.heart)}, elke verveeld ${getal(weights.bored)}, elk bericht ${getal(weights.message)}.`,
+    "Duur: een scène van 60 seconden telt 1 keer; een langere scène telt minder zwaar, een kortere zwaarder.",
+    "Publiek: de som wordt gedeeld door de wortel van het aantal kijkers, zodat een volle zaal niet vanzelf hoger scoort.",
+    `Verwachting voor een scène die nog komt: gemiddelde score van zijn labels × ${plat(weights.labelAffinity)} plus die van zijn personages × ${plat(weights.characterAffinity)}. Recente scènes wegen zwaarder.`,
+    `Daarbovenop: tot ${getal(weights.exploration)} voor personages die nog niet gezien zijn, en een aftrek (gewicht ${plat(weights.diversity)}) voor personages van net daarvoor.`,
+  ];
+  target.replaceChildren(...regels.map((regel) => el("div", { text: regel })));
+}
+
 function tijd(iso) {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
@@ -75,6 +105,8 @@ function sceneKaart(scene, grootste) {
     el("div", { class: "scene-chips" }, scene.labels.map((label) => el("span", { class: "fy-chip", text: label }))),
     el("div", { class: "scene-meta" }, meta.filter(Boolean).map((tekst) => el("span", { text: tekst }))),
     el("div", { class: "scene-meta" }, el("span", { text: scene.characters.join(", ") })),
+    scene.calculation ? el("div", { class: "scene-som", text:
+      `som ${getal(scene.calculation.raw)} × duur ${plat(scene.calculation.durationFactor)} × publiek ${plat(scene.calculation.audienceFactor)} = ${getal(scene.score)}` }) : null,
   ]);
 }
 
@@ -106,14 +138,24 @@ function render(report) {
   } else {
     conclusie.append(report.totals.scenes ? "Nog te weinig scènes voor een conclusie." : "Nog geen scènes gespeeld.");
   }
-  const tellers = [
-    [report.totals.scenes, "scènes"],
-    [report.totals.hearts, "hartjes"],
-    [report.totals.bored, "verveeld"],
-    [report.totals.messages, "berichten"],
-    [getal(report.totals.averageScore), "gemiddelde score"],
-  ];
-  $("tellers").replaceChildren(...tellers.map(([waarde, naam]) => el("span", {}, [el("strong", { text: String(waarde) }), naam])));
+  const stats = report.stats || {};
+  const tegel = (naam, waarde, extra) => el("div", { class: "tegel" }, [
+    el("span", { text: naam }),
+    el("strong", { text: String(waarde) }),
+    extra ? el("small", { text: extra, title: extra }) : null,
+  ]);
+  $("tellers").replaceChildren(
+    tegel("Scènes", report.totals.scenes, `${plat(stats.totalMinutes)} min gespeeld`),
+    tegel("Kijkers", plat(stats.averageViewers), "gemiddeld per scène"),
+    tegel("Hartjes", report.totals.hearts, `${plat(stats.heartsPerMinute)} per minuut`),
+    tegel("Verveeld", report.totals.bored, stats.heartShare == null ? "" : `${stats.heartShare}% van de reacties is een hartje`),
+    tegel("Berichten", report.totals.messages, ""),
+    tegel("Gemiddelde score", getal(report.totals.averageScore), ""),
+    tegel("Beste scène", stats.best ? getal(stats.best.score) : "–", stats.best ? `${stats.best.nr}. ${stats.best.title}` : ""),
+    tegel("Zwakste scène", stats.worst ? getal(stats.worst.score) : "–", stats.worst ? `${stats.worst.nr}. ${stats.worst.title}` : "")
+  );
+  verloop($("verloop"), report.scenes);
+  uitleg($("uitleg"), report.weights || {});
   balkRijen($("labels"), report.labels);
   balkRijen($("personages"), report.characters.slice(0, 12));
   const scenes = $("scenes");

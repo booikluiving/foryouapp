@@ -31,6 +31,22 @@
       .scene-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--fy-muted); font-size: 12px; }
       .scene-chips { display: flex; flex-wrap: wrap; gap: 5px; }
       .scene-lijst { display: grid; gap: 8px; }
+      .rapport-tegels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+      @media (max-width: 700px) { .rapport-tegels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      .tegel { border: 1px solid var(--fy-line); border-radius: var(--fy-radius); background: var(--fy-surface); padding: 9px 11px; display: grid; gap: 2px; min-width: 0; }
+      .tegel span { color: var(--fy-muted); font-size: 12px; }
+      .tegel strong { font-size: 20px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tegel small { color: var(--fy-muted); font-size: 12px; min-height: 1.3em; }
+      .verloop { display: flex; align-items: stretch; gap: 6px; height: 150px; }
+      .verloop-kolom { flex: 1 1 0; min-width: 0; max-width: 70px; display: grid; grid-template-rows: 1fr 1fr auto; text-align: center; font-size: 11px; color: var(--fy-muted); }
+      .verloop-kolom .boven { display: flex; flex-direction: column; justify-content: flex-end; border-bottom: 1px solid var(--fy-line-strong); }
+      .verloop-kolom .onder { display: flex; flex-direction: column; justify-content: flex-start; }
+      .verloop-kolom i { display: block; border-radius: 3px 3px 0 0; background: var(--fy-accent); }
+      .verloop-kolom .onder i { border-radius: 0 0 3px 3px; background: var(--fy-danger); }
+      .verloop-kolom b { font-variant-numeric: tabular-nums; color: var(--fy-ink); font-size: 11px; }
+      .scene-som { color: var(--fy-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+      .uitleg { display: grid; gap: 6px; font-size: 13px; max-width: 760px; }
+      .uitleg code { font-family: inherit; font-weight: 700; }
       .leeg { color: var(--fy-muted); font-size: 13px; }
       .verwacht-rij { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--fy-line); }
       .verwacht-rij:last-child { border-bottom: 0; }
@@ -60,7 +76,11 @@
     <main class="fy-main rapport-main">
       <section class="fy-panel">
         <p id="conclusie" class="rapport-conclusie"></p>
-        <div id="tellers" class="rapport-tellers"></div>
+        <div id="tellers" class="rapport-tegels"></div>
+      </section>
+      <section class="fy-panel">
+        <div class="fy-panel-header"><strong>Verloop</strong><span class="fy-eyebrow">score per scène, in speelvolgorde</span></div>
+        <div id="verloop" class="verloop"></div>
       </section>
       <div class="rapport-twee">
         <section class="fy-panel">
@@ -84,6 +104,10 @@
           <div id="verwachtLaag"></div>
         </section>
       </div>
+      <section class="fy-panel">
+        <div class="fy-panel-header"><strong>Zo komt de score tot stand</strong></div>
+        <div id="uitleg" class="uitleg"></div>
+      </section>
     </main>
     <script src="/algorithm/rapport.js"></script>
   </body>

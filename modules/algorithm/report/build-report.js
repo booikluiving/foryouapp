@@ -3,7 +3,12 @@
 // Publieksrapport: wat dit publiek van de gespeelde scènes vond, per scène, per label en per
 // personage, en wat het algoritme daardoor verwacht van de scènes die nog komen.
 
-const { signalCounts } = require("../scoring/score-engine");
+const {
+  audienceFactor,
+  durationFactor,
+  normalizeAlgorithmConfig,
+  signalCounts,
+} = require("../scoring/score-engine");
 
 function round(value, digits = 2) {
   const number = Number(value);
@@ -52,6 +57,8 @@ function buildAudienceReport(state = {}) {
   const labelNames = nameMap(catalog.labels);
   const characterNames = nameMap(catalog.characters);
   const observations = Array.isArray(state.observations) ? state.observations : [];
+  const config = normalizeAlgorithmConfig(state.config || {});
+  const weights = config.weights || {};
 
   const scenes = observations.map((observation, index) => {
     const situation = situations.get(observation.situationId) || {};
@@ -76,12 +83,34 @@ function buildAudienceReport(state = {}) {
       bored: counts.bored,
       messages: counts.messages,
       score: round(observation.observedScore),
+      heartsPerMinute: round(counts.hearts / (counts.durationSeconds / 60), 1),
+      // De som achter de score, zodat te zien is waar het getal vandaan komt.
+      calculation: {
+        raw: round((counts.hearts * Number(weights.heart)) + (counts.bored * Number(weights.bored)) + (counts.messages * Number(weights.message))),
+        durationFactor: round(durationFactor(counts.durationSeconds, config)),
+        audienceFactor: round(audienceFactor(counts.activeClients, config)),
+      },
       roomSound: sound,
     };
   });
 
   const runAverage = round(average(scenes.map((scene) => scene.score)));
   for (const scene of scenes) scene.versusAverage = round(scene.score - runAverage);
+
+  const totalSeconds = scenes.reduce((sum, scene) => sum + scene.durationSeconds, 0);
+  const totalHearts = scenes.reduce((sum, scene) => sum + scene.hearts, 0);
+  const totalBored = scenes.reduce((sum, scene) => sum + scene.bored, 0);
+  const byScore = scenes.slice().sort((a, b) => b.score - a.score);
+  const kort = (scene) => (scene ? { nr: scene.nr, title: scene.title, score: scene.score } : null);
+  const stats = {
+    totalMinutes: round(totalSeconds / 60, 1),
+    averageViewers: round(average(scenes.map((scene) => scene.viewers)), 0),
+    heartsPerMinute: totalSeconds ? round(totalHearts / (totalSeconds / 60), 1) : 0,
+    // Aandeel hartjes in alle hartjes en verveeld samen, in procenten.
+    heartShare: totalHearts + totalBored ? Math.round((totalHearts / (totalHearts + totalBored)) * 100) : null,
+    best: scenes.length > 1 ? kort(byScore[0]) : null,
+    worst: scenes.length > 1 ? kort(byScore[byScore.length - 1]) : null,
+  };
 
   const labels = groupRows(scenes, "labelIds", labelNames);
   const characters = groupRows(scenes, "characterIds", characterNames);
@@ -138,6 +167,7 @@ function buildAudienceReport(state = {}) {
       messages: scenes.reduce((sum, scene) => sum + scene.messages, 0),
       averageScore: runAverage,
     },
+    stats,
     conclusion,
     live,
     labels,
@@ -147,7 +177,7 @@ function buildAudienceReport(state = {}) {
       highest: forecast.slice(0, 5),
       lowest: forecast.length > 5 ? forecast.slice(-3).reverse() : [],
     },
-    weights: (state.config && state.config.weights) || null,
+    weights,
   };
 }
 

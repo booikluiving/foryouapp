@@ -56,5 +56,12 @@ assert.equal(report.scenes[1].versusAverage, -3);
 assert.deepEqual(report.forecast.highest.map((row) => row.title), ["Drie"], "gespeelde scènes en de scène die nu speelt staan niet in de verwachting");
 assert.equal(report.forecast.highest[0].fromLabels, 1);
 assert.equal(report.live.title, "Vier");
+assert.equal(report.stats.totalMinutes, 2);
+assert.equal(report.stats.heartsPerMinute, 7);
+assert.equal(report.stats.heartShare, 67);
+assert.equal(report.stats.best.title, "Een");
+assert.equal(report.stats.worst.title, "Twee");
+assert.deepEqual(report.scenes[0].calculation, { raw: 11.05, durationFactor: 1, audienceFactor: 0.32 });
+assert.equal(leeg.stats.heartShare, null);
 
 console.log("publieksrapport: ok");
