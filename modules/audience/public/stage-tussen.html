@@ -24,6 +24,31 @@
         background: #000;
         transform-origin: 0 0;
       }
+      /* Eén pagina voor het hele hoofdscherm. Krijgt de pagina de fase van TouchDesigner
+         (window.forYouFase), dan is ze buiten de scène dekkend en tijdens de scène doorzichtig, met
+         alleen de emoji en de ondertitel over het camerabeeld. Zonder dat signaal blijft ze het
+         scherm van inloop en loading, zoals altijd. */
+      html.een, html.een body, html.een #stage { background: transparent; }
+      #tussenlaag {
+        position: absolute;
+        inset: 0;
+        background: #000;
+        transition: transform 650ms cubic-bezier(0.22, 0.61, 0.36, 1);
+      }
+      body.scene #tussenlaag { transform: translateY(-100%); }
+      #ondertitel, #emoji {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+        border: 0;
+        background: transparent;
+        pointer-events: none;
+        visibility: hidden;
+      }
+      body.een #emoji { visibility: visible; }
+      body.scene #ondertitel { visibility: visible; }
       /* Beeld van de omgeving van de volgende scène: klein linksboven, even groot als de QR-code.
          Eén beeld per omgeving. Welke uitsnede staat per omgeving in omgevingsbeeld.json (universum). */
       #beeld {
@@ -197,6 +222,7 @@
   </head>
   <body>
     <div id="stage">
+     <div id="tussenlaag">
       <iframe id="universum" title="Universum" scrolling="no"></iframe>
       <div id="chatBak"></div>
       <div id="gen">
@@ -211,6 +237,9 @@
       </div>
       <div id="top" hidden></div>
       <div id="chat"></div>
+     </div>
+      <iframe id="ondertitel" title="Ondertitel" scrolling="no"></iframe>
+      <iframe id="emoji" title="Emoji" scrolling="no"></iframe>
     </div>
     <script src="/audience/vendor/qrcode-generator.min.js"></script>
     <script>
@@ -271,6 +300,60 @@
       }
       tekenQr().catch(() => {});
       setInterval(() => tekenQr().catch(() => {}), 5000);
+
+      // De fase komt van TouchDesigner: 0 inloop, 1 loading, 2 scène. Bij de scène schuift het scherm
+      // omhoog weg en blijven alleen de emoji en de ondertitel over het camerabeeld staan; daarna komt
+      // het van onderen terug. De laatste fase wordt onthouden, zodat een herladen pagina goed begint.
+      let inScene = false, eenGeladen = false, faseSinds = 0;
+      function eenLagen() {
+        if (eenGeladen) return;
+        eenGeladen = true;
+        el("emoji").src = "/audience/stage/emoji";
+        el("ondertitel").src = `${location.protocol}//${location.hostname}:3027/script-agent/teleprompter-parser/live-captions`;
+      }
+      window.forYouFase = (fase, direct) => {
+        const scene = Number(fase) === 2;
+        document.documentElement.classList.add("een");
+        document.body.classList.add("een");
+        eenLagen();
+        faseSinds = Date.now();
+        try { localStorage.setItem("for_you_fase", JSON.stringify({ fase: scene ? 2 : 1, at: faseSinds })); } catch (_err) {}
+        if (scene === inScene) return;
+        inScene = scene;
+        const laag = el("tussenlaag");
+        if (direct) laag.style.transition = "none";
+        if (scene) {
+          document.body.classList.add("scene");
+        } else {
+          // Terug uit de scène: van onderen het beeld in.
+          if (!direct) {
+            laag.style.transition = "none";
+            laag.style.transform = "translateY(100%)";
+            void laag.offsetHeight;
+            laag.style.transition = "";
+          }
+          document.body.classList.remove("scene");
+          laag.style.transform = "";
+        }
+        if (direct) { void laag.offsetHeight; laag.style.transition = ""; }
+      };
+      try {
+        const bewaard = JSON.parse(localStorage.getItem("for_you_fase") || "null");
+        if (bewaard && Date.now() - bewaard.at < 10000) window.forYouFase(bewaard.fase, true);
+      } catch (_err) {}
+      // Vangnet: geeft TouchDesigner de fase niet meer door, dan wordt de pagina weer gewoon het
+      // dekkende scherm van inloop en loading.
+      setInterval(() => {
+        if (!faseSinds || Date.now() - faseSinds < 10000) return;
+        faseSinds = 0;
+        inScene = false;
+        const laag = el("tussenlaag");
+        laag.style.transition = "none";
+        document.documentElement.classList.remove("een");
+        document.body.classList.remove("een", "scene");
+        void laag.offsetHeight;
+        laag.style.transition = "";
+      }, 2000);
 
       function pas() {
         const s = Math.min(window.innerWidth / W, window.innerHeight / H);
