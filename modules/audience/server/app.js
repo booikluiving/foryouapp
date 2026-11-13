@@ -438,6 +438,30 @@ function createAudienceApp(options = {}) {
   });
 
   // Stemmen op de startscène: opent de stemming met alle scènes die nu vrij zijn.
+  // Het zaalscherm meldt dat het klaar is voor een stemming (inloop, of het rapport is voorbij).
+  // In de startfase gaat de stemming dan vanzelf open: één keer per startscène. De operator kan
+  // hem eerder sluiten met STEM; anders sluit de timer hem.
+  let stemVanzelf = "";
+  app.post("/audience/stage/stemmen-mag", asyncRoute(async (_req, res) => {
+    const result = await fetchRuntimeView();
+    const state = result && result.ok ? result.state : null;
+    const nee = (reden) => res.json({ ok: true, geopend: false, reden });
+    if (!state || !state.showRunId || state.status !== "running") return nee("geen_run");
+    if (state.activeSituation) return nee("scene_loopt");
+    if (!state.startPhase || !state.startPhase.active) return nee("geen_startfase");
+    if (state.preparedNext && state.preparedNext.reason === "operator_chosen") return nee("al_gekozen");
+    if (service.getActivePollSnapshot()) return nee("poll_loopt");
+    const sleutel = `${state.showRunId}|${(state.playedSituations || []).length}`;
+    if (sleutel === stemVanzelf) return nee("al_geopend");
+    stemVanzelf = sleutel;
+    try {
+      await service.startStartStemming({});
+      return res.json({ ok: true, geopend: true });
+    } catch (err) {
+      return nee(err && err.message ? String(err.message) : "fout");
+    }
+  }));
+
   app.post("/audience/admin/start-stemming/start", async (req, res) => {
     try {
       const poll = await service.startStartStemming(req.body || {});
