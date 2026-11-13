@@ -193,6 +193,52 @@ function createSchrijver({ dir, catalogUrl, env = process.env, fetchImpl } = {})
     return { gesprek: [] };
   }
 
+  // ---- Kept scenes: what worked, for the whole team, with the prompts that made it ----
+  const keptPath = path.join(dir, "bewaard.json");
+
+  function readKept() {
+    try {
+      const list = JSON.parse(fs.readFileSync(keptPath, "utf8"));
+      return Array.isArray(list) ? list : [];
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+      return [];
+    }
+  }
+
+  function bewaard(email) {
+    return { bewaard: readKept().map((item) => ({ ...item, eigen: item.by === email })) };
+  }
+
+  async function bewaar(email, body = {}) {
+    const tekst = clean(body.tekst);
+    if (!tekst) throw new SchrijverFout(400, "leeg", "Er is geen scène om te bewaren.");
+    const list = readKept();
+    if (list.length >= 500) throw new SchrijverFout(409, "vol", "Er zijn al 500 scènes bewaard. Haal er eerst een paar weg.");
+    const settings = await service.readSettings();
+    const kop = tekst.match(/^#\s*(.+)$/m);
+    const item = {
+      id: `scene-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      titel: (kop ? kop[1] : tekst.split("\n")[0]).trim().slice(0, 120),
+      tekst,
+      vraag: clean(body.vraag),
+      systemPrompt: settings.systemPrompt,
+      promptTemplate: settings.promptTemplate,
+      model: settings.model,
+      by: email,
+      at: new Date().toISOString(),
+    };
+    writeFileAtomic(keptPath, `${JSON.stringify([item, ...list], null, 2)}\n`);
+    return bewaard(email);
+  }
+
+  function verwijder(email, id) {
+    const list = readKept();
+    if (!list.some((item) => item.id === id)) throw new SchrijverFout(404, "onbekend", "Deze scène is er niet (meer).");
+    writeFileAtomic(keptPath, `${JSON.stringify(list.filter((item) => item.id !== id), null, 2)}\n`);
+    return bewaard(email);
+  }
+
   // ---- Show Mac ----
   function vrijgegeven() {
     return readState().vrijgegeven || null;
@@ -224,7 +270,7 @@ function createSchrijver({ dir, catalogUrl, env = process.env, fetchImpl } = {})
     }
   }
 
-  return { catalogus, chat, doorvoeren, klaarzetten, meldingVanShow, saveProef, stand, vanShow, vrijgegeven, wis };
+  return { bewaar, bewaard, catalogus, chat, doorvoeren, klaarzetten, meldingVanShow, saveProef, stand, vanShow, verwijder, vrijgegeven, wis };
 }
 
 module.exports = { SchrijverFout, createSchrijver };

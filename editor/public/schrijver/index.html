@@ -53,6 +53,16 @@
   #gesprek .antwoord.bezig::after { content: "█"; animation: knipper 1s steps(2) infinite; }
   #gesprek .meta { color: rgba(255, 255, 255, .4); font-size: 12px; margin: -16px 0 22px; }
   #gesprek .mis { color: #ff8a8a; }
+  #gesprek .meta button { font: inherit; color: #fff; border: 1px solid rgba(255, 255, 255, .5); padding: 1px 8px; margin-left: 10px; }
+  #gesprek .meta button:hover { background: #fff; color: #000; }
+  #gesprek .meta button:disabled { opacity: 1; border-color: transparent; padding-left: 0; }
+  #bewaard-deel { grid-column: 1 / -1; }
+  ul.bewaard { list-style: none; padding: 0; margin: 0; border-bottom: 1px solid var(--lijn); }
+  ul.bewaard > li { padding: 12px 0; border-top: 1px solid var(--lijn); }
+  ul.bewaard summary { cursor: pointer; font-size: 18px; }
+  ul.bewaard summary .zacht { font-size: 14px; margin-left: 10px; }
+  ul.bewaard pre { font: 14px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0; max-width: 860px; }
+  ul.bewaard details details summary { font-size: 14px; color: var(--zacht); }
   @keyframes knipper { 50% { opacity: 0; } }
   #invoer { margin-top: 10px; font: 14px/1.5 var(--mono); min-height: 70px; }
 </style>
@@ -107,6 +117,12 @@
       <button type="button" id="verstuur">Verstuur</button>
       <span class="zacht klein">Eerdere scènes in dit gesprek gaan mee, net als in de show.</span>
     </div>
+  </section>
+
+  <section id="bewaard-deel">
+    <h2>Bewaarde scènes</h2>
+    <p id="bewaard-leeg" class="zacht">Nog niets bewaard. Onder een geschreven scène staat de knop Bewaar.</p>
+    <ul class="bewaard" id="bewaard"></ul>
   </section>
 </main>
 <script src="schrijver.js"></script>

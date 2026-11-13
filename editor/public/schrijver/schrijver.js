@@ -65,9 +65,60 @@ function vulPrompts() {
   state.vuil = false;
 }
 
+// The line under a scene: what it is, and the button that keeps it for the team.
+function metaRegel(info, vraag, tekst) {
+  const knop = el("button", { type: "button" }, "Bewaar");
+  knop.addEventListener("click", async () => {
+    knop.disabled = true;
+    try {
+      toonBewaard((await api("/bewaard", { method: "POST", body: { tekst, vraag } })).bewaard);
+      knop.textContent = "Bewaard";
+    } catch (err) {
+      knop.disabled = false;
+      meld(err.message, "fout");
+    }
+  });
+  return el("p", { class: "meta" }, info, knop);
+}
+
 function toonGesprek(messages) {
-  $("gesprek").replaceChildren(...messages.map((message) => el("p", { class: message.role === "assistant" ? "antwoord" : "vraag" }, message.content)));
+  const regels = [];
+  messages.forEach((message, index) => {
+    const antwoord = message.role === "assistant";
+    regels.push(el("p", { class: antwoord ? "antwoord" : "vraag" }, message.content));
+    if (antwoord && message.content) regels.push(metaRegel(`${message.content.length} tekens`, index ? messages[index - 1].content : "", message.content));
+  });
+  $("gesprek").replaceChildren(...regels);
   $("gesprek").scrollTop = $("gesprek").scrollHeight;
+}
+
+function toonBewaard(list) {
+  $("bewaard-leeg").hidden = list.length > 0;
+  $("bewaard").replaceChildren(...list.map((item) => {
+    const weg = el("button", { type: "button", class: "licht" }, "Haal weg");
+    weg.addEventListener("click", async () => {
+      if (!confirm(`"${item.titel}" weghalen uit de bewaarde scènes?`)) return;
+      try {
+        toonBewaard((await api(`/bewaard/${encodeURIComponent(item.id)}`, { method: "DELETE" })).bewaard);
+      } catch (err) {
+        meld(err.message, "fout");
+      }
+    });
+    const gebruik = el("button", { type: "button", class: "licht" }, "Zet deze prompt in de test");
+    gebruik.addEventListener("click", () => {
+      if (!confirm("De testprompt vervangen door de prompt waarmee deze scène is geschreven?")) return;
+      werk(async () => {
+        state.stand = await api("/proef", { method: "PUT", body: { systemPrompt: item.systemPrompt, promptTemplate: item.promptTemplate } });
+        vulPrompts();
+      });
+    });
+    return el("li", {}, el("details", {},
+      el("summary", {}, item.titel, el("span", { class: "zacht" }, `${naam(item.by)} · ${when(item.at)}`)),
+      el("pre", {}, item.tekst),
+      el("details", {}, el("summary", {}, "Waarmee geschreven"),
+        el("pre", {}, `${item.model || ""}\n\nHOOFDPROMPT\n${item.systemPrompt}\n\nOPDRACHT PER SCÈNE\n${item.promptTemplate}${item.vraag ? `\n\nVERSTUURD\n${item.vraag}` : ""}`)),
+      el("div", { class: "knoppen" }, gebruik, weg)));
+  }));
 }
 
 function vulPersonages() {
@@ -124,7 +175,7 @@ async function stuur(message) {
     else if (event.type === "opnieuw") antwoord.textContent = "";
     else if (event.type === "done") {
       antwoord.textContent = event.text;
-      log.append(el("p", { class: "meta" }, `${event.text.length} tekens · ${event.model}${event.fallback ? " (terugval)" : ""} · ${event.tokensIn} in, ${event.tokensUit} uit`));
+      log.append(metaRegel(`${event.text.length} tekens · ${event.model}${event.fallback ? " (terugval)" : ""} · ${event.tokensIn} in, ${event.tokensUit} uit`, message, event.text));
     } else if (event.type === "error") {
       log.append(el("p", { class: "mis" }, event.error));
     }
@@ -211,7 +262,9 @@ async function ververs() {
 
 (async () => {
   try {
-    [state.stand, state.catalogus] = await Promise.all([api(""), api("/catalogus")]);
+    let kept;
+    [state.stand, state.catalogus, kept] = await Promise.all([api(""), api("/catalogus"), api("/bewaard")]);
+    toonBewaard(kept.bewaard);
     vulPrompts();
     vulCatalogus();
     toonGesprek(state.stand.gesprek);
