@@ -10,12 +10,6 @@ function round(value, digits = 1) {
   return Math.round(number * factor) / factor;
 }
 
-function gezichten(scene, soort, aantal) {
-  return Array.from({ length: Math.min(12, Number(aantal || 0)) }, (_v, index) => (
-    `/audience/stage/gezicht/${soort}/${index}?situationRunId=${encodeURIComponent(scene.situationRunId || "")}`
-  ));
-}
-
 function bouwStageRapport(report, view, situationRunId) {
   const scenes = report && Array.isArray(report.scenes) ? report.scenes : [];
   const scene = situationRunId
@@ -57,7 +51,7 @@ function bouwStageRapport(report, view, situationRunId) {
         liftDb: round(sound.liftDb),
         golf: sound.samples.slice(0, 120),
       } : null,
-      // Wat de publiekscamera zag, met uitsneden van lachende gezichten.
+      // Wat de publiekscamera zag; de gezichten per helft van de zaal vult de publieksdienst aan.
       camera: camera ? {
         personen: round(camera.peopleAverage, 0),
         personenMax: Number(camera.peopleMax || 0),
@@ -67,8 +61,7 @@ function bouwStageRapport(report, view, situationRunId) {
         lachenPct: Number(camera.laughPct || 0),
         aandachtPct: Number(camera.attentionPct || 0),
         saaiPct: Number(camera.boredPct || 0),
-        lachjes: gezichten(scene, "lach", camera.headshots),
-        verveeld: gezichten(scene, "saai", camera.boredHeadshots),
+        groepen: { leukst: [], verveeld: [] },
       } : null,
     },
     som: {

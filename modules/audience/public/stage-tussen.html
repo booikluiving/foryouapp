@@ -197,9 +197,11 @@
       /* Uitsneden van lachende gezichten uit de publiekscamera. */
       #rpCamUitleg { color: #fff; line-height: 1.25; }
       #rpCamUitleg:empty, #rpCamKop:empty { display: none; }
-      .lachjes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; padding-top: 22px; }
-      .lachjes img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; filter: grayscale(1) contrast(1.15); visibility: hidden; }
-      .lachjes img.aan { visibility: visible; }
+      .lachjes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px 12px; padding: 22px 0 30px; }
+      .lachjes .gezicht { margin: 0; visibility: hidden; }
+      .lachjes .gezicht.aan { visibility: visible; }
+      .lachjes img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; filter: grayscale(1) contrast(1.15); }
+      .lachjes figcaption { font-size: 26px; font-weight: 700; padding-top: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; }
     </style>
   </head>
   <body>
@@ -684,33 +686,27 @@
             el("rpCamUitleg").textContent = String(settings.rapportCameraUitleg || "");
           });
           t += 600;
+          // De zaal in twee helften, met per gezicht hoeveel procent van de scène die persoon lachte of verveeld keek.
+          const groepen = camera.groepen || {};
           [
-            ["\u{1F602}", "lachten", Number(camera.lachenPct) || 0, camera.lachjes || []],
-            ["\u{1F971}", "keken verveeld", Number(camera.saaiPct) || 0, camera.verveeld || []],
-          ].forEach(([emoji, woord, pct, gezichten]) => {
-            const rij = rpRij("", "0%");
-            if (emoji) rij.firstElementChild.append(maak("span", "emoji", emoji));
-            rij.firstElementChild.append(gezichten.length ? `deze mensen ${woord}` : woord);
-            const meter = maak("div", "meter");
-            const vulling = maak("i");
-            meter.append(vulling);
-            rij.append(meter);
-            el("rpCam").append(rij);
-            straks(t, () => {
-              rij.classList.add("aan");
-              rpTelOp(rij.querySelector("b"), pct, 450 * tempo, (n) => `${Math.round(n)}%`);
-              requestAnimationFrame(() => { vulling.style.width = `${Math.min(100, pct)}%`; });
-            });
-            t += 520;
+            ["vonden het het leukst", "lachen", groepen.leukst || []],
+            ["verveelden zich het meest", "verveeld", groepen.verveeld || []],
+          ].forEach(([kop, woord, gezichten]) => {
             if (!gezichten.length) return;
+            const rij = rpRij(kop, "");
+            el("rpCam").append(rij);
+            straks(t, () => rij.classList.add("aan"));
+            t += 400;
             const raster = maak("div", "lachjes");
             el("rpCam").append(raster);
-            gezichten.forEach((src) => {
+            gezichten.forEach((gezicht) => {
+              const tegel = maak("figure", "gezicht");
               const img = maak("img");
               img.alt = "";
-              img.src = src;
-              raster.append(img);
-              straks(t, () => { img.classList.add("aan"); geluid.relais(); });
+              img.src = gezicht.src;
+              tegel.append(img, maak("figcaption", "", `${gezicht.pct}% ${woord}`));
+              raster.append(tegel);
+              straks(t, () => { tegel.classList.add("aan"); geluid.relais(); });
               t += 150;
             });
             t += 400;

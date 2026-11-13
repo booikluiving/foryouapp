@@ -2,8 +2,8 @@
 // Gebruik: publiek_vision <breedte> <hoogte> [--gray] [--tiles N] [--overlap px]
 //   --gray     invoer is 1 byte per pixel (luma), anders BGRA (4 bytes)
 //   --tiles N  kijkt in N verticale delen van hetzelfde beeld (vensters op hetzelfde geheugen, geen kopie)
-//   --uitsneden  geeft bij een lachend of wegkijkend gezicht (opzij, omlaag, ogen dicht) een uitsnede mee
-//                ("jpg", base64), per plek en soort hoogstens eens per 3 s. Drempels: --yaw-weg, --pitch-omlaag (graden)
+//   --uitsneden  geeft bij elk gezicht een uitsnede mee ("jpg", base64), per plek en soort (lachend, wegkijkend:
+//                opzij, omlaag of ogen dicht, gewoon) hoogstens eens per 3 s. Drempels: --yaw-weg, --pitch-omlaag (graden)
 // Coördinaten in de uitvoer: 0..1 van het hele beeld, oorsprong linksboven.
 import Foundation
 import Vision
@@ -230,7 +230,7 @@ while running {
                                    "c": r(CGFloat(faceConf[i])), "yaw": faceAngles[i][0], "pitch": faceAngles[i][1], "roll": faceAngles[i][2]]
         if uitsneden, let img = img {
             let weg = abs(faceAngles[i][0]) > yawWeg || faceAngles[i][1] > pitchOmlaag || (seen && eyesClosed)
-            if smile || weg, let jpg = uitsnedeJpeg(b, img, smile ? 1 : 2) { face["jpg"] = jpg }
+            if let jpg = uitsnedeJpeg(b, img, smile ? 1 : weg ? 2 : 3) { face["jpg"] = jpg }
         }
         faces.append(face)
     }

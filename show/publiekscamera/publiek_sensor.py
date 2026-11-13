@@ -10,8 +10,8 @@ Per seconde (gemiddeld over de beelden in die seconde, behalve personen/handen/k
   handen (hand omhoog), klappen, beweging (% van het beeld).
 Met --fase leest hij (alleen lezen) de fase en scènetitel uit de publieksdienst, zodat het rapport per scène kan.
 Met --publiek stuurt hij tijdens een scène elke 2 s de tellingen van die scène naar de publieksdienst (voor de score
-en het rapport op het zaalscherm), plus uitsneden van gezichten: wie lachte, en wie verveeld keek terwijl minstens de
-helft van de zaal dat deed (één per persoon en soort, hoogstens 12 per soort per scène).
+en het rapport op het zaalscherm). Hij volgt ook elk gezicht over de scène (% van de tijd lachend, % verveeld) en
+verdeelt de zaal in twee helften: wie het het leukst vond en wie zich het meest verveelde, met een uitsnede per persoon.
 De uitsneden blijven alleen in het geheugen van de publieksdienst; hier wordt niets bewaard.
 """
 from __future__ import annotations
@@ -77,14 +77,13 @@ def kijk(f: dict, yaw_weg: float, pitch_omlaag: float) -> dict:
 def beeld(r: dict, yaw_weg: float, pitch_omlaag: float) -> dict:
     """Tellingen van één beeld (plus uitsneden van gezichten, als publiek_vision die meegaf)."""
     fs = [kijk(f, yaw_weg, pitch_omlaag) for f in r["faces"]]
-    lachjes = [(plek(f["b"]), f["jpg"], "lach" if k["lachen"] else "saai")
-               for f, k in zip(r["faces"], fs) if f.get("jpg") and (k["lachen"] or k["saai"])]
+    gezichtjes = [(plek(f["b"]), k["lachen"], k["saai"], f.get("jpg")) for f, k in zip(r["faces"], fs)]
     cls = [classify(p) for p in r["poses"]]
     n_face, n_pers = len(r["faces"]), len(r["persons"])
     out = {"personen": max(n_face, n_pers), "gezichten": n_face,
            "zonder_gezicht": max(0, n_pers - n_face),
            "handen": sum(u for u, _ in cls), "klappen": sum(c for _, c in cls),
-           "beweging": r["motion"], "ms": r["ms"], "lachjes": lachjes}
+           "beweging": r["motion"], "ms": r["ms"], "gezichtjes": gezichtjes}
     for k in ("lachen", "aandacht", "weg", "omlaag", "ogen_dicht", "saai"):
         out[k] = sum(f[k] for f in fs)
     return out
@@ -116,18 +115,54 @@ def seconde(bucket: list[dict]) -> dict:
     return agg
 
 
-LACHJES_PER_SCENE = 12   # per soort
-SAAI_DEEL = 0.5          # verveelde gezichten alleen als minstens dit deel van de zaal verveeld kijkt
+GEZICHTEN_PER_GROEP = 12
+MIN_GEZIEN = 10          # beelden
+MIN_GEZIEN_DEEL = 0.1    # ... en minstens dit deel van de beelden van de scène
+
+
+class Persoon:
+    """Eén gezicht in de zaal, gevolgd over de scène: hoe vaak gezien, hoe vaak lachend, hoe vaak verveeld."""
+
+    def __init__(self, nr: int, p: tuple):
+        self.nr, self.p, self.gezien, self.lach, self.saai, self.gestuurd = nr, p, 0, 0, 0, set()
+
+    def zie(self, p: tuple, lachen: bool, saai: bool):
+        # Plek langzaam bijwerken: wie een beetje beweegt blijft dezelfde persoon.
+        self.p = tuple(0.8 * a + 0.2 * b for a, b in zip(self.p, p))
+        self.gezien += 1
+        self.lach += lachen
+        self.saai += saai
+
+    def lach_pct(self) -> int:
+        return round(100 * self.lach / self.gezien)
+
+    def saai_pct(self) -> int:
+        return round(100 * self.saai / self.gezien)
+
+
+def verdeel(personen: list, beelden: int) -> dict:
+    """De zaal in twee helften: wie het naar verhouding het leukst vond (meest lachen, minst verveeld) en de rest.
+    Zo is er altijd een verdeling, ook als iedereen weleens lacht."""
+    genoeg = [m for m in personen if m.gezien >= max(MIN_GEZIEN, MIN_GEZIEN_DEEL * beelden)]
+    genoeg.sort(key=lambda m: (m.lach - m.saai) / m.gezien, reverse=True)
+    if len(genoeg) == 1:
+        m = genoeg[0]
+        boven, onder = ([m], []) if m.lach >= m.saai else ([], [m])
+    else:
+        helft = (len(genoeg) + 1) // 2
+        boven, onder = genoeg[:helft], genoeg[helft:][::-1]
+    return {"leukst": [{"persoon": m.nr, "pct": m.lach_pct()} for m in boven[:GEZICHTEN_PER_GROEP]],
+            "verveeld": [{"persoon": m.nr, "pct": m.saai_pct()} for m in onder[:GEZICHTEN_PER_GROEP]]}
 
 
 class Publiek:
-    """Stuurt de tellingen van de lopende scène en uitsneden van gezichten naar de publieksdienst."""
+    """Stuurt de tellingen van de lopende scène, de verdeling van de zaal en uitsneden van gezichten naar de
+    publieksdienst. Van elke persoon gaat hoogstens één uitsnede per soort (lach, saai, gewoon) mee."""
 
     def __init__(self, url: str):
-        self.url, self.scene, self.regels, self.plekken = url, None, [], {"lach": [], "saai": []}
-        self.volgnr = 0
+        self.url, self.scene, self.regels, self.personen, self.beelden = url, None, [], [], 0
         self.laatst = 0.0
-        self.rij: "queue.Queue[dict]" = queue.Queue(maxsize=50)
+        self.rij: "queue.Queue[dict]" = queue.Queue(maxsize=200)
         threading.Thread(target=self._stuur_loop, daemon=True).start()
 
     def _stuur_loop(self):
@@ -146,38 +181,41 @@ class Publiek:
         except queue.Full:
             pass
 
-    def seconde(self, agg: dict, lachjes: list):
+    def _stand(self) -> dict:
+        return {"situationRunId": self.scene, "stats": stats(self.regels), "groepen": verdeel(self.personen, self.beelden)}
+
+    def _volg(self, gezichtjes: list):
+        """Koppelt de gezichten van één beeld aan de personen (dichtstbijzijnde eerst, één gezicht per persoon)."""
+        vrij = list(self.personen)
+        for p, lachen, saai, jpg in gezichtjes:
+            kandidaten = [m for m in vrij if zelfde_persoon(p, m.p)]
+            if kandidaten:
+                m = min(kandidaten, key=lambda m: (m.p[0] - p[0]) ** 2 + ((m.p[1] - p[1]) * 0.28) ** 2)  # in pixels: 7680 × 2160
+                vrij.remove(m)
+            else:
+                m = Persoon(len(self.personen) + 1, p)
+                self.personen.append(m)
+            m.zie(p, lachen, saai)
+            soort = "lach" if lachen else "saai" if saai else "gewoon"
+            if jpg and soort not in m.gestuurd:
+                m.gestuurd.add(soort)
+                self._stuur({"situationRunId": self.scene, "persoon": m.nr, "soort": soort, "headshot": jpg})
+
+    def seconde(self, agg: dict, beelden: list):
         run = agg.get("situationRunId") if agg.get("fase") == "scene" else None
         if run != self.scene:
             if self.scene and self.regels:
-                self._stuur({"situationRunId": self.scene, "stats": stats(self.regels)})
-            self.scene, self.regels, self.plekken = run, [], {"lach": [], "saai": []}
+                self._stuur(self._stand())
+            self.scene, self.regels, self.personen, self.beelden = run, [], [], 0
         if not run:
             return
         self.regels.append(agg)
-        zaal_saai = agg["gezichten"] >= 1 and agg["saai"] / agg["gezichten"] >= SAAI_DEEL
-        # Iedereen staat in één groepje: wie lacht, gaat (ook later nog) van "verveeld" naar "lachten".
-        for p, jpg, soort in lachjes:
-            if soort == "saai" and not zaal_saai:
-                continue
-            if len(self.plekken[soort]) >= LACHJES_PER_SCENE:
-                continue
-            if any(zelfde_persoon(p, q) for q, _ in self.plekken["lach"]):
-                continue
-            eerder = next((n for q, n in self.plekken["saai"] if zelfde_persoon(p, q)), None)
-            if soort == "saai" and eerder is not None:
-                continue
-            if eerder is not None:
-                self.plekken["saai"] = [(q, n) for q, n in self.plekken["saai"] if n != eerder]
-                persoon = eerder
-            else:
-                self.volgnr += 1
-                persoon = self.volgnr
-            self.plekken[soort].append((p, persoon))
-            self._stuur({"situationRunId": run, "headshot": jpg, "soort": soort, "persoon": persoon})
+        for gezichtjes in beelden:
+            self.beelden += 1
+            self._volg(gezichtjes)
         if time.time() - self.laatst >= 2:
             self.laatst = time.time()
-            self._stuur({"situationRunId": run, "stats": stats(self.regels)})
+            self._stuur(self._stand())
 
 
 def stats(regels: list) -> dict:
@@ -265,7 +303,7 @@ def main():
                 if fase:
                     agg.update(fase.stand)
                 if publiek:
-                    publiek.seconde(agg, [l for b in bucket for l in b["lachjes"]])
+                    publiek.seconde(agg, [b["gezichtjes"] for b in bucket])
                 s = json.dumps(agg, ensure_ascii=False)
                 print(s, flush=True)
                 if log:
