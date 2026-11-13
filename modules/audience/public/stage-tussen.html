@@ -296,7 +296,9 @@
       // Als een analoog rekentoestel: telwerk, relais, stappenschakelaar, magneet met bel. Alles is
       // ruis door filters met een doffe klap eronder. Een browser laat geluid pas toe na een klik of
       // toets; lukt het starten niet, dan blijft het scherm stil en werkt de rest gewoon.
-      let audio = null, ruis = null, laatsteTik = 0;
+      // Het volume is in Admin te regelen (Geluid zaalscherm, in procenten).
+      let audio = null, ruis = null, meester = null, laatsteTik = 0;
+      const geluidVolume = () => Math.min(100, Math.max(0, getal(settings.tussenGeluid, 50))) / 100;
       function geluidAan() {
         if (audio) { if (audio.state === "suspended") audio.resume().catch(() => {}); return; }
         const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -306,6 +308,9 @@
           ruis = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
           const data = ruis.getChannelData(0);
           for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+          meester = audio.createGain();
+          meester.gain.value = geluidVolume();
+          meester.connect(audio.destination);
           audio.resume().catch(() => {});
         } catch (_err) { audio = null; }
       }
@@ -323,7 +328,7 @@
         const gain = audio.createGain();
         gain.gain.setValueAtTime(sterkte, nu);
         gain.gain.exponentialRampToValueAtTime(0.0001, nu + duur);
-        bronGeluid.connect(filter).connect(gain).connect(audio.destination);
+        bronGeluid.connect(filter).connect(gain).connect(meester);
         bronGeluid.start(nu, Math.random() * 0.5, duur + 0.02);
         if (dof) {
           const osc = audio.createOscillator();
@@ -333,7 +338,7 @@
           osc.frequency.exponentialRampToValueAtTime(dof, nu + 0.03);
           laag.gain.setValueAtTime(sterkte * 0.9, nu);
           laag.gain.exponentialRampToValueAtTime(0.0001, nu + 0.07);
-          osc.connect(laag).connect(audio.destination);
+          osc.connect(laag).connect(meester);
           osc.start(nu);
           osc.stop(nu + 0.09);
         }
@@ -367,7 +372,7 @@
             osc.frequency.value = hoogte;
             gain.gain.setValueAtTime(0.07 / (index + 1), nu);
             gain.gain.exponentialRampToValueAtTime(0.0001, nu + 1.1 - index * 0.25);
-            osc.connect(gain).connect(audio.destination);
+            osc.connect(gain).connect(meester);
             osc.start(nu);
             osc.stop(nu + 1.2);
           });
@@ -918,6 +923,7 @@
         vlak.style.top = plek.y + "px";
         vlak.style.height = plek.hoogte + "px";
         vlak.style.fontSize = plek.letter + "px";
+        if (meester) meester.gain.value = geluidVolume();
         meldZicht();
         tekenChat();
       }

@@ -119,6 +119,8 @@ const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   tussenChatY: 1462,
   tussenChatHoogte: 385,
   tussenChatGrootte: 36,
+  // Volume van de geluidjes van het zaalscherm (telwerk, relais, kiezer), in procenten.
+  tussenGeluid: 50,
 });
 const DIRECT_LINK_RE = /\b(?:https?:\/\/|www\.)\S+/i;
 const DOMAIN_RE = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|nl|be|de|eu|io|gg|tv|co|me|app|dev|info|xyz|ly|to|ai)\b/i;
@@ -238,6 +240,7 @@ function normalizeStageSettings(raw = {}, base = STAGE_OUTPUT_DEFAULTS) {
     tussenChatY: clampInt(src.tussenChatY, 0, 1900, Number(base.tussenChatY ?? STAGE_OUTPUT_DEFAULTS.tussenChatY)),
     tussenChatHoogte: clampInt(src.tussenChatHoogte, 100, 1920, Number(base.tussenChatHoogte ?? STAGE_OUTPUT_DEFAULTS.tussenChatHoogte)),
     tussenChatGrootte: clampInt(src.tussenChatGrootte, 16, 120, Number(base.tussenChatGrootte ?? STAGE_OUTPUT_DEFAULTS.tussenChatGrootte)),
+    tussenGeluid: clampInt(src.tussenGeluid, 0, 100, Number(base.tussenGeluid ?? STAGE_OUTPUT_DEFAULTS.tussenGeluid)),
   };
 }
 
