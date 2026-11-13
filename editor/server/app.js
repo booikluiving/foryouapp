@@ -13,6 +13,7 @@ const { numericPathId } = require("../../modules/paths/db/paths-store");
 const { diffVersions } = require("./version-store");
 const { CONTENT_ID, createVoorbeelden } = require("./voorbeelden");
 const { IdeeFout, createIdeeen } = require("./ideeen");
+const { SchrijverFout, createSchrijver } = require("./schrijver");
 
 const express = loadExpress();
 
@@ -26,7 +27,7 @@ const INJECTED_VERSION = crypto.createHash("sha256")
   .digest("hex").slice(0, 10);
 // The pages' own scripts and styles need one too: Cloudflare lets browsers keep a .js or .css
 // file for 4 hours, so without it a deploy would reach some browsers only hours later.
-const PAGE_FILE_DIRS = ["modules/catalog/ui", "shared/ui", "modules/paths/editor", "modules/paths/universe/public", "editor/public/versies", "editor/public/ideeen"]
+const PAGE_FILE_DIRS = ["modules/catalog/ui", "shared/ui", "modules/paths/editor", "modules/paths/universe/public", "editor/public/versies", "editor/public/ideeen", "editor/public/schrijver"]
   .map((dir) => path.resolve(__dirname, "../..", dir));
 
 function filesVersion(dirs) {
@@ -248,6 +249,7 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
   const refused = new Set((config.refused || []).map((email) => email.toLowerCase()));
   const voorbeeld = createVoorbeelden({ catalogUrl, dir: config.voorbeeldDir || undefined });
   const ideeen = createIdeeen({ dir: path.join(store.dataDir, "ideeen") });
+  const schrijver = createSchrijver({ dir: path.join(store.dataDir, "schrijver"), catalogUrl, env: config.env || process.env, fetchImpl: config.fetchImpl });
   // A first name for everyone on the ideas page; without one, the part of the address before the @.
   const naam = (email) => addTeambalk.naam(email) || String(email || "").split("@")[0];
 
@@ -367,6 +369,8 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
       released: released ? { nr: released.nr, hashes: released.hashes, at: released.at, author: released.author } : null,
       conflict: state.conflict ? { id: state.conflict.id, basis: state.conflict.basis } : null,
       overwriteLocal: state.overwriteLocal || null,
+      // The prompt of the Script Agent that was put through to the show (its number only).
+      schrijver: { nr: (schrijver.vrijgegeven() || {}).nr || 0 },
     };
   }
 
@@ -395,10 +399,20 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
     res.json({ ok: true, nr: null });
   });
 
-  sync.post("/melding", (req, res) => {
-    const report = req.body && typeof req.body === "object" ? req.body : {};
+  sync.post("/melding", asyncRoute(async (req, res) => {
+    const { schrijver: prompts, ...report } = req.body && typeof req.body === "object" ? req.body : {};
     store.updateState(() => ({ showMac: { ...report, receivedAt: new Date().toISOString() } }));
+    await schrijver.meldingVanShow(prompts);
     res.json(syncStand());
+  }));
+
+  sync.get("/schrijver", (_req, res) => {
+    const released = schrijver.vrijgegeven();
+    if (!released) {
+      res.status(404).json({ ok: false, error: "niets_doorgevoerd" });
+      return;
+    }
+    res.json({ ok: true, ...released });
   });
 
   // The show Mac has changes of its own. They are never lost: either they become the
@@ -529,6 +543,8 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
   });
   app.get(["/ideeen/", "/ideeen/index.html"], ownPage("ideeen"));
   app.use("/ideeen", express.static(path.join(PUBLIC_DIR, "ideeen"), { extensions: ["html"] }));
+  app.get(["/schrijver/", "/schrijver/index.html"], ownPage("schrijver"));
+  app.use("/schrijver", express.static(path.join(PUBLIC_DIR, "schrijver"), { extensions: ["html"] }));
 
   // The image catalog's overview asks for small previews (window.fyVoorbeeld in balk.js). For
   // a file without one (not a picture, or unreadable) the browser is sent to the original.
@@ -648,6 +664,42 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
     return { idee: await ideeen.setFoto(req.params.id, req.editorUser, req.body) };
   }));
   api.delete("/ideeen/:id/foto", idee(async (req) => ({ idee: await ideeen.removeFoto(req.params.id, req.editorUser) })));
+
+  // ---- Script Agent testen: its own prompt and chat, to the show only on "Voer door" ----
+  const proef = (handler) => asyncRoute(async (req, res) => {
+    try {
+      res.json({ ok: true, ...(await handler(req)) });
+    } catch (err) {
+      if (!(err instanceof SchrijverFout)) throw err;
+      res.status(err.status).json({ ok: false, error: err.error, message: err.message });
+    }
+  });
+  api.get("/schrijver", proef((req) => schrijver.stand(req.editorUser)));
+  api.get("/schrijver/catalogus", proef(() => schrijver.catalogus()));
+  api.put("/schrijver/proef", proef((req) => schrijver.saveProef(req.editorUser, sent(req))));
+  api.post("/schrijver/van-show", proef((req) => schrijver.vanShow(req.editorUser)));
+  api.post("/schrijver/doorvoeren", proef((req) => schrijver.doorvoeren(req.editorUser)));
+  api.post("/schrijver/klaarzetten", proef((req) => schrijver.klaarzetten(req.editorUser, sent(req))));
+  api.delete("/schrijver/gesprek", proef(async (req) => schrijver.wis(req.editorUser)));
+  // The scene comes in as it is written (server-sent events), as in the operator chat.
+  api.post("/schrijver/chat", (req, res) => {
+    let closed = false;
+    res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" });
+    res.flushHeaders();
+    res.on("close", () => { closed = true; });
+    const emit = (event) => {
+      if (!closed) res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+    schrijver.chat(req.editorUser, sent(req), (event) => {
+      if (event.type === "delta") emit({ type: "delta", text: event.text });
+      else if (event.type === "done") emit({ type: "done", text: event.text, model: event.model, tokensIn: event.tokens_input, tokensUit: event.tokens_output, fallback: event.fallback || null });
+      else if (event.type === "fallback") emit({ type: "opnieuw", model: event.model });
+    }).catch((err) => {
+      emit({ type: "error", error: String((err && err.message) || "fout").replace(/sk-[A-Za-z0-9_-]+/g, "sk-...") });
+    }).finally(() => {
+      if (!closed) res.end();
+    });
+  });
 
   app.use("/api", api);
 

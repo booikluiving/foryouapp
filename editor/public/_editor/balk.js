@@ -66,7 +66,7 @@
   }
 
   // The word mark goes once the team bar is there (it then says "Team / Voorstelling"; see huisstijl.css).
-  var items = [["/versies/", "For_You", "hs-merk"], ["/catalog/", "Catalogus"], ["/catalog/media-assets/", "Beeldcatalogus"], ["/editor/", "Paden"], ["/universe/", "Universe"], ["/ideeen/", "Ideeën"], ["/versies/", "Versies"]];
+  var items = [["/versies/", "For_You", "hs-merk"], ["/catalog/", "Catalogus"], ["/catalog/media-assets/", "Beeldcatalogus"], ["/editor/", "Paden"], ["/universe/", "Universe"], ["/ideeen/", "Ideeën"], ["/schrijver/", "Script Agent"], ["/versies/", "Versies"]];
   // The longest matching address is the current page (the image catalog lives under /catalog/).
   var current = items.filter(function (item) { return !item[2] && window.location.pathname.indexOf(item[0]) === 0; })
     .sort(function (a, b) { return b[0].length - a[0].length; })[0];

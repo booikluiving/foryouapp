@@ -143,7 +143,9 @@ function createAgent(config) {
     report: (body) => fromWebsite(requestJson(`${config.websiteUrl}/sync/v1/melding`, { method: "POST", headers: websiteHeaders(), body })),
     mediaMissing: (files) => fromWebsite(requestJson(`${config.websiteUrl}/sync/v1/media/ontbrekend`, { method: "POST", headers: websiteHeaders(), body: { files }, timeoutMs: 120000 })),
     mediaUrl: (relativePath, sha256) => `${config.websiteUrl}/sync/v1/media?pad=${encodeURIComponent(relativePath)}${sha256 ? `&sha256=${sha256}` : ""}`,
+    schrijver: () => fromWebsite(requestJson(`${config.websiteUrl}/sync/v1/schrijver`, { headers: websiteHeaders() })),
   };
+  const scriptAgentUrl = String(config.scriptAgentUrl || "http://127.0.0.1:3027").replace(/\/+$/, "");
 
   const local = {
     async content() {
@@ -446,6 +448,48 @@ function createAgent(config) {
     return apply(readState(), current, released);
   }
 
+  // The prompts of the Script Agent. The team tests them on the website, apart from the show; only
+  // what was put through there ("Voer door naar de show") is set here, once per number, after a
+  // backup. The website hears what the show has now. Never stops the round for the content.
+  async function schrijverStep() {
+    let settings;
+    try {
+      settings = (await requestJson(`${scriptAgentUrl}/v0/script-agent/operator/settings`, { timeoutMs: 5000 })).settings;
+    } catch (_err) {
+      return null;
+    }
+    let state = readState();
+    try {
+      const stand = await website.stand();
+      const nr = stand.schrijver && Number(stand.schrijver.nr);
+      if (nr && nr !== state.schrijverNr) {
+        const released = await website.schrijver();
+        if (released.nr === nr && released.systemPrompt && released.promptTemplate) {
+          saveBackup({ systemPrompt: settings.systemPrompt, promptTemplate: settings.promptTemplate }, `prompt-voor-${nr}`);
+          settings = (await requestJson(`${scriptAgentUrl}/v0/script-agent/operator/settings`, {
+            method: "PATCH",
+            body: { systemPrompt: released.systemPrompt, promptTemplate: released.promptTemplate },
+          })).settings;
+          state = { ...readState(), schrijverNr: nr };
+          saveState(state);
+          log(`prompt ${nr} van de website (${released.by || "onbekend"}) staat in de Script Agent`);
+        }
+      }
+    } catch (err) {
+      if (!err.fromWebsite) log(`prompt van de website niet gezet: ${err.message}`);
+    }
+    return {
+      systemPrompt: settings.systemPrompt,
+      promptTemplate: settings.promptTemplate,
+      model: settings.model,
+      temperature: settings.temperature,
+      maxTokens: settings.maxTokens,
+      reasoningEffort: settings.reasoningEffort,
+      fallbackModel: settings.fallbackModel,
+      appliedNr: state.schrijverNr || null,
+    };
+  }
+
   async function tick() {
     let status;
     try {
@@ -465,8 +509,9 @@ function createAgent(config) {
       at: new Date(now()).toISOString(),
     };
     writeFileAtomic(statusPath, `${JSON.stringify(report, null, 2)}\n`);
+    const schrijver = await schrijverStep();
     try {
-      await website.report(report);
+      await website.report(schrijver ? { ...report, schrijver } : report);
     } catch (_err) {
       // The website is out of reach; the status file on this machine still says it.
     }

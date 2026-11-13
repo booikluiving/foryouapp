@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Script Agent · Voorstelling · For_You</title>
+<style>
+  /* Zelfde huisstijl als Versies en Ideeën: Helvetica Neue, zwart op wit, één dunne lijn. */
+  :root { --tekst: #000; --zacht: rgba(0, 0, 0, .55); --lijn: rgba(0, 0, 0, .14); --vlak: rgba(0, 0, 0, .035); --rood: #b00020; --groen: #0a6b2d; --rand: clamp(16px, 3vw, 40px); --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: var(--tekst); font: 16px/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--tekst); text-underline-offset: .3em; text-decoration-thickness: 1px; }
+  header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 6px 24px; padding: 20px var(--rand) 16px; border-bottom: 1px solid var(--lijn); }
+  .hs-nav { display: flex; align-items: baseline; gap: 4px 22px; white-space: nowrap; flex-wrap: wrap; }
+  .hs-nav a { color: var(--zacht); text-decoration: none; font-size: 16px; line-height: 1.2; }
+  .hs-nav a:hover { color: var(--tekst); }
+  .hs-nav a[aria-current="page"] { color: var(--tekst); text-decoration: underline; }
+  .hs-nav a.hs-merk { color: var(--tekst); font: 700 22px/1 "Helvetica Neue", Helvetica, Arial, sans-serif; letter-spacing: -.03em; margin-right: 8px; }
+  .wie { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 13px; color: var(--zacht); }
+  .wie a { color: var(--zacht); }
+  html.fy-met-balk .hs-merk, html.fy-met-balk .wie { display: none; }
+  main { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 0 clamp(24px, 4vw, 56px); padding: 8px var(--rand) 80px; }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  h2 { font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1; margin: 40px 0 10px; }
+  label.kop { display: block; margin: 18px 0 6px; font-weight: 700; }
+  .zacht { color: var(--zacht); }
+  .klein { font-size: 14px; }
+  .fout { color: var(--rood); }
+  .goed { color: var(--groen); }
+  button { font: inherit; background: none; color: var(--tekst); border: 1px solid var(--tekst); padding: 5px 14px; cursor: pointer; }
+  button:hover { background: var(--tekst); color: #fff; }
+  button.vol { background: var(--tekst); color: #fff; }
+  button.licht { border: 0; color: var(--zacht); padding: 5px 0; }
+  button.licht:hover { background: none; color: var(--tekst); text-decoration: underline; }
+  button:disabled { opacity: .4; cursor: default; }
+  textarea, select { font: inherit; font-size: 16px; color: var(--tekst); background: #fff; border: 1px solid var(--lijn); border-radius: 0; padding: 8px 10px; width: 100%; }
+  textarea:focus, select:focus { outline: none; border-color: var(--tekst); }
+  textarea { resize: vertical; }
+  textarea.prompt { font: 14px/1.5 var(--mono); min-height: 240px; }
+  .knoppen { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin-top: 14px; }
+  .rij { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .keuzes { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+  .keuzes label { position: relative; cursor: pointer; }
+  .keuzes input { position: absolute; opacity: 0; pointer-events: none; }
+  .keuzes span { display: inline-block; padding: 3px 10px; border: 1px solid var(--lijn); font-size: 15px; }
+  .keuzes input:checked + span { background: var(--tekst); color: #fff; border-color: var(--tekst); }
+  .keuzes input:focus-visible + span { outline: 2px solid var(--tekst); outline-offset: 2px; }
+  /* Het gesprek: het terminal-uiterlijk van de operator-chat. */
+  #gesprek { margin-top: 16px; background: #000; color: #fff; font: 15px/1.55 var(--mono); padding: 16px 18px; min-height: 320px; max-height: 70vh; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #gesprek .vraag { color: rgba(255, 255, 255, .5); margin: 0 0 14px; }
+  #gesprek .vraag::before { content: "> "; }
+  #gesprek .antwoord { margin: 0 0 22px; }
+  #gesprek .antwoord.bezig::after { content: "█"; animation: knipper 1s steps(2) infinite; }
+  #gesprek .meta { color: rgba(255, 255, 255, .4); font-size: 12px; margin: -16px 0 22px; }
+  #gesprek .mis { color: #ff8a8a; }
+  @keyframes knipper { 50% { opacity: 0; } }
+  #invoer { margin-top: 10px; font: 14px/1.5 var(--mono); min-height: 70px; }
+</style>
+</head>
+<body>
+<header>
+  <nav class="hs-nav" aria-label="For_You voorstelling">
+    <a class="hs-merk" href="/versies/">For_You</a>
+    <a href="/catalog/">Catalogus</a>
+    <a href="/catalog/media-assets/">Beeldcatalogus</a>
+    <a href="/editor/">Paden</a>
+    <a href="/universe/">Universe</a>
+    <a href="/ideeen/">Ideeën</a>
+    <a href="/schrijver/" aria-current="page">Script Agent</a>
+    <a href="/versies/">Versies</a>
+  </nav>
+  <div class="wie"><span id="wie"></span><a href="https://www.foryouniverse.nl/team/">← Team</a></div>
+</header>
+<main>
+  <section>
+    <h2>Prompt testen</h2>
+    <p class="zacht">Los van de show. Wat je hier aanpast en laat schrijven, komt niet op de teleprompter.</p>
+    <label class="kop" for="systeem">Hoofdprompt</label>
+    <textarea id="systeem" class="prompt" maxlength="12000" spellcheck="false"></textarea>
+    <label class="kop" for="sjabloon">Opdracht per scène</label>
+    <textarea id="sjabloon" class="prompt" maxlength="12000" spellcheck="false" style="min-height: 200px"></textarea>
+    <p class="zacht klein">{runtimePrompt} = situatie, omgeving en personages uit de catalogus. {performerSlots} = wie welk personage speelt.</p>
+    <p id="stand" role="status"></p>
+    <div class="knoppen">
+      <button type="button" id="doorvoeren" class="vol">Voer door naar de show</button>
+      <button type="button" id="van-show" class="licht">Terug naar de prompt van de show</button>
+    </div>
+    <p id="melding" class="klein" role="status"></p>
+  </section>
+
+  <section>
+    <h2>Scène</h2>
+    <div class="rij">
+      <div><label class="kop" for="situatie">Situatie</label><select id="situatie"></select></div>
+      <div><label class="kop" for="omgeving">Omgeving</label><select id="omgeving"></select></div>
+    </div>
+    <div class="keuzes" id="personages" role="group" aria-label="Personages"></div>
+    <div class="knoppen">
+      <button type="button" id="schrijf" class="vol">Schrijf scène</button>
+      <button type="button" id="wis" class="licht">Nieuw gesprek</button>
+      <span id="model" class="zacht klein"></span>
+    </div>
+    <div id="gesprek" aria-live="polite"></div>
+    <label for="invoer" hidden>Bericht aan de schrijver</label>
+    <textarea id="invoer" maxlength="12000" placeholder="Typ een aanwijzing voor de schrijver" spellcheck="false"></textarea>
+    <div class="knoppen">
+      <button type="button" id="verstuur">Verstuur</button>
+      <span class="zacht klein">Eerdere scènes in dit gesprek gaan mee, net als in de show.</span>
+    </div>
+  </section>
+</main>
+<script src="schrijver.js"></script>
+</body>
+</html>

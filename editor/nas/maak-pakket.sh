@@ -7,8 +7,8 @@ DOEL="${1:-$APP/editor/nas/pakket}"
 rm -rf "$DOEL"
 mkdir -p "$DOEL"
 cd "$APP"
-git ls-files -z -- package.json package-lock.json shared modules/catalog modules/paths editor \
-  ':!:editor/nas/pakket' ':!:editor/tests' ':!:modules/catalog/tests' ':!:modules/paths/tests' \
+git ls-files -z -- package.json package-lock.json shared modules/catalog modules/paths modules/script-agent editor \
+  ':!:editor/nas/pakket' ':!:editor/tests' ':!:modules/catalog/tests' ':!:modules/paths/tests' ':!:modules/script-agent/tests' \
   | xargs -0 -I{} sh -c 'mkdir -p "$1/$(dirname "$2")" && cp "$2" "$1/$2"' _ "$DOEL" {}
 cp editor/nas/Dockerfile "$DOEL/Dockerfile"
 printf 'node_modules\n' > "$DOEL/.dockerignore"
