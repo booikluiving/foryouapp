@@ -37,8 +37,7 @@ const camScene = { ...report.scenes[0], camera: { seconds: 60, peopleAverage: 11
 const metCamera = bouwStageRapport({ ...report, weights: { ...report.weights, cameraLaugh: 2, cameraBored: -2 }, scenes: [camScene] }, {}, "run:1");
 assert.equal(metCamera.scene.camera.personen, 12);
 assert.equal(metCamera.scene.camera.lachmomenten, 3);
-assert.deepEqual(metCamera.scene.camera.lachjes, ["/audience/stage/gezicht/lach/0?situationRunId=run%3A1", "/audience/stage/gezicht/lach/1?situationRunId=run%3A1"]);
-assert.deepEqual(metCamera.scene.camera.verveeld, ["/audience/stage/gezicht/saai/0?situationRunId=run%3A1"]);
+assert.deepEqual(metCamera.scene.camera.groepen, { leukst: [], verveeld: [] }, "de gezichten vult de publieksdienst aan");
 assert.equal(metCamera.som.lachen, 6);
 assert.equal(metCamera.som.wSaai, -2);
 

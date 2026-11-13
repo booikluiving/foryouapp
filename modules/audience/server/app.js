@@ -115,9 +115,9 @@ function createAudienceApp(options = {}) {
     res.status(result.ok ? 200 : 400).json(result);
   });
 
-  // Uitsnede van een gezicht uit de scène (lach of saai), voor het rapport op het zaalscherm.
-  app.get("/audience/stage/gezicht/:soort/:index", (req, res) => {
-    const jpeg = service.cameraHeadshot(req.query.situationRunId, req.params.soort, req.params.index);
+  // Uitsnede van een gezicht uit de scène, voor het rapport op het zaalscherm.
+  app.get("/audience/stage/persoon/:persoon/:groep", (req, res) => {
+    const jpeg = service.cameraFoto(req.query.situationRunId, req.params.persoon, req.params.groep);
     if (!jpeg) { res.status(404).end(); return; }
     res.set("Cache-Control", "no-store").type("jpeg").send(jpeg);
   });
@@ -136,7 +136,10 @@ function createAudienceApp(options = {}) {
       report = null;
     }
     if (!report) { res.json({ ok: true, klaar: false, reden: "algoritme_niet_bereikbaar" }); return; }
-    res.json(bouwStageRapport(report, view, req.query.situationRunId ? String(req.query.situationRunId) : null));
+    const rapport = bouwStageRapport(report, view, req.query.situationRunId ? String(req.query.situationRunId) : null);
+    // De gezichten komen rechtstreeks van de publiekscamera (alleen in het geheugen van deze dienst).
+    if (rapport.klaar && rapport.scene && rapport.scene.camera) rapport.scene.camera.groepen = service.cameraGroepen(rapport.scene.situationRunId);
+    res.json(rapport);
   }));
 
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.

@@ -379,6 +379,7 @@ function isHttpsRequest(req) {
 
 const CAMERA_SCENES = 6;
 const CAMERA_HEADSHOTS = 12;
+const CAMERA_PERSONEN = 80;
 
 function isPublicRequest(req) {
   return !!(req && req.fyPublic === true);
@@ -515,7 +516,7 @@ class AudienceService extends EventEmitter {
     this.fase = { fase: "tussen", titel: null, situationRunId: null, sinds: nowIso(), bekend: false };
     this.faseTimer = null;
     this.ronde = this.laadRonde();
-    // Publiekscamera per scène (situationRunId → { stats, headshots }). Alleen in het geheugen.
+    // Publiekscamera per scène (situationRunId → { stats, groepen, fotos }). Alleen in het geheugen.
     this.camera = new Map();
     this.chatRun = this.store.getSetting(CHAT_RUN_KEY, null) || null;
     this.pollAutoCloseTimer = null;
@@ -735,37 +736,64 @@ class AudienceService extends EventEmitter {
     if (!situationRunId) return { ok: false, error: "geen_scene" };
     let scene = this.camera.get(situationRunId);
     if (!scene) {
-      scene = { stats: null, gezichten: { lach: [], saai: [] } };
+      scene = { stats: null, groepen: { leukst: [], verveeld: [] }, fotos: new Map() };
       this.camera.set(situationRunId, scene);
       while (this.camera.size > CAMERA_SCENES) this.camera.delete(this.camera.keys().next().value);
     }
     if (body.stats && typeof body.stats === "object") scene.stats = { ...body.stats };
-    const soort = body.soort === "saai" ? "saai" : "lach";
-    const lijst = scene.gezichten[soort];
-    if (typeof body.headshot === "string" && lijst.length < CAMERA_HEADSHOTS) {
+    if (body.groepen && typeof body.groepen === "object") {
+      const groep = (lijst) => (Array.isArray(lijst) ? lijst : []).slice(0, CAMERA_HEADSHOTS).map((item) => ({
+        persoon: String(item && item.persoon || ""),
+        pct: Math.max(0, Math.min(100, Math.round(Number(item && item.pct) || 0))),
+      })).filter((item) => item.persoon);
+      scene.groepen = { leukst: groep(body.groepen.leukst), verveeld: groep(body.groepen.verveeld) };
+    }
+    if (typeof body.headshot === "string" && body.persoon != null) {
+      const persoon = String(body.persoon);
+      const soort = ["lach", "saai", "gewoon"].includes(body.soort) ? body.soort : "gewoon";
       const jpeg = Buffer.from(body.headshot, "base64");
-      const persoon = body.persoon == null ? null : String(body.persoon);
-      if (jpeg.length > 0 && jpeg.length <= 200 * 1024 && jpeg[0] === 0xff && jpeg[1] === 0xd8) {
-        // Iemand die eerst verveeld keek en daarna lachte, staat alleen nog bij "lachten".
-        if (soort === "lach" && persoon != null) scene.gezichten.saai = scene.gezichten.saai.filter((g) => g.persoon !== persoon);
-        lijst.push({ persoon, jpeg });
+      const fotos = scene.fotos.get(persoon) || {};
+      if (!fotos[soort] && (scene.fotos.has(persoon) || scene.fotos.size < CAMERA_PERSONEN)
+        && jpeg.length > 0 && jpeg.length <= 200 * 1024 && jpeg[0] === 0xff && jpeg[1] === 0xd8) {
+        fotos[soort] = jpeg;
+        scene.fotos.set(persoon, fotos);
       }
     }
-    return { ok: true, lach: scene.gezichten.lach.length, saai: scene.gezichten.saai.length };
+    return { ok: true, personen: scene.fotos.size };
   }
 
   cameraVoor(situationRunId) {
     const scene = situationRunId ? this.camera.get(String(situationRunId)) : null;
-    if (!scene || !scene.stats) return null;
-    return { ...scene.stats, headshots: scene.gezichten.lach.length, boredHeadshots: scene.gezichten.saai.length };
+    return scene && scene.stats ? { ...scene.stats } : null;
   }
 
-  cameraHeadshot(situationRunId, soort, index) {
+  // De twee helften van de zaal, alleen wie er een foto van is: { leukst: [{ src, pct }], verveeld: [...] }.
+  cameraGroepen(situationRunId) {
     const scene = this.camera.get(String(situationRunId || ""));
-    const lijst = scene ? scene.gezichten[soort === "saai" ? "saai" : "lach"] : null;
-    const gezicht = lijst ? lijst[Number(index)] : null;
-    return gezicht ? gezicht.jpeg : null;
+    const uit = { leukst: [], verveeld: [] };
+    if (!scene) return uit;
+    for (const groep of ["leukst", "verveeld"]) {
+      for (const item of scene.groepen[groep]) {
+        if (!this.cameraFoto(situationRunId, item.persoon, groep)) continue;
+        uit[groep].push({
+          src: `/audience/stage/persoon/${encodeURIComponent(item.persoon)}/${groep}?situationRunId=${encodeURIComponent(situationRunId)}`,
+          pct: item.pct,
+        });
+      }
+    }
+    return uit;
   }
+
+  // Foto van een persoon: wie het leukst vond het liefst lachend, wie zich verveelde het liefst wegkijkend.
+  cameraFoto(situationRunId, persoon, groep) {
+    const scene = this.camera.get(String(situationRunId || ""));
+    const fotos = scene ? scene.fotos.get(String(persoon)) : null;
+    if (!fotos) return null;
+    const volgorde = groep === "verveeld" ? ["saai", "gewoon", "lach"] : ["lach", "gewoon", "saai"];
+    for (const soort of volgorde) if (fotos[soort]) return fotos[soort];
+    return null;
+  }
+
 
 
   chatGewistTot(session = this.getActiveSession()) {

@@ -283,8 +283,6 @@ function normalizeCamera(input) {
     boredMoments: count(input.boredMoments),
     clapMoments: count(input.clapMoments),
     handMoments: count(input.handMoments),
-    headshots: count(input.headshots),
-    boredHeadshots: count(input.boredHeadshots),
   };
 }
 
