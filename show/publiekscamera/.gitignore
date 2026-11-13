@@ -1,0 +1,6 @@
+.rtsp_*
+publiek_vision
+*.jsonl
+*.jpg
+*.err
+*.log

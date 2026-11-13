@@ -32,4 +32,13 @@ assert.equal(stemmen.hierna, null, "tijdens de startscènes kiest het publiek");
 const metGeluid = bouwStageRapport({ ...report, scenes: [{ ...report.scenes[0], roomSound: { averageDb: 60, peakDb: 81.4, liftDb: 21.4, samples: [60, 70, 81.4] } }] }, {}, "");
 assert.deepEqual(metGeluid.scene.geluid, { rustDb: 60, piekDb: 81.4, liftDb: 21.4, golf: [60, 70, 81.4] });
 
+assert.equal(metKeuze.scene.camera, null, "zonder camera geen camerablok");
+const camScene = { ...report.scenes[0], camera: { seconds: 60, peopleAverage: 11.6, peopleMax: 14, laughMoments: 3, boredMoments: 1, clapMoments: 2, laughPct: 22, attentionPct: 70, boredPct: 30, headshots: 2 }, calculation: { ...report.scenes[0].calculation, cameraLaugh: 6, cameraBored: -2 } };
+const metCamera = bouwStageRapport({ ...report, weights: { ...report.weights, cameraLaugh: 2, cameraBored: -2 }, scenes: [camScene] }, {}, "run:1");
+assert.equal(metCamera.scene.camera.personen, 12);
+assert.equal(metCamera.scene.camera.lachmomenten, 3);
+assert.deepEqual(metCamera.scene.camera.lachjes, ["/audience/stage/lach/0?situationRunId=run%3A1", "/audience/stage/lach/1?situationRunId=run%3A1"]);
+assert.equal(metCamera.som.lachen, 6);
+assert.equal(metCamera.som.wSaai, -2);
+
 console.log("stage-rapport: ok");

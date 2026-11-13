@@ -134,6 +134,7 @@ function applyLiveObservationFallback(event = {}, state = {}) {
     ...event,
     audience: cloneJson(live.audience || {}),
     chatAppSignals: cloneJson(live.chatAppSignals || {}),
+    camera: event.camera || live.camera || null,
     rawChat: Array.isArray(live.rawChat) ? cloneJson(live.rawChat) : [],
     finalizedFromLiveAudience: true,
   };
@@ -259,6 +260,33 @@ function normalizeRoomSound(input) {
   };
 }
 
+// Wat de publiekscamera in de scène zag (publiek_sensor.py → audience → hier).
+function normalizeCamera(input) {
+  if (!input || typeof input !== "object") return null;
+  const number = (value, digits = 1) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    const factor = 10 ** digits;
+    return Math.round(n * factor) / factor;
+  };
+  const seconds = number(input.seconds, 0);
+  if (!seconds) return null;
+  const count = (value) => Math.max(0, Math.round(Number(value) || 0));
+  return {
+    seconds,
+    peopleAverage: number(input.peopleAverage),
+    peopleMax: count(input.peopleMax),
+    laughPct: number(input.laughPct, 0),
+    attentionPct: number(input.attentionPct, 0),
+    boredPct: number(input.boredPct, 0),
+    laughMoments: count(input.laughMoments),
+    boredMoments: count(input.boredMoments),
+    clapMoments: count(input.clapMoments),
+    handMoments: count(input.handMoments),
+    headshots: count(input.headshots),
+  };
+}
+
 async function buildObservation(event, state) {
   assertNoRuntimeOwnershipFields(event);
   if (!event || event.type !== "situationObserved") throw new Error("algorithm_invalid_observed_event_type");
@@ -283,6 +311,7 @@ async function buildObservation(event, state) {
     chatAppSignals: sourceEvent.chatAppSignals || {},
     reactionLabSignals: sourceEvent.reactionLabSignals || {},
     roomSound: normalizeRoomSound(sourceEvent.roomSound),
+    camera: normalizeCamera(sourceEvent.camera),
     rawChat: Array.isArray(sourceEvent.rawChat) ? cloneJson(sourceEvent.rawChat) : [],
     finalizedFromAudienceAggregate: !!sourceEvent.finalizedFromAudienceAggregate,
     finalizedFromLiveAudience: !!sourceEvent.finalizedFromLiveAudience,
@@ -326,6 +355,7 @@ async function buildLiveAudienceObservation(event, state) {
     durationSeconds: liveEvent.durationSeconds,
     audience: event.audience || {},
     chatAppSignals: event.chatAppSignals || {},
+    camera: normalizeCamera(event.camera),
     rawChat: Array.isArray(event.rawChat) ? cloneJson(event.rawChat) : [],
     audienceAggregateVersion: event.audienceAggregateVersion == null ? null : Number(event.audienceAggregateVersion),
     observedScore,
