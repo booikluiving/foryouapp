@@ -377,56 +377,97 @@
         color: var(--b);
       }
 
-      /* ------------------------------------------------ peiling */
+      /* ------------------------------------------------ stemmen */
+      /* Het stemmen neemt het hele scherm over, net als de reacties tijdens een scène: alle keuzes
+         staan in één keer in beeld, één tik is een stem, en chatten kan pas weer als het stemmen
+         dicht is. */
       #pollBox {
-        flex: 0 0 auto;
-        max-height: 34dvh;
-        overflow: auto;
-        display: grid;
-        gap: 6px;
-        padding: 12px 0;
-        border-top: 1px solid var(--c);
-        border-bottom: 1px solid var(--c);
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: max(18px, env(safe-area-inset-top, 0px)) max(18px, env(safe-area-inset-right, 0px)) max(18px, env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px));
+        background: var(--bg);
+      }
+      #pollBox[hidden] { display: none; }
+      #pollKop {
+        flex: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 16px;
       }
       #pollQuestion {
         font-weight: 700;
-        font-size: 18px;
-        line-height: 1.2;
-        letter-spacing: -0.01em;
+        font-size: 24px;
+        line-height: 1.1;
+        letter-spacing: -0.025em;
       }
+      #pollKlok {
+        flex: none;
+        font-weight: 700;
+        font-size: 24px;
+        letter-spacing: -0.025em;
+        font-variant-numeric: tabular-nums;
+      }
+      /* Elke keuze krijgt een even groot deel van de hoogte: niets om te scrollen. */
       #pollOptions {
+        flex: 1 1 auto;
+        min-height: 0;
         display: grid;
+        grid-auto-rows: minmax(0, 1fr);
+        gap: 8px;
       }
       .pollOption {
         width: 100%;
+        min-height: 0;
+        box-sizing: border-box;
         display: flex;
+        align-items: center;
         justify-content: space-between;
         gap: 12px;
         text-align: left;
-        padding: 10px 0;
-        border-bottom: 1px solid var(--c);
-        color: var(--b);
-      }
-      .pollOption.selected {
+        padding: 0 14px;
+        border: 1px solid var(--a);
         color: var(--a);
         font-weight: 700;
-        border-bottom-color: var(--a);
+        font-size: clamp(15px, 2.6dvh, 22px);
+        line-height: 1.12;
+        letter-spacing: -0.01em;
+        overflow: hidden;
+      }
+      .pollOption .titel {
+        min-width: 0;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
       }
       .pollOption .muted {
+        flex: none;
         font-weight: 400;
-        font-size: 13px;
+        font-size: 15px;
+        color: var(--b);
+        font-variant-numeric: tabular-nums;
       }
-      #pollActions {
-        display: flex;
-        padding-top: 6px;
+      .pollOption.selected {
+        background: var(--a);
+        color: var(--bg);
       }
-      #pollSubmitBtn {
-        border: 1px solid var(--a);
-        min-height: 42px;
-        padding: 0 18px;
+      .pollOption.selected .muted { color: var(--bg); }
+      /* Na het stemmen staan de knoppen vast, maar de gekozen blijft helder wit. */
+      #pollBox .pollOption:disabled { opacity: 1; }
+      #pollBox.gestemd .pollOption:not(.selected) {
+        border-color: var(--c);
+        color: var(--b);
       }
       #pollMeta {
-        font-size: 13px;
+        flex: none;
+        min-height: 1.3em;
+        font-size: 14px;
         color: var(--b);
       }
 
@@ -765,12 +806,10 @@
     </div>
 
     <div id="pollBox" hidden>
-      <div id="pollQuestion"></div>
+      <div id="pollKop"><div id="pollQuestion"></div><div id="pollKlok"></div></div>
       <div id="pollOptions"></div>
-      <div id="pollActions">
-        <button id="pollSubmitBtn" type="button" disabled>Stem</button>
-      </div>
       <div id="pollMeta"></div>
+      <button id="pollSubmitBtn" type="button" hidden disabled>Stem</button>
     </div>
     <div id="topComment" hidden></div>
     <div id="chatFeed"></div>
@@ -1371,6 +1410,8 @@
         } catch {}
       }
 
+      // De knoppen worden één keer gebouwd en daarna alleen bijgewerkt: zo gaat er geen tik verloren
+      // als de stand net ververst wordt.
       function renderPollOptions() {
         if (!activePoll || !Array.isArray(activePoll.options) || !activePoll.options.length) {
           pollOptionsEl.textContent = "";
@@ -1378,47 +1419,48 @@
         }
         const remainingMs = getPollRemainingMs();
         const pollExpired = remainingMs !== null && remainingMs <= 0;
-        pollOptionsEl.textContent = "";
-        const fragment = document.createDocumentFragment();
-        for (let index = 0; index < activePoll.options.length; index += 1) {
-          const option = String(activePoll.options[index] || "");
-          const votes = Array.isArray(activePoll.counts) ? Number(activePoll.counts[index] || 0) : 0;
-          const isSelected = selectedPollOptionIndex === index;
-          const button = document.createElement("button");
-          button.type = "button";
-          button.className = "pollOption" + (isSelected ? " selected" : "");
-          button.setAttribute("data-poll-option", String(index));
-          button.disabled = !!(pollVotePending || pollExpired);
-          button.appendChild(document.createTextNode(option + " "));
-
-          const votesNode = document.createElement("span");
-          votesNode.className = "muted";
-          votesNode.textContent = `(${votes})`;
-          button.appendChild(votesNode);
-
-          fragment.appendChild(button);
+        const gestemd = Number.isInteger(activePoll.votedIndex);
+        if (pollOptionsEl.children.length !== activePoll.options.length) {
+          pollOptionsEl.textContent = "";
+          for (let index = 0; index < activePoll.options.length; index += 1) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.setAttribute("data-poll-option", String(index));
+            const titel = document.createElement("span");
+            titel.className = "titel";
+            const votesNode = document.createElement("span");
+            votesNode.className = "muted";
+            button.append(titel, votesNode);
+            pollOptionsEl.appendChild(button);
+          }
         }
-        pollOptionsEl.appendChild(fragment);
+        Array.from(pollOptionsEl.children).forEach((button, index) => {
+          const votes = Array.isArray(activePoll.counts) ? Number(activePoll.counts[index] || 0) : 0;
+          const gekozen = gestemd ? activePoll.votedIndex === index : selectedPollOptionIndex === index;
+          button.className = "pollOption" + (gekozen ? " selected" : "");
+          button.disabled = !!(pollVotePending || pollExpired || gestemd);
+          const titel = String(activePoll.options[index] || "");
+          if (button.firstChild.textContent !== titel) button.firstChild.textContent = titel;
+          const aantal = String(votes);
+          if (button.lastChild.textContent !== aantal) button.lastChild.textContent = aantal;
+        });
+        pollBoxEl.classList.toggle("gestemd", gestemd);
       }
 
       function renderPollMeta() {
+        const klok = document.getElementById("pollKlok");
         if (!activePoll) {
           pollMetaEl.textContent = "";
-          pollSubmitBtn.disabled = true;
+          klok.textContent = "";
           return;
         }
-        const totalVotes = Number(activePoll.totalVotes || 0);
         const remainingMs = getPollRemainingMs();
-        const countdown = remainingMs === null ? "" : " • resterend: " + formatCountdownMs(remainingMs);
         const pollExpired = remainingMs !== null && remainingMs <= 0;
-        if (pollVotePending) {
-          pollMetaEl.textContent = "Stem wordt verstuurd...";
-        } else if (pollExpired) {
-          pollMetaEl.textContent = "Poll is afgelopen. Wacht op sluiten.";
-        } else {
-          pollMetaEl.textContent = "Kies 1 optie en druk op Stem. Totaal stemmen: " + totalVotes + countdown;
-        }
-        pollSubmitBtn.disabled = pollVotePending || pollExpired || !Number.isInteger(selectedPollOptionIndex);
+        klok.textContent = remainingMs === null ? "" : formatCountdownMs(remainingMs);
+        if (pollVotePending) pollMetaEl.textContent = "Je stem wordt verstuurd.";
+        else if (Number.isInteger(activePoll.votedIndex) || activePoll.voted) pollMetaEl.textContent = "Je stem is binnen.";
+        else if (pollExpired) pollMetaEl.textContent = "Het stemmen is afgelopen.";
+        else pollMetaEl.textContent = "Tik op je keuze.";
       }
 
       function showPoll(poll) {
@@ -1433,14 +1475,10 @@
         }
 
         const incomingPollId = Number(poll.id);
-        if (Number.isInteger(incomingPollId) && getStoredVotedPollId() === incomingPollId) {
-          activePoll = null;
-          selectedPollOptionIndex = null;
-          pollVotePending = false;
-          pollBoxEl.hidden = true;
-          renderInteractionMode();
-          return;
-        }
+        // Al gestemd (bijvoorbeeld na het herladen van de pagina): het scherm blijft staan tot de
+        // stemming dicht is, met je keuze erin als die nog bekend is.
+        const alGestemd = Number.isInteger(incomingPollId) && getStoredVotedPollId() === incomingPollId;
+        const bewaardeKeuze = Number.parseInt(String(localStorage.getItem("live_voted_poll_option") || ""), 10);
 
         activePoll = {
           id: incomingPollId,
@@ -1458,6 +1496,8 @@
             }
             return null;
           })(),
+          voted: alGestemd,
+          votedIndex: alGestemd && Number.isInteger(bewaardeKeuze) ? bewaardeKeuze : null,
         };
         selectedPollOptionIndex = null;
         pollVotePending = false;
@@ -2891,8 +2931,15 @@
             if (msg.type === "poll_vote_ok") {
               const votedPollId = Number(msg.pollId);
               if (Number.isInteger(votedPollId)) setStoredVotedPollId(votedPollId);
-              closePoll();
-              appendChat("Je stem is opgeslagen.");
+              // Het stemscherm blijft staan tot de stemming dicht is: tot dan geen chat.
+              if (activePoll && Number(activePoll.id) === votedPollId) {
+                pollVotePending = false;
+                activePoll.voted = true;
+                activePoll.votedIndex = Number.isInteger(selectedPollOptionIndex) ? selectedPollOptionIndex : null;
+                try { localStorage.setItem("live_voted_poll_option", String(activePoll.votedIndex)); } catch (_err) {}
+                renderPollOptions();
+                renderPollMeta();
+              }
               noteServerSeen();
               return;
             }
@@ -3082,11 +3129,13 @@
         if (!btn || !activePoll) return;
         const optionIndex = Number.parseInt(btn.getAttribute("data-poll-option"), 10);
         if (!Number.isInteger(optionIndex)) return;
+        if (pollVotePending || activePoll.voted) return;
         selectedPollOptionIndex = optionIndex;
         renderPollOptions();
         renderPollMeta();
+        // Eén tik is een stem.
+        submitPollVote();
       });
-      pollSubmitBtn.addEventListener("click", submitPollVote);
       sceneVoteOptionsEl.addEventListener("click", (e) => {
         const skipBtn = e.target.closest("button[data-scene-vote-skip]");
         if (skipBtn && sceneVoteOptionsEl.contains(skipBtn)) {
