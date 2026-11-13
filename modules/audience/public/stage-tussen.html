@@ -197,6 +197,8 @@
       /* Uitsneden van lachende gezichten uit de publiekscamera. */
       #rpCamUitleg { color: #fff; line-height: 1.25; }
       #rpCamUitleg:empty, #rpCamKop:empty { display: none; }
+      .niet-bewaard { color: var(--wit-2); visibility: hidden; }
+      .niet-bewaard.aan { visibility: visible; }
       .lachjes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px 12px; padding: 22px 0 30px; }
       .lachjes .gezicht { margin: 0; visibility: hidden; }
       .lachjes .gezicht.aan { visibility: visible; }
@@ -711,6 +713,11 @@
             });
             t += 400;
           });
+          if ((groepen.leukst || []).length || (groepen.verveeld || []).length) {
+            const regel = maak("div", "klein niet-bewaard", "De foto's worden niet opgeslagen.");
+            el("rpCam").append(regel);
+            straks(t, () => regel.classList.add("aan"));
+          }
           // De gezichten blijven ruim in beeld, ook als het rapport later sneller gaat.
           t += 7000 / tempo;
         }
