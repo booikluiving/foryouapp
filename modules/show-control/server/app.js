@@ -346,25 +346,42 @@ function createShowControlApp(options = {}) {
     res.status(201).json({ ok: true, cue });
   }));
 
-  // Staat de volgende scène vast, dan gaat hij vanzelf naar de chat van de script-agent; de tekst
-  // wordt dan geschreven terwijl het zaalscherm het rapport en de keuze laat zien. Opnieuw sturen
-  // kan nog met SCENE CHAT. Niet in de startfase (dan kiest het publiek nog; de stemming stuurt de
-  // winnaar zelf door) en niet bij het testen van scènes.
+  // Komt op het zaalscherm het venster met de tekst in beeld, dan gaat de scène die klaarstaat
+  // vanzelf naar de chat van de script-agent: het publiek ziet de tekst ontstaan. Eén keer per
+  // klaargezette scène; opnieuw sturen kan met SCENE CHAT. Niet bij het testen van scènes, en niet
+  // als de tekst van deze scène er al is.
+  let vanzelfGestuurd = "";
   async function sceneVanzelfNaarChat() {
+    const result = await clients.fetchCurrentRuntimeState();
+    const state = result && result.ok ? result.state : null;
+    if (!state || state.activeSituation || !state.resolvedPreparedNext || !state.preparedNext) return { gestuurd: false, reden: "niets_klaar" };
+    if (state.testRun && state.testRun.enabled) return { gestuurd: false, reden: "testrun" };
+    const sleutel = `${state.showRunId}|${state.preparedNext.situationId}|${state.preparedNext.chosenAt}`;
+    if (sleutel === vanzelfGestuurd) return { gestuurd: false, reden: "al_gestuurd" };
+    vanzelfGestuurd = sleutel;
     try {
-      const result = await clients.fetchCurrentRuntimeState();
-      const state = result && result.ok ? result.state : null;
-      if (!state || state.activeSituation || !state.resolvedPreparedNext) return null;
-      if (state.testRun && state.testRun.enabled) return null;
-      if (state.startPhase && state.startPhase.active) return null;
-      const cue = buildSceneToChatCue(state, { name: "Scène vanzelf naar chat", sourceId: "show-control-scene-chat-vanzelf" });
-      await executeCue(cue, executeOptions);
-      await saveCue(cue);
-      return cue;
+      const basis = String(process.env.SHOW_CONTROL_SCRIPT_AGENT_URL || "http://127.0.0.1:3027").replace(/\/+$/, "");
+      const [tele, status] = await Promise.all([
+        fetch(`${basis}/v0/script-agent/teleprompter-parser/current`, { signal: AbortSignal.timeout(1500) }).then((r) => r.json()),
+        fetch(`${basis}/v0/script-agent/operator/status`, { signal: AbortSignal.timeout(1500) }).then((r) => r.json()),
+      ]);
+      if (status && status.stage && status.stage.streaming) return { gestuurd: false, reden: "schrijft_al" };
+      const nummer = (waarde) => Number((String(waarde || "").match(/(\d+)$/) || [])[1] || 0);
+      const bron = tele && tele.teleprompt && tele.teleprompt.source ? nummer(tele.teleprompt.source.sceneId) : 0;
+      const klaar = nummer(state.resolvedPreparedNext.legacySituationId || state.resolvedPreparedNext.situationId);
+      const vers = tele && tele.teleprompt && Date.parse(tele.teleprompt.source && tele.teleprompt.source.generatedAt || "") >= Date.parse(state.preparedNext.chosenAt || "");
+      if (bron && bron === klaar && vers) return { gestuurd: false, reden: "tekst_is_er" };
     } catch (_err) {
-      return null;
+      // script-agent niet te bereiken om te kijken: gewoon sturen
     }
+    const cue = buildSceneToChatCue(state, { name: "Scène vanzelf naar chat", sourceId: "show-control-scene-chat-vanzelf" });
+    executeCue(cue, executeOptions).then(() => saveCue(cue)).catch(() => {});
+    return { gestuurd: true, situationId: state.preparedNext.situationId };
   }
+
+  app.post("/v0/show-control/cues/scene-to-chat-vanzelf", asyncRoute(async (_req, res) => {
+    res.json({ ok: true, ...(await sceneVanzelfNaarChat()) });
+  }));
 
   app.post("/v0/show-control/cues/stop-situation", asyncRoute(async (req, res) => {
     const runtimeState = req.body && req.body.runtimeState ? req.body.runtimeState : null;
@@ -376,8 +393,6 @@ function createShowControlApp(options = {}) {
     await executeCue(cue, { ...executeOptions, runtimeState });
     await saveCue(cue);
     res.status(201).json({ ok: true, cue });
-    // Na het antwoord, zodat de knop niet op het schrijven wacht.
-    if (!(req.body && req.body.geenSceneChat)) sceneVanzelfNaarChat();
   }));
 
   // /status wordt elke seconde gevraagd (deck-status): de omgevingsknoppen hoeven

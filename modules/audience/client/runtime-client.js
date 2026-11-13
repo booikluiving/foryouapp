@@ -110,15 +110,6 @@ async function prepareChosenSituation({ showRunId, situationId } = {}) {
   } catch (_err) {
     showControl = false;
   }
-  // De winnaar gaat vanzelf naar de chat van de script-agent. Daar wordt niet op gewacht: het
-  // schrijven duurt even en de uitslag hoeft er niet op te blijven hangen.
-  if (showControl) {
-    fetch(`${showControlBaseUrl()}/v0/show-control/cues/scene-to-chat`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Winnaar van de stemming vanzelf naar chat", runtimeState: state, sourceId: "show-control-scene-chat-vanzelf" }),
-    }).catch(() => {});
-  }
   return { ok: true, showControl, state };
 }
 
@@ -148,7 +139,14 @@ async function restoreRuntimeAlgorithmContext({ showRunId, reason = "audience_li
   });
 }
 
+// Het zaalscherm meldt dat het venster met de tekst in beeld komt: show control stuurt de scène
+// die klaarstaat dan één keer naar de chat van de script-agent.
+async function sceneVanzelfNaarChat() {
+  return postJsonRuim(`${showControlBaseUrl()}/v0/show-control/cues/scene-to-chat-vanzelf`, {});
+}
+
 module.exports = {
+  sceneVanzelfNaarChat,
   DEFAULT_ALGORITHM_BASE_URL,
   DEFAULT_RUNTIME_BASE_URL,
   algorithmBaseUrl,

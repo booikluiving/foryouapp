@@ -15,6 +15,7 @@ const {
   fetchRuntimeView,
   prepareChosenSituation,
   restoreRuntimeAlgorithmContext,
+  sceneVanzelfNaarChat,
   sendAudienceSignalsToAlgorithm,
   sendScoreFeedToRuntime,
 } = require("../client/runtime-client");
@@ -153,6 +154,18 @@ function createAudienceApp(options = {}) {
   });
 
   // Rapportvenster na een scène: reacties, de som, de stand per label en de scène die hierna komt.
+  // Het zaalscherm meldt dat het venster met de tekst in beeld komt: de scène die klaarstaat gaat
+  // dan vanzelf naar de chat van de script-agent (show control doet dat één keer per scène).
+  app.post("/audience/stage/tekst-in-beeld", asyncRoute(async (_req, res) => {
+    let uitkomst = null;
+    try {
+      uitkomst = await sceneVanzelfNaarChat();
+    } catch (err) {
+      uitkomst = { ok: false, fout: err && err.message ? String(err.message).slice(0, 200) : "onbekend" };
+    }
+    res.json(uitkomst || { ok: false });
+  }));
+
   app.get("/audience/stage/rapport", asyncRoute(async (req, res) => {
     res.set("Cache-Control", "no-store");
     const result = await fetchRuntimeView();
