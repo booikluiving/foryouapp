@@ -110,6 +110,15 @@ async function prepareChosenSituation({ showRunId, situationId } = {}) {
   } catch (_err) {
     showControl = false;
   }
+  // De winnaar gaat vanzelf naar de chat van de script-agent. Daar wordt niet op gewacht: het
+  // schrijven duurt even en de uitslag hoeft er niet op te blijven hangen.
+  if (showControl) {
+    fetch(`${showControlBaseUrl()}/v0/show-control/cues/scene-to-chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Winnaar van de stemming vanzelf naar chat", runtimeState: state, sourceId: "show-control-scene-chat-vanzelf" }),
+    }).catch(() => {});
+  }
   return { ok: true, showControl, state };
 }
 

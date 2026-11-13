@@ -346,6 +346,26 @@ function createShowControlApp(options = {}) {
     res.status(201).json({ ok: true, cue });
   }));
 
+  // Staat de volgende scène vast, dan gaat hij vanzelf naar de chat van de script-agent; de tekst
+  // wordt dan geschreven terwijl het zaalscherm het rapport en de keuze laat zien. Opnieuw sturen
+  // kan nog met SCENE CHAT. Niet in de startfase (dan kiest het publiek nog; de stemming stuurt de
+  // winnaar zelf door) en niet bij het testen van scènes.
+  async function sceneVanzelfNaarChat() {
+    try {
+      const result = await clients.fetchCurrentRuntimeState();
+      const state = result && result.ok ? result.state : null;
+      if (!state || state.activeSituation || !state.resolvedPreparedNext) return null;
+      if (state.testRun && state.testRun.enabled) return null;
+      if (state.startPhase && state.startPhase.active) return null;
+      const cue = buildSceneToChatCue(state, { name: "Scène vanzelf naar chat", sourceId: "show-control-scene-chat-vanzelf" });
+      await executeCue(cue, executeOptions);
+      await saveCue(cue);
+      return cue;
+    } catch (_err) {
+      return null;
+    }
+  }
+
   app.post("/v0/show-control/cues/stop-situation", asyncRoute(async (req, res) => {
     const runtimeState = req.body && req.body.runtimeState ? req.body.runtimeState : null;
     const showRunId = (req.body && req.body.showRunId) || (runtimeState && runtimeState.showRunId) || null;
@@ -356,6 +376,8 @@ function createShowControlApp(options = {}) {
     await executeCue(cue, { ...executeOptions, runtimeState });
     await saveCue(cue);
     res.status(201).json({ ok: true, cue });
+    // Na het antwoord, zodat de knop niet op het schrijven wacht.
+    if (!(req.body && req.body.geenSceneChat)) sceneVanzelfNaarChat();
   }));
 
   // /status wordt elke seconde gevraagd (deck-status): de omgevingsknoppen hoeven
