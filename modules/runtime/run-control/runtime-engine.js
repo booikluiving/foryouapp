@@ -419,9 +419,17 @@ function buildEligiblePool({
   const inStartPhase = startCandidates.length > 0
     && startPhaseFor(pathEvaluation, orderSettings, activeSituationId).active;
   const orderedBase = inStartPhase ? startCandidates : available;
+  // Niet twee keer achter elkaar dezelfde omgeving of dezelfde personages. De volgende scène wordt
+  // gekozen terwijl de huidige nog speelt: dan telt de scène die nu speelt als de vorige, niet de
+  // scène daarvoor. Is er niets anders vrij, dan mag het wel.
+  const activeCatalogSituation = activeSituationId ? situationMap.get(activeSituationId) : null;
+  const activeEnvironmentId = activeSituation && activeSituation.resolved && activeSituation.resolved.environmentId;
+  const previousSituation = activeCatalogSituation
+    ? { ...activeCatalogSituation, environmentId: activeEnvironmentId || activeCatalogSituation.environmentId }
+    : lastPlayedSituation;
   const hardFiltered = orderedBase.filter((item) => {
-    if (lastPlayedSituation && charactersOverlap(item.situation, lastPlayedSituation)) return false;
-    if (lastPlayedSituation && sameEnvironment(item.situation, lastPlayedSituation)) return false;
+    if (previousSituation && charactersOverlap(item.situation, previousSituation)) return false;
+    if (previousSituation && sameEnvironment(item.situation, previousSituation)) return false;
     return true;
   });
   const finalCandidates = hardFiltered.length > 0 ? hardFiltered : orderedBase;

@@ -209,6 +209,23 @@ async function main() {
     scoreFeed: neutralScoreFeed(tieBreakShowRunId),
     orderSettings: { randomizeEqualScores: false },
   }).map((item) => item.situationId);
+  // Niet twee keer achter elkaar dezelfde omgeving: de scène die nu speelt telt als de vorige.
+  const omgevingPool = (extra) => buildEligiblePool({
+    catalog: { situations: [
+      { id: "situation:1", legacyId: 1, title: "trein een", active: true, characterIds: [], environmentId: "environment:trein" },
+      { id: "situation:2", legacyId: 2, title: "trein twee", active: true, characterIds: [], environmentId: "environment:trein" },
+      { id: "situation:3", legacyId: 3, title: "keuken", active: true, characterIds: [], environmentId: "environment:keuken" },
+    ] },
+    pathEvaluation: { items: ["situation:2", "situation:3"].map((situationId) => ({ situationId, status: "available", pathStatuses: [] })) },
+    playedSituations: [],
+    lastPlayedSituation: null,
+    scoreFeed: null,
+    orderSettings: { startSceneCount: 0 },
+    ...extra,
+  }).map((item) => item.situationId);
+  assert.deepEqual(omgevingPool({ activeSituation: { situationId: "situation:1" } }), ["situation:3"], "while a scene plays, the next one is not in the same environment");
+  assert.deepEqual(omgevingPool({ activeSituation: { situationId: "situation:1", resolved: { environmentId: "environment:keuken" } } }), ["situation:2"], "the environment the active scene really plays in counts");
+  assert.deepEqual(omgevingPool({ activeSituation: null }).sort(), ["situation:2", "situation:3"], "without a previous scene every environment is allowed");
   // Startfase: eerst een vast aantal startscènes, daarna alles wat vrij is.
   const fasePool = (statuses, startSceneCount) => buildEligiblePool({
     catalog: { situations: Object.keys(statuses).map((id) => ({ id, legacyId: Number(id.split(":")[1]), title: id, active: true, characterIds: [] })) },
