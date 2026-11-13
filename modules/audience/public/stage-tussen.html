@@ -685,8 +685,8 @@
           });
           t += 600;
           [
-            [emojiVan("positief"), "lachten", camera.lachenPct, camera.lachjes],
-            [emojiVan("negatief"), "keken verveeld", camera.saaiPct, camera.verveeld],
+            [emojiVan("positief"), "lachten", Number(camera.lachenPct) || 0, camera.lachjes || []],
+            [emojiVan("negatief"), "keken verveeld", Number(camera.saaiPct) || 0, camera.verveeld || []],
           ].forEach(([emoji, woord, pct, gezichten]) => {
             const rij = rpRij("", "0%");
             if (emoji) rij.firstElementChild.append(maak("span", "emoji", emoji));
