@@ -187,14 +187,34 @@ function hueToDmx(hue) {
   return Math.round((clamp(hue, 0, 360, 0) / 360) * 255);
 }
 
+// De drie lampen staan in kleurtemperatuurmodus: kanaal 2 is warm (0) tot koel (255),
+// kanaal 3 is magenta (0) tot groen (255). Tint en verzadiging uit een stand worden
+// daarom omgerekend naar warmer of koeler wit. Zet de lampen in kleurmodus (HSI) en
+// deze waarde op "hsi" om weer tint en verzadiging te sturen.
+const ACCENT_LAMP_MODE = process.env.FORYOU_ACCENT_LAMP_MODE === "hsi" ? "hsi" : "cct";
+const CCT_NEUTRAL = 128;
+const CCT_GM_NEUTRAL = 128;
+
+function cctForHsi(hue, saturation) {
+  const strength = clamp(saturation) / 255;
+  const warmth = Math.cos(((clamp(hue, 0, 360, 0) - 30) * Math.PI) / 180) * strength;
+  const span = warmth > 0 ? CCT_NEUTRAL : 255 - CCT_NEUTRAL;
+  return clamp(Math.round(CCT_NEUTRAL - warmth * span));
+}
+
 function channelsForAccentFixtures(fixtures = {}) {
   const normalized = normalizeFixtureMap(fixtures);
   const channels = {};
   for (const fixture of ACCENT_FIXTURES) {
     const values = normalized[fixture.id];
     channels[fixture.address] = clamp(values.intensity);
-    channels[fixture.address + 1] = hueToDmx(values.hue);
-    channels[fixture.address + 2] = clamp(values.saturation);
+    if (ACCENT_LAMP_MODE === "hsi") {
+      channels[fixture.address + 1] = hueToDmx(values.hue);
+      channels[fixture.address + 2] = clamp(values.saturation);
+    } else {
+      channels[fixture.address + 1] = cctForHsi(values.hue, values.saturation);
+      channels[fixture.address + 2] = CCT_GM_NEUTRAL;
+    }
   }
   return channels;
 }
@@ -210,6 +230,7 @@ function channelsForPreset(presetId, presets = DEFAULT_LIGHTING_PRESETS) {
 
 module.exports = {
   ACCENT_FIXTURES,
+  ACCENT_LAMP_MODE,
   BASE_FIXTURES,
   DEFAULT_ENVIRONMENT_PRESET_ID,
   DEFAULT_LIGHTING_PRESETS,
