@@ -428,7 +428,7 @@ async function main() {
   const metOpmerking = await operatorService.sceneToChat({ sourceId: "unit-scene-chat" });
   assert.equal(metOpmerking.opmerking, "deze was te lang\nScene is te letterlijk");
   const laatsteVraag = fakeDeepSeek.lastBody.messages[fakeDeepSeek.lastBody.messages.length - 1].content;
-  assert(laatsteVraag.includes("Opmerking van de operator over de vorige scène:\ndeze was te lang\nScene is te letterlijk"));
+  assert(laatsteVraag.includes("Opmerking van de operator over de VORIGE scène (niet over deze):\ndeze was te lang\nScene is te letterlijk"));
   assert.equal(operatorService.opmerkingStand().bewaard, "", "na het meegeven is de opmerking weg");
   const zonderOpmerking = await operatorService.sceneToChat({ sourceId: "unit-scene-chat" });
   assert.equal(zonderOpmerking.opmerking, null);

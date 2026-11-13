@@ -1383,7 +1383,7 @@ function createOperatorService(options = {}) {
     const done = await streamChat({
       sessionId,
       message: operatorOpmerking
-        ? `${nextDraft.text}\n\nOpmerking van de operator over de vorige scène:\n${operatorOpmerking}\nHoud daar rekening mee in deze scène.`
+        ? `${nextDraft.text}\n\nOpmerking van de operator over de VORIGE scène (niet over deze):\n${operatorOpmerking}\nGebruik dit als bijsturing voor de scène die je nu schrijft: doe meer van wat goed was en verbeter wat niet goed was.`
         : nextDraft.text,
       promptInput: nextDraft.promptInput,
       sourceId,
