@@ -10,7 +10,7 @@ Per seconde (gemiddeld over de beelden in die seconde, behalve personen/handen/k
   handen (hand omhoog), klappen, beweging (% van het beeld).
 Met --fase leest hij (alleen lezen) de fase en scènetitel uit de publieksdienst, zodat het rapport per scène kan.
 Met --publiek stuurt hij tijdens een scène elke 2 s de tellingen van die scène naar de publieksdienst (voor de score
-en het rapport op het zaalscherm), plus uitsneden van lachende gezichten (één per plek, hoogstens 12 per scène).
+en het rapport op het zaalscherm), plus uitsneden van lachende gezichten (één per persoon, hoogstens 12 per scène).
 De uitsneden blijven alleen in het geheugen van de publieksdienst; hier wordt niets bewaard.
 """
 from __future__ import annotations
@@ -88,9 +88,17 @@ def beeld(r: dict, yaw_weg: float, pitch_omlaag: float) -> dict:
     return out
 
 
-def plek(b: list) -> tuple[int, int]:
-    """Plek van een gezicht in een grof raster: zo komt dezelfde persoon maar één keer in het rapport."""
-    return int((b[0] + b[2] / 2) * 48), int((b[1] + b[3] / 2) * 12)
+def plek(b: list) -> tuple[float, float, float, float]:
+    """Midden en maat van een gezicht (0..1 van het beeld)."""
+    return b[0] + b[2] / 2, b[1] + b[3] / 2, b[2], b[3]
+
+
+ZELFDE = 1.5  # binnen zoveel gezichtsbreedtes/-hoogtes van een eerder gezicht: dezelfde persoon
+
+
+def zelfde_persoon(a: tuple, b: tuple) -> bool:
+    w, h = max(a[2], b[2]), max(a[3], b[3])
+    return abs(a[0] - b[0]) < ZELFDE * w and abs(a[1] - b[1]) < ZELFDE * h
 
 
 GEMIDDELD = ("gezichten", "lachen", "aandacht", "weg", "omlaag", "ogen_dicht", "saai", "zonder_gezicht", "beweging")
@@ -113,7 +121,7 @@ class Publiek:
     """Stuurt de tellingen van de lopende scène en uitsneden van lachende gezichten naar de publieksdienst."""
 
     def __init__(self, url: str):
-        self.url, self.scene, self.regels, self.plekken, self.gestuurd = url, None, [], set(), 0
+        self.url, self.scene, self.regels, self.plekken, self.gestuurd = url, None, [], [], 0
         self.laatst = 0.0
         self.rij: "queue.Queue[dict]" = queue.Queue(maxsize=50)
         threading.Thread(target=self._stuur_loop, daemon=True).start()
@@ -139,14 +147,14 @@ class Publiek:
         if run != self.scene:
             if self.scene and self.regels:
                 self._stuur({"situationRunId": self.scene, "stats": stats(self.regels)})
-            self.scene, self.regels, self.plekken, self.gestuurd = run, [], set(), 0
+            self.scene, self.regels, self.plekken, self.gestuurd = run, [], [], 0
         if not run:
             return
         self.regels.append(agg)
         for p, jpg in lachjes:
-            if self.gestuurd >= LACHJES_PER_SCENE or p in self.plekken:
+            if self.gestuurd >= LACHJES_PER_SCENE or any(zelfde_persoon(p, q) for q in self.plekken):
                 continue
-            self.plekken.add(p)
+            self.plekken.append(p)
             self.gestuurd += 1
             self._stuur({"situationRunId": run, "headshot": jpg})
         if time.time() - self.laatst >= 2:
