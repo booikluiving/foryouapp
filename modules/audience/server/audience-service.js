@@ -744,7 +744,12 @@ class AudienceService extends EventEmitter {
     const lijst = scene.gezichten[soort];
     if (typeof body.headshot === "string" && lijst.length < CAMERA_HEADSHOTS) {
       const jpeg = Buffer.from(body.headshot, "base64");
-      if (jpeg.length > 0 && jpeg.length <= 200 * 1024 && jpeg[0] === 0xff && jpeg[1] === 0xd8) lijst.push(jpeg);
+      const persoon = body.persoon == null ? null : String(body.persoon);
+      if (jpeg.length > 0 && jpeg.length <= 200 * 1024 && jpeg[0] === 0xff && jpeg[1] === 0xd8) {
+        // Iemand die eerst verveeld keek en daarna lachte, staat alleen nog bij "lachten".
+        if (soort === "lach" && persoon != null) scene.gezichten.saai = scene.gezichten.saai.filter((g) => g.persoon !== persoon);
+        lijst.push({ persoon, jpeg });
+      }
     }
     return { ok: true, lach: scene.gezichten.lach.length, saai: scene.gezichten.saai.length };
   }
@@ -758,7 +763,8 @@ class AudienceService extends EventEmitter {
   cameraHeadshot(situationRunId, soort, index) {
     const scene = this.camera.get(String(situationRunId || ""));
     const lijst = scene ? scene.gezichten[soort === "saai" ? "saai" : "lach"] : null;
-    return lijst ? lijst[Number(index)] || null : null;
+    const gezicht = lijst ? lijst[Number(index)] : null;
+    return gezicht ? gezicht.jpeg : null;
   }
 
 
