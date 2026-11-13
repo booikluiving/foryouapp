@@ -2,7 +2,8 @@
 // Gebruik: publiek_vision <breedte> <hoogte> [--gray] [--tiles N] [--overlap px]
 //   --gray     invoer is 1 byte per pixel (luma), anders BGRA (4 bytes)
 //   --tiles N  kijkt in N verticale delen van hetzelfde beeld (vensters op hetzelfde geheugen, geen kopie)
-//   --lach     geeft bij een lachend gezicht ook een uitsnede mee ("jpg", base64), per plek hoogstens eens per 3 s
+//   --uitsneden  geeft bij een lachend of wegkijkend gezicht (opzij, omlaag, ogen dicht) een uitsnede mee
+//                ("jpg", base64), per plek en soort hoogstens eens per 3 s. Drempels: --yaw-weg, --pitch-omlaag (graden)
 // Coördinaten in de uitvoer: 0..1 van het hele beeld, oorsprong linksboven.
 import Foundation
 import Vision
@@ -21,8 +22,10 @@ func opt(_ name: String) -> String? {
 let gray = argv.contains("--gray")
 let tiles = max(1, Int(opt("--tiles") ?? "1") ?? 1)
 let overlap = Int(opt("--overlap") ?? "256") ?? 256
-let lach = argv.contains("--lach")
-var lachLaatst: [Int: Date] = [:]   // plek (raster 48×12) → laatste uitsnede
+let uitsneden = argv.contains("--uitsneden")
+let yawWeg = Double(opt("--yaw-weg") ?? "30") ?? 30
+let pitchOmlaag = Double(opt("--pitch-omlaag") ?? "20") ?? 20
+var uitsnedeLaatst: [Int: Date] = [:]   // plek (raster 48×12) en soort → laatste uitsnede
 let bpp = gray ? 1 : 4
 let frameBytes = W * H * bpp
 let skip = Set((ProcessInfo.processInfo.environment["PV_SKIP"] ?? "").split(separator: ",").map(String.init))
@@ -208,11 +211,11 @@ while running {
         return (f.hasSmile, f.leftEyeClosed && f.rightEyeClosed, true, img)
     }
 
-    // Uitsnede van een lachend gezicht als JPEG (base64), per plek hoogstens eens per 3 seconden.
-    func lachJpeg(_ b: CGRect, _ img: CIImage) -> String? {
-        let plek = Int(b.midX * 48) * 100 + Int((1 - b.midY) * 12)
-        if let t = lachLaatst[plek], Date().timeIntervalSince(t) < 3 { return nil }
-        lachLaatst[plek] = Date()
+    // Uitsnede van een gezicht als JPEG (base64), per plek en soort hoogstens eens per 3 seconden.
+    func uitsnedeJpeg(_ b: CGRect, _ img: CIImage, _ soort: Int) -> String? {
+        let plek = (Int(b.midX * 48) * 100 + Int((1 - b.midY) * 12)) * 10 + soort
+        if let t = uitsnedeLaatst[plek], Date().timeIntervalSince(t) < 3 { return nil }
+        uitsnedeLaatst[plek] = Date()
         let cs = gray ? CGColorSpaceCreateDeviceGray() : CGColorSpace(name: CGColorSpace.sRGB)!
         let opts = [CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.85]
         let data = ciContext.jpegRepresentation(of: img, colorSpace: cs, options: opts)
@@ -225,7 +228,10 @@ while running {
         let (smile, eyesClosed, seen, img) = smileAt(b)
         var face: [String: Any] = ["b": box(b), "smile": smile, "eyes": seen ? (eyesClosed ? "dicht" : "open") : "?",
                                    "c": r(CGFloat(faceConf[i])), "yaw": faceAngles[i][0], "pitch": faceAngles[i][1], "roll": faceAngles[i][2]]
-        if lach, smile, let img = img, let jpg = lachJpeg(b, img) { face["jpg"] = jpg }
+        if uitsneden, let img = img {
+            let weg = abs(faceAngles[i][0]) > yawWeg || faceAngles[i][1] > pitchOmlaag || (seen && eyesClosed)
+            if smile || weg, let jpg = uitsnedeJpeg(b, img, smile ? 1 : 2) { face["jpg"] = jpg }
+        }
         faces.append(face)
     }
     let out: [String: Any] = [

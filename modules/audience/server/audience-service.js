@@ -121,6 +121,9 @@ const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   tussenChatGrootte: 36,
   // Volume van de geluidjes van het zaalscherm (telwerk, relais, kiezer), in procenten.
   tussenGeluid: 50,
+  // Rapport, blad van de publiekscamera: kop en uitleg (waarom je gezicht gemeten wordt). Leeg = niet tonen.
+  rapportCameraKop: "",
+  rapportCameraUitleg: "",
 });
 const DIRECT_LINK_RE = /\b(?:https?:\/\/|www\.)\S+/i;
 const DOMAIN_RE = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|nl|be|de|eu|io|gg|tv|co|me|app|dev|info|xyz|ly|to|ai)\b/i;
@@ -241,6 +244,8 @@ function normalizeStageSettings(raw = {}, base = STAGE_OUTPUT_DEFAULTS) {
     tussenChatHoogte: clampInt(src.tussenChatHoogte, 100, 1920, Number(base.tussenChatHoogte ?? STAGE_OUTPUT_DEFAULTS.tussenChatHoogte)),
     tussenChatGrootte: clampInt(src.tussenChatGrootte, 16, 120, Number(base.tussenChatGrootte ?? STAGE_OUTPUT_DEFAULTS.tussenChatGrootte)),
     tussenGeluid: clampInt(src.tussenGeluid, 0, 100, Number(base.tussenGeluid ?? STAGE_OUTPUT_DEFAULTS.tussenGeluid)),
+    rapportCameraKop: String(src.rapportCameraKop !== undefined ? src.rapportCameraKop : (base.rapportCameraKop ?? "")).replace(/\s+/g, " ").trim().slice(0, 80),
+    rapportCameraUitleg: String(src.rapportCameraUitleg !== undefined ? src.rapportCameraUitleg : (base.rapportCameraUitleg ?? "")).replace(/\s+/g, " ").trim().slice(0, 300),
   };
 }
 
@@ -730,28 +735,32 @@ class AudienceService extends EventEmitter {
     if (!situationRunId) return { ok: false, error: "geen_scene" };
     let scene = this.camera.get(situationRunId);
     if (!scene) {
-      scene = { stats: null, headshots: [] };
+      scene = { stats: null, gezichten: { lach: [], saai: [] } };
       this.camera.set(situationRunId, scene);
       while (this.camera.size > CAMERA_SCENES) this.camera.delete(this.camera.keys().next().value);
     }
     if (body.stats && typeof body.stats === "object") scene.stats = { ...body.stats };
-    if (typeof body.headshot === "string" && scene.headshots.length < CAMERA_HEADSHOTS) {
+    const soort = body.soort === "saai" ? "saai" : "lach";
+    const lijst = scene.gezichten[soort];
+    if (typeof body.headshot === "string" && lijst.length < CAMERA_HEADSHOTS) {
       const jpeg = Buffer.from(body.headshot, "base64");
-      if (jpeg.length > 0 && jpeg.length <= 200 * 1024 && jpeg[0] === 0xff && jpeg[1] === 0xd8) scene.headshots.push(jpeg);
+      if (jpeg.length > 0 && jpeg.length <= 200 * 1024 && jpeg[0] === 0xff && jpeg[1] === 0xd8) lijst.push(jpeg);
     }
-    return { ok: true, headshots: scene.headshots.length };
+    return { ok: true, lach: scene.gezichten.lach.length, saai: scene.gezichten.saai.length };
   }
 
   cameraVoor(situationRunId) {
     const scene = situationRunId ? this.camera.get(String(situationRunId)) : null;
     if (!scene || !scene.stats) return null;
-    return { ...scene.stats, headshots: scene.headshots.length };
+    return { ...scene.stats, headshots: scene.gezichten.lach.length, boredHeadshots: scene.gezichten.saai.length };
   }
 
-  cameraHeadshot(situationRunId, index) {
+  cameraHeadshot(situationRunId, soort, index) {
     const scene = this.camera.get(String(situationRunId || ""));
-    return scene ? scene.headshots[Number(index)] || null : null;
+    const lijst = scene ? scene.gezichten[soort === "saai" ? "saai" : "lach"] : null;
+    return lijst ? lijst[Number(index)] || null : null;
   }
+
 
   chatGewistTot(session = this.getActiveSession()) {
     const gewist = this.store.getSetting(CHAT_GEWIST_KEY, null);

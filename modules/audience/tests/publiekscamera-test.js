@@ -57,10 +57,10 @@ async function main() {
     "from publiek_sensor import Publiek",
     "jpg = '/9j/' + 'A' * 400",
     `p = Publiek('http://127.0.0.1:${LAN}/audience/camera')`,
-    "rij = lambda lach: {'fase': 'scene', 'situationRunId': '" + SCENE + "', 't': '20:00:00', 'gezichten': 4, 'lachen': lach, 'aandacht': 3, 'weg': 1, 'omlaag': 0, 'ogen_dicht': 0, 'saai': 1, 'zonder_gezicht': 0, 'beweging': 1.0, 'personen': 5, 'handen': 0, 'klappen': 0}",
+    "rij = lambda lach, saai=1: {'fase': 'scene', 'situationRunId': '" + SCENE + "', 't': '20:00:00', 'gezichten': 4, 'lachen': lach, 'aandacht': 4 - saai, 'weg': saai, 'omlaag': 0, 'ogen_dicht': 0, 'saai': saai, 'zonder_gezicht': 0, 'beweging': 1.0, 'personen': 5, 'handen': 0, 'klappen': 0}",
     "een, een_verschoven, ander = (0.20, 0.50, 0.010, 0.04), (0.212, 0.53, 0.011, 0.04), (0.25, 0.50, 0.010, 0.04)",
-    "for i in range(8): p.seconde(rij(2 if i < 3 else 0), [(een, jpg), (een_verschoven, jpg)] if i == 1 else [])",
-    "p.laatst = 0; p.seconde(rij(0), [(ander, jpg), (een, jpg)])",
+    "for i in range(8): p.seconde(rij(2 if i < 3 else 0), [(een, jpg, 'lach'), (een_verschoven, jpg, 'lach'), (ander, jpg, 'saai')] if i == 1 else [])",
+    "p.laatst = 0; p.seconde(rij(0, saai=3), [(ander, jpg, 'lach'), (een, jpg, 'lach'), (ander, jpg, 'saai')])",
     "time.sleep(1.5)",
     "print(jpg)",
   ].join("\n")]).toString().trim();
@@ -71,12 +71,14 @@ async function main() {
   assert.equal(input.camera.peopleMax, 5);
   assert.equal(input.camera.laughMoments, 1);
   assert.equal(input.camera.headshots, 2, "dezelfde persoon maar één keer, ook als hij een beetje beweegt");
+  assert.equal(input.camera.boredHeadshots, 1, "verveeld alleen als de halve zaal verveeld kijkt");
 
-  const foto = await lan(`/audience/stage/lach/0?situationRunId=${encodeURIComponent(SCENE)}`);
+  const foto = await lan(`/audience/stage/gezicht/lach/0?situationRunId=${encodeURIComponent(SCENE)}`);
   assert.equal(foto.status, 200);
   assert.equal(foto.headers.get("content-type"), "image/jpeg");
   assert.equal(Buffer.from(await foto.arrayBuffer()).toString("base64"), jpeg);
-  assert.equal((await lan(`/audience/stage/lach/5?situationRunId=${encodeURIComponent(SCENE)}`)).status, 404);
+  assert.equal((await lan(`/audience/stage/gezicht/lach/5?situationRunId=${encodeURIComponent(SCENE)}`)).status, 404);
+  assert.equal((await lan(`/audience/stage/gezicht/saai/0?situationRunId=${encodeURIComponent(SCENE)}`)).status, 200);
 
   console.log("publiekscamera: ok");
 }
