@@ -10,6 +10,12 @@ function round(value, digits = 1) {
   return Math.round(number * factor) / factor;
 }
 
+function gezichten(scene, soort, aantal) {
+  return Array.from({ length: Math.min(12, Number(aantal || 0)) }, (_v, index) => (
+    `/audience/stage/gezicht/${soort}/${index}?situationRunId=${encodeURIComponent(scene.situationRunId || "")}`
+  ));
+}
+
 function bouwStageRapport(report, view, situationRunId) {
   const scenes = report && Array.isArray(report.scenes) ? report.scenes : [];
   const scene = situationRunId
@@ -61,9 +67,8 @@ function bouwStageRapport(report, view, situationRunId) {
         lachenPct: Number(camera.laughPct || 0),
         aandachtPct: Number(camera.attentionPct || 0),
         saaiPct: Number(camera.boredPct || 0),
-        lachjes: Array.from({ length: Math.min(12, Number(camera.headshots || 0)) }, (_v, index) => (
-          `/audience/stage/lach/${index}?situationRunId=${encodeURIComponent(scene.situationRunId || "")}`
-        )),
+        lachjes: gezichten(scene, "lach", camera.headshots),
+        verveeld: gezichten(scene, "saai", camera.boredHeadshots),
       } : null,
     },
     som: {

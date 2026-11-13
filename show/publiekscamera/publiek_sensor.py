@@ -10,7 +10,8 @@ Per seconde (gemiddeld over de beelden in die seconde, behalve personen/handen/k
   handen (hand omhoog), klappen, beweging (% van het beeld).
 Met --fase leest hij (alleen lezen) de fase en scènetitel uit de publieksdienst, zodat het rapport per scène kan.
 Met --publiek stuurt hij tijdens een scène elke 2 s de tellingen van die scène naar de publieksdienst (voor de score
-en het rapport op het zaalscherm), plus uitsneden van lachende gezichten (één per persoon, hoogstens 12 per scène).
+en het rapport op het zaalscherm), plus uitsneden van gezichten: wie lachte, en wie verveeld keek terwijl minstens de
+helft van de zaal dat deed (één per persoon en soort, hoogstens 12 per soort per scène).
 De uitsneden blijven alleen in het geheugen van de publieksdienst; hier wordt niets bewaard.
 """
 from __future__ import annotations
@@ -74,9 +75,10 @@ def kijk(f: dict, yaw_weg: float, pitch_omlaag: float) -> dict:
 
 
 def beeld(r: dict, yaw_weg: float, pitch_omlaag: float) -> dict:
-    """Tellingen van één beeld (plus uitsneden van lachende gezichten, als publiek_vision die meegaf)."""
+    """Tellingen van één beeld (plus uitsneden van gezichten, als publiek_vision die meegaf)."""
     fs = [kijk(f, yaw_weg, pitch_omlaag) for f in r["faces"]]
-    lachjes = [(plek(f["b"]), f["jpg"]) for f in r["faces"] if f.get("jpg")]
+    lachjes = [(plek(f["b"]), f["jpg"], "lach" if k["lachen"] else "saai")
+               for f, k in zip(r["faces"], fs) if f.get("jpg") and (k["lachen"] or k["saai"])]
     cls = [classify(p) for p in r["poses"]]
     n_face, n_pers = len(r["faces"]), len(r["persons"])
     out = {"personen": max(n_face, n_pers), "gezichten": n_face,
@@ -114,14 +116,15 @@ def seconde(bucket: list[dict]) -> dict:
     return agg
 
 
-LACHJES_PER_SCENE = 12
+LACHJES_PER_SCENE = 12   # per soort
+SAAI_DEEL = 0.5          # verveelde gezichten alleen als minstens dit deel van de zaal verveeld kijkt
 
 
 class Publiek:
-    """Stuurt de tellingen van de lopende scène en uitsneden van lachende gezichten naar de publieksdienst."""
+    """Stuurt de tellingen van de lopende scène en uitsneden van gezichten naar de publieksdienst."""
 
     def __init__(self, url: str):
-        self.url, self.scene, self.regels, self.plekken, self.gestuurd = url, None, [], [], 0
+        self.url, self.scene, self.regels, self.plekken = url, None, [], {"lach": [], "saai": []}
         self.laatst = 0.0
         self.rij: "queue.Queue[dict]" = queue.Queue(maxsize=50)
         threading.Thread(target=self._stuur_loop, daemon=True).start()
@@ -147,16 +150,19 @@ class Publiek:
         if run != self.scene:
             if self.scene and self.regels:
                 self._stuur({"situationRunId": self.scene, "stats": stats(self.regels)})
-            self.scene, self.regels, self.plekken, self.gestuurd = run, [], [], 0
+            self.scene, self.regels, self.plekken = run, [], {"lach": [], "saai": []}
         if not run:
             return
         self.regels.append(agg)
-        for p, jpg in lachjes:
-            if self.gestuurd >= LACHJES_PER_SCENE or any(zelfde_persoon(p, q) for q in self.plekken):
+        zaal_saai = agg["gezichten"] >= 1 and agg["saai"] / agg["gezichten"] >= SAAI_DEEL
+        for p, jpg, soort in lachjes:
+            gehad = self.plekken[soort]
+            if soort == "saai" and not zaal_saai:
                 continue
-            self.plekken.append(p)
-            self.gestuurd += 1
-            self._stuur({"situationRunId": run, "headshot": jpg})
+            if len(gehad) >= LACHJES_PER_SCENE or any(zelfde_persoon(p, q) for q in gehad):
+                continue
+            gehad.append(p)
+            self._stuur({"situationRunId": run, "headshot": jpg, "soort": soort})
         if time.time() - self.laatst >= 2:
             self.laatst = time.time()
             self._stuur({"situationRunId": run, "stats": stats(self.regels)})
@@ -228,7 +234,8 @@ def main():
                           stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     ff.stdin.write(ffconcat(url)); ff.stdin.close()
     vis = subprocess.Popen([str(HERE / "publiek_vision"), str(W), str(H), "--gray", "--tiles", str(a.tiles)]
-                           + (["--lach"] if a.publiek else []),
+                           + (["--uitsneden", "--yaw-weg", str(a.yaw_weg), "--pitch-omlaag", str(a.pitch_omlaag)]
+                              if a.publiek else []),
                            stdin=ff.stdout, stdout=subprocess.PIPE)
     ff.stdout.close()
     fase = Fase(a.fase) if a.fase else None

@@ -195,6 +195,8 @@
       .staaf.nu .spoor i { background: #fff; }
       .staaf.leeg { color: var(--wit-3); }
       /* Uitsneden van lachende gezichten uit de publiekscamera. */
+      #rpCamUitleg { color: #fff; line-height: 1.25; }
+      #rpCamUitleg:empty, #rpCamKop:empty { display: none; }
       .lachjes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; padding-top: 22px; }
       .lachjes img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; filter: grayscale(1) contrast(1.15); visibility: hidden; }
       .lachjes img.aan { visibility: visible; }
@@ -236,6 +238,10 @@
               </div>
             </div>
             <div class="rp-rijen" id="rpReacties"></div>
+          </div>
+          <div class="rp weg" id="rp3">
+            <div class="rp-links"><div class="kop" id="rpCamKop"></div><div class="klein" id="rpCamMeta"></div><div class="klein uitleg" id="rpCamUitleg"></div></div>
+            <div class="rp-rijen" id="rpCam"></div>
           </div>
           <div class="rp weg" id="rp1">
             <div class="rp-links"><div class="klein">score</div><div class="groot" id="rpScore"></div></div>
@@ -538,14 +544,15 @@
         requestAnimationFrame(stapje);
       }
       function rpBlad(nr, stil) {
-        [0, 1, 2].forEach((index) => el("rp" + index).classList.toggle("weg", index !== nr));
+        [0, 1, 2, 3].forEach((index) => el("rp" + index).classList.toggle("weg", index !== nr));
         if (!stil) geluid.schakel();
       }
       function rpLeeg() {
         rpTimers.forEach(clearTimeout);
         rpTimers = [];
         rpRonde++;
-        ["rpReacties", "rpSom", "rpLabels"].forEach((id) => el(id).replaceChildren());
+        ["rpReacties", "rpSom", "rpLabels", "rpCam"].forEach((id) => el(id).replaceChildren());
+        ["rpCamKop", "rpCamMeta", "rpCamUitleg"].forEach((id) => { el(id).textContent = ""; });
         el("rpScore").textContent = "";
         el("rpMeta").textContent = "";
         rpBlad(0, true);
@@ -616,7 +623,7 @@
         const straks = (ms, fn) => rpTimers.push(setTimeout(() => { if (mijn === rpRonde) fn(); }, ms * tempo));
         zetKop(el("rpTitel"), scene.titel, 16, 30);
         const camera = scene.camera;
-        el("rpMeta").textContent = `${scene.seconden} seconden · ${scene.kijkers} kijkers` + (camera ? ` · ${camera.personen} in de zaal` : "");
+        el("rpMeta").textContent = `${scene.seconden} seconden · ${scene.kijkers} kijkers`;
         geluid.schakel();
         let t = 500;
 
@@ -666,39 +673,51 @@
           });
           t += 1000;
         }
-        // Publiekscamera: lachen en saai kijken in de zaal, en de gezichten die lachten.
+        t += 1500;
+
+        // 1b. Wat de camera zag: hoeveel procent lachte of verveeld keek, en wie.
         if (camera) {
-          const meesteCam = Math.max(camera.lachmomenten, camera.saaieMomenten, 1);
-          [["lachen in de zaal", camera.lachmomenten], ["saai in de zaal", camera.saaieMomenten]].forEach(([woord, waarde]) => {
-            const rij = rpRij(woord, "0");
+          straks(t, () => {
+            rpBlad(3);
+            el("rpCamKop").textContent = String(settings.rapportCameraKop || "");
+            el("rpCamMeta").textContent = `${camera.personen} mensen in de zaal`;
+            el("rpCamUitleg").textContent = String(settings.rapportCameraUitleg || "");
+          });
+          t += 600;
+          [
+            [emojiVan("positief"), "lachten", camera.lachenPct, camera.lachjes],
+            [emojiVan("negatief"), "keken verveeld", camera.saaiPct, camera.verveeld],
+          ].forEach(([emoji, woord, pct, gezichten]) => {
+            const rij = rpRij("", "0%");
+            if (emoji) rij.firstElementChild.append(maak("span", "emoji", emoji));
+            rij.firstElementChild.append(gezichten.length ? `deze mensen ${woord}` : woord);
             const meter = maak("div", "meter");
             const vulling = maak("i");
             meter.append(vulling);
             rij.append(meter);
-            el("rpReacties").append(rij);
+            el("rpCam").append(rij);
             straks(t, () => {
               rij.classList.add("aan");
-              rpTelOp(rij.querySelector("b"), waarde, 450 * tempo, (n) => String(Math.round(n)));
-              requestAnimationFrame(() => { vulling.style.width = `${(waarde / meesteCam) * 100}%`; });
+              rpTelOp(rij.querySelector("b"), pct, 450 * tempo, (n) => `${Math.round(n)}%`);
+              requestAnimationFrame(() => { vulling.style.width = `${Math.min(100, pct)}%`; });
             });
             t += 520;
-          });
-          if (camera.lachjes.length) {
+            if (!gezichten.length) return;
             const raster = maak("div", "lachjes");
-            el("rpReacties").append(raster);
-            camera.lachjes.forEach((src) => {
+            el("rpCam").append(raster);
+            gezichten.forEach((src) => {
               const img = maak("img");
               img.alt = "";
               img.src = src;
               raster.append(img);
               straks(t, () => { img.classList.add("aan"); geluid.relais(); });
-              t += 180;
+              t += 150;
             });
-            // De gezichten blijven ruim in beeld, ook als het rapport later sneller gaat.
-            t += 7000 / tempo;
-          }
+            t += 400;
+          });
+          // De gezichten blijven ruim in beeld, ook als het rapport later sneller gaat.
+          t += 7000 / tempo;
         }
-        t += 1500;
 
         // 2. De som, regel voor regel, tot de score.
         straks(t, () => rpBlad(1));

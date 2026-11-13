@@ -115,9 +115,9 @@ function createAudienceApp(options = {}) {
     res.status(result.ok ? 200 : 400).json(result);
   });
 
-  // Uitsnede van een lachend gezicht uit de scène (voor het rapport op het zaalscherm).
-  app.get("/audience/stage/lach/:index", (req, res) => {
-    const jpeg = service.cameraHeadshot(req.query.situationRunId, req.params.index);
+  // Uitsnede van een gezicht uit de scène (lach of saai), voor het rapport op het zaalscherm.
+  app.get("/audience/stage/gezicht/:soort/:index", (req, res) => {
+    const jpeg = service.cameraHeadshot(req.query.situationRunId, req.params.soort, req.params.index);
     if (!jpeg) { res.status(404).end(); return; }
     res.set("Cache-Control", "no-store").type("jpeg").send(jpeg);
   });
