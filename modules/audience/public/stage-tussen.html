@@ -102,11 +102,12 @@
         transform: translateY(-50%);
       }
 
-      /* Live beeld van de publiekscamera bij inloop en stemmen; plek en breedte in Admin. */
-      #p-camera { left: 60px; top: 300px; width: 480px; --wx: -1200px; }
-      #p-camera img { display: block; width: 100%; height: auto; background: var(--nacht); }
-      #p-camera .live { position: absolute; left: 12px; top: 10px; font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; text-shadow: 0 0 8px rgba(0, 0, 0, 0.8); }
-      #p-camera .live::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #e5322d; margin-right: 8px; vertical-align: 1px; }
+      /* Live beeld van de publiekscamera bij inloop en stemmen, zwart-wit; plek en breedte in Admin.
+         De onderste 8 % van het beeld (met het UniFi-logo) valt weg. */
+      #p-camera { left: 640px; top: 1720px; width: 380px; --wx: 1200px; }
+      #p-camera .venster { position: relative; width: 100%; aspect-ratio: 960 / 248; overflow: hidden; background: var(--nacht); }
+      #p-camera img { position: absolute; left: 0; top: 0; display: block; width: 100%; height: auto; filter: grayscale(1) contrast(1.1); }
+      #p-camera .klein { font-size: 20px; margin-top: 8px; }
 
       /* Inloop: meedoen, groot bovenaan. */
       #p-meedoen { left: 60px; top: 60px; width: 960px; --wy: -320px; display: flex; justify-content: space-between; align-items: flex-start; gap: 36px; }
@@ -236,7 +237,7 @@
         <div id="script"><iframe id="scriptFrame" title="Script" scrolling="no"></iframe></div>
         <div class="laadrij"><div class="laad"><i id="laadVul"></i></div><span id="laadGetal">0%</span></div>
       </div>
-      <div class="p uit" id="p-camera"><img id="cameraBeeld" alt="" /><span class="live">live</span></div>
+      <div class="p uit" id="p-camera"><div class="venster"><img id="cameraBeeld" alt="" /></div><div class="klein">Beelden worden niet opgeslagen.</div></div>
       <div class="p uit" id="p-chat"><div id="chatRegels"></div></div>
       <div class="p uit" id="p-voet"><span data-adres></span></div>
       <div class="p uit" id="p-rapport">
@@ -469,13 +470,13 @@
       // ── Live camerabeeld ──────────────────────────────────────────────────────────────────────
       // De stroom loopt alleen terwijl het vlak in beeld is; het vlak komt pas als er een beeld binnen is.
       let cameraBinnen = false, cameraStop = null;
-      const cameraAan = () => getal(settings.tussenCameraBreedte, 480) > 0 && cameraBinnen;
+      const cameraAan = () => getal(settings.tussenCameraBreedte, 380) > 0 && cameraBinnen;
       el("cameraBeeld").addEventListener("load", () => { if (!cameraBinnen) { cameraBinnen = true; zetFase(); } });
       el("cameraBeeld").addEventListener("error", () => { cameraBinnen = false; });
       function volgCamera(aan) {
         const img = el("cameraBeeld");
         clearTimeout(cameraStop);
-        if (aan || (!cameraBinnen && getal(settings.tussenCameraBreedte, 480) > 0 && ["inloop", "stemmen"].includes(bepaalFase()))) {
+        if (aan || (!cameraBinnen && getal(settings.tussenCameraBreedte, 380) > 0 && ["inloop", "stemmen"].includes(bepaalFase()))) {
           if (!img.getAttribute("src")) img.src = "/audience/stage/camera";
         } else if (img.getAttribute("src")) {
           // Eerst uit beeld schuiven, dan de stroom sluiten.
@@ -484,9 +485,9 @@
       }
       function plaatsCamera() {
         const vlak = el("p-camera");
-        vlak.style.left = getal(settings.tussenCameraX, 60) + "px";
-        vlak.style.top = getal(settings.tussenCameraY, 300) + "px";
-        vlak.style.width = Math.max(1, getal(settings.tussenCameraBreedte, 480)) + "px";
+        vlak.style.left = getal(settings.tussenCameraX, 640) + "px";
+        vlak.style.top = getal(settings.tussenCameraY, 1720) + "px";
+        vlak.style.width = Math.max(1, getal(settings.tussenCameraBreedte, 380)) + "px";
       }
 
       function zetFase(direct) {
