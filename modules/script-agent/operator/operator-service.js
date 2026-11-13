@@ -779,7 +779,7 @@ function createOperatorService(options = {}) {
   // en met Enter bevestigt, gaat niet als bericht naar het model maar wordt bewaard en meegegeven
   // met de volgende scène. Wie nog typt als het venster afloopt krijgt even uitstel; wat er dan
   // staat telt ook.
-  const opmerking = { bewaard: "", klaar: null, timer: null, hardEind: 0 };
+  const opmerking = { bewaard: "", klaar: null, timer: null, hardEind: 0, laatsteScene: "" };
   // Een opmerking erbij: meerdere opmerkingen staan achter elkaar; dezelfde komt er niet twee keer in.
   // Ze staat ook als regel in de operator-chat, zodat te zien is dat ze is aangekomen.
   function bewaarOpmerking(tekst) {
@@ -1057,6 +1057,7 @@ function createOperatorService(options = {}) {
     session.messages = [];
     stageState.messages = [];
     opmerking.bewaard = "";
+    opmerking.laatsteScene = "";
     stageState.updatedAt = nowIso();
     emitStage("clear_session");
     return sessionInfo(sessionId);
@@ -1380,11 +1381,17 @@ function createOperatorService(options = {}) {
     });
     const sessionId = normalizeSessionId(body.sessionId || nextDraft.showRunId || stageState.sessionId);
     const operatorOpmerking = neemOpmerking();
+    // Dezelfde scène nog een keer: dan gaat de opmerking over de vorige versie en moet er een
+    // nieuwe versie komen. Anders is het een les uit de vorige scène voor deze.
+    const zelfdeScene = !!nextDraft.situationId && nextDraft.situationId === opmerking.laatsteScene;
+    opmerking.laatsteScene = nextDraft.situationId || "";
+    const bijsturing = !operatorOpmerking ? ""
+      : zelfdeScene
+        ? `\n\nDit is dezelfde scène als de vorige. De operator wil een nieuwe versie; herhaal de vorige tekst niet.\nOpmerking van de operator over de vorige versie:\n${operatorOpmerking}\nVerwerk elke opmerking duidelijk zichtbaar in de nieuwe versie. "Te lang" betekent: schrijf deze versie duidelijk korter.`
+        : `\n\nOpmerking van de operator over de vorige scène (een andere scène dan deze):\n${operatorOpmerking}\nTrek daar de les uit voor de scène die je nu schrijft: doe meer van wat goed was en vermijd wat niet goed was. Was de vorige te lang, schrijf deze dan duidelijk korter.`;
     const done = await streamChat({
       sessionId,
-      message: operatorOpmerking
-        ? `${nextDraft.text}\n\nOpmerking van de operator over de VORIGE scène (niet over deze):\n${operatorOpmerking}\nGebruik dit als bijsturing voor de scène die je nu schrijft: doe meer van wat goed was en verbeter wat niet goed was.`
-        : nextDraft.text,
+      message: `${nextDraft.text}${bijsturing}`,
       promptInput: nextDraft.promptInput,
       sourceId,
     }, emit);
