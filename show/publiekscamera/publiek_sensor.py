@@ -125,6 +125,7 @@ class Publiek:
 
     def __init__(self, url: str):
         self.url, self.scene, self.regels, self.plekken = url, None, [], {"lach": [], "saai": []}
+        self.volgnr = 0
         self.laatst = 0.0
         self.rij: "queue.Queue[dict]" = queue.Queue(maxsize=50)
         threading.Thread(target=self._stuur_loop, daemon=True).start()
@@ -155,14 +156,25 @@ class Publiek:
             return
         self.regels.append(agg)
         zaal_saai = agg["gezichten"] >= 1 and agg["saai"] / agg["gezichten"] >= SAAI_DEEL
+        # Iedereen staat in één groepje: wie lacht, gaat (ook later nog) van "verveeld" naar "lachten".
         for p, jpg, soort in lachjes:
-            gehad = self.plekken[soort]
             if soort == "saai" and not zaal_saai:
                 continue
-            if len(gehad) >= LACHJES_PER_SCENE or any(zelfde_persoon(p, q) for q in gehad):
+            if len(self.plekken[soort]) >= LACHJES_PER_SCENE:
                 continue
-            gehad.append(p)
-            self._stuur({"situationRunId": run, "headshot": jpg, "soort": soort})
+            if any(zelfde_persoon(p, q) for q, _ in self.plekken["lach"]):
+                continue
+            eerder = next((n for q, n in self.plekken["saai"] if zelfde_persoon(p, q)), None)
+            if soort == "saai" and eerder is not None:
+                continue
+            if eerder is not None:
+                self.plekken["saai"] = [(q, n) for q, n in self.plekken["saai"] if n != eerder]
+                persoon = eerder
+            else:
+                self.volgnr += 1
+                persoon = self.volgnr
+            self.plekken[soort].append((p, persoon))
+            self._stuur({"situationRunId": run, "headshot": jpg, "soort": soort, "persoon": persoon})
         if time.time() - self.laatst >= 2:
             self.laatst = time.time()
             self._stuur({"situationRunId": run, "stats": stats(self.regels)})
