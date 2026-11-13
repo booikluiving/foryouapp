@@ -102,6 +102,12 @@
         transform: translateY(-50%);
       }
 
+      /* Live beeld van de publiekscamera bij inloop en stemmen; plek en breedte in Admin. */
+      #p-camera { left: 60px; top: 300px; width: 480px; --wx: -1200px; }
+      #p-camera img { display: block; width: 100%; height: auto; background: var(--nacht); }
+      #p-camera .live { position: absolute; left: 12px; top: 10px; font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; text-shadow: 0 0 8px rgba(0, 0, 0, 0.8); }
+      #p-camera .live::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #e5322d; margin-right: 8px; vertical-align: 1px; }
+
       /* Inloop: meedoen, groot bovenaan. */
       #p-meedoen { left: 60px; top: 60px; width: 960px; --wy: -320px; display: flex; justify-content: space-between; align-items: flex-start; gap: 36px; }
       #p-meedoen .kop { font-size: 108px; line-height: 0.9; letter-spacing: -0.045em; margin-left: -0.04em; }
@@ -230,6 +236,7 @@
         <div id="script"><iframe id="scriptFrame" title="Script" scrolling="no"></iframe></div>
         <div class="laadrij"><div class="laad"><i id="laadVul"></i></div><span id="laadGetal">0%</span></div>
       </div>
+      <div class="p uit" id="p-camera"><img id="cameraBeeld" alt="" /><span class="live">live</span></div>
       <div class="p uit" id="p-chat"><div id="chatRegels"></div></div>
       <div class="p uit" id="p-voet"><span data-adres></span></div>
       <div class="p uit" id="p-rapport">
@@ -405,10 +412,10 @@
       const stem = { actief: false, pollId: 0, opties: [], counts: [], endsAt: 0, winnaar: -1, tot: 0 };
       const rapport = { aan: false, data: null, speelt: false, haalt: false, vraag: 0 };
 
-      const VLAKKEN = ["meedoen", "stemmen", "stemqr", "titel", "tekst", "chat", "voet", "rapport"];
+      const VLAKKEN = ["meedoen", "stemmen", "stemqr", "titel", "tekst", "chat", "voet", "rapport", "camera"];
       const FASE_VLAKKEN = {
-        inloop: ["meedoen", "chat"],
-        stemmen: ["stemmen", "stemqr", "chat"],
+        inloop: ["meedoen", "chat", "camera"],
+        stemmen: ["stemmen", "stemqr", "chat", "camera"],
         kiezen: ["chat", "voet"],
         gekozen: ["titel", "chat", "voet"],
         tekst: ["titel", "tekst", "chat", "voet"],
@@ -459,10 +466,35 @@
 
       // Zet de vlakken van de fase in beeld: eerst wat weg moet eruit, dan wat nieuw is erin.
       let faseNu = "", toonTimer = 0;
+      // ── Live camerabeeld ──────────────────────────────────────────────────────────────────────
+      // De stroom loopt alleen terwijl het vlak in beeld is; het vlak komt pas als er een beeld binnen is.
+      let cameraBinnen = false, cameraStop = null;
+      const cameraAan = () => getal(settings.tussenCameraBreedte, 480) > 0 && cameraBinnen;
+      el("cameraBeeld").addEventListener("load", () => { if (!cameraBinnen) { cameraBinnen = true; zetFase(); } });
+      el("cameraBeeld").addEventListener("error", () => { cameraBinnen = false; });
+      function volgCamera(aan) {
+        const img = el("cameraBeeld");
+        clearTimeout(cameraStop);
+        if (aan || (!cameraBinnen && getal(settings.tussenCameraBreedte, 480) > 0 && ["inloop", "stemmen"].includes(bepaalFase()))) {
+          if (!img.getAttribute("src")) img.src = "/audience/stage/camera";
+        } else if (img.getAttribute("src")) {
+          // Eerst uit beeld schuiven, dan de stroom sluiten.
+          cameraStop = setTimeout(() => { img.removeAttribute("src"); cameraBinnen = false; }, 400);
+        }
+      }
+      function plaatsCamera() {
+        const vlak = el("p-camera");
+        vlak.style.left = getal(settings.tussenCameraX, 60) + "px";
+        vlak.style.top = getal(settings.tussenCameraY, 300) + "px";
+        vlak.style.width = Math.max(1, getal(settings.tussenCameraBreedte, 480)) + "px";
+      }
+
       function zetFase(direct) {
         const fase = bepaalFase();
         const wil = new Set(FASE_VLAKKEN[fase]);
         if (!joinUrl) { wil.delete("meedoen"); wil.delete("stemqr"); wil.delete("voet"); }
+        if (!cameraAan()) wil.delete("camera");
+        volgCamera(wil.has("camera"));
         if (fase === "gekozen" || fase === "tekst") vulTitel(fase);
         faseNu = fase;
         // Staat het vel niet in beeld, dan hoeft er niets te schuiven.
@@ -979,6 +1011,7 @@
       // ── Chat ──────────────────────────────────────────────────────────────────────────────────
       function toepassen(next) {
         settings = next || settings || {};
+        plaatsCamera();
         const plek = chatPlek();
         const vlak = el("p-chat");
         vlak.style.top = plek.y + "px";
