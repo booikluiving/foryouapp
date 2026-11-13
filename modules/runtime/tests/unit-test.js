@@ -718,6 +718,14 @@ async function main() {
   assert.equal(testState.resolvedPreparedNext.environmentId, otherEnvironment.id, "the chosen environment is kept too");
   await stopSituation(testState, clients, { skipSave: true });
   assert.equal(testState.preparedNext.situationId, heldId, "stopping keeps the chosen scene prepared");
+  // Een scène die niet bij het testen gekozen is (de winnaar van de stemming) blijft niet klaarstaan.
+  const winnaar = testState.showRunSnapshot.catalog.situations.find((item) => item.id !== heldId && item.active !== false && !item.archivedAt);
+  await prepareChosenSituation(testState, clients, { situationId: winnaar.id, skipSave: true });
+  assert.equal(testState.preparedNext.testKeuze, undefined);
+  await startSituation(testState, clients, { skipSave: true });
+  assert.equal(testState.activeSituation.situationId, winnaar.id);
+  assert.notEqual(testState.preparedNext && testState.preparedNext.reason, "test_run_hold", "a scene chosen outside the test is not held in a test run");
+  await stopSituation(testState, clients, { skipSave: true });
   const markedAt = testState.testRun.markedAt;
   await setTestRun(testState, { enabled: false, clients, skipSave: true });
   assert.equal(testState.testRun.enabled, false);

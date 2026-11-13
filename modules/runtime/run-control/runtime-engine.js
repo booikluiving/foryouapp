@@ -779,10 +779,13 @@ async function startSituation(state, clients, options = {}) {
   const sequence = state.situationRuns.length + 1;
   const situationRunId = createSituationRunId(state.showRunId, sequence);
   const startedAt = new Date().toISOString();
-  // Testrun: een zelf gekozen scène blijft ook als volgende klaarstaan. Zo springt er niets
-  // terug naar het pad: Scène naar chat, de teleprompter en TouchDesigner houden deze scène.
+  // Testrun: een scène die bij het testen gekozen is blijft ook als volgende klaarstaan. Zo springt
+  // er niets terug naar het pad: Scène naar chat, de teleprompter en TouchDesigner houden deze scène.
+  // Een scène die langs een andere weg gekozen is (de winnaar van de stemming) blijft niet staan:
+  // daarna volgt de run weer de paden.
   const heldReason = state.preparedNext ? state.preparedNext.reason : null;
-  const held = isTestRun(state) && (heldReason === "operator_chosen" || heldReason === "test_run_hold")
+  const held = isTestRun(state) && state.preparedNext && state.preparedNext.testKeuze === true
+    && (heldReason === "operator_chosen" || heldReason === "test_run_hold")
     ? { preparedNext: cloneJson(state.preparedNext), resolved: cloneJson(state.resolvedPreparedNext) }
     : null;
   const activeSituation = {
@@ -1245,7 +1248,7 @@ async function prepareChosenSituation(state, clients, options = {}) {
     .slice(0, 16);
   const candidate = { situationId: situation.id, legacySituationId: situation.legacyId, title: situation.title };
   state.resolvedPreparedNext = materializePreparedNext({ catalog, preparedNext: candidate, seed, environmentId: wantedEnvironmentId });
-  state.preparedNext = { ...candidate, chosenAt, reason: "operator_chosen", seed };
+  state.preparedNext = { ...candidate, chosenAt, reason: "operator_chosen", seed, ...(options.testRun === true ? { testKeuze: true } : {}) };
   state.updatedAt = chosenAt;
   appendRunLog(state, {
     type: "prepared_next_chosen",
