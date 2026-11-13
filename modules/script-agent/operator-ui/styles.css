@@ -414,6 +414,54 @@ textarea:focus {
   font-size: 18px;
 }
 
+.saved-scenes-list {
+  display: grid;
+  grid-auto-rows: max-content;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.saved-scenes-list button {
+  min-height: 0;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-scenes-list button.active {
+  border-color: var(--accent);
+  background: #f0fdfa;
+}
+
+.saved-scenes-list button b {
+  margin-right: 6px;
+}
+
+.saved-scene-view {
+  display: grid;
+  gap: 8px;
+}
+
+.saved-scene-view pre {
+  margin: 0;
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .terminal-style-box {
   border: 1px solid #111827;
   border-radius: 8px;

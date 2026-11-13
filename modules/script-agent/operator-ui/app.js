@@ -61,6 +61,12 @@ const els = {
   secretForm: $("#secretForm"),
   deepSeekApiKey: $("#deepSeekApiKey"),
   clearSecret: $("#clearSecret"),
+  savedScenesCount: $("#savedScenesCount"),
+  savedScenesList: $("#savedScenesList"),
+  savedSceneView: $("#savedSceneView"),
+  savedSceneText: $("#savedSceneText"),
+  savedSceneCopy: $("#savedSceneCopy"),
+  savedSceneToInput: $("#savedSceneToInput"),
 };
 
 let ws = null;
@@ -114,6 +120,50 @@ async function api(pathname, options = {}) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.message || body.error || `${pathname} ${response.status}`);
   return body;
+}
+
+// Bewaarde scènes: eerdere versies van de gekozen situatie teruglezen.
+let savedScenes = [];
+let savedSceneId = "";
+let savedScenesFor = null;
+
+function savedSceneLabel(scene) {
+  const when = new Date(scene.createdAt);
+  const stamp = Number.isNaN(when.getTime()) ? "" : when.toLocaleString("nl-NL", {
+    day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+  });
+  const first = String(scene.scriptText || "").split("\n").map((line) => line.trim())
+    .find((line) => line && !line.startsWith("#")) || "";
+  return `<b>${esc(stamp)}</b>${esc(first.slice(0, 80))}`;
+}
+
+function renderSavedScenes() {
+  els.savedScenesCount.textContent = els.situation.value ? String(savedScenes.length) : "";
+  els.savedScenesList.innerHTML = savedScenes.map((scene) =>
+    `<button type="button" data-script-id="${esc(scene.scriptId)}"${scene.scriptId === savedSceneId ? ' class="active"' : ""}>${savedSceneLabel(scene)}</button>`
+  ).join("");
+  const current = savedScenes.find((scene) => scene.scriptId === savedSceneId) || null;
+  els.savedSceneView.hidden = !current;
+  els.savedSceneText.textContent = current ? current.scriptText : "";
+}
+
+async function loadSavedScenes(options = {}) {
+  const situationId = String(els.situation.value || "");
+  if (!options.force && situationId === savedScenesFor) return;
+  savedScenesFor = situationId;
+  if (!situationId) {
+    savedScenes = [];
+  } else {
+    try {
+      const body = await api(`/v0/script-agent/operator/saved-scenes?situationId=${encodeURIComponent(situationId)}`);
+      if (savedScenesFor !== situationId) return;
+      savedScenes = Array.isArray(body.scenes) ? body.scenes : [];
+    } catch {
+      savedScenes = [];
+    }
+  }
+  if (!savedScenes.some((scene) => scene.scriptId === savedSceneId)) savedSceneId = "";
+  renderSavedScenes();
 }
 
 function setMsg(text, error = false) {
@@ -423,6 +473,7 @@ function handleChatEvent(event = {}) {
       renderAssistantContent(bubble, event.text || "");
       addMeta(bubble, event);
     }
+    loadSavedScenes({ force: true });
     renderStats(event);
     setStreaming(false);
     setMeta(`Output opgeslagen: ${event.scriptOutput ? event.scriptOutput.scriptId : "script"}`);
@@ -605,6 +656,7 @@ function updateSituationSelection(options = {}) {
   const id = String(els.situation.value || "");
   selectedSituation = (catalogIndex.situaties || []).find((item) => String(item.id) === id) || null;
   els.situationPreview.textContent = selectedSituation ? selectedSituation.beschrijving || "" : "";
+  loadSavedScenes();
   if (!selectedSituation) {
     if (!options.preserveManualCharacters) {
       selectedCharacters.clear();
@@ -847,6 +899,7 @@ async function fallbackHttpSubmit(text, promptInput = null) {
       addMeta(assistant, event);
       renderStats(event);
       setMeta(`Output opgeslagen: ${event.scriptOutput ? event.scriptOutput.scriptId : "script"}`);
+      loadSavedScenes({ force: true });
     }
     if (event.type === "error") throw new Error(event.error || "stream error");
   });
@@ -942,6 +995,22 @@ els.sessionId.addEventListener("change", () => {
   withUiError(loadSession);
 });
 els.model.addEventListener("change", () => withUiError(saveModel));
+els.savedScenesList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-script-id]");
+  if (!button) return;
+  savedSceneId = savedSceneId === button.dataset.scriptId ? "" : button.dataset.scriptId;
+  renderSavedScenes();
+});
+els.savedSceneCopy.addEventListener("click", () => withUiError(async () => {
+  await navigator.clipboard.writeText(els.savedSceneText.textContent || "");
+  setMsg("Scène gekopieerd.");
+}));
+els.savedSceneToInput.addEventListener("click", () => {
+  const text = els.savedSceneText.textContent || "";
+  if (!text) return;
+  els.chatInput.value = `${els.chatInput.value ? `${els.chatInput.value}\n\n` : ""}Eerdere versie van deze scène:\n\n${text}`;
+  els.chatInput.focus();
+});
 els.sceneTestToggle.addEventListener("change", () => toggleSceneTest());
 els.sceneTestStart.addEventListener("click", () => startTestScene());
 els.situation.addEventListener("change", () => {

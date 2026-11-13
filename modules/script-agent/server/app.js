@@ -212,6 +212,23 @@ function createScriptAgentApp(options = {}) {
     res.json(await operatorService.catalogIndex());
   }));
 
+  // Bewaarde scènes: elke gegenereerde scène, nieuwste eerst, om in de operator-chat terug te lezen.
+  app.get("/v0/script-agent/operator/saved-scenes", asyncRoute(async (req, res) => {
+    const situationId = req.query.situationId ? String(req.query.situationId) : "";
+    const scripts = await readScriptOutputs();
+    const scenes = scripts
+      .filter((item) => item && item.scriptText && (!situationId || item.situationId === situationId))
+      .map((item) => ({
+        scriptId: item.scriptId,
+        situationId: item.situationId,
+        createdAt: item.createdAt,
+        title: item.teleprompter && item.teleprompter.title ? String(item.teleprompter.title) : "",
+        scriptText: String(item.scriptText),
+      }))
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    res.json({ ok: true, count: scenes.length, scenes });
+  }));
+
   app.get("/v0/script-agent/operator/stage-style", asyncRoute(async (_req, res) => {
     res.json({ ok: true, style: await operatorService.readStageStyle() });
   }));
