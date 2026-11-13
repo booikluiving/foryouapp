@@ -124,7 +124,7 @@ function generatedDmxLightingAction(action, runtimeState, context = {}) {
     timeoutMs: 900,
     payload: {
       label: `environment-${payload.environmentId || "unknown"}-${lighting && lighting.presetId || "lighting"}`,
-      channels: channelsForAccentFixtures(lighting && lighting.fixtures || {}),
+      channels: channelsForAccentFixtures(lighting && lighting.fixtures || {}, { environmentId: payload.environmentId }),
       clearFirst: false,
       continuous: true,
       cueIntent: "environment_lighting_go",

@@ -3,6 +3,7 @@
 const dgram = require("node:dgram");
 const fs = require("node:fs");
 const http = require("node:http");
+const os = require("node:os");
 const path = require("node:path");
 const { URL } = require("node:url");
 const { channelsForPreset: channelsForLegacyPreset, listPresets } = require("./look-presets");
@@ -119,12 +120,42 @@ function addActivity(state, item) {
   state.activity = state.activity.slice(-120);
 }
 
+// Na een andere lichtstand ziet het blauwe doek er voor de camera anders uit. Dan krijgt
+// TouchDesigner via de opdrachtenmap de opdracht om de key van elke camera opnieuw te meten.
+const TD_OPDRACHTEN_IN = process.env.FORYOU_TD_OPDRACHTEN_IN
+  || path.join(os.homedir(), "ForYou", "td-opdrachten", "in");
+const KEY_HERMETEN_NA_MS = 1500;
+let keyHermetenTimer = null;
+
+function vraagKeyHermeten() {
+  if (process.env.SHOW_CONTROL_DMX_KEY_HERMETEN === "0") return;
+  clearTimeout(keyHermetenTimer);
+  keyHermetenTimer = setTimeout(() => {
+    const opdracht = [
+      "for n in ('Camera1', 'Camera2', 'Camera3'):",
+      "    g = op('/project1/' + n + '/greenscreen')",
+      "    if g and not g.par.Keyvast.eval():",
+      "        g.par.Herkalibreer.pulse()",
+      "print('key opnieuw gemeten na lichtwissel')",
+      "",
+    ].join("\n");
+    try {
+      if (fs.existsSync(TD_OPDRACHTEN_IN)) fs.writeFileSync(path.join(TD_OPDRACHTEN_IN, "key-na-licht.py"), opdracht);
+    } catch (_error) {
+      // de lampen gaan voor; zonder opdrachtenmap blijft de key zichzelf langzaam bijstellen
+    }
+  }, KEY_HERMETEN_NA_MS);
+  if (keyHermetenTimer.unref) keyHermetenTimer.unref();
+}
+
 function setChannels(state, channels = {}, options = {}) {
+  const voor = Buffer.from(state.channels);
   if (options.clearFirst !== false) state.channels.fill(0);
   for (const [channel, value] of Object.entries(channels || {})) {
     const index = clampInt(channel, 1, 512, 1) - 1;
     state.channels[index] = clampInt(value, 0, 255, 0);
   }
+  if (!voor.equals(Buffer.from(state.channels))) vraagKeyHermeten();
   state.lastLook = {
     label: options.label || "custom",
     channels: channelsToObject(state.channels, { nonZeroOnly: true }),

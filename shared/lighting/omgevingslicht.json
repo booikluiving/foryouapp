@@ -1,0 +1,113 @@
+{
+  "uitleg": "Kleurtemperatuur van de lampen per omgeving: 0 = warmst, 128 = neutraal wit, 255 = koelst. Voorstel berekend uit het achtergrondbeeld; pas een getal aan en het geldt bij de volgende scène. Een omgeving die hier niet staat krijgt 128.",
+  "omgevingen": {
+    "environment:3": {
+      "naam": "Grimmige_slaapkamer",
+      "kleurtemperatuur": 42
+    },
+    "environment:4": {
+      "naam": "Cradam",
+      "kleurtemperatuur": 104
+    },
+    "environment:5": {
+      "naam": "Logeerkamer",
+      "kleurtemperatuur": 79
+    },
+    "environment:6": {
+      "naam": "Persconferentie",
+      "kleurtemperatuur": 152
+    },
+    "environment:7": {
+      "naam": "Spelletjeskamer",
+      "kleurtemperatuur": 96
+    },
+    "environment:8": {
+      "naam": "Trampolinepark",
+      "kleurtemperatuur": 161
+    },
+    "environment:9": {
+      "naam": "Kruipruimte",
+      "kleurtemperatuur": 40
+    },
+    "environment:10": {
+      "naam": "Eerste_handboogstraat",
+      "kleurtemperatuur": 137
+    },
+    "environment:11": {
+      "naam": "Trein",
+      "kleurtemperatuur": 93
+    },
+    "environment:12": {
+      "naam": "Ziekenhuis",
+      "kleurtemperatuur": 144
+    },
+    "environment:13": {
+      "naam": "Tennis",
+      "kleurtemperatuur": 99
+    },
+    "environment:14": {
+      "naam": "NOS_Studio",
+      "kleurtemperatuur": 164
+    },
+    "environment:15": {
+      "naam": "Supermarkt",
+      "kleurtemperatuur": 66
+    },
+    "environment:16": {
+      "naam": "Restaurant",
+      "kleurtemperatuur": 40
+    },
+    "environment:17": {
+      "naam": "Podcaststudio",
+      "kleurtemperatuur": 45
+    },
+    "environment:18": {
+      "naam": "Festival",
+      "kleurtemperatuur": 122
+    },
+    "environment:19": {
+      "naam": "Hotelkamer",
+      "kleurtemperatuur": 89
+    },
+    "environment:20": {
+      "naam": "Keuken",
+      "kleurtemperatuur": 161
+    },
+    "environment:21": {
+      "naam": "Linksvoor",
+      "kleurtemperatuur": 119
+    },
+    "environment:22": {
+      "naam": "Zonnebloemveld",
+      "kleurtemperatuur": 57
+    },
+    "environment:23": {
+      "naam": "Fata_morgana",
+      "kleurtemperatuur": 40
+    },
+    "environment:24": {
+      "naam": "Bioscoop",
+      "kleurtemperatuur": 40
+    },
+    "environment:25": {
+      "naam": "Auto",
+      "kleurtemperatuur": 133
+    },
+    "environment:26": {
+      "naam": "Antiekwinkel",
+      "kleurtemperatuur": 115
+    },
+    "environment:27": {
+      "naam": "Zoom",
+      "kleurtemperatuur": 121
+    },
+    "environment:28": {
+      "naam": "The Voice of Holland",
+      "kleurtemperatuur": 40
+    },
+    "environment:29": {
+      "naam": "Lingo studio",
+      "kleurtemperatuur": 200
+    }
+  }
+}

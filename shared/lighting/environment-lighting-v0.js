@@ -202,8 +202,25 @@ function cctForHsi(hue, saturation) {
   return clamp(Math.round(CCT_NEUTRAL - warmth * span));
 }
 
-function channelsForAccentFixtures(fixtures = {}) {
+// Per omgeving een eigen kleurtemperatuur, zodat het licht meekleurt met het beeld
+// (warm bij een gelig beeld, koel bij een wit of blauw beeld). Het bestand wordt bij
+// elke scène opnieuw gelezen.
+function kleurtemperatuurVoorOmgeving(environmentId) {
+  if (ACCENT_LAMP_MODE !== "cct" || !environmentId) return null;
+  try {
+    const bestand = require("node:path").join(__dirname, "omgevingslicht.json");
+    const data = JSON.parse(require("node:fs").readFileSync(bestand, "utf8"));
+    const item = data && data.omgevingen && data.omgevingen[String(environmentId)];
+    const waarde = item && Number(item.kleurtemperatuur);
+    return Number.isFinite(waarde) ? clamp(waarde) : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function channelsForAccentFixtures(fixtures = {}, options = {}) {
   const normalized = normalizeFixtureMap(fixtures);
+  const omgevingCct = kleurtemperatuurVoorOmgeving(options.environmentId);
   const channels = {};
   for (const fixture of ACCENT_FIXTURES) {
     const values = normalized[fixture.id];
@@ -212,7 +229,7 @@ function channelsForAccentFixtures(fixtures = {}) {
       channels[fixture.address + 1] = hueToDmx(values.hue);
       channels[fixture.address + 2] = clamp(values.saturation);
     } else {
-      channels[fixture.address + 1] = cctForHsi(values.hue, values.saturation);
+      channels[fixture.address + 1] = omgevingCct === null ? cctForHsi(values.hue, values.saturation) : omgevingCct;
       channels[fixture.address + 2] = CCT_GM_NEUTRAL;
     }
   }
@@ -241,6 +258,7 @@ module.exports = {
   channelsForLighting,
   channelsForPreset,
   cloneJson,
+  kleurtemperatuurVoorOmgeving,
   mergeLightingPresets,
   normalizeEnvironmentLighting,
   normalizeFixtureMap,
