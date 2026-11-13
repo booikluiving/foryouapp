@@ -94,6 +94,17 @@ async function main() {
   assert.equal(Buffer.from(await foto.arrayBuffer()).toString("base64"), jpeg);
   assert.equal((await lan(`/audience/stage/persoon/99/leukst?situationRunId=${encodeURIComponent(SCENE)}`)).status, 404);
 
+  // Live beeld: alleen vanaf de Mac zelf binnen, als doorlopende stroom naar het zaalscherm.
+  const beeld = Buffer.from(jpeg, "base64");
+  assert.equal((await fetch(`http://127.0.0.1:${PUB}/audience/camera/beeld`, { method: "POST", headers: { "content-type": "image/jpeg" }, body: beeld })).status, 404);
+  assert.equal((await lan("/audience/camera/beeld", { method: "POST", headers: { "content-type": "image/jpeg" }, body: beeld })).status, 204);
+  const stroom = await lan("/audience/stage/camera");
+  assert.match(stroom.headers.get("content-type"), /multipart\/x-mixed-replace/);
+  const lezer = stroom.body.getReader();
+  const { value } = await lezer.read();
+  assert.match(Buffer.from(value).toString("latin1"), /--beeld\r\nContent-Type: image\/jpeg/);
+  await lezer.cancel();
+
   console.log("publiekscamera: ok");
 }
 

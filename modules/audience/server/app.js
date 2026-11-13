@@ -115,6 +115,36 @@ function createAudienceApp(options = {}) {
     res.status(result.ok ? 200 : 400).json(result);
   });
 
+  // Live beeld van de publiekscamera (klein, buiten scènes), alleen van deze Mac zelf. Alleen het nieuwste
+  // beeld staat in het geheugen; er wordt niets bewaard.
+  app.post("/audience/camera/beeld", express.raw({ type: "image/jpeg", limit: "1mb" }), (req, res) => {
+    if (!isLoopbackIp(req.socket && req.socket.remoteAddress)) { res.status(403).end(); return; }
+    const jpeg = Buffer.isBuffer(req.body) ? req.body : null;
+    if (!jpeg || jpeg.length < 4 || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) { res.status(400).end(); return; }
+    service.zetCameraBeeld(jpeg);
+    res.status(204).end();
+  });
+
+  // Het live beeld als doorlopende stroom (MJPEG) voor het zaalscherm.
+  app.get("/audience/stage/camera", (req, res) => {
+    res.writeHead(200, {
+      "Content-Type": "multipart/x-mixed-replace; boundary=beeld",
+      "Cache-Control": "no-store",
+      Connection: "close",
+    });
+    const stuur = (jpeg) => {
+      // Een trage kijker slaat beelden over in plaats van geheugen op te stapelen.
+      if (res.writableLength > 2 * 1024 * 1024) return;
+      res.write(`--beeld\r\nContent-Type: image/jpeg\r\nContent-Length: ${jpeg.length}\r\n\r\n`);
+      res.write(jpeg);
+      res.write("\r\n");
+    };
+    const laatste = service.cameraBeeld();
+    if (laatste) stuur(laatste);
+    service.on("camera-beeld", stuur);
+    req.on("close", () => service.off("camera-beeld", stuur));
+  });
+
   // Uitsnede van een gezicht uit de scène, voor het rapport op het zaalscherm.
   app.get("/audience/stage/persoon/:persoon/:groep", (req, res) => {
     const jpeg = service.cameraFoto(req.query.situationRunId, req.params.persoon, req.params.groep);

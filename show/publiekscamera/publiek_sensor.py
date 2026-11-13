@@ -17,11 +17,14 @@ De uitsneden blijven alleen in het geheugen van de publieksdienst; hier wordt ni
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
+import os
 import queue
 import subprocess
 import threading
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -228,6 +231,57 @@ def stats(regels: list) -> dict:
             "clapMoments": s["klapmomenten"], "handMoments": s["handen_momenten"]}
 
 
+VOORBEELD_FPS = 8
+
+
+class Voorbeeld:
+    """Leest het kleine live beeld (MJPEG) van FFmpeg en stuurt buiten scènes het nieuwste beeld naar de
+    publieksdienst (alleen in het geheugen daar, voor het zaalscherm bij inloop en stemmen). Niets wordt bewaard."""
+
+    def __init__(self, fd: int, url: str, fase):
+        self.fd, self.fase, self.nieuw = fd, fase, None
+        u = urllib.parse.urlsplit(url)
+        self.host, self.port, self.pad = u.hostname, u.port or 80, u.path
+        self.klaar = threading.Event()
+        threading.Thread(target=self._lees, daemon=True).start()
+        threading.Thread(target=self._stuur, daemon=True).start()
+
+    def _lees(self):
+        buf = b""
+        with os.fdopen(self.fd, "rb", buffering=0) as f:
+            while True:
+                stuk = f.read(65536)
+                if not stuk:
+                    return
+                buf += stuk
+                while True:
+                    begin = buf.find(b"\xff\xd8")
+                    eind = buf.find(b"\xff\xd9", begin + 2) if begin >= 0 else -1
+                    if eind < 0:
+                        break
+                    self.nieuw = buf[begin:eind + 2]
+                    self.klaar.set()
+                    buf = buf[eind + 2:]
+                if len(buf) > 4_000_000:
+                    buf = b""
+
+    def _stuur(self):
+        con = None
+        while True:
+            self.klaar.wait()
+            self.klaar.clear()
+            jpg = self.nieuw
+            if not jpg or (self.fase and self.fase.stand.get("fase") == "scene"):
+                continue
+            try:
+                con = con or http.client.HTTPConnection(self.host, self.port, timeout=3)
+                con.request("POST", self.pad, body=jpg, headers={"Content-Type": "image/jpeg"})
+                con.getresponse().read()
+            except Exception:
+                con = None
+                time.sleep(1)
+
+
 class Fase:
     """Leest de fase (scène/tussen) en de titel uit de publieksdienst (Server-Sent Events, alleen lezen)."""
 
@@ -268,6 +322,8 @@ def main():
     ap.add_argument("--yaw-weg", type=float, default=YAW_WEG)
     ap.add_argument("--pitch-omlaag", type=float, default=PITCH_OMLAAG)
     ap.add_argument("--rapport", action="store_true", help="druk aan het eind een rapport af")
+    ap.add_argument("--voorbeeld", type=int, default=960,
+                    help="met --publiek: breedte van het live beeld voor het zaalscherm buiten scènes (0 = uit)")
     ap.add_argument("--publiek", nargs="?", const="http://127.0.0.1:3026/audience/camera",
                     help="stuur tellingen per scène en lachende gezichten naar de publieksdienst (standaard :3026)")
     a = ap.parse_args()
@@ -276,12 +332,23 @@ def main():
 
     url = (HERE / a.url_file).read_text().strip()
     W, H = probe_size(url)
-    ff = subprocess.Popen(["ffmpeg", "-hide_banner", "-loglevel", "fatal", "-hwaccel", "videotoolbox",
-                           "-fflags", "nobuffer", "-flags", "low_delay", "-threads", "1",
-                           "-f", "concat", "-safe", "0", "-protocol_whitelist", WHITELIST, "-i", "pipe:0",
-                           "-map", "0:v:0", "-an", "-vf", f"fps={a.fps}", "-filter_threads", "1",
-                           "-pix_fmt", "gray", "-f", "rawvideo", "-"],
-                          stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    invoer = ["ffmpeg", "-hide_banner", "-loglevel", "fatal", "-hwaccel", "videotoolbox",
+              "-fflags", "nobuffer", "-flags", "low_delay", "-threads", "1",
+              "-f", "concat", "-safe", "0", "-protocol_whitelist", WHITELIST, "-i", "pipe:0", "-an", "-filter_threads", "1"]
+    voorbeeld_r = None
+    if a.publiek and a.voorbeeld:
+        # Uit hetzelfde decoderen ook een klein kleurbeeld (MJPEG) voor het zaalscherm, via een eigen pijp.
+        voorbeeld_r, voorbeeld_w = os.pipe()
+        ff = subprocess.Popen(invoer + [
+            "-filter_complex", f"[0:v]split=2[a][b];[a]fps={a.fps},format=gray[ana];"
+                               f"[b]fps={VOORBEELD_FPS},scale={a.voorbeeld}:-2:flags=fast_bilinear,format=yuvj420p[pre]",
+            "-map", "[ana]", "-f", "rawvideo", "-",
+            "-map", "[pre]", "-f", "mjpeg", "-q:v", "6", f"pipe:{voorbeeld_w}"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, pass_fds=(voorbeeld_w,))
+        os.close(voorbeeld_w)
+    else:
+        ff = subprocess.Popen(invoer + ["-map", "0:v:0", "-vf", f"fps={a.fps}", "-pix_fmt", "gray", "-f", "rawvideo", "-"],
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     ff.stdin.write(ffconcat(url)); ff.stdin.close()
     vis = subprocess.Popen([str(HERE / "publiek_vision"), str(W), str(H), "--gray", "--tiles", str(a.tiles)]
                            + (["--uitsneden", "--yaw-weg", str(a.yaw_weg), "--pitch-omlaag", str(a.pitch_omlaag)]
@@ -290,6 +357,8 @@ def main():
     ff.stdout.close()
     fase = Fase(a.fase) if a.fase else None
     publiek = Publiek(a.publiek) if a.publiek else None
+    if voorbeeld_r is not None:
+        Voorbeeld(voorbeeld_r, a.publiek.rsplit("/", 1)[0] + "/camera/beeld", fase)
     log = open(a.log, "a") if a.log else None
     regels = []
 

@@ -122,6 +122,10 @@ const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   // Volume van de geluidjes van het zaalscherm (telwerk, relais, kiezer), in procenten.
   tussenGeluid: 50,
   // Rapport, blad van de publiekscamera: kop en uitleg (waarom je gezicht gemeten wordt). Leeg = niet tonen.
+  // Live camerabeeld bij inloop en stemmen: plek en breedte (0 = uit).
+  tussenCameraX: 60,
+  tussenCameraY: 300,
+  tussenCameraBreedte: 480,
   rapportCameraKop: "",
   rapportCameraUitleg: "",
 });
@@ -244,6 +248,9 @@ function normalizeStageSettings(raw = {}, base = STAGE_OUTPUT_DEFAULTS) {
     tussenChatHoogte: clampInt(src.tussenChatHoogte, 100, 1920, Number(base.tussenChatHoogte ?? STAGE_OUTPUT_DEFAULTS.tussenChatHoogte)),
     tussenChatGrootte: clampInt(src.tussenChatGrootte, 16, 120, Number(base.tussenChatGrootte ?? STAGE_OUTPUT_DEFAULTS.tussenChatGrootte)),
     tussenGeluid: clampInt(src.tussenGeluid, 0, 100, Number(base.tussenGeluid ?? STAGE_OUTPUT_DEFAULTS.tussenGeluid)),
+    tussenCameraX: clampInt(src.tussenCameraX, 0, 1080, Number(base.tussenCameraX ?? STAGE_OUTPUT_DEFAULTS.tussenCameraX)),
+    tussenCameraY: clampInt(src.tussenCameraY, 0, 1900, Number(base.tussenCameraY ?? STAGE_OUTPUT_DEFAULTS.tussenCameraY)),
+    tussenCameraBreedte: clampInt(src.tussenCameraBreedte, 0, 1080, Number(base.tussenCameraBreedte ?? STAGE_OUTPUT_DEFAULTS.tussenCameraBreedte)),
     rapportCameraKop: String(src.rapportCameraKop !== undefined ? src.rapportCameraKop : (base.rapportCameraKop ?? "")).replace(/\s+/g, " ").trim().slice(0, 80),
     rapportCameraUitleg: String(src.rapportCameraUitleg !== undefined ? src.rapportCameraUitleg : (base.rapportCameraUitleg ?? "")).replace(/\s+/g, " ").trim().slice(0, 300),
   };
@@ -518,6 +525,8 @@ class AudienceService extends EventEmitter {
     this.ronde = this.laadRonde();
     // Publiekscamera per scène (situationRunId → { stats, groepen, fotos }). Alleen in het geheugen.
     this.camera = new Map();
+    this.cameraLaatste = null;
+    this.setMaxListeners(50);
     this.chatRun = this.store.getSetting(CHAT_RUN_KEY, null) || null;
     this.pollAutoCloseTimer = null;
     this.internalSimulatorKey = crypto.randomBytes(16).toString("hex");
@@ -760,6 +769,17 @@ class AudienceService extends EventEmitter {
       }
     }
     return { ok: true, personen: scene.fotos.size };
+  }
+
+  // Live beeld (klein) van de publiekscamera voor het zaalscherm: alleen het nieuwste, alleen in het geheugen.
+  zetCameraBeeld(jpeg) {
+    this.cameraLaatste = { jpeg, at: Date.now() };
+    this.emit("camera-beeld", jpeg);
+  }
+
+  cameraBeeld() {
+    const laatste = this.cameraLaatste;
+    return laatste && Date.now() - laatste.at < 5000 ? laatste.jpeg : null;
   }
 
   cameraVoor(situationRunId) {
