@@ -96,6 +96,22 @@ async function main() {
   assert(sim.getState().stats.personageFouten > 0);
   assert(sim.getState().stats.personageLaatsteFout.includes("500"));
   sim.stop();
+
+  // Schakelaars van de Stream Deck: bots en personages los van elkaar.
+  assert.deepStrictEqual(sim.stand(), { running: false, bots: 0, personages: false });
+  sim.schakel("personages");
+  await wacht(50);
+  assert.deepStrictEqual(sim.stand(), { running: true, bots: 0, personages: true });
+  sim.schakel("bots");
+  assert.strictEqual(sim.stand().bots, 3);
+  assert.strictEqual(sim.bots.filter((b) => b.personage).length, 2, "personages blijven zitten");
+  sim.schakel("bots");
+  assert.deepStrictEqual(sim.stand(), { running: true, bots: 0, personages: true });
+  sim.schakel("personages");
+  assert.deepStrictEqual(sim.stand(), { running: false, bots: 0, personages: false });
+  sim.schakel("bots");
+  assert.deepStrictEqual(sim.stand(), { running: true, bots: 3, personages: false });
+  sim.stop();
   console.log("personages-chat-test ok");
 }
 

@@ -423,6 +423,28 @@ function createAudienceApp(options = {}) {
     res.json({ ok: true, accepted, simulation: service.simulation.getState() });
   });
 
+  // Stream Deck: bots en personages los van elkaar aan of uit.
+  app.get("/audience/stage/simulatie", (_req, res) => {
+    res.json({ ok: true, ...service.simulation.stand() });
+  });
+
+  app.post("/audience/admin/simulation/schakel", (req, res) => {
+    if (!service.simulation.running) service.activeSessionRequired();
+    const wat = req.body && req.body.wat === "personages" ? "personages" : "bots";
+    res.json({ ok: true, ...service.simulation.schakel(wat) });
+  });
+
+  // Stream Deck: bots en personages los van elkaar aan of uit.
+  app.get("/audience/stage/simulatie", (_req, res) => {
+    res.json({ ok: true, ...service.simulation.stand() });
+  });
+
+  app.post("/audience/admin/simulation/schakel", (req, res) => {
+    if (!service.simulation.running) service.activeSessionRequired();
+    const wat = req.body && req.body.wat === "personages" ? "personages" : "bots";
+    res.json({ ok: true, ...service.simulation.schakel(wat) });
+  });
+
   app.post("/audience/admin/simulation/stop", (req, res) => {
     const reason = String(req.body && req.body.reason || "admin_stop").slice(0, 120);
     res.json({ ok: true, simulation: service.simulation.stop(reason) });

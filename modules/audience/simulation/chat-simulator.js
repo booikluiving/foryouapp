@@ -310,6 +310,83 @@ class ChatSimulator {
     return this.getState();
   }
 
+  // Voor de Stream Deck: wat er nu meechat.
+  stand() {
+    return {
+      running: this.running,
+      bots: this.running ? this.bots.filter((bot) => !bot.personage).length : 0,
+      personages: this.running && this.config.personages,
+    };
+  }
+
+  // Bots of personages aan of uit, los van elkaar. Staat daarna niets meer aan, dan stopt de simulatie.
+  schakel(wat) {
+    const nu = this.stand();
+    let bots = nu.bots > 0;
+    let personages = nu.personages;
+    if (wat === "personages") personages = !personages;
+    else bots = !bots;
+    const aantal = this.config.clients || this.defaults.clients || DEFAULTS.clients;
+    if (!bots && !personages) {
+      this.stop("schakelaar");
+    } else if (!this.running) {
+      this.start({ ...this.defaults, clients: bots ? aantal : 0, personages });
+    } else if (wat === "personages") {
+      this.update({ personages });
+    } else if (bots) {
+      for (let i = 1; i <= aantal; i += 1) this.laatBinnen(this.createBot(i), this.config.spawnMs * (i - 1));
+      this.service.recordSimulationEvent("simulation_update", { config: this.config });
+    } else {
+      // Het aantal blijft in de instelling staan, zodat aanzetten weer evenveel bots geeft.
+      const weg = this.bots.filter((bot) => !bot.personage);
+      this.bots = this.bots.filter((bot) => bot.personage);
+      for (const bot of weg) this.service.disconnectSimulatedClient(bot);
+      this.stats.closed += weg.length;
+      this.stats.connectedNow = Math.max(0, this.stats.connectedNow - weg.length);
+      this.service.recordSimulationEvent("simulation_update", { config: this.config, bots: 0 });
+    }
+    return this.stand();
+  }
+
+  // Voor de Stream Deck: wat er nu meechat.
+  stand() {
+    return {
+      running: this.running,
+      bots: this.running ? this.bots.filter((bot) => !bot.personage).length : 0,
+      personages: this.running && this.config.personages,
+    };
+  }
+
+  // Bots of personages aan of uit, los van elkaar. Staat daarna niets meer aan, dan stopt de simulatie.
+  schakel(wat) {
+    const nu = this.stand();
+    let bots = nu.bots > 0;
+    let personages = nu.personages;
+    if (wat === "personages") personages = !personages;
+    else bots = !bots;
+    const aantal = this.config.clients || this.defaults.clients || DEFAULTS.clients;
+    if (!bots && !personages) {
+      this.stop("schakelaar");
+    } else if (!this.running) {
+      this.start({ ...this.defaults, clients: bots ? aantal : 0, personages });
+      // Het aantal blijft staan, zodat de bots later met evenveel terugkomen.
+      this.config.clients = aantal;
+    } else if (wat === "personages") {
+      this.update({ personages });
+    } else if (bots) {
+      for (let i = 1; i <= aantal; i += 1) this.laatBinnen(this.createBot(i), this.config.spawnMs * (i - 1));
+      this.service.recordSimulationEvent("simulation_update", { config: this.config });
+    } else {
+      const weg = this.bots.filter((bot) => !bot.personage);
+      this.bots = this.bots.filter((bot) => bot.personage);
+      for (const bot of weg) this.service.disconnectSimulatedClient(bot);
+      this.stats.closed += weg.length;
+      this.stats.connectedNow = Math.max(0, this.stats.connectedNow - weg.length);
+      this.service.recordSimulationEvent("simulation_update", { config: this.config, bots: 0 });
+    }
+    return this.stand();
+  }
+
   saveDefaults(rawConfig = {}) {
     this.defaults = normalizeConfig(rawConfig, this.defaults);
     this.config = normalizeConfig(this.config, this.defaults);
