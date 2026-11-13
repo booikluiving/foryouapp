@@ -123,9 +123,9 @@ const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   tussenGeluid: 50,
   // Rapport, blad van de publiekscamera: kop en uitleg (waarom je gezicht gemeten wordt). Leeg = niet tonen.
   // Live camerabeeld bij inloop en stemmen: plek en breedte (0 = uit).
-  tussenCameraX: 60,
-  tussenCameraY: 300,
-  tussenCameraBreedte: 480,
+  tussenCameraX: 640,
+  tussenCameraY: 1720,
+  tussenCameraBreedte: 380,
   rapportCameraKop: "",
   rapportCameraUitleg: "",
 });
