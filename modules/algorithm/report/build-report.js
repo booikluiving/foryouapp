@@ -7,6 +7,8 @@ const {
   audienceFactor,
   durationFactor,
   normalizeAlgorithmConfig,
+  cameraMoments,
+  cameraPoints,
   roomSoundLift,
   signalCounts,
 } = require("../scoring/score-engine");
@@ -88,12 +90,15 @@ function buildAudienceReport(state = {}) {
       // De som achter de score, zodat te zien is waar het getal vandaan komt.
       calculation: {
         raw: round((counts.hearts * Number(weights.heart)) + (counts.bored * Number(weights.bored)) + (counts.messages * Number(weights.message))
-          + (roomSoundLift(observation) * Number(weights.roomSound || 0))),
+          + (roomSoundLift(observation) * Number(weights.roomSound || 0)) + cameraPoints(observation, weights)),
         roomSound: round(roomSoundLift(observation) * Number(weights.roomSound || 0)),
+        cameraLaugh: round(cameraMoments(observation).laugh * Number(weights.cameraLaugh || 0)),
+        cameraBored: round(cameraMoments(observation).bored * Number(weights.cameraBored || 0)) + 0,
         durationFactor: round(durationFactor(counts.durationSeconds, config)),
         audienceFactor: round(audienceFactor(counts.activeClients, config)),
       },
       roomSound: sound,
+      camera: observation.camera && typeof observation.camera === "object" ? observation.camera : null,
     };
   });
 

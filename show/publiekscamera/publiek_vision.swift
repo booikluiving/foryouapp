@@ -2,6 +2,7 @@
 // Gebruik: publiek_vision <breedte> <hoogte> [--gray] [--tiles N] [--overlap px]
 //   --gray     invoer is 1 byte per pixel (luma), anders BGRA (4 bytes)
 //   --tiles N  kijkt in N verticale delen van hetzelfde beeld (vensters op hetzelfde geheugen, geen kopie)
+//   --lach     geeft bij een lachend gezicht ook een uitsnede mee ("jpg", base64), per plek hoogstens eens per 3 s
 // Coördinaten in de uitvoer: 0..1 van het hele beeld, oorsprong linksboven.
 import Foundation
 import Vision
@@ -20,6 +21,8 @@ func opt(_ name: String) -> String? {
 let gray = argv.contains("--gray")
 let tiles = max(1, Int(opt("--tiles") ?? "1") ?? 1)
 let overlap = Int(opt("--overlap") ?? "256") ?? 256
+let lach = argv.contains("--lach")
+var lachLaatst: [Int: Date] = [:]   // plek (raster 48×12) → laatste uitsnede
 let bpp = gray ? 1 : 4
 let frameBytes = W * H * bpp
 let skip = Set((ProcessInfo.processInfo.environment["PV_SKIP"] ?? "").split(separator: ",").map(String.init))
@@ -181,15 +184,15 @@ while running {
 
     // Glimlach en ogen dicht: alleen een kleine uitsnede rond elk gezicht (kopie van een paar KB) naar CIDetector.
     // Uitkomst: (glimlach, ogen dicht, gezicht gevonden in de uitsnede)
-    func smileAt(_ b: CGRect) -> (Bool, Bool, Bool) {
-        if skip.contains("smile") { return (false, false, false) }
+    func smileAt(_ b: CGRect) -> (Bool, Bool, Bool, CIImage?) {
+        if skip.contains("smile") { return (false, false, false, nil) }
         let pad = 0.4
         let x0 = max(0, Int((b.minX - b.width * pad) * CGFloat(W)))
         let x1 = min(W, Int((b.maxX + b.width * pad) * CGFloat(W)))
         let y0 = max(0, Int((1 - b.maxY - b.height * pad) * CGFloat(H)))   // linksboven
         let y1 = min(H, Int((1 - b.minY + b.height * pad) * CGFloat(H)))
         let cw = x1 - x0, chh = y1 - y0
-        guard cw > 8, chh > 8 else { return (false, false, false) }
+        guard cw > 8, chh > 8 else { return (false, false, false, nil) }
         var data = Data(count: cw * chh * bpp)
         CVPixelBufferLockBaseAddress(pixel, .readOnly)
         data.withUnsafeMutableBytes { (d: UnsafeMutableRawBufferPointer) in
@@ -201,15 +204,29 @@ while running {
         let img = CIImage(bitmapData: data, bytesPerRow: cw * bpp, size: CGSize(width: cw, height: chh),
                           format: gray ? .L8 : .BGRA8, colorSpace: gray ? CGColorSpaceCreateDeviceGray() : CGColorSpaceCreateDeviceRGB())
         let feats = (smileDetector.features(in: img, options: [CIDetectorSmile: true, CIDetectorEyeBlink: true]) as? [CIFaceFeature]) ?? []
-        guard let f = feats.max(by: { $0.bounds.width < $1.bounds.width }) else { return (false, false, false) }
-        return (f.hasSmile, f.leftEyeClosed && f.rightEyeClosed, true)
+        guard let f = feats.max(by: { $0.bounds.width < $1.bounds.width }) else { return (false, false, false, nil) }
+        return (f.hasSmile, f.leftEyeClosed && f.rightEyeClosed, true, img)
+    }
+
+    // Uitsnede van een lachend gezicht als JPEG (base64), per plek hoogstens eens per 3 seconden.
+    func lachJpeg(_ b: CGRect, _ img: CIImage) -> String? {
+        let plek = Int(b.midX * 48) * 100 + Int((1 - b.midY) * 12)
+        if let t = lachLaatst[plek], Date().timeIntervalSince(t) < 3 { return nil }
+        lachLaatst[plek] = Date()
+        let cs = gray ? CGColorSpaceCreateDeviceGray() : CGColorSpace(name: CGColorSpace.sRGB)!
+        let opts = [CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.85]
+        let data = ciContext.jpegRepresentation(of: img, colorSpace: cs, options: opts)
+            ?? ciContext.jpegRepresentation(of: img, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, options: opts)
+        return data?.base64EncodedString()
     }
 
     var faces: [[String: Any]] = []
     for (i, b) in faceBoxes.enumerated() {
-        let (smile, eyesClosed, seen) = smileAt(b)
-        faces.append(["b": box(b), "smile": smile, "eyes": seen ? (eyesClosed ? "dicht" : "open") : "?",
-                      "c": r(CGFloat(faceConf[i])), "yaw": faceAngles[i][0], "pitch": faceAngles[i][1], "roll": faceAngles[i][2]])
+        let (smile, eyesClosed, seen, img) = smileAt(b)
+        var face: [String: Any] = ["b": box(b), "smile": smile, "eyes": seen ? (eyesClosed ? "dicht" : "open") : "?",
+                                   "c": r(CGFloat(faceConf[i])), "yaw": faceAngles[i][0], "pitch": faceAngles[i][1], "roll": faceAngles[i][2]]
+        if lach, smile, let img = img, let jpg = lachJpeg(b, img) { face["jpg"] = jpg }
+        faces.append(face)
     }
     let out: [String: Any] = [
         "faces": faces, "persons": personBoxes.map(box), "poses": poses,

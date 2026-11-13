@@ -25,6 +25,10 @@ function defaultAlgorithmConfig() {
       sceneRepeatPenalty: 0,
       // Zaalgeluid: punten per dB dat de piek boven het gewone niveau van de scène uitkomt. 0 = telt niet mee.
       roomSound: 0,
+      // Publiekscamera: punten per lachmoment (een flink deel van de zaal lacht) en per saai moment
+      // (de helft kijkt minstens 5 seconden weg, omlaag of met de ogen dicht).
+      cameraLaugh: 2,
+      cameraBored: -2,
     },
     normalization: {
       timeCorrection: 1,
@@ -88,6 +92,8 @@ function normalizeAlgorithmConfig(input = {}, options = {}) {
       exploration: rounded(clampNumber(sourceWeights.exploration ?? source.explorationWeight, 0, 50, baseWeights.exploration), 3),
       retry: rounded(clampNumber(sourceWeights.retry ?? source.retryWeight, 0, 50, baseWeights.retry), 3),
       roomSound: rounded(clampNumber(sourceWeights.roomSound, 0, 10, baseWeights.roomSound ?? 0), 3),
+      cameraLaugh: rounded(clampNumber(sourceWeights.cameraLaugh, -10, 10, baseWeights.cameraLaugh ?? 0), 3),
+      cameraBored: rounded(clampNumber(sourceWeights.cameraBored, -10, 10, baseWeights.cameraBored ?? 0), 3),
       sceneRepeatPenalty: rounded(clampNumber(
         sourceWeights.sceneRepeatPenalty ?? source.sceneRepeatPenalty,
         0,
@@ -179,6 +185,21 @@ function roomSoundLift(event) {
   return Math.max(0, safeNumber(sound.liftDb, 0));
 }
 
+// Wat de publiekscamera in de scène zag: lachmomenten en saaie momenten.
+function cameraMoments(event) {
+  const camera = event && event.camera;
+  if (!camera || typeof camera !== "object") return { laugh: 0, bored: 0 };
+  return {
+    laugh: Math.max(0, safeNumber(camera.laughMoments, 0)),
+    bored: Math.max(0, safeNumber(camera.boredMoments, 0)),
+  };
+}
+
+function cameraPoints(event, weights = {}) {
+  const moments = cameraMoments(event);
+  return (moments.laugh * safeNumber(weights.cameraLaugh, 0)) + (moments.bored * safeNumber(weights.cameraBored, 0));
+}
+
 function observedScoreForEvent(event, config = defaultAlgorithmConfig()) {
   const normalizedConfig = normalizeAlgorithmConfig(config);
   const counts = signalCounts(event);
@@ -186,7 +207,8 @@ function observedScoreForEvent(event, config = defaultAlgorithmConfig()) {
   const raw = (counts.hearts * safeNumber(weights.heart, 1))
     + (counts.bored * safeNumber(weights.bored, -1))
     + (counts.messages * safeNumber(weights.message, 0.05))
-    + (roomSoundLift(event) * safeNumber(weights.roomSound, 0));
+    + (roomSoundLift(event) * safeNumber(weights.roomSound, 0))
+    + cameraPoints(event, weights);
   return rounded(raw * audienceFactor(counts.activeClients, normalizedConfig) * durationFactor(counts.durationSeconds, normalizedConfig), 4);
 }
 
@@ -530,6 +552,8 @@ module.exports = {
   normalizeAlgorithmConfig,
   observedScoreForEvent,
   roomSoundLift,
+  cameraMoments,
+  cameraPoints,
   scoreFeedDebugSummary,
   signalCounts,
 };

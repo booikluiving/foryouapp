@@ -28,7 +28,7 @@ const {
   buildAlgorithmInput,
   createAudienceSignal,
 } = require("../signal-normalizer/signal-normalizer");
-const { AudienceService } = require("./audience-service");
+const { AudienceService, isLoopbackIp } = require("./audience-service");
 const { loadExpress } = require("./express-loader");
 
 const express = loadExpress();
@@ -106,6 +106,20 @@ function createAudienceApp(options = {}) {
   // Tussenscherm: titel, het script dat gegenereerd wordt, tellingen en reacties van de vorige scène.
   app.get("/audience/stage/tussen", (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "stage-tussen.html"));
+  });
+
+  // Publiekscamera: tellingen en uitsneden van lachende gezichten, alleen van deze Mac zelf.
+  app.post("/audience/camera", (req, res) => {
+    if (!isLoopbackIp(req.socket && req.socket.remoteAddress)) { res.status(403).json({ ok: false }); return; }
+    const result = service.zetCamera(req.body || {});
+    res.status(result.ok ? 200 : 400).json(result);
+  });
+
+  // Uitsnede van een lachend gezicht uit de scène (voor het rapport op het zaalscherm).
+  app.get("/audience/stage/lach/:index", (req, res) => {
+    const jpeg = service.cameraHeadshot(req.query.situationRunId, req.params.index);
+    if (!jpeg) { res.status(404).end(); return; }
+    res.set("Cache-Control", "no-store").type("jpeg").send(jpeg);
   });
 
   // Rapportvenster na een scène: reacties, de som, de stand per label en de scène die hierna komt.

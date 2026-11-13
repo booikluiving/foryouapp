@@ -194,6 +194,10 @@
       .staaf.nu { color: #fff; }
       .staaf.nu .spoor i { background: #fff; }
       .staaf.leeg { color: var(--wit-3); }
+      /* Uitsneden van lachende gezichten uit de publiekscamera. */
+      .lachjes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; padding-top: 22px; }
+      .lachjes img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; filter: grayscale(1) contrast(1.15); visibility: hidden; }
+      .lachjes img.aan { visibility: visible; }
     </style>
   </head>
   <body>
@@ -611,7 +615,8 @@
         const tempo = Math.max(0.45, 1 - 0.14 * (Math.max(1, scene.nr) - 1));
         const straks = (ms, fn) => rpTimers.push(setTimeout(() => { if (mijn === rpRonde) fn(); }, ms * tempo));
         zetKop(el("rpTitel"), scene.titel, 16, 30);
-        el("rpMeta").textContent = `${scene.seconden} seconden · ${scene.kijkers} kijkers`;
+        const camera = scene.camera;
+        el("rpMeta").textContent = `${scene.seconden} seconden · ${scene.kijkers} kijkers` + (camera ? ` · ${camera.personen} in de zaal` : "");
         geluid.schakel();
         let t = 500;
 
@@ -661,6 +666,37 @@
           });
           t += 1000;
         }
+        // Publiekscamera: lachen en saai kijken in de zaal, en de gezichten die lachten.
+        if (camera) {
+          const meesteCam = Math.max(camera.lachmomenten, camera.saaieMomenten, 1);
+          [["lachen in de zaal", camera.lachmomenten], ["saai in de zaal", camera.saaieMomenten]].forEach(([woord, waarde]) => {
+            const rij = rpRij(woord, "0");
+            const meter = maak("div", "meter");
+            const vulling = maak("i");
+            meter.append(vulling);
+            rij.append(meter);
+            el("rpReacties").append(rij);
+            straks(t, () => {
+              rij.classList.add("aan");
+              rpTelOp(rij.querySelector("b"), waarde, 450 * tempo, (n) => String(Math.round(n)));
+              requestAnimationFrame(() => { vulling.style.width = `${(waarde / meesteCam) * 100}%`; });
+            });
+            t += 520;
+          });
+          if (camera.lachjes.length) {
+            const raster = maak("div", "lachjes");
+            el("rpReacties").append(raster);
+            camera.lachjes.forEach((src) => {
+              const img = maak("img");
+              img.alt = "";
+              img.src = src;
+              raster.append(img);
+              straks(t, () => { img.classList.add("aan"); geluid.relais(); });
+              t += 180;
+            });
+            t += 900;
+          }
+        }
         t += 1500;
 
         // 2. De som, regel voor regel, tot de score.
@@ -672,6 +708,8 @@
           [`${scene.berichten} berichten × ${maal(som.wBericht)}`, teken(scene.berichten * som.wBericht)],
         ];
         if (scene.geluid && som.wGeluid) regels.push([`zaalgeluid ${rpNl(scene.geluid.liftDb)} dB boven rust × ${maal(som.wGeluid)}`, teken(som.geluid)]);
+        if (camera && som.wLach) regels.push([`${camera.lachmomenten} keer lachen × ${maal(som.wLach)}`, teken(som.lachen)]);
+        if (camera && som.wSaai) regels.push([`${camera.saaieMomenten} keer saai × ${maal(som.wSaai)}`, teken(som.saai)]);
         regels.push(
           ["som", teken(som.ruw), "streep"],
           [`duur: ${scene.seconden} seconden`, `× ${rpNl(som.duur, 2)}`],

@@ -21,6 +21,7 @@ function bouwStageRapport(report, view, situationRunId) {
   const calculation = scene.calculation || {};
   const sound = scene.roomSound && Array.isArray(scene.roomSound.samples) && scene.roomSound.samples.length ? scene.roomSound : null;
   const labelsNu = new Set(scene.labels || []);
+  const camera = scene.camera && Number(scene.camera.seconds) > 0 ? scene.camera : null;
 
   // Tijdens de startscènes kiest het publiek: dan staat er geen volgende scène in het rapport.
   const startfase = !!(view && view.startPhase && view.startPhase.active);
@@ -50,6 +51,20 @@ function bouwStageRapport(report, view, situationRunId) {
         liftDb: round(sound.liftDb),
         golf: sound.samples.slice(0, 120),
       } : null,
+      // Wat de publiekscamera zag, met uitsneden van lachende gezichten.
+      camera: camera ? {
+        personen: round(camera.peopleAverage, 0),
+        personenMax: Number(camera.peopleMax || 0),
+        lachmomenten: Number(camera.laughMoments || 0),
+        saaieMomenten: Number(camera.boredMoments || 0),
+        klapmomenten: Number(camera.clapMoments || 0),
+        lachenPct: Number(camera.laughPct || 0),
+        aandachtPct: Number(camera.attentionPct || 0),
+        saaiPct: Number(camera.boredPct || 0),
+        lachjes: Array.from({ length: Math.min(12, Number(camera.headshots || 0)) }, (_v, index) => (
+          `/audience/stage/lach/${index}?situationRunId=${encodeURIComponent(scene.situationRunId || "")}`
+        )),
+      } : null,
     },
     som: {
       ruw: round(calculation.raw),
@@ -60,6 +75,10 @@ function bouwStageRapport(report, view, situationRunId) {
       wVerveeld: Number(weights.bored ?? -1),
       wBericht: Number(weights.message ?? 0.05),
       wGeluid: Number(weights.roomSound ?? 0),
+      lachen: round(calculation.cameraLaugh),
+      saai: round(calculation.cameraBored),
+      wLach: Number(weights.cameraLaugh ?? 0),
+      wSaai: Number(weights.cameraBored ?? 0),
     },
     // Eerst de labels met een score, dan de labels waar nog geen scène van gespeeld is.
     labels: (report.labels || []).map((label) => ({

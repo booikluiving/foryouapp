@@ -372,6 +372,9 @@ function isHttpsRequest(req) {
   return String(req && req.headers && req.headers["x-forwarded-proto"] || "").toLowerCase().includes("https");
 }
 
+const CAMERA_SCENES = 6;
+const CAMERA_HEADSHOTS = 12;
+
 function isPublicRequest(req) {
   return !!(req && req.fyPublic === true);
 }
@@ -507,6 +510,8 @@ class AudienceService extends EventEmitter {
     this.fase = { fase: "tussen", titel: null, situationRunId: null, sinds: nowIso(), bekend: false };
     this.faseTimer = null;
     this.ronde = this.laadRonde();
+    // Publiekscamera per scène (situationRunId → { stats, headshots }). Alleen in het geheugen.
+    this.camera = new Map();
     this.chatRun = this.store.getSetting(CHAT_RUN_KEY, null) || null;
     this.pollAutoCloseTimer = null;
     this.internalSimulatorKey = crypto.randomBytes(16).toString("hex");
@@ -693,6 +698,38 @@ class AudienceService extends EventEmitter {
     this.chatRun = run;
     this.store.setSetting(CHAT_RUN_KEY, run);
     if (vorige) this.wisChat("reset_run");
+    this.camera.clear();
+  }
+
+  // Publiekscamera (show/publiekscamera/publiek_sensor.py): de tellingen van de lopende scène en
+  // uitsneden van lachende gezichten. Alleen in het geheugen, alleen de laatste scènes; een herstart
+  // of een nieuwe run wist alles.
+  zetCamera(body = {}) {
+    const situationRunId = String(body.situationRunId || "").slice(0, 200);
+    if (!situationRunId) return { ok: false, error: "geen_scene" };
+    let scene = this.camera.get(situationRunId);
+    if (!scene) {
+      scene = { stats: null, headshots: [] };
+      this.camera.set(situationRunId, scene);
+      while (this.camera.size > CAMERA_SCENES) this.camera.delete(this.camera.keys().next().value);
+    }
+    if (body.stats && typeof body.stats === "object") scene.stats = { ...body.stats };
+    if (typeof body.headshot === "string" && scene.headshots.length < CAMERA_HEADSHOTS) {
+      const jpeg = Buffer.from(body.headshot, "base64");
+      if (jpeg.length > 0 && jpeg.length <= 200 * 1024 && jpeg[0] === 0xff && jpeg[1] === 0xd8) scene.headshots.push(jpeg);
+    }
+    return { ok: true, headshots: scene.headshots.length };
+  }
+
+  cameraVoor(situationRunId) {
+    const scene = situationRunId ? this.camera.get(String(situationRunId)) : null;
+    if (!scene || !scene.stats) return null;
+    return { ...scene.stats, headshots: scene.headshots.length };
+  }
+
+  cameraHeadshot(situationRunId, index) {
+    const scene = this.camera.get(String(situationRunId || ""));
+    return scene ? scene.headshots[Number(index)] || null : null;
   }
 
   chatGewistTot(session = this.getActiveSession()) {
@@ -2206,6 +2243,7 @@ class AudienceService extends EventEmitter {
         isBot: !!signal.isBot,
         simulated: !!signal.simulated,
       }));
+    input.camera = this.cameraVoor(resolvedSituationRunId);
     input.metadata = {
       runtimeAvailable: !!(runtimeResult && runtimeResult.ok),
       runtimeError: runtimeResult && runtimeResult.error ? String(runtimeResult.error) : null,
@@ -2218,6 +2256,7 @@ class AudienceService extends EventEmitter {
 
 module.exports = {
   ACCESS_COOKIE,
+  isLoopbackIp,
   isPublicRequest,
   AudienceService,
   SERVICE_VERSION,

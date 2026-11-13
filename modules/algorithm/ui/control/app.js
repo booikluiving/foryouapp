@@ -14,6 +14,8 @@
     { id: "heart", label: "Heart weight", group: "weights", key: "heart", min: -10, max: 10, step: 0.1 },
     { id: "bored", label: "Bored weight", group: "weights", key: "bored", min: -10, max: 10, step: 0.1 },
     { id: "message", label: "Chat/message weight", group: "weights", key: "message", min: -10, max: 10, step: 0.05 },
+    { id: "cameraLaugh", label: "Camera: lachmoment", group: "weights", key: "cameraLaugh", min: -10, max: 10, step: 0.1 },
+    { id: "cameraBored", label: "Camera: saai moment", group: "weights", key: "cameraBored", min: -10, max: 10, step: 0.1 },
     { id: "timeCorrection", label: "Time correction", group: "normalization", key: "timeCorrection", min: 0, max: 1, step: 0.05 },
     { id: "audienceSize", label: "Audience size normalization", group: "normalization", key: "audienceSize", min: 0, max: 1, step: 0.05 },
     { id: "labelAffinity", label: "Label affinity", group: "weights", key: "labelAffinity", min: -10, max: 10, step: 0.05 },

@@ -59,3 +59,16 @@ omlaag (hoofd voorover, pitch > 20°), ogen dicht, saai (weg, omlaag of ogen dic
 `--fase` leest fase en scènetitel uit de publieksdienst (alleen lezen), zodat het rapport per scène kan.
 Rapport: totaal, per scène en per minuut; percentages zijn een deel van de gezichten, `#` is het aantal momenten.
 Drempels zijn voorlopig: nog niet geijkt met mensen in de zaal.
+
+## Naar de show: score en rapport
+
+```bash
+/opt/homebrew/bin/python3 publiek_sensor.py --publiek
+```
+
+Tijdens een scène gaan elke 2 s de tellingen van die scène naar de publieksdienst (`POST :3026/audience/camera`, alleen
+vanaf deze Mac), plus uitsneden van lachende gezichten: één per plek in de zaal, hoogstens 12 per scène. De publieksdienst
+houdt ze alleen in het geheugen (laatste 6 scènes; een herstart of nieuwe run wist ze) en geeft de tellingen mee aan het
+algoritme. Score: `lachmomenten × Camera: lachmoment` + `saaie momenten × Camera: saai moment` (standaard +2 en −2,
+in te stellen bij de gewichten van het algoritme). Het rapport op het zaalscherm toont "lachen in de zaal", "saai in de
+zaal", het aantal mensen in de zaal en de uitsneden, en beide regels in de som.

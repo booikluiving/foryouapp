@@ -850,6 +850,7 @@ function situationObservedEvent(state, active, stoppedAt, options = {}) {
     audience: options.audience || {},
     chatAppSignals: options.chatAppSignals || {},
     reactionLabSignals: options.reactionLabSignals || {},
+    camera: options.camera && typeof options.camera === "object" ? cloneJson(options.camera) : null,
     rawChat: Array.isArray(options.rawChat) ? cloneJson(options.rawChat) : [],
     finalizedFromAudienceAggregate: !!options.finalizedFromAudienceAggregate,
     finalizedFromLiveAudience: !!options.finalizedFromLiveAudience,
@@ -908,6 +909,7 @@ async function resolveStopSituationObservationOptions(state, active, clients, op
       audience,
       chatAppSignals,
       rawChat,
+      camera: input && input.camera && typeof input.camera === "object" ? cloneJson(input.camera) : null,
       finalizedFromAudienceAggregate: true,
     };
   } catch (err) {

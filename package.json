@@ -31,6 +31,7 @@
     "audience:reacties-test": "node modules/audience/tests/live-reacties-test.js",
     "audience:chat-reset-test": "node modules/audience/tests/chat-reset-test.js",
     "audience:stage-rapport-test": "node modules/audience/tests/stage-rapport-test.js",
+    "audience:camera-test": "node modules/audience/tests/publiekscamera-test.js",
     "script-agent:start": "node modules/script-agent/server/server.js",
     "script-agent:smoke": "node modules/script-agent/tests/smoke-test.js",
     "script-agent:test": "node modules/script-agent/tests/unit-test.js",
