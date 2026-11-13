@@ -1011,6 +1011,22 @@ els.savedSceneToInput.addEventListener("click", () => {
   els.chatInput.value = `${els.chatInput.value ? `${els.chatInput.value}\n\n` : ""}Eerdere versie van deze scène:\n\n${text}`;
   els.chatInput.focus();
 });
+// Vaste opmerkingen voor de volgende scène: een druk zet de opmerking klaar; ze gaat mee zodra de
+// volgende scène naar de chat gaat.
+function toonOpmerkingen(body) {
+  const stand = document.getElementById("opmerkingStand");
+  if (!stand) return;
+  const regels = String(body && body.bewaard || "").split("\n").filter(Boolean);
+  stand.textContent = regels.length ? `Gaat mee: ${regels.join(" · ")}` : "";
+}
+async function stuurOpmerking(body) {
+  toonOpmerkingen(await api("/v0/script-agent/operator/opmerking", { method: "POST", body: JSON.stringify(body) }));
+}
+document.querySelectorAll("[data-opmerking]").forEach((knop) => {
+  knop.addEventListener("click", () => withUiError(() => stuurOpmerking({ tekst: knop.dataset.opmerking })));
+});
+document.getElementById("opmerkingWis").addEventListener("click", () => withUiError(() => stuurOpmerking({ wis: true })));
+setInterval(() => api("/v0/script-agent/operator/opmerking").then(toonOpmerkingen).catch(() => {}), 3000);
 els.sceneTestToggle.addEventListener("change", () => toggleSceneTest());
 els.sceneTestStart.addEventListener("click", () => startTestScene());
 els.situation.addEventListener("change", () => {

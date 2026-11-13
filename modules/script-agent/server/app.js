@@ -278,6 +278,23 @@ function createScriptAgentApp(options = {}) {
       });
   });
 
+  // Venster voor een opmerking van de operator over de scène die net gespeeld is. Het antwoord komt
+  // als het venster dicht is (Enter, of de tijd is om).
+  app.post("/v0/script-agent/operator/opmerking-venster", asyncRoute(async (req, res) => {
+    const uitkomst = await operatorService.openOpmerkingVenster({ windowMs: req.body && req.body.windowMs });
+    res.json({ ok: true, ...uitkomst });
+  }));
+
+  // Opmerkingen voor de volgende scène, vanuit de knoppen van de operator.
+  app.get("/v0/script-agent/operator/opmerking", (_req, res) => {
+    res.json({ ok: true, ...operatorService.opmerkingStand() });
+  });
+  app.post("/v0/script-agent/operator/opmerking", (req, res) => {
+    if (req.body && req.body.wis) operatorService.wisOpmerking();
+    else operatorService.voegOpmerkingToe(req.body ? req.body.tekst : "");
+    res.json({ ok: true, ...operatorService.opmerkingStand() });
+  });
+
   app.post("/v0/script-agent/operator/scene-to-chat", asyncRoute(async (req, res) => {
     const events = [];
     const result = await operatorService.sceneToChat(req.body || {}, (event) => {

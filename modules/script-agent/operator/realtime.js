@@ -92,7 +92,8 @@ function attachOperatorStageRealtime(server, operatorService, options = {}) {
     }
     if (payload.type === "operator_stage_submit") {
       try {
-        await operatorService.streamChat({
+        const verstuur = typeof operatorService.stageSubmit === "function" ? operatorService.stageSubmit : operatorService.streamChat;
+        await verstuur({
           sessionId: payload.sessionId,
           message: payload.text,
           sourceId: payload.sourceId,

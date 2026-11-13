@@ -413,6 +413,26 @@ async function main() {
   const operatorStatus = await operatorService.status();
   assert(!JSON.stringify(operatorStatus).includes("sk-test-deepseek"));
 
+  // Opmerking van de operator: Enter tijdens het venster is geen bericht aan het model maar gaat
+  // mee met de volgende scène, samen met de opmerkingen van de vaste knoppen.
+  const venster = operatorService.openOpmerkingVenster({ windowMs: 3000 });
+  assert.equal(operatorService.snapshotStage().opmerking.open, true);
+  const aanroepenVoor = generationLog.length;
+  await operatorService.stageSubmit({ message: "deze was te lang", sourceId: "stage_test" });
+  assert.deepEqual(await venster, { opmerking: "deze was te lang" });
+  assert.equal(operatorService.snapshotStage().opmerking, null);
+  assert.equal(generationLog.length, aanroepenVoor, "een opmerking gaat niet naar het model");
+  operatorService.voegOpmerkingToe("Scene is te letterlijk");
+  operatorService.voegOpmerkingToe("Scene is te letterlijk");
+  assert.equal(operatorService.opmerkingStand().bewaard, "deze was te lang\nScene is te letterlijk");
+  const metOpmerking = await operatorService.sceneToChat({ sourceId: "unit-scene-chat" });
+  assert.equal(metOpmerking.opmerking, "deze was te lang\nScene is te letterlijk");
+  const laatsteVraag = fakeDeepSeek.lastBody.messages[fakeDeepSeek.lastBody.messages.length - 1].content;
+  assert(laatsteVraag.includes("Opmerking van de operator over de vorige scène:\ndeze was te lang\nScene is te letterlijk"));
+  assert.equal(operatorService.opmerkingStand().bewaard, "", "na het meegeven is de opmerking weg");
+  const zonderOpmerking = await operatorService.sceneToChat({ sourceId: "unit-scene-chat" });
+  assert.equal(zonderOpmerking.opmerking, null);
+
   process.stdout.write(JSON.stringify({
     ok: true,
     showRunId: promptInput.showRunId,

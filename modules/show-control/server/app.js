@@ -393,7 +393,32 @@ function createShowControlApp(options = {}) {
     await executeCue(cue, { ...executeOptions, runtimeState });
     await saveCue(cue);
     res.status(201).json({ ok: true, cue });
+    // Na het antwoord: de operator krijgt even de tijd voor een opmerking over deze scène.
+    opmerkingVensterOpen();
   }));
+
+  // De scène is gestopt: in de operator-chat gaat een venster open voor een opmerking over die
+  // scène ("te lang", "dit was grappig"). Wat de operator typt en met Enter bevestigt, gaat mee met
+  // de volgende scène. Het venster sluit vanzelf, of zodra de volgende scène naar de chat gaat.
+  // Niet bij het testen van scènes.
+  const OPMERKING_VENSTER_MS = Number(process.env.SHOW_CONTROL_OPMERKING_VENSTER_MS || 20000);
+  async function opmerkingVensterOpen() {
+    try {
+      const result = await clients.fetchCurrentRuntimeState();
+      const state = result && result.ok ? result.state : null;
+      if (!state || !state.showRunId || state.status !== "running") return;
+      if (state.testRun && state.testRun.enabled) return;
+      const basis = String(process.env.SHOW_CONTROL_SCRIPT_AGENT_URL || "http://127.0.0.1:3027").replace(/\/+$/, "");
+      await fetch(`${basis}/v0/script-agent/operator/opmerking-venster`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ windowMs: OPMERKING_VENSTER_MS }),
+        signal: AbortSignal.timeout(OPMERKING_VENSTER_MS + 30000),
+      });
+    } catch (_err) {
+      // geen venster: de scène gaat gewoon door zonder opmerking
+    }
+  }
 
   // /status wordt elke seconde gevraagd (deck-status): de omgevingsknoppen hoeven
   // niet vaker dan eens per seconde opnieuw bepaald te worden.

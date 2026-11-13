@@ -764,6 +764,10 @@ textarea:focus {
   }
 }
 
+.opmerkingen { display: grid; gap: 6px; margin-top: 10px; }
+.opmerking-knoppen { flex-wrap: wrap; }
+.opmerking-knoppen button { font-size: 12px; padding: 6px 8px; }
+
 .scene-test {
   display: flex;
   align-items: center;

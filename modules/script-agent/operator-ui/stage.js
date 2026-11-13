@@ -67,6 +67,8 @@ let stageTokens = 0;
 let stageCost = 0;
 let stageStyle = { ...STYLE_DEFAULT };
 let stageSessionId = "show_default";
+// Na een scène staat er even een venster open voor een opmerking over die scène (Enter bevestigt).
+let opmerkingOpen = false;
 let sourceId = loadSourceId();
 
 function loadSourceId() {
@@ -262,9 +264,10 @@ function applyState(stage = {}, forceBottom = false) {
   stageSessionId = String(stage.sessionId || stageSessionId || "show_default");
   setDraft(stage.draft || "", stage.revision, stage.draftSourceId || "", forceBottom || streaming);
   messages = Array.isArray(stage.messages) ? stage.messages.slice() : [];
+  opmerkingOpen = !!(stage.opmerking && stage.opmerking.open);
   updateUsageFromState(stage);
   renderMessages(forceBottom || streaming);
-  setStatus(streaming ? "streaming" : ws && ws.readyState === WebSocket.OPEN ? "connected" : "offline");
+  setStatus(streaming ? "streaming" : opmerkingOpen ? "opmerking over de vorige scene + enter" : ws && ws.readyState === WebSocket.OPEN ? "connected" : "offline");
 }
 
 function findMessage(id) {
@@ -318,7 +321,8 @@ function submit() {
   sendDraft();
   draft = "";
   inputEl.value = "";
-  streaming = true;
+  // Een opmerking gaat niet naar het model: er komt geen antwoord om op te wachten.
+  streaming = !opmerkingOpen;
   renderTyping();
   scrollLogToBottom();
   send({

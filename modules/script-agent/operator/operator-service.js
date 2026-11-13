@@ -774,6 +774,94 @@ function createOperatorService(options = {}) {
     };
   }
 
+  // Opmerking van de operator over de scène die net gespeeld is ("deze was te lang", "dit was
+  // grappig"). Na het stoppen van een scène staat er even een venster open: wat de operator dan typt
+  // en met Enter bevestigt, gaat niet als bericht naar het model maar wordt bewaard en meegegeven
+  // met de volgende scène. Wie nog typt als het venster afloopt krijgt even uitstel; wat er dan
+  // staat telt ook.
+  const opmerking = { bewaard: "", klaar: null, timer: null, hardEind: 0 };
+  // Een opmerking erbij: meerdere opmerkingen staan achter elkaar; dezelfde komt er niet twee keer in.
+  // Ze staat ook als regel in de operator-chat, zodat te zien is dat ze is aangekomen.
+  function bewaarOpmerking(tekst) {
+    const schoon = normalizeText(tekst, 600).trim();
+    if (!schoon) return opmerking.bewaard;
+    const delen = opmerking.bewaard ? opmerking.bewaard.split("\n") : [];
+    if (!delen.includes(schoon)) delen.push(schoon);
+    opmerking.bewaard = delen.join("\n").slice(0, 1500);
+    stageState.messages.push({
+      id: `opmerking_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      role: "user",
+      content: `opmerking voor de volgende scène: ${schoon}`,
+      at: nowIso(),
+    });
+    stageState.messages = stageState.messages.slice(-MAX_STAGE_MESSAGES);
+    return opmerking.bewaard;
+  }
+  // Vanuit de knoppen van de operator: kan op elk moment vóór de volgende scène.
+  function voegOpmerkingToe(tekst) {
+    const bewaard = bewaarOpmerking(tekst);
+    stageState.updatedAt = nowIso();
+    emitStage("opmerking_erbij");
+    return bewaard;
+  }
+  function wisOpmerking() {
+    opmerking.bewaard = "";
+    return "";
+  }
+  const opmerkingStand = () => ({ bewaard: opmerking.bewaard, vensterOpen: !!stageState.opmerking });
+  function sluitOpmerkingVenster(tekst) {
+    if (!stageState.opmerking) return;
+    clearInterval(opmerking.timer);
+    opmerking.timer = null;
+    const schoon = normalizeText(tekst, 600).trim();
+    if (schoon) bewaarOpmerking(schoon);
+    stageState.opmerking = null;
+    stageState.draft = "";
+    stageState.draftSourceId = "opmerking";
+    stageState.revision += 1;
+    stageState.updatedAt = nowIso();
+    emitStage("opmerking_dicht");
+    const klaar = opmerking.klaar;
+    opmerking.klaar = null;
+    if (klaar) klaar({ opmerking: schoon });
+  }
+  function openOpmerkingVenster(options = {}) {
+    if (stageState.streaming) return Promise.resolve({ opmerking: "", overgeslagen: "er_wordt_geschreven" });
+    if (stageState.opmerking) sluitOpmerkingVenster(stageState.draft);
+    const windowMs = Math.min(60000, Math.max(3000, Number(options.windowMs) || 12000));
+    const eind = Date.now() + windowMs;
+    opmerking.hardEind = eind + 20000;
+    stageState.draft = "";
+    stageState.draftSourceId = "opmerking";
+    stageState.revision += 1;
+    stageState.updatedAt = nowIso();
+    stageState.opmerking = { open: true, until: new Date(eind).toISOString() };
+    emitStage("opmerking_open");
+    return new Promise((resolve) => {
+      opmerking.klaar = resolve;
+      opmerking.timer = setInterval(() => {
+        const nu = Date.now();
+        if (nu < eind) return;
+        const typtNog = !!String(stageState.draft || "").trim() && nu - Date.parse(stageState.updatedAt) < 4000;
+        if (typtNog && nu < opmerking.hardEind) return;
+        sluitOpmerkingVenster(stageState.draft);
+      }, 400);
+    });
+  }
+  function neemOpmerking() {
+    const tekst = opmerking.bewaard;
+    opmerking.bewaard = "";
+    return tekst;
+  }
+  // Enter in de operator-chat: tijdens het venster is het een opmerking, anders een gewoon bericht.
+  function stageSubmit(body = {}, emit = () => {}) {
+    if (stageState.opmerking) {
+      sluitOpmerkingVenster(body.message);
+      return Promise.resolve({ opmerking: true });
+    }
+    return streamChat(body, emit);
+  }
+
   async function readStageStyle() {
     return normalizeStageStyle((await readSettings()).stageStyle);
   }
@@ -968,6 +1056,7 @@ function createOperatorService(options = {}) {
     const session = getSession(sessionId);
     session.messages = [];
     stageState.messages = [];
+    opmerking.bewaard = "";
     stageState.updatedAt = nowIso();
     emitStage("clear_session");
     return sessionInfo(sessionId);
@@ -1283,20 +1372,26 @@ function createOperatorService(options = {}) {
 
   async function sceneToChat(body = {}, emit = () => {}) {
     const sourceId = normalizeSourceId(body.sourceId || "show-control-scene-chat");
+    // Staat het venster voor een opmerking nog open, dan telt wat er nu staat.
+    if (stageState.opmerking) sluitOpmerkingVenster(stageState.draft);
     const nextDraft = await createDraftFromRuntime(body.runtimeState || body.runtimeOutput || null, {
       force: body.force !== false,
       sourceId,
     });
     const sessionId = normalizeSessionId(body.sessionId || nextDraft.showRunId || stageState.sessionId);
+    const operatorOpmerking = neemOpmerking();
     const done = await streamChat({
       sessionId,
-      message: nextDraft.text,
+      message: operatorOpmerking
+        ? `${nextDraft.text}\n\nOpmerking van de operator over de vorige scène:\n${operatorOpmerking}\nHoud daar rekening mee in deze scène.`
+        : nextDraft.text,
       promptInput: nextDraft.promptInput,
       sourceId,
     }, emit);
     return {
       sessionId,
       draft: nextDraft,
+      opmerking: operatorOpmerking || null,
       done,
     };
   }
@@ -1340,6 +1435,11 @@ function createOperatorService(options = {}) {
     currentDraft,
     emitter,
     normalizeOperatorSettings,
+    openOpmerkingVenster,
+    opmerkingStand,
+    stageSubmit,
+    voegOpmerkingToe,
+    wisOpmerking,
     readStageStyle,
     readSettings,
     saveSecrets,
