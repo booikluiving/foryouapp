@@ -22,6 +22,10 @@ assert.equal(metKeuze.scene.geluid, null, "zonder meting geen zaalgeluid in het 
 assert.deepEqual(metKeuze.hierna, { titel: "Zeven", score: 2.3 });
 assert.deepEqual(metKeuze.labels, [{ naam: "satirisch", score: 6.4, nu: true }, { naam: "grof", score: -1.2, nu: false }]);
 
+const alleLabels = bouwStageRapport({ ...report, labelNames: ["Grof", "Absurd", "Satirisch"] }, {}, "run:1");
+assert.deepEqual(alleLabels.labels[2], { naam: "absurd", score: null, nu: false }, "een label zonder gespeelde scène staat er zonder score");
+assert.equal(alleLabels.labels.length, 3);
+
 const stemmen = bouwStageRapport(report, { startPhase: { active: true }, preparedNext: { situationId: "situation:7", title: "Zeven" } }, "run:1");
 assert.equal(stemmen.hierna, null, "tijdens de startscènes kiest het publiek");
 

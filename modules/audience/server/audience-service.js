@@ -116,9 +116,9 @@ const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   tussenScriptHoogte: 860,
   tussenStatsY: 1150,
   tussenStatsGrootte: 56,
-  tussenChatY: 1380,
-  tussenChatHoogte: 480,
-  tussenChatGrootte: 40,
+  tussenChatY: 1462,
+  tussenChatHoogte: 385,
+  tussenChatGrootte: 36,
 });
 const DIRECT_LINK_RE = /\b(?:https?:\/\/|www\.)\S+/i;
 const DOMAIN_RE = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|nl|be|de|eu|io|gg|tv|co|me|app|dev|info|xyz|ly|to|ai)\b/i;

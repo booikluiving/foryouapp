@@ -6,8 +6,21 @@ if (new URLSearchParams(window.location.search).get("doorzichtig") === "1") {
   document.documentElement.style.setProperty("--stage-bg", "transparent");
 }
 
-const STAGE_W = 1080;
-const STAGE_H = 1920;
+// Als klein venster op het zaalscherm (?venster=1&b=…&h=…): dezelfde pagina op de maat van dat venster,
+// met minder witruimte eromheen. Letter, cursor en statusregel blijven zoals ze zijn.
+const VENSTER_OPTIES = new URLSearchParams(window.location.search);
+const VENSTER = VENSTER_OPTIES.get("venster") === "1";
+const vensterMaat = (naam, standaard) => {
+  const waarde = Number(VENSTER_OPTIES.get(naam));
+  return VENSTER && Number.isFinite(waarde) && waarde >= 200 && waarde <= 4000 ? Math.round(waarde) : standaard;
+};
+const STAGE_W = vensterMaat("b", 1080);
+const STAGE_H = vensterMaat("h", 1920);
+if (VENSTER) {
+  document.documentElement.style.setProperty("--stage-w", `${STAGE_W}px`);
+  document.documentElement.style.setProperty("--stage-h", `${STAGE_H}px`);
+  document.documentElement.classList.add("venster");
+}
 const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 6000;
 const SOURCE_KEY = "script_agent_operator_stage_source";
@@ -110,6 +123,19 @@ function applyStageStyle(style = {}) {
   stageEl.dataset.cursor = stageStyle.cursor;
 }
 
+// Als venster: het vlak met de tekst is een heel aantal regels hoog, zodat er bovenaan geen halve regel staat.
+function fitVensterLog() {
+  if (!VENSTER) return;
+  const rij = document.querySelector(".prompt-row");
+  const stijl = getComputedStyle(terminalEl);
+  const vrij = terminalEl.clientHeight - parseFloat(stijl.paddingTop) - parseFloat(stijl.paddingBottom)
+    - (rij ? rij.offsetHeight + parseFloat(getComputedStyle(rij).marginTop) : 0);
+  const regel = stageStyle.fontSize * 1.34;
+  logEl.style.flex = "none";
+  logEl.style.marginTop = "auto";
+  logEl.style.height = `${Math.max(1, Math.floor(vrij / regel)) * regel}px`;
+}
+
 function renderTyping() {
   typingEl.innerHTML = "";
   if (draft && !streaming) typingEl.appendChild(document.createTextNode(draft));
@@ -117,6 +143,7 @@ function renderTyping() {
   cursor.className = "cursor";
   typingEl.appendChild(cursor);
   terminalEl.classList.toggle("streaming", streaming);
+  fitVensterLog();
 }
 
 function scrollLogToBottom() {

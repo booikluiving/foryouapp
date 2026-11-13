@@ -61,11 +61,14 @@ function bouwStageRapport(report, view, situationRunId) {
       wBericht: Number(weights.message ?? 0.05),
       wGeluid: Number(weights.roomSound ?? 0),
     },
+    // Eerst de labels met een score, dan de labels waar nog geen scène van gespeeld is.
     labels: (report.labels || []).map((label) => ({
       naam: String(label.name || "").toLowerCase(),
       score: round(label.averageScore),
       nu: labelsNu.has(label.name),
-    })),
+    })).concat((Array.isArray(report.labelNames) ? report.labelNames : [])
+      .filter((naam) => !(report.labels || []).some((label) => label.name === naam))
+      .map((naam) => ({ naam: String(naam || "").toLowerCase(), score: null, nu: labelsNu.has(naam) }))),
     hierna,
   };
 }

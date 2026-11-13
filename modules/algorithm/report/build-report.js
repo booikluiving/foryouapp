@@ -174,6 +174,8 @@ function buildAudienceReport(state = {}) {
     conclusion,
     live,
     labels,
+    // Alle labels van de catalogus, ook die waar nog geen scène van gespeeld is.
+    labelNames: [...labelNames.values()],
     characters,
     scenes,
     forecast: {

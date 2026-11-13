@@ -365,6 +365,17 @@
     const REGIE_PAD = REGIE_OPTIES.get("padZoom") === "1";
     const REGIE_PAD_OMHOOG = 0.17; // het pad staat boven het midden; eronder is ruimte voor de tekst
     const REGIE_PAD_FADE = 0.16; // zo flauw blijft de rest van de kaart zichtbaar
+    // Het hoofdscherm kan opgeven in welke strook van het beeld de kaart hoort: zicht=boven,onder,
+    // in beeldpunten van een scherm van 1920 hoog. Boven en onder die strook staan titel, tekst en chat.
+    // Zonder opgave vult de kaart het hele beeld.
+    const regieZichtUit = (waarde) => {
+      const [boven, onder] = String(waarde || "").split(",").map(Number);
+      return Number.isFinite(boven) && Number.isFinite(onder) && onder - boven >= 200 ? { boven: boven / 1920, onder: onder / 1920 } : null;
+    };
+    let regieZicht = regieZichtUit(REGIE_OPTIES.get("zicht"));
+    // Het hoofdscherm zet de titel van de gekozen scène en de stand van het stemmen zelf in beeld.
+    const REGIE_GEKOZEN_TITEL = REGIE_OPTIES.get("gekozenTitel") !== "0";
+    const REGIE_STEM_TEKST = REGIE_OPTIES.get("stemTekst") !== "0";
     const REGIE_ZOOM = 60;
     const REGIE_DRAAI = Math.PI * 0.8;
     const regie = {
@@ -3425,6 +3436,7 @@
       breedte: 0,
       hoogte: 0,
       sleutel: "",
+      kader: null,
       info: new Map(),
       pos: new Map(),
       gloed: new Map(),
@@ -3489,6 +3501,13 @@
       if (sleutel !== podium.sleutel) {
         const layout = networkLayout(networkMap);
         state.bb.networkBasePos = new Map(layout.pos);
+        // Het vlak waar alle sterren in liggen: daarmee past de kaart in een opgegeven strook.
+        let links = Infinity, rechts = -Infinity, boven = Infinity, onder = -Infinity;
+        layout.pos.forEach((punt) => {
+          links = Math.min(links, punt.x); rechts = Math.max(rechts, punt.x);
+          boven = Math.min(boven, punt.y); onder = Math.max(onder, punt.y);
+        });
+        podium.kader = Number.isFinite(links) ? { x: (links + rechts) / 2, y: (boven + onder) / 2, b: rechts - links, h: onder - boven } : null;
         const groepen = new Map();
         nodes.forEach((node) => {
           const wortel = Number(node.networkRootSceneId || node.sceneId || 0);
@@ -3560,8 +3579,27 @@
       return { x: basis.x + offset.x, y: basis.y + offset.y };
     }
 
+    // Waar de kaart in beeld staat: schaal, het midden van de kaart en het punt in beeld waar dat midden ligt.
+    function podiumBeeld() {
+      const kader = podium.kader;
+      if (!regieZicht || !kader) {
+        return { k: Math.max(podium.breedte / W, podium.hoogte / H), mx: SKY_CX, my: SKY_CY, sx: podium.breedte / 2, sy: podium.hoogte / 2, maat: Math.min(podium.breedte, podium.hoogte), strook: false };
+      }
+      const hoog = (regieZicht.onder - regieZicht.boven) * podium.hoogte;
+      const rand = 44; // ruimte voor de beweging van de sterren en een titel erboven
+      return {
+        k: Math.min(podium.breedte / (kader.b + rand * 2), hoog / (kader.h + rand * 2)),
+        mx: kader.x,
+        my: kader.y,
+        sx: podium.breedte / 2,
+        sy: ((regieZicht.boven + regieZicht.onder) / 2) * podium.hoogte,
+        maat: Math.min(podium.breedte, hoog),
+        strook: true,
+      };
+    }
+
     function podiumSchaal() {
-      return Math.max(podium.breedte / W, podium.hoogte / H);
+      return podiumBeeld().k;
     }
 
     function podiumTekst(ctx, regels, x, y, grootte, kleur, alpha, regelhoogte) {
@@ -3579,18 +3617,27 @@
       const model = state.model;
       if (!ctx || !model) return;
       const networkMap = model.networkMap || { nodes: [], edges: [] };
-      const k = podiumSchaal();
+      const beeld = podiumBeeld();
+      const k = beeld.k;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, podium.breedte, podium.hoogte);
-      ctx.setTransform(k, 0, 0, k, podium.breedte / 2 - SKY_CX * k, podium.hoogte / 2 - SKY_CY * k);
+      ctx.setTransform(k, 0, 0, k, beeld.sx - beeld.mx * k, beeld.sy - beeld.my * k);
 
       const tijd = podiumTijd(nu);
-      // Scherp op het pad: dezelfde stand als de camera, maar door het doek zelf getekend.
-      const padZoom = regie.scherp && regie.pad ? Math.exp(regie.cam.lz) : 1;
-      if (padZoom !== 1) {
+      // Met padZoom tekent het doek de camera zelf, ook tijdens het zoomen: lijnen en sterren blijven
+      // scherp en verspringen niet van maat als de camera aankomt of vertrekt.
+      const tekenCamera = REGIE_PAD ? regie.cam.mix > 0 || regie.cam.lz !== 0 : regie.scherp && !!regie.pad;
+      const padZoom = tekenCamera ? Math.exp(regie.cam.lz) : 1;
+      if (tekenCamera) {
         const midden = regieCameraPunt(tijd);
+        const mix = REGIE_PAD ? regie.cam.mix : 1;
         const kz = k * padZoom;
-        if (midden) ctx.setTransform(kz, 0, 0, kz, podium.breedte / 2 - midden.x * kz, podium.hoogte * (0.5 - REGIE_PAD_OMHOOG) - midden.y * kz);
+        if (midden) {
+          const cx = beeld.mx + (midden.x - beeld.mx) * mix;
+          const cy = beeld.my + (midden.y - beeld.my) * mix;
+          const omhoog = regie.pad && !beeld.strook ? REGIE_PAD_OMHOOG * podium.hoogte * mix : 0;
+          ctx.setTransform(kz, 0, 0, kz, beeld.sx - cx * kz, beeld.sy - omhoog - cy * kz);
+        }
       }
       // Ingezoomd blijven lijnen en sterren fijn: ze groeien minder hard mee dan de afstanden.
       const dun = padZoom !== 1 ? 1 / Math.pow(padZoom, 0.62) : 1;
@@ -3785,7 +3832,7 @@
           const afstand = Math.hypot(dx, dy);
           const uit = straal + 14;
           const groot = stem.koploper || stem.winnaar;
-          etiketten.push({
+          if (REGIE_STEM_TEKST) etiketten.push({
             regels: [String(stem.votes)],
             x: punt.x + (afstand > 1 ? dx / afstand : 0) * uit,
             y: punt.y + (afstand > 1 ? dy / afstand : -1) * uit + (groot ? 7 : 5),
@@ -3794,7 +3841,7 @@
             alpha: stem.verloren ? 0.45 : 1,
           });
           if (groot) stemKoplopers.push({ node, stem });
-        } else if ((regie.gekozen === sceneId || regie.ring === sceneId) && !isFocus) {
+        } else if ((regie.ring === sceneId || (REGIE_GEKOZEN_TITEL && regie.gekozen === sceneId)) && !isFocus) {
           const regels = regieTitelRegels(node.title);
           etiketten.push({ regels, x: punt.x, y: punt.y - straal - 20 - (regels.length - 1) * 19, grootte: 15, kleur: "#ffffff", alpha: 1, regelhoogte: 19 });
         } else if (state.tweaks.labels) {
@@ -3804,7 +3851,7 @@
 
       // Eén titel boven de kring van startscènes: de winnaar, of de koploper als er precies één is.
       const stemKop = stemKoplopers.find((item) => item.stem.winnaar) || (stemKoplopers.length === 1 ? stemKoplopers[0] : null);
-      if (stemKop && stemMidden) {
+      if (REGIE_STEM_TEKST && stemKop && stemMidden) {
         const regels = regieTitelRegels(stemKop.node.title);
         regels[regels.length - 1] += ` · ${stemKop.stem.votes}`;
         const top = Math.min(...stemPunten.map((punt) => punt.y));
@@ -3914,14 +3961,22 @@
     // Een tik voor het geluid op het hoofdscherm: "stap" bij elke sprong van de kiezer, "slot" bij de keuze.
     function regieTik(soort, sceneId) {
       if (window.parent === window) return;
-      try { window.parent.postMessage({ bron: "for_you-universum", tik: soort, sceneId: sceneId || 0, titel: sceneId ? sceneTitle(sceneId) : "" }, "*"); } catch (_err) {}
+      try { window.parent.postMessage({ bron: "for_you-universum", tik: soort, sceneId: sceneId || 0, titel: sceneId ? sceneTitle(sceneId) : "", omgeving: soort === "slot" ? regieOmgeving(sceneId) : null }, "*"); } catch (_err) {}
     }
 
     // Na een scène wacht het universum tot het hoofdscherm het rapport heeft laten zien. Het scherm
     // geeft het vrij met een bericht; komt dat niet, dan gaat het na de ingestelde tijd vanzelf verder.
     let regieVrijgave = null;
     window.addEventListener("message", (ev) => {
-      if (ev.data && ev.data.bron === "for_you-scherm" && ev.data.verder && regieVrijgave) regieVrijgave();
+      const bericht = ev.data;
+      if (!bericht || bericht.bron !== "for_you-scherm") return;
+      if (bericht.verder && regieVrijgave) regieVrijgave();
+      // Het scherm verlegt de strook van de kaart (de chat is hoger of lager gezet).
+      if (Array.isArray(bericht.zicht)) {
+        regieZicht = regieZichtUit(bericht.zicht.join(","));
+        podium.vuil = true;
+        regieCameraToepassen();
+      }
     });
     function regieWachtOpScherm(maxMs) {
       return new Promise((resolve) => {
@@ -3944,6 +3999,8 @@
           titel: regie.focus ? sceneTitle(regie.focus) : "",
           omgeving: regieOmgeving(regie.focus),
           speelt: !!(g && regie.focus && g.cur === regie.focus),
+          // De camera staat op (of gaat naar) de scène die hierna komt.
+          volgende: !!(g && regie.focus && g.next === regie.focus),
           gespeeld: g ? g.played.size : 0,
         }, "*");
       } catch (_err) {}
@@ -3988,26 +4045,35 @@
       const a = regie.pad ? podiumPunt(regie.pad.a, tijd) : null;
       const b = regie.pad ? podiumPunt(regie.pad.b, tijd) : null;
       const afstand = a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
-      const maat = Math.min(podium.breedte || 0, podium.hoogte || 0);
-      if (!afstand || !maat) return 4.5;
-      return clamp((0.46 * maat) / (afstand * podiumSchaal()), 2.2, 9);
+      const beeld = podiumBeeld();
+      if (!afstand || !beeld.maat) return 4.5;
+      return clamp((0.46 * beeld.maat) / (afstand * beeld.k), 2.2, 9);
     }
 
     // De camera schuift, schaalt en draait het hele doek als één vlak. Zo hoeft er tijdens het zoomen
     // niets opnieuw getekend te worden.
     function regieCameraToepassen() {
       if (!podium.doek) return;
+      // Met padZoom tekent het doek elke stand van de camera zelf.
+      if (REGIE_PAD) {
+        podium.doek.style.transform = "";
+        podium.vuil = true;
+        return;
+      }
       const punt = regieCameraPunt(podiumTijd(Date.now()));
-      const dx = punt ? (punt.x - SKY_CX) * regie.cam.mix : 0;
-      const dy = punt ? (punt.y - SKY_CY) * regie.cam.mix : 0;
+      const beeld = podiumBeeld();
+      const dx = punt ? (punt.x - beeld.mx) * regie.cam.mix : 0;
+      const dy = punt ? (punt.y - beeld.my) * regie.cam.mix : 0;
       const zoom = Math.exp(regie.cam.lz);
       // Aangekomen bij het pad: het doek tekent zelf op die stand, zodat lijnen en sterren scherp zijn.
       if (regie.scherp || (zoom === 1 && !regie.cam.rot && !dx && !dy)) {
         podium.doek.style.transform = "";
         return;
       }
-      const schaal = podiumSchaal();
-      const omhoog = regie.pad ? -REGIE_PAD_OMHOOG * podium.hoogte * regie.cam.mix : 0;
+      const schaal = beeld.k;
+      // In een strook draait en zoomt het doek om het midden van die strook; het pad komt daar te staan.
+      const omhoog = regie.pad && !beeld.strook ? -REGIE_PAD_OMHOOG * podium.hoogte * regie.cam.mix : 0;
+      podium.doek.style.transformOrigin = `${beeld.sx}px ${beeld.sy}px`;
       podium.doek.style.transform = `translate(0px, ${omhoog}px) rotate(${regie.cam.rot}rad) scale(${zoom}) translate(${-dx * schaal}px, ${-dy * schaal}px)`;
     }
 
@@ -4229,6 +4295,8 @@
       regieStil(true);
       regie.focus = wil;
       regie.gekozen = 0;
+      // Het scherm weet zo dat de camera vertrekt: de tekst van de scène komt in beeld.
+      regieMeld();
       if (REGIE_PAD) {
         // Niet de ster in: de camera zoomt tot het pad naar deze scène in beeld staat.
         regie.pad = regiePadVoor(wil, doel.played);
