@@ -694,7 +694,8 @@
               straks(t, () => { img.classList.add("aan"); geluid.relais(); });
               t += 180;
             });
-            t += 900;
+            // De gezichten blijven ruim in beeld, ook als het rapport later sneller gaat.
+            t += 7000 / tempo;
           }
         }
         t += 1500;
