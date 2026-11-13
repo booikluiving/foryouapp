@@ -23,6 +23,8 @@ function defaultAlgorithmConfig() {
       exploration: 0,
       retry: 0,
       sceneRepeatPenalty: 0,
+      // Zaalgeluid: punten per dB dat de piek boven het gewone niveau van de scène uitkomt. 0 = telt niet mee.
+      roomSound: 0,
     },
     normalization: {
       timeCorrection: 1,
@@ -85,6 +87,7 @@ function normalizeAlgorithmConfig(input = {}, options = {}) {
       diversity: rounded(clampNumber(sourceWeights.diversity ?? source.diversityWeight, 0, 50, baseWeights.diversity), 3),
       exploration: rounded(clampNumber(sourceWeights.exploration ?? source.explorationWeight, 0, 50, baseWeights.exploration), 3),
       retry: rounded(clampNumber(sourceWeights.retry ?? source.retryWeight, 0, 50, baseWeights.retry), 3),
+      roomSound: rounded(clampNumber(sourceWeights.roomSound, 0, 10, baseWeights.roomSound ?? 0), 3),
       sceneRepeatPenalty: rounded(clampNumber(
         sourceWeights.sceneRepeatPenalty ?? source.sceneRepeatPenalty,
         0,
@@ -169,13 +172,21 @@ function signalCounts(event) {
   };
 }
 
+// Hoeveel dB de piek van het zaalgeluid boven het gewone niveau van de scène uitkwam.
+function roomSoundLift(event) {
+  const sound = event && event.roomSound;
+  if (!sound || typeof sound !== "object") return 0;
+  return Math.max(0, safeNumber(sound.liftDb, 0));
+}
+
 function observedScoreForEvent(event, config = defaultAlgorithmConfig()) {
   const normalizedConfig = normalizeAlgorithmConfig(config);
   const counts = signalCounts(event);
   const weights = normalizedConfig.weights || {};
   const raw = (counts.hearts * safeNumber(weights.heart, 1))
     + (counts.bored * safeNumber(weights.bored, -1))
-    + (counts.messages * safeNumber(weights.message, 0.05));
+    + (counts.messages * safeNumber(weights.message, 0.05))
+    + (roomSoundLift(event) * safeNumber(weights.roomSound, 0));
   return rounded(raw * audienceFactor(counts.activeClients, normalizedConfig) * durationFactor(counts.durationSeconds, normalizedConfig), 4);
 }
 
@@ -518,6 +529,7 @@ module.exports = {
   audienceFactor,
   normalizeAlgorithmConfig,
   observedScoreForEvent,
+  roomSoundLift,
   scoreFeedDebugSummary,
   signalCounts,
 };

@@ -59,6 +59,10 @@ function normalizeStartStemmingInstellingen(input) {
 }
 // Ronde = van de start van een scène tot de start van de volgende: daarover tellen we de emoji.
 const RONDE_KEY = "ronde";
+// Chat wissen: berichten t/m dit nummer tellen niet meer mee (ze blijven in de database staan).
+const CHAT_GEWIST_KEY = "chat_gewist";
+// De run waar de chat bij hoort; verdwijnt die (RESET RUN), dan wordt de chat gewist.
+const CHAT_RUN_KEY = "chat_show_run";
 const NA_SCENE_VRAAG_STANDAARD = "En?";
 
 function normalizeNaSceneVraag(raw) {
@@ -112,9 +116,11 @@ const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   tussenScriptHoogte: 860,
   tussenStatsY: 1150,
   tussenStatsGrootte: 56,
-  tussenChatY: 1380,
-  tussenChatHoogte: 480,
-  tussenChatGrootte: 40,
+  tussenChatY: 1462,
+  tussenChatHoogte: 385,
+  tussenChatGrootte: 36,
+  // Volume van de geluidjes van het zaalscherm (telwerk, relais, kiezer), in procenten.
+  tussenGeluid: 50,
 });
 const DIRECT_LINK_RE = /\b(?:https?:\/\/|www\.)\S+/i;
 const DOMAIN_RE = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|nl|be|de|eu|io|gg|tv|co|me|app|dev|info|xyz|ly|to|ai)\b/i;
@@ -234,6 +240,7 @@ function normalizeStageSettings(raw = {}, base = STAGE_OUTPUT_DEFAULTS) {
     tussenChatY: clampInt(src.tussenChatY, 0, 1900, Number(base.tussenChatY ?? STAGE_OUTPUT_DEFAULTS.tussenChatY)),
     tussenChatHoogte: clampInt(src.tussenChatHoogte, 100, 1920, Number(base.tussenChatHoogte ?? STAGE_OUTPUT_DEFAULTS.tussenChatHoogte)),
     tussenChatGrootte: clampInt(src.tussenChatGrootte, 16, 120, Number(base.tussenChatGrootte ?? STAGE_OUTPUT_DEFAULTS.tussenChatGrootte)),
+    tussenGeluid: clampInt(src.tussenGeluid, 0, 100, Number(base.tussenGeluid ?? STAGE_OUTPUT_DEFAULTS.tussenGeluid)),
   };
 }
 
@@ -500,6 +507,7 @@ class AudienceService extends EventEmitter {
     this.fase = { fase: "tussen", titel: null, situationRunId: null, sinds: nowIso(), bekend: false };
     this.faseTimer = null;
     this.ronde = this.laadRonde();
+    this.chatRun = this.store.getSetting(CHAT_RUN_KEY, null) || null;
     this.pollAutoCloseTimer = null;
     this.internalSimulatorKey = crypto.randomBytes(16).toString("hex");
     this.liveScoreDispatchWork = Promise.resolve();
@@ -627,8 +635,8 @@ class AudienceService extends EventEmitter {
     const session = this.getActiveSession();
     if (!session || !ronde.start) return ronde;
     const vanaf = Date.parse(ronde.start);
-    for (const signal of this.store.readSignals({ sessionId: session.id })) {
-      if (!signal || !signal.reaction || !["heart", "bored", "emoji"].includes(String(signal.type || ""))) continue;
+    for (const signal of this.store.reactionSignals(session.id)) {
+      if (!signal.reaction) continue;
       if (Date.parse(signal.receivedAt) < vanaf) continue;
       ronde.emoji[signal.reaction] = Number(ronde.emoji[signal.reaction] || 0) + 1;
     }
@@ -670,10 +678,39 @@ class AudienceService extends EventEmitter {
     const result = await fetchView();
     // Runtime onbereikbaar: laatste stand houden.
     if (!result || !result.ok || !result.state) return this.getFase();
+    this.volgRun(result.state);
     const active = result.state.activeSituation;
     return this.setFase(active
       ? { fase: "scene", titel: active.title, situationRunId: active.situationRunId || active.situationId || "actief" }
       : { fase: "tussen" });
+  }
+
+  // Reset van de run, langs welke weg ook (Stream Deck, operator, runtime): de run die liep is weg.
+  volgRun(state = {}) {
+    const run = state.showRunId && !["idle", "reset"].includes(String(state.status || "")) ? String(state.showRunId) : null;
+    if (run === this.chatRun) return;
+    const vorige = this.chatRun;
+    this.chatRun = run;
+    this.store.setSetting(CHAT_RUN_KEY, run);
+    if (vorige) this.wisChat("reset_run");
+  }
+
+  chatGewistTot(session = this.getActiveSession()) {
+    const gewist = this.store.getSetting(CHAT_GEWIST_KEY, null);
+    if (!session || !gewist || Number(gewist.sessionId || 0) !== Number(session.id)) return 0;
+    return Number(gewist.totId || 0);
+  }
+
+  // Lege chat op de telefoons en op het zaalscherm; ook de tellingen van de laatste scène gaan weg.
+  wisChat(reden = "admin") {
+    const session = this.getActiveSession();
+    const totId = this.store.laatsteChatMessageId();
+    if (session) this.store.setSetting(CHAT_GEWIST_KEY, { sessionId: session.id, totId, at: nowIso(), reden: String(reden) });
+    this.ronde = { start: null, eind: null, titel: null, situationRunId: null, emoji: {} };
+    this.bewaarRonde();
+    this.emit("broadcast", { type: "chat_reset", tot: totId, reden: String(reden) });
+    this.emit("admin-state-changed");
+    return { ok: true, tot: totId };
   }
 
   startFaseWatch(intervalMs = Number(process.env.AUDIENCE_FASE_POLL_MS || FASE_POLL_MS)) {
@@ -725,10 +762,9 @@ class AudienceService extends EventEmitter {
     const session = this.getActiveSession();
     this.reactionCounts = { heart: 0, bored: 0 };
     if (!session) return this.reactionCounts;
-    for (const signal of this.store.readSignals({ sessionId: session.id })) {
-      if (signal && signal.type === "heart") this.reactionCounts.heart += 1;
-      if (signal && signal.type === "bored") this.reactionCounts.bored += 1;
-    }
+    const counts = this.store.countSignalsByType(session.id);
+    this.reactionCounts.heart = Number(counts.heart || 0);
+    this.reactionCounts.bored = Number(counts.bored || 0);
     return this.reactionCounts;
   }
 
@@ -815,16 +851,16 @@ class AudienceService extends EventEmitter {
       entry.commentPoints += settings.engagementCommentPoints;
     }
 
-    for (const signal of this.store.readSignals({ sessionId: session.id })) {
-      if (!signal || !["heart", "bored"].includes(String(signal.type || ""))) continue;
+    // Per afzender opgeteld in de database (dit draait bij elke admin-stand, een paar keer per seconde).
+    for (const sender of this.store.reactionTotalsBySender(session.id)) {
       const entry = ensureEntry({
-        clientKey: signal.clientKey,
+        clientKey: sender.clientKey,
         name: "Anoniem",
-        isBot: signal.isBot,
-        activityAt: signal.receivedAt,
+        isBot: sender.isBot,
+        activityAt: sender.lastAt,
       });
-      entry.emojiCount += 1;
-      entry.emojiPoints += ENGAGEMENT_EMOJI_POINTS;
+      entry.emojiCount += sender.count;
+      entry.emojiPoints += ENGAGEMENT_EMOJI_POINTS * sender.count;
     }
 
     const top = Array.from(entries.values())
@@ -1730,7 +1766,7 @@ class AudienceService extends EventEmitter {
     this.store.setSetting(START_STEMMING_KEY, next);
   }
 
-  // De operator opent de stemming op de startscène: alle scènes die nu vrij zijn in de paden.
+  // De operator opent de stemming op de startscène: alle startscènes die nu vrij zijn in de paden.
   async startStartStemming(input = {}) {
     this.activeSessionRequired();
     const fout = (code, status = 409) => {
@@ -1748,9 +1784,12 @@ class AudienceService extends EventEmitter {
     const catalog = (state.showRunSnapshot && state.showRunSnapshot.catalog) || state.catalogPreview || {};
     const titels = new Map((catalog.situations || []).map((item) => [item.id, String(item.title || "").trim()]));
     const items = state.pathEvaluation && Array.isArray(state.pathEvaluation.items) ? state.pathEvaluation.items : [];
+    // Stemmen kan alleen op de startscènes. Daarna volgt de run de paden.
+    if (!state.startPhase || !state.startPhase.active) throw fout("startfase_voorbij");
     const keuzes = [];
     for (const item of items) {
       if (!item || item.status !== "available" || item.pathAvailable === false) continue;
+      if (!item.isPathStart) continue;
       const titel = (titels.get(item.situationId) || "").slice(0, 80);
       if (!titel || keuzes.some((keuze) => keuze.titel === titel)) continue;
       keuzes.push({ situationId: item.situationId, titel });
@@ -1908,10 +1947,24 @@ class AudienceService extends EventEmitter {
     const session = this.getActiveSession();
     if (!session || this.fase.fase === "scene") return [];
     const likes = this.store.commentLikeCounts(session.id);
+    const gewistTot = this.chatGewistTot(session);
     return this.store.recentChatMessages({ sessionId: session.id, limit, status: "accepted" })
+      .filter((m) => m.id > gewistTot)
       .filter((m) => !String(m.detail || "").startsWith("moderation_notice:"))
       .reverse()
       .map((m) => ({ id: m.id, clientKey: m.clientKey, likes: Number(likes[m.id] || 0) }));
+  }
+
+  // Voor personages in de chat: de laatste berichten (oud → nieuw) als naam + tekst.
+  recenteChatVoorPersonages(limit = 12) {
+    const session = this.getActiveSession();
+    if (!session) return [];
+    const gewistTot = this.chatGewistTot(session);
+    return this.store.recentChatMessages({ sessionId: session.id, limit, status: "accepted" })
+      .filter((m) => m.id > gewistTot)
+      .filter((m) => !String(m.detail || "").startsWith("moderation_notice:"))
+      .reverse()
+      .map((m) => ({ naam: String(m.name || ""), tekst: String(m.text || "") }));
   }
 
   async acceptSimulatedLike(bot, messageId) {
@@ -1965,7 +2018,9 @@ class AudienceService extends EventEmitter {
     const session = this.getActiveSession();
     if (!session) return { ok: false, error: "session_inactive", messages: [] };
     const likes = this.store.commentLikeCounts(session.id);
+    const gewistTot = this.chatGewistTot(session);
     const messages = this.store.recentChatMessages({ sessionId: session.id, limit, status: "accepted" })
+      .filter((message) => message.id > gewistTot)
       .reverse()
       .map((message) => ({
         type: "comment",
@@ -1978,7 +2033,7 @@ class AudienceService extends EventEmitter {
         system: String(message.detail || "").startsWith("moderation_notice:"),
         isBot: message.isBot,
       }));
-    return { ok: true, sessionId: session.id, messages };
+    return { ok: true, sessionId: session.id, gewistTot, messages };
   }
 
   async adminState(req) {

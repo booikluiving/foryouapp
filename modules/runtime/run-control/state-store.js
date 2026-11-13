@@ -42,6 +42,7 @@ function createIdleRuntimeState(details = {}) {
     lastScoreFeed: null,
     orderSettings: {
       randomizeEqualScores: false,
+      startSceneCount: 3,
     },
     rankingRevision: 0,
     rankingTieBreaks: {
@@ -172,6 +173,24 @@ async function readCurrentRunState() {
   }
 }
 
+// De volgorde-instellingen blijven bewaard over runs heen: een nieuwe run begint met de laatste keuze.
+function orderSettingsPath() {
+  return assertPathUnderApp(path.join(runtimeDbDir(), "order-settings.json"));
+}
+
+async function readSavedOrderSettings() {
+  try {
+    const saved = await readJsonFile(orderSettingsPath());
+    return saved && typeof saved === "object" && !Array.isArray(saved) ? saved : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+async function saveOrderSettings(settings) {
+  await writeJsonAtomic(orderSettingsPath(), settings);
+}
+
 async function clearCurrentRunState() {
   const currentPath = assertPathUnderApp(path.join(runtimeDbDir(), "current-run.json"));
   try {
@@ -189,8 +208,10 @@ module.exports = {
   createIdleRuntimeState,
   readCurrentRunState,
   readRunState,
+  readSavedOrderSettings,
   runFilePath,
   runtimeDbDir,
   runsDir,
+  saveOrderSettings,
   saveRunState,
 };

@@ -8,7 +8,9 @@ const {
   AUDIENCE_SIGNAL_SCHEMA_VERSION,
   createAudienceSessionId,
 } = require("../../../shared/contracts/audience-v0");
+const { bouwStageRapport } = require("./stage-rapport");
 const {
+  algorithmBaseUrl,
   fetchCurrentRuntimeState,
   fetchRuntimeView,
   prepareChosenSituation,
@@ -106,8 +108,25 @@ function createAudienceApp(options = {}) {
     res.sendFile(path.join(PUBLIC_DIR, "stage-tussen.html"));
   });
 
+  // Rapportvenster na een scène: reacties, de som, de stand per label en de scène die hierna komt.
+  app.get("/audience/stage/rapport", asyncRoute(async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    const result = await fetchRuntimeView();
+    const view = result && result.ok ? result.state : null;
+    if (!view || !view.showRunId) { res.json({ ok: true, klaar: false, reden: "geen_run" }); return; }
+    let report = null;
+    try {
+      const response = await fetch(`${algorithmBaseUrl()}/v0/algorithm/scoring-contexts/${encodeURIComponent(view.showRunId)}/report`, { signal: AbortSignal.timeout(2500) });
+      if (response.ok) report = await response.json();
+    } catch (_err) {
+      report = null;
+    }
+    if (!report) { res.json({ ok: true, klaar: false, reden: "algoritme_niet_bereikbaar" }); return; }
+    res.json(bouwStageRapport(report, view, req.query.situationRunId ? String(req.query.situationRunId) : null));
+  }));
+
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
-  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag"]);
+  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag"]);
   // Stand van de stemming op de startscène, voor het zaalscherm en het universum.
   app.get("/audience/stage/start-stemming", (_req, res) => {
     const stemming = service.getStartStemming();
@@ -262,6 +281,11 @@ function createAudienceApp(options = {}) {
 
   app.post("/audience/admin/stage/settings", (req, res) => {
     res.json({ ok: true, stage: service.updateStageSettings(req.body || {}, req) });
+  });
+
+  // Chat leegmaken op de telefoons en het zaalscherm (gebeurt vanzelf bij RESET RUN).
+  app.post("/audience/admin/chat/wis", (_req, res) => {
+    res.json(service.wisChat("admin"));
   });
 
   // Podiumpagina's (emoji, chat, tussen) laten herladen, bv. na een update; TD hoeft niets te doen.

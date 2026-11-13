@@ -53,6 +53,7 @@
   function buildRenderer() {
     state.renderer = Sky.createSkyRenderer({
       sky: $("sky"),
+      podium: true,
       stage: $("stage"),
       tooltip: $("hoverPanel"),
       infoPanel: null,
@@ -176,6 +177,8 @@
     renderModel();
     startRuntimePolling();
   }
+
+  if (window.parent !== window) document.body.classList.add("ingebed");
 
   loadStage().catch((err) => {
     $("sky").innerHTML = `

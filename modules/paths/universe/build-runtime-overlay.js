@@ -1,5 +1,8 @@
 "use strict";
 
+const fs = require("node:fs");
+const path = require("node:path");
+
 // Stand van de lopende voorstelling voor het universum: wat is vrij, wat is gespeeld, wat
 // speelt nu. Tijdens de stemming op de startscène komen de stemmen per scène erbij.
 
@@ -31,6 +34,108 @@ function sceneIdVan(item) {
   return match ? Number(match[1]) : 0;
 }
 
+// Waarom de runtime deze scène klaarzet: plaats en score tussen de vrije scènes, en via welke paden.
+function keuzeVoor(view, prepared, preparedId) {
+  const pool = Array.isArray(view.eligiblePool) ? view.eligiblePool : [];
+  const waarde = (item) => {
+    if (!item) return 0;
+    if (item.scoreValue != null) return Number(item.scoreValue) || 0;
+    return Number(item.score && item.score.components && item.score.components.final) || 0;
+  };
+  const eigen = pool.find((item) => sceneIdVan(item) === preparedId) || null;
+  const evaluatie = view.pathEvaluation.items.find((item) => sceneIdVan(item) === preparedId) || null;
+  const components = (eigen && eigen.score && eigen.score.components) || {};
+  return {
+    reden: String((prepared && prepared.reason) || ""),
+    score: eigen ? waarde(eigen) : null,
+    rang: eigen ? pool.filter((item) => waarde(item) > waarde(eigen)).length + 1 : null,
+    gelijk: eigen ? pool.filter((item) => waarde(item) === waarde(eigen)).length : 0,
+    aantal: pool.length,
+    onderdelen: Object.entries(components)
+      .filter(([naam, getal]) => naam !== "final" && Number(getal))
+      .map(([naam, getal]) => ({ naam, waarde: Number(getal) }))
+      .sort((a, b) => Math.abs(b.waarde) - Math.abs(a.waarde))
+      .slice(0, 3),
+    paden: evaluatie ? (evaluatie.pathStatuses || []).filter((pad) => pad && pad.status === "available").map((pad) => pad.pathName).filter(Boolean) : [],
+  };
+}
+
+// Beeld per omgeving voor het vakje op het inloopscherm. Welk beeld en welke uitsnede staat per
+// omgeving in omgevingsbeeld.json; het beeld zelf komt uit de catalogus (achtergrond of extra shot).
+// De lijst is groot en verandert zelden: hij wordt op de achtergrond ververst en nooit afgewacht,
+// zodat de stand van de run er niet trager van wordt.
+const omgevingsBeelden = { at: 0, bezig: false, perOmgeving: new Map() };
+
+function beeldKeuze() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, "omgevingsbeeld.json"), "utf8"));
+  } catch (_err) {
+    return {};
+  }
+}
+
+function soortVan(asset) {
+  const mime = String(asset.mimeType || asset.mediaType || "");
+  return mime.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(String(asset.filename || "")) ? "video" : "beeld";
+}
+
+function beeldenPerOmgeving(payload, keuze) {
+  const perOmgeving = new Map();
+  if (!payload || !Array.isArray(payload.mediaAssets)) return perOmgeving;
+  const aanwezig = payload.mediaAssets.filter((asset) => asset && asset.status === "present" && asset.url);
+  const perId = new Map(aanwezig.map((asset) => [asset.id, asset]));
+  const achtergrond = new Map();
+  for (const asset of aanwezig) if (asset.role === "background") achtergrond.set(String(asset.environmentId), asset);
+  const shot = new Map();
+  for (const omgeving of payload.environments || []) {
+    const id = omgeving && omgeving.extras && omgeving.extras.shot && omgeving.extras.shot.bestand;
+    const asset = id && perId.get(id);
+    if (asset && asset.role === "extraShot") shot.set(String(omgeving.id), asset);
+  }
+  // Geen extra shot ingevuld bij de omgeving: dan het losse shot dat er staat (geen fasebeeld).
+  for (const asset of aanwezig) {
+    const id = String(asset.environmentId);
+    if (asset.role !== "extraShot" || shot.has(id) || (asset.tags || []).includes("fase")) continue;
+    shot.set(id, asset);
+  }
+  const gekozen = (keuze && keuze.omgevingen) || {};
+  const standaard = (keuze && keuze.standaard) || "hoog";
+  for (const id of new Set([...achtergrond.keys(), ...shot.keys()])) {
+    let uitsnede = (gekozen[id] && gekozen[id].uitsnede) || standaard;
+    let asset = uitsnede === "shot" ? shot.get(id) : achtergrond.get(id);
+    // Ontbreekt het gekozen beeld, dan het andere, op volle hoogte: nooit een leeg vakje.
+    if (!asset) { asset = achtergrond.get(id) || shot.get(id); uitsnede = asset.role === "extraShot" ? "shot" : "hoog"; }
+    perOmgeving.set(id, { beeld: asset.url, soort: soortVan(asset), uitsnede });
+  }
+  return perOmgeving;
+}
+
+function ververOmgevingsBeelden() {
+  if (omgevingsBeelden.bezig || Date.now() - omgevingsBeelden.at < 60000) return;
+  omgevingsBeelden.bezig = true;
+  fetchJson(`${baseUrl("PATHS_CATALOG_URL", "http://127.0.0.1:3021")}/v0/catalog/media-assets`, 5000)
+    .then((payload) => {
+      if (!payload || !Array.isArray(payload.mediaAssets)) return;
+      omgevingsBeelden.perOmgeving = beeldenPerOmgeving(payload, beeldKeuze());
+      omgevingsBeelden.at = Date.now();
+    })
+    .finally(() => { omgevingsBeelden.bezig = false; });
+}
+
+function omgevingVoor(view) {
+  ververOmgevingsBeelden();
+  const resolved = view && view.resolvedPreparedNext;
+  const id = resolved && String(resolved.environmentId || (resolved.environment && resolved.environment.id) || "");
+  if (!id) return null;
+  const beeld = omgevingsBeelden.perOmgeving.get(id) || null;
+  return {
+    naam: String((resolved.environment && resolved.environment.name) || "").replace(/_/g, " "),
+    beeld: beeld ? beeld.beeld : "",
+    soort: beeld ? beeld.soort : "",
+    uitsnede: beeld ? beeld.uitsnede : "",
+  };
+}
+
 function buildRuntimeOverlay(view, stemming) {
   if (!view || !view.pathEvaluation || !Array.isArray(view.pathEvaluation.items)) return null;
   const items = view.pathEvaluation.items;
@@ -45,14 +150,16 @@ function buildRuntimeOverlay(view, stemming) {
   const preparedId = sceneIdVan(prepared);
   // Vóór de eerste scène staat de automatische keuze van de runtime niet uitgelicht: alle
   // startscènes zijn dan gelijk. Pas een gekozen scène (de winnaar) licht op als volgende.
-  const begin = !currentId && played.size === 0;
+  // Dat geldt voor elke startscène: zolang de run nog startscènes moet spelen, kiest het publiek.
+  const begin = !currentId && (played.size === 0 || !!(view.startPhase && view.startPhase.active));
   const toonPrepared = preparedId && (!begin || prepared.reason === "operator_chosen");
 
   let stem = null;
   if (stemming && Array.isArray(stemming.keuzes) && stemming.keuzes.length
     // Alleen de stemming van deze run: na een reset of een nieuwe run is de oude uitslag weg.
     && stemming.showRunId && view.showRunId && stemming.showRunId === view.showRunId
-    && begin && (stemming.actief || stemming.uitslag)) {
+    // Een uitslag waarvan de winnaar al gespeeld is, hoort bij een eerdere startscène.
+    && begin && (stemming.actief || (stemming.uitslag && !played.has(sceneIdVan(stemming.uitslag))))) {
     const stemmen = stemming.keuzes.map((keuze) => ({ sceneId: sceneIdVan(keuze), votes: Number(keuze.votes || 0) })).filter((keuze) => keuze.sceneId);
     const hoogste = Math.max(0, ...stemmen.map((keuze) => keuze.votes));
     stem = {
@@ -69,7 +176,7 @@ function buildRuntimeOverlay(view, stemming) {
     summary: { hasActiveRun: true },
     currentScene: currentId ? { sceneId: currentId } : null,
     playedSceneIds: [...played],
-    preparedNextScenes: toonPrepared ? [{ sceneId: preparedId }] : [],
+    preparedNextScenes: toonPrepared ? [{ sceneId: preparedId, keuze: keuzeVoor(view, prepared, preparedId), omgeving: omgevingVoor(view) }] : [],
     availableScenes: metStatus("available").filter((id) => !played.has(id)).map((sceneId) => ({ sceneId })),
     blockedSceneIds: metStatus("blocked"),
     lockedSceneIds: metStatus("locked"),
@@ -85,4 +192,4 @@ async function fetchRuntimeOverlay() {
   return buildRuntimeOverlay(view, stemming && stemming.ok ? stemming : null);
 }
 
-module.exports = { buildRuntimeOverlay, fetchRuntimeOverlay };
+module.exports = { buildRuntimeOverlay, fetchRuntimeOverlay, beeldenPerOmgeving };

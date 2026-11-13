@@ -19,6 +19,7 @@ const {
   simulateSituationObservation,
   updateAlgorithmConfig,
 } = require("../scoring/algorithm-service");
+const { buildAudienceReport } = require("../report/build-report");
 const { loadExpress } = require("./express-loader");
 
 const express = loadExpress();
@@ -105,6 +106,12 @@ function createAlgorithmApp(options = {}) {
       config: state.config,
       scoreFeed: state.scoreFeed,
     });
+  }));
+
+  // Publieksrapport van een run: per scène, per label, per personage, en de verwachting.
+  app.get("/v0/algorithm/scoring-contexts/:showRunId/report", asyncRoute(async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(buildAudienceReport(await getScoringContext(req.params.showRunId)));
   }));
 
   app.get("/v0/algorithm/runs/:showRunId", asyncRoute(async (req, res) => {

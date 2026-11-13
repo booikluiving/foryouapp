@@ -209,6 +209,34 @@ async function main() {
     scoreFeed: neutralScoreFeed(tieBreakShowRunId),
     orderSettings: { randomizeEqualScores: false },
   }).map((item) => item.situationId);
+  // Startfase: eerst een vast aantal startscènes, daarna alles wat vrij is.
+  const fasePool = (statuses, startSceneCount) => buildEligiblePool({
+    catalog: { situations: Object.keys(statuses).map((id) => ({ id, legacyId: Number(id.split(":")[1]), title: id, active: true, characterIds: [] })) },
+    pathEvaluation: {
+      items: Object.entries(statuses).map(([situationId, [status, start]]) => ({
+        situationId,
+        status,
+        isPathStart: start,
+        pathStatuses: [{ status, isPathStart: start }],
+      })),
+    },
+    playedSituations: Object.entries(statuses).filter(([, [status]]) => status === "played").map(([situationId]) => ({ situationId })),
+    activeSituation: null,
+    lastPlayedSituation: null,
+    scoreFeed: null,
+    orderSettings: { startSceneCount },
+  }).map((item) => item.situationId).sort();
+  const tweeGespeeld = {
+    "situation:901": ["played", true],
+    "situation:902": ["played", true],
+    "situation:903": ["available", true],
+    "situation:904": ["available", true],
+    "situation:905": ["available", false],
+  };
+  assert.deepEqual(fasePool(tweeGespeeld, 3), ["situation:903", "situation:904"], "tijdens de startfase alleen startscènes");
+  assert.deepEqual(fasePool(tweeGespeeld, 2), ["situation:903", "situation:904", "situation:905"], "na de startfase alles wat vrij is, ook de overige starts");
+  assert.deepEqual(fasePool(tweeGespeeld, 0), ["situation:903", "situation:904", "situation:905"]);
+
   const originalRandom = Math.random;
   Math.random = () => 0;
   let randomizedEqualScores;
@@ -387,12 +415,22 @@ async function main() {
     "resolvedPreparedNext should carry performer slot display records"
   );
   assert.equal(state.orderSettings.randomizeEqualScores, false);
+  assert.equal(state.orderSettings.startSceneCount, 3, "standaard drie startscènes");
   assert(state.rankingRevision > 0, "Runtime should track ranking revisions");
 
   const preparedBeforeOrderToggle = state.preparedNext.situationId;
   await updateOrderSettings(state, clients, { randomizeEqualScores: true });
   assert.equal(state.orderSettings.randomizeEqualScores, true);
   assert.equal(state.preparedNext.situationId, preparedBeforeOrderToggle, "order toggle must not replace preparedNext");
+  await updateOrderSettings(state, clients, { startSceneCount: 2 });
+  assert.equal(state.orderSettings.startSceneCount, 2);
+  assert.equal(state.orderSettings.randomizeEqualScores, true, "een deel van de instellingen wijzigen laat de rest staan");
+  assert.deepEqual(
+    await require("../run-control/state-store").readSavedOrderSettings(),
+    { startSceneCount: 2 },
+    "alleen het aantal startscènes blijft bewaard voor de volgende run"
+  );
+  await updateOrderSettings(state, clients, { startSceneCount: 3 });
 
   assert.equal(algorithmInitPayloads.length, 1, "Runtime may initialize Algorithm with an existing run id");
   assert.equal(algorithmInitPayloads[0].showRunId, state.showRunId);
@@ -680,6 +718,14 @@ async function main() {
   assert.equal(testState.resolvedPreparedNext.environmentId, otherEnvironment.id, "the chosen environment is kept too");
   await stopSituation(testState, clients, { skipSave: true });
   assert.equal(testState.preparedNext.situationId, heldId, "stopping keeps the chosen scene prepared");
+  // Een scène die niet bij het testen gekozen is (de winnaar van de stemming) blijft niet klaarstaan.
+  const winnaar = testState.showRunSnapshot.catalog.situations.find((item) => item.id !== heldId && item.active !== false && !item.archivedAt);
+  await prepareChosenSituation(testState, clients, { situationId: winnaar.id, skipSave: true });
+  assert.equal(testState.preparedNext.testKeuze, undefined);
+  await startSituation(testState, clients, { skipSave: true });
+  assert.equal(testState.activeSituation.situationId, winnaar.id);
+  assert.notEqual(testState.preparedNext && testState.preparedNext.reason, "test_run_hold", "a scene chosen outside the test is not held in a test run");
+  await stopSituation(testState, clients, { skipSave: true });
   const markedAt = testState.testRun.markedAt;
   await setTestRun(testState, { enabled: false, clients, skipSave: true });
   assert.equal(testState.testRun.enabled, false);

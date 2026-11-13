@@ -14,6 +14,8 @@
         color: #fff;
         font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
       }
+      /* Eén vormtaal: wit op nacht, één letter, dunne witte lijn, één beweging. Kleur zit alleen in
+         het beeld van de omgeving, in emoji en (gedempt) in de namen van de chat. Niets vervaagt. */
       #stage {
         position: absolute;
         left: 0;
@@ -23,136 +25,887 @@
         overflow: hidden;
         background: #000;
         transform-origin: 0 0;
+        --wit-2: rgba(255, 255, 255, 0.66);
+        --wit-3: rgba(255, 255, 255, 0.30);
+        --nacht: #07080b;
+        --curve: cubic-bezier(.65, 0, .35, 1);
       }
-      #titel {
+      /* Eén pagina voor het hele hoofdscherm. Krijgt de pagina de fase van TouchDesigner
+         (window.forYouFase), dan is ze buiten de scène dekkend en tijdens de scène doorzichtig, met
+         alleen de emoji en de ondertitel over het camerabeeld. Zonder dat signaal blijft ze het
+         scherm van inloop en loading. */
+      html.een, html.een body, html.een #stage { background: transparent; }
+      /* Het hele scherm is één vel: bij de scène schuift het omhoog weg, daarna komt het dezelfde weg terug. */
+      #tussenlaag {
         position: absolute;
-        left: 88px;
-        right: 88px;
-        font-weight: 700;
-        line-height: 1.05;
-        letter-spacing: -0.01em;
-      }
-      #script {
-        position: absolute;
-        left: 0;
-        width: 1080px;
+        inset: 0;
         overflow: hidden;
+        background: var(--nacht);
+        transition: transform 520ms var(--curve);
       }
-      #script iframe {
+      body.scene #tussenlaag { transform: translateY(-100%); }
+      #ondertitel, #emoji {
         position: absolute;
         left: 0;
+        top: 0;
         width: 1080px;
         height: 1920px;
         border: 0;
-        background: #000;
+        background: transparent;
+        pointer-events: none;
+        visibility: hidden;
       }
-      #stats {
-        position: absolute;
-        left: 88px;
-        right: 88px;
-      }
-      #statsScene {
-        color: rgba(255, 255, 255, 0.66);
-        font-weight: 500;
-        margin-bottom: 0.4em;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      #statsRij {
-        display: flex;
-        flex-wrap: nowrap;
-        gap: 0 0.9em;
-        align-items: baseline;
-      }
-      .telling {
-        display: inline-flex;
-        align-items: baseline;
-        gap: 0.25em;
-        font-weight: 700;
-        font-variant-numeric: tabular-nums;
-      }
-      .telling .emoji {
-        font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
-        font-weight: 400;
-      }
-      #chat {
-        position: absolute;
-        left: 88px;
-        right: 88px;
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-end;
-        gap: 0.45em;
-        overflow: hidden;
-        -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%);
-        mask-image: linear-gradient(to bottom, transparent 0, #000 22%);
-      }
-      .regel {
-        line-height: 1.18;
-        font-weight: 500;
-        overflow-wrap: anywhere;
-      }
-      .regel.nieuw { animation: erin 260ms ease-out; }
-      .naam { font-weight: 700; }
-      .likes { color: #ff3b5c; font-weight: 700; white-space: nowrap; }
-      #top {
-        position: absolute;
-        left: 88px;
-        right: 88px;
-        line-height: 1.18;
-        font-weight: 500;
-        overflow-wrap: anywhere;
-      }
-      #stem {
+      body.een #emoji { visibility: visible; }
+      body.scene #ondertitel { visibility: visible; }
+      /* Het universum vult het beeld; de kaart zelf staat in de strook tussen de tekst boven en de chat onder. */
+      #universum {
         position: absolute;
         left: 0;
+        top: 0;
         width: 1080px;
+        height: 1920px;
+        border: 0;
+        background: var(--nacht);
+        pointer-events: none;
+      }
+
+      /* ── Vlakken ──────────────────────────────────────────────────────────────────────────────
+         Elk vlak heeft één vaste plek. Het schuift het beeld in en uit vanaf de dichtstbijzijnde rand:
+         eerst het oude eruit, dan het nieuwe erin. Wat er in een vlak staat verandert alleen als het
+         uit beeld is. */
+      .p {
+        position: absolute;
         box-sizing: border-box;
-        padding: 0 88px;
-        background: #000;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 22px;
+        z-index: 4;
+        transition: transform 440ms var(--curve), visibility 0s;
       }
-      #stem[hidden] { display: none; }
-      #stemKop { font-size: 34px; font-weight: 500; color: rgba(255, 255, 255, 0.66); }
-      .stemRij { position: relative; opacity: 0.6; transition: opacity 300ms ease; }
-      .stemRij.koploper, .stemRij.winnaar { opacity: 1; }
-      .stemRij.verloren { opacity: 0.22; }
-      .stemTekst { display: flex; justify-content: space-between; gap: 24px; font-size: 38px; font-weight: 700; line-height: 1.12; }
-      .stemTekst .n { font-variant-numeric: tabular-nums; }
-      .stemBalk { height: 8px; margin-top: 10px; background: rgba(255, 255, 255, 0.14); }
-      .stemBalk > span { display: block; height: 100%; width: 0; background: #fff; transition: width 400ms ease; }
-      @keyframes erin {
-        from { opacity: 0; transform: translateY(12px); }
-        to { opacity: 1; transform: none; }
+      .p.uit {
+        transform: translate(var(--wx, 0px), var(--wy, 0px));
+        visibility: hidden;
+        transition: transform 300ms var(--curve), visibility 0s linear 300ms;
       }
+      #stage.direct .p, #stage.direct #tussenlaag { transition: none; }
+      .kop { font-weight: 700; line-height: 1.04; letter-spacing: -0.025em; margin: 0; text-wrap: balance; }
+      .klein { color: var(--wit-2); }
+      .qr { flex: none; box-sizing: border-box; background: #fff; padding: 9px; line-height: 0; }
+      .qr img { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+      .beeld { flex: none; position: relative; overflow: hidden; background: var(--nacht); }
+      .beeld[hidden] { display: none; }
+      .beeld img, .beeld video { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+      /* De achtergrond van een omgeving is drie schermen breed; "midden" toont alleen het middelste deel. */
+      .beeld[data-uitsnede="midden"] img, .beeld[data-uitsnede="midden"] video {
+        left: -100%;
+        top: 50%;
+        width: 300%;
+        height: auto;
+        object-fit: fill;
+        transform: translateY(-50%);
+      }
+
+      /* Inloop: meedoen, groot bovenaan. */
+      #p-meedoen { left: 60px; top: 60px; width: 960px; --wy: -320px; display: flex; justify-content: space-between; align-items: flex-start; gap: 36px; }
+      #p-meedoen .kop { font-size: 108px; line-height: 0.9; letter-spacing: -0.045em; margin-left: -0.04em; }
+      #p-meedoen .klein { font-size: 26px; margin-top: 16px; }
+      #p-meedoen .qr { width: 173px; height: 173px; }
+
+      /* Stemmen: links de lijst met balken, rechts de QR-code met de tijd die er nog is. */
+      #p-stemmen { left: 60px; top: 60px; width: 720px; --wy: -640px; display: grid; }
+      .stemrij { display: grid; grid-template-columns: minmax(0, 1fr) 150px 46px; align-items: center; gap: 17px; height: 42px; font-size: 26px; color: var(--wit-2); }
+      .stemrij span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .stemrij b { text-align: right; font-size: 25px; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
+      .stemrij .spoor { height: 10px; position: relative; }
+      .stemrij .spoor i { position: absolute; left: 0; top: 0; height: 100%; width: 0; background: var(--wit-3); transition: width 260ms var(--curve); }
+      .stemrij.eerst { color: #fff; }
+      .stemrij.eerst .spoor i { background: #fff; }
+      .stemrij.af { color: var(--wit-3); }
+      #p-stemqr { left: 820px; top: 60px; width: 200px; --wy: -360px; }
+      #p-stemqr .qr { width: 200px; height: 200px; }
+      #stemKlok { font-weight: 700; font-size: 30px; line-height: 1; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; margin-top: 14px; }
+      #p-stemqr .klein { font-size: 15px; margin-top: 6px; white-space: nowrap; }
+
+      /* De titel van de scène die komt: altijd op dezelfde plek, met het beeld van de omgeving. */
+      #p-titel { left: 60px; top: 60px; width: 960px; --wy: -420px; display: flex; justify-content: space-between; align-items: flex-start; gap: 36px; }
+      #p-titel .links { min-width: 0; display: grid; gap: 10px; }
+      #titelTekst { font-size: 72px; }
+      #titelTekst.lang { font-size: 62px; }
+      #titelTekst.langer { font-size: 52px; }
+      #titelScore { font-weight: 700; font-size: 50px; line-height: 1; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; color: var(--wit-2); }
+      #titelScore:empty { display: none; }
+      #titelBeeld { width: 151px; height: 151px; }
+
+      /* De tekst die gemaakt wordt: een klein venster met de pagina van de script-agent zelf (de
+         terminal, zoals die altijd was) en eronder een laadbalk. */
+      /* Het venster komt van links: zo schuift het niet over de titel heen. */
+      #p-tekst { left: 60px; top: 248px; width: 640px; height: 222px; --wx: -720px; border: 2px solid #fff; background: rgba(7, 8, 11, 0.93); display: flex; flex-direction: column; }
+      #p-tekst .balk { flex: none; height: 24px; border-bottom: 2px solid #fff; }
+      #script { flex: none; position: relative; height: 146px; overflow: hidden; }
+      #scriptFrame { position: absolute; left: 0; top: 0; border: 0; background: transparent; transform-origin: 0 0; pointer-events: none; }
+      .laadrij { flex: none; height: 34px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; padding: 0 16px; font-size: 22px; color: var(--wit-2); font-variant-numeric: tabular-nums; }
+      .laad { height: 8px; position: relative; }
+      .laad::before { content: ""; position: absolute; left: 0; right: 0; top: 3px; height: 2px; background: var(--wit-3); }
+      .laad i { position: absolute; left: 0; top: 0; height: 8px; width: 0; background: #fff; }
+
+      /* Chat: linksonder, namen in gedempte kleur. Wat niet past valt er in hele regels af. */
+      #p-chat { left: 60px; width: 560px; --wy: 720px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
+      #chatRegels { flex: none; display: grid; gap: 8px; }
+      .chatregel { line-height: 1.2; color: rgba(255, 255, 255, 0.5); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+      .chatregel b { font-weight: 700; margin-right: 0.35em; color: var(--wit-2); }
+      .chatregel .likes { white-space: nowrap; color: rgba(255, 255, 255, 0.34); }
+      .chatregel.vast { color: var(--wit-2); }
+
+      /* Na het begin staat alleen het adres nog klein onderin. */
+      #p-voet { left: 0; top: 1867px; width: 1080px; height: 53px; --wy: 80px; padding: 0 60px; display: flex; align-items: center; font-size: 22px; color: var(--wit-2); }
+
+      /* Rapport na een scène: het vult het hele scherm, van boven af, in drie bladen. */
+      #p-rapport { left: 0; top: 0; width: 1080px; height: 1920px; --wy: 1940px; z-index: 6; background: var(--nacht); padding: 150px 60px 110px; }
+      #p-rapport .inhoud { position: relative; width: 100%; height: 100%; }
+      .rp { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 44px; }
+      .rp.weg { display: none; }
+      .rp-links { min-width: 0; display: grid; gap: 14px; align-content: start; }
+      .kopregel { display: flex; justify-content: space-between; align-items: flex-start; gap: 36px; min-width: 0; }
+      .kopregel > div:first-child { min-width: 0; display: grid; gap: 12px; }
+      #p-rapport .kop { font-size: 100px; }
+      #p-rapport .kop.lang { font-size: 80px; }
+      #p-rapport .kop.langer { font-size: 64px; }
+      #p-rapport .klein { font-size: 36px; }
+      #rpBeeld { width: 210px; height: 210px; }
+      .groot { font-weight: 700; font-size: 400px; line-height: 0.86; min-height: 0.86em; letter-spacing: -0.045em; margin-left: -0.05em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .rp-rijen { display: grid; min-width: 0; }
+      .rij { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 0 32px; padding: 13px 0; border-top: 2px solid var(--wit-3); visibility: hidden; }
+      .rij.aan { visibility: visible; }
+      .rij.streep { border-top-color: #fff; }
+      .rij span { font-size: 36px; color: var(--wit-2); min-width: 0; }
+      .rij b { font-size: 76px; font-weight: 700; letter-spacing: -0.025em; line-height: 1; font-variant-numeric: tabular-nums; }
+      .rij.som span { color: #fff; }
+      .rij.som b { font-size: 61px; }
+      .rij .emoji { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; font-size: 44px; color: #fff; margin-right: 0.35em; }
+      .meter { grid-column: 1 / -1; height: 6px; margin-top: 10px; position: relative; }
+      .meter::before { content: ""; position: absolute; left: 0; right: 0; top: 2px; height: 2px; background: var(--wit-3); }
+      .meter i { position: absolute; left: 0; top: 0; height: 6px; width: 0; background: #fff; transition: width 450ms var(--curve); }
+      .golf { grid-column: 1 / -1; width: 100%; height: 100px; margin-top: 12px; display: block; }
+      .golf rect { fill: #fff; }
+      .staaf { display: grid; grid-template-columns: 40% 1fr 170px; align-items: center; gap: 24px; padding: 11px 0; font-size: 36px; line-height: 1.1; color: var(--wit-2); visibility: hidden; }
+      .staaf.aan { visibility: visible; }
+      .staaf span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .staaf b { text-align: right; font-size: 61px; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
+      .staaf .spoor { height: 16px; position: relative; }
+      .staaf .spoor::before { content: ""; position: absolute; left: 0; right: 0; top: 7px; height: 2px; background: var(--wit-3); }
+      .staaf .spoor i { position: absolute; left: 0; top: 0; height: 100%; width: 0; background: var(--wit-3); transition: width 450ms var(--curve); }
+      .staaf.nu { color: #fff; }
+      .staaf.nu .spoor i { background: #fff; }
+      .staaf.leeg { color: var(--wit-3); }
     </style>
   </head>
   <body>
-    <div id="stage">
-      <div id="titel"></div>
-      <div id="script"><iframe id="scriptFrame" title="Script" scrolling="no"></iframe></div>
-      <div id="stem" hidden></div>
-      <div id="stats" hidden>
-        <div id="statsScene"></div>
-        <div id="statsRij"></div>
+    <div id="stage" class="direct">
+     <div id="tussenlaag">
+      <iframe id="universum" title="Universum" scrolling="no"></iframe>
+
+      <div class="p uit" id="p-meedoen">
+        <div><div class="kop">Doe mee</div><div class="klein" data-adres></div></div>
+        <div class="qr" data-qr></div>
       </div>
-      <div id="top" hidden></div>
-      <div id="chat"></div>
+      <div class="p uit" id="p-stemmen"></div>
+      <div class="p uit" id="p-stemqr">
+        <div class="qr" data-qr></div>
+        <div id="stemKlok"></div>
+        <div class="klein" data-adres></div>
+      </div>
+      <div class="p uit" id="p-titel">
+        <div class="links"><div class="kop" id="titelTekst"></div><div id="titelScore"></div></div>
+        <div class="beeld" id="titelBeeld" hidden></div>
+      </div>
+      <div class="p uit" id="p-tekst">
+        <div class="balk"></div>
+        <div id="script"><iframe id="scriptFrame" title="Script" scrolling="no"></iframe></div>
+        <div class="laadrij"><div class="laad"><i id="laadVul"></i></div><span id="laadGetal">0%</span></div>
+      </div>
+      <div class="p uit" id="p-chat"><div id="chatRegels"></div></div>
+      <div class="p uit" id="p-voet"><span data-adres></span></div>
+      <div class="p uit" id="p-rapport">
+        <div class="inhoud">
+          <div class="rp" id="rp0">
+            <div class="rp-links">
+              <div class="kopregel">
+                <div><div class="kop" id="rpTitel"></div><div class="klein" id="rpMeta"></div></div>
+                <div class="beeld" id="rpBeeld" hidden></div>
+              </div>
+            </div>
+            <div class="rp-rijen" id="rpReacties"></div>
+          </div>
+          <div class="rp weg" id="rp1">
+            <div class="rp-links"><div class="klein">score</div><div class="groot" id="rpScore"></div></div>
+            <div class="rp-rijen" id="rpSom"></div>
+          </div>
+          <div class="rp weg" id="rp2">
+            <div class="rp-links"><div class="kop">Dit publiek</div><div class="klein">gemiddelde score per label</div></div>
+            <div class="rp-rijen" id="rpLabels"></div>
+          </div>
+        </div>
+      </div>
+     </div>
+      <iframe id="ondertitel" title="Ondertitel" scrolling="no"></iframe>
+      <iframe id="emoji" title="Emoji" scrolling="no"></iframe>
     </div>
+    <script src="/audience/vendor/qrcode-generator.min.js"></script>
     <script>
       const W = 1080, H = 1920, MAX_REGELS = 14;
       const el = (id) => document.getElementById(id);
       const stage = el("stage");
+      const getal = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+      function maak(tag, klasse, tekst) {
+        const node = document.createElement(tag);
+        if (klasse) node.className = klasse;
+        if (tekst != null) node.textContent = tekst;
+        return node;
+      }
       let settings = {};
       let reacties = [];
       let ronde = { start: null, titel: null, emoji: {} };
 
-      // Het script van de script-agent (poort 3027) op dezelfde machine.
-      el("scriptFrame").src = `${location.protocol}//${location.hostname}:3027/script-agent/operator/stage`;
+      // ── Indeling ──────────────────────────────────────────────────────────────────────────────
+      // Van boven naar beneden: de titel (of meedoen, of de stemlijst), het venster met de tekst, het
+      // universum, en linksonder de chat. De chat is in Admin hoger of lager te zetten; het universum
+      // krijgt de strook die overblijft.
+      const TEKST_ONDER = 470; // onderkant van het venster met de tekst
+      const chatPlek = () => ({
+        y: getal(settings.tussenChatY, 1462),
+        hoogte: getal(settings.tussenChatHoogte, 385),
+        letter: getal(settings.tussenChatGrootte, 36),
+      });
+      const zichtNu = () => [TEKST_ONDER + 30, Math.max(TEKST_ONDER + 330, chatPlek().y - 30)];
+
+      // Het universum (padendienst, poort 3022) speelt de reeks: stemmen of kiezen, inzoomen op het pad,
+      // en na elke scène uitzoomen en nieuwe scènes laten vrijkomen. Het meldt waar het is.
+      // Na een scène wacht het met uitzoomen tot het rapport is getoond en dit scherm het vrijgeeft.
+      // NA_SCENE_MAX is het vangnet: komt de vrijgave niet, dan gaat het universum na die tijd vanzelf verder.
+      const NA_SCENE_MAX = 30000;
+      // De poorten van het universum en de script-agent zijn alleen op een proefopstelling anders
+      // (?universumPoort=…&scriptPoort=…).
+      const UNIVERSUM_POORT = Number(new URLSearchParams(location.search).get("universumPoort")) || 3022;
+      const SCRIPT_POORT = Number(new URLSearchParams(location.search).get("scriptPoort")) || 3027;
+      el("universum").src = `${location.protocol}//${location.hostname}:${UNIVERSUM_POORT}/universe/stage.html?naScene=${NA_SCENE_MAX}&vrijgave=1&padZoom=1&binnenTitel=0&gekozenTitel=0&stemTekst=0&zicht=${zichtNu().join(",")}`;
+      function naarUniversum(bericht) {
+        try { el("universum").contentWindow.postMessage({ bron: "for_you-scherm", ...bericht }, "*"); } catch (_err) {}
+      }
+      const universumVerder = () => naarUniversum({ verder: true });
+      const meldZicht = () => naarUniversum({ zicht: zichtNu() });
+      el("universum").addEventListener("load", meldZicht);
+
+      // ── Geluid ────────────────────────────────────────────────────────────────────────────────
+      // Als een analoog rekentoestel: telwerk, relais, stappenschakelaar, magneet met bel. Alles is
+      // ruis door filters met een doffe klap eronder. Een browser laat geluid pas toe na een klik of
+      // toets; lukt het starten niet, dan blijft het scherm stil en werkt de rest gewoon.
+      // Het volume is in Admin te regelen (Geluid zaalscherm, in procenten).
+      let audio = null, ruis = null, meester = null, laatsteTik = 0;
+      const geluidVolume = () => Math.min(100, Math.max(0, getal(settings.tussenGeluid, 50))) / 100;
+      function geluidAan() {
+        if (audio) { if (audio.state === "suspended") audio.resume().catch(() => {}); return; }
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        try {
+          audio = new Ctx();
+          ruis = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
+          const data = ruis.getChannelData(0);
+          for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+          meester = audio.createGain();
+          meester.gain.value = geluidVolume();
+          meester.connect(audio.destination);
+          audio.resume().catch(() => {});
+        } catch (_err) { audio = null; }
+      }
+      geluidAan();
+      ["pointerdown", "keydown"].forEach((naam) => window.addEventListener(naam, geluidAan));
+      function klik({ hoogte = 3000, scherpte = 2, duur = 0.008, sterkte = 0.3, dof = 0, wanneer = 0 }) {
+        if (!audio || audio.state !== "running") return;
+        const nu = audio.currentTime + wanneer;
+        const bronGeluid = audio.createBufferSource();
+        bronGeluid.buffer = ruis;
+        const filter = audio.createBiquadFilter();
+        filter.type = "bandpass";
+        filter.frequency.value = hoogte * (0.9 + Math.random() * 0.2);
+        filter.Q.value = scherpte;
+        const gain = audio.createGain();
+        gain.gain.setValueAtTime(sterkte, nu);
+        gain.gain.exponentialRampToValueAtTime(0.0001, nu + duur);
+        bronGeluid.connect(filter).connect(gain).connect(meester);
+        bronGeluid.start(nu, Math.random() * 0.5, duur + 0.02);
+        if (dof) {
+          const osc = audio.createOscillator();
+          const laag = audio.createGain();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(dof * 1.6, nu);
+          osc.frequency.exponentialRampToValueAtTime(dof, nu + 0.03);
+          laag.gain.setValueAtTime(sterkte * 0.9, nu);
+          laag.gain.exponentialRampToValueAtTime(0.0001, nu + 0.07);
+          osc.connect(laag).connect(meester);
+          osc.start(nu);
+          osc.stop(nu + 0.09);
+        }
+      }
+      const geluid = {
+        tel() {
+          const nu = performance.now();
+          if (nu - laatsteTik < 38) return;
+          laatsteTik = nu;
+          klik({ hoogte: 3800, scherpte: 3, duur: 0.006, sterkte: 0.22 });
+        },
+        relais() {
+          klik({ hoogte: 2400, scherpte: 2, duur: 0.007, sterkte: 0.4 });
+          klik({ hoogte: 750, scherpte: 4, duur: 0.03, sterkte: 0.45, dof: 120, wanneer: 0.024 });
+        },
+        stap() {
+          klik({ hoogte: 1500, scherpte: 5, duur: 0.02, sterkte: 0.5, dof: 160 });
+          klik({ hoogte: 4200, scherpte: 2, duur: 0.004, sterkte: 0.18, wanneer: 0.03 });
+        },
+        schakel() {
+          for (let i = 0; i < 5; i++) klik({ hoogte: 1300 - i * 90, scherpte: 5, duur: 0.018, sterkte: 0.38, dof: 150, wanneer: i * 0.05 });
+        },
+        slot() {
+          klik({ hoogte: 320, scherpte: 1.2, duur: 0.09, sterkte: 0.8, dof: 68 });
+          if (!audio || audio.state !== "running") return;
+          const nu = audio.currentTime + 0.05;
+          [2093, 3322, 5210].forEach((hoogte, index) => {
+            const osc = audio.createOscillator();
+            const gain = audio.createGain();
+            osc.type = "sine";
+            osc.frequency.value = hoogte;
+            gain.gain.setValueAtTime(0.07 / (index + 1), nu);
+            gain.gain.exponentialRampToValueAtTime(0.0001, nu + 1.1 - index * 0.25);
+            osc.connect(gain).connect(meester);
+            osc.start(nu);
+            osc.stop(nu + 1.2);
+          });
+        },
+      };
+
+      // ── Stand van het scherm ──────────────────────────────────────────────────────────────────
+      let universum = null;      // laatste melding van het universum
+      let gekozen = null;        // de scène waar de kiezer op geland is: { id, titel, omgeving, score }
+      let speel = null;          // de scène die speelt of net gespeeld is: { titel, omgeving }
+      let omgevingVan = null;    // laatst bekende omgeving bij een scène: { id, omgeving }
+      let hierna = null;         // uit het laatste rapport: { titel, score } van de scène die het algoritme koos
+      let inScene = false;       // TouchDesigner zegt: de scène speelt
+      let laagWeg = false;       // het vel is helemaal uit beeld geschoven
+      let joinUrl = "";
+      const stem = { actief: false, pollId: 0, opties: [], counts: [], endsAt: 0, winnaar: -1, tot: 0 };
+      const rapport = { aan: false, data: null, speelt: false, haalt: false, vraag: 0 };
+
+      const VLAKKEN = ["meedoen", "stemmen", "stemqr", "titel", "tekst", "chat", "voet", "rapport"];
+      const FASE_VLAKKEN = {
+        inloop: ["meedoen", "chat"],
+        stemmen: ["stemmen", "stemqr", "chat"],
+        kiezen: ["chat", "voet"],
+        gekozen: ["titel", "chat", "voet"],
+        tekst: ["titel", "tekst", "chat", "voet"],
+        scene: ["chat", "voet"],
+        rapport: ["rapport"],
+      };
+      function bepaalFase() {
+        const u = universum || {};
+        if (rapport.aan) return "rapport";
+        if (stem.actief || stem.tot > Date.now()) return "stemmen";
+        if (u.volgende) return "tekst";
+        if (gekozen) return "gekozen";
+        // De scène begint: titel en tekst blijven staan tot het vel ermee uit beeld is.
+        if (u.speelt) return faseSinds && !laagWeg ? "tekst" : "scene";
+        if (!u.gespeeld) return "inloop";
+        return "kiezen";
+      }
+      const teken = (n, cijfers = 1) => (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n).toLocaleString("nl-NL", { minimumFractionDigits: cijfers, maximumFractionDigits: cijfers });
+      function zetKop(node, tekst, kort, middel) {
+        const titel = String(tekst || "");
+        if (node.textContent !== titel) node.textContent = titel;
+        node.classList.toggle("lang", titel.length > kort && titel.length <= middel);
+        node.classList.toggle("langer", titel.length > middel);
+      }
+      // Beeld van de omgeving: foto of video uit de catalogus (poort 3021), in kleur.
+      function zetBeeld(box, omgeving) {
+        const adres = omgeving && omgeving.beeld ? `${location.protocol}//${location.hostname}:3021${omgeving.beeld}` : "";
+        box.dataset.uitsnede = (omgeving && omgeving.uitsnede) || "hoog";
+        if (box.dataset.adres === adres) return;
+        box.dataset.adres = adres;
+        box.textContent = "";
+        box.hidden = !adres;
+        if (!adres) return;
+        const media = document.createElement(omgeving.soort === "video" ? "video" : "img");
+        if (omgeving.soort === "video") { media.muted = true; media.loop = true; media.autoplay = true; media.playsInline = true; }
+        media.addEventListener("error", () => { box.hidden = true; });
+        media.src = adres;
+        box.appendChild(media);
+      }
+      function vulTitel(fase) {
+        const u = universum || {};
+        const bron = gekozen && (!u.volgende || u.sceneId === gekozen.id) ? gekozen : { titel: u.titel, omgeving: u.omgeving || (omgevingVan && omgevingVan.id === u.sceneId ? omgevingVan.omgeving : null), score: null };
+        zetKop(el("titelTekst"), bron.titel, 22, 40);
+        zetBeeld(el("titelBeeld"), bron.omgeving);
+        // De verwachte score staat er alleen op het moment van de keuze.
+        el("titelScore").textContent = fase === "gekozen" && bron.score != null ? teken(bron.score) : "";
+      }
+
+      // Zet de vlakken van de fase in beeld: eerst wat weg moet eruit, dan wat nieuw is erin.
+      let faseNu = "", toonTimer = 0;
+      function zetFase(direct) {
+        const fase = bepaalFase();
+        const wil = new Set(FASE_VLAKKEN[fase]);
+        if (!joinUrl) { wil.delete("meedoen"); wil.delete("stemqr"); wil.delete("voet"); }
+        if (fase === "gekozen" || fase === "tekst") vulTitel(fase);
+        faseNu = fase;
+        // Staat het vel niet in beeld, dan hoeft er niets te schuiven.
+        const stil = !!direct || laagWeg;
+        if (stil) stage.classList.add("direct");
+        let gingWeg = false;
+        for (const naam of VLAKKEN) {
+          const vlak = el("p-" + naam);
+          if (!wil.has(naam) && !vlak.classList.contains("uit")) { vlak.classList.add("uit"); gingWeg = true; }
+        }
+        clearTimeout(toonTimer);
+        const toon = () => {
+          let kwam = false;
+          for (const naam of VLAKKEN) {
+            const vlak = el("p-" + naam);
+            if (wil.has(naam) && vlak.classList.contains("uit")) { vlak.classList.remove("uit"); kwam = true; }
+          }
+          if (kwam && !stil) geluid.relais();
+        };
+        if (stil || !gingWeg) toon(); else toonTimer = setTimeout(toon, 300);
+        if (stil) { void stage.offsetHeight; stage.classList.remove("direct"); }
+      }
+
+      const zelfdeTitel = (a, b) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+      window.addEventListener("message", (ev) => {
+        const stand = ev.data;
+        if (!stand || stand.bron !== "for_you-universum") return;
+        // De kiezer in het universum: een tik per sprong, een klap met bel bij de keuze.
+        if (stand.tik) {
+          if (stand.tik === "slot") {
+            geluid.slot();
+            if (stand.omgeving) omgevingVan = { id: stand.sceneId, omgeving: stand.omgeving };
+            gekozen = { id: stand.sceneId, titel: stand.titel, omgeving: stand.omgeving || null, score: hierna && zelfdeTitel(hierna.titel, stand.titel) ? hierna.score : null };
+            // De stemlijst maakt plaats voor de titel van de winnaar.
+            stem.actief = false;
+            stem.tot = 0;
+          } else {
+            geluid.stap();
+            gekozen = null;
+          }
+          zetFase();
+          return;
+        }
+        const vorige = universum;
+        universum = stand;
+        if (!vorige) meldZicht();
+        if (stand.omgeving && stand.sceneId) omgevingVan = { id: stand.sceneId, omgeving: stand.omgeving };
+        // Een nieuwe run of een reset: wat er nog stond hoort bij de vorige.
+        if (vorige && stand.gespeeld < vorige.gespeeld) { gekozen = null; hierna = null; rapportWeg(); }
+        if (stand.speelt && !(vorige && vorige.speelt && vorige.sceneId === stand.sceneId)) {
+          speel = { titel: stand.titel, omgeving: omgevingVan && omgevingVan.id === stand.sceneId ? omgevingVan.omgeving : null };
+          gekozen = null;
+          tekstOpnieuw();
+        }
+        if (vorige && vorige.speelt && !stand.speelt && stand.gespeeld >= vorige.gespeeld) haalRapport();
+        herzie();
+      });
+      // Loopt de scène en is het vel weg, dan staat het rapport alvast klaar: het scherm komt ermee terug.
+      function herzie() {
+        if (laagWeg && universum && universum.speelt && !rapport.aan) rapportKlaarzetten();
+        zetFase();
+      }
+
+      // ── Rapport ───────────────────────────────────────────────────────────────────────────────
+      const rpNl = (n, cijfers = 1) => Math.abs(n).toLocaleString("nl-NL", { minimumFractionDigits: cijfers, maximumFractionDigits: cijfers });
+      let rpTimers = [], rpRonde = 0;
+      function rpRij(links, rechts, klasse) {
+        const node = maak("div", "rij" + (klasse ? " " + klasse : ""));
+        node.append(maak("span", "", links), maak("b", "", rechts));
+        return node;
+      }
+      function rpTelOp(node, doel, ms, vorm) {
+        const begin = performance.now();
+        const mijn = rpRonde;
+        let vorige = "";
+        const stapje = (nu) => {
+          if (mijn !== rpRonde) return;
+          const deel = Math.min(1, (nu - begin) / ms);
+          const tekst = vorm(doel * (1 - Math.pow(1 - deel, 3)));
+          if (tekst !== vorige) { node.textContent = tekst; vorige = tekst; geluid.tel(); }
+          if (deel < 1) requestAnimationFrame(stapje);
+        };
+        requestAnimationFrame(stapje);
+      }
+      function rpBlad(nr, stil) {
+        [0, 1, 2].forEach((index) => el("rp" + index).classList.toggle("weg", index !== nr));
+        if (!stil) geluid.schakel();
+      }
+      function rpLeeg() {
+        rpTimers.forEach(clearTimeout);
+        rpTimers = [];
+        rpRonde++;
+        ["rpReacties", "rpSom", "rpLabels"].forEach((id) => el(id).replaceChildren());
+        el("rpScore").textContent = "";
+        el("rpMeta").textContent = "";
+        rpBlad(0, true);
+      }
+      function rapportWeg() {
+        const was = rapport.aan;
+        rapport.vraag++;
+        rapport.aan = false;
+        rapport.data = null;
+        rapport.speelt = false;
+        rapport.haalt = false;
+        rpTimers.forEach(clearTimeout);
+        rpTimers = [];
+        rpRonde++;
+        if (was) zetFase();
+      }
+      // Het rapport staat klaar met de titel van de scène; de cijfers volgen zodra het algoritme ze heeft.
+      function rapportKlaarzetten() {
+        rpLeeg();
+        zetKop(el("rpTitel"), (speel && speel.titel) || (ronde && ronde.titel) || "", 16, 30);
+        zetBeeld(el("rpBeeld"), speel && speel.omgeving);
+        rapport.aan = true;
+        rapport.data = null;
+        rapport.speelt = false;
+        zetFase();
+      }
+      // Scène afgelopen: het rapport ophalen. Het algoritme heeft even nodig om de scène te verwerken;
+      // komt het rapport niet, dan gaat het scherm zonder verder.
+      async function haalRapport() {
+        if (rapport.haalt || rapport.data) return;
+        if (!rapport.aan) rapportKlaarzetten();
+        rapport.haalt = true;
+        const vraag = ++rapport.vraag;
+        const situationRunId = ronde && ronde.situationRunId ? ronde.situationRunId : "";
+        let data = null;
+        for (let poging = 0; poging < 12 && vraag === rapport.vraag; poging++) {
+          try {
+            const antwoord = await fetch(`/audience/stage/rapport?situationRunId=${encodeURIComponent(situationRunId)}&ts=${Date.now()}`, { cache: "no-store" }).then((res) => res.json());
+            if (antwoord && antwoord.klaar) { data = antwoord; break; }
+          } catch (_err) {}
+          await new Promise((resolve) => setTimeout(resolve, 600));
+        }
+        if (vraag !== rapport.vraag) return;
+        rapport.haalt = false;
+        if (!data) { rapportWeg(); universumVerder(); return; }
+        rapport.data = data;
+        probeerRapport();
+      }
+      // Het tellen begint pas als het vel weer in beeld is.
+      function probeerRapport() {
+        if (!rapport.aan || !rapport.data || rapport.speelt || inScene) return;
+        rapport.speelt = true;
+        const mijn = rapport.vraag;
+        setTimeout(() => { if (mijn === rapport.vraag && rapport.aan) speelRapport(rapport.data); }, 560);
+      }
+      function rapportKlaar() {
+        if (rapport.data) hierna = rapport.data.hierna || null;
+        rapportWeg();
+        // Eerst schuift het rapport weg, dan zoomt het universum uit.
+        setTimeout(universumVerder, 320);
+      }
+      // Speelt het rapport af. De eerste keer rustig; elke volgende scène iets sneller.
+      function speelRapport(data) {
+        rpLeeg();
+        const mijn = rpRonde;
+        const scene = data.scene, som = data.som;
+        const tempo = Math.max(0.45, 1 - 0.14 * (Math.max(1, scene.nr) - 1));
+        const straks = (ms, fn) => rpTimers.push(setTimeout(() => { if (mijn === rpRonde) fn(); }, ms * tempo));
+        zetKop(el("rpTitel"), scene.titel, 16, 30);
+        el("rpMeta").textContent = `${scene.seconden} seconden · ${scene.kijkers} kijkers`;
+        geluid.schakel();
+        let t = 500;
+
+        // 1. Reacties: de emoji die het publiek indrukte, de berichten, en het geluid in de zaal.
+        const emojiVan = (telt) => reacties.filter((r) => r.telt === telt).map((r) => r.emoji).join("");
+        const tellingen = [[emojiVan("positief"), "positief", scene.hartjes], [emojiVan("negatief"), "negatief", scene.verveeld], ["", "berichten", scene.berichten]];
+        const meeste = Math.max(scene.hartjes, scene.verveeld, scene.berichten, 1);
+        tellingen.forEach(([emoji, woord, waarde]) => {
+          const rij = rpRij("", "0");
+          if (emoji) rij.firstElementChild.append(maak("span", "emoji", emoji));
+          rij.firstElementChild.append(woord);
+          const meter = maak("div", "meter");
+          const vulling = maak("i");
+          meter.append(vulling);
+          rij.append(meter);
+          el("rpReacties").append(rij);
+          straks(t, () => {
+            rij.classList.add("aan");
+            rpTelOp(rij.querySelector("b"), waarde, 450 * tempo, (n) => String(Math.round(n)));
+            requestAnimationFrame(() => { vulling.style.width = `${(waarde / meeste) * 100}%`; });
+          });
+          t += 520;
+        });
+        if (scene.geluid) {
+          const NS = "http://www.w3.org/2000/svg";
+          const rij = rpRij(`zaalgeluid, piek (rust ${Math.round(scene.geluid.rustDb)} dB)`, "0 dB");
+          const golf = document.createElementNS(NS, "svg");
+          golf.setAttribute("class", "golf");
+          golf.setAttribute("viewBox", `0 0 ${scene.geluid.golf.length * 4} 60`);
+          golf.setAttribute("preserveAspectRatio", "none");
+          rij.append(golf);
+          el("rpReacties").append(rij);
+          straks(t, () => {
+            rij.classList.add("aan");
+            rpTelOp(rij.querySelector("b"), scene.geluid.piekDb, 1000 * tempo, (n) => `${Math.round(n)} dB`);
+          });
+          scene.geluid.golf.forEach((db, index) => {
+            straks(t + index * (1000 / scene.geluid.golf.length), () => {
+              const hoogte = Math.max(1, Math.min(1, Math.max(0.04, (db - 50) / 35)) * 56);
+              const staaf = document.createElementNS(NS, "rect");
+              staaf.setAttribute("x", index * 4);
+              staaf.setAttribute("y", 30 - hoogte / 2);
+              staaf.setAttribute("width", 2);
+              staaf.setAttribute("height", hoogte);
+              golf.append(staaf);
+            });
+          });
+          t += 1000;
+        }
+        t += 1500;
+
+        // 2. De som, regel voor regel, tot de score.
+        straks(t, () => rpBlad(1));
+        const maal = (n) => (n < 0 ? "−" : "") + rpNl(n, Number.isInteger(n) ? 0 : 2);
+        const regels = [
+          [`${scene.hartjes} positief × ${maal(som.wHart)}`, teken(scene.hartjes * som.wHart)],
+          [`${scene.verveeld} negatief × ${maal(som.wVerveeld)}`, teken(scene.verveeld * som.wVerveeld)],
+          [`${scene.berichten} berichten × ${maal(som.wBericht)}`, teken(scene.berichten * som.wBericht)],
+        ];
+        if (scene.geluid && som.wGeluid) regels.push([`zaalgeluid ${rpNl(scene.geluid.liftDb)} dB boven rust × ${maal(som.wGeluid)}`, teken(som.geluid)]);
+        regels.push(
+          ["som", teken(som.ruw), "streep"],
+          [`duur: ${scene.seconden} seconden`, `× ${rpNl(som.duur, 2)}`],
+          [`publiek: ${scene.kijkers} kijkers`, `× ${rpNl(som.publiek, 2)}`],
+        );
+        regels.forEach(([links, rechts, extra], index) => {
+          const rij = rpRij(links, rechts, "som" + (extra ? " " + extra : ""));
+          el("rpSom").append(rij);
+          straks(t + 350 + index * 280, () => { rij.classList.add("aan"); geluid.relais(); });
+        });
+        t += 350 + regels.length * 280 + 150;
+        const score = el("rpScore");
+        // Het grote getal past altijd op de regel.
+        score.style.fontSize = `${Math.min(400, Math.floor(960 / (teken(scene.score).length * 0.58)))}px`;
+        straks(t, () => rpTelOp(score, scene.score, 800 * tempo, teken));
+        straks(t + 850, () => geluid.slot());
+        t += 2700;
+
+        // 3. Dit publiek: de stand per label.
+        straks(t, () => rpBlad(2));
+        // Alle labels staan er; een label waar nog geen scène van gespeeld is heeft nog geen score.
+        const bereik = Math.max(...data.labels.map((label) => Math.abs(label.score || 0)), 0.01);
+        data.labels.forEach((label, index) => {
+          const heeft = label.score != null;
+          const staaf = maak("div", "staaf" + (label.nu ? " nu" : "") + (heeft ? "" : " leeg"));
+          const spoor = maak("div", "spoor");
+          const vulling = maak("i");
+          spoor.append(vulling);
+          staaf.append(maak("span", "", label.naam), spoor, maak("b", "", heeft ? teken(label.score) : ""));
+          el("rpLabels").append(staaf);
+          straks(t + 350 + index * 200, () => {
+            staaf.classList.add("aan");
+            geluid.relais();
+            if (heeft) requestAnimationFrame(() => { vulling.style.width = `${(Math.abs(label.score) / bereik) * 100}%`; });
+          });
+        });
+        t += 350 + data.labels.length * 200 + 2600;
+        straks(t, rapportKlaar);
+      }
+
+      // ── Meedoen: QR-code en adres ─────────────────────────────────────────────────────────────
+      async function tekenQr() {
+        const data = await fetch("/audience/admin/state?stage=qr&ts=" + Date.now(), { cache: "no-store" }).then((res) => res.json());
+        const url = (data.sessionJoin && data.sessionJoin.joinUrl) || "";
+        if (url === joinUrl) return;
+        joinUrl = typeof qrcode === "function" ? url : "";
+        if (joinUrl) {
+          const qr = qrcode(0, "M");
+          qr.addData(joinUrl);
+          qr.make();
+          const beeld = qr.createImgTag(8, 0);
+          document.querySelectorAll("[data-qr]").forEach((box) => { box.innerHTML = beeld; });
+          // Het adres zoals je het overtikt: zonder https, www en sleutel.
+          const adres = joinUrl.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/[?#].*$/, "").replace(/\/$/, "");
+          document.querySelectorAll("[data-adres]").forEach((node) => { node.textContent = adres; });
+        }
+        zetFase();
+      }
+      tekenQr().catch(() => {});
+      setInterval(() => tekenQr().catch(() => {}), 5000);
+
+      // ── Stemmen op de startscène ──────────────────────────────────────────────────────────────
+      function tekenStemmen() {
+        const lijst = el("p-stemmen");
+        if (lijst.children.length !== stem.opties.length) {
+          lijst.replaceChildren(...stem.opties.map((titel) => {
+            const rij = maak("div", "stemrij");
+            const spoor = maak("div", "spoor");
+            spoor.append(maak("i"));
+            rij.append(maak("span", "", titel), spoor, maak("b", "", "0"));
+            return rij;
+          }));
+        }
+        const hoogste = Math.max(1, ...stem.counts.map((n) => Number(n) || 0));
+        [...lijst.children].forEach((rij, index) => {
+          const n = Number(stem.counts[index]) || 0;
+          rij.querySelector("span").textContent = stem.opties[index];
+          rij.querySelector("b").textContent = String(n);
+          rij.querySelector("i").style.width = `${(n / hoogste) * 100}%`;
+          const eerst = stem.winnaar >= 0 ? index === stem.winnaar : n > 0 && n === hoogste;
+          rij.classList.toggle("eerst", eerst);
+          rij.classList.toggle("af", stem.winnaar >= 0 && index !== stem.winnaar);
+        });
+      }
+      function tekenKlok() {
+        const over = stem.actief && stem.endsAt ? Math.max(0, Math.ceil((stem.endsAt - Date.now()) / 1000)) : 0;
+        const tekst = `${Math.floor(over / 60)}:${String(over % 60).padStart(2, "0")}`;
+        if (el("stemKlok").textContent !== tekst) el("stemKlok").textContent = tekst;
+      }
+      setInterval(tekenKlok, 250);
+      function stemStart(poll) {
+        if (!poll || !Array.isArray(poll.options)) return;
+        stem.actief = true;
+        stem.pollId = Number(poll.id);
+        stem.opties = poll.options.slice();
+        stem.counts = (poll.counts || []).slice();
+        stem.endsAt = Date.parse(poll.endsAt || "") || 0;
+        stem.winnaar = -1;
+        stem.tot = 0;
+        gekozen = null;
+        tekenStemmen();
+        tekenKlok();
+        zetFase();
+      }
+      function stemUitslag(msg) {
+        if (Number(msg.pollId) !== stem.pollId || !msg.uitslag) return;
+        stem.actief = false;
+        stem.counts = (msg.uitslag.counts || stem.counts).slice();
+        stem.winnaar = Number(msg.uitslag.index);
+        // De lijst blijft staan tot de kiezer in het universum op de winnaar landt.
+        stem.tot = Date.now() + 8000;
+        setTimeout(() => zetFase(), 8100);
+        tekenStemmen();
+        tekenKlok();
+        geluid.slot();
+        zetFase();
+      }
+
+      // ── De tekst die gemaakt wordt ────────────────────────────────────────────────────────────
+      // Het venster toont de pagina van de script-agent zelf (poort 3027), op de maat van het venster.
+      // De laadbalk volgt dezelfde stroom: hoeveel regels er al zijn van de ongeveer achttien die een
+      // scène telt. Als de tekst af is staat hij vol.
+      const SCRIPT_SCHAAL = 0.6, TEKST_REGELS = 18;
+      (() => {
+        const frame = el("scriptFrame");
+        const breedte = Math.round(636 / SCRIPT_SCHAAL), hoogte = Math.round(146 / SCRIPT_SCHAAL);
+        frame.style.width = breedte + "px";
+        frame.style.height = hoogte + "px";
+        frame.style.transform = `scale(${SCRIPT_SCHAAL})`;
+        frame.src = `${location.protocol}//${location.hostname}:${SCRIPT_POORT}/script-agent/operator/stage?doorzichtig=1&venster=1&b=${breedte}&h=${hoogte}`;
+      })();
+      const tekst = { bezig: false, inhoud: "", id: "", klaar: false };
+      function tekenLaad() {
+        const regels = tekst.inhoud.split("\n").filter((regel) => regel.trim()).length;
+        const procent = tekst.bezig ? Math.min(96, Math.round((regels / TEKST_REGELS) * 100)) : tekst.klaar ? 100 : 0;
+        el("laadVul").style.width = procent + "%";
+        const getalTekst = procent + "%";
+        if (el("laadGetal").textContent !== getalTekst) {
+          el("laadGetal").textContent = getalTekst;
+          if (tekst.bezig && faseNu === "tekst") geluid.tel();
+          if (procent === 100 && faseNu === "tekst") geluid.slot();
+        }
+      }
+      // Een nieuwe scène begint: de tekst voor de volgende moet nog gemaakt worden.
+      function tekstOpnieuw() {
+        if (tekst.bezig) return;
+        tekst.inhoud = "";
+        tekst.klaar = false;
+        tekenLaad();
+      }
+      function tekstStroom() {
+        let ws;
+        const opnieuw = () => setTimeout(tekstStroom, 4000);
+        try { ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:${SCRIPT_POORT}/v0/script-agent/operator/stage/ws`); } catch (_err) { opnieuw(); return; }
+        ws.addEventListener("close", opnieuw);
+        ws.addEventListener("message", (ev) => {
+          let msg;
+          try { msg = JSON.parse(String(ev.data || "{}")); } catch (_err) { return; }
+          if (msg.type === "operator_stage_hello" || msg.type === "operator_stage_state") {
+            const st = msg.stage || {};
+            const laatste = (Array.isArray(st.messages) ? st.messages : []).filter((m) => m && m.role === "assistant").pop();
+            const was = tekst.bezig;
+            tekst.bezig = !!st.streaming;
+            if (laatste && (tekst.bezig || was || msg.type === "operator_stage_hello")) {
+              tekst.inhoud = String(laatste.content || "");
+              tekst.id = String(laatste.id || "");
+            }
+            if (!tekst.bezig && (was || msg.type === "operator_stage_hello")) tekst.klaar = !!tekst.inhoud.trim();
+            tekenLaad();
+          } else if (msg.type === "operator_stage_delta") {
+            const id = String(msg.assistantId || "");
+            if (id !== tekst.id) { tekst.id = id; tekst.inhoud = ""; }
+            tekst.bezig = true;
+            tekst.klaar = false;
+            tekst.inhoud = typeof msg.fullText === "string" ? msg.fullText : tekst.inhoud + String(msg.text || "");
+            tekenLaad();
+          }
+        });
+      }
+      tekstStroom();
+
+      // ── De fase van TouchDesigner ─────────────────────────────────────────────────────────────
+      // 0 inloop, 1 loading, 2 scène. Bij de scène schuift het vel omhoog weg en blijven alleen de
+      // emoji en de ondertitel over het camerabeeld staan; daarna komt het dezelfde weg terug. De
+      // laatste fase wordt onthouden, zodat een herladen pagina goed begint.
+      let eenGeladen = false, faseSinds = 0, wegTimer = 0;
+      function eenLagen() {
+        if (eenGeladen) return;
+        eenGeladen = true;
+        el("emoji").src = "/audience/stage/emoji";
+        el("ondertitel").src = `${location.protocol}//${location.hostname}:3027/script-agent/teleprompter-parser/live-captions`;
+      }
+      window.forYouFase = (fase, direct) => {
+        const scene = Number(fase) === 2;
+        document.documentElement.classList.add("een");
+        document.body.classList.add("een");
+        eenLagen();
+        faseSinds = Date.now();
+        try { localStorage.setItem("for_you_fase", JSON.stringify({ fase: scene ? 2 : 1, at: faseSinds })); } catch (_err) {}
+        if (scene === inScene) return;
+        inScene = scene;
+        clearTimeout(wegTimer);
+        if (direct) stage.classList.add("direct");
+        document.body.classList.toggle("scene", scene);
+        if (direct) { void stage.offsetHeight; stage.classList.remove("direct"); }
+        if (scene) {
+          // Is het vel uit beeld, dan wordt alles klaargezet voor als het terugkomt.
+          wegTimer = setTimeout(() => { laagWeg = true; herzie(); }, direct ? 0 : 560);
+        } else {
+          laagWeg = false;
+          // Terug uit de scène: het rapport ophalen als dat nog niet gebeurd is, en beginnen met tellen.
+          if (rapport.aan && !rapport.data) haalRapport(); else probeerRapport();
+        }
+      };
+      try {
+        const bewaard = JSON.parse(localStorage.getItem("for_you_fase") || "null");
+        if (bewaard && Date.now() - bewaard.at < 10000) window.forYouFase(bewaard.fase, true);
+      } catch (_err) {}
+      // Vangnet: geeft TouchDesigner de fase niet meer door, dan wordt de pagina weer gewoon het
+      // dekkende scherm van inloop en loading.
+      setInterval(() => {
+        if (!faseSinds || Date.now() - faseSinds < 10000) return;
+        faseSinds = 0;
+        inScene = false;
+        laagWeg = false;
+        clearTimeout(wegTimer);
+        stage.classList.add("direct");
+        document.documentElement.classList.remove("een");
+        document.body.classList.remove("een", "scene");
+        void stage.offsetHeight;
+        stage.classList.remove("direct");
+        probeerRapport();
+        zetFase();
+      }, 2000);
 
       function pas() {
         const s = Math.min(window.innerWidth / W, window.innerHeight / H);
@@ -162,80 +915,42 @@
       window.addEventListener("resize", pas);
       pas();
 
-      const getal = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
-
+      // ── Chat ──────────────────────────────────────────────────────────────────────────────────
       function toepassen(next) {
         settings = next || settings || {};
-        const t = el("titel");
-        t.textContent = settings.tussenTitel ?? "Generating next scene";
-        t.style.top = getal(settings.tussenTitelY, 110) + "px";
-        t.style.fontSize = getal(settings.tussenTitelGrootte, 64) + "px";
-        const sh = getal(settings.tussenScriptHoogte, 860);
-        el("script").style.top = getal(settings.tussenScriptY, 230) + "px";
-        el("script").style.height = sh + "px";
-        el("scriptFrame").style.top = (sh - H) + "px"; // onderkant van het script (nieuwste tekst) in beeld
-        el("stem").style.top = getal(settings.tussenScriptY, 230) + "px";
-        el("stem").style.height = sh + "px";
-        el("stats").style.top = getal(settings.tussenStatsY, 1150) + "px";
-        el("stats").style.fontSize = getal(settings.tussenStatsGrootte, 88) + "px";
-        el("statsScene").style.fontSize = "0.36em";
-        const c = el("chat");
-        c.style.top = getal(settings.tussenChatY, 1380) + "px";
-        c.style.height = getal(settings.tussenChatHoogte, 480) + "px";
-        c.style.fontSize = getal(settings.tussenChatGrootte, 40) + "px";
-        el("top").style.fontSize = getal(settings.tussenChatGrootte, 40) + "px";
+        const plek = chatPlek();
+        const vlak = el("p-chat");
+        vlak.style.top = plek.y + "px";
+        vlak.style.height = plek.hoogte + "px";
+        vlak.style.fontSize = plek.letter + "px";
+        if (meester) meester.gain.value = geluidVolume();
+        meldZicht();
         tekenChat();
       }
-
-      function tekenStats() {
-        const box = el("stats");
-        if (!ronde || !ronde.start) { box.hidden = true; plaatsChat(); return; }
-        box.hidden = false;
-        el("statsScene").textContent = ronde.titel || "";
-        const rij = el("statsRij");
-        rij.textContent = "";
-        const emoji = ronde.emoji || {};
-        const lijst = reacties.length ? reacties.map((r) => r.emoji) : Object.keys(emoji);
-        for (const e of lijst) {
-          const span = document.createElement("span");
-          span.className = "telling";
-          const em = document.createElement("span");
-          em.className = "emoji";
-          em.textContent = e;
-          const n = document.createElement("span");
-          n.textContent = String(Number(emoji[e] || 0));
-          span.append(em, n);
-          rij.appendChild(span);
-        }
-        plaatsChat();
+      // De naam krijgt de kleur van de kijker, maar gedempt en donker.
+      function dof(kleur) {
+        const hex = /^#[0-9a-f]{6}$/i.test(String(kleur || "")) ? kleur : "";
+        if (!hex) return "";
+        const deel = (i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * 0.58 + 10);
+        return `rgb(${deel(1)}, ${deel(3)}, ${deel(5)})`;
       }
-
-      // Reacties van deze ronde; de comment met de meeste likes staat bovenaan (boven de reacties).
+      // Reacties van deze ronde; de comment met de meeste likes staat bovenaan.
       let berichten = [];
-      // Elke regel wordt één keer gemaakt en daarna hergebruikt; alleen nieuwe regels schuiven in beeld.
-      // (Alles opnieuw opbouwen liet de hele chat bij elk bericht of elke emoji knipperen.)
+      // Elke regel wordt één keer gemaakt en daarna hergebruikt.
       const regelEls = new WeakMap();
       function vulRegel(r, msg) {
         r.textContent = "";
-        const naam = document.createElement("span");
-        naam.className = "naam";
-        naam.textContent = (msg.name || "Anoniem") + " ";
-        if (/^#[0-9a-f]{6}$/i.test(String(msg.nameColor || ""))) naam.style.color = msg.nameColor;
+        const naam = maak("b", "", msg.name || "Anoniem");
+        const kleur = dof(msg.nameColor);
+        if (kleur) naam.style.color = kleur;
         r.append(naam, document.createTextNode(msg.text));
-        if (msg.likes > 0) {
-          const h = document.createElement("span");
-          h.className = "likes";
-          h.textContent = " \u2665 " + msg.likes;
-          r.appendChild(h);
-        }
+        if (msg.likes > 0) r.appendChild(maak("span", "likes", " ♥ " + msg.likes));
         r.dataset.likes = String(msg.likes || 0);
       }
       function regelEl(msg) {
         let r = regelEls.get(msg);
         if (!r) {
-          r = document.createElement("div");
-          r.className = "regel nieuw";
-          r.addEventListener("animationend", () => r.classList.remove("nieuw"), { once: true });
+          r = maak("div", "chatregel");
           vulRegel(r, msg);
           regelEls.set(msg, r);
         } else if (r.dataset.likes !== String(msg.likes || 0)) {
@@ -252,26 +967,15 @@
       }
       function tekenChat() {
         const top = berichten.reduce((best, m) => (m.likes > 0 && (!best || m.likes > best.likes || (m.likes === best.likes && m.id < best.id)) ? m : best), null);
-        const t = el("top");
-        t.hidden = !top;
-        zetKinderen(t, top ? [regelEl(top)] : []);
-        const c = el("chat");
-        zetKinderen(c, berichten.slice(-MAX_REGELS).filter((m) => m !== top).map(regelEl));
-        plaatsChat();
-      }
-      function plaatsChat() {
-        // De chat begint nooit boven de onderkant van de tellingen.
-        const stats = el("stats");
-        const statsOnder = stats.hidden ? 0 : stats.offsetTop + stats.offsetHeight + 32;
-        const chatY = getal(settings.tussenChatY, 1380);
-        const chatTop = Math.max(chatY, statsOnder);
-        const chatHoogte = Math.max(0, getal(settings.tussenChatHoogte, 480) - (chatTop - chatY));
-        const t = el("top");
-        t.style.top = chatTop + "px";
-        const topHoogte = t.hidden ? 0 : t.offsetHeight + 24;
-        const c = el("chat");
-        c.style.top = (chatTop + topHoogte) + "px";
-        c.style.height = Math.max(0, chatHoogte - topHoogte) + "px";
+        const lijst = berichten.slice(-MAX_REGELS).filter((m) => m !== top).map(regelEl);
+        const vast = top ? regelEl(top) : null;
+        berichten.forEach((m) => { const r = regelEls.get(m); if (r) r.classList.toggle("vast", r === vast); });
+        const c = el("chatRegels");
+        zetKinderen(c, vast ? [vast, ...lijst] : lijst);
+        // Wat niet past valt er aan de bovenkant af, in hele regels.
+        const ruimte = el("p-chat").clientHeight;
+        const eerste = vast ? 1 : 0;
+        while (ruimte > 0 && c.offsetHeight > ruimte && c.children.length > eerste + 1) c.children[eerste].remove();
       }
       function regel(msg) {
         if (!msg || msg.system || !msg.text) return;
@@ -281,60 +985,10 @@
         if (berichten.length > 200) berichten = berichten.slice(-200);
         tekenChat();
       }
-
       function nieuweRonde(next) {
         const was = ronde && ronde.start;
         ronde = next || ronde;
         if (ronde.start && ronde.start !== was) { berichten = []; tekenChat(); }
-        tekenStats();
-      }
-
-      // Stemmen op de startscène: de stand staat op de plek van het script. Na de uitslag blijft
-      // de winnaar even staan, daarna komt het script terug.
-      let stem = null, stemTimer = null, stemWeg = null;
-      function tekenStem() {
-        const box = el("stem");
-        if (!stem) { box.hidden = true; el("titel").textContent = settings.tussenTitel ?? "Generating next scene"; return; }
-        box.hidden = false;
-        const counts = stem.counts || [];
-        const hoogste = Math.max(0, ...counts);
-        const totaal = counts.reduce((a, b) => a + b, 0);
-        const over = stem.endsAt ? Math.max(0, Math.ceil((Date.parse(stem.endsAt) - Date.now()) / 1000)) : 0;
-        el("titel").textContent = stem.uitslag ? "De eerste scène" : "Kies de eerste scène";
-        box.textContent = "";
-        const kop = document.createElement("div");
-        kop.id = "stemKop";
-        kop.textContent = stem.uitslag
-          ? (stem.uitslag.geloot === "te_weinig_stemmen" ? "Geen stemmen: het lot besliste" : stem.uitslag.geloot === "gelijke_stand" ? "Gelijke stand: het lot besliste" : totaal + " stemmen")
-          : "Stem op je telefoon \u00b7 nog " + over + " s \u00b7 " + totaal + " stemmen";
-        box.appendChild(kop);
-        (stem.options || []).forEach((optie, i) => {
-          const n = Number(counts[i] || 0);
-          const rij = document.createElement("div");
-          rij.className = "stemRij" + (stem.uitslag ? (stem.uitslag.index === i ? " winnaar" : " verloren") : (n > 0 && n === hoogste ? " koploper" : ""));
-          const tekst = document.createElement("div");
-          tekst.className = "stemTekst";
-          const t = document.createElement("span");
-          t.textContent = optie;
-          const c = document.createElement("span");
-          c.className = "n";
-          c.textContent = String(n);
-          tekst.append(t, c);
-          const balk = document.createElement("div");
-          balk.className = "stemBalk";
-          const vul = document.createElement("span");
-          vul.style.width = (hoogste ? Math.round((n / hoogste) * 100) : 0) + "%";
-          balk.appendChild(vul);
-          rij.append(tekst, balk);
-          box.appendChild(rij);
-        });
-      }
-      function zetStem(poll) {
-        clearInterval(stemTimer);
-        clearTimeout(stemWeg);
-        stem = poll ? { id: poll.id, options: poll.options, counts: poll.counts || [], endsAt: poll.endsAt, uitslag: null } : null;
-        if (stem) stemTimer = setInterval(tekenStem, 1000);
-        tekenStem();
       }
 
       const bron = new EventSource("/audience/stage/stroom");
@@ -348,34 +1002,29 @@
           ronde = msg.ronde || ronde;
           berichten = [];
           for (const m of msg.berichten || []) regel(m);
-          zetStem(msg.startStemming || null);
           tekenChat();
-          tekenStats();
+          if (msg.startStemming) stemStart(msg.startStemming);
+          zetFase(true);
         } else if (msg.type === "stage_settings") toepassen(msg.stage && msg.stage.settings);
-        else if (msg.type === "start_stemming") zetStem(msg.poll);
-        else if (msg.type === "poll_update" && stem && Number(msg.pollId) === Number(stem.id)) { stem.counts = msg.counts || stem.counts; tekenStem(); }
-        else if (msg.type === "start_stemming_uitslag" && stem && Number(msg.pollId) === Number(stem.id)) {
-          clearInterval(stemTimer);
-          stem.counts = msg.uitslag.counts || stem.counts;
-          stem.uitslag = msg.uitslag;
-          tekenStem();
-          stemWeg = setTimeout(() => zetStem(null), 12000);
-        }
-        else if (msg.type === "reacties") { reacties = msg.reacties || []; tekenStats(); }
+        else if (msg.type === "reacties") reacties = msg.reacties || [];
         else if (msg.type === "fase") nieuweRonde(msg.ronde);
-        else if (msg.type === "reaction_update" && msg.ronde) { ronde.emoji = msg.ronde; tekenStats(); }
+        else if (msg.type === "reaction_update" && msg.ronde) ronde.emoji = msg.ronde;
         else if (msg.type === "comment") regel(msg);
         else if (msg.type === "comment_likes") {
           const m = berichten.find((b) => b.id === Number(msg.id));
           if (m) { m.likes = Number(msg.likes) || 0; tekenChat(); }
         }
-        else if (msg.type === "session_reset" || msg.type === "session_closed") {
+        else if (msg.type === "start_stemming") stemStart(msg.poll);
+        else if (msg.type === "poll_update" && Number(msg.pollId) === stem.pollId && stem.actief) { stem.counts = (msg.counts || []).slice(); tekenStemmen(); geluid.tel(); }
+        else if (msg.type === "start_stemming_uitslag") stemUitslag(msg);
+        else if (msg.type === "session_reset" || msg.type === "session_closed" || msg.type === "chat_reset") {
           berichten = [];
           tekenChat();
           ronde.emoji = {};
-          tekenStats();
         }
       };
+      toepassen(settings);
+      zetFase(true);
     </script>
   </body>
 </html>

@@ -13,6 +13,8 @@ const { materializePreparedNext } = require("../materialization/materialize");
 const {
   clearCurrentRunState,
   createIdleRuntimeState,
+  readSavedOrderSettings,
+  saveOrderSettings,
   saveRunState,
 } = require("./state-store");
 
@@ -81,9 +83,34 @@ function safeNumber(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+const DEFAULT_START_SCENE_COUNT = 3;
+const MAX_START_SCENE_COUNT = 20;
+
 function defaultOrderSettings() {
   return {
     randomizeEqualScores: false,
+    startSceneCount: DEFAULT_START_SCENE_COUNT,
+  };
+}
+
+function normalizeStartSceneCount(value, fallback = DEFAULT_START_SCENE_COUNT) {
+  const number = Number(value);
+  if (value === null || value === undefined || value === "" || !Number.isFinite(number)) return fallback;
+  return Math.min(MAX_START_SCENE_COUNT, Math.max(0, Math.round(number)));
+}
+
+// De run begint met een vast aantal startscènes achter elkaar. Daarna doet alles mee wat vrij is
+// in de paden, ook de startscènes die nog niet gespeeld zijn.
+function startPhaseFor(pathEvaluation, orderSettings, activeSituationId = null) {
+  const items = (pathEvaluation && pathEvaluation.items) || [];
+  const required = normalizeOrderSettings(orderSettings).startSceneCount;
+  const played = items.filter((item) => item.status === "played" && item.isPathStart).length;
+  const open = items.filter((item) => item.situationId !== activeSituationId && isPathStart(item)).length;
+  return {
+    required,
+    played,
+    open,
+    active: played < required && open > 0,
   };
 }
 
@@ -157,10 +184,12 @@ function recordCompactLiveScore(state, scoreFeed = {}) {
 
 function normalizeOrderSettings(input = {}, base = defaultOrderSettings()) {
   const source = input && typeof input === "object" ? input : {};
+  const baseCount = normalizeStartSceneCount(base && base.startSceneCount);
   return {
     randomizeEqualScores: Object.prototype.hasOwnProperty.call(source, "randomizeEqualScores")
       ? !!source.randomizeEqualScores
       : !!(base && base.randomizeEqualScores),
+    startSceneCount: normalizeStartSceneCount(source.startSceneCount, baseCount),
   };
 }
 
@@ -387,7 +416,9 @@ function buildEligiblePool({
     }));
 
   const startCandidates = available.filter((item) => item.isPathStart);
-  const orderedBase = startCandidates.length > 0 ? startCandidates : available;
+  const inStartPhase = startCandidates.length > 0
+    && startPhaseFor(pathEvaluation, orderSettings, activeSituationId).active;
+  const orderedBase = inStartPhase ? startCandidates : available;
   const hardFiltered = orderedBase.filter((item) => {
     if (lastPlayedSituation && charactersOverlap(item.situation, lastPlayedSituation)) return false;
     if (lastPlayedSituation && sameEnvironment(item.situation, lastPlayedSituation)) return false;
@@ -535,6 +566,7 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
     rankingTieBreaks: state.rankingTieBreaks,
   });
   applyEligiblePoolUpdate(state, eligiblePool, reason);
+  state.startPhase = startPhaseFor(pathEvaluation, state.orderSettings, state.activeSituation ? state.activeSituation.situationId : null);
   const prepared = choosePreparedNext({
     catalog: state.showRunSnapshot.catalog,
     eligiblePool,
@@ -583,6 +615,7 @@ async function refreshEligiblePool(state, clients, reason = "runtime_refresh") {
     rankingTieBreaks: state.rankingTieBreaks,
   });
   const summary = applyEligiblePoolUpdate(state, eligiblePool, reason);
+  state.startPhase = startPhaseFor(pathEvaluation, state.orderSettings, state.activeSituation ? state.activeSituation.situationId : null);
   state.updatedAt = new Date().toISOString();
   appendRunLog(state, {
     type: "eligible_pool_refreshed",
@@ -721,13 +754,17 @@ async function startRun({ clients, orderSettings } = {}) {
     pathEvaluation: null,
     eligiblePool: [],
     lastScoreFeed: null,
-    orderSettings: normalizeOrderSettings(orderSettings),
+    // Alleen het aantal startscènes gaat mee naar een volgende run; de rest begint op de standaard.
+    orderSettings: normalizeOrderSettings(orderSettings, {
+      startSceneCount: normalizeStartSceneCount((await readSavedOrderSettings() || {}).startSceneCount),
+    }),
     runLog: [{
       type: "show_run_started",
       at: createdAtDate.toISOString(),
       showRunId,
     }],
   });
+  if (orderSettings && typeof orderSettings === "object") await saveOrderSettings({ startSceneCount: state.orderSettings.startSceneCount });
   await initializeAlgorithmScoringContext(state, clients);
   await computeAndSetPreparedNext(state, clients, "start_run");
   await saveRunState(state);
@@ -742,10 +779,13 @@ async function startSituation(state, clients, options = {}) {
   const sequence = state.situationRuns.length + 1;
   const situationRunId = createSituationRunId(state.showRunId, sequence);
   const startedAt = new Date().toISOString();
-  // Testrun: een zelf gekozen scène blijft ook als volgende klaarstaan. Zo springt er niets
-  // terug naar het pad: Scène naar chat, de teleprompter en TouchDesigner houden deze scène.
+  // Testrun: een scène die bij het testen gekozen is blijft ook als volgende klaarstaan. Zo springt
+  // er niets terug naar het pad: Scène naar chat, de teleprompter en TouchDesigner houden deze scène.
+  // Een scène die langs een andere weg gekozen is (de winnaar van de stemming) blijft niet staan:
+  // daarna volgt de run weer de paden.
   const heldReason = state.preparedNext ? state.preparedNext.reason : null;
-  const held = isTestRun(state) && (heldReason === "operator_chosen" || heldReason === "test_run_hold")
+  const held = isTestRun(state) && state.preparedNext && state.preparedNext.testKeuze === true
+    && (heldReason === "operator_chosen" || heldReason === "test_run_hold")
     ? { preparedNext: cloneJson(state.preparedNext), resolved: cloneJson(state.resolvedPreparedNext) }
     : null;
   const activeSituation = {
@@ -1107,6 +1147,7 @@ async function updateOrderSettings(state, clients, patch = {}) {
   normalizeRuntimeDerivedState(state);
   const beforeRandomize = !!state.orderSettings.randomizeEqualScores;
   state.orderSettings = normalizeOrderSettings(patch, state.orderSettings);
+  await saveOrderSettings({ startSceneCount: state.orderSettings.startSceneCount });
   if (beforeRandomize !== !!state.orderSettings.randomizeEqualScores) {
     bumpRankingTieEpoch(state, "order_settings_updated");
   }
@@ -1115,6 +1156,7 @@ async function updateOrderSettings(state, clients, patch = {}) {
     type: "order_settings_updated",
     at: state.updatedAt,
     randomizeEqualScores: !!state.orderSettings.randomizeEqualScores,
+    startSceneCount: state.orderSettings.startSceneCount,
     preparedNextFrozen: !!state.preparedNext,
   });
   await refreshEligiblePool(state, clients, "order_settings_updated");
@@ -1206,7 +1248,7 @@ async function prepareChosenSituation(state, clients, options = {}) {
     .slice(0, 16);
   const candidate = { situationId: situation.id, legacySituationId: situation.legacyId, title: situation.title };
   state.resolvedPreparedNext = materializePreparedNext({ catalog, preparedNext: candidate, seed, environmentId: wantedEnvironmentId });
-  state.preparedNext = { ...candidate, chosenAt, reason: "operator_chosen", seed };
+  state.preparedNext = { ...candidate, chosenAt, reason: "operator_chosen", seed, ...(options.testRun === true ? { testKeuze: true } : {}) };
   state.updatedAt = chosenAt;
   appendRunLog(state, {
     type: "prepared_next_chosen",
@@ -1334,6 +1376,7 @@ module.exports = {
   placeholderAlgorithmConfigSnapshot,
   isTestRun,
   prepareChosenSituation,
+  startPhaseFor,
   previousSituation,
   receiveScores,
   refreshEligiblePool,

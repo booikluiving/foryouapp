@@ -15,6 +15,9 @@ mkdir -p "$DOEL" "$LOGS"
 swiftc -O "$HIER/mic-knop.swift" -o "$DOEL/mic-knop.nieuw" -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker "$HIER/Info.plist"
 codesign -s - -f -i nl.foryou.mic-knop "$DOEL/mic-knop.nieuw"
 mv "$DOEL/mic-knop.nieuw" "$DOEL/mic-knop"
+# Hulpje voor de dubbele druk; wordt gestart door de KM-macro "For_You mic: versturen"
+swiftc -O "$HIER/mic-versturen.swift" -o "$DOEL/mic-versturen"
+codesign -s - -f -i nl.foryou.mic-versturen "$DOEL/mic-versturen"
 cat > "$PLIST" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

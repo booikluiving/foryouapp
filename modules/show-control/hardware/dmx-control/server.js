@@ -19,6 +19,40 @@ const DEFAULT_CATALOG_URL = "http://127.0.0.1:3021";
 const ARTNET_PORT = 6454;
 const STATIC_DIR = path.join(__dirname, "public");
 
+// Slot op de lampen: zolang dit bestand een tijdstip in de toekomst bevat, gaan er alleen nullen
+// naar de lampen, wat show control of een test ook vraagt. De gevraagde stand wordt wel onthouden
+// en komt terug zodra het slot afloopt of weggehaald wordt.
+const SLOT_PATH = process.env.SHOW_CONTROL_DMX_SLOT_PATH
+  || path.join(require("node:os").homedir(), "Library", "Application Support", "ForYouApp", "lampen-uit-tot");
+let slotGelezenOp = 0;
+let slotTot = null;
+
+function lampenUitTot(now = Date.now()) {
+  if (now - slotGelezenOp > 1000) {
+    slotGelezenOp = now;
+    try {
+      const tijd = Date.parse(fs.readFileSync(SLOT_PATH, "utf8").trim());
+      slotTot = Number.isFinite(tijd) ? tijd : null;
+    } catch (_err) {
+      slotTot = null;
+    }
+  }
+  return slotTot && slotTot > now ? new Date(slotTot).toISOString() : null;
+}
+
+function zetLampenSlot(tot) {
+  slotGelezenOp = 0;
+  if (!tot) {
+    fs.rmSync(SLOT_PATH, { force: true });
+    return null;
+  }
+  const tijd = Date.parse(String(tot));
+  if (!Number.isFinite(tijd)) throw new Error("tot is geen geldig tijdstip");
+  fs.mkdirSync(path.dirname(SLOT_PATH), { recursive: true });
+  fs.writeFileSync(SLOT_PATH, `${new Date(tijd).toISOString()}\n`);
+  return lampenUitTot();
+}
+
 function clampInt(value, min, max, fallback = min) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return fallback;
@@ -71,6 +105,7 @@ function publicState(state) {
       artnetPort: ARTNET_PORT,
     },
     active: state.active,
+    lampenUitTot: lampenUitTot(),
     lastSentAt: state.lastSentAt,
     lastLook: state.lastLook,
     nonZeroChannels: channelsToObject(state.channels, { nonZeroOnly: true }),
@@ -119,7 +154,7 @@ function buildArtNetDmxPacket(state) {
   packet.writeUInt8(portAddress & 0xff, offset); offset += 1;
   packet.writeUInt8((portAddress >> 8) & 0x7f, offset); offset += 1;
   packet.writeUInt16BE(512, offset); offset += 2;
-  state.channels.copy(packet, offset);
+  if (!lampenUitTot()) state.channels.copy(packet, offset);
 
   state.sequence = state.sequence >= 255 ? 1 : state.sequence + 1;
   return packet;
@@ -406,6 +441,17 @@ function createDmxApp(options = {}) {
         }, "blackout");
         addActivity(state, { type: "blackout", ...result });
         sendJson(res, 200, { ok: true, result, state: publicState(state) });
+        return;
+      }
+
+      // { "tot": "2026-11-13T10:00:00+01:00" } zet het slot, { "tot": null } haalt het weg.
+      if (req.method === "POST" && url.pathname === "/api/lampen-uit") {
+        const body = await readJson(req);
+        const tot = zetLampenSlot(body.tot);
+        if (!state.active) startContinuous(state, "lampen-uit");
+        else await sendFrame(state, "lampen-uit");
+        addActivity(state, { type: "lampen-uit", tot });
+        sendJson(res, 200, { ok: true, lampenUitTot: tot, state: publicState(state) });
         return;
       }
 

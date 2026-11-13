@@ -672,6 +672,17 @@ textarea:focus {
   opacity: 0.82;
 }
 
+/* Als klein venster op het zaalscherm: dezelfde terminal, met minder ruimte eromheen. */
+.venster .terminal-stage { padding: 14px 24px 46px; }
+.venster .stage-hint { display: none; }
+.venster .stage-log { -webkit-mask-image: none; mask-image: none; }
+.venster #logInner { gap: 22px; }
+.venster .exchange { gap: 10px; }
+.venster .stage-msg, .venster #typing { max-width: 100%; }
+.venster .stage-msg { line-height: 1.34; }
+.venster .prompt-row { min-height: 0; margin-top: 12px; }
+.venster #stageStatus { left: 24px; right: 24px; bottom: 12px; }
+
 @keyframes blink {
   0%,
   49% { opacity: 1; }
