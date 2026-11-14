@@ -184,6 +184,7 @@ function attachAudienceRealtime(server, service, options = {}) {
       chatGewistTot: service.chatGewistTot(session),
       reacties: service.getReacties(),
       naSceneVraag: service.getNaSceneVraag(),
+      beoordeling: service.beoordeling.publiek(),
     });
   }
 
@@ -258,6 +259,14 @@ function attachAudienceRealtime(server, service, options = {}) {
         const result = service.acceptLike(meta, msg.id, msg.liked);
         if (result && result.error) sendJson(client, { type: "error", ...result.error, id: msg.id });
         else if (result && result.ok && !result.throttled) sendJson(client, { type: "like_ok", id: result.id, liked: result.liked, likes: result.likes });
+        return;
+      }
+
+      if (msg.type === "beoordeling_antwoord") {
+        meta.clientTag = msg.clientTag || meta.clientTag;
+        const result = service.acceptBeoordeling(meta, msg);
+        if (result && result.ok) sendJson(client, { type: "beoordeling_ok", id: result.id, vraag: result.vraag, keuze: result.keuze });
+        else if (result && result.error) sendJson(client, { type: "error", ...result.error });
         return;
       }
 
