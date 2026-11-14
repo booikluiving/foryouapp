@@ -2964,7 +2964,7 @@
               return;
             }
             if (msg.type === "start_stemming_uitslag") {
-              if (msg.uitslag && msg.uitslag.titel) appendChat("De eerste scène: " + msg.uitslag.titel);
+              if (msg.uitslag && msg.uitslag.titel) appendChat((msg.startscene ? "Startscène " + msg.startscene.nummer + "/" + msg.startscene.van : "De eerste scène") + ": " + msg.uitslag.titel);
               noteServerSeen();
               return;
             }
