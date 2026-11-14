@@ -363,6 +363,10 @@
     const REGIE_VRIJGAVE = REGIE_OPTIES.get("vrijgave") === "1";
     // Met tempo=2 gaat de hele reeks na een scène twee keer zo snel: uitzoomen, vrijkomen, kiezen en inzoomen.
     const REGIE_TEMPO = Math.min(5, Math.max(0.5, Number(REGIE_OPTIES.get("tempo")) || 1));
+    // Met vlot=1: na een scène meteen uitgezoomd (geen camerabeweging), nieuwe scènes komen per laag
+    // tegelijk vrij, geen pauzes, een kortere kiezer en inzoomen zodra de keuze er is.
+    const REGIE_VLOT = REGIE_OPTIES.get("vlot") === "1";
+    const REGIE_POP_MS = REGIE_VLOT ? 350 : 700;
     // TIJDELIJK meten: met meet=1 meldt de regie elk onderdeel aan de pagina eromheen.
     const regieMeet = (stap) => { if (REGIE_OPTIES.get("meet") === "1" && window.parent !== window) { try { window.parent.postMessage({ bron: "for_you-universum", meet: stap, t: Date.now() }, "*"); } catch (_err) {} } };
     // Met padZoom=1 zoomt de camera niet de ster in, maar tot het pad naar de gekozen scène het beeld vult.
@@ -3683,18 +3687,20 @@
           ctx.bezierCurveTo(bocht.c1.x, bocht.c1.y, bocht.c2.x, bocht.c2.y, b.x, b.y);
           ctx.stroke();
           // Een lijn die zich tekent naar een scène die vrijkomt.
-          if (regie.lijn && regie.lijn.edgeId === edge.edgeId && regie.lijn.p > 0) {
-            const van = regie.lijn.om ? b : a;
-            const naar = regie.lijn.om ? a : b;
-            const c1 = regie.lijn.om ? bocht.c2 : bocht.c1;
-            const c2 = regie.lijn.om ? bocht.c1 : bocht.c2;
+          const groei = regie.lijn && regie.lijn.edgeId === edge.edgeId ? regie.lijn
+            : regie.lijnen ? regie.lijnen.find((lijn) => lijn.edgeId === edge.edgeId) : null;
+          if (groei && groei.p > 0) {
+            const van = groei.om ? b : a;
+            const naar = groei.om ? a : b;
+            const c1 = groei.om ? bocht.c2 : bocht.c1;
+            const c2 = groei.om ? bocht.c1 : bocht.c2;
             ctx.strokeStyle = "#ffffff";
             ctx.globalAlpha = fade;
             ctx.beginPath();
             ctx.moveTo(van.x, van.y);
             const stappen = 24;
             for (let i = 1; i <= stappen; i += 1) {
-              const t = (i / stappen) * regie.lijn.p;
+              const t = (i / stappen) * groei.p;
               const u = 1 - t;
               ctx.lineTo(
                 u * u * u * van.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * naar.x,
@@ -3731,7 +3737,7 @@
         const los = Number(node.degree || 0) === 0;
         let straal = networkNodeRadius(node) * (stem ? (stem.winnaar ? 2.1 : stem.koploper ? 1.7 : 1.15) : 1);
         const pop = regie.pops.get(sceneId);
-        const popDeel = pop ? Math.min(1, (nu - pop) / 700) : 1;
+        const popDeel = pop ? Math.min(1, (nu - pop) / REGIE_POP_MS) : 1;
         if (popDeel < 1) straal *= 1 + 1.6 * Math.pow(1 - popDeel, 3);
         straal *= dun;
 
@@ -3880,7 +3886,7 @@
       }
       let pops = false;
       regie.pops.forEach((sinds, sceneId) => {
-        if (klok - sinds > 900) regie.pops.delete(sceneId);
+        if (klok - sinds > REGIE_POP_MS + 200) regie.pops.delete(sceneId);
         else pops = true;
       });
       // Staat de kaart stil en verandert er niets, dan wordt er ook niets getekend.
@@ -4165,6 +4171,7 @@
       regie.gekozen = 0;
       regie.ring = 0;
       regie.lijn = null;
+      regie.lijnen = null;
       regie.herkomst = 0;
       regie.pad = null;
       regie.scherp = false;
@@ -4215,6 +4222,25 @@
       doel.played.forEach((id) => rel.add(id));
       regie.gekozen = 0;
       regieToon(model, Object.assign({}, doel, { cur: 0, next: 0, rel }));
+      if (REGIE_VLOT) {
+        // Meteen uitgezoomd: het scherm laat het universum pas zien als het stemmen voorbij is.
+        regie.scherp = false;
+        regie.pad = null;
+        regie.focus = 0;
+        regie.fade = 1;
+        regie.cam = { mix: 0, lz: 0, rot: 0 };
+        regieBinnen(false);
+        regieStil(false);
+        regieCameraToepassen();
+        podium.vuil = true;
+        regieMeld();
+        if (REGIE_NA_SCENE && doel.played.has(vorige)) {
+          if (REGIE_VRIJGAVE) await regieWachtOpScherm(REGIE_NA_SCENE);
+          else await regieWacht(REGIE_NA_SCENE);
+        }
+        regieMeet("uitgezoomd en vrijgegeven");
+        return;
+      }
       if (REGIE_NA_SCENE && doel.played.has(vorige)) {
         if (REGIE_VRIJGAVE) await regieWachtOpScherm(REGIE_NA_SCENE);
         else await regieWacht(REGIE_NA_SCENE);
@@ -4252,6 +4278,39 @@
       const nieuw = [...doel.rel].filter((id) => !stand.rel.has(id)).sort((a, b) => afstand(a) - afstand(b));
       regieMeet(`vrijkomen begint (${nieuw.length} nieuw)`);
       regieToon(model, stand);
+      if (REGIE_VLOT) {
+        // Per laag: eerst alles wat vastzit aan de scène van net (of aan wat al zichtbaar is), dan
+        // wat daaraan vastzit, enzovoort. De lijnen van één laag groeien tegelijk.
+        let rest = nieuw.slice();
+        let bronnen = regie.herkomst ? [regie.herkomst] : [];
+        const randVan = (id, kandidaten) => {
+          for (const bron of kandidaten) { const rand = regieRand(bron, id); if (rand) return { bron, rand }; }
+          return null;
+        };
+        while (rest.length) {
+          let laag = rest.filter((id) => randVan(id, bronnen));
+          if (!laag.length) laag = rest.filter((id) => randVan(id, [...stand.rel]));
+          if (!laag.length) laag = rest.slice();
+          const lijnen = laag.map((id) => {
+            const gevonden = randVan(id, bronnen) || randVan(id, [...stand.rel]);
+            return gevonden ? { edgeId: gevonden.rand.edgeId, om: gevonden.rand.fromSceneId !== gevonden.bron, p: 0 } : null;
+          }).filter(Boolean);
+          if (lijnen.length) {
+            regie.lijnen = lijnen;
+            await Promise.all(lijnen.map((lijn) => regieTween(lijn, "p", 1, 1300 / REGIE_TEMPO, regieUit)));
+          }
+          if (gen !== regie.gen) return;
+          const nu = Date.now();
+          for (const id of laag) { stand.rel.add(id); regie.pops.set(id, nu); }
+          regieMeet(`laag vrij (${laag.length})`);
+          regieToon(model, stand);
+          regie.lijnen = null;
+          rest = rest.filter((id) => !laag.includes(id));
+          bronnen = laag;
+        }
+        regieMeet("vrijkomen klaar");
+        return;
+      }
       await regieWacht(500 / REGIE_TEMPO);
       const tempo = (nieuw.length > 6 ? 6 / nieuw.length : 1) / REGIE_TEMPO;
       for (const id of nieuw) {
@@ -4276,14 +4335,16 @@
     async function regieRoulette(kandidaten, wil) {
       const gen = regie.gen;
       let vorige = 0;
-      for (let i = 0; i < 15; i += 1) {
-        const keuze = i === 14 ? [wil] : kandidaten.filter((id) => id !== vorige && (i < 13 || id !== wil));
+      const sprongen = REGIE_VLOT ? 8 : 15;
+      for (let i = 0; i < sprongen; i += 1) {
+        const keuze = i === sprongen - 1 ? [wil] : kandidaten.filter((id) => id !== vorige && (i < sprongen - 2 || id !== wil));
         const id = keuze.length ? keuze[Math.floor(Math.random() * keuze.length)] : wil;
         regie.ring = id;
         podium.vuil = true;
         regieTik("stap", id);
         vorige = id;
-        await regieWacht((70 + i * i * 2.4) / REGIE_TEMPO);
+        const j = (i * 14) / (sprongen - 1);
+        await regieWacht((70 + j * j * 2.4) / REGIE_TEMPO);
         if (gen !== regie.gen) return;
       }
     }
@@ -4300,7 +4361,7 @@
       regie.gekozen = wil;
       if (!doel.cur) regieTik("slot", wil);
       regieToon(model, doel, true);
-      await regieWacht((doel.cur ? 400 : doel.stemWinnaar === wil ? 3500 : 2500) / REGIE_TEMPO);
+      if (!REGIE_VLOT) await regieWacht((doel.cur ? 400 : doel.stemWinnaar === wil ? 3500 : 2500) / REGIE_TEMPO);
       if (gen !== regie.gen) return;
       regieMeet("pauze na keuze klaar");
       const laatste = regieStand(regie.doel);
