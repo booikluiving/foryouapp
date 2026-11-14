@@ -156,8 +156,19 @@ function createAudienceApp(options = {}) {
   // Rapportvenster na een scène: reacties, de som, de stand per label en de scène die hierna komt.
   // Het zaalscherm meldt dat het venster met de tekst in beeld komt: de scène die klaarstaat gaat
   // dan vanzelf naar de chat van de script-agent (show control doet dat één keer per scène).
-  app.post("/audience/stage/tekst-in-beeld", asyncRoute(async (_req, res) => {
+  app.post("/audience/stage/tekst-in-beeld", asyncRoute(async (req, res) => {
     let uitkomst = null;
+    // Tijdens het stemmen na een scène: alleen schrijven als de volgende scène al vastligt. In de
+    // startfase kiest het publiek nog, dan wacht de tekst tot de stemming op de startscène voorbij is.
+    if (req.query.tijdensStemmen === "1") {
+      const result = await fetchRuntimeView().catch(() => null);
+      const state = result && result.ok ? result.state : null;
+      if (!state || state.status !== "running" || state.activeSituation) { res.json({ ok: true, gestuurd: false, reden: "geen_run" }); return; }
+      if (state.startPhase && state.startPhase.active && !(state.preparedNext && state.preparedNext.reason === "operator_chosen")) {
+        res.json({ ok: true, gestuurd: false, reden: "startfase" });
+        return;
+      }
+    }
     try {
       uitkomst = await sceneVanzelfNaarChat();
     } catch (err) {

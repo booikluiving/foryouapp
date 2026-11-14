@@ -1635,14 +1635,31 @@
         beoordeelTimer = null;
         beoordeelBoxEl.hidden = true;
       }
+      // Eerst telt het zaalscherm af (3, 2, 1); dan pas komen de vragen, met de klok.
       function tekenBeoordeelKlok() {
         if (!beoordeling) return;
-        const over = beoordeling.endsAtMs - Date.now();
+        const nu = Date.now();
+        const over = beoordeling.endsAtMs - nu;
         if (over <= 0) { sluitBeoordeling(); return; }
-        document.getElementById("beoordeelKlok").textContent = formatCountdownMs(over);
+        const totOpen = beoordeling.opentMs - nu;
+        if (totOpen > 0) {
+          if (!beoordeling.wacht) { beoordeling.wacht = true; tekenBeoordeling(); }
+          const tel = Math.ceil((totOpen - 800) / 1000);
+          document.getElementById("beoordeelKlok").textContent = tel > 0 ? String(tel) : "";
+          return;
+        }
+        if (beoordeling.wacht) { beoordeling.wacht = false; tekenBeoordeling(); }
+        document.getElementById("beoordeelKlok").textContent = String(Math.ceil(over / 1000));
       }
       function tekenBeoordeling() {
         if (!beoordeling) return;
+        if (beoordeling.wacht) {
+          document.getElementById("beoordeelVraag").textContent = "Stem nu op je telefoon";
+          document.getElementById("beoordeelTitel").textContent = beoordeling.titel;
+          document.getElementById("beoordeelStap").textContent = "";
+          document.getElementById("beoordeelKeuzes").textContent = "";
+          return;
+        }
         const vraag = beoordeling.vragen[beoordeling.stap];
         if (!vraag) { sluitBeoordeling(); return; }
         document.getElementById("beoordeelVraag").textContent = vraag.vraag;
@@ -1678,15 +1695,19 @@
       }
       function toonBeoordeling(binnen) {
         if (!binnen || !binnen.id || !Array.isArray(binnen.vragen) || !binnen.vragen.length) { sluitBeoordeling(); return; }
-        const endsAtMs = Date.parse(String(binnen.endsAt || ""));
-        if (!Number.isFinite(endsAtMs) || endsAtMs <= Date.now()) { sluitBeoordeling(); return; }
+        // De tijden komen als "nog zoveel ms", zodat de klok van de telefoon niet hoeft te kloppen.
+        const nu = Date.now();
+        const endsAtMs = Number.isFinite(binnen.overMs) ? nu + binnen.overMs : Date.parse(String(binnen.endsAt || ""));
+        const opentMs = Number.isFinite(binnen.aanloopMs) ? nu + binnen.aanloopMs : nu;
+        if (!Number.isFinite(endsAtMs) || endsAtMs <= nu) { sluitBeoordeling(); return; }
         const bewaard = beoordeelBewaard(String(binnen.id));
         if (bewaard.stap >= binnen.vragen.length) { sluitBeoordeling(); return; }
-        beoordeling = { id: String(binnen.id), titel: String(binnen.titel || ""), endsAtMs, vragen: binnen.vragen, stap: bewaard.stap };
+        beoordeling = { id: String(binnen.id), titel: String(binnen.titel || ""), endsAtMs, opentMs, wacht: opentMs > nu, vragen: binnen.vragen, stap: bewaard.stap };
         beoordeelBoxEl.hidden = false;
         tekenBeoordeling();
+        tekenBeoordeelKlok();
         if (beoordeelTimer) clearInterval(beoordeelTimer);
-        beoordeelTimer = setInterval(tekenBeoordeelKlok, 250);
+        beoordeelTimer = setInterval(tekenBeoordeelKlok, 200);
       }
       document.getElementById("beoordeelKeuzes").addEventListener("click", (event) => {
         const button = event.target && event.target.closest ? event.target.closest("[data-beoordeel-keuze]") : null;

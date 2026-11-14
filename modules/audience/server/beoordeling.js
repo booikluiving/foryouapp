@@ -12,6 +12,8 @@ const MAX_UITSLAGEN = 60;
 
 const STANDAARD = {
   aan: true,
+  // Eerst telt het zaalscherm af (3, 2, 1) en schuift de klok op zijn plek; dan gaan de vragen open.
+  aanloop: 4,
   // Zo lang staat de klok (seconden). De klok is ook de omkleedtijd van de spelers.
   duur: 30,
   scene: { aan: true, vraag: "Wat vond je van de scène?", keuzes: [{ id: "leuk", emoji: "❤️" }, { id: "saai", emoji: "🥱" }] },
@@ -28,12 +30,14 @@ function normalizeInstellingen(raw) {
   const bron = raw && typeof raw === "object" ? raw : {};
   const deel = (naam) => (bron[naam] && typeof bron[naam] === "object" ? bron[naam] : {});
   const duur = Number(bron.duur);
+  const aanloop = Number(bron.aanloop);
   const keuzes = Array.isArray(deel("scene").keuzes)
     ? deel("scene").keuzes.map((keuze) => ({ id: tekst(keuze && keuze.id, "", 20), emoji: tekst(keuze && keuze.emoji, "", 8) })).filter((keuze) => keuze.id && keuze.emoji).slice(0, 4)
     : [];
   return {
     aan: bron.aan === undefined ? STANDAARD.aan : Boolean(bron.aan),
     duur: Number.isFinite(duur) ? Math.min(300, Math.max(10, Math.round(duur))) : STANDAARD.duur,
+    aanloop: Number.isFinite(aanloop) ? Math.min(10, Math.max(0, aanloop)) : STANDAARD.aanloop,
     scene: {
       aan: deel("scene").aan === undefined ? true : Boolean(deel("scene").aan),
       vraag: tekst(deel("scene").vraag, STANDAARD.scene.vraag),
@@ -142,7 +146,19 @@ function createBeoordeling(service) {
 
   function publiek() {
     if (!lopend) return null;
-    return { id: lopend.id, titel: lopend.titel, endsAt: lopend.endsAt, vragen: lopend.vragen, gestemd: lopend.antwoorden.size, mensen: service.onlineMensen() };
+    const nu = Date.now();
+    return {
+      id: lopend.id,
+      titel: lopend.titel,
+      opentAt: lopend.opentAt,
+      endsAt: lopend.endsAt,
+      // Hoe lang nog tot de vragen opengaan en tot ze sluiten: de schermen rekenen vanaf hun eigen klok.
+      aanloopMs: Math.max(0, Date.parse(lopend.opentAt) - nu),
+      overMs: Math.max(0, Date.parse(lopend.endsAt) - nu),
+      vragen: lopend.vragen,
+      gestemd: lopend.antwoorden.size,
+      mensen: service.onlineMensen(),
+    };
   }
 
   function stand() {
@@ -188,17 +204,19 @@ function createBeoordeling(service) {
     const vragen = vragenVoor(scene);
     if (!vragen.length) return null;
     const nu = Date.now();
+    const opent = nu + instellingen.aanloop * 1000;
     lopend = {
       id: scene.situationRunId,
       showRunId: scene.showRunId,
       situationId: scene.situationId,
       titel: scene.titel,
       startedAt: new Date(nu).toISOString(),
-      endsAt: new Date(nu + instellingen.duur * 1000).toISOString(),
+      opentAt: new Date(opent).toISOString(),
+      endsAt: new Date(opent + instellingen.duur * 1000).toISOString(),
       vragen,
       antwoorden: new Map(),
     };
-    timer = setTimeout(() => sluit("klok"), instellingen.duur * 1000);
+    timer = setTimeout(() => sluit("klok"), (instellingen.aanloop + instellingen.duur) * 1000);
     if (typeof timer.unref === "function") timer.unref();
     service.emit("broadcast", { type: "beoordeling", beoordeling: publiek() });
     service.emit("admin-state-changed");
