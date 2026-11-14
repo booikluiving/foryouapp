@@ -303,14 +303,33 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       if (rt.activeSituation) return cue("/v0/show-control/cues/stop-situation", { name: "Proef stop situation", showRunId: rt.showRunId });
       return cue("/v0/show-control/cues/start-situation", { name: "Proef start situation", showRunId: rt.showRunId, runtimeState: rt });
     },
+    // Aan: de drie startscènes. Uit: meteen naar een stemronde, zoals na een scène (er wordt een
+    // korte scène gestart en weer gestopt; zonder run start eerst de run).
     async startfase() {
-      const rt = await runNu();
-      if (!rt || !rt.showRunId || rt.status === "idle") {
-        startfaseWens = !(startfaseWens !== null ? startfaseWens : startfaseBekend !== null ? startfaseBekend : true);
-        return { ok: true, status: 200, body: { startfase: startfaseWens, bijRun: true } };
+      let rt = await runNu();
+      const geenRun = !rt || !rt.showRunId || rt.status === "idle";
+      const aan = geenRun
+        ? (startfaseWens !== null ? startfaseWens : startfaseBekend !== null ? startfaseBekend : true)
+        : Number(rt.orderSettings && rt.orderSettings.startSceneCount) > 0;
+      if (!aan) {
+        if (geenRun) { startfaseWens = true; return { ok: true, status: 200, body: { startfase: true, bijRun: true } }; }
+        return zetStartfase(rt, true);
       }
-      const nu = Number(rt.orderSettings && rt.orderSettings.startSceneCount) > 0;
-      return zetStartfase(rt, !nu);
+      if (geenRun) {
+        startfaseWens = false;
+        await KNOPPEN.run();
+      } else await zetStartfase(rt, false);
+      startfaseBekend = false;
+      rt = await runNu();
+      if (!rt || !rt.showRunId) return { ok: false, status: 409, body: { error: "geen_run" } };
+      if (!rt.activeSituation) {
+        const gestart = await cue("/v0/show-control/cues/start-situation", { name: "Proef korte scène voor stemronde", showRunId: rt.showRunId, runtimeState: rt });
+        if (!gestart.ok) return gestart;
+        // Lang genoeg dat de publieksdienst de scène ziet (die kijkt elke seconde).
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        rt = await runNu();
+      }
+      return cue("/v0/show-control/cues/stop-situation", { name: "Proef stop: stemronde", showRunId: rt.showRunId });
     },
     bots: () => vraag("audience", "/audience/admin/simulation/schakel", { method: "POST", body: { wat: "bots" } }),
     personages: () => vraag("audience", "/audience/admin/simulation/schakel", { method: "POST", body: { wat: "personages" } }),
