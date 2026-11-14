@@ -23,6 +23,7 @@ const { createCatalogApp } = require("../../modules/catalog/server/app");
 const { createPathsApp } = require("../../modules/paths/server/app");
 const { createAccessVerifier } = require("./access-auth");
 const { createEditorApp } = require("./app");
+const { createProefshow } = require("../proef/proefshow");
 const { createVersionStore } = require("./version-store");
 
 function fail(message) {
@@ -90,6 +91,15 @@ async function main() {
   await listen(createCatalogApp({ port: CATALOG_PORT }), CATALOG_PORT, "127.0.0.1");
   await listen(createPathsApp({ port: PATHS_PORT }), PATHS_PORT, "127.0.0.1");
   const store = createVersionStore(DATA_DIR);
+  // The proefshow (EDITOR_PROEFSHOW=1): the show's own services once more, with their own data and
+  // no devices, to see the hall screen and the audience's phone without the hall. See editor/proef.
+  const proefshow = process.env.EDITOR_PROEFSHOW === "1" ? createProefshow({
+    dataDir: path.join(DATA_DIR, "proefshow"),
+    catalogUrl: `http://127.0.0.1:${CATALOG_PORT}`,
+    pathsUrl: `http://127.0.0.1:${PATHS_PORT}`,
+    basisPoort: Number(process.env.EDITOR_PROEF_POORT || 4120),
+    adres: String(process.env.EDITOR_ADRES || "").replace(/\/+$/, ""),
+  }) : null;
   const editor = createEditorApp({
     catalogUrl: `http://127.0.0.1:${CATALOG_PORT}`,
     pathsUrl: `http://127.0.0.1:${PATHS_PORT}`,
@@ -104,10 +114,21 @@ async function main() {
       refused: String(process.env.EDITOR_GEWEIGERD || "").split(",").map((value) => value.trim()).filter(Boolean),
       // Where the image catalog's previews are kept; may be emptied at any time (default: the tmp folder).
       voorbeeldDir: process.env.EDITOR_VOORBEELD_DIR || "",
+      proefshow,
     },
   });
   const head = await editor.reconcileOnStart();
-  await listen(editor.app, PORT, HOST);
+  const server = await listen(editor.app, PORT, HOST);
+  if (proefshow) {
+    // WebSockets of the proefshow: only for a logged-in team member, like every page.
+    server.on("upgrade", (req, socket, head) => {
+      editor.teamlid(req)
+        .then((email) => { if (!email || !proefshow.upgrade(req, socket, head)) socket.destroy(); })
+        .catch(() => socket.destroy());
+    });
+    await proefshow.start({ instellingenVan: path.join(DATA_DIR, "schrijver", "operator-settings.json") });
+    for (const sein of ["SIGINT", "SIGTERM"]) process.on(sein, () => { proefshow.stop(); process.exit(0); });
+  }
   process.stdout.write(`editor op ${HOST}:${PORT}, data ${DATA_DIR}, versie ${head.nr}\n`);
 }
 

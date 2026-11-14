@@ -7,8 +7,10 @@ DOEL="${1:-$APP/editor/nas/pakket}"
 rm -rf "$DOEL"
 mkdir -p "$DOEL"
 cd "$APP"
-git ls-files -z -- package.json package-lock.json shared modules/catalog modules/paths modules/script-agent editor \
-  ':!:editor/nas/pakket' ':!:editor/tests' ':!:modules/catalog/tests' ':!:modules/paths/tests' ':!:modules/script-agent/tests' \
+# De proefshow (editor/proef) draait ook runtime, publiek, algoritme en show control.
+git ls-files -z -- package.json package-lock.json shared modules/catalog modules/paths modules/script-agent \
+  modules/runtime modules/audience modules/algorithm modules/show-control editor \
+  ':!:editor/nas/pakket' ':!:editor/tests' ':!:modules/*/tests' ':!:modules/show-control/hardware' \
   | xargs -0 -I{} sh -c 'mkdir -p "$1/$(dirname "$2")" && cp "$2" "$1/$2"' _ "$DOEL" {}
 cp editor/nas/Dockerfile "$DOEL/Dockerfile"
 printf 'node_modules\n' > "$DOEL/.dockerignore"

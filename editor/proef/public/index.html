@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>For_You proefshow</title>
+    <style>
+      :root { --rand: #2a2d35; --grijs: #8b909c; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; background: #0b0c10; color: #fff; font: 14px/1.3 "Helvetica Neue", Helvetica, Arial, sans-serif; }
+      body { display: flex; flex-direction: column; }
+      header { flex: none; display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--rand); }
+      header b { font-size: 15px; }
+      header a { color: var(--grijs); text-decoration: none; }
+      #stand { color: var(--grijs); margin-left: auto; }
+      main { flex: 1; min-height: 0; display: flex; gap: 24px; padding: 16px; justify-content: center; }
+      .vak { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+      .vak > span { flex: none; color: var(--grijs); }
+      /* Het zaalscherm staat rechtop (1080 × 1920). Tijdens de scène is de pagina doorzichtig: in de zaal
+         staat het camerabeeld erachter, hier een grijs vlak. */
+      #zaal { flex: none; height: calc(100vh - 120px); aspect-ratio: 9 / 16; background: #3a3d45 center / 60% no-repeat; position: relative; border: 1px solid var(--rand); }
+      #zaal::before { content: "camerabeeld"; position: absolute; inset: 0; display: grid; place-items: center; color: #6b7080; }
+      #telefoon { flex: none; height: min(844px, calc(100vh - 120px)); aspect-ratio: 390 / 844; border: 1px solid var(--rand); border-radius: 28px; overflow: hidden; background: #000; }
+      iframe { position: relative; width: 100%; height: 100%; border: 0; display: block; background: transparent; }
+      #knoppen { flex: none; width: 150px; display: flex; flex-direction: column; gap: 8px; }
+      button { font: inherit; font-weight: 700; letter-spacing: .02em; padding: 14px 10px; background: #15171d; color: #fff; border: 1px solid var(--rand); border-radius: 6px; cursor: pointer; }
+      button:hover { border-color: #fff; }
+      button.aan { background: #fff; color: #000; }
+      button.bezig { opacity: .5; }
+      button.fout { border-color: #e5484d; }
+      button.klein { font-weight: 400; padding: 8px 10px; color: var(--grijs); }
+      hr { width: 100%; border: 0; border-top: 1px solid var(--rand); margin: 4px 0; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>For_You proefshow</b>
+      <a href="/catalog/">Voorstelling</a>
+      <span id="stand"></span>
+    </header>
+    <main>
+      <div class="vak">
+        <span>Zaalscherm</span>
+        <div id="zaal"><iframe id="zaalFrame" title="Zaalscherm" allow="autoplay"></iframe></div>
+      </div>
+      <div class="vak">
+        <span>Telefoon</span>
+        <div id="telefoon"><iframe id="telefoonFrame" title="Telefoon"></iframe></div>
+      </div>
+      <div id="knoppen">
+        <button data-knop="run">RUN</button>
+        <button data-knop="stem">STEM</button>
+        <button data-knop="chat">CHAT</button>
+        <button data-knop="ready">READY</button>
+        <button data-knop="scene">START</button>
+        <hr>
+        <button data-knop="bots">BOTS</button>
+        <button data-knop="personages">PERSONAGES</button>
+        <hr>
+        <button class="klein" id="herlaadZaal">Zaalscherm herladen</button>
+        <button class="klein" id="herlaadTelefoon">Telefoon herladen</button>
+        <button class="klein" id="losZaal">Zaalscherm los openen</button>
+      </div>
+    </main>
+    <script>
+      const el = (id) => document.getElementById(id);
+      const ZAAL = "/audience/stage/tussen?eenAdres=1&stand=/proefshow/universe-state";
+      const knop = (naam) => document.querySelector(`[data-knop="${naam}"]`);
+      let stand = null;
+      let sessieWas = false;
+
+      function laadZaal() { el("zaalFrame").src = `${ZAAL}&_=${Date.now()}`; }
+      function laadTelefoon() { el("telefoonFrame").src = `/proefshow/telefoon?_=${Date.now()}`; }
+
+      // In de zaal geeft TouchDesigner de fase door aan de pagina; hier doet de werkplaats dat.
+      function geefFase() {
+        if (!stand) return;
+        try {
+          const venster = el("zaalFrame").contentWindow;
+          if (venster && venster.forYouFase) venster.forYouFase(stand.fase);
+        } catch (_err) {}
+      }
+
+      async function ververs() {
+        try {
+          stand = await fetch("/proefshow/api/stand", { cache: "no-store" }).then((antwoord) => antwoord.json());
+        } catch (_err) {
+          el("stand").textContent = "geen verbinding";
+          return;
+        }
+        knop("run").textContent = stand.run ? "RESET RUN" : "RUN";
+        knop("scene").textContent = stand.scene ? "STOP" : "START";
+        knop("stem").classList.toggle("aan", stand.stemmen);
+        knop("scene").classList.toggle("aan", stand.scene);
+        knop("chat").classList.toggle("aan", stand.schrijft);
+        knop("bots").classList.toggle("aan", stand.bots > 0);
+        const uit = Object.entries(stand.onderdelen).filter(([, draait]) => !draait).map(([naam]) => naam);
+        el("stand").textContent = uit.length ? `start: ${uit.join(", ")}` : ["inloop", "loading", stand.titel || "scène"][stand.fase];
+        if (stand.sessie && !sessieWas) laadTelefoon();
+        sessieWas = stand.sessie;
+        geefFase();
+      }
+
+      document.querySelectorAll("[data-knop]").forEach((button) => button.addEventListener("click", async () => {
+        button.classList.remove("fout");
+        button.classList.add("bezig");
+        try {
+          const antwoord = await fetch("/proefshow/api/knop", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ knop: button.dataset.knop }) }).then((res) => res.json());
+          if (!antwoord.ok) {
+            button.classList.add("fout");
+            button.title = JSON.stringify(antwoord.fout || antwoord).slice(0, 300);
+          } else button.title = "";
+        } catch (_err) {
+          button.classList.add("fout");
+        }
+        button.classList.remove("bezig");
+        ververs();
+      }));
+      el("herlaadZaal").addEventListener("click", laadZaal);
+      el("herlaadTelefoon").addEventListener("click", laadTelefoon);
+      el("losZaal").addEventListener("click", () => window.open(ZAAL, "_blank"));
+
+      laadZaal();
+      laadTelefoon();
+      ververs();
+      setInterval(ververs, 1000);
+    </script>
+  </body>
+</html>

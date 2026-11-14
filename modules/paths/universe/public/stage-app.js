@@ -103,8 +103,12 @@
     renderModel();
   }
 
+  // De stand van het universum. De proefshow geeft met ?stand= zijn eigen adres mee (alleen een pad op dit adres).
+  const standParam = new URLSearchParams(window.location.search).get("stand") || "";
+  const STAND_ADRES = /^\/[\w\-/]+$/.test(standParam) ? standParam : "/v0/paths/universe-state";
+
   async function refreshRuntime() {
-    const universePayload = await fetchJson("/v0/paths/universe-state").catch(() => null);
+    const universePayload = await fetchJson(STAND_ADRES).catch(() => null);
     if (!universePayload) return;
     const nextSignature = runtimeSignature(universePayload.runtime);
     if (nextSignature === state.runtimeSignature) return;
@@ -170,7 +174,7 @@
   async function loadStage() {
     buildRenderer();
     wireStageControls();
-    const universePayload = await fetchJson("/v0/paths/universe-state");
+    const universePayload = await fetchJson(STAND_ADRES);
     state.graph = universePayload.graph;
     state.runtime = universePayload.runtime || null;
     state.runtimeSignature = runtimeSignature(state.runtime);

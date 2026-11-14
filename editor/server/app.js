@@ -521,6 +521,16 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
     next();
   }));
 
+  // The e-mail address of a team member who may open the Voorstelling, or "" (for WebSockets, which skip the route above).
+  async function teamlid(req) {
+    const identity = await authenticate(req, { kind: "team" });
+    if (!identity.ok || !identity.email || refused.has(identity.email.toLowerCase())) return "";
+    return identity.email;
+  }
+
+  // The proefshow: its own page and the pages of its services (hall screen, phone, script agent).
+  if (config.proefshow) app.use(config.proefshow.middleware);
+
   // The start of the Voorstelling is its first tab.
   app.get("/", (_req, res) => res.redirect("/catalog/"));
   app.use("/_editor", express.static(path.join(PUBLIC_DIR, "_editor")));
@@ -879,7 +889,7 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
     });
   });
 
-  return { app, reconcileOnStart, captureVersion, withLock };
+  return { app, reconcileOnStart, captureVersion, withLock, teamlid };
 }
 
 module.exports = {
