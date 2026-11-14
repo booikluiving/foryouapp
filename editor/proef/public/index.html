@@ -85,7 +85,7 @@
         <button data-knop="run">RUN</button>
         <button data-knop="stem">STEM</button>
         <button data-knop="chat">CHAT</button>
-        <button data-knop="ready">READY</button>
+        <button data-knop="ready" title="Tijdens het stemmen: het stemmen sluiten. Anders: de teleprompter op ready.">READY</button>
         <button data-knop="scene">START</button>
         <hr>
         <button data-knop="startfase" title="Eerst drie startscènes waarop het publiek stemt. Uit: vanaf de eerste scène kiest het algoritme en wordt er tijdens het stemmen al geschreven.">STARTFASE</button>
@@ -99,7 +99,7 @@
     </main>
     <script>
       const el = (id) => document.getElementById(id);
-      const ZAAL = "/audience/stage/tussen?eenAdres=1&rapport=0&universum=/proefshow/universe&stand=/proefshow/universe-state";
+      const ZAAL = "/audience/stage/tussen?eenAdres=1&rapport=0&tempo=2.5&universum=/proefshow/universe&stand=/proefshow/universe-state";
       const knop = (naam) => document.querySelector(`[data-knop="${naam}"]`);
       let stand = null;
       let sessieWas = false;
@@ -128,6 +128,8 @@
         knop("stem").classList.toggle("aan", stand.stemmen);
         knop("scene").classList.toggle("aan", stand.scene);
         knop("chat").classList.toggle("aan", stand.schrijft);
+        knop("ready").classList.toggle("aan", !!stand.stemronde);
+        knop("ready").textContent = stand.stemronde ? "READY · STEMMEN DICHT" : "READY";
         knop("bots").classList.toggle("aan", stand.bots > 0);
         knop("startfase").classList.toggle("aan", !!stand.startfase);
         knop("startfase").textContent = stand.startfase ? (stand.startfaseLoopt ? "STARTFASE LOOPT" : "STARTFASE AAN") : "STARTFASE UIT";

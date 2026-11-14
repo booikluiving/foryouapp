@@ -296,7 +296,13 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       return vraag("audience", "/audience/admin/start-stemming/start", { method: "POST", body: {} });
     },
     chat: () => cue("/v0/show-control/cues/scene-to-chat", { name: "Proef scene naar chat" }, 90000),
-    ready: () => cue("/v0/show-control/cues", { name: "Proef teleprompter ready", actions: [{ command: "teleprompter.ready", ackMode: "acknowledged-async", timeoutMs: 1500, payload: { ready: true, source: "proef" } }] }),
+    // READY tijdens het stemmen sluit het stemmen (de klok hoeft niet uit te lopen); daarna is het weer
+    // de gewone READY voor de teleprompter.
+    async ready() {
+      const stemronde = await vraag("audience", "/audience/stage/beoordeling", { timeoutMs: 1500 });
+      if (stemronde.ok && stemronde.body && stemronde.body.lopend) return vraag("audience", "/audience/admin/beoordeling/sluit", { method: "POST", body: {} });
+      return cue("/v0/show-control/cues", { name: "Proef teleprompter ready", actions: [{ command: "teleprompter.ready", ackMode: "acknowledged-async", timeoutMs: 1500, payload: { ready: true, source: "proef" } }] });
+    },
     async scene() {
       const rt = await runNu();
       if (!rt || !rt.showRunId || rt.status === "idle") return { ok: false, status: 409, body: { error: "geen_run" } };
@@ -336,11 +342,12 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
   };
 
   async function stand() {
-    const [rt, stemming, script, publiek] = await Promise.all([
+    const [rt, stemming, script, publiek, stemronde] = await Promise.all([
       runNu(),
       vraag("audience", "/audience/stage/start-stemming", { timeoutMs: 1500 }),
       vraag("script-agent", "/v0/script-agent/operator/status", { timeoutMs: 1500 }),
       vraag("audience", "/audience/admin/state", { timeoutMs: 1500 }),
+      vraag("audience", "/audience/stage/beoordeling", { timeoutMs: 1500 }),
     ]);
     const loopt = Boolean(rt && rt.showRunId && rt.status !== "idle");
     const scene = Boolean(rt && rt.activeSituation);
@@ -361,6 +368,8 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       // Staat de startfase aan, en loopt hij nog (de eerste scènes kiest het publiek)?
       startfase: startfaseWens !== null ? startfaseWens : startfaseBekend !== null ? startfaseBekend : true,
       startfaseLoopt: Boolean(loopt && rt.startPhase && rt.startPhase.active),
+      // Er wordt gestemd na een scène (READY sluit het).
+      stemronde: Boolean(stemronde.ok && stemronde.body && stemronde.body.lopend),
     };
   }
 
