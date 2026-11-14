@@ -361,7 +361,7 @@
     const REGIE_NA_SCENE = Math.max(0, Number(REGIE_OPTIES.get("naScene")) || 0);
     const REGIE_BINNEN_TITEL = REGIE_OPTIES.get("binnenTitel") !== "0";
     const REGIE_VRIJGAVE = REGIE_OPTIES.get("vrijgave") === "1";
-    // Met tempo=2 gaan het uitzoomen en het vrijkomen van nieuwe scènes twee keer zo snel (het kiezen niet).
+    // Met tempo=2 gaat de hele reeks na een scène twee keer zo snel: uitzoomen, vrijkomen, kiezen en inzoomen.
     const REGIE_TEMPO = Math.min(5, Math.max(0.5, Number(REGIE_OPTIES.get("tempo")) || 1));
     // Met padZoom=1 zoomt de camera niet de ster in, maar tot het pad naar de gekozen scène het beeld vult.
     const REGIE_PAD = REGIE_OPTIES.get("padZoom") === "1";
@@ -4147,7 +4147,7 @@
         if (podium.doek) podium.doek.style.visibility = "hidden";
         regie.binnenAan = true;
         regieMeld();
-      }, 1300);
+      }, 1300 / REGIE_TEMPO);
     }
 
     function regieRand(a, b) {
@@ -4275,7 +4275,7 @@
         podium.vuil = true;
         regieTik("stap", id);
         vorige = id;
-        await regieWacht(70 + i * i * 2.4);
+        await regieWacht((70 + i * i * 2.4) / REGIE_TEMPO);
         if (gen !== regie.gen) return;
       }
     }
@@ -4290,7 +4290,7 @@
       regie.gekozen = wil;
       if (!doel.cur) regieTik("slot", wil);
       regieToon(model, doel, true);
-      await regieWacht(doel.cur ? 400 : doel.stemWinnaar === wil ? 3500 : 2500);
+      await regieWacht((doel.cur ? 400 : doel.stemWinnaar === wil ? 3500 : 2500) / REGIE_TEMPO);
       if (gen !== regie.gen) return;
       const laatste = regieStand(regie.doel);
       if (!laatste || (laatste.cur || laatste.next) !== wil) { regie.gekozen = 0; podium.vuil = true; return; }
@@ -4302,8 +4302,8 @@
       if (REGIE_PAD) {
         // Niet de ster in: de camera zoomt tot het pad naar deze scène in beeld staat.
         regie.pad = regiePadVoor(wil, doel.played);
-        regieTween(regie, "fade", REGIE_PAD_FADE, 900);
-        await regieCamera({ mix: 1, lz: Math.log(regiePadZoom()), rot: 0 }, 2600);
+        regieTween(regie, "fade", REGIE_PAD_FADE, 900 / REGIE_TEMPO);
+        await regieCamera({ mix: 1, lz: Math.log(regiePadZoom()), rot: 0 }, 2600 / REGIE_TEMPO);
         if (gen !== regie.gen) return;
         regie.scherp = true;
         regieCameraToepassen();
@@ -4312,9 +4312,9 @@
         regieMeld();
         return;
       }
-      regieTween(regie, "fade", 0, 800);
-      window.setTimeout(() => { if (gen === regie.gen && regie.focus === wil) regieBinnen(true); }, 2200);
-      await regieCamera({ mix: 1, lz: Math.log(REGIE_ZOOM), rot: REGIE_DRAAI }, 3100);
+      regieTween(regie, "fade", 0, 800 / REGIE_TEMPO);
+      window.setTimeout(() => { if (gen === regie.gen && regie.focus === wil) regieBinnen(true); }, 2200 / REGIE_TEMPO);
+      await regieCamera({ mix: 1, lz: Math.log(REGIE_ZOOM), rot: REGIE_DRAAI }, 3100 / REGIE_TEMPO);
     }
 
     async function regieLoop() {

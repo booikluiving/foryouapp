@@ -13,7 +13,7 @@
       header b { font-size: 15px; }
       header a { color: var(--grijs); text-decoration: none; }
       #stand { color: var(--grijs); margin-left: auto; }
-      main { flex: 1; min-height: 0; display: flex; gap: 24px; padding: 16px; justify-content: center; overflow-x: auto; }
+      main { flex: 1; min-height: 0; display: flex; gap: 24px; padding: 16px; justify-content: safe center; overflow-x: auto; }
       .vak { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
       .vak > span { flex: none; color: var(--grijs); }
       /* Het zaalscherm staat rechtop (1080 × 1920). Tijdens de scène is de pagina doorzichtig: in de zaal
@@ -99,7 +99,7 @@
     </main>
     <script>
       const el = (id) => document.getElementById(id);
-      const ZAAL = "/audience/stage/tussen?eenAdres=1&rapport=0&tempo=2.5&universum=/proefshow/universe&stand=/proefshow/universe-state";
+      const ZAAL = "/audience/stage/tussen?eenAdres=1&rapport=0&tempo=3.5&universum=/proefshow/universe&stand=/proefshow/universe-state";
       const knop = (naam) => document.querySelector(`[data-knop="${naam}"]`);
       let stand = null;
       let sessieWas = false;
