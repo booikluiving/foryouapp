@@ -259,6 +259,14 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
 
   const cue = (pad, body, timeoutMs) => vraag("show-control", pad, { method: "POST", body, timeoutMs });
 
+  // De startfase (eerst drie startscènes waarop het publiek stemt) aan of uit. De runtime onthoudt het
+  // voor volgende runs; zonder run wordt het toegepast zodra RUN wordt ingedrukt.
+  const STARTSCENES = 3;
+  let startfaseWens = null, startfaseBekend = null;
+  async function zetStartfase(rt, aan) {
+    return vraag("runtime", `/v0/runtime/runs/${encodeURIComponent(rt.showRunId)}/order-settings`, { method: "PATCH", body: { startSceneCount: aan ? STARTSCENES : 0 } });
+  }
+
   // Dezelfde opdrachten als de knoppen van de Stream Deck.
   const KNOPPEN = {
     async run() {
@@ -272,6 +280,10 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
         return reset;
       }
       const gestart = await cue("/v0/show-control/cues/start-run", { name: "Proef start run", autoPrepareNext: true });
+      if (startfaseWens !== null) {
+        const nieuw = await runNu();
+        if (nieuw && nieuw.showRunId) { await zetStartfase(nieuw, startfaseWens); startfaseWens = null; }
+      }
       const stand = await vraag("audience", "/audience/admin/state", { timeoutMs: 1500 });
       if (!(stand.ok && stand.body && stand.body.sessionJoin && stand.body.sessionJoin.joinUrl)) {
         await vraag("audience", "/audience/admin/sessions/start", { method: "POST", body: { name: "For_You" }, timeoutMs: 3000 });
@@ -291,6 +303,15 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       if (rt.activeSituation) return cue("/v0/show-control/cues/stop-situation", { name: "Proef stop situation", showRunId: rt.showRunId });
       return cue("/v0/show-control/cues/start-situation", { name: "Proef start situation", showRunId: rt.showRunId, runtimeState: rt });
     },
+    async startfase() {
+      const rt = await runNu();
+      if (!rt || !rt.showRunId || rt.status === "idle") {
+        startfaseWens = !(startfaseWens !== null ? startfaseWens : startfaseBekend !== null ? startfaseBekend : true);
+        return { ok: true, status: 200, body: { startfase: startfaseWens, bijRun: true } };
+      }
+      const nu = Number(rt.orderSettings && rt.orderSettings.startSceneCount) > 0;
+      return zetStartfase(rt, !nu);
+    },
     bots: () => vraag("audience", "/audience/admin/simulation/schakel", { method: "POST", body: { wat: "bots" } }),
     personages: () => vraag("audience", "/audience/admin/simulation/schakel", { method: "POST", body: { wat: "personages" } }),
   };
@@ -305,6 +326,7 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
     const loopt = Boolean(rt && rt.showRunId && rt.status !== "idle");
     const scene = Boolean(rt && rt.activeSituation);
     const sim = publiek.ok && publiek.body && publiek.body.simulation ? publiek.body.simulation : null;
+    if (loopt && rt.orderSettings) startfaseBekend = Number(rt.orderSettings.startSceneCount) > 0;
     return {
       ok: true,
       onderdelen: Object.fromEntries(ONDERDELEN.map((naam) => [naam, kinderen.has(naam)])),
@@ -317,6 +339,9 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       schrijft: Boolean(script.ok && script.body && script.body.stage && script.body.stage.streaming),
       sessie: Boolean(publiek.ok && publiek.body && publiek.body.sessionJoin && publiek.body.sessionJoin.joinUrl),
       bots: sim ? Number(sim.bots || sim.botCount || 0) : 0,
+      // Staat de startfase aan, en loopt hij nog (de eerste scènes kiest het publiek)?
+      startfase: startfaseWens !== null ? startfaseWens : startfaseBekend !== null ? startfaseBekend : true,
+      startfaseLoopt: Boolean(loopt && rt.startPhase && rt.startPhase.active),
     };
   }
 
