@@ -12,7 +12,9 @@ cd "$APP"
 git ls-files -z -- shared modules/catalog modules/paths modules/script-agent modules/runtime modules/audience \
   modules/algorithm modules/show-control editor/proef ':!:modules/*/tests' ':!:modules/show-control/hardware' \
   | xargs -0 -I{} sh -c '[ -f "$2" ] && mkdir -p "$1/$(dirname "$2")" && cp "$2" "$1/$2" || true' _ "$DOEL" {}
-# De onderdelen willen hun gegevens binnen hun eigen app: deze naam wijst naar data/proefshow van de editor.
-ln -s /app/editor/data/proefshow "$DOEL/gegevens"
+# De onderdelen willen hun gegevens binnen hun eigen app. In docker-compose.yml hoort daarom:
+#   volumes:  - ./data/proefshow:/app/proefapp/gegevens      (map data/proefshow, eigenaar 1000)
+mkdir -p "$DOEL/gegevens"
+echo "Hier koppelt docker-compose de map data/proefshow." > "$DOEL/gegevens/LEESMIJ.txt"
 printf 'main %s, %s\n' "$(git rev-parse --short HEAD)" "$(date '+%Y-%m-%d %H:%M')" > "$DOEL/BRON.txt"
 echo "proefpakket: $DOEL ($(du -sh "$DOEL" | cut -f1))"
