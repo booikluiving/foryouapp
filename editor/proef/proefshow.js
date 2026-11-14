@@ -198,10 +198,37 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
     await startLeesdeur();
     for (const naam of ONDERDELEN) startOnderdeel(naam);
     log(`gestart op poorten ${poort.lezen}–${poort["script-agent"]}, gegevens in ${dataDir}`);
+    startSpelersbeeld();
+  }
+
+  // In de zaal komen de beelden van de spelers die zich klaarmaken uit de camera's. Hier zijn het
+  // tijdelijke plaatjes (editor/proef/spelers/plekN-K.jpg) die om de beurt worden aangeleverd.
+  let spelersTimer = null;
+  function startSpelersbeeld() {
+    const map = path.join(__dirname, "spelers");
+    const beelden = [1, 2, 3].map((plek) => {
+      try {
+        return fs.readdirSync(map).filter((naam) => naam.startsWith(`plek${plek}-`)).sort().map((naam) => fs.readFileSync(path.join(map, naam)));
+      } catch (_err) { return []; }
+    });
+    if (!beelden.some((lijst) => lijst.length)) return;
+    let tel = 0;
+    spelersTimer = setInterval(() => {
+      tel += 1;
+      if (!kinderen.has("audience")) return;
+      beelden.forEach((lijst, i) => {
+        // Elke speler beweegt in zijn eigen tempo.
+        if (!lijst.length || tel % (i + 2)) return;
+        const beeld = lijst[Math.floor(tel / (i + 2)) % lijst.length];
+        fetch(`${url("audience")}/audience/stage/spelerbeeld?plek=${i + 1}`, { method: "POST", headers: { "content-type": "image/jpeg" }, body: beeld, signal: AbortSignal.timeout(2000) }).catch(() => {});
+      });
+    }, 600);
+    if (typeof spelersTimer.unref === "function") spelersTimer.unref();
   }
 
   function stop() {
     gestopt = true;
+    if (spelersTimer) clearInterval(spelersTimer);
     for (const kind of kinderen.values()) kind.kill();
     if (leesdeur) leesdeur.close();
   }
