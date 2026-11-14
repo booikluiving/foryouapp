@@ -69,6 +69,7 @@
         <button data-knop="ready">READY</button>
         <button data-knop="scene">START</button>
         <hr>
+        <button data-knop="startfase" title="Eerst drie startscènes waarop het publiek stemt. Uit: vanaf de eerste scène kiest het algoritme en wordt er tijdens het stemmen al geschreven.">STARTFASE</button>
         <button data-knop="bots">BOTS</button>
         <button data-knop="personages">PERSONAGES</button>
         <hr>
@@ -109,6 +110,8 @@
         knop("scene").classList.toggle("aan", stand.scene);
         knop("chat").classList.toggle("aan", stand.schrijft);
         knop("bots").classList.toggle("aan", stand.bots > 0);
+        knop("startfase").classList.toggle("aan", !!stand.startfase);
+        knop("startfase").textContent = stand.startfase ? (stand.startfaseLoopt ? "STARTFASE LOOPT" : "STARTFASE AAN") : "STARTFASE UIT";
         const uit = Object.entries(stand.onderdelen).filter(([, draait]) => !draait).map(([naam]) => naam);
         el("stand").textContent = uit.length ? `start: ${uit.join(", ")}` : ["inloop", "loading", stand.titel || "scène"][stand.fase];
         if (stand.sessie && !sessieWas) laadTelefoon();
