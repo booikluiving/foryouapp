@@ -12,8 +12,8 @@ const MAX_UITSLAGEN = 60;
 
 const STANDAARD = {
   aan: true,
-  // Eerst telt het zaalscherm af (3, 2, 1) en schuift de klok op zijn plek; dan gaan de vragen open.
-  aanloop: 4,
+  // Seconden tussen het einde van de scène en het opengaan van de vragen (0: meteen).
+  aanloop: 0,
   // Zo lang staat de klok (seconden). De klok is ook de omkleedtijd van de spelers.
   duur: 30,
   scene: { aan: true, vraag: "Wat vond je van de scène?", keuzes: [{ id: "leuk", emoji: "❤️" }, { id: "saai", emoji: "🥱" }] },
