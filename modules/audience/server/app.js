@@ -185,6 +185,21 @@ function createAudienceApp(options = {}) {
     res.json(rapport);
   }));
 
+  // De vragen na de scène: de stand (wat er openstaat, de tellingen, de laatste uitslag).
+  app.get("/audience/stage/beoordeling", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(service.beoordeling.stand());
+  });
+  app.post("/audience/admin/beoordeling/instellingen", (req, res) => {
+    res.json({ ok: true, instellingen: service.beoordeling.zetInstellingen(req.body || {}) });
+  });
+  // Een foto van een speler uit de scène die speelt of net gespeeld is: JPEG, ?plek=1..3 (de plek van de
+  // speler in de ring), eventueel ?situationRunId=. Blijft alleen in het geheugen.
+  app.post("/audience/beoordeling/foto", express.raw({ type: "image/jpeg", limit: "200kb" }), (req, res) => {
+    const result = service.beoordeling.zetFoto({ situationRunId: req.query.situationRunId, plek: req.query.plek, jpeg: req.body });
+    res.status(result.ok ? 200 : 400).json(result);
+  });
+
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
   const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag"]);
   // Stand van de stemming op de startscène, voor het zaalscherm en het universum.

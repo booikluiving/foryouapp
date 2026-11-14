@@ -464,6 +464,54 @@
         border-color: var(--c);
         color: var(--b);
       }
+      /* ------------------------------------------------ de vragen na de scène */
+      /* Zelfde vorm als het stemmen: het hele scherm, één vraag tegelijk, één tik is een antwoord. */
+      #beoordeelBox {
+        position: fixed;
+        inset: 0;
+        z-index: 59;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: max(18px, env(safe-area-inset-top, 0px)) max(18px, env(safe-area-inset-right, 0px)) max(18px, env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px));
+        background: var(--bg);
+      }
+      #beoordeelBox[hidden] { display: none; }
+      #beoordeelKop { flex: none; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+      #beoordeelVraag { font-weight: 700; font-size: 24px; line-height: 1.1; letter-spacing: -0.025em; }
+      #beoordeelKlok { flex: none; font-weight: 700; font-size: 24px; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
+      #beoordeelTitel { flex: none; font-size: 14px; color: var(--b); }
+      #beoordeelKeuzes { flex: 1 1 auto; min-height: 0; display: grid; grid-auto-rows: minmax(0, 1fr); gap: 8px; }
+      #beoordeelKeuzes button {
+        min-height: 0;
+        box-sizing: border-box;
+        border: 1px solid var(--a);
+        color: var(--a);
+        background: transparent;
+        font: inherit;
+        font-weight: 700;
+        font-size: clamp(17px, 3dvh, 26px);
+        letter-spacing: -0.01em;
+        padding: 0 14px;
+        text-align: left;
+        overflow: hidden;
+      }
+      #beoordeelKeuzes button.gekozen { background: var(--a); color: var(--bg); }
+      /* Na de tik staan de knoppen even vast; de gekozen blijft helder, de rest zakt weg. */
+      #beoordeelKeuzes button:disabled { opacity: 1; }
+      #beoordeelKeuzes button:disabled:not(.gekozen) { opacity: 0.35; }
+      #beoordeelKeuzes.emoji button.gekozen { background: transparent; outline: 4px solid var(--a); outline-offset: -4px; }
+      #beoordeelKeuzes.emoji button { text-align: center; font-size: clamp(64px, 14dvh, 120px); line-height: 1; padding: 0; }
+      /* Personages: de foto van de speler vult de knop, de naam staat eronder in een balk. */
+      #beoordeelKeuzes.personage button { position: relative; padding: 0; display: flex; align-items: flex-end; background: #111 center 20% / cover no-repeat; }
+      #beoordeelKeuzes.personage button .naam { width: 100%; box-sizing: border-box; padding: 10px 14px; background: rgba(7, 8, 11, 0.78); display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+      #beoordeelKeuzes.personage button .naam small { font-weight: 400; font-size: 14px; color: var(--b); }
+      #beoordeelKeuzes.personage button.gekozen { outline: 4px solid var(--a); outline-offset: -4px; }
+      #beoordeelKeuzes.personage button.gekozen .naam { background: var(--a); color: var(--bg); }
+      #beoordeelKeuzes.personage button.gekozen .naam small { color: var(--bg); }
+      #beoordeelMeta { flex: none; min-height: 1.3em; font-size: 14px; color: var(--b); display: flex; justify-content: space-between; }
+
       #pollMeta {
         flex: none;
         min-height: 1.3em;
@@ -810,6 +858,12 @@
       <div id="pollOptions"></div>
       <div id="pollMeta"></div>
       <button id="pollSubmitBtn" type="button" hidden disabled>Stem</button>
+    </div>
+    <div id="beoordeelBox" hidden>
+      <div id="beoordeelKop"><div id="beoordeelVraag"></div><div id="beoordeelKlok"></div></div>
+      <div id="beoordeelTitel"></div>
+      <div id="beoordeelKeuzes"></div>
+      <div id="beoordeelMeta"><span id="beoordeelStap"></span><span></span></div>
     </div>
     <div id="topComment" hidden></div>
     <div id="chatFeed"></div>
@@ -1508,6 +1562,98 @@
         pollBoxEl.hidden = false;
         renderInteractionMode();
       }
+
+      // ── De vragen na de scène ─────────────────────────────────────────────────────────────────
+      // De server stuurt na elke scène een paar vragen met een klok. Eén vraag tegelijk; na de laatste,
+      // of als de klok op nul staat, komt de chat terug.
+      const beoordeelBoxEl = document.getElementById("beoordeelBox");
+      let beoordeling = null;
+      let beoordeelTimer = null;
+      function beoordeelBewaard(id) {
+        try {
+          const bewaard = JSON.parse(localStorage.getItem("live_beoordeling") || "null");
+          return bewaard && bewaard.id === id ? bewaard : { id, stap: 0 };
+        } catch { return { id, stap: 0 }; }
+      }
+      function sluitBeoordeling() {
+        beoordeling = null;
+        if (beoordeelTimer) clearInterval(beoordeelTimer);
+        beoordeelTimer = null;
+        beoordeelBoxEl.hidden = true;
+      }
+      function tekenBeoordeelKlok() {
+        if (!beoordeling) return;
+        const over = beoordeling.endsAtMs - Date.now();
+        if (over <= 0) { sluitBeoordeling(); return; }
+        document.getElementById("beoordeelKlok").textContent = formatCountdownMs(over);
+      }
+      function tekenBeoordeling() {
+        if (!beoordeling) return;
+        const vraag = beoordeling.vragen[beoordeling.stap];
+        if (!vraag) { sluitBeoordeling(); return; }
+        document.getElementById("beoordeelVraag").textContent = vraag.vraag;
+        document.getElementById("beoordeelTitel").textContent = beoordeling.titel;
+        document.getElementById("beoordeelStap").textContent = (beoordeling.stap + 1) + "/" + beoordeling.vragen.length;
+        const keuzesEl = document.getElementById("beoordeelKeuzes");
+        keuzesEl.className = vraag.soort;
+        keuzesEl.textContent = "";
+        // Emoji naast elkaar, de rest onder elkaar.
+        keuzesEl.style.gridTemplateColumns = vraag.soort === "emoji" ? "repeat(" + vraag.keuzes.length + ", minmax(0, 1fr))" : "";
+        for (const keuze of vraag.keuzes) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.setAttribute("data-beoordeel-keuze", keuze.id);
+          if (vraag.soort === "emoji") {
+            button.textContent = keuze.emoji;
+          } else if (vraag.soort === "personage") {
+            if (keuze.foto) button.style.backgroundImage = "url(" + keuze.foto + ")";
+            const naam = document.createElement("span");
+            naam.className = "naam";
+            const tekst = document.createElement("span");
+            tekst.textContent = keuze.naam;
+            const speler = document.createElement("small");
+            speler.textContent = keuze.speler || "";
+            naam.append(tekst, speler);
+            button.appendChild(naam);
+          } else {
+            button.textContent = keuze.naam;
+          }
+          keuzesEl.appendChild(button);
+        }
+        tekenBeoordeelKlok();
+      }
+      function toonBeoordeling(binnen) {
+        if (!binnen || !binnen.id || !Array.isArray(binnen.vragen) || !binnen.vragen.length) { sluitBeoordeling(); return; }
+        const endsAtMs = Date.parse(String(binnen.endsAt || ""));
+        if (!Number.isFinite(endsAtMs) || endsAtMs <= Date.now()) { sluitBeoordeling(); return; }
+        const bewaard = beoordeelBewaard(String(binnen.id));
+        if (bewaard.stap >= binnen.vragen.length) { sluitBeoordeling(); return; }
+        beoordeling = { id: String(binnen.id), titel: String(binnen.titel || ""), endsAtMs, vragen: binnen.vragen, stap: bewaard.stap };
+        beoordeelBoxEl.hidden = false;
+        tekenBeoordeling();
+        if (beoordeelTimer) clearInterval(beoordeelTimer);
+        beoordeelTimer = setInterval(tekenBeoordeelKlok, 250);
+      }
+      document.getElementById("beoordeelKeuzes").addEventListener("click", (event) => {
+        const button = event.target && event.target.closest ? event.target.closest("[data-beoordeel-keuze]") : null;
+        if (!button || !beoordeling || button.disabled) return;
+        const vraag = beoordeling.vragen[beoordeling.stap];
+        if (!ws || ws.readyState !== WebSocket.OPEN) { ensureFreshConnection(); return; }
+        try {
+          ws.send(JSON.stringify({ type: "beoordeling_antwoord", id: beoordeling.id, vraag: vraag.id, keuze: button.getAttribute("data-beoordeel-keuze"), clientTag }));
+        } catch { ensureFreshConnection(); return; }
+        // Het antwoord licht even op, dan de volgende vraag.
+        for (const knop of document.querySelectorAll("#beoordeelKeuzes button")) knop.disabled = true;
+        button.classList.add("gekozen");
+        const id = beoordeling.id;
+        const volgende = beoordeling.stap + 1;
+        try { localStorage.setItem("live_beoordeling", JSON.stringify({ id, stap: volgende })); } catch {}
+        setTimeout(() => {
+          if (!beoordeling || beoordeling.id !== id) return;
+          beoordeling.stap = volgende;
+          tekenBeoordeling();
+        }, 450);
+      });
 
       function closePoll() {
         activePoll = null;
@@ -2851,6 +2997,7 @@
               applyBuildLabel(msg.buildVersion, msg.buildLabel, "ws_hello");
               noteServerSeen();
               if (msg.poll) showPoll(msg.poll);
+              toonBeoordeling(msg.beoordeling || null);
               if (Array.isArray(msg.reacties)) renderReactieKnoppen(msg.reacties);
               if (typeof msg.naSceneVraag === "string") naSceneVraag = msg.naSceneVraag;
               if (msg.fase && msg.fase.fase) {
@@ -2960,6 +3107,20 @@
               sceneVotePending = false;
               renderInteractionMode();
               showToast("Stemvraag overgeslagen.", { subtle: true, autoHideMs: 1600 });
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "beoordeling") {
+              toonBeoordeling(msg.beoordeling);
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "beoordeling_dicht") {
+              if (beoordeling && beoordeling.id === String(msg.id)) sluitBeoordeling();
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "beoordeling_ok") {
               noteServerSeen();
               return;
             }
