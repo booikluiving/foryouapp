@@ -363,6 +363,8 @@
     const REGIE_VRIJGAVE = REGIE_OPTIES.get("vrijgave") === "1";
     // Met tempo=2 gaat de hele reeks na een scène twee keer zo snel: uitzoomen, vrijkomen, kiezen en inzoomen.
     const REGIE_TEMPO = Math.min(5, Math.max(0.5, Number(REGIE_OPTIES.get("tempo")) || 1));
+    // TIJDELIJK meten: met meet=1 meldt de regie elk onderdeel aan de pagina eromheen.
+    const regieMeet = (stap) => { if (REGIE_OPTIES.get("meet") === "1" && window.parent !== window) { try { window.parent.postMessage({ bron: "for_you-universum", meet: stap, t: Date.now() }, "*"); } catch (_err) {} } };
     // Met padZoom=1 zoomt de camera niet de ster in, maar tot het pad naar de gekozen scène het beeld vult.
     const REGIE_PAD = REGIE_OPTIES.get("padZoom") === "1";
     const REGIE_PAD_OMHOOG = 0.17; // het pad staat boven het midden; eronder is ruimte voor de tekst
@@ -4218,18 +4220,21 @@
         else await regieWacht(REGIE_NA_SCENE);
         if (gen !== regie.gen) return;
       }
+      regieMeet("uitzoomen begint");
       regie.scherp = false;
       regieCameraToepassen();
       podium.vuil = true;
       regieBinnen(false);
       window.setTimeout(() => { if (gen === regie.gen) regieTween(regie, "fade", 1, 800 / REGIE_TEMPO, regieUit); }, (regie.pad ? 300 : 1450) / REGIE_TEMPO);
       await regieCamera({ mix: 0, lz: 0, rot: 0 }, 2900 / REGIE_TEMPO);
+      regieMeet("camera uitgezoomd");
       if (gen !== regie.gen) return;
       regie.pad = null;
       regie.focus = 0;
       regieStil(false);
       regieCameraToepassen();
       await regieWacht(900 / REGIE_TEMPO);
+      regieMeet("pauze na uitzoomen klaar");
     }
 
     async function regieOntgrendel(model, doel) {
@@ -4245,6 +4250,7 @@
         return van && punt ? Math.hypot(punt.x - van.x, punt.y - van.y) : 0;
       };
       const nieuw = [...doel.rel].filter((id) => !stand.rel.has(id)).sort((a, b) => afstand(a) - afstand(b));
+      regieMeet(`vrijkomen begint (${nieuw.length} nieuw)`);
       regieToon(model, stand);
       await regieWacht(500 / REGIE_TEMPO);
       const tempo = (nieuw.length > 6 ? 6 / nieuw.length : 1) / REGIE_TEMPO;
@@ -4256,6 +4262,7 @@
         }
         if (gen !== regie.gen) return;
         stand.rel.add(id);
+        regieMeet("scène vrij");
         regie.pops.set(id, Date.now());
         regieToon(model, stand);
         regie.lijn = null;
@@ -4263,6 +4270,7 @@
         if (gen !== regie.gen) return;
       }
       await regieWacht(1000 / REGIE_TEMPO);
+      regieMeet("vrijkomen klaar");
     }
 
     async function regieRoulette(kandidaten, wil) {
@@ -4284,7 +4292,9 @@
       const gen = regie.gen;
       const kandidaten = [...regie.getoond.rel].filter((id) => !doel.played.has(id));
       const zichtbaarKiezen = !doel.cur && doel.stemWinnaar !== wil && kandidaten.length > 1 && kandidaten.includes(wil);
+      regieMeet("kiezen begint");
       if (zichtbaarKiezen) await regieRoulette(kandidaten, wil);
+      regieMeet("kiezer geland");
       if (gen !== regie.gen) return;
       regie.ring = 0;
       regie.gekozen = wil;
@@ -4292,6 +4302,7 @@
       regieToon(model, doel, true);
       await regieWacht((doel.cur ? 400 : doel.stemWinnaar === wil ? 3500 : 2500) / REGIE_TEMPO);
       if (gen !== regie.gen) return;
+      regieMeet("pauze na keuze klaar");
       const laatste = regieStand(regie.doel);
       if (!laatste || (laatste.cur || laatste.next) !== wil) { regie.gekozen = 0; podium.vuil = true; return; }
       regieStil(true);
@@ -4304,6 +4315,7 @@
         regie.pad = regiePadVoor(wil, doel.played);
         regieTween(regie, "fade", REGIE_PAD_FADE, 900 / REGIE_TEMPO);
         await regieCamera({ mix: 1, lz: Math.log(regiePadZoom()), rot: 0 }, 2600 / REGIE_TEMPO);
+        regieMeet("camera op het pad");
         if (gen !== regie.gen) return;
         regie.scherp = true;
         regieCameraToepassen();
