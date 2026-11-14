@@ -200,8 +200,25 @@ function createAudienceApp(options = {}) {
     res.status(result.ok ? 200 : 400).json(result);
   });
 
+  // De ranking van de chat: wie het meest schreef.
+  app.get("/audience/stage/ranking", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, ranking: service.getRanking() });
+  });
+  // De spelers die zich klaarmaken: het laatste beeld per plek (1..3), aangeleverd door wie de camera's heeft.
+  app.post("/audience/stage/spelerbeeld", express.raw({ type: "image/jpeg", limit: "300kb" }), (req, res) => {
+    const result = service.zetSpelerbeeld(req.query.plek, req.body);
+    res.status(result.ok ? 200 : 400).json(result);
+  });
+  app.get("/audience/stage/spelerbeeld/:plek", (req, res) => {
+    const jpeg = service.getSpelerbeeld(req.params.plek);
+    res.set("Cache-Control", "no-store");
+    if (!jpeg) return res.status(204).end();
+    res.type("image/jpeg").send(jpeg);
+  });
+
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
-  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag"]);
+  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag", "ranking", "beoordeling", "beoordeling_dicht"]);
   // Stand van de stemming op de startscène, voor het zaalscherm en het universum.
   app.get("/audience/stage/start-stemming", (_req, res) => {
     const stemming = service.getStartStemming();
@@ -248,6 +265,8 @@ function createAudienceApp(options = {}) {
       })(),
       settings: service.getStageControl(req).settings,
       berichten,
+      ranking: service.getRanking(),
+      beoordeling: service.beoordeling.publiek(),
     });
     const doorsturen = (msg) => {
       if (!msg || !STROOM_TYPES.has(msg.type)) return;
@@ -467,6 +486,8 @@ function createAudienceApp(options = {}) {
     if (!state.startPhase || !state.startPhase.active) return nee("geen_startfase");
     if (state.preparedNext && state.preparedNext.reason === "operator_chosen") return nee("al_gekozen");
     if (service.getActivePollSnapshot()) return nee("poll_loopt");
+    // Eerst de vragen over de scène van net, dan pas de stemming op de volgende.
+    if (service.beoordeling.publiek()) return nee("beoordeling_loopt");
     const sleutel = `${state.showRunId}|${(state.playedSituations || []).length}`;
     if (sleutel === stemVanzelf) return nee("al_geopend");
     stemVanzelf = sleutel;
