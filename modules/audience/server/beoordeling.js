@@ -13,7 +13,7 @@ const MAX_UITSLAGEN = 60;
 const STANDAARD = {
   aan: true,
   // Zo lang staat de klok (seconden). De klok is ook de omkleedtijd van de spelers.
-  duur: 20,
+  duur: 30,
   scene: { aan: true, vraag: "Wat vond je van de scène?", keuzes: [{ id: "leuk", emoji: "❤️" }, { id: "saai", emoji: "🥱" }] },
   personage: { aan: true, vraag: "Welk personage wil je nog een keer zien?" },
   label: { aan: false, vraag: "Waar wil je meer van?", meer: "Meer", minder: "Minder" },
@@ -142,7 +142,7 @@ function createBeoordeling(service) {
 
   function publiek() {
     if (!lopend) return null;
-    return { id: lopend.id, titel: lopend.titel, endsAt: lopend.endsAt, vragen: lopend.vragen };
+    return { id: lopend.id, titel: lopend.titel, endsAt: lopend.endsAt, vragen: lopend.vragen, gestemd: lopend.antwoorden.size, mensen: service.onlineMensen() };
   }
 
   function stand() {
@@ -215,6 +215,8 @@ function createBeoordeling(service) {
     const van = lopend.antwoorden.get(sleutel) || { keuzes: {} };
     van.keuzes[gevraagd.id] = String(keuze);
     lopend.antwoorden.set(sleutel, van);
+    // Het zaalscherm laat zien dát er gestemd wordt en door hoeveel mensen, niet waarop.
+    service.emit("broadcast", { type: "beoordeling_stem", id: lopend.id, gestemd: lopend.antwoorden.size, mensen: service.onlineMensen() });
     // Heeft iedereen die er is alles beantwoord, dan hoeft de klok niet uit te lopen.
     const klaar = [...lopend.antwoorden.values()].filter((item) => lopend.vragen.every((v) => item.keuzes[v.id])).length;
     const mensen = service.onlineMensen();
