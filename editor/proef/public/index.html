@@ -13,7 +13,7 @@
       header b { font-size: 15px; }
       header a { color: var(--grijs); text-decoration: none; }
       #stand { color: var(--grijs); margin-left: auto; }
-      main { flex: 1; min-height: 0; display: flex; gap: 24px; padding: 16px; justify-content: center; }
+      main { flex: 1; min-height: 0; display: flex; gap: 24px; padding: 16px; justify-content: center; overflow-x: auto; }
       .vak { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
       .vak > span { flex: none; color: var(--grijs); }
       /* Het zaalscherm staat rechtop (1080 × 1920). Tijdens de scène is de pagina doorzichtig: in de zaal
@@ -21,6 +21,12 @@
       #zaal { flex: none; height: calc(100vh - 120px); aspect-ratio: 9 / 16; background: #3a3d45 center / 60% no-repeat; position: relative; border: 1px solid var(--rand); }
       #zaal::before { content: "camerabeeld"; position: absolute; inset: 0; display: grid; place-items: center; color: #6b7080; }
       #telefoon { flex: none; height: min(844px, calc(100vh - 120px)); aspect-ratio: 390 / 844; border: 1px solid var(--rand); border-radius: 28px; overflow: hidden; background: #000; }
+      /* De teleprompter van één speler (liggend), met eronder de keuze voor speler 1, 2 of 3. */
+      #prompter { flex: none; width: min(560px, 34vw); aspect-ratio: 16 / 9; border: 1px solid var(--rand); background: #000; overflow: hidden; }
+      /* De pagina is gemaakt voor een groot scherm: ze draait op 1280 × 720 en wordt verkleind getoond. */
+      #prompterFrame { width: 1280px; height: 720px; transform-origin: 0 0; }
+      #prompterKeuze { display: flex; gap: 8px; }
+      #prompterKeuze button { flex: 1; padding: 8px 10px; }
       iframe { position: relative; width: 100%; height: 100%; border: 0; display: block; background: transparent; }
       #knoppen { flex: none; width: 150px; display: flex; flex-direction: column; gap: 8px; }
       button { font: inherit; font-weight: 700; letter-spacing: .02em; padding: 14px 10px; background: #15171d; color: #fff; border: 1px solid var(--rand); border-radius: 6px; cursor: pointer; }
@@ -46,6 +52,15 @@
       <div class="vak">
         <span>Telefoon</span>
         <div id="telefoon"><iframe id="telefoonFrame" title="Telefoon"></iframe></div>
+      </div>
+      <div class="vak">
+        <span>Teleprompter</span>
+        <div id="prompter"><iframe id="prompterFrame" title="Teleprompter"></iframe></div>
+        <div id="prompterKeuze">
+          <button data-prompter="1" class="aan">1</button>
+          <button data-prompter="2">2</button>
+          <button data-prompter="3">3</button>
+        </div>
       </div>
       <div id="knoppen">
         <button data-knop="run">RUN</button>
@@ -116,6 +131,16 @@
         button.classList.remove("bezig");
         ververs();
       }));
+      // De teleprompter: dezelfde pagina als in de ring, per speler.
+      function laadPrompter(speler) {
+        el("prompterFrame").src = `/script-agent/teleprompter-parser/stage/${speler}?_=${Date.now()}`;
+        document.querySelectorAll("[data-prompter]").forEach((button) => button.classList.toggle("aan", button.dataset.prompter === String(speler)));
+      }
+      document.querySelectorAll("[data-prompter]").forEach((button) => button.addEventListener("click", () => laadPrompter(button.dataset.prompter)));
+      laadPrompter(1);
+      function pasPrompter() { el("prompterFrame").style.transform = `scale(${el("prompter").clientWidth / 1280})`; }
+      window.addEventListener("resize", pasPrompter);
+      pasPrompter();
       el("herlaadZaal").addEventListener("click", laadZaal);
       el("herlaadTelefoon").addEventListener("click", laadTelefoon);
       el("losZaal").addEventListener("click", () => window.open(ZAAL, "_blank"));
