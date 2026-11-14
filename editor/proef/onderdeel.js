@@ -15,7 +15,9 @@ async function nagespeeld(action, options = {}) {
   return { stage: action.ackMode === "required-ready" ? "loaded" : "applied", state: "ok", message: "proef: nagespeeld", warning: false };
 }
 
-if (naam === "algorithm") require(`${APP}/algorithm/server/server.js`).startAlgorithmServer();
+if (naam === "catalog") require(`${APP}/catalog/server/server.js`).startCatalogServer();
+else if (naam === "paths") require(`${APP}/paths/server/server.js`).startPathsServer();
+else if (naam === "algorithm") require(`${APP}/algorithm/server/server.js`).startAlgorithmServer();
 else if (naam === "runtime") require(`${APP}/runtime/server/server.js`).startRuntimeServer();
 else if (naam === "audience") require(`${APP}/audience/server/server.js`).startAudienceServer();
 else if (naam === "script-agent") require(`${APP}/script-agent/server/server.js`).startScriptAgentServer();

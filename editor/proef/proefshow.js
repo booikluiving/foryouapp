@@ -2,8 +2,9 @@
 
 // De proefshow: de onderdelen van de show (runtime, show control, publiek, script-agent, algoritme)
 // nog een keer, met eigen gegevens en zonder apparaten. Bedoeld om het zaalscherm en de telefoon
-// van het publiek te zien en eraan te werken zonder de zaal. De proefshow leest de catalogus en de
-// paden via een deur die alleen lezen toelaat, en elk onderdeel start achter slot.js: het kan
+// van het publiek te zien en eraan te werken zonder de zaal. De proefshow werkt op een kopie van de
+// inhoud (catalogus en paden) die bij elke start opnieuw wordt gemaakt; de beelden leest hij uit de
+// echte map, via een deur die alleen lezen toelaat. Elk onderdeel start achter slot.js: het kan
 // alleen bij de andere proefonderdelen en bij de taalmodellen.
 
 const fs = require("node:fs");
@@ -11,16 +12,19 @@ const http = require("node:http");
 const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
-const { buildRuntimeOverlay } = require("../../modules/paths/universe/build-runtime-overlay");
+const { DatabaseSync } = require("node:sqlite");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
-const ONDERDELEN = ["algorithm", "runtime", "script-agent", "show-control", "audience"];
+const ONDERDELEN = ["catalog", "paths", "algorithm", "runtime", "script-agent", "show-control", "audience"];
 const MODEL_HOSTS = "api.deepseek.com,api.anthropic.com";
 const SOORT = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png" };
 
-function createProefshow({ dataDir, catalogUrl, pathsUrl, basisPoort = 4120, adres = "", env = process.env, log = (regel) => process.stdout.write(`proefshow: ${regel}\n`) }) {
+// inhoud: { catalogDb, pathsStore, mediaRoot } = de bestanden waar de kopie van gemaakt wordt.
+function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env = process.env, log = (regel) => process.stdout.write(`proefshow: ${regel}\n`) }) {
   const poort = {
     lezen: basisPoort,
+    catalog: basisPoort + 1,
+    paths: basisPoort + 2,
     algorithm: basisPoort + 3,
     runtime: basisPoort + 4,
     "show-control": basisPoort + 5,
@@ -36,7 +40,7 @@ function createProefshow({ dataDir, catalogUrl, pathsUrl, basisPoort = 4120, adr
   // ---- De deur naar catalogus en paden: alleen lezen ----
   const padenAdres = (pathname) => /^\/(v0\/paths|universe|editor)(\/|$)/.test(pathname);
   function leesdoel(pathname) {
-    return new URL(padenAdres(pathname) ? pathsUrl : catalogUrl);
+    return new URL(url(padenAdres(pathname) ? "paths" : "catalog"));
   }
   function magLezen(req) {
     if (req.method === "GET" || req.method === "HEAD") return true;
@@ -90,6 +94,19 @@ function createProefshow({ dataDir, catalogUrl, pathsUrl, basisPoort = 4120, adr
       PROEF_POORTEN: Object.values(poort).join(","),
       PROEF_HOSTS: MODEL_HOSTS,
       CATALOG_URL: lezen,
+      CATALOG_PORT: String(poort.catalog),
+      CATALOG_DB_PATH: path.join(dataDir, "inhoud", "catalog.sqlite"),
+      CATALOG_STORE_PATH: path.join(dataDir, "inhoud", "catalog-store.json"),
+      CATALOG_MEDIA_ROOT: path.join(dataDir, "media"),
+      CATALOG_SNAPSHOT_DIR: path.join(dataDir, "inhoud", "catalog-snapshots"),
+      CATALOG_REPORT_DIR: path.join(dataDir, "inhoud", "catalog-reports"),
+      CATALOG_SHOW_CONTROL_URL: url("show-control"),
+      PATHS_PORT: String(poort.paths),
+      PATHS_STORE_PATH: path.join(dataDir, "inhoud", "paths-store.json"),
+      PATHS_SNAPSHOT_DIR: path.join(dataDir, "inhoud", "paths-snapshots"),
+      PATHS_CATALOG_URL: lezen,
+      PATHS_RUNTIME_URL: url("runtime"),
+      PATHS_AUDIENCE_URL: url("audience"),
       ALGORITHM_PORT: String(poort.algorithm),
       ALGORITHM_DB_DIR: path.join(dataDir, "algorithm"),
       RUNTIME_PORT: String(poort.runtime),
@@ -155,8 +172,28 @@ function createProefshow({ dataDir, catalogUrl, pathsUrl, basisPoort = 4120, adr
     fs.copyFileSync(bron, doel);
   }
 
+  // Een verse kopie van de inhoud. De catalogus als momentopname (ook als er net in geschreven wordt).
+  function kopieerInhoud() {
+    const map = path.join(dataDir, "inhoud");
+    fs.mkdirSync(map, { recursive: true });
+    const doel = path.join(map, "catalog.sqlite");
+    for (const rest of ["", "-wal", "-shm"]) fs.rmSync(`${doel}${rest}`, { force: true });
+    const bron = new DatabaseSync(inhoud.catalogDb, { readOnly: true });
+    try {
+      bron.exec(`VACUUM INTO '${doel.replace(/'/g, "''")}'`);
+    } finally {
+      bron.close();
+    }
+    fs.copyFileSync(inhoud.pathsStore, path.join(map, "paths-store.json"));
+    // De beelden: een verwijzing naar de echte map (de catalogus wil zijn beelden binnen de app hebben).
+    const beelden = path.join(dataDir, "media");
+    fs.rmSync(beelden, { force: true });
+    fs.symlinkSync(path.resolve(inhoud.mediaRoot), beelden);
+  }
+
   async function start({ instellingenVan = "" } = {}) {
     fs.mkdirSync(dataDir, { recursive: true });
+    kopieerInhoud();
     zaaiScriptAgent(instellingenVan);
     await startLeesdeur();
     for (const naam of ONDERDELEN) startOnderdeel(naam);
@@ -256,21 +293,6 @@ function createProefshow({ dataDir, catalogUrl, pathsUrl, basisPoort = 4120, adr
     };
   }
 
-  async function universumStand() {
-    const [basis, view, stemming] = await Promise.all([
-      fetch(`${pathsUrl}/v0/paths/universe-state`, { signal: AbortSignal.timeout(8000) }).then((antwoord) => antwoord.json()),
-      vraag("runtime", "/v0/runtime/runs/current/view", { timeoutMs: 3000 }),
-      vraag("audience", "/audience/stage/start-stemming", { timeoutMs: 3000 }),
-    ]);
-    let runtime = null;
-    try {
-      if (view.ok && view.body) runtime = buildRuntimeOverlay(view.body, stemming.ok && stemming.body && stemming.body.ok ? stemming.body : null);
-    } catch (_err) {
-      runtime = null;
-    }
-    return { ...basis, runtime };
-  }
-
   // De telefoon in de werkplaats: meedoen met de lopende sessie, net als na het scannen van de QR-code.
   async function telefoon(req, res) {
     let token = new URL(req.url, "http://x").searchParams.get("t") || "";
@@ -346,7 +368,25 @@ function createProefshow({ dataDir, catalogUrl, pathsUrl, basisPoort = 4120, adr
     }
     if (pathname === "/proefshow/" || pathname === "/proefshow/index.html") return eigenBestand(res, "index.html");
     if (pathname === "/proefshow/api/stand") return json(res, 200, await stand());
-    if (pathname === "/proefshow/universe-state") return json(res, 200, await universumStand());
+    // Het universum van de proef staat onder /proefshow/universe/, zodat het niet botst met het
+    // universum van de website. De pagina zelf verwijst naar /universe/…: dat wordt hier omgezet.
+    if (pathname === "/proefshow/universe-state") {
+      req.url = "/v0/paths/universe-state";
+      return geefDoor(req, res, new URL(url("paths")), { verberg: true });
+    }
+    if (pathname.startsWith("/proefshow/universe/")) {
+      const pad = req.url.slice("/proefshow".length);
+      if (req.method !== "GET") return json(res, 405, { ok: false, error: "proef_leest_alleen" });
+      if (!pathname.endsWith(".html")) {
+        req.url = pad;
+        return geefDoor(req, res, new URL(url("paths")), { verberg: true });
+      }
+      const antwoord = await fetch(`${url("paths")}${pad}`, { signal: AbortSignal.timeout(8000) });
+      const html = (await antwoord.text()).replace(/(["'])\/universe\//g, "$1/proefshow/universe/");
+      res.writeHead(antwoord.status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      res.end(html);
+      return undefined;
+    }
     if (pathname === "/proefshow/telefoon") return telefoon(req, res);
     if (pathname === "/proefshow/api/knop" && req.method === "POST") {
       const body = await leesBody(req);

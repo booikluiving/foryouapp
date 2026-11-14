@@ -23,7 +23,6 @@ const { createCatalogApp } = require("../../modules/catalog/server/app");
 const { createPathsApp } = require("../../modules/paths/server/app");
 const { createAccessVerifier } = require("./access-auth");
 const { createEditorApp } = require("./app");
-const { createProefshow } = require("../proef/proefshow");
 const { createVersionStore } = require("./version-store");
 
 function fail(message) {
@@ -93,10 +92,13 @@ async function main() {
   const store = createVersionStore(DATA_DIR);
   // The proefshow (EDITOR_PROEFSHOW=1): the show's own services once more, with their own data and
   // no devices, to see the hall screen and the audience's phone without the hall. See editor/proef.
-  const proefshow = process.env.EDITOR_PROEFSHOW === "1" ? createProefshow({
-    dataDir: path.join(DATA_DIR, "proefshow"),
-    catalogUrl: `http://127.0.0.1:${CATALOG_PORT}`,
-    pathsUrl: `http://127.0.0.1:${PATHS_PORT}`,
+  // EDITOR_PROEF_APP: the folder with the app the proefshow runs (default: this app).
+  if (process.env.EDITOR_PROEFSHOW === "1") fs.mkdirSync(path.join(DATA_DIR, "proefshow"), { recursive: true });
+  const proefshow = process.env.EDITOR_PROEFSHOW === "1" ? require(path.join(process.env.EDITOR_PROEF_APP || APP_ROOT, "editor/proef/proefshow")).createProefshow({
+    // EDITOR_PROEF_DATA: the same folder as data/proefshow, by a name inside EDITOR_PROEF_APP (the
+    // services only accept data folders inside their own app).
+    dataDir: process.env.EDITOR_PROEF_DATA || path.join(DATA_DIR, "proefshow"),
+    inhoud: { catalogDb: process.env.CATALOG_DB_PATH, pathsStore: process.env.PATHS_STORE_PATH, mediaRoot: process.env.CATALOG_MEDIA_ROOT },
     basisPoort: Number(process.env.EDITOR_PROEF_POORT || 4120),
     adres: String(process.env.EDITOR_ADRES || "").replace(/\/+$/, ""),
   }) : null;
