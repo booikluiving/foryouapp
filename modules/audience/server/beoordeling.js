@@ -1,9 +1,9 @@
 "use strict";
 
 // Het beoordeelmoment: na elke scène krijgt het publiek op de telefoon een paar korte vragen, met
-// een klok. De vragen gaan over de scène die net gespeeld is: wat vond je ervan, welk personage
-// vond je het leukst (met de foto van de speler als die er is), en waar wil je meer van (de labels
-// van de scène). De antwoorden worden per scène bewaard.
+// een klok. De vragen gaan over de scène die net gespeeld is: wat vond je ervan en welk personage
+// wil je nog een keer zien (met de foto van de speler als die er is). Een derde vraag over de labels
+// van de scène staat standaard uit. De antwoorden worden per scène bewaard.
 
 const INSTELLINGEN_KEY = "beoordeling_instellingen";
 const UITSLAGEN_KEY = "beoordeling_uitslagen";
@@ -15,8 +15,8 @@ const STANDAARD = {
   // Zo lang staat de klok (seconden). De klok is ook de omkleedtijd van de spelers.
   duur: 60,
   scene: { aan: true, vraag: "Wat vond je van de scène?", keuzes: [{ id: "leuk", emoji: "❤️" }, { id: "saai", emoji: "🥱" }] },
-  personage: { aan: true, vraag: "Welk personage vond je het leukst?" },
-  label: { aan: true, vraag: "Waar wil je meer van?", meer: "Meer", minder: "Minder" },
+  personage: { aan: true, vraag: "Welk personage wil je nog een keer zien?" },
+  label: { aan: false, vraag: "Waar wil je meer van?", meer: "Meer", minder: "Minder" },
 };
 
 function tekst(waarde, standaard, max = 120) {
@@ -41,7 +41,7 @@ function normalizeInstellingen(raw) {
     },
     personage: { aan: deel("personage").aan === undefined ? true : Boolean(deel("personage").aan), vraag: tekst(deel("personage").vraag, STANDAARD.personage.vraag) },
     label: {
-      aan: deel("label").aan === undefined ? true : Boolean(deel("label").aan),
+      aan: deel("label").aan === undefined ? STANDAARD.label.aan : Boolean(deel("label").aan),
       vraag: tekst(deel("label").vraag, STANDAARD.label.vraag),
       meer: tekst(deel("label").meer, STANDAARD.label.meer, 30),
       minder: tekst(deel("label").minder, STANDAARD.label.minder, 30),
@@ -215,6 +215,14 @@ function createBeoordeling(service) {
     const van = lopend.antwoorden.get(sleutel) || { keuzes: {} };
     van.keuzes[gevraagd.id] = String(keuze);
     lopend.antwoorden.set(sleutel, van);
+    // Heeft iedereen die er is alles beantwoord, dan hoeft de klok niet uit te lopen.
+    const klaar = [...lopend.antwoorden.values()].filter((item) => lopend.vragen.every((v) => item.keuzes[v.id])).length;
+    const mensen = service.onlineMensen();
+    if (mensen > 0 && klaar >= mensen) {
+      const uit = { ok: true, id: lopend.id, vraag: gevraagd.id, keuze: String(keuze) };
+      setTimeout(() => sluit("iedereen"), 600);
+      return uit;
+    }
     return { ok: true, id: lopend.id, vraag: gevraagd.id, keuze: String(keuze) };
   }
 
