@@ -1256,7 +1256,7 @@
           naam.textContent = rij.plek + " " + String(rij.naam || "Anoniem") + " ";
           if (rij.kleur) naam.style.color = rij.kleur;
           const aantal = document.createElement("b");
-          aantal.textContent = String(rij.aantal);
+          aantal.textContent = String(rij.punten);
           el.append(naam, aantal);
           balk.appendChild(el);
         }

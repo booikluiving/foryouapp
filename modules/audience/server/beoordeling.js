@@ -13,7 +13,7 @@ const MAX_UITSLAGEN = 60;
 const STANDAARD = {
   aan: true,
   // Zo lang staat de klok (seconden). De klok is ook de omkleedtijd van de spelers.
-  duur: 60,
+  duur: 20,
   scene: { aan: true, vraag: "Wat vond je van de scène?", keuzes: [{ id: "leuk", emoji: "❤️" }, { id: "saai", emoji: "🥱" }] },
   personage: { aan: true, vraag: "Welk personage wil je nog een keer zien?" },
   label: { aan: false, vraag: "Waar wil je meer van?", meer: "Meer", minder: "Minder" },
