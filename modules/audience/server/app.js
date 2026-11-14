@@ -201,6 +201,11 @@ function createAudienceApp(options = {}) {
     res.set("Cache-Control", "no-store");
     res.json(service.beoordeling.stand());
   });
+  // De operator sluit het stemmen eerder (de spelers zijn klaar): de klok hoeft niet uit te lopen.
+  app.post("/audience/admin/beoordeling/sluit", (_req, res) => {
+    const uitslag = service.beoordeling.sluit("operator");
+    res.json({ ok: true, gesloten: !!uitslag });
+  });
   app.post("/audience/admin/beoordeling/instellingen", (req, res) => {
     res.json({ ok: true, instellingen: service.beoordeling.zetInstellingen(req.body || {}) });
   });

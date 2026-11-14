@@ -361,6 +361,8 @@
     const REGIE_NA_SCENE = Math.max(0, Number(REGIE_OPTIES.get("naScene")) || 0);
     const REGIE_BINNEN_TITEL = REGIE_OPTIES.get("binnenTitel") !== "0";
     const REGIE_VRIJGAVE = REGIE_OPTIES.get("vrijgave") === "1";
+    // Met tempo=2 gaan het uitzoomen en het vrijkomen van nieuwe scènes twee keer zo snel (het kiezen niet).
+    const REGIE_TEMPO = Math.min(5, Math.max(0.5, Number(REGIE_OPTIES.get("tempo")) || 1));
     // Met padZoom=1 zoomt de camera niet de ster in, maar tot het pad naar de gekozen scène het beeld vult.
     const REGIE_PAD = REGIE_OPTIES.get("padZoom") === "1";
     const REGIE_PAD_OMHOOG = 0.17; // het pad staat boven het midden; eronder is ruimte voor de tekst
@@ -4220,14 +4222,14 @@
       regieCameraToepassen();
       podium.vuil = true;
       regieBinnen(false);
-      window.setTimeout(() => { if (gen === regie.gen) regieTween(regie, "fade", 1, 800, regieUit); }, regie.pad ? 300 : 1450);
-      await regieCamera({ mix: 0, lz: 0, rot: 0 }, 2900);
+      window.setTimeout(() => { if (gen === regie.gen) regieTween(regie, "fade", 1, 800 / REGIE_TEMPO, regieUit); }, (regie.pad ? 300 : 1450) / REGIE_TEMPO);
+      await regieCamera({ mix: 0, lz: 0, rot: 0 }, 2900 / REGIE_TEMPO);
       if (gen !== regie.gen) return;
       regie.pad = null;
       regie.focus = 0;
       regieStil(false);
       regieCameraToepassen();
-      await regieWacht(900);
+      await regieWacht(900 / REGIE_TEMPO);
     }
 
     async function regieOntgrendel(model, doel) {
@@ -4244,8 +4246,8 @@
       };
       const nieuw = [...doel.rel].filter((id) => !stand.rel.has(id)).sort((a, b) => afstand(a) - afstand(b));
       regieToon(model, stand);
-      await regieWacht(500);
-      const tempo = nieuw.length > 6 ? 6 / nieuw.length : 1;
+      await regieWacht(500 / REGIE_TEMPO);
+      const tempo = (nieuw.length > 6 ? 6 / nieuw.length : 1) / REGIE_TEMPO;
       for (const id of nieuw) {
         const rand = regie.herkomst ? regieRand(regie.herkomst, id) : null;
         if (rand) {
@@ -4260,7 +4262,7 @@
         await regieWacht(320 * tempo);
         if (gen !== regie.gen) return;
       }
-      await regieWacht(1000);
+      await regieWacht(1000 / REGIE_TEMPO);
     }
 
     async function regieRoulette(kandidaten, wil) {
