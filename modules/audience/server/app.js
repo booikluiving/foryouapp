@@ -202,6 +202,7 @@ function createAudienceApp(options = {}) {
       totalVotes: actief ? poll.totalVotes : stemming && stemming.uitslag ? stemming.uitslag.totalVotes : 0,
       keuzes: stemming ? (stemming.keuzes || []).map((keuze, index) => ({ ...keuze, votes: Number(counts[index] || 0) })) : [],
       uitslag: stemming ? stemming.uitslag || null : null,
+      startscene: stemming ? stemming.startscene || null : null,
     });
   });
 
