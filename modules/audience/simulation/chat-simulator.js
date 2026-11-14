@@ -427,6 +427,8 @@ class ChatSimulator {
     const fase = this.service.fase || {};
     const inScene = fase.fase === "scene";
     if (inScene && fase.titel) this.laatsteScene = String(fase.titel);
+    const beoordeling = this.service.beoordeling && typeof this.service.beoordeling.publiek === "function" ? this.service.beoordeling.publiek() : null;
+    const vragenOpen = !!(beoordeling && beoordeling.aanloopMs === 0 && beoordeling.overMs > 0);
 
     for (const bot of this.bots) {
       if (now >= bot.nextReactionAt && Math.random() < this.config.reactionRate / 4) {
@@ -471,6 +473,19 @@ class ChatSimulator {
           this.stats.abandonedMessages += 1;
         }
         bot.nextCommentAt = now + this.randomInt(this.config.minGapMs, Math.max(this.config.minGapMs + 400, this.config.minGapMs * 3));
+      }
+
+      // De vragen na de scène: zo'n negen op de tien bots antwoorden, verspreid over de klok.
+      if (vragenOpen && bot.beoordeeld !== beoordeling.id) {
+        if (bot.beoordeelt !== beoordeling.id) { bot.beoordeelt = beoordeling.id; bot.slaatOver = Math.random() < 0.1; }
+        if (!bot.slaatOver && Math.random() < 1 / 40) {
+          bot.beoordeeld = beoordeling.id;
+          for (const vraag of beoordeling.vragen || []) {
+            const keuzes = Array.isArray(vraag.keuzes) ? vraag.keuzes : [];
+            if (!keuzes.length) continue;
+            this.service.beoordeling.antwoord(bot.clientKey, { id: beoordeling.id, vraag: vraag.id, keuze: keuzes[this.randomInt(0, keuzes.length - 1)].id });
+          }
+        }
       }
 
       if (this.config.autoVote && poll && !bot.votedPollIds.has(poll.id) && Math.random() < this.config.pollVoteChance / 24) {
