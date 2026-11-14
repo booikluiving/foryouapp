@@ -130,6 +130,9 @@ function compactCatalog(catalog = {}) {
       active: item.active,
       archivedAt: item.archivedAt || null,
     })),
+    // Voor de vragen na de scène (publiek): de namen van de labels en de plek van elke speler.
+    labels: (catalog.labels || []).map((item) => ({ id: item.id, name: item.name || item.id })),
+    performers: (catalog.performers || []).map((item) => ({ id: item.id, name: item.name || item.id, performerSlot: item.performerSlot })),
   };
 }
 
