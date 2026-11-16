@@ -187,11 +187,25 @@ function hueToDmx(hue) {
   return Math.round((clamp(hue, 0, 360, 0) / 360) * 255);
 }
 
-// De drie lampen staan in kleurtemperatuurmodus: kanaal 2 is warm (0) tot koel (255),
-// kanaal 3 is magenta (0) tot groen (255). Tint en verzadiging uit een stand worden
-// daarom omgerekend naar warmer of koeler wit. Zet de lampen in kleurmodus (HSI) en
-// deze waarde op "hsi" om weer tint en verzadiging te sturen.
-const ACCENT_LAMP_MODE = process.env.FORYOU_ACCENT_LAMP_MODE === "hsi" ? "hsi" : "cct";
+// Negen lampen, drie per speler. De lamp linksachter is de accentlamp en staat in kleurmodus
+// (kanaal 1 helderheid, 2 tint, 3 verzadiging). De twee voorlampen staan in
+// kleurtemperatuurmodus (kanaal 1 helderheid, 2 warm (0) tot koel (255), 3 magenta (0) tot
+// groen (255)). Links en rechts is vanuit de speler gezien.
+const LAMPEN = Object.freeze([
+  { id: "lamp1", speler: 1, rol: "accent", modus: "hsi", address: 1 },
+  { id: "lamp2", speler: 1, rol: "links", modus: "cct", address: 11 },
+  { id: "lamp3", speler: 1, rol: "rechts", modus: "cct", address: 21 },
+  { id: "lamp4", speler: 2, rol: "accent", modus: "hsi", address: 31 },
+  { id: "lamp5", speler: 2, rol: "links", modus: "cct", address: 41 },
+  { id: "lamp6", speler: 2, rol: "rechts", modus: "cct", address: 51 },
+  { id: "lamp7", speler: 3, rol: "accent", modus: "hsi", address: 61 },
+  { id: "lamp8", speler: 3, rol: "links", modus: "cct", address: 71 },
+  { id: "lamp9", speler: 3, rol: "rechts", modus: "cct", address: 81 },
+]);
+
+// Een stand heeft drie waarden: lamp1 is de accentlamp, lamp2 de voorlamp links en lamp3 de
+// voorlamp rechts. Elke speler krijgt dezelfde drie.
+const BRON_PER_ROL = Object.freeze({ accent: "lamp1", links: "lamp2", rechts: "lamp3" });
 const CCT_NEUTRAL = 128;
 const CCT_GM_NEUTRAL = 128;
 
@@ -202,35 +216,58 @@ function cctForHsi(hue, saturation) {
   return clamp(Math.round(CCT_NEUTRAL - warmth * span));
 }
 
-// Per omgeving een eigen kleurtemperatuur, zodat het licht meekleurt met het beeld
-// (warm bij een gelig beeld, koel bij een wit of blauw beeld). Het bestand wordt bij
-// elke scène opnieuw gelezen.
-function kleurtemperatuurVoorOmgeving(environmentId) {
-  if (ACCENT_LAMP_MODE !== "cct" || !environmentId) return null;
+// Per omgeving het voorlicht (kleurtemperatuur en helderheid links en rechts) en de kleur van
+// de accentlamp, zodat het licht meegaat met het beeld. Het bestand wordt bij elke scène
+// opnieuw gelezen.
+function leesOmgevingslicht() {
   try {
     const bestand = require("node:path").join(__dirname, "omgevingslicht.json");
     const data = JSON.parse(require("node:fs").readFileSync(bestand, "utf8"));
-    const item = data && data.omgevingen && data.omgevingen[String(environmentId)];
-    const waarde = item && Number(item.kleurtemperatuur);
-    return Number.isFinite(waarde) ? clamp(waarde) : null;
+    return data && typeof data === "object" ? data : {};
   } catch (_error) {
-    return null;
+    return {};
   }
+}
+
+function getal(waarde) {
+  if (waarde === null || waarde === undefined || waarde === "") return null;
+  const number = Number(waarde);
+  return Number.isFinite(number) ? number : null;
+}
+
+function kleurtemperatuurVoorOmgeving(environmentId) {
+  if (!environmentId) return null;
+  const item = (leesOmgevingslicht().omgevingen || {})[String(environmentId)];
+  const waarde = getal(item && item.kleurtemperatuur);
+  return waarde === null ? null : clamp(waarde);
+}
+
+function geschaald(helderheid, procent) {
+  const schaal = getal(procent);
+  return clamp(Math.round(clamp(helderheid) * (schaal === null ? 100 : Math.max(0, schaal)) / 100));
 }
 
 function channelsForAccentFixtures(fixtures = {}, options = {}) {
   const normalized = normalizeFixtureMap(fixtures);
-  const omgevingCct = kleurtemperatuurVoorOmgeving(options.environmentId);
+  const data = leesOmgevingslicht();
+  const omgeving = options.environmentId && data.omgevingen && data.omgevingen[String(options.environmentId)] || null;
+  const schaal = data.helderheid && typeof data.helderheid === "object" ? data.helderheid : {};
   const channels = {};
-  for (const fixture of ACCENT_FIXTURES) {
-    const values = normalized[fixture.id];
-    channels[fixture.address] = clamp(values.intensity);
-    if (ACCENT_LAMP_MODE === "hsi") {
-      channels[fixture.address + 1] = hueToDmx(values.hue);
-      channels[fixture.address + 2] = clamp(values.saturation);
+  for (const lamp of LAMPEN) {
+    const bron = normalized[BRON_PER_ROL[lamp.rol]];
+    const eigen = omgeving && omgeving[lamp.rol] && typeof omgeving[lamp.rol] === "object" ? omgeving[lamp.rol] : {};
+    const helderheid = getal(eigen.helderheid) === null ? bron.intensity : eigen.helderheid;
+    if (lamp.modus === "hsi") {
+      channels[lamp.address] = geschaald(helderheid, schaal.accent);
+      channels[lamp.address + 1] = hueToDmx(getal(eigen.tint) === null ? bron.hue : eigen.tint);
+      channels[lamp.address + 2] = clamp(getal(eigen.verzadiging) === null ? bron.saturation : eigen.verzadiging);
     } else {
-      channels[fixture.address + 1] = omgevingCct === null ? cctForHsi(values.hue, values.saturation) : omgevingCct;
-      channels[fixture.address + 2] = CCT_GM_NEUTRAL;
+      const temperatuur = getal(eigen.kleurtemperatuur) !== null ? eigen.kleurtemperatuur
+        : getal(omgeving && omgeving.kleurtemperatuur) !== null ? omgeving.kleurtemperatuur
+          : cctForHsi(bron.hue, bron.saturation);
+      channels[lamp.address] = geschaald(helderheid, schaal.voor);
+      channels[lamp.address + 1] = clamp(temperatuur);
+      channels[lamp.address + 2] = CCT_GM_NEUTRAL;
     }
   }
   return channels;
@@ -247,12 +284,12 @@ function channelsForPreset(presetId, presets = DEFAULT_LIGHTING_PRESETS) {
 
 module.exports = {
   ACCENT_FIXTURES,
-  ACCENT_LAMP_MODE,
   BASE_FIXTURES,
   DEFAULT_ENVIRONMENT_PRESET_ID,
   DEFAULT_LIGHTING_PRESETS,
   DEFAULT_STOP_PRESET_ID,
   ENVIRONMENT_LIGHTING_SCHEMA_VERSION,
+  LAMPEN,
   LIGHTING_PRESET_SCHEMA_VERSION,
   channelsForAccentFixtures,
   channelsForLighting,

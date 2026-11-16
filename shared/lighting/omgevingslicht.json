@@ -1,113 +1,414 @@
 {
-  "uitleg": "Kleurtemperatuur van de lampen per omgeving: 0 = warmst, 128 = neutraal wit, 255 = koelst. Voorstel berekend uit het achtergrondbeeld; pas een getal aan en het geldt bij de volgende scène. Een omgeving die hier niet staat krijgt 128.",
+  "uitleg": "Licht per omgeving. Elke speler heeft drie lampen: twee voorlampen (links en rechts, vanuit de speler gezien) en een accentlamp linksachter. kleurtemperatuur geldt voor de voorlampen: 0 = warmst, 128 = neutraal wit, 255 = koelst. links en rechts: helderheid 0-255. accent: tint 0-360 (0 rood, 30 oranje, 60 geel, 120 groen, 210 blauw, 300 magenta), verzadiging 0-255 (0 = wit), helderheid 0-255. helderheid bovenaan is een procent over alle omgevingen: voor de voorlampen en voor de accentlampen. Pas een getal aan en het geldt bij de volgende scène. Wat hier staat gaat voor op de lichtstand uit de catalogus; een omgeving die hier niet staat krijgt die lichtstand.",
+  "helderheid": {
+    "voor": 100,
+    "accent": 100
+  },
   "omgevingen": {
     "environment:3": {
       "naam": "Grimmige_slaapkamer",
-      "kleurtemperatuur": 42
+      "kleurtemperatuur": 42,
+      "links": {
+        "helderheid": 80
+      },
+      "rechts": {
+        "helderheid": 77
+      },
+      "accent": {
+        "tint": 353,
+        "verzadiging": 170,
+        "helderheid": 96
+      }
     },
     "environment:4": {
       "naam": "Cradam",
-      "kleurtemperatuur": 104
+      "kleurtemperatuur": 104,
+      "links": {
+        "helderheid": 83
+      },
+      "rechts": {
+        "helderheid": 59
+      },
+      "accent": {
+        "tint": 28,
+        "verzadiging": 110,
+        "helderheid": 100
+      }
     },
     "environment:5": {
       "naam": "Logeerkamer",
-      "kleurtemperatuur": 79
+      "kleurtemperatuur": 79,
+      "links": {
+        "helderheid": 80
+      },
+      "rechts": {
+        "helderheid": 89
+      },
+      "accent": {
+        "tint": 358,
+        "verzadiging": 132,
+        "helderheid": 107
+      }
     },
     "environment:6": {
       "naam": "Persconferentie",
-      "kleurtemperatuur": 152
+      "kleurtemperatuur": 152,
+      "links": {
+        "helderheid": 99
+      },
+      "rechts": {
+        "helderheid": 99
+      },
+      "accent": {
+        "tint": 210,
+        "verzadiging": 70,
+        "helderheid": 119
+      }
     },
     "environment:7": {
       "naam": "Spelletjeskamer",
-      "kleurtemperatuur": 96
+      "kleurtemperatuur": 96,
+      "links": {
+        "helderheid": 53
+      },
+      "rechts": {
+        "helderheid": 66
+      },
+      "accent": {
+        "tint": 28,
+        "verzadiging": 134,
+        "helderheid": 79
+      }
     },
     "environment:8": {
       "naam": "Trampolinepark",
-      "kleurtemperatuur": 161
+      "kleurtemperatuur": 161,
+      "links": {
+        "helderheid": 71
+      },
+      "rechts": {
+        "helderheid": 67
+      },
+      "accent": {
+        "tint": 280,
+        "verzadiging": 160,
+        "helderheid": 85
+      }
     },
     "environment:9": {
       "naam": "Kruipruimte",
-      "kleurtemperatuur": 40
+      "kleurtemperatuur": 40,
+      "links": {
+        "helderheid": 70
+      },
+      "rechts": {
+        "helderheid": 76
+      },
+      "accent": {
+        "tint": 31,
+        "verzadiging": 195,
+        "helderheid": 91
+      }
     },
     "environment:10": {
       "naam": "Eerste_handboogstraat",
-      "kleurtemperatuur": 137
+      "kleurtemperatuur": 137,
+      "links": {
+        "helderheid": 80
+      },
+      "rechts": {
+        "helderheid": 79
+      },
+      "accent": {
+        "tint": 210,
+        "verzadiging": 70,
+        "helderheid": 96
+      }
     },
     "environment:11": {
       "naam": "Trein",
-      "kleurtemperatuur": 93
+      "kleurtemperatuur": 93,
+      "links": {
+        "helderheid": 81
+      },
+      "rechts": {
+        "helderheid": 49
+      },
+      "accent": {
+        "tint": 35,
+        "verzadiging": 70,
+        "helderheid": 97
+      }
     },
     "environment:12": {
       "naam": "Ziekenhuis",
-      "kleurtemperatuur": 144
+      "kleurtemperatuur": 144,
+      "links": {
+        "helderheid": 46
+      },
+      "rechts": {
+        "helderheid": 76
+      },
+      "accent": {
+        "tint": 175,
+        "verzadiging": 90,
+        "helderheid": 91
+      }
     },
     "environment:13": {
       "naam": "Tennis",
-      "kleurtemperatuur": 99
+      "kleurtemperatuur": 99,
+      "links": {
+        "helderheid": 81
+      },
+      "rechts": {
+        "helderheid": 79
+      },
+      "accent": {
+        "tint": 10,
+        "verzadiging": 136,
+        "helderheid": 97
+      }
     },
     "environment:14": {
       "naam": "NOS_Studio",
-      "kleurtemperatuur": 164
+      "kleurtemperatuur": 164,
+      "links": {
+        "helderheid": 68
+      },
+      "rechts": {
+        "helderheid": 81
+      },
+      "accent": {
+        "tint": 228,
+        "verzadiging": 117,
+        "helderheid": 97
+      }
     },
     "environment:15": {
       "naam": "Supermarkt",
-      "kleurtemperatuur": 66
+      "kleurtemperatuur": 66,
+      "links": {
+        "helderheid": 60
+      },
+      "rechts": {
+        "helderheid": 76
+      },
+      "accent": {
+        "tint": 27,
+        "verzadiging": 109,
+        "helderheid": 91
+      }
     },
     "environment:16": {
       "naam": "Restaurant",
-      "kleurtemperatuur": 40
+      "kleurtemperatuur": 40,
+      "links": {
+        "helderheid": 62
+      },
+      "rechts": {
+        "helderheid": 64
+      },
+      "accent": {
+        "tint": 28,
+        "verzadiging": 187,
+        "helderheid": 77
+      }
     },
     "environment:17": {
       "naam": "Podcaststudio",
-      "kleurtemperatuur": 45
+      "kleurtemperatuur": 45,
+      "links": {
+        "helderheid": 61
+      },
+      "rechts": {
+        "helderheid": 79
+      },
+      "accent": {
+        "tint": 32,
+        "verzadiging": 150,
+        "helderheid": 95
+      }
     },
     "environment:18": {
       "naam": "Festival",
-      "kleurtemperatuur": 122
+      "kleurtemperatuur": 122,
+      "links": {
+        "helderheid": 80
+      },
+      "rechts": {
+        "helderheid": 79
+      },
+      "accent": {
+        "tint": 315,
+        "verzadiging": 200,
+        "helderheid": 96
+      }
     },
     "environment:19": {
       "naam": "Hotelkamer",
-      "kleurtemperatuur": 89
+      "kleurtemperatuur": 89,
+      "links": {
+        "helderheid": 77
+      },
+      "rechts": {
+        "helderheid": 59
+      },
+      "accent": {
+        "tint": 31,
+        "verzadiging": 115,
+        "helderheid": 92
+      }
     },
     "environment:20": {
       "naam": "Keuken",
-      "kleurtemperatuur": 161
+      "kleurtemperatuur": 161,
+      "links": {
+        "helderheid": 85
+      },
+      "rechts": {
+        "helderheid": 90
+      },
+      "accent": {
+        "tint": 200,
+        "verzadiging": 112,
+        "helderheid": 108
+      }
     },
     "environment:21": {
       "naam": "Linksvoor",
-      "kleurtemperatuur": 119
+      "kleurtemperatuur": 119,
+      "links": {
+        "helderheid": 84
+      },
+      "rechts": {
+        "helderheid": 89
+      },
+      "accent": {
+        "tint": 28,
+        "verzadiging": 98,
+        "helderheid": 107
+      }
     },
     "environment:22": {
       "naam": "Zonnebloemveld",
-      "kleurtemperatuur": 57
+      "kleurtemperatuur": 57,
+      "links": {
+        "helderheid": 79
+      },
+      "rechts": {
+        "helderheid": 73
+      },
+      "accent": {
+        "tint": 60,
+        "verzadiging": 221,
+        "helderheid": 95
+      }
     },
     "environment:23": {
       "naam": "Fata_morgana",
-      "kleurtemperatuur": 40
+      "kleurtemperatuur": 40,
+      "links": {
+        "helderheid": 24
+      },
+      "rechts": {
+        "helderheid": 30
+      },
+      "accent": {
+        "tint": 15,
+        "verzadiging": 176,
+        "helderheid": 90
+      }
     },
     "environment:24": {
       "naam": "Bioscoop",
-      "kleurtemperatuur": 40
+      "kleurtemperatuur": 40,
+      "links": {
+        "helderheid": 31
+      },
+      "rechts": {
+        "helderheid": 31
+      },
+      "accent": {
+        "tint": 3,
+        "verzadiging": 255,
+        "helderheid": 92
+      }
     },
     "environment:25": {
       "naam": "Auto",
-      "kleurtemperatuur": 133
+      "kleurtemperatuur": 133,
+      "links": {
+        "helderheid": 73
+      },
+      "rechts": {
+        "helderheid": 51
+      },
+      "accent": {
+        "tint": 210,
+        "verzadiging": 70,
+        "helderheid": 88
+      }
     },
     "environment:26": {
       "naam": "Antiekwinkel",
-      "kleurtemperatuur": 115
+      "kleurtemperatuur": 115,
+      "links": {
+        "helderheid": 67
+      },
+      "rechts": {
+        "helderheid": 60
+      },
+      "accent": {
+        "tint": 48,
+        "verzadiging": 90,
+        "helderheid": 80
+      }
     },
     "environment:27": {
       "naam": "Zoom",
-      "kleurtemperatuur": 121
+      "kleurtemperatuur": 121,
+      "links": {
+        "helderheid": 84
+      },
+      "rechts": {
+        "helderheid": 89
+      },
+      "accent": {
+        "tint": 69,
+        "verzadiging": 90,
+        "helderheid": 107
+      }
     },
     "environment:28": {
       "naam": "The Voice of Holland",
-      "kleurtemperatuur": 40
+      "kleurtemperatuur": 40,
+      "links": {
+        "helderheid": 26
+      },
+      "rechts": {
+        "helderheid": 30
+      },
+      "accent": {
+        "tint": 0,
+        "verzadiging": 170,
+        "helderheid": 90
+      }
     },
     "environment:29": {
       "naam": "Lingo studio",
-      "kleurtemperatuur": 200
+      "kleurtemperatuur": 200,
+      "links": {
+        "helderheid": 82
+      },
+      "rechts": {
+        "helderheid": 93
+      },
+      "accent": {
+        "tint": 214,
+        "verzadiging": 254,
+        "helderheid": 112
+      }
     }
   }
 }
