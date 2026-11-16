@@ -10,7 +10,7 @@ const {
 } = require("./runtime-output");
 const {
   DEFAULT_STOP_PRESET_ID,
-  channelsForPreset,
+  channelsForLoading,
 } = require("../../../shared/lighting/environment-lighting-v0");
 
 function actionPayloadId(cueId, actionIndex) {
@@ -282,8 +282,8 @@ function buildStopSituationCue({ name, showRunId, createdAtDate = new Date() } =
         "phase_loading_after_stop"
       ), { parallelGroup: "stop-situation", timeoutMs: 1200 }),
       action(cueId, 2, "dmx", "dmx.look", "fire-and-forget", {
-        label: "neutral-dim-between-situations",
-        channels: channelsForPreset(DEFAULT_STOP_PRESET_ID),
+        label: "loading",
+        channels: channelsForLoading(),
         clearFirst: false,
         continuous: true,
         cueIntent: "environment_lighting_stop",

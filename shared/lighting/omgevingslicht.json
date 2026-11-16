@@ -1,8 +1,17 @@
 {
-  "uitleg": "Licht per omgeving. Elke speler heeft drie lampen: twee voorlampen (links en rechts, vanuit de speler gezien) en een accentlamp linksachter. kleurtemperatuur geldt voor de voorlampen: 0 = warmst, 116 = neutraal wit bij camera op 4600 K, 255 = koelst. links en rechts: helderheid 0-255. accent: tint 0-360 (0 rood, 30 oranje, 60 geel, 120 groen, 210 blauw, 300 magenta), verzadiging 0-255 (0 = wit), helderheid 0-255. helderheid bovenaan is een procent over alle omgevingen: voor de voorlampen en voor de accentlampen. Pas een getal aan en het geldt bij de volgende scène. Wat hier staat gaat voor op de lichtstand uit de catalogus; een omgeving die hier niet staat krijgt die lichtstand.",
+  "uitleg": "Licht per omgeving. Elke speler heeft drie lampen: twee voorlampen (links en rechts, vanuit de speler gezien) en een accentlamp linksachter. kleurtemperatuur geldt voor de voorlampen: 0 = warmst, 116 = neutraal wit bij camera op 4600 K, 255 = koelst. links en rechts: helderheid 0-255. accent: tint 0-360 (0 rood, 30 oranje, 60 geel, 120 groen, 210 blauw, 300 magenta), verzadiging 0-255 (0 = wit), helderheid 0-255. helderheid bovenaan is een procent over alle omgevingen: voor de voorlampen en voor de accentlampen. Pas een getal aan en het geldt bij de volgende scène. Wat hier staat gaat voor op de lichtstand uit de catalogus; een omgeving die hier niet staat krijgt die lichtstand. loading is het licht tussen de scènes: voor = helderheid van de voorlampen, accent = de accentlampen.",
   "helderheid": {
     "voor": 100,
     "accent": 100
+  },
+  "loading": {
+    "voor": 0,
+    "kleurtemperatuur": 116,
+    "accent": {
+      "tint": 0,
+      "verzadiging": 0,
+      "helderheid": 14
+    }
   },
   "omgevingen": {
     "environment:3": {

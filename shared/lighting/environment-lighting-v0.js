@@ -273,6 +273,28 @@ function channelsForAccentFixtures(fixtures = {}, options = {}) {
   return channels;
 }
 
+// Tussen de scènes (loading) zijn de schermen zwart en hoort het licht daar niet tegenop te
+// vallen: de voorlampen uit of heel zacht, alleen de accentlampen geven nog iets. De waarden
+// staan onder "loading" in omgevingslicht.json.
+function channelsForLoading() {
+  const loading = leesOmgevingslicht().loading || {};
+  const accent = loading.accent && typeof loading.accent === "object" ? loading.accent : {};
+  const voor = getal(loading.voor) === null ? 0 : loading.voor;
+  const channels = {};
+  for (const lamp of LAMPEN) {
+    if (lamp.modus === "hsi") {
+      channels[lamp.address] = clamp(getal(accent.helderheid) === null ? 14 : accent.helderheid);
+      channels[lamp.address + 1] = hueToDmx(getal(accent.tint) === null ? 0 : accent.tint);
+      channels[lamp.address + 2] = clamp(getal(accent.verzadiging) === null ? 0 : accent.verzadiging);
+    } else {
+      channels[lamp.address] = clamp(voor);
+      channels[lamp.address + 1] = clamp(getal(loading.kleurtemperatuur) === null ? 116 : loading.kleurtemperatuur);
+      channels[lamp.address + 2] = CCT_GM_NEUTRAL;
+    }
+  }
+  return channels;
+}
+
 function channelsForLighting(lighting = {}, presets = DEFAULT_LIGHTING_PRESETS) {
   return channelsForAccentFixtures(resolveEnvironmentLighting(lighting, presets).fixtures);
 }
@@ -293,6 +315,7 @@ module.exports = {
   LIGHTING_PRESET_SCHEMA_VERSION,
   channelsForAccentFixtures,
   channelsForLighting,
+  channelsForLoading,
   channelsForPreset,
   cloneJson,
   kleurtemperatuurVoorOmgeving,
