@@ -121,7 +121,7 @@
     },
     "environment:10": {
       "naam": "Eerste_handboogstraat",
-      "kleurtemperatuur": 125,
+      "kleurtemperatuur": 116,
       "links": {
         "helderheid": 114
       },
@@ -129,14 +129,14 @@
         "helderheid": 80
       },
       "accent": {
-        "tint": 0,
-        "verzadiging": 0,
-        "helderheid": 90
+        "tint": 40,
+        "verzadiging": 40,
+        "helderheid": 110
       }
     },
     "environment:11": {
       "naam": "Trein",
-      "kleurtemperatuur": 106,
+      "kleurtemperatuur": 116,
       "links": {
         "helderheid": 116
       },
@@ -144,9 +144,9 @@
         "helderheid": 81
       },
       "accent": {
-        "tint": 35,
-        "verzadiging": 70,
-        "helderheid": 107
+        "tint": 40,
+        "verzadiging": 40,
+        "helderheid": 110
       }
     },
     "environment:12": {
@@ -166,7 +166,7 @@
     },
     "environment:13": {
       "naam": "Tennis",
-      "kleurtemperatuur": 107,
+      "kleurtemperatuur": 116,
       "links": {
         "helderheid": 116
       },
@@ -174,9 +174,9 @@
         "helderheid": 81
       },
       "accent": {
-        "tint": 10,
-        "verzadiging": 136,
-        "helderheid": 107
+        "tint": 40,
+        "verzadiging": 40,
+        "helderheid": 110
       }
     },
     "environment:14": {
@@ -241,7 +241,7 @@
     },
     "environment:18": {
       "naam": "Festival",
-      "kleurtemperatuur": 114,
+      "kleurtemperatuur": 116,
       "links": {
         "helderheid": 114
       },
@@ -249,9 +249,9 @@
         "helderheid": 80
       },
       "accent": {
-        "tint": 315,
-        "verzadiging": 200,
-        "helderheid": 105
+        "tint": 40,
+        "verzadiging": 40,
+        "helderheid": 110
       }
     },
     "environment:19": {
@@ -286,7 +286,7 @@
     },
     "environment:21": {
       "naam": "Linksvoor",
-      "kleurtemperatuur": 113,
+      "kleurtemperatuur": 116,
       "links": {
         "helderheid": 85
       },
@@ -294,14 +294,14 @@
         "helderheid": 121
       },
       "accent": {
-        "tint": 28,
-        "verzadiging": 98,
-        "helderheid": 112
+        "tint": 40,
+        "verzadiging": 40,
+        "helderheid": 110
       }
     },
     "environment:22": {
       "naam": "Zonnebloemveld",
-      "kleurtemperatuur": 95,
+      "kleurtemperatuur": 116,
       "links": {
         "helderheid": 114
       },
@@ -309,9 +309,9 @@
         "helderheid": 80
       },
       "accent": {
-        "tint": 60,
-        "verzadiging": 221,
-        "helderheid": 105
+        "tint": 40,
+        "verzadiging": 40,
+        "helderheid": 110
       }
     },
     "environment:23": {
@@ -346,7 +346,7 @@
     },
     "environment:25": {
       "naam": "Auto",
-      "kleurtemperatuur": 121,
+      "kleurtemperatuur": 116,
       "links": {
         "helderheid": 109
       },
@@ -354,9 +354,9 @@
         "helderheid": 76
       },
       "accent": {
-        "tint": 0,
-        "verzadiging": 0,
-        "helderheid": 90
+        "tint": 40,
+        "verzadiging": 40,
+        "helderheid": 110
       }
     },
     "environment:26": {
