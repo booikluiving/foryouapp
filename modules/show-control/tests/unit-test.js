@@ -36,7 +36,7 @@ const { requestForStreamDeckAction } = require("../target-adapters/streamdeck-ad
 const { requestForTeleprompterAction } = require("../target-adapters/teleprompter-adapter");
 const {
   DEFAULT_STOP_PRESET_ID,
-  channelsForPreset,
+  channelsForLoading,
 } = require("../../../shared/lighting/environment-lighting-v0");
 
 function sleep(ms) {
@@ -650,7 +650,7 @@ async function main() {
   assert.equal(stopPhaseAction.payload.phase, 1, "stopSituation should set TD phase 1");
   const stopDmxAction = stopSituationCue.actions.find((action) => action.command === "dmx.look");
   assert(stopDmxAction, "stopSituation should set neutral DMX look");
-  assert.deepEqual(stopDmxAction.payload.channels, channelsForPreset(DEFAULT_STOP_PRESET_ID));
+  assert.deepEqual(stopDmxAction.payload.channels, channelsForLoading());
   assert.equal(stopDmxAction.payload.clearFirst, false);
   assert.equal(stopDmxAction.payload.continuous, true);
 

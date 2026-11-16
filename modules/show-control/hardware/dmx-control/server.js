@@ -9,6 +9,7 @@ const { URL } = require("node:url");
 const { channelsForPreset: channelsForLegacyPreset, listPresets } = require("./look-presets");
 const {
   DEFAULT_LIGHTING_PRESETS,
+  LAMPEN,
   mergeLightingPresets,
   normalizeLightingPreset,
 } = require("../../../../shared/lighting/environment-lighting-v0");
@@ -109,6 +110,7 @@ function publicState(state) {
     lampenUitTot: lampenUitTot(),
     lastSentAt: state.lastSentAt,
     lastLook: state.lastLook,
+    effect: state.effect ? { naam: state.effect.naam, piek: state.effect.piek, bodem: state.effect.bodem, tempoMs: state.effect.tempoMs, duurMs: state.effect.duurMs } : null,
     nonZeroChannels: channelsToObject(state.channels, { nonZeroOnly: true }),
     firstChannels: Array.from(state.channels.slice(0, 24)),
     activity: state.activity.slice(-80),
@@ -366,8 +368,82 @@ async function writeLightingPreset(presetId, body = {}, options = {}) {
   return result.preset || preset;
 }
 
+// Lichtspel tijdens het kiezen van de volgende scène: de lampen lichten om de beurt zacht op,
+// zodat de zaal ziet dat er iets anders gebeurt dan loading. Het spel schrijft rechtstreeks in
+// de kanalen (geen nieuwe meting van de key) en stopt bij elke andere lichtstand.
+const KIEZEN = Object.freeze({ piek: 70, bodem: 0, tempoMs: 650, duurMs: 1900, wit: 116 });
+
+function stopEffect(state, herstel = false) {
+  const effect = state.effect;
+  if (!effect) return;
+  clearInterval(effect.timer);
+  if (herstel) effect.basis.copy(state.channels);
+  state.effect = null;
+  addActivity(state, { type: "effect-stop", naam: effect.naam, herstel });
+}
+
+function startKiezen(state, opties = {}, source = "http") {
+  stopEffect(state, true);
+  const piek = clampInt(opties.piek, 0, 255, KIEZEN.piek);
+  const bodem = clampInt(opties.bodem, 0, 255, KIEZEN.bodem);
+  const tempoMs = clampInt(opties.tempoMs, 100, 10000, KIEZEN.tempoMs);
+  const duurMs = clampInt(opties.duurMs, 200, 20000, KIEZEN.duurMs);
+  const pulsen = [];
+  let volgende = 0;
+  let vorige = -1;
+  const stap = () => {
+    const nu = Date.now();
+    if (nu >= volgende) {
+      let index = vorige;
+      while (index === vorige) index = Math.floor(Math.random() * LAMPEN.length);
+      vorige = index;
+      pulsen.push({ index, start: nu });
+      volgende = nu + tempoMs;
+    }
+    while (pulsen.length && nu - pulsen[0].start > duurMs) pulsen.shift();
+    LAMPEN.forEach((lamp, index) => {
+      let niveau = 0;
+      for (const puls of pulsen) {
+        if (puls.index === index) niveau = Math.max(niveau, Math.sin((Math.PI * (nu - puls.start)) / duurMs));
+      }
+      const kanaal = lamp.address - 1;
+      state.channels[kanaal] = Math.round(bodem + (piek - bodem) * niveau * niveau);
+      state.channels[kanaal + 1] = lamp.modus === "hsi" ? 0 : KIEZEN.wit;
+      state.channels[kanaal + 2] = lamp.modus === "hsi" ? 0 : 128;
+    });
+  };
+  state.effect = { naam: "kiezen", basis: Buffer.from(state.channels), timer: setInterval(stap, 40), piek, bodem, tempoMs, duurMs };
+  if (typeof state.effect.timer.unref === "function") state.effect.timer.unref();
+  stap();
+  if (!state.active) startContinuous(state, source);
+  addActivity(state, { type: "effect-start", naam: "kiezen", source, piek, bodem, tempoMs, duurMs });
+}
+
+// De stemming op de volgende scène staat bij de publieksserver. Gaat hij open, dan begint het
+// lichtspel; gaat hij dicht, dan komt de stand van daarvoor terug. Uit met SHOW_CONTROL_DMX_KIEZEN=0.
+const AUDIENCE_URL = String(process.env.SHOW_CONTROL_DMX_AUDIENCE_URL || "http://127.0.0.1:3026").replace(/\/+$/, "");
+
+function volgStemming(state) {
+  if (process.env.SHOW_CONTROL_DMX_KIEZEN === "0") return null;
+  let wasActief = false;
+  const timer = setInterval(async () => {
+    try {
+      const response = await fetch(`${AUDIENCE_URL}/audience/stage/start-stemming`, { signal: AbortSignal.timeout(800) });
+      const actief = !!(await response.json()).actief;
+      if (actief && !wasActief) startKiezen(state, {}, "stemming");
+      if (!actief && wasActief && state.effect && state.effect.naam === "kiezen") stopEffect(state, true);
+      wasActief = actief;
+    } catch (_error) {
+      // publieksserver niet bereikbaar: het licht blijft zoals het is
+    }
+  }, 1000);
+  if (typeof timer.unref === "function") timer.unref();
+  return timer;
+}
+
 async function applyLookAndMaybeSend(state, body = {}, source = "http") {
   applyConfig(state, body);
+  stopEffect(state, false);
   if (body.fill !== undefined) {
     fillChannels(state, body.fill);
   } else {
@@ -486,6 +562,16 @@ function createDmxApp(options = {}) {
         return;
       }
 
+      // { "naam": "kiezen", "piek": 70, "bodem": 0, "tempoMs": 650, "duurMs": 1900 } start het lichtspel,
+      // { "naam": null } stopt het en zet de stand van daarvoor terug.
+      if (req.method === "POST" && url.pathname === "/api/effect") {
+        const body = await readJson(req);
+        if (body.naam === "kiezen") startKiezen(state, body, "http");
+        else stopEffect(state, true);
+        sendJson(res, 200, { ok: true, state: publicState(state) });
+        return;
+      }
+
       if (req.method === "POST" && url.pathname === "/api/start") {
         const body = await readJson(req);
         applyConfig(state, body);
@@ -531,9 +617,11 @@ function dmxHost(options = {}) {
 }
 
 function startDmxServer(options = {}) {
-  const server = createDmxApp(options);
+  const state = options.state || createState(options);
+  const server = createDmxApp({ ...options, state });
   const host = dmxHost(options);
   const port = dmxPort(options);
+  volgStemming(state);
   server.listen(port, host, () => {
     process.stdout.write(`DMX Control Art-Net listening on http://${host}:${port}\n`);
   });
