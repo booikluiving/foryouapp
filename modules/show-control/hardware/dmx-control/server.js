@@ -110,7 +110,7 @@ function publicState(state) {
     lampenUitTot: lampenUitTot(),
     lastSentAt: state.lastSentAt,
     lastLook: state.lastLook,
-    effect: state.effect ? { naam: state.effect.naam, piek: state.effect.piek, bodem: state.effect.bodem, tempoMs: state.effect.tempoMs, duurMs: state.effect.duurMs } : null,
+    effect: state.effect ? { naam: state.effect.naam, piek: state.effect.piek, bodem: state.effect.bodem, periodeMs: state.effect.periodeMs } : null,
     nonZeroChannels: channelsToObject(state.channels, { nonZeroOnly: true }),
     firstChannels: Array.from(state.channels.slice(0, 24)),
     activity: state.activity.slice(-80),
@@ -368,10 +368,12 @@ async function writeLightingPreset(presetId, body = {}, options = {}) {
   return result.preset || preset;
 }
 
-// Lichtspel tijdens het kiezen van de volgende scène: de lampen lichten om de beurt zacht op,
-// zodat de zaal ziet dat er iets anders gebeurt dan loading. Het spel schrijft rechtstreeks in
-// de kanalen (geen nieuwe meting van de key) en stopt bij elke andere lichtstand.
-const KIEZEN = Object.freeze({ piek: 18, bodem: 0, tempoMs: 2500, duurMs: 6000, wit: 116 });
+// Lichtspel tijdens het kiezen van de volgende scène: een trage golf die door de lampen loopt,
+// zodat de zaal ziet dat er iets anders gebeurt dan loading. Geen lamp gaat uit (onder een
+// bepaalde waarde springen de lampen aan en uit), ze ademen tussen bodem en piek en lopen in
+// elkaar over. Het spel schrijft rechtstreeks in de kanalen (geen nieuwe meting van de key)
+// en stopt bij elke andere lichtstand.
+const KIEZEN = Object.freeze({ piek: 18, bodem: 6, periodeMs: 14000, wit: 116 });
 
 function stopEffect(state, herstel = false) {
   const effect = state.effect;
@@ -385,38 +387,24 @@ function stopEffect(state, herstel = false) {
 function startKiezen(state, opties = {}, source = "http") {
   stopEffect(state, true);
   const piek = clampInt(opties.piek, 0, 255, KIEZEN.piek);
-  const bodem = clampInt(opties.bodem, 0, 255, KIEZEN.bodem);
-  const tempoMs = clampInt(opties.tempoMs, 100, 10000, KIEZEN.tempoMs);
-  const duurMs = clampInt(opties.duurMs, 200, 20000, KIEZEN.duurMs);
-  const pulsen = [];
-  let volgende = 0;
-  let vorige = -1;
+  const bodem = Math.min(piek, clampInt(opties.bodem, 0, 255, KIEZEN.bodem));
+  const periodeMs = clampInt(opties.periodeMs, 1000, 120000, KIEZEN.periodeMs);
+  const begin = Date.now();
   const stap = () => {
-    const nu = Date.now();
-    if (nu >= volgende) {
-      let index = vorige;
-      while (index === vorige) index = Math.floor(Math.random() * LAMPEN.length);
-      vorige = index;
-      pulsen.push({ index, start: nu });
-      volgende = nu + tempoMs;
-    }
-    while (pulsen.length && nu - pulsen[0].start > duurMs) pulsen.shift();
+    const fase = (Date.now() - begin) / periodeMs;
     LAMPEN.forEach((lamp, index) => {
-      let niveau = 0;
-      for (const puls of pulsen) {
-        if (puls.index === index) niveau = Math.max(niveau, Math.sin((Math.PI * (nu - puls.start)) / duurMs));
-      }
+      const niveau = 0.5 - 0.5 * Math.cos(2 * Math.PI * (fase - index / LAMPEN.length));
       const kanaal = lamp.address - 1;
-      state.channels[kanaal] = Math.round(bodem + (piek - bodem) * niveau * niveau);
+      state.channels[kanaal] = Math.round(bodem + (piek - bodem) * niveau);
       state.channels[kanaal + 1] = lamp.modus === "hsi" ? 0 : KIEZEN.wit;
       state.channels[kanaal + 2] = lamp.modus === "hsi" ? 0 : 128;
     });
   };
-  state.effect = { naam: "kiezen", basis: Buffer.from(state.channels), timer: setInterval(stap, 40), piek, bodem, tempoMs, duurMs };
+  state.effect = { naam: "kiezen", basis: Buffer.from(state.channels), timer: setInterval(stap, 40), piek, bodem, periodeMs };
   if (typeof state.effect.timer.unref === "function") state.effect.timer.unref();
   stap();
   if (!state.active) startContinuous(state, source);
-  addActivity(state, { type: "effect-start", naam: "kiezen", source, piek, bodem, tempoMs, duurMs });
+  addActivity(state, { type: "effect-start", naam: "kiezen", source, piek, bodem, periodeMs });
 }
 
 // De stemming op de volgende scène staat bij de publieksserver. Gaat hij open, dan begint het
@@ -562,7 +550,7 @@ function createDmxApp(options = {}) {
         return;
       }
 
-      // { "naam": "kiezen", "piek": 18, "bodem": 0, "tempoMs": 2500, "duurMs": 6000 } start het lichtspel,
+      // { "naam": "kiezen", "piek": 18, "bodem": 6, "periodeMs": 14000 } start het lichtspel,
       // { "naam": null } stopt het en zet de stand van daarvoor terug.
       if (req.method === "POST" && url.pathname === "/api/effect") {
         const body = await readJson(req);
