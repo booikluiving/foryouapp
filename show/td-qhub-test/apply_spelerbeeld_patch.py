@@ -93,6 +93,7 @@ def _spelerbeeld_patch():
     for n in (1, 2, 3):
         strook.inputConnectors[n - 1].connect(r.op('fy_speler_klein%d' % n))
     strook.par.align = 'horizlr'
+    strook.par.fit = 'fill'   # elk beeld vult zijn vak (anders komt het plat in het midden)
     strook.par.outputresolution = 'custom'
     strook.par.resolutionw = 810
     strook.par.resolutionh = 480
