@@ -4004,6 +4004,8 @@
         window.parent.postMessage({
           bron: "for_you-universum",
           actief: !!g,
+          // De run waar dit bij hoort: bij een nieuwe run begint het scherm weer bij de inloop.
+          sessie: g ? String(g.sessie || "") : "",
           binnen: regie.binnenAan,
           sceneId: regie.focus,
           titel: regie.focus ? sceneTitle(regie.focus) : "",
