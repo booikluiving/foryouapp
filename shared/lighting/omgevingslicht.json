@@ -7,7 +7,7 @@
   "omgevingen": {
     "environment:3": {
       "naam": "Grimmige_slaapkamer",
-      "kleurtemperatuur": 40,
+      "kleurtemperatuur": 95,
       "links": {
         "helderheid": 114
       },
@@ -15,9 +15,9 @@
         "helderheid": 80
       },
       "accent": {
-        "tint": 353,
-        "verzadiging": 170,
-        "helderheid": 106
+        "tint": 325,
+        "verzadiging": 180,
+        "helderheid": 130
       }
     },
     "environment:4": {
