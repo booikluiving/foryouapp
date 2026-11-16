@@ -371,7 +371,7 @@ async function writeLightingPreset(presetId, body = {}, options = {}) {
 // Lichtspel tijdens het kiezen van de volgende scène: de lampen lichten om de beurt zacht op,
 // zodat de zaal ziet dat er iets anders gebeurt dan loading. Het spel schrijft rechtstreeks in
 // de kanalen (geen nieuwe meting van de key) en stopt bij elke andere lichtstand.
-const KIEZEN = Object.freeze({ piek: 70, bodem: 0, tempoMs: 650, duurMs: 1900, wit: 116 });
+const KIEZEN = Object.freeze({ piek: 18, bodem: 0, tempoMs: 2500, duurMs: 6000, wit: 116 });
 
 function stopEffect(state, herstel = false) {
   const effect = state.effect;
@@ -562,7 +562,7 @@ function createDmxApp(options = {}) {
         return;
       }
 
-      // { "naam": "kiezen", "piek": 70, "bodem": 0, "tempoMs": 650, "duurMs": 1900 } start het lichtspel,
+      // { "naam": "kiezen", "piek": 18, "bodem": 0, "tempoMs": 2500, "duurMs": 6000 } start het lichtspel,
       // { "naam": null } stopt het en zet de stand van daarvoor terug.
       if (req.method === "POST" && url.pathname === "/api/effect") {
         const body = await readJson(req);
