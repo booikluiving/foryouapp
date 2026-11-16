@@ -1,5 +1,7 @@
 "use strict";
 
+const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 const {
@@ -225,6 +227,41 @@ function createAudienceApp(options = {}) {
   app.post("/audience/stage/spelerbeeld", express.raw({ type: "image/jpeg", limit: "300kb" }), (req, res) => {
     const result = service.zetSpelerbeeld(req.query.plek, req.body);
     res.status(result.ok ? 200 : 400).json(result);
+  });
+  // De drie spelers als doorlopende beeldstroom: TouchDesigner bewaart buiten de scène een strook met
+  // de drie camera's naast elkaar (strook_0..2.jpg om de beurt, zo'n 17 per seconde). Is er geen verse
+  // strook, dan komt er niets (204) en valt het zaalscherm terug op de losse beelden per speler.
+  app.get("/audience/stage/spelers-stroom", (req, res) => {
+    const map = process.env.AUDIENCE_SPELERBEELD_DIR || path.join(os.homedir(), "ForYou", "spelerbeeld");
+    // Het op één na nieuwste bestand is zeker af; het nieuwste wordt misschien nog geschreven.
+    const kies = () => {
+      const lijst = [];
+      for (const n of [0, 1, 2]) {
+        try { const bestand = path.join(map, `strook_${n}.jpg`); lijst.push({ bestand, at: fs.statSync(bestand).mtimeMs }); } catch (_err) {}
+      }
+      lijst.sort((a, b) => b.at - a.at);
+      return lijst.length >= 2 ? lijst[1] : null;
+    };
+    const eerste = kies();
+    if (!eerste || Date.now() - eerste.at > 3000) { res.status(204).end(); return; }
+    res.writeHead(200, { "Content-Type": "multipart/x-mixed-replace; boundary=beeld", "Cache-Control": "no-store", Connection: "close" });
+    let laatst = 0;
+    const tik = () => {
+      const nu = kies();
+      // Komt er een tijd niets meer (TouchDesigner gestopt), dan eindigt de stroom.
+      if (!nu || Date.now() - nu.at > 120000) { clearInterval(timer); res.end(); return; }
+      if (nu.at === laatst || res.writableLength > 1024 * 1024) return;
+      let jpeg = null;
+      try { jpeg = fs.readFileSync(nu.bestand); } catch (_err) { return; }
+      if (jpeg.length < 100) return;
+      laatst = nu.at;
+      res.write(`--beeld\r\nContent-Type: image/jpeg\r\nContent-Length: ${jpeg.length}\r\n\r\n`);
+      res.write(jpeg);
+      res.write("\r\n");
+    };
+    const timer = setInterval(tik, 25);
+    tik();
+    req.on("close", () => clearInterval(timer));
   });
   app.get("/audience/stage/spelerbeeld/:plek", (req, res) => {
     const jpeg = service.getSpelerbeeld(req.params.plek);
