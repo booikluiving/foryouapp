@@ -22,7 +22,7 @@
     },
     "environment:4": {
       "naam": "Cradam",
-      "kleurtemperatuur": 92,
+      "kleurtemperatuur": 109,
       "links": {
         "helderheid": 117
       },
@@ -37,7 +37,7 @@
     },
     "environment:5": {
       "naam": "Logeerkamer",
-      "kleurtemperatuur": 67,
+      "kleurtemperatuur": 101,
       "links": {
         "helderheid": 85
       },
@@ -67,7 +67,7 @@
     },
     "environment:7": {
       "naam": "Spelletjeskamer",
-      "kleurtemperatuur": 84,
+      "kleurtemperatuur": 106,
       "links": {
         "helderheid": 72
       },
@@ -97,7 +97,7 @@
     },
     "environment:9": {
       "naam": "Kruipruimte",
-      "kleurtemperatuur": 40,
+      "kleurtemperatuur": 93,
       "links": {
         "helderheid": 78
       },
@@ -127,7 +127,7 @@
     },
     "environment:11": {
       "naam": "Trein",
-      "kleurtemperatuur": 81,
+      "kleurtemperatuur": 106,
       "links": {
         "helderheid": 116
       },
@@ -157,7 +157,7 @@
     },
     "environment:13": {
       "naam": "Tennis",
-      "kleurtemperatuur": 87,
+      "kleurtemperatuur": 107,
       "links": {
         "helderheid": 116
       },
@@ -202,7 +202,7 @@
     },
     "environment:16": {
       "naam": "Restaurant",
-      "kleurtemperatuur": 40,
+      "kleurtemperatuur": 93,
       "links": {
         "helderheid": 71
       },
@@ -217,7 +217,7 @@
     },
     "environment:17": {
       "naam": "Podcaststudio",
-      "kleurtemperatuur": 40,
+      "kleurtemperatuur": 93,
       "links": {
         "helderheid": 79
       },
@@ -232,7 +232,7 @@
     },
     "environment:18": {
       "naam": "Festival",
-      "kleurtemperatuur": 110,
+      "kleurtemperatuur": 114,
       "links": {
         "helderheid": 114
       },
@@ -247,7 +247,7 @@
     },
     "environment:19": {
       "naam": "Hotelkamer",
-      "kleurtemperatuur": 77,
+      "kleurtemperatuur": 104,
       "links": {
         "helderheid": 112
       },
@@ -277,7 +277,7 @@
     },
     "environment:21": {
       "naam": "Linksvoor",
-      "kleurtemperatuur": 107,
+      "kleurtemperatuur": 113,
       "links": {
         "helderheid": 85
       },
@@ -292,7 +292,7 @@
     },
     "environment:22": {
       "naam": "Zonnebloemveld",
-      "kleurtemperatuur": 45,
+      "kleurtemperatuur": 95,
       "links": {
         "helderheid": 114
       },
@@ -307,7 +307,7 @@
     },
     "environment:23": {
       "naam": "Fata_morgana",
-      "kleurtemperatuur": 40,
+      "kleurtemperatuur": 93,
       "links": {
         "helderheid": 64
       },
@@ -322,7 +322,7 @@
     },
     "environment:24": {
       "naam": "Bioscoop",
-      "kleurtemperatuur": 40,
+      "kleurtemperatuur": 93,
       "links": {
         "helderheid": 92
       },
@@ -352,7 +352,7 @@
     },
     "environment:26": {
       "naam": "Antiekwinkel",
-      "kleurtemperatuur": 103,
+      "kleurtemperatuur": 112,
       "links": {
         "helderheid": 104
       },
@@ -367,7 +367,7 @@
     },
     "environment:27": {
       "naam": "Zoom",
-      "kleurtemperatuur": 109,
+      "kleurtemperatuur": 114,
       "links": {
         "helderheid": 85
       },
@@ -382,7 +382,7 @@
     },
     "environment:28": {
       "naam": "The Voice of Holland",
-      "kleurtemperatuur": 40,
+      "kleurtemperatuur": 93,
       "links": {
         "helderheid": 64
       },
