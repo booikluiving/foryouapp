@@ -132,6 +132,7 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       SHOW_CONTROL_URL: url("show-control"),
       SHOW_CONTROL_DB_DIR: path.join(dataDir, "show-control"),
       SHOW_CONTROL_RUNTIME_URL: url("runtime"),
+      SHOW_CONTROL_AUDIENCE_URL: url("audience"),
       SHOW_CONTROL_SCRIPT_AGENT_URL: url("script-agent"),
       SHOW_CONTROL_TELEPROMPTER_URL: url("script-agent"),
       SHOW_CONTROL_CATALOG_URL: lezen,

@@ -274,6 +274,12 @@ function createShowControlApp(options = {}) {
     await executeCue(cue, executeOptions);
     await saveCue(cue);
     res.status(201).json({ ok: true, cue });
+    // READY (de spelers staan klaar): het stemmen na de scène hoeft niet uit te lopen.
+    const acties = [...(req.body && Array.isArray(req.body.actions) ? req.body.actions : []), ...((req.body && Array.isArray(req.body.steps) ? req.body.steps : []).flatMap((stap) => (stap && Array.isArray(stap.actions) ? stap.actions : [])))];
+    if (acties.some((actie) => actie && actie.command === "teleprompter.ready" && !(actie.payload && actie.payload.ready === false))) {
+      const publiek = String(process.env.SHOW_CONTROL_AUDIENCE_URL || "http://127.0.0.1:3026").replace(/\/+$/, "");
+      fetch(`${publiek}/audience/admin/beoordeling/sluit`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: AbortSignal.timeout(2000) }).catch(() => {});
+    }
   }));
 
   app.post("/v0/show-control/cues/save", asyncRoute(async (req, res) => {
