@@ -33,6 +33,7 @@ KIJK_BREEDTE = 960          # op deze breedte zoekt Vision naar gezichten
 FOTO = (540, 720)           # de uitsnede die naar de telefoon gaat (staand, 3:4)
 MAX_BYTES = 140 * 1024      # de publieksserver neemt hoogstens 150 kB aan
 NIEUWE_SCENE_NA = 25.0      # zo lang geen nieuw beeld = de scène is voorbij
+NIEUWE_SCENE_FRAMES = 300   # TouchDesigner bewaart alleen tijdens de scène, met het framenummer als naam: een sprong = een nieuwe scène
 
 
 def maat(bestand: Path) -> tuple[int, int]:
@@ -105,8 +106,9 @@ def bekijk(bestand: Path) -> tuple[float, bytes]:
     breedte, hoogte = maat(bestand)
     beste = max(gezichten(bestand, breedte, hoogte), key=cijfer, default=None)
     if beste is None or cijfer(beste) < 0:
-        return -1.0, b""
-    return cijfer(beste), uitsnede(bestand, breedte, hoogte, beste)
+        # Geen bruikbaar gezicht: het bovenste deel van het beeld, voor als er de hele scène geen beter komt.
+        return 0.0, uitsnede(bestand, breedte, hoogte, {"b": [0.2, 0.05, 0.6, 0.28]})
+    return 1.0 + cijfer(beste), uitsnede(bestand, breedte, hoogte, beste)
 
 
 def main() -> None:
@@ -120,6 +122,11 @@ def main() -> None:
     gezien: set[Path] = set()
     beste: dict[int, float] = {}
     laatst = time.time()
+    vorig_frame: dict[int, int] = {}
+    if not a.eenmalig:
+        # Wat er al ligt hoort bij eerdere scènes.
+        for plek in (1, 2, 3, 4, 5, 6):
+            gezien.update((basis / f"plek{plek}").glob("*"))
     while True:
         nieuw = sorted((b for plek in (1, 2, 3, 4, 5, 6) for b in (basis / f"plek{plek}").glob("*")
                         if b.suffix.lower() in (".jpg", ".jpeg", ".png") and b not in gezien), key=lambda b: b.stat().st_mtime)
@@ -129,6 +136,12 @@ def main() -> None:
             gezien.add(bestand)
             laatst = time.time()
             plek = int(bestand.parent.name[4:])
+            # Een sprong in de framenummers (of een lager nummer na een herstart): een nieuwe scène.
+            if bestand.stem.isdigit() and not a.eenmalig:
+                frame = int(bestand.stem)
+                if plek in vorig_frame and not 0 <= frame - vorig_frame[plek] <= NIEUWE_SCENE_FRAMES:
+                    beste.pop(plek, None)
+                vorig_frame[plek] = frame
             try:
                 punten, jpeg = bekijk(bestand)
             except Exception as fout:  # een half geschreven of kapot beeld: overslaan
