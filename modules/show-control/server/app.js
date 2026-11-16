@@ -282,6 +282,14 @@ function createShowControlApp(options = {}) {
     }
   }));
 
+  // START SHOW: de run loopt en het inloopscherm staat; nu mag de eerste scène gekozen worden.
+  app.post("/v0/show-control/cues/start-show", asyncRoute(async (_req, res) => {
+    const publiek = String(process.env.SHOW_CONTROL_AUDIENCE_URL || "http://127.0.0.1:3026").replace(/\/+$/, "");
+    const antwoord = await fetch(`${publiek}/audience/admin/show/start`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: AbortSignal.timeout(3000) });
+    const body = await antwoord.json().catch(() => ({}));
+    res.status(antwoord.ok ? 201 : 409).json({ ok: antwoord.ok, ...body });
+  }));
+
   app.post("/v0/show-control/cues/save", asyncRoute(async (req, res) => {
     const cue = buildCompoundCue({
       name: req.body ? req.body.name : null,

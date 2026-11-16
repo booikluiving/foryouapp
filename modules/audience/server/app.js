@@ -251,7 +251,13 @@ function createAudienceApp(options = {}) {
       keuzes: stemming ? (stemming.keuzes || []).map((keuze, index) => ({ ...keuze, votes: Number(counts[index] || 0) })) : [],
       uitslag: stemming ? stemming.uitslag || null : null,
       startscene: stemming ? stemming.startscene || null : null,
+      // Is START SHOW al gegeven voor de run die loopt?
+      showGestart: service.isShowGestart(),
     });
+  });
+  app.post("/audience/admin/show/start", (_req, res) => {
+    const result = service.startShow();
+    res.status(result.ok ? 200 : 409).json(result);
   });
 
   app.get("/audience/stage/stroom", (req, res) => {
@@ -499,6 +505,7 @@ function createAudienceApp(options = {}) {
     const nee = (reden) => res.json({ ok: true, geopend: false, reden });
     if (!state || !state.showRunId || state.status !== "running") return nee("geen_run");
     if (state.activeSituation) return nee("scene_loopt");
+    if (!(state.playedSituations || []).length && !service.isShowGestart()) return nee("show_niet_gestart");
     if (!state.startPhase || !state.startPhase.active) return nee("geen_startfase");
     if (state.preparedNext && state.preparedNext.reason === "operator_chosen") return nee("al_gekozen");
     if (service.getActivePollSnapshot()) return nee("poll_loopt");
