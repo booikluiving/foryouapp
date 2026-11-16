@@ -95,6 +95,11 @@ const state = {
   effectBusy: false,
   fasePos: 0,
   faseBusy: false,
+  // Notes per environment live on the website only; null where there is nowhere to keep them.
+  opmerkingen: null,
+  opmerkingTekst: "",
+  opmerkingFout: "",
+  opmerkingenKlaarOpen: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -1131,6 +1136,81 @@ function dropZoneHtml(environment, key) {
   `;
 }
 
+function opmerkingenVoor(environmentId, klaar) {
+  return (state.opmerkingen || []).filter((item) => item.omgeving === environmentId && item.klaar === klaar);
+}
+
+function opmerkingTel(environmentId) {
+  const count = state.opmerkingen ? opmerkingenVoor(environmentId, false).length : 0;
+  return count ? `<span class="fy-small opmerkingTel">${count} ${count === 1 ? "opmerking" : "opmerkingen"}</span>` : "";
+}
+
+function opmerkingHtml(item) {
+  const dag = (at) => new Date(at).toLocaleDateString("nl-NL", { day: "numeric", month: "short" });
+  const meta = item.klaar ? `${item.naam} · ${dag(item.at)} · klaar: ${item.klaarNaam} ${dag(item.klaarAt)}` : `${item.naam} · ${dag(item.at)}`;
+  return `
+    <li class="opmerking ${item.klaar ? "is-klaar" : ""}">
+      <div class="opmerkingTekst">${esc(item.tekst)}</div>
+      <div class="opmerkingVoet">
+        <span class="fy-small">${esc(meta)}</span>
+        <span class="opmerkingKnoppen">
+          <button class="fy-button" type="button" data-opmerking-klaar="${esc(item.id)}" data-klaar="${item.klaar ? "0" : "1"}">${item.klaar ? "Terug" : "Klaar"}</button>
+          ${item.eigen ? `<button class="fy-button" type="button" data-opmerking-weg="${esc(item.id)}">Weg</button>` : ""}
+        </span>
+      </div>
+    </li>
+  `;
+}
+
+function renderOpmerkingen(environmentId) {
+  if (!state.opmerkingen) return "";
+  const open = opmerkingenVoor(environmentId, false);
+  const klaar = opmerkingenVoor(environmentId, true);
+  return `
+    <section class="layerPanel opmerkingen">
+      <h3>Opmerkingen</h3>
+      ${open.length ? `<ul class="opmerkingLijst">${open.map(opmerkingHtml).join("")}</ul>` : ""}
+      <textarea class="fy-textarea" rows="3" maxlength="2000" placeholder="Wat moet hier beter, wat werkt niet?" data-opmerking-tekst>${esc(state.opmerkingTekst)}</textarea>
+      <div class="opmerkingVoet">
+        <span class="fy-small opmerkingFout">${esc(state.opmerkingFout)}</span>
+        <button class="fy-button fy-button-primary" type="button" data-opmerking-add>Zet erbij</button>
+      </div>
+      ${klaar.length ? `
+        <details class="opmerkingenKlaar" ${state.opmerkingenKlaarOpen ? "open" : ""}>
+          <summary data-opmerkingen-klaar-toggle>Klaar <span class="fy-small">${klaar.length}</span></summary>
+          <ul class="opmerkingLijst">${klaar.map(opmerkingHtml).join("")}</ul>
+        </details>` : ""}
+    </section>
+  `;
+}
+
+async function loadOpmerkingen() {
+  try {
+    const response = await fetch("/api/opmerkingen");
+    const body = response.ok ? await response.json() : null;
+    state.opmerkingen = body && Array.isArray(body.opmerkingen) ? body.opmerkingen : null;
+  } catch (_err) {
+    state.opmerkingen = null;
+  }
+  if (state.opmerkingen && state.data) renderCards();
+}
+
+async function opmerkingActie(path, method, payload) {
+  try {
+    const body = await requestJson(path, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    });
+    state.opmerkingen = body.opmerkingen;
+    state.opmerkingFout = "";
+    if (method === "POST") state.opmerkingTekst = "";
+  } catch (err) {
+    state.opmerkingFout = err.message || String(err);
+  }
+  renderCards();
+}
+
 function renderSummary() {
   $("summary").innerHTML = "";
 }
@@ -1141,6 +1221,7 @@ function renderCard(environment) {
       <div class="envHeader">
         <div class="envTitle">
           <h2>${esc(environment.name || environment.id)}</h2>
+          ${opmerkingTel(environment.id)}
           <button class="fy-button editCompositionButton" type="button" data-open-environment="${esc(environment.id)}">Bewerk</button>
         </div>
       </div>
@@ -1361,6 +1442,7 @@ function renderEditor(environment) {
         <section class="compositionStage">
           ${renderCompositionPreview(environment.id, true)}
           ${renderEditorPlayback(environment.id)}
+          ${renderOpmerkingen(environment.id)}
           <div class="fy-drop-grid editorUploadStrip">
             ${EDITOR_UPLOAD_ORDER.map((key) => dropZoneHtml(environment, key)).join("")}
           </div>
@@ -1481,7 +1563,11 @@ function startEditing(environmentId) {
   state.selectedLayerId = layers[layers.length - 1]?.id || "";
   state.editorStatus = "";
   state.saveStatus = "saved";
+  state.opmerkingTekst = "";
+  state.opmerkingFout = "";
+  state.opmerkingenKlaarOpen = false;
   renderCards();
+  loadOpmerkingen();
 }
 
 function closeEditor() {
@@ -1817,6 +1903,7 @@ function endPointer() {
 }
 
 function nudgeSelected(event) {
+  if (event.target.closest("textarea")) return;
   if (!state.draftComposition || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
   const layer = findLayer(state.selectedLayerId);
   if (!layer || layer.locked) return;
@@ -1915,6 +2002,20 @@ function bindEvents() {
       renderCards();
     });
     if (event.target.closest("[data-cancel-composition]")) cancelComposition();
+    if (event.target.closest("[data-opmerking-add]")) {
+      opmerkingActie("/api/opmerkingen", "POST", { omgeving: state.editingEnvironmentId, tekst: state.opmerkingTekst });
+    }
+    const klaarButton = event.target.closest("[data-opmerking-klaar]");
+    if (klaarButton) {
+      opmerkingActie(`/api/opmerkingen/${encodeURIComponent(klaarButton.getAttribute("data-opmerking-klaar"))}/klaar`, "PUT", { klaar: klaarButton.getAttribute("data-klaar") === "1" });
+    }
+    const wegButton = event.target.closest("[data-opmerking-weg]");
+    if (wegButton) opmerkingActie(`/api/opmerkingen/${encodeURIComponent(wegButton.getAttribute("data-opmerking-weg"))}`, "DELETE");
+    if (event.target.closest("[data-opmerkingen-klaar-toggle]")) {
+      event.preventDefault();
+      state.opmerkingenKlaarOpen = !state.opmerkingenKlaarOpen;
+      renderCards();
+    }
     if (event.target.closest("[data-effect-next]")) effectNext();
     if (event.target.closest("[data-effect-reset]")) effectReset();
     const faseButton = event.target.closest("[data-fase-go]");
@@ -1957,6 +2058,7 @@ function bindEvents() {
     }
   });
   $("environmentCards").addEventListener("input", (event) => {
+    if (event.target.matches("[data-opmerking-tekst]")) state.opmerkingTekst = event.target.value;
     if (event.target.matches("[data-layer-field]")) setLayerField(event.target);
     if (event.target.matches("[data-lighting-fixture-field]")) setLightingFixtureField(event.target);
     if (event.target.matches("[data-toggle-guides]")) {
@@ -2050,3 +2152,4 @@ bindEvents();
 loadAll().catch((err) => {
   $("statusLine").textContent = err.message || String(err);
 });
+loadOpmerkingen();

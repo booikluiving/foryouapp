@@ -1189,3 +1189,15 @@ audio {
 .zaalLabel{min-width:150px;font-weight:600}
 .zaalRange{flex:1 1 220px;min-width:160px}
 .zaalPct{min-width:44px;font-variant-numeric:tabular-nums;text-align:right}
+
+.opmerkingTel{margin-left:auto;white-space:nowrap}
+.opmerkingLijst{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.opmerking{border-top:1px solid var(--fy-line);padding-top:8px;display:grid;gap:4px}
+.opmerking.is-klaar .opmerkingTekst{opacity:.55}
+.opmerkingTekst{white-space:pre-wrap;overflow-wrap:anywhere}
+.opmerkingVoet{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px}
+.opmerkingKnoppen{display:flex;gap:6px}
+.opmerkingFout{color:#b00020}
+.opmerkingen textarea{width:100%;resize:vertical}
+.opmerkingenKlaar summary{cursor:pointer}
+.opmerkingenKlaar .opmerkingLijst{margin-top:8px}

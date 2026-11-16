@@ -13,6 +13,7 @@ const { numericPathId } = require("../../modules/paths/db/paths-store");
 const { diffVersions } = require("./version-store");
 const { CONTENT_ID, createVoorbeelden } = require("./voorbeelden");
 const { IdeeFout, createIdeeen } = require("./ideeen");
+const { OpmerkingFout, createOpmerkingen } = require("./opmerkingen");
 const { SchrijverFout, createSchrijver } = require("./schrijver");
 
 const express = loadExpress();
@@ -249,6 +250,7 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
   const refused = new Set((config.refused || []).map((email) => email.toLowerCase()));
   const voorbeeld = createVoorbeelden({ catalogUrl, dir: config.voorbeeldDir || undefined });
   const ideeen = createIdeeen({ dir: path.join(store.dataDir, "ideeen") });
+  const opmerkingen = createOpmerkingen({ dir: path.join(store.dataDir, "opmerkingen") });
   const schrijver = createSchrijver({ dir: path.join(store.dataDir, "schrijver"), catalogUrl, env: config.env || process.env, fetchImpl: config.fetchImpl });
   // A first name for everyone on the ideas page; without one, the part of the address before the @.
   const naam = (email) => addTeambalk.naam(email) || String(email || "").split("@")[0];
@@ -674,6 +676,22 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
     return { idee: await ideeen.setFoto(req.params.id, req.editorUser, req.body) };
   }));
   api.delete("/ideeen/:id/foto", idee(async (req) => ({ idee: await ideeen.removeFoto(req.params.id, req.editorUser) })));
+
+  // ---- Opmerkingen per omgeving in de beeldcatalogus: what the team still wants changed ----
+  const opmerking = (handler) => asyncRoute(async (req, res) => {
+    try {
+      res.json({ ok: true, ...(await handler(req)) });
+    } catch (err) {
+      if (!(err instanceof OpmerkingFout)) throw err;
+      res.status(err.status).json({ ok: false, error: err.error, message: err.message });
+    }
+  });
+  const toonOpmerkingen = (req) => ({ opmerkingen: opmerkingen.view(req.editorUser, naam) });
+  api.get("/opmerkingen", opmerking(async (req) => toonOpmerkingen(req)));
+  api.post("/opmerkingen", opmerking(async (req) => { await opmerkingen.add(req.editorUser, sent(req)); return toonOpmerkingen(req); }));
+  api.patch("/opmerkingen/:id", opmerking(async (req) => { await opmerkingen.update(req.params.id, req.editorUser, sent(req)); return toonOpmerkingen(req); }));
+  api.delete("/opmerkingen/:id", opmerking(async (req) => { await opmerkingen.remove(req.params.id, req.editorUser); return toonOpmerkingen(req); }));
+  api.put("/opmerkingen/:id/klaar", opmerking(async (req) => { await opmerkingen.setKlaar(req.params.id, req.editorUser, sent(req).klaar === true); return toonOpmerkingen(req); }));
 
   // ---- Script Agent testen: its own prompt and chat, to the show only on "Voer door" ----
   const proef = (handler) => asyncRoute(async (req, res) => {
