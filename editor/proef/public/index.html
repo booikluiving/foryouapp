@@ -123,7 +123,7 @@
           el("stand").textContent = "geen verbinding";
           return;
         }
-        knop("run").textContent = stand.run ? "RESET RUN" : "RUN";
+        knop("run").textContent = !stand.run ? "START RUN" : stand.wachtOpShow ? "START SHOW" : "RESET RUN";
         knop("scene").textContent = stand.scene ? "STOP" : "START";
         knop("stem").classList.toggle("aan", stand.stemmen);
         knop("scene").classList.toggle("aan", stand.scene);

@@ -152,7 +152,9 @@ function buildRuntimeOverlay(view, stemming) {
   // startscènes zijn dan gelijk. Pas een gekozen scène (de winnaar) licht op als volgende.
   // Dat geldt voor elke startscène: zolang de run nog startscènes moet spelen, kiest het publiek.
   // Zonder startscènes (aantal 0) kiest het algoritme ook de eerste scène: die licht dan meteen op.
-  const begin = !currentId && (view.startPhase ? !!view.startPhase.active : played.size === 0);
+  // Vóór START SHOW (de run loopt, het publiek komt nog binnen) licht er nog niets op.
+  const wachtOpShow = played.size === 0 && !!stemming && stemming.showGestart === false;
+  const begin = !currentId && (wachtOpShow || (view.startPhase ? !!view.startPhase.active : played.size === 0));
   const toonPrepared = preparedId && (!begin || prepared.reason === "operator_chosen");
 
   let stem = null;
