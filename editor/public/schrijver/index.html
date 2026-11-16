@@ -33,8 +33,8 @@
   button.licht { border: 0; color: var(--zacht); padding: 5px 0; }
   button.licht:hover { background: none; color: var(--tekst); text-decoration: underline; }
   button:disabled { opacity: .4; cursor: default; }
-  textarea, select { font: inherit; font-size: 16px; color: var(--tekst); background: #fff; border: 1px solid var(--lijn); border-radius: 0; padding: 8px 10px; width: 100%; }
-  textarea:focus, select:focus { outline: none; border-color: var(--tekst); }
+  textarea, select, input.veld { font: inherit; font-size: 16px; color: var(--tekst); background: #fff; border: 1px solid var(--lijn); border-radius: 0; padding: 8px 10px; width: 100%; }
+  textarea:focus, select:focus, input.veld:focus { outline: none; border-color: var(--tekst); }
   textarea { resize: vertical; }
   textarea.prompt { font: 14px/1.5 var(--mono); min-height: 240px; }
   .knoppen { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin-top: 14px; }
@@ -56,7 +56,21 @@
   #gesprek .meta button { font: inherit; color: #fff; border: 1px solid rgba(255, 255, 255, .5); padding: 1px 8px; margin-left: 10px; }
   #gesprek .meta button:hover { background: #fff; color: #000; }
   #gesprek .meta button:disabled { opacity: 1; border-color: transparent; padding-left: 0; }
-  #bewaard-deel { grid-column: 1 / -1; }
+  #bewaard-deel, #proeven-deel { grid-column: 1 / -1; }
+  .rij3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
+  @media (max-width: 560px) { .rij3 { grid-template-columns: 1fr; } }
+  .tabel { overflow-x: auto; }
+  table.modellen { border-collapse: collapse; width: 100%; font-size: 15px; }
+  table.modellen th { text-align: left; font-weight: 700; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--tekst); white-space: nowrap; }
+  table.modellen td { padding: 7px 14px 7px 0; border-bottom: 1px solid var(--lijn); vertical-align: top; }
+  table.modellen td.getal { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.modellen tr.gekozen td { background: var(--vlak); }
+  table.modellen button { padding: 1px 8px; font-size: 14px; }
+  table.modellen tr.groep td { font-weight: 700; padding-top: 22px; border-bottom: 1px solid var(--tekst); }
+  #proef-scenes { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 28px clamp(24px, 4vw, 56px); margin-top: 20px; }
+  #proef-scenes article { min-width: 0; }
+  #proef-scenes h3 { font-size: 18px; margin: 0; }
+  #proef-scenes pre { font: 14px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; }
   ul.bewaard { list-style: none; padding: 0; margin: 0; border-bottom: 1px solid var(--lijn); }
   ul.bewaard > li { padding: 12px 0; border-top: 1px solid var(--lijn); }
   ul.bewaard summary { cursor: pointer; font-size: 18px; }
@@ -105,6 +119,13 @@
       <div><label class="kop" for="omgeving">Omgeving</label><select id="omgeving"></select></div>
     </div>
     <div class="keuzes" id="personages" role="group" aria-label="Personages"></div>
+    <div class="rij3">
+      <div><label class="kop" for="modelkeuze">Model</label><select id="modelkeuze"></select></div>
+      <div><label class="kop" for="nadenken">Nadenken</label><select id="nadenken"><option value="uit">uit</option><option value="kort">kort</option></select></div>
+      <div><label class="kop" for="lengte">Regels</label><input id="lengte" class="veld" type="number" min="1" max="80" inputmode="numeric" placeholder="geen"></div>
+    </div>
+    <div id="ander-model" hidden><label class="kop" for="modelnaam">Modelnaam bij OpenRouter</label><input id="modelnaam" class="veld" type="text" maxlength="120" placeholder="google/gemini-4-hydrogen" spellcheck="false" autocomplete="off"></div>
+    <p class="zacht klein">Het model geldt alleen hier, niet voor de show. Regels: zet "Deze scène is ongeveer zoveel regels" onder de opdracht.</p>
     <div class="knoppen">
       <button type="button" id="schrijf" class="vol">Schrijf scène</button>
       <button type="button" id="wis" class="licht">Nieuw gesprek</button>
@@ -117,6 +138,17 @@
       <button type="button" id="verstuur">Verstuur</button>
       <span class="zacht klein">Eerdere scènes in dit gesprek gaan mee, net als in de show.</span>
     </div>
+  </section>
+
+  <section id="proeven-deel">
+    <h2>Geteste modellen</h2>
+    <p id="proeven-leeg" class="zacht">Nog geen proeven.</p>
+    <div class="tabel"><table class="modellen" id="modellen" hidden></table></div>
+    <div class="rij" id="proef-keuze" hidden style="max-width: 860px; margin-top: 28px">
+      <div><label class="kop" for="proef-model">Scènes van</label><select id="proef-model"></select></div>
+      <div><label class="kop" for="proef-situatie">Situatie</label><select id="proef-situatie"></select></div>
+    </div>
+    <div id="proef-scenes"></div>
   </section>
 
   <section id="bewaard-deel">

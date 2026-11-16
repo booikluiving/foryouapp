@@ -95,6 +95,7 @@ function createSchrijver({ dir, catalogUrl, env = process.env, fetchImpl } = {})
       } : null,
       model: Object.fromEntries(MODEL_FIELDS.map((key) => [key, settings[key]])),
       sleutel: Boolean(secrets.deepseek.configured || secrets.claude.configured),
+      sleutels: { deepseek: Boolean(secrets.deepseek.configured), openrouter: Boolean(secrets.openrouter && secrets.openrouter.configured) },
       bezig: busy.has(sessionId(email)),
       gesprek: service.sessionInfo(sessionId(email)).messages,
     };
@@ -180,9 +181,13 @@ function createSchrijver({ dir, catalogUrl, env = process.env, fetchImpl } = {})
     const promptInput = lastPromptInput.get(id);
     if (!promptInput) throw new SchrijverFout(409, "geen_scene", "Zet eerst een scène klaar.");
     if (busy.has(id)) throw new SchrijverFout(409, "bezig", "De schrijver is nog bezig.");
+    // A model of one's own choosing for this scene; without it the model of the show writes.
+    const model = String(body.model || "").trim();
+    if (model && !/^[A-Za-z0-9._:\/-]{2,120}$/.test(model)) throw new SchrijverFout(400, "model", "Deze modelnaam klopt niet.");
+    const modelOverride = model ? { model, reasoningEffort: body.nadenken === "kort" ? "low" : "off" } : null;
     busy.add(id);
     try {
-      return await service.streamChat({ sessionId: id, message, promptInput, sourceId: "test" }, emit);
+      return await service.streamChat({ sessionId: id, message, promptInput, sourceId: "test", modelOverride }, emit);
     } finally {
       busy.delete(id);
     }
@@ -224,7 +229,7 @@ function createSchrijver({ dir, catalogUrl, env = process.env, fetchImpl } = {})
       vraag: clean(body.vraag),
       systemPrompt: settings.systemPrompt,
       promptTemplate: settings.promptTemplate,
-      model: settings.model,
+      model: clean(body.model).slice(0, 120) || settings.model,
       by: email,
       at: new Date().toISOString(),
     };
@@ -237,6 +242,16 @@ function createSchrijver({ dir, catalogUrl, env = process.env, fetchImpl } = {})
     if (!list.some((item) => item.id === id)) throw new SchrijverFout(404, "onbekend", "Deze scène is er niet (meer).");
     writeFileAtomic(keptPath, `${JSON.stringify(list.filter((item) => item.id !== id), null, 2)}\n`);
     return bewaard(email);
+  }
+
+  // ---- What has been tried: the models and the scenes they wrote, read from a file in the data folder ----
+  function proeven() {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(dir, "proeven.json"), "utf8"));
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+      return { modellen: [], situaties: [], scenes: [] };
+    }
   }
 
   // ---- Show Mac ----
@@ -270,7 +285,7 @@ function createSchrijver({ dir, catalogUrl, env = process.env, fetchImpl } = {})
     }
   }
 
-  return { bewaar, bewaard, catalogus, chat, doorvoeren, klaarzetten, meldingVanShow, saveProef, stand, vanShow, verwijder, vrijgegeven, wis };
+  return { bewaar, bewaard, catalogus, chat, doorvoeren, klaarzetten, meldingVanShow, proeven, saveProef, stand, vanShow, verwijder, vrijgegeven, wis };
 }
 
 module.exports = { SchrijverFout, createSchrijver };

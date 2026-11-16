@@ -691,6 +691,7 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
   api.post("/schrijver/doorvoeren", proef((req) => schrijver.doorvoeren(req.editorUser)));
   api.post("/schrijver/klaarzetten", proef((req) => schrijver.klaarzetten(req.editorUser, sent(req))));
   api.delete("/schrijver/gesprek", proef(async (req) => schrijver.wis(req.editorUser)));
+  api.get("/schrijver/proeven", proef(async () => schrijver.proeven()));
   api.get("/schrijver/bewaard", proef(async (req) => schrijver.bewaard(req.editorUser)));
   api.post("/schrijver/bewaard", proef((req) => schrijver.bewaar(req.editorUser, sent(req))));
   api.delete("/schrijver/bewaard/:id", proef(async (req) => schrijver.verwijder(req.editorUser, req.params.id)));
@@ -703,9 +704,10 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
     const emit = (event) => {
       if (!closed) res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
+    const begonnen = Date.now();
     schrijver.chat(req.editorUser, sent(req), (event) => {
       if (event.type === "delta") emit({ type: "delta", text: event.text });
-      else if (event.type === "done") emit({ type: "done", text: event.text, model: event.model, tokensIn: event.tokens_input, tokensUit: event.tokens_output, fallback: event.fallback || null });
+      else if (event.type === "done") emit({ type: "done", text: event.text, model: event.model, tokensIn: event.tokens_input, tokensUit: event.tokens_output, fallback: event.fallback || null, seconden: Math.round((Date.now() - begonnen) / 100) / 10, kosten: event.kosten_dollar ?? null });
       else if (event.type === "fallback") emit({ type: "opnieuw", model: event.model });
     }).catch((err) => {
       emit({ type: "error", error: String((err && err.message) || "fout").replace(/sk-[A-Za-z0-9_-]+/g, "sk-...") });

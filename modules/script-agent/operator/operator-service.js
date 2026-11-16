@@ -676,6 +676,13 @@ function createOperatorService(options = {}) {
     );
   }
 
+  function openRouterApiKeyFrom(secrets = {}) {
+    return normalizeText(
+      secrets.OPENROUTER_API_KEY || env.OPENROUTER_API_KEY || env.FORYOU_OPENROUTER_API_KEY || "",
+      1000
+    );
+  }
+
   function secretsStatusFrom(secrets = {}) {
     const localConfigured = !!normalizeText(secrets.DEEPSEEK_API_KEY || "", 1000);
     const envConfigured = !!normalizeText(env.DEEPSEEK_API_KEY || env.FORYOU_DEEPSEEK_API_KEY || "", 1000);
@@ -692,6 +699,7 @@ function createOperatorService(options = {}) {
         configured: claudeLocal || claudeEnv,
         source: claudeLocal ? "local" : claudeEnv ? "env" : null,
       },
+      openrouter: { configured: !!openRouterApiKeyFrom(secrets) },
       updatedAt: secrets.updatedAt || null,
     };
   }
@@ -1128,6 +1136,69 @@ function createOperatorService(options = {}) {
     };
   }
 
+  // OpenRouter: een model met een "/" in de naam (bijvoorbeeld google/gemini-4-hydrogen). Alleen
+  // gebruikt als een aanroep zelf om zo'n model vraagt; de show vraagt daar niet om.
+  async function streamOpenRouterText({ apiKey, model, settings, effort, history, userText, onText }) {
+    const startedAt = Date.now();
+    const timing = { firstReasoningMs: null, firstTextMs: null, totalMs: null };
+    const off = normalizeReasoningEffort(effort) === "off";
+    const request = (reasoning) => fetchImpl("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: settings.systemPrompt },
+          ...history,
+          { role: "user", content: userText },
+        ],
+        max_tokens: settings.maxTokens + DEEPSEEK_REASONING_HEADROOM_TOKENS,
+        temperature: settings.temperature,
+        reasoning,
+        usage: { include: true },
+        stream: true,
+      }),
+    });
+    let response = await request(off ? { enabled: false } : { effort: normalizeReasoningEffort(effort) === "low" ? "low" : "high" });
+    if (!response.ok && off) {
+      // Sommige modellen kunnen het nadenken niet uitzetten; dan zo kort mogelijk.
+      const failed = await responseError(response, "openrouter_api_error");
+      if (!/mandatory|not supported|cannot be disabled|required/i.test(failed.message)) throw failed;
+      response = await request({ effort: "low" });
+    }
+    if (!response.ok) throw await responseError(response, "openrouter_api_error");
+    let usage = {};
+    let finishReason = null;
+    await readSseStream(response.body, async (data) => {
+      if (data.error) throw new Error(data.error.message || "openrouter_stream_error");
+      if (data.usage) usage = { ...usage, ...data.usage };
+      for (const choice of Array.isArray(data.choices) ? data.choices : []) {
+        const delta = choice && choice.delta ? choice.delta.content : "";
+        const reasoning = choice && choice.delta ? (choice.delta.reasoning || choice.delta.reasoning_content) : "";
+        if (reasoning && timing.firstReasoningMs === null) timing.firstReasoningMs = Date.now() - startedAt;
+        if (delta) {
+          if (timing.firstTextMs === null) timing.firstTextMs = Date.now() - startedAt;
+          onText(String(delta));
+        }
+        if (choice && choice.finish_reason) finishReason = choice.finish_reason;
+      }
+    });
+    timing.totalMs = Date.now() - startedAt;
+    const details = usage.completion_tokens_details || {};
+    return {
+      priced: {
+        input: Number(usage.prompt_tokens || 0) || 0,
+        output: Number(usage.completion_tokens || 0) || 0,
+        cached: Number((usage.prompt_tokens_details || {}).cached_tokens || 0) || 0,
+        cost: Number(Number(usage.cost || 0).toFixed(6)),
+      },
+      stopReason: finishReason === "length" ? "max_tokens" : "end_turn",
+      finishReason,
+      reasoningTokens: Number(details.reasoning_tokens || 0) || 0,
+      timing,
+    };
+  }
+
   async function streamClaudeText({ apiKey, model, settings, effort, history, userText, onText }) {
     const startedAt = Date.now();
     const timing = { firstReasoningMs: null, firstTextMs: null, totalMs: null };
@@ -1164,12 +1235,26 @@ function createOperatorService(options = {}) {
   }
 
   async function streamChat(body = {}, emit = () => {}) {
-    const settings = await readSettings();
+    const savedSettings = await readSettings();
+    // Een aanroep mag zelf een model kiezen (de testpagina op de website); de opgeslagen instellingen blijven zoals ze zijn.
+    const override = body.modelOverride && typeof body.modelOverride === "object" && normalizeText(body.modelOverride.model, 200)
+      ? body.modelOverride
+      : null;
+    const settings = override
+      ? {
+        ...savedSettings,
+        model: normalizeText(override.model, 200),
+        reasoningEffort: normalizeReasoningEffort(override.reasoningEffort ?? savedSettings.reasoningEffort),
+      }
+      : savedSettings;
     const secrets = await readSecrets();
     const deepSeekKey = deepSeekApiKeyFrom(secrets);
     const anthropicKey = anthropicApiKeyFrom(secrets);
-    const wantsClaude = isClaudeModel(settings.model);
-    if (!wantsClaude && !deepSeekKey) throw new Error("deepseek_api_key_missing");
+    const openRouterKey = openRouterApiKeyFrom(secrets);
+    const wantsOpenRouter = Boolean(override) && settings.model.includes("/");
+    const wantsClaude = !wantsOpenRouter && isClaudeModel(settings.model);
+    if (wantsOpenRouter && !openRouterKey) throw new Error("openrouter_api_key_missing");
+    if (!wantsOpenRouter && !wantsClaude && !deepSeekKey) throw new Error("deepseek_api_key_missing");
     if (wantsClaude && !anthropicKey && !deepSeekKey) throw new Error("anthropic_api_key_missing");
     if (typeof fetchImpl !== "function") throw new Error("fetch_unavailable");
     const sessionId = normalizeSessionId(body.sessionId || body.sessie_id || stageState.sessionId);
@@ -1190,7 +1275,7 @@ function createOperatorService(options = {}) {
     if (!promptInput) throw new Error("script_agent_operator_prompt_input_missing");
 
     // Eerste keus; valt terug op DeepSeek als Claude weigert, faalt of geen sleutel heeft.
-    let provider = wantsClaude && anthropicKey ? "claude" : "deepseek";
+    let provider = wantsOpenRouter ? "openrouter" : wantsClaude && anthropicKey ? "claude" : "deepseek";
     let model = wantsClaude && !anthropicKey ? settings.fallbackModel : settings.model;
     let fallback = wantsClaude && !anthropicKey ? "anthropic_api_key_missing" : null;
 
@@ -1281,7 +1366,11 @@ function createOperatorService(options = {}) {
 
     let result;
     try {
-      if (provider === "claude") {
+      if (provider === "openrouter") {
+        result = await streamOpenRouterText({
+          apiKey: openRouterKey, model, settings, effort: settings.reasoningEffort, history, userText, onText: (text) => publish(text),
+        });
+      } else if (provider === "claude") {
         let claudeError = null;
         try {
           result = await streamClaudeText({

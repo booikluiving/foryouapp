@@ -1,7 +1,24 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const state = { stand: null, catalogus: null, bezig: false, vuil: false };
+const state = { stand: null, catalogus: null, proeven: { modellen: [], situaties: [], scenes: [] }, bezig: false, vuil: false };
+
+// What the browser remembers per person: the model, thinking and length last chosen.
+function onthoud(key, value) {
+  try {
+    if (value == null) return localStorage.getItem(`schrijver-${key}`) || "";
+    localStorage.setItem(`schrijver-${key}`, value);
+  } catch (_err) {
+    // Without storage the choice simply starts empty.
+  }
+  return value;
+}
+
+// The model for this scene: empty is the model of the show.
+function gekozenModel() {
+  const keuze = $("modelkeuze").value;
+  return keuze === "ander" ? $("modelnaam").value.trim() : keuze;
+}
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -54,9 +71,15 @@ function toonStand() {
   $("stand").replaceChildren(...regels);
   $("doorvoeren").disabled = state.bezig || (s.gelijkAanShow && !state.vuil);
   $("van-show").disabled = state.bezig || !s.show || (s.gelijkAanShow && !state.vuil);
-  $("schrijf").disabled = state.bezig || !s.sleutel;
-  $("verstuur").disabled = state.bezig || !s.sleutel;
-  $("model").textContent = s.sleutel ? `${s.model.model} · zelfde instellingen als de show` : "Er is hier nog geen sleutel voor het taalmodel ingesteld.";
+  const model = gekozenModel();
+  const sleutels = s.sleutels || {};
+  const kan = model ? (model.includes("/") ? sleutels.openrouter : sleutels.deepseek) : s.sleutel;
+  $("schrijf").disabled = state.bezig || !kan;
+  $("verstuur").disabled = state.bezig || !kan;
+  $("ander-model").hidden = $("modelkeuze").value !== "ander";
+  $("nadenken").disabled = !model;
+  if (kan) $("model").textContent = model ? model : `${s.model.model} · zelfde instellingen als de show`;
+  else $("model").textContent = model && model.includes("/") ? "Er is hier nog geen sleutel voor OpenRouter ingesteld." : "Er is hier nog geen sleutel voor het taalmodel ingesteld.";
 }
 
 function vulPrompts() {
@@ -66,12 +89,12 @@ function vulPrompts() {
 }
 
 // The line under a scene: what it is, and the button that keeps it for the team.
-function metaRegel(info, vraag, tekst) {
+function metaRegel(info, vraag, tekst, model = "") {
   const knop = el("button", { type: "button" }, "Bewaar");
   knop.addEventListener("click", async () => {
     knop.disabled = true;
     try {
-      toonBewaard((await api("/bewaard", { method: "POST", body: { tekst, vraag } })).bewaard);
+      toonBewaard((await api("/bewaard", { method: "POST", body: { tekst, vraag, model } })).bewaard);
       knop.textContent = "Bewaard";
     } catch (err) {
       knop.disabled = false;
@@ -164,7 +187,7 @@ async function stuur(message) {
   const antwoord = el("p", { class: "antwoord bezig" });
   log.append(el("p", { class: "vraag" }, message), antwoord);
   log.scrollTop = log.scrollHeight;
-  const response = await fetch("/api/schrijver/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message }) });
+  const response = await fetch("/api/schrijver/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, model: gekozenModel(), nadenken: $("nadenken").value }) });
   if (!response.ok || !response.body) throw new Error((await response.json().catch(() => ({}))).message || `HTTP ${response.status}`);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -175,7 +198,10 @@ async function stuur(message) {
     else if (event.type === "opnieuw") antwoord.textContent = "";
     else if (event.type === "done") {
       antwoord.textContent = event.text;
-      log.append(metaRegel(`${event.text.length} tekens · ${event.model}${event.fallback ? " (terugval)" : ""} · ${event.tokensIn} in, ${event.tokensUit} uit`, message, event.text));
+      const regels = event.text.split("\n").filter((line) => /^[^:\n]{1,40}:\s/.test(line)).length;
+      const kosten = event.kosten ? ` · ${(event.kosten * 100).toFixed(2).replace(".", ",")} cent` : "";
+      const duur = event.seconden ? ` · ${String(event.seconden).replace(".", ",")} s` : "";
+      log.append(metaRegel(`${regels} regels · ${event.text.length} tekens · ${event.model}${event.fallback ? " (terugval)" : ""}${duur}${kosten} · ${event.tokensIn} in, ${event.tokensUit} uit`, message, event.text, event.model));
     } else if (event.type === "error") {
       log.append(el("p", { class: "mis" }, event.error));
     }
@@ -210,11 +236,99 @@ $("systeem").addEventListener("input", getypt);
 $("sjabloon").addEventListener("input", getypt);
 $("situatie").addEventListener("change", vulPersonages);
 
+// ---- The model for a scene, and what has been tried before ----
+const OORDELEN = [["kandidaat", "Kandidaten"], ["show", "In de show"], ["afgeschreven", "Afgeschreven"], ["schrijft om", "Schrijft de situatie om"], ["weigert", "Weigert"], ["werkt niet", "Werkt niet"]];
+
+function vulModellen() {
+  const show = state.stand.model.model;
+  const gezien = new Set([show]);
+  const uniek = state.proeven.modellen.filter((item) => item.id && !gezien.has(item.id) && gezien.add(item.id));
+  const optie = (item) => el("option", { value: item.id }, item.naam);
+  const kandidaten = uniek.filter((item) => item.oordeel === "kandidaat");
+  const rest = uniek.filter((item) => item.oordeel !== "kandidaat" && item.oordeel !== "werkt niet");
+  $("modelkeuze").replaceChildren(
+    el("option", { value: "" }, `Model van de show (${show})`),
+    kandidaten.length ? el("optgroup", { label: "Kandidaten" }, kandidaten.map(optie)) : null,
+    rest.length ? el("optgroup", { label: "Eerder getest" }, rest.map(optie)) : null,
+    el("option", { value: "ander" }, "Ander model…"));
+  const vorige = onthoud("model");
+  if ([...$("modelkeuze").options].some((item) => item.value === vorige)) $("modelkeuze").value = vorige;
+  $("modelnaam").value = onthoud("modelnaam");
+  $("nadenken").value = onthoud("nadenken") === "kort" ? "kort" : "uit";
+  $("lengte").value = onthoud("lengte");
+}
+
+function kiesModel(item) {
+  const bekend = [...$("modelkeuze").options].some((optie) => optie.value === item.id);
+  $("modelkeuze").value = item.id === state.stand.model.model ? "" : bekend ? item.id : "ander";
+  if ($("modelkeuze").value === "ander") $("modelnaam").value = onthoud("modelnaam", item.id);
+  $("nadenken").value = onthoud("nadenken", item.nadenken === "kort" ? "kort" : "uit");
+  onthoud("model", $("modelkeuze").value);
+  toonStand();
+  $("modelkeuze").scrollIntoView({ block: "center" });
+}
+
+function toonProefScenes() {
+  const naam = $("proef-model").value;
+  const sid = $("proef-situatie").value;
+  const titel = new Map(state.proeven.situaties.map((item) => [item.id, item.titel]));
+  const lijst = state.proeven.scenes.filter((item) => item.model === naam && (!sid || item.sid === sid));
+  $("proef-scenes").replaceChildren(...lijst.map((item) => el("article", {},
+    el("h3", {}, titel.get(item.sid) || item.sid),
+    el("p", { class: "zacht klein", style: "margin: 2px 0 0" }, [item.dag, item.proef, item.regels ? `${item.regels} regels` : null, item.sec ? `${String(item.sec).replace(".", ",")} s` : null, item.cent != null ? `${String(item.cent).replace(".", ",")} cent` : null].filter(Boolean).join(" · ")),
+    el("pre", {}, item.tekst))));
+  for (const rij of $("modellen").querySelectorAll("tr[data-naam]")) rij.classList.toggle("gekozen", rij.dataset.naam === naam);
+}
+
+function toonProeven() {
+  const p = state.proeven;
+  const heeft = p.modellen.length > 0;
+  $("proeven-leeg").hidden = heeft;
+  $("modellen").hidden = !heeft;
+  $("proef-keuze").hidden = !heeft;
+  if (!heeft) return;
+  const rijen = [el("tr", {}, ["Model", "Notitie", "Tijd", "Kosten", "Scènes", ""].map((kop) => el("th", {}, kop)))];
+  for (const [oordeel, kop] of OORDELEN) {
+    const groep = p.modellen.filter((item) => item.oordeel === oordeel);
+    if (!groep.length) continue;
+    rijen.push(el("tr", { class: "groep" }, el("td", { colspan: 6 }, kop)));
+    for (const item of groep) {
+      const lees = el("button", { type: "button" }, "Lees");
+      lees.addEventListener("click", () => {
+        $("proef-model").value = item.naam;
+        toonProefScenes();
+        $("proef-keuze").scrollIntoView({ block: "start" });
+      });
+      const kies = item.id && oordeel !== "werkt niet" ? el("button", { type: "button" }, "Kies") : null;
+      if (kies) kies.addEventListener("click", () => kiesModel(item));
+      rijen.push(el("tr", { "data-naam": item.naam },
+        el("td", {}, item.naam),
+        el("td", { class: "zacht" }, item.notitie || ""),
+        el("td", { class: "getal" }, item.sec ? `${String(item.sec).replace(".", ",")} s` : ""),
+        el("td", { class: "getal" }, item.cent != null ? `${String(item.cent).replace(".", ",")} cent` : ""),
+        el("td", { class: "getal" }, String(item.scenes)),
+        el("td", { style: "white-space: nowrap" }, lees, kies ? " " : null, kies)));
+    }
+  }
+  $("modellen").replaceChildren(...rijen);
+  $("proef-model").replaceChildren(...p.modellen.map((item) => el("option", { value: item.naam }, item.naam)));
+  $("proef-situatie").replaceChildren(el("option", { value: "" }, "alle"), ...p.situaties.map((item) => el("option", { value: item.id }, item.titel)));
+  toonProefScenes();
+}
+
+$("modelkeuze").addEventListener("change", () => { onthoud("model", $("modelkeuze").value); toonStand(); });
+$("modelnaam").addEventListener("input", () => { onthoud("modelnaam", $("modelnaam").value.trim()); toonStand(); });
+$("nadenken").addEventListener("change", () => onthoud("nadenken", $("nadenken").value));
+$("lengte").addEventListener("input", () => onthoud("lengte", $("lengte").value));
+$("proef-model").addEventListener("change", toonProefScenes);
+$("proef-situatie").addEventListener("change", toonProefScenes);
+
 $("schrijf").addEventListener("click", () => werk(async () => {
   await bewaar();
   const characterIds = [...$("personages").querySelectorAll("input:checked")].map((input) => input.value);
   const klaar = await api("/klaarzetten", { method: "POST", body: { situationId: $("situatie").value, environmentId: $("omgeving").value, characterIds } });
-  await stuur(klaar.tekst);
+  const regels = Math.round(Number($("lengte").value));
+  await stuur(regels > 0 ? `${klaar.tekst}\n- Deze scène is ongeveer ${regels} regels.` : klaar.tekst);
 }));
 
 $("verstuur").addEventListener("click", () => werk(async () => {
@@ -263,8 +377,10 @@ async function ververs() {
 (async () => {
   try {
     let kept;
-    [state.stand, state.catalogus, kept] = await Promise.all([api(""), api("/catalogus"), api("/bewaard")]);
+    [state.stand, state.catalogus, kept, state.proeven] = await Promise.all([api(""), api("/catalogus"), api("/bewaard"), api("/proeven").catch(() => state.proeven)]);
     toonBewaard(kept.bewaard);
+    vulModellen();
+    toonProeven();
     vulPrompts();
     vulCatalogus();
     toonGesprek(state.stand.gesprek);
