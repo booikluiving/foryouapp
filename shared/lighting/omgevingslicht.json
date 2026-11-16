@@ -1,5 +1,5 @@
 {
-  "uitleg": "Licht per omgeving. Elke speler heeft drie lampen: twee voorlampen (links en rechts, vanuit de speler gezien) en een accentlamp linksachter. kleurtemperatuur geldt voor de voorlampen: 0 = warmst, 116 = neutraal wit bij camera op 4600 K, 255 = koelst. links en rechts: helderheid 0-255. accent: tint 0-360 (0 rood, 30 oranje, 60 geel, 120 groen, 210 blauw, 300 magenta), verzadiging 0-255 (0 = wit), helderheid 0-255. helderheid bovenaan is een procent over alle omgevingen: voor de voorlampen en voor de accentlampen. Pas een getal aan en het geldt bij de volgende scène. Wat hier staat gaat voor op de lichtstand uit de catalogus; een omgeving die hier niet staat krijgt die lichtstand. loading is het licht tussen de scènes: voor = helderheid van de voorlampen, accent = de accentlampen.",
+  "uitleg": "Licht per omgeving. Elke speler heeft drie lampen: twee voorlampen (links en rechts, vanuit de speler gezien) en een accentlamp linksachter. kleurtemperatuur geldt voor de voorlampen: 0 = warmst, 116 = neutraal wit bij camera op 4600 K, 255 = koelst. links en rechts: helderheid 0-255. accent: tint 0-360 (0 rood, 30 oranje, 60 geel, 120 groen, 210 blauw, 300 magenta; geen blauw of paars: dat licht valt op de speler en de key haalt de speler dan weg), verzadiging 0-255 (0 = wit), helderheid 0-255. helderheid bovenaan is een procent over alle omgevingen: voor de voorlampen en voor de accentlampen. Pas een getal aan en het geldt bij de volgende scène. Wat hier staat gaat voor op de lichtstand uit de catalogus; een omgeving die hier niet staat krijgt die lichtstand. loading is het licht tussen de scènes: voor = helderheid van de voorlampen, accent = de accentlampen.",
   "helderheid": {
     "voor": 100,
     "accent": 100
@@ -61,7 +61,7 @@
     },
     "environment:6": {
       "naam": "Persconferentie",
-      "kleurtemperatuur": 140,
+      "kleurtemperatuur": 130,
       "links": {
         "helderheid": 129
       },
@@ -69,9 +69,9 @@
         "helderheid": 90
       },
       "accent": {
-        "tint": 210,
-        "verzadiging": 70,
-        "helderheid": 119
+        "tint": 0,
+        "verzadiging": 0,
+        "helderheid": 90
       }
     },
     "environment:7": {
@@ -91,7 +91,7 @@
     },
     "environment:8": {
       "naam": "Trampolinepark",
-      "kleurtemperatuur": 149,
+      "kleurtemperatuur": 130,
       "links": {
         "helderheid": 107
       },
@@ -99,9 +99,9 @@
         "helderheid": 75
       },
       "accent": {
-        "tint": 280,
-        "verzadiging": 160,
-        "helderheid": 102
+        "tint": 0,
+        "verzadiging": 0,
+        "helderheid": 90
       }
     },
     "environment:9": {
@@ -129,9 +129,9 @@
         "helderheid": 80
       },
       "accent": {
-        "tint": 210,
-        "verzadiging": 70,
-        "helderheid": 105
+        "tint": 0,
+        "verzadiging": 0,
+        "helderheid": 90
       }
     },
     "environment:11": {
@@ -151,7 +151,7 @@
     },
     "environment:12": {
       "naam": "Ziekenhuis",
-      "kleurtemperatuur": 132,
+      "kleurtemperatuur": 130,
       "links": {
         "helderheid": 78
       },
@@ -159,9 +159,9 @@
         "helderheid": 112
       },
       "accent": {
-        "tint": 175,
-        "verzadiging": 90,
-        "helderheid": 103
+        "tint": 0,
+        "verzadiging": 0,
+        "helderheid": 90
       }
     },
     "environment:13": {
@@ -181,7 +181,7 @@
     },
     "environment:14": {
       "naam": "NOS_Studio",
-      "kleurtemperatuur": 152,
+      "kleurtemperatuur": 130,
       "links": {
         "helderheid": 81
       },
@@ -189,9 +189,9 @@
         "helderheid": 115
       },
       "accent": {
-        "tint": 228,
-        "verzadiging": 117,
-        "helderheid": 106
+        "tint": 0,
+        "verzadiging": 0,
+        "helderheid": 90
       }
     },
     "environment:15": {
@@ -271,7 +271,7 @@
     },
     "environment:20": {
       "naam": "Keuken",
-      "kleurtemperatuur": 149,
+      "kleurtemperatuur": 130,
       "links": {
         "helderheid": 85
       },
@@ -279,9 +279,9 @@
         "helderheid": 122
       },
       "accent": {
-        "tint": 200,
-        "verzadiging": 112,
-        "helderheid": 113
+        "tint": 0,
+        "verzadiging": 0,
+        "helderheid": 90
       }
     },
     "environment:21": {
@@ -354,9 +354,9 @@
         "helderheid": 76
       },
       "accent": {
-        "tint": 210,
-        "verzadiging": 70,
-        "helderheid": 102
+        "tint": 0,
+        "verzadiging": 0,
+        "helderheid": 90
       }
     },
     "environment:26": {
@@ -406,7 +406,7 @@
     },
     "environment:29": {
       "naam": "Lingo studio",
-      "kleurtemperatuur": 188,
+      "kleurtemperatuur": 130,
       "links": {
         "helderheid": 88
       },
@@ -414,9 +414,9 @@
         "helderheid": 125
       },
       "accent": {
-        "tint": 214,
-        "verzadiging": 254,
-        "helderheid": 115
+        "tint": 0,
+        "verzadiging": 0,
+        "helderheid": 90
       }
     }
   }
