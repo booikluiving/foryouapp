@@ -196,7 +196,7 @@
     },
     "environment:15": {
       "naam": "Supermarkt",
-      "kleurtemperatuur": 105,
+      "kleurtemperatuur": 128,
       "links": {
         "helderheid": 85
       },
@@ -204,9 +204,9 @@
         "helderheid": 120
       },
       "accent": {
-        "tint": 27,
-        "verzadiging": 109,
-        "helderheid": 110
+        "tint": 0,
+        "verzadiging": 0,
+        "helderheid": 100
       }
     },
     "environment:16": {
