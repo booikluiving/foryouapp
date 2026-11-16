@@ -9,9 +9,10 @@ Wat het doet:
 - maakt per speler een klein beeld van de ruwe camera (CameraN/raw, met greenscreen en al):
   /project1/fy_speler_bron1..3 (Select) en /project1/fy_speler_klein1..3 (270 x 480).
 - maakt /project1/fy_spelerbeeld (Execute DAT):
-  * buiten de scène (inloop en loading) bewaart die twee keer per seconde het kleine beeld van elke
-    speler in ~/ForYou/spelerbeeld (plekN_a.jpg en plekN_b.jpg om en om). De publieksserver leest die
-    en het zaalscherm toont ze in zwart-wit tijdens het stemmen en het laden.
+  * buiten de scène (inloop en loading) bewaart die zo'n 17 keer per seconde één strook met de drie
+    spelers naast elkaar (/project1/fy_speler_strook, 810 x 480) in ~/ForYou/spelerbeeld
+    (strook_0.jpg, strook_1.jpg, strook_2.jpg om de beurt). De publieksserver geeft die als doorlopende
+    beeldstroom aan het zaalscherm, dat ze in zwart-wit toont tijdens de inloop, het stemmen en het laden.
   * tijdens de scène bewaart die elke 3 seconden het beeld van elke speler met de omgeving erachter
     (comp1, comp5, comp6) in ~/ForYou/spelersfoto/plekN, voor de foto bij de personagevraag.
 
@@ -24,11 +25,11 @@ SPELERBEELD_UIT = False
 _TEKST = '''# For_You: bewaart beelden van de spelers (zie apply_spelerbeeld_patch.py).
 import os
 
-KLEIN = ((1, 'fy_speler_klein1'), (2, 'fy_speler_klein2'), (3, 'fy_speler_klein3'))
+STROOK = 'fy_speler_strook'
 SCENE = ((1, 'comp1'), (2, 'comp5'), (3, 'comp6'))
 MAP_KLEIN = os.path.expanduser('~/ForYou/spelerbeeld')
 MAP_SCENE = os.path.expanduser('~/ForYou/spelersfoto')
-OM_DE_KLEIN = 24     # frames tussen twee beelden van dezelfde speler buiten de scène (50 fps = twee per seconde)
+OM_DE_STROOK = 3     # buiten de scène: elke 3 frames de strook (50 fps = bijna 17 per seconde)
 OM_DE_SCENE = 150    # tijdens de scène: elke 3 seconden
 BEWAAR = 40          # zoveel scènebeelden blijven per plek staan
 
@@ -37,17 +38,12 @@ def onFrameStart(frame):
     fase = int(round(op('/project1/phase_value')['phase'].eval()))
     f = absTime.frame
     if fase != 2:
-        stap = f % OM_DE_KLEIN
-        for index, (plek, naam) in enumerate(KLEIN):
-            if stap != index * (OM_DE_KLEIN // len(KLEIN)):
-                continue
-            bron = op('/project1/' + naam)
-            if bron is None:
-                continue
-            os.makedirs(MAP_KLEIN, exist_ok=True)
-            # Om en om naar twee bestanden: de lezer pakt het bestand dat al af is.
-            letter = 'a' if (f // OM_DE_KLEIN) % 2 == 0 else 'b'
-            bron.save(os.path.join(MAP_KLEIN, 'plek%d_%s.jpg' % (plek, letter)), asynchronous=True, quality=0.7)
+        if f % OM_DE_STROOK == 0:
+            bron = op('/project1/' + STROOK)
+            if bron is not None:
+                os.makedirs(MAP_KLEIN, exist_ok=True)
+                # Drie bestanden om de beurt: de lezer pakt het op één na nieuwste, dat is zeker af.
+                bron.save(os.path.join(MAP_KLEIN, 'strook_%d.jpg' % ((f // OM_DE_STROOK) % 3)), asynchronous=True, quality=0.6)
         return
     stap = f % OM_DE_SCENE
     for index, (plek, naam) in enumerate(SCENE):
@@ -93,6 +89,14 @@ def _spelerbeeld_patch():
         klein.par.resolutionw = 270
         klein.par.resolutionh = 480
         klein.nodeX, klein.nodeY = x0 + (n - 1) * 320 + 150, y0
+    strook = r.op('fy_speler_strook') or r.create(layoutTOP, 'fy_speler_strook')
+    for n in (1, 2, 3):
+        strook.inputConnectors[n - 1].connect(r.op('fy_speler_klein%d' % n))
+    strook.par.align = 'horizlr'
+    strook.par.outputresolution = 'custom'
+    strook.par.resolutionw = 810
+    strook.par.resolutionh = 480
+    strook.nodeX, strook.nodeY = x0 + 3 * 320 + 150, y0
     if dat is None:
         dat = r.create(executeDAT, 'fy_spelerbeeld')
         dat.nodeX, dat.nodeY = x0, y0 - 160
@@ -102,7 +106,7 @@ def _spelerbeeld_patch():
     oud = r.op('fy_spelersfoto')
     if oud is not None:
         oud.par.active = False
-    print('For_You spelerbeeld: fy_spelerbeeld staat aan; klein beeld %s; NIET bewaard' % [(r.op('fy_speler_klein%d' % n).width, r.op('fy_speler_klein%d' % n).height) for n in (1, 2, 3)])
+    print('For_You spelerbeeld: fy_spelerbeeld staat aan; strook %s x %s; NIET bewaard' % (strook.width, strook.height))
 
 
 _spelerbeeld_patch()
