@@ -762,9 +762,10 @@ async function startRun({ clients, orderSettings } = {}) {
     pathEvaluation: null,
     eligiblePool: [],
     lastScoreFeed: null,
-    // Alleen het aantal startscènes gaat mee naar een volgende run; de rest begint op de standaard.
+    // Het aantal startscènes en het loten bij gelijke scores gaan mee naar een volgende run.
     orderSettings: normalizeOrderSettings(orderSettings, {
       startSceneCount: normalizeStartSceneCount((await readSavedOrderSettings() || {}).startSceneCount),
+      randomizeEqualScores: !!(await readSavedOrderSettings() || {}).randomizeEqualScores,
     }),
     runLog: [{
       type: "show_run_started",
@@ -772,7 +773,7 @@ async function startRun({ clients, orderSettings } = {}) {
       showRunId,
     }],
   });
-  if (orderSettings && typeof orderSettings === "object") await saveOrderSettings({ startSceneCount: state.orderSettings.startSceneCount });
+  if (orderSettings && typeof orderSettings === "object") await saveOrderSettings({ startSceneCount: state.orderSettings.startSceneCount, randomizeEqualScores: !!state.orderSettings.randomizeEqualScores });
   await initializeAlgorithmScoringContext(state, clients);
   await computeAndSetPreparedNext(state, clients, "start_run");
   await saveRunState(state);
@@ -1157,7 +1158,7 @@ async function updateOrderSettings(state, clients, patch = {}) {
   normalizeRuntimeDerivedState(state);
   const beforeRandomize = !!state.orderSettings.randomizeEqualScores;
   state.orderSettings = normalizeOrderSettings(patch, state.orderSettings);
-  await saveOrderSettings({ startSceneCount: state.orderSettings.startSceneCount });
+  await saveOrderSettings({ startSceneCount: state.orderSettings.startSceneCount, randomizeEqualScores: !!state.orderSettings.randomizeEqualScores });
   if (beforeRandomize !== !!state.orderSettings.randomizeEqualScores) {
     bumpRankingTieEpoch(state, "order_settings_updated");
   }
