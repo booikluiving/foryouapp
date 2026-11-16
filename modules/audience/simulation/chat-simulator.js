@@ -461,8 +461,8 @@ class ChatSimulator {
           estimatedChars: 28,
         });
         if (plan && !plan.abandon && bot.personage) {
-          // Tijdens een scène wordt er niet getypt; dan ook het model niet vragen.
-          if (!inScene) this.schrijfAlsPersonage(bot);
+          // Ook tijdens de scène: het publiek mag dan typen, dus de personages reageren mee.
+          this.schrijfAlsPersonage(bot);
         } else if (plan && !plan.abandon) {
           const text = this.makeMessage(plan);
           this.service.acceptSimulatedComment(bot, text).catch(() => {
