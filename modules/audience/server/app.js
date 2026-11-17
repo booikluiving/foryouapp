@@ -259,7 +259,9 @@ function createAudienceApp(options = {}) {
     const top = report && Array.isArray(report.favorieten) ? report.favorieten[0] : null;
     const favoriet = top && plekken.some((rij) => rij.characterId === top.characterId) ? top.name : null;
     const ready = upNextReady.ready && upNextReady.situationId === klaar.situationId;
-    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", plekken, labels, sceneLabels, favoriet, ready, speelt: !!view.activeSituation });
+    // Toppersonages volgens de personagevraag (voor de tussenkaart met het rapport).
+    const toppersonages = report && Array.isArray(report.favorieten) ? report.favorieten.slice(0, 3).map((rij) => rij.name) : [];
+    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", plekken, labels, sceneLabels, favoriet, toppersonages, ready, speelt: !!view.activeSituation });
   }));
 
   // De vragen na de scène: de stand (wat er openstaat, de tellingen, de laatste uitslag).
