@@ -120,6 +120,16 @@ assert.equal(beeldActieVoor({ ...stapActie, payload: { ...stapActie.payload, env
 assert.equal(beeldActieVoor({ ...stapActie, payload: { ...stapActie.payload, overlay: { x: 0.5, y: 0.5, breedte: 0.5 } } }, options), null);
 beeld.resetBeeldState();
 
+// Uit de catalogus: dezelfde velden als beeld.json, de bestanden blijven bij de media.
+const catalogus = { label: "UIT CATALOGUS", kader, spelers: manifest.spelers.map(({ kader: _k, ...rest }) => rest), uitsnedes: manifest.uitsnedes };
+const gelezen = beeld.readBeeld("environment:30", { catalogBeeld: catalogus, catalogMediaRoot: "/media", readFile: () => { throw new Error("niet nodig"); } });
+assert.equal(gelezen.label, "UIT CATALOGUS");
+assert.equal(gelezen.dir, "/media/environments/environment_30/beeld");
+assert.deepEqual(gelezen.spelers[2].nek, [2386, 1107]);
+// Geen beeld in de catalogus: beeld.json.
+const terugval = beeld.readBeeld("environment:30", { catalogBeeld: null, catalogMediaRoot: "/media", readFile: () => JSON.stringify(catalogus) });
+assert.equal(terugval.label, "UIT CATALOGUS");
+
 // Een omgeving zonder beeld.json: niets.
 assert.equal(beeld.beeldStartAction("environment:5", { beeld: null }), null);
 

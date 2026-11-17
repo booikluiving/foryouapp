@@ -24,8 +24,27 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { DatabaseSync } = require("node:sqlite");
 
 const DEFAULT_MEDIA_ROOT = path.resolve(__dirname, "../../catalog/media");
+const DEFAULT_CATALOG_DB_PATH = path.resolve(__dirname, "../../catalog/db/catalog.sqlite");
+
+// De plek van de spelers en de uitsnedes staan in de beeldcatalogus (composition.beeld): daar
+// ziet het team ook wat de show laat zien. beeld.json bij de media is de terugval.
+function beeldUitCatalogus(environmentId, options = {}) {
+  if (options.catalogBeeld !== undefined) return options.catalogBeeld;
+  let db;
+  try {
+    db = new DatabaseSync(String(options.catalogDbPath || process.env.CATALOG_DB_PATH || DEFAULT_CATALOG_DB_PATH), { readOnly: true });
+    const row = db.prepare("SELECT record_json FROM environment_compositions WHERE environment_id = ?").get(environmentId);
+    const record = row ? JSON.parse(row.record_json) : null;
+    return record && record.beeld && typeof record.beeld === "object" ? record.beeld : null;
+  } catch (_err) {
+    return null;
+  } finally {
+    try { if (db) db.close(); } catch (_err) { /* niets */ }
+  }
+}
 const SCHERM = { breedte: 1080, hoogte: 1920 };
 const UITSNEDES = ["overzicht", "1", "2", "3"];
 const STANDAARD_KADER = { kopX: 0.5, kopBreedte: 0.32, nekY: 0.48 };
@@ -67,12 +86,14 @@ function readBeeld(environmentId, options = {}) {
   if (!environmentId) return null;
   if (options.beeld !== undefined) return options.beeld;
   const dir = beeldDir(environmentId, options);
-  let manifest = null;
-  try {
-    const read = typeof options.readFile === "function" ? options.readFile : (file) => fs.readFileSync(file, "utf8");
-    manifest = JSON.parse(read(path.join(dir, "beeld.json")));
-  } catch (_err) {
-    return null;
+  let manifest = beeldUitCatalogus(environmentId, options);
+  if (!manifest) {
+    try {
+      const read = typeof options.readFile === "function" ? options.readFile : (file) => fs.readFileSync(file, "utf8");
+      manifest = JSON.parse(read(path.join(dir, "beeld.json")));
+    } catch (_err) {
+      return null;
+    }
   }
   if (!manifest || typeof manifest !== "object") return null;
   const kader = leesKader(manifest.kader, STANDAARD_KADER);
