@@ -231,14 +231,6 @@
       #p-stem.groot .oproep, #p-stem.groot .pijl, #p-stem.groot .qr { opacity: 0; }
       /* Up next: na het stemmen. De scène die komt, de topfavoriet als die erin zit, en hoe sterk het
          algoritme nu naar elk label trekt. Groen zodra de operator READY drukt. */
-      /* Tussenkaart na het stemmen: hoe dit publiek is (labels zoals het algoritme trekt) en de
-         toppersonages. Daarna Up next. */
-      #p-kaart { left: 60px; top: 300px; width: 960px; --wx: -1100px; display: grid; gap: 18px; }
-      #p-kaart .kop { font-size: 84px; letter-spacing: -0.04em; }
-      .kaartrij { display: grid; grid-template-columns: minmax(0, 1fr) auto; font-weight: 700; font-size: 64px; line-height: 1.1; letter-spacing: -0.03em; }
-      .kaartrij b { font-variant-numeric: tabular-nums; }
-      #kaartPersonages { margin-top: 40px; display: grid; gap: 10px; }
-      #kaartPersonages:empty { display: none; }
       #p-upnext { left: 60px; top: 60px; width: 960px; --wx: -1100px; }
       #upKop { font-size: 64px; letter-spacing: -0.035em; transition: color 400ms var(--curve); }
       #p-upnext.ready #upKop { color: #37d67a; }
@@ -402,7 +394,6 @@
           <div class="laadrij"><div class="laad"><i id="laadVul2"></i></div><span id="laadGetal2">0%</span></div>
         </div>
       </div>
-      <div class="p uit" id="p-kaart"><div class="kop">Dit publiek is:</div><div id="kaartLabels"></div><div id="kaartPersonages"></div></div>
       <div class="p uit" id="p-upnext"><div class="kop" id="upKop">Up next</div></div>
       <div class="p uit" id="p-voet"><span data-adres></span></div>
       <div id="deelnemers" class="leeg"><b>0</b><span>deelnemers</span></div>
@@ -426,7 +417,7 @@
             <div class="rp-rijen" id="rpSom"></div>
           </div>
           <div class="rp weg" id="rp2">
-            <div class="rp-links"><div class="kop">Dit publiek</div><div class="klein">gemiddelde score per label</div></div>
+            <div class="rp-links"><div class="kop" id="rpPubliekKop">Dit publiek</div><div class="klein" id="rpPubliekUitleg">gemiddelde score per label</div></div>
             <div class="rp-rijen" id="rpLabels"></div>
           </div>
         </div>
@@ -705,7 +696,7 @@
       const stem = { actief: false, pollId: 0, opties: [], counts: [], endsAt: 0, winnaar: -1, tot: 0 };
       const rapport = { aan: false, data: null, speelt: false, haalt: false, vraag: 0 };
 
-      const VLAKKEN = ["meedoen", "stemmen", "stemqr", "titel", "tekst", "chat", "voet", "rapport", "camera", "ranking", "spelers", "stem", "schrijf", "stemspelers", "upnext", "kaart"];
+      const VLAKKEN = ["meedoen", "stemmen", "stemqr", "titel", "tekst", "chat", "voet", "rapport", "camera", "ranking", "spelers", "stem", "schrijf", "stemspelers", "upnext"];
       const FASE_VLAKKEN = {
         inloop: ["meedoen", "chat", "camera", "spelers"],
         stemmen: ["stemmen", "stemqr", "chat", "camera", "spelers"],
@@ -718,8 +709,8 @@
         stem: ["stem", "schrijf", "stemspelers"],
         // Na het stemmen: de scène die komt.
         upnext: ["titel", "upnext", "chat", "spelers"],
-        // Tussen het stemmen en Up next: het rapport van dit publiek.
-        kaart: ["kaart", "spelers"],
+        // Tussen het stemmen en Up next: het blad 'Dit publiek' van het rapport.
+        kaart: ["rapport"],
       };
       function bepaalFase() {
         const u = universum || {};
@@ -1036,29 +1027,41 @@
       const kaart = { tot: 0, timer: 0 };
       function kaartStart() {
         kaart.tot = Date.now() + KAART_MS;
+        kaartGetekend = "";
         clearTimeout(kaart.timer);
         kaart.timer = setTimeout(() => { kaart.tot = 0; zetFase(); }, KAART_MS);
         // De laatste stemmen moeten eerst in het algoritme zijn.
         setTimeout(haalUpNext, 700);
       }
+      // Het blad 'Dit publiek' van het rapport: per label hoe sterk het algoritme nu trekt, en de
+      // toppersonages van de personagevraag.
+      let kaartGetekend = "";
       function tekenKaart() {
         const data = upNext || {};
-        const labels = (data.labels || []).filter((label) => label.procent > 0).slice(0, 4);
-        const lijst = el("kaartLabels");
-        lijst.textContent = "";
-        for (const label of labels) {
-          const r = maak("div", "kaartrij");
-          r.append(maak("span", "", label.naam), maak("b", "", `${label.procent}%`));
-          lijst.appendChild(r);
-        }
-        const personages = el("kaartPersonages");
-        personages.textContent = "";
-        if ((data.toppersonages || []).length) {
-          personages.appendChild(maak("div", "kop", "Toppersonages:"));
-          for (const naam of data.toppersonages) personages.appendChild(maak("div", "kaartrij", naam));
-        }
+        const labels = (data.labels || []).filter((label) => label.procent > 0);
+        const personages = data.toppersonages || [];
         // Niets te melden: meteen door naar Up next.
-        if (upNext && !labels.length && !(data.toppersonages || []).length && kaart.tot) { kaart.tot = 0; clearTimeout(kaart.timer); zetFase(); }
+        if (upNext && !labels.length && !personages.length && kaart.tot) { kaart.tot = 0; clearTimeout(kaart.timer); zetFase(); return; }
+        const sleutel = JSON.stringify([labels, personages]);
+        if (!kaart.tot || sleutel === kaartGetekend) return;
+        kaartGetekend = sleutel;
+        rpLeeg();
+        rpBlad(2, true);
+        el("rpPubliekKop").textContent = "Dit publiek is:";
+        el("rpPubliekUitleg").textContent = "";
+        labels.forEach((label) => {
+          const staaf = maak("div", "staaf aan");
+          const spoor = maak("div", "spoor");
+          const vulling = maak("i");
+          spoor.append(vulling);
+          staaf.append(maak("span", "", label.naam), spoor, maak("b", "", `${label.procent}%`));
+          el("rpLabels").append(staaf);
+          requestAnimationFrame(() => { vulling.style.width = `${label.procent}%`; });
+        });
+        if (personages.length) {
+          el("rpLabels").append(maak("div", "kop", "Toppersonages:"));
+          personages.forEach((naam) => el("rpLabels").append(maak("div", "staaf aan", naam)));
+        }
       }
 
       // ── Up next ───────────────────────────────────────────────────────────────────────────────
@@ -1238,6 +1241,8 @@
         ["rpCamKop", "rpCamMeta", "rpCamUitleg"].forEach((id) => { el(id).textContent = ""; });
         el("rpScore").textContent = "";
         el("rpMeta").textContent = "";
+        el("rpPubliekKop").textContent = "Dit publiek";
+        el("rpPubliekUitleg").textContent = "gemiddelde score per label";
         rpBlad(0, true);
       }
       function rapportWeg() {
