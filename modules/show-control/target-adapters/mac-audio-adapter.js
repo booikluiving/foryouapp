@@ -96,13 +96,7 @@ async function sendMacAudioCommand(action, context = {}) {
   const options = context.adapterOptions || {};
   const payload = action.payload || {};
   if (action.command === "audio.extra.stop") {
-    // Einde van de scène: alleen de intro en een lied dat het sfeergeluid dempt gaan uit;
-    // een extra geluid in een lus (de plas) mag doorlopen zoals het deed.
-    if (payload.alleen === "scene") {
-      stopSpoor("intro");
-      if (gedempt) stopSpoor("lied");
-      return { stage: "applied", state: "ok", message: "intro en gedempt lied gestopt" };
-    }
+    // Ook aan het einde van de scène (cue-library/scene-einde.js): alle sporen uit, ook een lus.
     stopCurrent();
     return { stage: "applied", state: "ok", message: "extra geluid gestopt" };
   }

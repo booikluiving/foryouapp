@@ -117,15 +117,15 @@ async function testDempenInDeSpeler() {
   await new Promise((resolve) => setTimeout(resolve, 700));
   assert.deepEqual(sfeer, [0, 0.6, 0, 0.6]);
 
-  // Einde van de scène: intro uit en een dempend lied uit (sfeer terug); een gewoon lied loopt door.
+  // Einde van de scène: alles uit. Een dempend lied geeft de sfeer terug; ook een gewoon lied stopt.
   await play({ filePath: lied, wissel: true, dempSfeer: { terug: 1 } });
   await play({ filePath: intro, spoor: "intro" });
-  await sendMacAudioCommand({ command: "audio.extra.stop", payload: { alleen: "scene" } }, ctx(lang));
+  await sendMacAudioCommand({ command: "audio.extra.stop", payload: {} }, ctx(lang));
   assert.deepEqual(sfeer, [0, 0.6, 0, 0.6, 0, 1]);
   await play({ filePath: lied, wissel: true });
-  await sendMacAudioCommand({ command: "audio.extra.stop", payload: { alleen: "scene" } }, ctx(lang));
+  await sendMacAudioCommand({ command: "audio.extra.stop", payload: {} }, ctx(lang));
   const nog = await play({ filePath: lied, wissel: true });
-  assert.equal(nog.data.gestopt, true, "een lied zonder dempen loopt door na het einde van de scène");
+  assert.match(nog.message, /^speelt/, "het lied was gestopt aan het einde van de scène: een druk begint opnieuw");
   assert.equal(sfeer.length, 6);
 
   stopCurrent();

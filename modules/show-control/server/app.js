@@ -50,6 +50,7 @@ const {
   publicOmvallenStatus,
 } = require("../cue-library/environment-omvallen");
 const { buildEnvironmentFaseCue, environmentFasesStatus, publicFasesStatus } = require("../cue-library/environment-fases");
+const { sceneEindeTick } = require("../cue-library/scene-einde");
 const { buildEnvironmentKnopCue, environmentKnoppenStatus } = require("../cue-library/environment-knoppen");
 const { cameraBaseUrl } = require("../target-adapters/camera-adapter");
 const { dmxBaseUrl } = require("../target-adapters/dmx-adapter");
@@ -565,6 +566,9 @@ function createShowControlApp(options = {}) {
   app.locals.environmentVanzelfTick = async () => {
     const runtimeResult = await clients.fetchCurrentRuntimeState();
     if (!runtimeResult || !runtimeResult.ok) return null;
+    // Vangnet: is de scène buiten show-control om geëindigd, dan gaat alsnog alles van die scène uit.
+    const einde = sceneEindeTick(runtimeResult.state || {});
+    if (einde) executeCue(einde, { ...executeOptions, runtimeState: runtimeResult.state }).then(() => saveCue(einde)).catch(() => {});
     const cue = environmentVanzelfTick(runtimeResult.state || {}, options.environmentOmvallen || {});
     if (!cue) return null;
     executeCue(cue, { ...executeOptions, runtimeState: runtimeResult.state }).then(() => saveCue(cue)).catch(() => {});

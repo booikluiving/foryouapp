@@ -9,6 +9,7 @@ const {
 const { compactRuntimeStateForCue } = require("../cue-engine/compact-results");
 const { channelsForAccentFixtures } = require("../../../shared/lighting/environment-lighting-v0");
 const { startGeluidAction } = require("../cue-library/environment-startgeluid");
+const { WACHT_VOOR_KLAARZETTEN_MS, sceneEindeActions } = require("../cue-library/scene-einde");
 
 const DEFAULT_RUNTIME_BASE_URL = "http://127.0.0.1:3024";
 
@@ -236,6 +237,8 @@ async function sendRuntimeCommand(action, context = {}) {
       state: "ok",
       message: `runtime resetRun called: ${showRunId || "current"}`,
       data: runtimeResultData(`POST ${route}`, result.body),
+      // De run is terug bij af: alles wat de scène had aangezet gaat uit.
+      generatedActions: sceneEindeActions({ generatedBy: action.command }),
     };
   }
 
@@ -289,18 +292,14 @@ async function sendRuntimeCommand(action, context = {}) {
       const startGeluid = generatedStartGeluidAction(result.body, context);
       if (startGeluid) generatedActions.push(startGeluid);
     }
-    // Aan het eind van de scène: de intro en een lied dat het sfeergeluid dempt gaan uit.
+    // Aan het eind van de scène: alles wat de knoppen van de scène hebben aangezet gaat uit
+    // (geluid, fase, stappen, haperen, extra shot). Eén plek: cue-library/scene-einde.js.
     if (command === "runtime.stopSituation") {
-      generatedActions.push({
-        command: "audio.extra.stop",
-        targetId: "mac-audio",
-        ackMode: "fire-and-forget",
-        timeoutMs: 900,
-        payload: { alleen: "scene", cueIntent: "scene_stop_geluid", generatedBy: action.command },
-      });
+      generatedActions.push(...sceneEindeActions({ generatedBy: action.command }));
     }
     if (command === "runtime.stopSituation" && payload.autoPrepareNext !== false && canGeneratePrepare(result.body)) {
-      generatedActions.push(generatedTeleprompterPrepareAction(action, result.body, context));
+      // Even wachten: het opruimen in TouchDesigner is klaar voordat de volgende scène klaargezet wordt.
+      generatedActions.push({ ...generatedTeleprompterPrepareAction(action, result.body, context), delayMs: WACHT_VOOR_KLAARZETTEN_MS });
       generatedActions.push(generatedOperatorPrepareDraftAction(action, result.body, context));
       generatedActions.push(generatedPrepareAction(action, result.body, context));
     }
