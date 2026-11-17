@@ -64,18 +64,20 @@ assert.equal(start.command, "td.samen.beeld");
 assert.equal(start.payload.uitsnede, "overzicht");
 assert.equal(start.payload.voorgrond, "/media/environments/environment_30/beeld/voorgrond-overzicht-begin.png");
 let args = oscArgsForAction({ cueId: "c", command: "td.samen.beeld", payloadId: "p", payload: start.payload });
-assert.equal(args.length, 3 + 3 + 18);
-assert.deepEqual(args.slice(3, 6), ["0", "/media/environments/environment_30/beeld/achtergrond-overzicht.png", "/media/environments/environment_30/beeld/voorgrond-overzicht-begin.png"]);
-assert.deepEqual([args[6], args[12], args[18]], ["1", "2", "3"]);
+assert.equal(args.length, 3 + 4 + 18);
+assert.deepEqual(args.slice(3, 7), ["0", "/media/environments/environment_30/beeld/achtergrond-overzicht.png", "/media/environments/environment_30/beeld/voorgrond-overzicht-begin.png", "0"]);
+assert.deepEqual([args[7], args[13], args[19]], ["1", "2", "3"]);
 assert.ok(beeld.beeldStaatAan("environment:30"));
 
 // De tram komt: in het overzicht speelt de clip.
 let payload = beeld.beeldPayload("environment:30", { stap: beeld.stapNaam("/x/omvallen/tram-komt.mov"), duur: 5 }, options);
 assert.equal(payload.voorgrond, "/media/environments/environment_30/beeld/voorgrond-overzicht-tram-komt.mov");
+assert.equal(payload.duur, 5);
 // Cameraknop 1 terwijl de tram er staat: dichtbij, met het eindbeeld (de clip begint niet opnieuw).
 payload = beeld.beeldPayload("environment:30", { uitsnede: "1" }, options);
 assert.equal(payload.achtergrond, "/media/environments/environment_30/beeld/achtergrond-1.png");
 assert.equal(payload.voorgrond, "/media/environments/environment_30/beeld/voorgrond-1-tram-komt-eind.png");
+assert.equal(payload.duur, 0);
 // Links, gezien vanuit de uitsnede van camera 1.
 payload = beeld.beeldPayload("environment:30", { stap: "links", duur: 2.6 }, options);
 assert.equal(payload.voorgrond, "/media/environments/environment_30/beeld/voorgrond-1-links.mov");

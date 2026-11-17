@@ -190,6 +190,8 @@ function beeldPayload(environmentId, wens = {}, options = {}) {
     stap,
     achtergrond,
     voorgrond,
+    // Een clip speelt eenmaal en blijft op het laatste beeld staan; 0 = stilstaand beeld.
+    duur: stapStart && /\.mov$/i.test(voorgrond) ? Number(wens.duur) || 0 : 0,
     spelers: beeld.spelers.map((speler) => plaatsSpeler(speler, beeld.uitsnedes[uitsnede])),
   };
 }
@@ -199,11 +201,11 @@ function beeldUitPayload(extra = {}) {
   return { ...extra, uit: true };
 }
 
-// OSC-args na cueId/command/payloadId: uit, achtergrond, voorgrond, en per speler zes getallen
+// OSC-args na cueId/command/payloadId: uit, achtergrond, voorgrond, duur, en per speler zes getallen
 // (camera, schaal, draai, tx, ty, snij). Een camera die niet meedoet staat op schaal 0.
 function beeldOscArgs(payload = {}) {
   if (payload.uit) return ["1"];
-  const args = ["0", String(payload.achtergrond || ""), String(payload.voorgrond || "")];
+  const args = ["0", String(payload.achtergrond || ""), String(payload.voorgrond || ""), String(Number(payload.duur) || 0)];
   const spelers = Array.isArray(payload.spelers) ? payload.spelers : [];
   for (const camera of [1, 2, 3]) {
     const speler = spelers.find((item) => Number(item.camera) === camera);
