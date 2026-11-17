@@ -11,6 +11,7 @@ const {
   createShowControlId,
 } = require("../../../shared/contracts/show-control-v0");
 const { currentEnvironmentRef } = require("./environment-extras");
+const { spelerPayload, spelerStartAction, spelerTerugPayload } = require("./environment-spelers");
 
 const DEFAULT_MEDIA_ROOT = path.resolve(__dirname, "../../catalog/media");
 
@@ -181,6 +182,9 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
     if (status.manifest.drukken.some((druk) => druk && druk.sfeer)) {
       actions.push(cueAction(cueId, actions.length, "touchdesigner", "td.effect.fase", { ...common, filePath: "", uit: true, schok: false, schokNa: 0, sfeerPath: "" }));
     }
+    // Is een speler weggefade (de deur ging dicht), dan komt die bij het begin terug.
+    const terug = spelerTerugPayload(status.manifest, common);
+    if (terug) actions.push(cueAction(cueId, actions.length, "touchdesigner", "td.effect.speler", terug));
     state.sleutel = status.sleutel;
     state.pos = 0;
   } else {
@@ -208,6 +212,9 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
         ...common, filePath: "", uit: true, schok: false, schokNa: 0, sfeerPath: sfeer,
       }, Math.round(Number(druk.klap || 0) * 1000)));
     }
+    // Een stap kan het camerabeeld van een speler laten wegfaden of terugbrengen (de deur gaat dicht).
+    const speler = spelerPayload(druk.speler, common);
+    if (speler) actions.push(cueAction(cueId, actions.length, "touchdesigner", "td.effect.speler", speler));
     state.sleutel = status.sleutel;
     state.pos = status.pos + 1;
     // Tijdens deze clip geen flits vanzelf eroverheen.
@@ -284,8 +291,17 @@ function environmentVanzelfTick(runtimeState, options = {}) {
   };
 }
 
+// Bij het starten van een scène: spelers die in deze scène gespiegeld in beeld staan ("spelers").
+function omvallenSpelerStartAction(runtimeState, options = {}) {
+  const ref = currentEnvironmentRef(runtimeState);
+  if (!ref.environmentId) return null;
+  const manifest = readManifest(ref.environmentId, options, situationIdOf(ref.resolved));
+  return spelerStartAction(manifest, { environmentId: ref.environmentId });
+}
+
 module.exports = {
   buildEnvironmentOmvallenCue,
+  omvallenSpelerStartAction,
   environmentVanzelfTick,
   environmentOmvallenStatus,
   publicOmvallenStatus,

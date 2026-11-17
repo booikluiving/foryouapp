@@ -221,6 +221,15 @@ const DEFINITIONS = Object.freeze([
     description: "Laat het camerabeeld van één speler haperen: grove blokken en schokkerig (payload: camera 1-3, sterkte 0-3; 0 = uit). Voor de omgeving Zoom.",
   }),
   command({
+    name: "td.effect.speler",
+    title: "TD spelerbeeld",
+    targetId: "touchdesigner",
+    adapter: "touchdesigner",
+    ackMode: "fire-and-forget",
+    transport: "osc-control-port",
+    description: "Spiegelt het camerabeeld van een speler of laat het wegfaden (payload: spiegel en zichtbaar als code van drie tekens per camera, fade in seconden). Staat bij de stappen van de scène.",
+  }),
+  command({
     name: "td.effect.fase",
     title: "TD fase van de omgeving",
     targetId: "touchdesigner",

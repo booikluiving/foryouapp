@@ -61,6 +61,11 @@ function oscArgsForAction(action) {
     const payload = action.payload || {};
     args.push(String(Number(payload.camera) || 0), String(Number(payload.sterkte) || 0));
   }
+  // td.effect.speler: per camera spiegelen en zichtbaar ("1", "0" of "-"), en de duur van de fade.
+  if (action.command === "td.effect.speler") {
+    const payload = action.payload || {};
+    args.push(String(payload.spiegel || "---"), String(payload.zichtbaar || "---"), String(Number(payload.fade) || 0));
+  }
   return args;
 }
 

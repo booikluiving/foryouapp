@@ -10,6 +10,7 @@ const { compactRuntimeStateForCue } = require("../cue-engine/compact-results");
 const { channelsForAccentFixtures } = require("../../../shared/lighting/environment-lighting-v0");
 const { startGeluidAction } = require("../cue-library/environment-startgeluid");
 const { WACHT_VOOR_KLAARZETTEN_MS, sceneEindeActions } = require("../cue-library/scene-einde");
+const { omvallenSpelerStartAction } = require("../cue-library/environment-omvallen");
 
 const DEFAULT_RUNTIME_BASE_URL = "http://127.0.0.1:3024";
 
@@ -171,6 +172,19 @@ function generatedStartGeluidAction(runtimeState, context = {}) {
   }
 }
 
+// Spelers die in deze scène gespiegeld in beeld staan (staat bij de stappen van de scène).
+function generatedSpelerStartAction(runtimeState, context = {}) {
+  const options = context.adapterOptions || {};
+  try {
+    return omvallenSpelerStartAction(runtimeState, {
+      ...(options.catalogMediaRoot ? { catalogMediaRoot: options.catalogMediaRoot } : {}),
+      ...(options.omvallenManifest ? { manifest: options.omvallenManifest } : {}),
+    });
+  } catch (_err) {
+    return null;
+  }
+}
+
 function canGeneratePrepare(runtimeState) {
   return !!(runtimeState && runtimeState.resolvedPreparedNext);
 }
@@ -291,6 +305,11 @@ async function sendRuntimeCommand(action, context = {}) {
     if (command === "runtime.startSituation" && payload.autoStartGeluid !== false && canGenerateGo(result.body)) {
       const startGeluid = generatedStartGeluidAction(result.body, context);
       if (startGeluid) generatedActions.push(startGeluid);
+    }
+    // Na de omgeving (TouchDesigner zet dan iedereen terug): wie in deze scène gespiegeld staat.
+    if (command === "runtime.startSituation" && canGenerateGo(result.body)) {
+      const spelers = generatedSpelerStartAction(result.body, context);
+      if (spelers) generatedActions.push(spelers);
     }
     // Aan het eind van de scène: alles wat de knoppen van de scène hebben aangezet gaat uit
     // (geluid, fase, stappen, haperen, extra shot). Eén plek: cue-library/scene-einde.js.
