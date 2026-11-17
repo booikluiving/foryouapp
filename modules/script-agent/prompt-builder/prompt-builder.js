@@ -7,6 +7,7 @@ const {
   createScriptAgentId,
 } = require("../../../shared/contracts/script-agent-v0");
 const { assignPerformerSlots } = require("../../../shared/casting/performer-slots");
+const { bordRegieVoor } = require("./bord-prompt");
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -65,6 +66,8 @@ function promptTextFor({ resolved, situation, catalog = {} }) {
     "Prompt:",
     resolved.promptText || (situation && situation.promptText) || "",
   ];
+  const bordRegie = bordRegieVoor(resolved.environment && resolved.environment.name);
+  if (bordRegie) lines.push("", bordRegie);
   return lines.join("\n").trim();
 }
 

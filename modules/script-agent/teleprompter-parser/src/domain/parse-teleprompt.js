@@ -3,6 +3,7 @@
 const CHARACTER_COLORS = ["#4cc9f0", "#f72585", "#ffd166", "#80ed99", "#bdb2ff", "#ff9f1c"];
 const STAGE_PREFIX_RE = /^(regie|actie|stage|scene|scène|richting|aanwijzing)\s*:\s*/i;
 const DIALOGUE_RE = /^([^:\n]{1,64})\s*:\s*(.+)$/;
+const { leesBordregel, maakBord } = require("./bord");
 
 function cleanText(value) {
   return String(value || "")
@@ -103,6 +104,16 @@ function parseTeleprompt(input = {}) {
   const characters = [];
   const charactersByLabel = new Map();
   const lines = [];
+  const bord = maakBord();
+  let wachtend = [];
+  // Bordstappen hangen aan de eerstvolgende regel die de speler doorklikt.
+  const pushLine = (line) => {
+    if (wachtend.length) {
+      line.bord = wachtend;
+      wachtend = [];
+    }
+    lines.push(line);
+  };
 
   sourceText
     .split("\n")
@@ -110,11 +121,16 @@ function parseTeleprompt(input = {}) {
     .filter(Boolean)
     .forEach((line) => {
       const withoutBullet = line.replace(/^[-•]\s+/, "").trim();
+      const bordregel = leesBordregel(withoutBullet);
+      if (bordregel) {
+        wachtend.push(...bord.verwerk(bordregel));
+        return;
+      }
       const dialogue = withoutBullet.match(DIALOGUE_RE);
       if (dialogue && !STAGE_PREFIX_RE.test(withoutBullet)) {
         const character = getCharacter(charactersByLabel, characters, dialogue[1]);
         splitDialogueText(dialogue[2]).forEach((text) => {
-          lines.push({
+          pushLine({
             id: `line_${lines.length + 1}`,
             type: "dialogue",
             speakerId: character.id,
@@ -131,7 +147,7 @@ function parseTeleprompt(input = {}) {
           ? stripOuterMarks(withoutBullet)
           : withoutBullet;
       if (stageText) {
-        lines.push({
+        pushLine({
           id: `line_${lines.length + 1}`,
           type: "stage_direction",
           text: stageText,
@@ -139,10 +155,19 @@ function parseTeleprompt(input = {}) {
       }
     });
 
+  // Wat aan het eind nog openstaat, gaat mee met de laatste regel.
+  wachtend.push(...bord.sluit());
+  if (wachtend.length && lines.length) {
+    const laatste = lines[lines.length - 1];
+    laatste.bord = [...(laatste.bord || []), ...wachtend];
+  }
+  const bordNamen = bord.namen();
+
   return {
     title: inferredTitle,
     characters,
     lines,
+    ...(bordNamen.length ? { bord: { namen: bordNamen } } : {}),
     source: {
       kind: sourceKind,
       parser: "rule-based",

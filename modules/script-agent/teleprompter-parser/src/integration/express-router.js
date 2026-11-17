@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { createTelepromptStore } = require("../runtime/teleprompt-store");
 
@@ -466,6 +467,22 @@ function mountTeleprompterParser(app, options = {}) {
 
   app.get(`${publicPrefix}/live-captions`, (_req, res) => {
     res.sendFile(path.join(publicDir, "live-captions.html"));
+  });
+
+  // Plaatjes voor het bord (blind ranking): bestanden met de naam van het plaatje in kleine letters,
+  // bijvoorbeeld eva-braun.jpg. Zonder bestand toont het bord alleen de naam.
+  app.get(`${publicPrefix}/bord-plaatje/:naam`, (req, res) => {
+    const naam = String(req.params.naam || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
+    const map = String(process.env.FORYOU_BORD_PLAATJES_DIR || path.join(os.homedir(), "ForYou", "bord-plaatjes"));
+    const bestand = naam
+      ? [".jpg", ".jpeg", ".png", ".webp"].map((ext) => path.join(map, `${naam}${ext}`)).find((kandidaat) => fs.existsSync(kandidaat))
+      : null;
+    if (!bestand) {
+      res.status(404).end();
+      return;
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.sendFile(bestand);
   });
 
   app.use(publicPrefix, express.static(publicDir));

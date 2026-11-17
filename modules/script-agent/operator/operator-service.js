@@ -13,6 +13,7 @@ const {
 } = require("../../../shared/contracts/script-agent-v0");
 const { assignPerformerSlots } = require("../../../shared/casting/performer-slots");
 const { buildPromptInput, hashContent } = require("../prompt-builder/prompt-builder");
+const { bordRegieVoor } = require("../prompt-builder/bord-prompt");
 const { createScriptOutput } = require("../script-output/script-service");
 const {
   appendPromptInput,
@@ -229,6 +230,8 @@ function buildManualPromptText({ situation, environment, characters, extra }) {
     "Prompt:",
     displayDescription(situation),
   ];
+  const bordRegie = bordRegieVoor(environment ? displayTitle(environment) : "");
+  if (bordRegie) lines.push("", bordRegie);
   const regie = normalizeText(extra || "", 2000);
   if (regie) lines.push("", "Regie vooraf:", regie);
   return compactPromptText(lines.join("\n"));
