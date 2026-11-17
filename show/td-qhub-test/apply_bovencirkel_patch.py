@@ -2,7 +2,7 @@
 #
 # De pagina van het hoofdscherm (stage-tussen.html) maakt tijdens het stemmen, zodra de klok staat,
 # een rond gat in de cirkel (alleen in TouchDesigner, html.een). Dit script legt daaronder het beeld
-# van de NDI-camera boven de ring (PTVL-ZCAM), uitgesneden op de ring en rond gemaskeerd.
+# van de NDI-camera boven de ring (PTVL-ZCAM), uitgesneden op de ring, rond gemaskeerd en in zwart-wit.
 # Het getal en de cirkellijn van de pagina blijven erboven. Tijdens de scène (fase 2) staat de laag uit,
 # omdat de pagina dan doorzichtig is.
 #
@@ -34,7 +34,8 @@ void main() {
     vec2 bron = uCentrum + p * uStraal;
     vec2 uv = clamp(vec2(bron.x / res.x, 1.0 - bron.y / res.y), vec2(0.0), vec2(1.0));
     vec4 c = texture(sTD2DInputs[0], uv);
-    fragColor = TDOutputSwizzle(vec4(c.rgb * a, a));
+    float grijs = dot(c.rgb, vec3(0.299, 0.587, 0.114));   // zwart-wit
+    fragColor = TDOutputSwizzle(vec4(vec3(grijs) * a, a));
 }
 '''
 

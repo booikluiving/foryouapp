@@ -184,7 +184,7 @@
     if (nieuweSleutel !== sleutel) {
       sleutel = nieuweSleutel;
       namen = tp.bord.namen.slice();
-      stappen = [];
+      stappen = (tp.bord.begin || []).map((stap) => ({ ...stap, cue: 0 }));
       (tp.lines || []).forEach((line, i) => {
         (line.bord || []).forEach((stap) => stappen.push({ ...stap, cue: i + 1 }));
       });

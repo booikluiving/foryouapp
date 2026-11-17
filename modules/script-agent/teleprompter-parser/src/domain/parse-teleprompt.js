@@ -106,6 +106,7 @@ function parseTeleprompt(input = {}) {
   const lines = [];
   const bord = maakBord();
   let wachtend = [];
+  const beginBord = [];
   // Bordstappen hangen aan de eerstvolgende regel die de speler doorklikt.
   const pushLine = (line) => {
     if (wachtend.length) {
@@ -123,7 +124,20 @@ function parseTeleprompt(input = {}) {
       const withoutBullet = line.replace(/^[-•]\s+/, "").trim();
       const bordregel = leesBordregel(withoutBullet);
       if (bordregel) {
-        wachtend.push(...bord.verwerk(bordregel));
+        const stappen = bord.verwerk(bordregel);
+        // Een nieuw plaatje staat één klik eerder stil: op de regel vóór de bordregel. Zo staat het al
+        // vast als de speler erover begint. Plekken gaan af met de regel erna.
+        const vorige = lines[lines.length - 1];
+        if (bordregel.soort === "plaatje" && vorige) {
+          vorige.bord = [...(vorige.bord || []), ...wachtend, ...stappen];
+          wachtend = [];
+        } else if (bordregel.soort === "plaatje" && !vorige) {
+          // Plaatje vóór de eerste regel: staat al stil op de titelkaart.
+          beginBord.push(...wachtend, ...stappen);
+          wachtend = [];
+        } else {
+          wachtend.push(...stappen);
+        }
         return;
       }
       const dialogue = withoutBullet.match(DIALOGUE_RE);
@@ -167,7 +181,7 @@ function parseTeleprompt(input = {}) {
     title: inferredTitle,
     characters,
     lines,
-    ...(bordNamen.length ? { bord: { namen: bordNamen } } : {}),
+    ...(bordNamen.length ? { bord: { namen: bordNamen, ...(beginBord.length ? { begin: beginBord } : {}) } } : {}),
     source: {
       kind: sourceKind,
       parser: "rule-based",

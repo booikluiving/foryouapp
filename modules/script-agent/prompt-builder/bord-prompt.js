@@ -7,7 +7,7 @@ const BORD_OMGEVING_RE = /blind\s*ranking/i;
 
 const BORD_REGIE = [
   "Bord:",
-  "- Zet op een eigen regel [PLAATJE: naam] op het moment dat een plaatje in beeld komt.",
+  "- Zet op een eigen regel [PLAATJE: naam] vóór de regel waarin het plaatje voor het eerst genoemd of bekeken wordt.",
   "- Zet op een eigen regel [PLEK: cijfer] op het moment dat het plaatje op een plek gezet wordt.",
   "- Gebruik de namen precies zoals in de situatie, in die volgorde, en elke plek één keer.",
 ].join("\n");
