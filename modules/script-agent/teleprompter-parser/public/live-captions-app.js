@@ -202,7 +202,9 @@
     preparedScene = payload.preparedScene || null;
     teleprompt = payload.teleprompt || null;
     cue = payload.cue || { index: 0, version: -1, deckLength: 0 };
-    applyCaptionStyle(payload.captionStyle || DEFAULT_CAPTION_STYLE);
+    // Met een bord (blind ranking) staat het plaatje midden in beeld: de ondertitel gaat eronder.
+    const stijl = payload.captionStyle || DEFAULT_CAPTION_STYLE;
+    applyCaptionStyle(teleprompt && teleprompt.bord ? { ...stijl, verticalPosition: 84 } : stijl);
     render();
   }
 
