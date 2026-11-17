@@ -253,11 +253,13 @@ function createAudienceApp(options = {}) {
     } catch (_err) {
       report = null;
     }
-    const labels = report && Array.isArray(report.labelTrek) ? report.labelTrek.map((rij) => ({ naam: rij.name, procent: rij.procent })) : [];
+    const labels = report && Array.isArray(report.labelTrek) ? report.labelTrek.map((rij) => ({ id: rij.id, naam: rij.name, procent: rij.procent })) : [];
+    // De labels van de scène die komt, met hoe sterk het algoritme er nu naar trekt.
+    const sceneLabels = (klaar.labelIds || []).map((id) => labels.find((rij) => rij.id === id)).filter(Boolean);
     const top = report && Array.isArray(report.favorieten) ? report.favorieten[0] : null;
     const favoriet = top && plekken.some((rij) => rij.characterId === top.characterId) ? top.name : null;
     const ready = upNextReady.ready && upNextReady.situationId === klaar.situationId;
-    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", plekken, labels, favoriet, ready, speelt: !!view.activeSituation });
+    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", plekken, labels, sceneLabels, favoriet, ready, speelt: !!view.activeSituation });
   }));
 
   // De vragen na de scène: de stand (wat er openstaat, de tellingen, de laatste uitslag).
