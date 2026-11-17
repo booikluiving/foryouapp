@@ -469,14 +469,35 @@ function mountTeleprompterParser(app, options = {}) {
     res.sendFile(path.join(publicDir, "live-captions.html"));
   });
 
-  // Plaatjes voor het bord (blind ranking): bestanden met de naam van het plaatje in kleine letters,
-  // bijvoorbeeld eva-braun.jpg. Zonder bestand toont het bord alleen de naam.
+  // Plaatjes voor het bord (blind ranking). Een plaatje is een PNG-laag die in de beeldcatalogus bij een
+  // omgeving is geüpload, met als bestandsnaam de naam van het plaatje in kleine letters (eva-braun.jpg).
+  // Daarnaast kan het los in ~/ForYou/bord-plaatjes staan. Zonder bestand toont het bord alleen de naam.
+  function bordPlaatje(naam) {
+    const extensies = [".jpg", ".jpeg", ".png", ".webp"];
+    const mediaRoot = String(process.env.CATALOG_MEDIA_ROOT || path.join(__dirname, "..", "..", "..", "..", "catalog", "media"));
+    const omgevingen = path.join(mediaRoot, "environments");
+    const patroon = new RegExp(`^${naam}-[0-9a-f]{8,}\\.(jpe?g|png|webp)$`);
+    let beste = null;
+    try {
+      for (const omgeving of fs.readdirSync(omgevingen)) {
+        const map = path.join(omgevingen, omgeving, "fx");
+        if (!fs.existsSync(map)) continue;
+        for (const bestand of fs.readdirSync(map)) {
+          if (!patroon.test(bestand)) continue;
+          const pad = path.join(map, bestand);
+          const tijd = fs.statSync(pad).mtimeMs;
+          if (!beste || tijd > beste.tijd) beste = { pad, tijd };
+        }
+      }
+    } catch (_err) {}
+    if (beste) return beste.pad;
+    const losseMap = String(process.env.FORYOU_BORD_PLAATJES_DIR || path.join(os.homedir(), "ForYou", "bord-plaatjes"));
+    return extensies.map((ext) => path.join(losseMap, `${naam}${ext}`)).find((kandidaat) => fs.existsSync(kandidaat)) || null;
+  }
+
   app.get(`${publicPrefix}/bord-plaatje/:naam`, (req, res) => {
     const naam = String(req.params.naam || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
-    const map = String(process.env.FORYOU_BORD_PLAATJES_DIR || path.join(os.homedir(), "ForYou", "bord-plaatjes"));
-    const bestand = naam
-      ? [".jpg", ".jpeg", ".png", ".webp"].map((ext) => path.join(map, `${naam}${ext}`)).find((kandidaat) => fs.existsSync(kandidaat))
-      : null;
+    const bestand = naam ? bordPlaatje(naam) : null;
     if (!bestand) {
       res.status(404).end();
       return;
