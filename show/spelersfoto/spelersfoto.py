@@ -8,7 +8,7 @@ komen (plek1/, plek2/, plek3/, JPEG of PNG, bijvoorbeeld elke paar seconden éé
     <map>/plek1/0001.jpg   <map>/plek2/0001.jpg   <map>/plek3/0001.jpg
 
 Elk nieuw beeld krijgt een cijfer: staat er een gezicht in, kijkt het naar de camera, zijn de ogen open,
-lacht het, is het groot genoeg. Is het beter dan het beste tot nu toe, dan gaat een uitsnede (staand,
+lacht het, is het groot genoeg. Zonder bruikbaar gezicht telt een persoon in beeld (het bovenlijf). Is het beter dan het beste tot nu toe, dan gaat een uitsnede (staand,
 het gezicht bovenin, de omgeving eromheen) naar de publieksserver. Komt er een tijd geen beeld binnen,
 dan begint de volgende scène weer met een schone lei.
 
@@ -43,17 +43,28 @@ def maat(bestand: Path) -> tuple[int, int]:
     return int(stroom["width"]), int(stroom["height"])
 
 
-def gezichten(bestand: Path, breedte: int, hoogte: int) -> list[dict]:
-    """De gezichten in het beeld, zoals publiek_vision ze geeft (vak 0..1, lach, ogen, hoeken)."""
+def zoek(bestand: Path, breedte: int, hoogte: int) -> dict:
+    """Wat publiek_vision in het beeld vindt: gezichten (vak 0..1, lach, ogen, hoeken) en personen (vak 0..1)."""
     kb = KIJK_BREEDTE
     kh = max(2, round(hoogte * kb / breedte / 2) * 2)
     ruw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(bestand), "-vf", f"scale={kb}:{kh}", "-pix_fmt", "gray",
                           "-f", "rawvideo", "-frames:v", "1", "-"], capture_output=True, timeout=15).stdout
     if len(ruw) != kb * kh:
-        return []
+        return {}
     uit = subprocess.run([str(VISION), str(kb), str(kh), "--gray"], input=ruw, capture_output=True, timeout=20).stdout
     regels = [regel for regel in uit.decode("utf-8", "replace").splitlines() if regel.startswith("{")]
-    return json.loads(regels[-1]).get("faces", []) if regels else []
+    return json.loads(regels[-1]) if regels else {}
+
+
+def hoofd_van_persoon(personen: list) -> dict | None:
+    """Geen bruikbaar gezicht (afgewend, opzij, te donker): het hoofd van de grootste persoon in beeld,
+    geschat als het bovenste stuk van zijn vak. Te kleine personen (verder weg) tellen niet."""
+    vakken = [p for p in personen if len(p) == 4 and p[3] >= 0.25]
+    if not vakken:
+        return None
+    x, y, b, h = max(vakken, key=lambda p: p[2] * p[3])
+    hb = min(b * 0.55, h * 0.16)
+    return {"b": [x + b / 2 - hb / 2, y + h * 0.02, hb, h * 0.14], "persoon": h}
 
 
 def cijfer(gezicht: dict) -> float:
@@ -104,11 +115,17 @@ def stuur(server: str, plek: int, jpeg: bytes) -> dict:
 def bekijk(bestand: Path) -> tuple[float, bytes]:
     """Het cijfer van het beste gezicht in dit beeld en de uitsnede daarvan."""
     breedte, hoogte = maat(bestand)
-    beste = max(gezichten(bestand, breedte, hoogte), key=cijfer, default=None)
-    if beste is None or cijfer(beste) < 0:
-        # Geen bruikbaar gezicht: het bovenste deel van het beeld, voor als er de hele scène geen beter komt.
-        return 0.0, uitsnede(bestand, breedte, hoogte, {"b": [0.2, 0.05, 0.6, 0.28]})
-    return 1.0 + cijfer(beste), uitsnede(bestand, breedte, hoogte, beste)
+    gevonden = zoek(bestand, breedte, hoogte)
+    beste = max(gevonden.get("faces", []), key=cijfer, default=None)
+    if beste is not None and cijfer(beste) >= 0:
+        return 1.0 + cijfer(beste), uitsnede(bestand, breedte, hoogte, beste)
+    # Geen bruikbaar gezicht, wel iemand in beeld: zijn bovenlijf. Telt minder dan elk gezicht (onder 1),
+    # en een grotere persoon (dichterbij) telt meer.
+    hoofd = hoofd_van_persoon(gevonden.get("persons", []))
+    if hoofd is not None:
+        return 0.2 + min(hoofd["persoon"], 1.0) * 0.6, uitsnede(bestand, breedte, hoogte, hoofd)
+    # Niemand in beeld: het bovenste deel van het beeld, voor als er de hele scène niets beters komt.
+    return 0.0, uitsnede(bestand, breedte, hoogte, {"b": [0.2, 0.05, 0.6, 0.28]})
 
 
 def main() -> None:
