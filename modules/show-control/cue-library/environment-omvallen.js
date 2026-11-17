@@ -59,7 +59,8 @@ function fileExists(filePath, options = {}) {
 }
 
 // Waar het effect staat: per omgeving en per scène; een nieuwe scène begint weer bij het begin.
-const state = { sleutel: "", pos: 0 };
+// "keuze": welke afloop gekozen is (zie "keuzes" hieronder), -1 = nog geen.
+const state = { sleutel: "", pos: 0, keuze: -1 };
 
 // Vanzelf: zolang de scène speelt komt er af en toe uit zichzelf een korte clip langs
 // (bij de persconferentie: één flits). Staat in omvallen.json onder "vanzelf":
@@ -69,6 +70,7 @@ const vanzelf = { sleutel: "", volgendeOp: 0, bezigTot: 0, teller: 0 };
 function resetOmvallenState() {
   state.sleutel = "";
   state.pos = 0;
+  state.keuze = -1;
   vanzelf.sleutel = "";
   vanzelf.volgendeOp = 0;
   vanzelf.bezigTot = 0;
@@ -108,6 +110,16 @@ function vanzelfWachttijdMs(config, options = {}) {
   return Math.round((config.minSec + random() * (config.maxSec - config.minSec)) * 1000);
 }
 
+// Keuzes: na de laatste stap kan de operator één van twee (of meer) aflopen kiezen, elk met een
+// eigen knop (trolleyprobleem: links of rechts). Staat in omvallen.json onder "keuzes", met
+// dezelfde velden als een stap (naam, clip, duur, klap, geluid). Na een keuze is het effect klaar
+// tot BEGIN of OPNIEUW.
+function keuzesVan(manifest) {
+  return manifest && Array.isArray(manifest.keuzes)
+    ? manifest.keuzes.filter((keuze) => keuze && keuze.clip)
+    : [];
+}
+
 function sleutelVoor(ref, runtimeState = {}) {
   const active = runtimeState && runtimeState.activeSituation ? runtimeState.activeSituation : {};
   const scene = active.runId || active.startedAt || active.situationId || (active.resolved && active.resolved.situationId) || "";
@@ -126,12 +138,17 @@ function environmentOmvallenStatus(runtimeState, options = {}) {
   const gedrukt = state.sleutel === sleutel ? state.pos : 0;
   const pos = herhaal ? gedrukt : Math.min(gedrukt, manifest.drukken.length);
   const volgende = manifest.drukken[herhaal ? pos % manifest.drukken.length : pos];
+  const keuzes = herhaal ? [] : keuzesVan(manifest);
+  const gekozen = state.sleutel === sleutel ? state.keuze : -1;
   return {
     ...base,
     klaar: true,
     herhaal,
     pos,
     totaal: manifest.drukken.length,
+    keuzes: keuzes.map((keuze) => String(keuze.naam || "")),
+    gekozen,
+    keuzeKlaar: keuzes.length > 0 && pos >= manifest.drukken.length && gekozen < 0,
     volgende: volgende ? volgende.naam : "begin",
     sleutel,
     manifest,
@@ -179,7 +196,9 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
   if (!status.environmentId) throw omvallenError("geen_omgeving", status);
   if (!status.klaar) throw omvallenError(status.reden || "geen_effect", status);
   const actie = String(input.actie || "volgende");
-  const naarBegin = actie === "begin" || (!status.herhaal && status.pos >= status.totaal);
+  const keuzeIndex = actie === "keuze" ? Number(input.keuze) : -1;
+  if (actie === "keuze" && (!status.keuzeKlaar || !keuzesVan(status.manifest)[keuzeIndex])) throw omvallenError("geen_keuze", status);
+  const naarBegin = actie === "begin" || (actie !== "keuze" && !status.herhaal && status.pos >= status.totaal);
   const createdAtDate = options.createdAtDate || new Date();
   const cueId = createShowControlId("show-cue", createdAtDate);
   const common = {
@@ -200,8 +219,11 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
     if (terug) actions.push(cueAction(cueId, actions.length, "touchdesigner", "td.effect.speler", terug));
     state.sleutel = status.sleutel;
     state.pos = 0;
+    state.keuze = -1;
   } else {
-    const druk = status.manifest.drukken[status.herhaal ? status.pos % status.totaal : status.pos];
+    const druk = keuzeIndex >= 0
+      ? { druk: status.totaal + 1 + keuzeIndex, ...keuzesVan(status.manifest)[keuzeIndex] }
+      : status.manifest.drukken[status.herhaal ? status.pos % status.totaal : status.pos];
     const dir = omvallenDir(status.environmentId, options);
     const clip = path.join(dir, String(druk.clip || ""));
     if (!fileExists(clip, options)) throw omvallenError("clip_ontbreekt", status);
@@ -232,7 +254,11 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
     const speler = spelerPayload(druk.speler, common);
     if (speler) actions.push(cueAction(cueId, actions.length, "touchdesigner", "td.effect.speler", speler));
     state.sleutel = status.sleutel;
-    state.pos = status.pos + 1;
+    if (keuzeIndex >= 0) state.keuze = keuzeIndex;
+    else {
+      state.pos = status.pos + 1;
+      if (state.pos === 1) state.keuze = -1;
+    }
     // Tijdens deze clip geen flits vanzelf eroverheen.
     vanzelf.bezigTot = Number(options.now ?? Date.now()) + Math.round((Number(druk.duur) || 0) * 1000) + 500;
   }

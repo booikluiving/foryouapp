@@ -7,6 +7,7 @@
 // - effect omvallen: de volgende kast;
 // - haperen: het vakje van één speler hapert zolang de knop is ingedrukt (houden: true; het deck
 //   stuurt fase "druk" bij indrukken en fase "los" bij loslaten);
+// - keuze: na de laatste stap van omvallen een eigen knop per afloop (links of rechts);
 // - begin: zet alles van deze omgeving terug naar het begin.
 // Een omgeving zonder iets geeft een lege lijst.
 
@@ -51,6 +52,18 @@ function environmentKnoppenStatus(runtimeState, options = {}) {
       staat: "klaar",
     });
     verzet = verzet || omvallen.pos > 0;
+    // Keuzes (trolleyprobleem): één knop per afloop, te drukken als de laatste stap geweest is.
+    (omvallen.keuzes || []).forEach((naam, keuze) => {
+      knoppen.push({
+        soort: "keuze",
+        actie: "keuze",
+        keuze,
+        label: kort(naam).toUpperCase(),
+        nu: omvallen.gekozen === keuze ? "gekozen" : "",
+        teller: "",
+        staat: omvallen.keuzeKlaar ? "klaar" : "uit",
+      });
+    });
   }
   const haperen = environmentHaperenStatus(runtimeState, options.environmentOmvallen || {});
   if (haperen.klaar) {
@@ -105,6 +118,7 @@ function buildEnvironmentKnopCue(runtimeState, input = {}, options = {}) {
   const omvallenOptions = options.environmentOmvallen || {};
   if (knop.soort === "intro") return buildStartGeluidCue(runtimeState, { source: input.source }, faseOptions);
   if (knop.soort === "fase") return buildEnvironmentFaseCue(runtimeState, { actie: "volgende", source: input.source }, faseOptions);
+  if (knop.soort === "keuze") return buildEnvironmentOmvallenCue(runtimeState, { actie: "keuze", keuze: knop.keuze, source: input.source }, omvallenOptions);
   if (knop.soort === "omvallen") return buildEnvironmentOmvallenCue(runtimeState, { actie: "volgende", source: input.source }, omvallenOptions);
   if (knop.soort === "haperen") return buildEnvironmentHaperCue(runtimeState, { actie: druk === "druk" ? "aan" : druk === "los" ? "uit" : "wissel", source: input.source }, omvallenOptions);
   // begin: alles van deze omgeving terug, in één cue.
