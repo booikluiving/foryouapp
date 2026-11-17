@@ -834,11 +834,40 @@ async function toggleSceneTest() {
   }
 }
 
+// Het script op de teleprompter hoort bij de scène die start. Staat er nog het script van een
+// andere scène (in een testrun schrijft niets vanzelf), dan wordt het eerst geschreven. Zonder dit
+// speelde de nieuwe omgeving met de tekst en de titel van de vorige scène.
+async function schrijfTestScript() {
+  const nummer = (waarde) => Number((String(waarde || "").match(/(\d+)$/) || [])[1] || 0);
+  const wil = nummer(els.situation.value);
+  if (!wil) return true;
+  const bron = async () => {
+    const tele = await api("/v0/script-agent/teleprompter-parser/current").catch(() => null);
+    return tele && tele.teleprompt && tele.teleprompt.source ? tele.teleprompt.source : {};
+  };
+  const eerst = await bron();
+  if (nummer(eerst.sceneId) === wil) return true;
+  renderSceneTest("Script schrijven voor deze scène...");
+  manualSelectionDirty = true;
+  await sceneToChat();
+  const tot = Date.now() + 120000;
+  while (Date.now() < tot) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const nu = await bron();
+    if (nummer(nu.sceneId) === wil && nu.generatedAt !== eerst.generatedAt) return true;
+  }
+  return false;
+}
+
 async function startTestScene() {
   if (!els.situation.value && !els.environment.value) return;
   els.sceneTestStart.disabled = true;
-  renderSceneTest("Scène starten...");
   try {
+    if (!(await schrijfTestScript())) {
+      renderSceneTest("Het script voor deze scène kwam niet. De scène is niet gestart; probeer het opnieuw.", true);
+      return;
+    }
+    renderSceneTest("Scène starten...");
     const body = await api("/v0/script-agent/operator/scene-test/start", {
       method: "POST",
       body: JSON.stringify({ situationId: els.situation.value, environmentId: els.environment.value }),
