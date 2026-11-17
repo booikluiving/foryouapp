@@ -121,7 +121,8 @@
     // Regel die met # begint (de eerste regel van een gegenereerd script) = titel in een zwart blok.
     const titel = line.type !== "dialogue" && /^\s*#+\s*(.+)$/.exec(line.text);
     if (titel) return { type: "title", text: titel[1].trim() };
-    if (line.type === "dialogue") return { type: "dialogue", text: line.text };
+    // Dialoog op het hoofdscherm altijd als "Naam: tekst".
+    if (line.type === "dialogue") return { type: "dialogue", speaker: String(line.speakerLabel || "").trim(), text: line.text };
     return { type: "direction", text: line.text };
   }
 
@@ -171,6 +172,12 @@
       blok.textContent = activeCaption.text;
       card.appendChild(blok);
     } else {
+      if (activeCaption.type === "dialogue" && activeCaption.speaker) {
+        const naam = document.createElement("span");
+        naam.className = "caption-speaker";
+        naam.textContent = `${activeCaption.speaker}: `;
+        card.appendChild(naam);
+      }
       appendFormattedText(card, activeCaption.text);
     }
     fitCaption();
