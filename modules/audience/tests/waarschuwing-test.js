@@ -115,35 +115,34 @@ const wachtOp = async (fn, ms = 3000) => {
     assert.equal(beoordeling.instellingen.duur, 45);
     ok("stemklok na de scène: 45 s");
 
+    const stap = async () => { const s = await (await lan("/audience/stage/start-stemming")).json(); return [s.waarschuwingNodig, s.waarschuwingStaat, s.showGestart]; };
     let stand = await (await lan("/audience/stage/waarschuwing")).json();
     assert.deepEqual(stand.instellingen, { tekst: "", duur: 10, waar: "beide" });
-    assert.equal((await post("/audience/admin/show/start")).error, "geen_run");
     run = "show-1";
     await sleep(700);
+    assert.deepEqual(await stap(), [false, false, false]);
+    assert.equal((await post("/audience/admin/waarschuwing/toon")).error, "geen_tekst");
     assert.equal((await post("/audience/admin/show/start")).ok, true);
     await sleep(300);
     assert.equal(getoond(stroom.msgs).length, 0);
     assert.equal(getoond(tel.msgs).length, 0);
-    ok("zonder tekst komt er bij START SHOW niets in beeld");
+    ok("zonder tekst: geen stap, START SHOW toont niets");
 
-    const inst = await post("/audience/admin/waarschuwing/instellingen", { tekst: "  proeftekst\nregel twee ", duur: 1, waar: "beide" });
-    assert.deepEqual(inst.instellingen, { tekst: "proeftekst\nregel twee", duur: 1, waar: "beide" });
-    await post("/audience/admin/show/start");
-    await sleep(300);
-    assert.equal(getoond(stroom.msgs).length, 0);
-    ok("START SHOW nog een keer in dezelfde run: niet opnieuw");
-
+    const inst = await post("/audience/admin/waarschuwing/instellingen", { tekst: "  proeftekst\nregel twee ", duur: 0, waar: "beide" });
+    assert.deepEqual(inst.instellingen, { tekst: "proeftekst\nregel twee", duur: 0, waar: "beide" });
     run = null;
     await sleep(700);
     run = "show-2";
     await sleep(700);
-    assert.equal((await post("/audience/admin/show/start")).ok, true);
+    assert.deepEqual(await stap(), [true, false, false]);
+    ok("nieuwe run met tekst: de stap content warning staat klaar");
+
+    const hand = await post("/audience/admin/waarschuwing/toon");
+    assert.equal(hand.waarschuwing.overMs, null);
     assert.ok(await wachtOp(() => getoond(stroom.msgs).length === 1 && getoond(tel.msgs).length === 1));
-    const bericht = getoond(tel.msgs)[0].waarschuwing;
-    assert.equal(bericht.tekst, "proeftekst\nregel twee");
-    assert.equal(bericht.waar, "beide");
-    assert.ok(bericht.overMs > 0 && bericht.overMs <= 1000);
-    ok("START SHOW met tekst: zaalscherm en telefoon krijgen de tekst");
+    assert.equal(getoond(tel.msgs)[0].waarschuwing.tekst, "proeftekst\nregel twee");
+    assert.deepEqual(await stap(), [false, true, false]);
+    ok("stap content warning: zaalscherm en telefoon krijgen de tekst, daarna is START SHOW aan de beurt");
 
     const later = await openWs(cookie);
     assert.ok(await wachtOp(() => later.msgs.some((m) => m.type === "hello")));
@@ -151,22 +150,25 @@ const wachtOp = async (fn, ms = 3000) => {
     later.ws.close();
     ok("wie nu verbindt krijgt de tekst ook");
 
-    assert.ok(await wachtOp(() => weggehaald(stroom.msgs).length === 1 && weggehaald(tel.msgs).length === 1, 2500));
-    ok("na de ingestelde tijd gaat hij weg");
+    await sleep(1200);
+    assert.equal(weggehaald(stroom.msgs).length, 0);
+    assert.equal((await post("/audience/admin/show/start")).ok, true);
+    assert.ok(await wachtOp(() => weggehaald(stroom.msgs).length === 1 && weggehaald(tel.msgs).length === 1));
+    assert.deepEqual(await stap(), [false, false, true]);
+    ok("duur 0: blijft staan tot START SHOW, die haalt hem weg");
 
-    await post("/audience/admin/waarschuwing/instellingen", { duur: 0, waar: "zaalscherm" });
-    const hand = await post("/audience/admin/waarschuwing/toon");
-    assert.equal(hand.waarschuwing.overMs, null);
-    assert.equal(hand.waarschuwing.waar, "zaalscherm");
-    await sleep(1300);
-    assert.equal(weggehaald(stroom.msgs).length, 1);
-    assert.equal((await post("/audience/admin/waarschuwing/weg")).weg, true);
-    assert.ok(await wachtOp(() => weggehaald(stroom.msgs).length === 2));
-    ok("duur 0: blijft staan tot Weg");
-
-    await post("/audience/admin/waarschuwing/instellingen", { tekst: "" });
-    assert.equal((await post("/audience/admin/waarschuwing/toon")).error, "geen_tekst");
-    ok("tekst leeg: Toon nu doet niets");
+    await post("/audience/admin/waarschuwing/instellingen", { duur: 1, waar: "zaalscherm" });
+    run = null;
+    await sleep(700);
+    run = "show-3";
+    await sleep(700);
+    assert.deepEqual(await stap(), [true, false, false]);
+    const kort = await post("/audience/admin/waarschuwing/toon");
+    assert.equal(kort.waarschuwing.waar, "zaalscherm");
+    assert.ok(kort.waarschuwing.overMs > 0 && kort.waarschuwing.overMs <= 1000);
+    assert.ok(await wachtOp(() => weggehaald(stroom.msgs).length === 2, 2500));
+    assert.deepEqual(await stap(), [false, false, false]);
+    ok("met een duur gaat hij vanzelf weg; in dezelfde run komt de stap niet terug");
 
     tel.ws.close();
     stroom.stop();

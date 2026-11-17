@@ -1,14 +1,16 @@
 "use strict";
 
-// De content warning: bij START SHOW komt er één keer een tekst in beeld, op het zaalscherm en/of op
-// de telefoons. De tekst schrijft het team in Admin; zonder tekst komt er niets in beeld.
+// De content warning: een eigen stap tussen START RUN en START SHOW. De tekst komt in beeld op het
+// zaalscherm en/of op de telefoons en gaat weg bij START SHOW (of na de ingestelde tijd). De tekst
+// schrijft het team in Admin; zonder tekst is er geen stap en komt er niets in beeld.
 
 const INSTELLINGEN_KEY = "waarschuwing_instellingen";
+const GETOOND_KEY = "waarschuwing_getoond_run";
 const WAAR = ["beide", "zaalscherm", "telefoons"];
 
 const STANDAARD = {
   tekst: "",
-  // Zo lang blijft de tekst staan (seconden). 0: tot iemand hem weghaalt of de eerste scène begint.
+  // Zo lang blijft de tekst staan (seconden). 0: tot START SHOW (of de knop Weg in Admin).
   duur: 10,
   waar: "beide",
 };
@@ -29,6 +31,13 @@ function createWaarschuwing(service) {
   let lopend = null;
   let timer = null;
   let teller = 0;
+  // De run waarin de tekst al in beeld is geweest: per run één keer.
+  let getoondRun = store.getSetting(GETOOND_KEY, null) || null;
+
+  // Moet de tekst in deze run nog in beeld komen? (Er is een tekst en hij is in deze run nog niet getoond.)
+  function nodig() {
+    return !!instellingen.tekst && !!service.chatRun && getoondRun !== service.chatRun;
+  }
 
   function publiek() {
     if (!lopend) return null;
@@ -42,7 +51,7 @@ function createWaarschuwing(service) {
   }
 
   function stand() {
-    return { ok: true, instellingen, lopend: publiek() };
+    return { ok: true, instellingen, lopend: publiek(), nodig: nodig() };
   }
 
   function weg() {
@@ -59,6 +68,10 @@ function createWaarschuwing(service) {
     weg();
     if (!instellingen.tekst) return null;
     teller += 1;
+    if (service.chatRun && getoondRun !== service.chatRun) {
+      getoondRun = service.chatRun;
+      store.setSetting(GETOOND_KEY, getoondRun);
+    }
     lopend = {
       id: `${Date.now()}-${teller}`,
       tekst: instellingen.tekst,
@@ -88,7 +101,7 @@ function createWaarschuwing(service) {
     if (scene || msg.type === "session_reset" || msg.type === "session_closed") weg();
   });
 
-  return { publiek, stand, toon, weg, zetInstellingen };
+  return { publiek, stand, nodig, toon, weg, zetInstellingen };
 }
 
 module.exports = { createWaarschuwing, normalizeInstellingen };
