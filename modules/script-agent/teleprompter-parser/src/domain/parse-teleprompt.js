@@ -45,13 +45,16 @@ function titleFromFirstLine(rawText) {
   return stripOuterMarks(withoutBullet);
 }
 
-function removeTitleHeading(rawText, title) {
+// Met een opgegeven titel (de titel van de situatie) vervalt elke kopregel bovenaan het script,
+// ook als het taalmodel daar een eigen titel van heeft gemaakt.
+function removeTitleHeading(rawText, title, dropAnyHeading = false) {
   if (!title) return rawText;
   const lines = String(rawText || "").split("\n");
   const titleLower = title.toLowerCase();
   return lines
     .filter((line, index) => {
       if (index > 4) return true;
+      if (dropAnyHeading && /^#{1,3}\s+\S/.test(line.trim())) return false;
       const cleaned = line.trim().replace(/^#{1,3}\s+/, "").trim().toLowerCase();
       return cleaned !== titleLower;
     })
@@ -96,7 +99,7 @@ function parseTeleprompt(input = {}) {
   const rawText = cleanText(input.rawText || input.text || "");
   const explicitTitle = cleanText(input.title || "");
   const inferredTitle = explicitTitle || titleFromHeading(rawText) || titleFromFirstLine(rawText) || "Teleprompt";
-  const sourceText = removeTitleHeading(rawText, inferredTitle);
+  const sourceText = removeTitleHeading(rawText, inferredTitle, !!explicitTitle);
   const characters = [];
   const charactersByLabel = new Map();
   const lines = [];
