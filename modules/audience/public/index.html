@@ -529,8 +529,10 @@
       #beoordeelKeuzes.emoji button.gekozen { background: transparent; outline: 4px solid var(--a); outline-offset: -4px; }
       #beoordeelKeuzes.emoji button { text-align: center; font-size: clamp(64px, 14dvh, 120px); line-height: 1; padding: 0; }
       /* Personages: de foto van de speler vult de knop, de naam staat eronder in een balk. */
-      #beoordeelKeuzes.personage button { position: relative; padding: 0; display: flex; align-items: flex-end; background: #111 center 20% / cover no-repeat; }
-      #beoordeelKeuzes.personage button .naam { width: 100%; box-sizing: border-box; padding: 10px 14px; background: rgba(7, 8, 11, 0.78); display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+      /* Naast elkaar als staande tegels, zodat de staande foto (gezicht op een derde van boven) heel blijft. */
+      #beoordeelKeuzes.personage { align-content: center; }
+      #beoordeelKeuzes.personage button { position: relative; padding: 0; display: flex; align-items: flex-end; aspect-ratio: 3 / 4; max-height: 100%; width: 100%; justify-self: center; background: #111 center 25% / cover no-repeat; }
+      #beoordeelKeuzes.personage button .naam { width: 100%; box-sizing: border-box; padding: 8px 10px; background: rgba(7, 8, 11, 0.78); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 16px; line-height: 1.15; overflow-wrap: anywhere; }
       #beoordeelKeuzes.personage button .naam small { font-weight: 400; font-size: 14px; color: var(--b); }
       #beoordeelKeuzes.personage button.gekozen { outline: 4px solid var(--a); outline-offset: -4px; }
       #beoordeelKeuzes.personage button.gekozen .naam { background: var(--a); color: var(--bg); }
@@ -1715,8 +1717,8 @@
         const keuzesEl = document.getElementById("beoordeelKeuzes");
         keuzesEl.className = vraag.soort;
         keuzesEl.textContent = "";
-        // Emoji naast elkaar, de rest onder elkaar.
-        keuzesEl.style.gridTemplateColumns = vraag.soort === "emoji" ? "repeat(" + vraag.keuzes.length + ", minmax(0, 1fr))" : "";
+        // Emoji en personages naast elkaar, de rest onder elkaar.
+        keuzesEl.style.gridTemplateColumns = vraag.soort === "emoji" || vraag.soort === "personage" ? "repeat(" + vraag.keuzes.length + ", minmax(0, 1fr))" : "";
         for (const keuze of vraag.keuzes) {
           const button = document.createElement("button");
           button.type = "button";

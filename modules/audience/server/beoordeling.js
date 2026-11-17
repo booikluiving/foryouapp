@@ -16,7 +16,7 @@ const STANDAARD = {
   aanloop: 0,
   // Zo lang staat de klok (seconden). De klok is ook de omkleedtijd van de spelers.
   duur: 45,
-  scene: { aan: true, vraag: "Wat vond je van de scène?", keuzes: [{ id: "leuk", emoji: "❤️" }, { id: "saai", emoji: "🥱" }] },
+  scene: { aan: true, vraag: "Wat vond je van de scène?", keuzes: [{ id: "leuk", emoji: "❤️" }, { id: "slecht", emoji: "👎" }, { id: "lachen", emoji: "😂" }, { id: "vuur", emoji: "🔥" }] },
   personage: { aan: true, vraag: "Welk personage wil je nog een keer zien?" },
   label: { aan: false, vraag: "Waar wil je meer van?", meer: "Meer", minder: "Minder" },
 };
