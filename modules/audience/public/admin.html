@@ -473,7 +473,7 @@
         <section class="card">
           <h2>Stemmen na de scène</h2>
           <div class="row">
-            <label>Klok (s) <input id="beoordeelDuur" type="number" min="10" max="300" step="5" value="45" /></label>
+            <label>Klok (s) <input id="beoordeelDuur" type="number" min="10" max="300" step="5" value="30" /></label>
           </div>
         </section>
         <section class="card">
@@ -1735,7 +1735,7 @@
         if (data.instellingen) document.getElementById("beoordeelDuur").value = data.instellingen.duur;
       }).catch(() => {});
       document.getElementById("beoordeelDuur").addEventListener("change", (ev) => {
-        post("/audience/admin/beoordeling/instellingen", { duur: Number(ev.target.value || 45) })
+        post("/audience/admin/beoordeling/instellingen", { duur: Number(ev.target.value || 30) })
           .then((data) => { ev.target.value = data.instellingen.duur; setActionMessage(""); })
           .catch((err) => setActionMessage("Klok opslaan mislukt: " + err.message, true));
       });

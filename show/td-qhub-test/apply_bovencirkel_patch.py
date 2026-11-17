@@ -4,7 +4,7 @@
 # een rond gat in de cirkel (alleen in TouchDesigner, html.een). Dit script legt daaronder het beeld
 # van de NDI-camera boven de ring (PTVL-ZCAM), uitgesneden op de ring, rond gemaskeerd en in zwart-wit.
 # Het getal en de cirkellijn van de pagina blijven erboven. Tijdens de scène (fase 2) staat de laag uit,
-# omdat de pagina dan doorzichtig is.
+# omdat de pagina dan doorzichtig is; na de scène komt de laag pas terug als het vel van de pagina weer dicht is.
 #
 # Keten: fy_boven_ndi (NDI In) → fy_boven_cirkel (GLSL, 1080×1920) → fy_boven_onder = over(fy_boven_cirkel, bord_keuze)
 #        → hoofd_een (tweede ingang, was bord_keuze).
@@ -48,7 +48,7 @@ def weg(naam):
 
 if BOVENCIRKEL_TERUG:
     hoofd.inputConnectors[1].connect(bord)
-    for n in ('fy_boven_onder', 'fy_boven_cirkel', 'fy_boven_cirkel_pixel', 'fy_boven_ndi'):
+    for n in ('fy_boven_onder', 'fy_boven_cirkel', 'fy_boven_cirkel_pixel', 'fy_boven_ndi', 'fy_boven_zicht', 'fy_boven_fase'):
         weg(n)
     print('bovencirkel teruggedraaid: hoofd_een <- bord_keuze')
 else:
@@ -74,7 +74,19 @@ else:
     gl.par.vec2name = 'uDoel'
     gl.par.vec2valuex, gl.par.vec2valuey, gl.par.vec2valuez = 540, 590, 228
     gl.par.vec3name = 'uZicht'
-    gl.par.vec3valuex.expr = "0 if int(round(op('/project1/phase_value')['phase'])) == 2 else 1"
+    # Zicht: 0 tijdens de scène. Na de scène blijft de laag nog 0,8 s uit (het vel van de pagina schuift dan
+    # nog terug) en vloeit daarna in 0,2 s in; bij het begin van de scène meteen weg.
+    fase = ouder.op('fy_boven_fase') or ouder.create(constantCHOP, 'fy_boven_fase')
+    fase.par.name0 = 'buiten_scene'
+    fase.par.value0.expr = "0 if int(round(op('/project1/phase_value')['phase'])) == 2 else 1"
+    fase.nodeX, fase.nodeY = ndi.nodeX, ndi.nodeY - 300
+    zicht = ouder.op('fy_boven_zicht') or ouder.create(lagCHOP, 'fy_boven_zicht')
+    zicht.inputConnectors[0].connect(fase)
+    zicht.par.lag1, zicht.par.lag2 = 0, 0
+    zicht.par.clamp = True
+    zicht.par.slope1, zicht.par.slope2 = 1, 1000
+    zicht.nodeX, zicht.nodeY = fase.nodeX + 200, fase.nodeY
+    gl.par.vec3valuex.expr = "min(1, max(0, (op('/project1/fy_boven_zicht')[0] - 0.8) * 5))"
     gl.nodeX, gl.nodeY = ndi.nodeX + 200, ndi.nodeY
 
     ov = ouder.op('fy_boven_onder') or ouder.create(overTOP, 'fy_boven_onder')

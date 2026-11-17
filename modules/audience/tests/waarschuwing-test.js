@@ -1,6 +1,6 @@
 "use strict";
 // Test: bij START SHOW komt de content warning in beeld (zaalscherm en telefoons), alleen met tekst,
-// één keer per run, en hij gaat weg na de ingestelde tijd. Ook: de stemklok na de scène staat op 45 s.
+// één keer per run, en hij gaat weg na de ingestelde tijd. Ook: de stemklok na de scène staat op 30 s.
 // Start audience los: tijdelijke DB, nep-runtime op een eigen poort, raakt de draaiende show niet.
 const assert = require("node:assert/strict");
 const path = require("node:path");
@@ -112,8 +112,8 @@ const wachtOp = async (fn, ms = 3000) => {
     const weggehaald = (lijst) => lijst.filter((m) => m.type === "waarschuwing" && !m.waarschuwing);
 
     const beoordeling = await (await lan("/audience/stage/beoordeling")).json();
-    assert.equal(beoordeling.instellingen.duur, 45);
-    ok("stemklok na de scène: 45 s");
+    assert.equal(beoordeling.instellingen.duur, 30);
+    ok("stemklok na de scène: 30 s");
 
     const stap = async () => { const s = await (await lan("/audience/stage/start-stemming")).json(); return [s.waarschuwingNodig, s.waarschuwingStaat, s.showGestart]; };
     let stand = await (await lan("/audience/stage/waarschuwing")).json();
