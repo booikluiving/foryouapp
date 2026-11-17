@@ -116,7 +116,8 @@ async function main() {
   const klaarzetten = acties.findIndex((action) => action.command === "teleprompter.prepare");
   assert.equal(klaarzetten, 9, "klaarzetten komt na het opruimen");
   assert.equal(acties[klaarzetten].delayMs, WACHT_VOOR_KLAARZETTEN_MS, "en wacht tot TouchDesigner klaar is met opruimen");
-  assert.equal(acties[acties.length - 1].command, "td.environment.prepare");
+  assert.equal(acties[acties.length - 2].command, "td.environment.prepare");
+  assert.equal(acties[acties.length - 1].command, "td.samen.beeld", "daarna de teleprompters (voorbeeld of terug)");
 
   // 3. Het geluid is echt uit: een druk op elk spoor begint opnieuw in plaats van uit te zetten.
   await voerUit(acties);

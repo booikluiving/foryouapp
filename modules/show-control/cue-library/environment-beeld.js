@@ -193,12 +193,25 @@ function beeldPayload(environmentId, wens = {}, options = {}) {
   const achtergrond = bestand(`achtergrond-${uitsnede}.png`);
   if (!fileExists(achtergrond, options)) return null;
   // De clip alleen op het moment dat de stap begint; bij een andere uitsnede daarna het eindbeeld.
-  const kandidaten = stap === "begin"
-    ? [`voorgrond-${uitsnede}-begin.png`]
-    : stapStart
-      ? [`voorgrond-${uitsnede}-${stap}.mov`, `voorgrond-${uitsnede}-${stap}-eind.png`, `voorgrond-${uitsnede}-begin.png`]
-      : [`voorgrond-${uitsnede}-${stap}-eind.png`, `voorgrond-${uitsnede}-begin.png`];
-  const voorgrond = kandidaten.map(bestand).find((file) => fileExists(file, options)) || "";
+  const voorgrondVoor = (naam) => {
+    const kandidaten = stap === "begin"
+      ? [`voorgrond-${naam}-begin.png`]
+      : stapStart
+        ? [`voorgrond-${naam}-${stap}.mov`, `voorgrond-${naam}-${stap}-eind.png`, `voorgrond-${naam}-begin.png`]
+        : [`voorgrond-${naam}-${stap}-eind.png`, `voorgrond-${naam}-begin.png`];
+    return kandidaten.map(bestand).find((file) => fileExists(file, options)) || "";
+  };
+  const voorgrond = voorgrondVoor(uitsnede);
+  // Elke teleprompter toont de uitsnede van zijn eigen camera, zoals het hoofdscherm die laat zien.
+  const teleprompters = [1, 2, 3].map((nummer) => {
+    const naam = String(nummer);
+    return {
+      nummer,
+      achtergrond: bestand(`achtergrond-${naam}.png`),
+      voorgrond: voorgrondVoor(naam),
+      spelers: beeld.spelers.map((speler) => plaatsSpeler(speler, beeld.uitsnedes[naam])),
+    };
+  });
   state.environmentId = environmentId;
   state.aan = true;
   state.uitsnede = uitsnede;
@@ -214,6 +227,7 @@ function beeldPayload(environmentId, wens = {}, options = {}) {
     // Een clip speelt eenmaal en blijft op het laatste beeld staan; 0 = stilstaand beeld.
     duur: stapStart && /\.mov$/i.test(voorgrond) ? Number(wens.duur) || 0 : 0,
     spelers: beeld.spelers.map((speler) => plaatsSpeler(speler, beeld.uitsnedes[uitsnede])),
+    teleprompters,
   };
 }
 
@@ -222,17 +236,42 @@ function beeldUitPayload(extra = {}) {
   return { ...extra, uit: true };
 }
 
-// OSC-args na cueId/command/payloadId: uit, achtergrond, voorgrond, duur, en per speler zes getallen
-// (camera, schaal, draai, tx, ty, snij). Een camera die niet meedoet staat op schaal 0.
-function beeldOscArgs(payload = {}) {
-  if (payload.uit) return ["1"];
-  const args = ["0", String(payload.achtergrond || ""), String(payload.voorgrond || ""), String(Number(payload.duur) || 0)];
-  const spelers = Array.isArray(payload.spelers) ? payload.spelers : [];
+// Voorbeeld op de teleprompters bij het klaarzetten: elke speler ziet zijn eigen uitsnede, zoals
+// het in de scène wordt. Het hoofdscherm blijft wat het is. Zonder beeld: teleprompters terug.
+function beeldVoorbeeldPayload(environmentId, options = {}) {
+  // De scène die eventueel nog speelt houdt zijn stand.
+  const bewaard = { ...state };
+  resetBeeldState();
+  const payload = environmentId ? beeldPayload(environmentId, {}, options) : null;
+  Object.assign(state, bewaard);
+  if (!payload) return { environmentId: environmentId || "", uit: true, alleenTeleprompters: true };
+  return { ...payload, alleenTeleprompters: true };
+}
+
+function spelerArgs(spelers) {
+  const lijst = Array.isArray(spelers) ? spelers : [];
+  const args = [];
   for (const camera of [1, 2, 3]) {
-    const speler = spelers.find((item) => Number(item.camera) === camera);
+    const speler = lijst.find((item) => Number(item.camera) === camera);
     args.push(String(camera), ...(speler
       ? [speler.schaal, speler.draai, speler.tx, speler.ty, speler.snij].map((value) => String(Number(value) || 0))
       : ["0", "0", "0", "0", "0"]));
+  }
+  return args;
+}
+
+// OSC-args na cueId/command/payloadId: wat (0 = hoofdscherm + teleprompters, 1 = alles uit,
+// 2 = alleen teleprompters, 3 = teleprompters uit), achtergrond, voorgrond, duur, per speler zes
+// getallen (camera, schaal, draai, tx, ty, snij; schaal 0 = doet niet mee), en dan per teleprompter
+// 1-3: achtergrond, voorgrond en weer per speler zes getallen.
+function beeldOscArgs(payload = {}) {
+  if (payload.uit) return [payload.alleenTeleprompters ? "3" : "1"];
+  const args = [payload.alleenTeleprompters ? "2" : "0", String(payload.achtergrond || ""), String(payload.voorgrond || ""), String(Number(payload.duur) || 0)];
+  args.push(...spelerArgs(payload.spelers));
+  const teleprompters = Array.isArray(payload.teleprompters) ? payload.teleprompters : [];
+  for (const nummer of [1, 2, 3]) {
+    const tp = teleprompters.find((item) => Number(item.nummer) === nummer) || {};
+    args.push(String(tp.achtergrond || ""), String(tp.voorgrond || ""), ...spelerArgs(tp.spelers));
   }
   return args;
 }
@@ -259,10 +298,24 @@ function beeldStartAction(environmentId, options = {}) {
   };
 }
 
+// Actie die na het klaarzetten van een scène meegaat: voorbeeld op de teleprompters, of ze terug.
+function beeldVoorbeeldAction(environmentId, options = {}) {
+  return {
+    command: "td.samen.beeld",
+    targetId: "touchdesigner",
+    ackMode: "fire-and-forget",
+    delayMs: 450,
+    timeoutMs: 900,
+    payload: { ...beeldVoorbeeldPayload(environmentId, options), cueIntent: "prepare_beeld_voorbeeld" },
+  };
+}
+
 module.exports = {
   SCHERM,
   actieveOmgeving,
   beeldStartAction,
+  beeldVoorbeeldAction,
+  beeldVoorbeeldPayload,
   beeldLabel,
   beeldOscArgs,
   beeldPayload,

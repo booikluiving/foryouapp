@@ -1,6 +1,6 @@
 "use strict";
 
-const { beeldStartAction } = require("../cue-library/environment-beeld");
+const { beeldStartAction, beeldVoorbeeldAction } = require("../cue-library/environment-beeld");
 const { fetchJson, joinUrl } = require("./http-json");
 const {
   performerSlotsFromRuntimeState,
@@ -201,6 +201,22 @@ function generatedBeeldStartAction(runtimeState, context = {}) {
   }
 }
 
+// Na het klaarzetten: de teleprompters tonen al het ene beeld van de volgende omgeving (trolleyprobleem),
+// of gaan terug naar het gewone beeld als die omgeving er geen heeft.
+function generatedBeeldVoorbeeldAction(runtimeState, context = {}) {
+  const options = context.adapterOptions || {};
+  try {
+    const resolved = runtimeState && runtimeState.resolvedPreparedNext;
+    const environmentId = resolved && (resolved.environmentId || (resolved.environment && resolved.environment.id));
+    return beeldVoorbeeldAction(environmentId ? String(environmentId) : "", {
+      ...(options.catalogMediaRoot ? { catalogMediaRoot: options.catalogMediaRoot } : {}),
+      ...(options.beeld !== undefined ? { beeld: options.beeld } : {}),
+    });
+  } catch (_err) {
+    return null;
+  }
+}
+
 function canGeneratePrepare(runtimeState) {
   return !!(runtimeState && runtimeState.resolvedPreparedNext);
 }
@@ -235,7 +251,8 @@ async function sendRuntimeCommand(action, context = {}) {
         generatedTeleprompterPrepareAction(action, result.body, context),
         generatedOperatorPrepareDraftAction(action, result.body, context),
         generatedPrepareAction(action, result.body, context),
-      ]
+        generatedBeeldVoorbeeldAction(result.body, context),
+      ].filter(Boolean)
       : [];
     return {
       stage: "applied",
@@ -286,7 +303,8 @@ async function sendRuntimeCommand(action, context = {}) {
         generatedTeleprompterPrepareAction(action, runtimeState, context),
         generatedOperatorPrepareDraftAction(action, runtimeState, context),
         generatedPrepareAction(action, runtimeState, context),
-      ],
+        generatedBeeldVoorbeeldAction(runtimeState, context),
+      ].filter(Boolean),
     };
   }
 
@@ -340,6 +358,8 @@ async function sendRuntimeCommand(action, context = {}) {
       generatedActions.push({ ...generatedTeleprompterPrepareAction(action, result.body, context), delayMs: WACHT_VOOR_KLAARZETTEN_MS });
       generatedActions.push(generatedOperatorPrepareDraftAction(action, result.body, context));
       generatedActions.push(generatedPrepareAction(action, result.body, context));
+      const voorbeeld = generatedBeeldVoorbeeldAction(result.body, context);
+      if (voorbeeld) generatedActions.push(voorbeeld);
     }
     return {
       stage: "applied",

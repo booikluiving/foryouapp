@@ -64,7 +64,11 @@ assert.equal(start.command, "td.samen.beeld");
 assert.equal(start.payload.uitsnede, "overzicht");
 assert.equal(start.payload.voorgrond, "/media/environments/environment_30/beeld/voorgrond-overzicht-begin.png");
 let args = oscArgsForAction({ cueId: "c", command: "td.samen.beeld", payloadId: "p", payload: start.payload });
-assert.equal(args.length, 3 + 4 + 18);
+assert.equal(args.length, 3 + 4 + 18 + 3 * 20);
+// Teleprompter 1-3: de uitsnede van de eigen camera.
+assert.deepEqual([args[25], args[26]], ["/media/environments/environment_30/beeld/achtergrond-1.png", "/media/environments/environment_30/beeld/voorgrond-1-begin.png"]);
+assert.deepEqual([args[65], args[66]], ["/media/environments/environment_30/beeld/achtergrond-3.png", "/media/environments/environment_30/beeld/voorgrond-3-begin.png"]);
+assert.deepEqual(start.payload.teleprompters[1].spelers, start.payload.spelers.length ? beeld.readBeeld("environment:30", options).spelers.map((s) => beeld.plaatsSpeler(s, beeld.readBeeld("environment:30", options).uitsnedes["2"])) : []);
 assert.deepEqual(args.slice(3, 7), ["0", "/media/environments/environment_30/beeld/achtergrond-overzicht.png", "/media/environments/environment_30/beeld/voorgrond-overzicht-begin.png", "0"]);
 assert.deepEqual([args[7], args[13], args[19]], ["1", "2", "3"]);
 assert.ok(beeld.beeldStaatAan("environment:30"));
@@ -73,6 +77,7 @@ assert.ok(beeld.beeldStaatAan("environment:30"));
 let payload = beeld.beeldPayload("environment:30", { stap: beeld.stapNaam("/x/omvallen/tram-komt.mov"), duur: 5 }, options);
 assert.equal(payload.voorgrond, "/media/environments/environment_30/beeld/voorgrond-overzicht-tram-komt.mov");
 assert.equal(payload.duur, 5);
+assert.equal(payload.teleprompters[0].voorgrond, "/media/environments/environment_30/beeld/voorgrond-1-tram-komt.mov");
 // Cameraknop 1 terwijl de tram er staat: dichtbij, met het eindbeeld (de clip begint niet opnieuw).
 payload = beeld.beeldPayload("environment:30", { uitsnede: "1" }, options);
 assert.equal(payload.achtergrond, "/media/environments/environment_30/beeld/achtergrond-1.png");
@@ -134,3 +139,17 @@ assert.equal(terugval.label, "UIT CATALOGUS");
 assert.equal(beeld.beeldStartAction("environment:5", { beeld: null }), null);
 
 console.log("environment-beeld-test ok");
+
+// Klaarzetten: voorbeeld alleen op de teleprompters; de stand van een spelende scène blijft.
+beeld.resetBeeldState();
+beeld.beeldPayload("environment:30", { uitsnede: "2" }, options);
+const voorbeeld = beeld.beeldVoorbeeldAction("environment:30", options);
+assert.equal(voorbeeld.payload.alleenTeleprompters, true);
+assert.equal(voorbeeld.payload.teleprompters[2].achtergrond, "/media/environments/environment_30/beeld/achtergrond-3.png");
+assert.equal(oscArgsForAction({ cueId: "c", command: "td.samen.beeld", payloadId: "p", payload: voorbeeld.payload })[3], "2");
+assert.ok(beeld.beeldStaatAan("environment:30"));
+assert.equal(beeld.beeldPayload("environment:30", {}, options).uitsnede, "2");
+// Een omgeving zonder beeld: teleprompters terug.
+const zonder = beeld.beeldVoorbeeldAction("environment:99", { ...options, beeld: null });
+assert.deepEqual(oscArgsForAction({ cueId: "c", command: "td.samen.beeld", payloadId: "p", payload: zonder.payload }).slice(3), ["3"]);
+console.log("voorbeeld op de teleprompters ok");

@@ -53,7 +53,17 @@ def _beeld_zet(aan, waarde):
     return False
 
 
+def _beeld_tp_uit():
+    aan = _op("beeld_tp_aan")
+    if aan is None:
+        return False
+    base = _base()
+    base.store("beeld_tp_token", int(base.fetch("beeld_tp_token", 0) or 0) + 1)
+    return _beeld_zet(aan, 0)
+
+
 def beeld_uit():
+    _beeld_tp_uit()
     aan = _op("beeld_aan")
     if aan is None:
         return False
@@ -69,94 +79,160 @@ def _beeld_getal(extra_args, index, fallback):
         return fallback
 
 
+def _beeld_tekst(extra_args, index):
+    return _text(extra_args[index]) if len(extra_args) > index else ""
+
+
+def _beeld_movie(movie, pad, clip):
+    # Zet een plaat of clip klaar; een clip speelt pas als _beeld_speel hem start.
+    if movie is None or not pad:
+        return
+    if clip:
+        try:
+            movie.par.play = 0
+        except Exception:
+            pass
+        movie.par.file = pad
+        if hasattr(movie.par, "cuepulse"):
+            movie.par.cuepulse.pulse()
+    elif _text(movie.par.file.eval()) != pad:
+        movie.par.file = pad
+
+
+def _beeld_speel(movie):
+    if movie is None:
+        return
+    if hasattr(movie.par, "cuepulse"):
+        movie.par.cuepulse.pulse()
+    movie.par.play = 1
+
+
+def _beeld_spelers(extra_args, start, voorvoegsel_snij, voorvoegsel_plek, met_camera_keuze):
+    # Per camera zes getallen: nummer, schaal, draai, tx, ty, snij.
+    for nummer in (1, 2, 3):
+        begin = start + (nummer - 1) * 6
+        camera = int(_beeld_getal(extra_args, begin, nummer))
+        if met_camera_keuze:
+            select = _op("beeld_cam_%d" % nummer)
+            if select is not None and camera in (1, 2, 3):
+                select.par.top = "cam%d" % camera
+        snij = _op(voorvoegsel_snij % nummer)
+        plek = _op(voorvoegsel_plek % nummer)
+        if snij is not None:
+            snij.par.ty = -_beeld_getal(extra_args, begin + 5, 0.0)
+        if plek is not None:
+            schaal = _beeld_getal(extra_args, begin + 1, 0.0)
+            plek.par.sx = schaal
+            plek.par.sy = schaal
+            plek.par.rotate = _beeld_getal(extra_args, begin + 2, 0.0)
+            plek.par.tx = _beeld_getal(extra_args, begin + 3, 0.0)
+            plek.par.ty = _beeld_getal(extra_args, begin + 4, 0.0)
+
+
 def handle_samen_beeld(cue_id, extra_args):
-    # OSC-args: uit (0/1), achtergrond, voorgrond, duur, dan per camera zes getallen:
-    # nummer, schaal, draai (graden), tx, ty (deel van het scherm), snij (deel dat onderaan afgaat).
+    # OSC-args: wat (0 = hoofdscherm + teleprompters, 1 = alles uit, 2 = alleen teleprompters,
+    # 3 = teleprompters uit), achtergrond, voorgrond, duur, per camera zes getallen (nummer, schaal,
+    # draai, tx, ty, snij), en dan per teleprompter 1-3: achtergrond, voorgrond en weer 3 x 6 getallen.
     cue_id = _text(cue_id)
     command = "td.samen.beeld"
     ack(cue_id, command, "received", "ok", "osc_received")
-    uit = (_text(extra_args[0]) if len(extra_args) > 0 else "1") == "1"
+    wat = _beeld_tekst(extra_args, 0) or "1"
     aan = _op("beeld_aan")
     comp = _op("beeld_comp")
     if aan is None or comp is None:
         _beeld_log(cue_id, "error", "error", "beeld_ops_missing")
         ack(cue_id, command, "error", "error", "beeld_ops_missing")
         return False
-    if uit:
+    if wat == "1":
         beeld_uit()
         _beeld_log(cue_id, "applied", "ok", "beeld:uit")
         ack(cue_id, command, "applied", "ok", "beeld:uit")
         return True
-    achtergrond = _text(extra_args[1]) if len(extra_args) > 1 else ""
-    voorgrond = _text(extra_args[2]) if len(extra_args) > 2 else ""
+    if wat == "3":
+        _beeld_tp_uit()
+        _beeld_log(cue_id, "applied", "ok", "beeld:teleprompters uit")
+        ack(cue_id, command, "applied", "ok", "beeld:teleprompters uit")
+        return True
+    hoofd = wat != "2"
+    achtergrond = _beeld_tekst(extra_args, 1)
+    voorgrond = _beeld_tekst(extra_args, 2)
     duur = _beeld_getal(extra_args, 3, 0.0)
-    if not os.path.isfile(achtergrond):
+    if hoofd and not os.path.isfile(achtergrond):
         _beeld_log(cue_id, "error", "error", "beeld_invalid:%s" % achtergrond)
         ack(cue_id, command, "error", "error", "beeld_invalid")
         return False
     base = _base()
-    token = int(base.fetch("beeld_token", 0) or 0) + 1
-    base.store("beeld_token", token)
-    movie = _op("beeld_achtergrond")
-    if movie is not None and _text(movie.par.file.eval()) != achtergrond:
-        movie.par.file = achtergrond
-    voor = _op("beeld_voorgrond")
-    voor_pad = voorgrond if os.path.isfile(voorgrond) else _empty_alpha_path()
-    clip = duur > 0 and voor_pad.lower().endswith(".mov")
-    if voor is not None and voor_pad:
+    te_spelen = []
+    message = ""
+    if hoofd:
+        token = int(base.fetch("beeld_token", 0) or 0) + 1
+        base.store("beeld_token", token)
+        movie = _op("beeld_achtergrond")
+        if movie is not None and _text(movie.par.file.eval()) != achtergrond:
+            movie.par.file = achtergrond
+        voor = _op("beeld_voorgrond")
+        voor_pad = voorgrond if os.path.isfile(voorgrond) else _empty_alpha_path()
+        clip = duur > 0 and voor_pad.lower().endswith(".mov")
+        _beeld_movie(voor, voor_pad, clip)
         if clip:
-            # De clip speelt een keer en blijft op het laatste beeld staan.
-            try:
-                voor.par.play = 0
-            except Exception:
-                pass
-            voor.par.file = voor_pad
-            if hasattr(voor.par, "cuepulse"):
-                voor.par.cuepulse.pulse()
-        elif _text(voor.par.file.eval()) != voor_pad:
-            voor.par.file = voor_pad
-    for nummer in (1, 2, 3):
-        start = 4 + (nummer - 1) * 6
-        camera = int(_beeld_getal(extra_args, start, nummer))
-        schaal = _beeld_getal(extra_args, start + 1, 0.0)
-        select = _op("beeld_cam_%d" % nummer)
-        snij = _op("beeld_snij_%d" % nummer)
-        plek = _op("beeld_plek_%d" % nummer)
-        if select is not None and camera in (1, 2, 3):
-            select.par.top = "cam%d" % camera
-        if snij is not None:
-            snij.par.ty = -_beeld_getal(extra_args, start + 5, 0.0)
-        if plek is not None:
-            plek.par.sx = schaal
-            plek.par.sy = schaal
-            plek.par.rotate = _beeld_getal(extra_args, start + 2, 0.0)
-            plek.par.tx = _beeld_getal(extra_args, start + 3, 0.0)
-            plek.par.ty = _beeld_getal(extra_args, start + 4, 0.0)
+            te_spelen.append(voor)
+        _beeld_spelers(extra_args, 4, "beeld_snij_%d", "beeld_plek_%d", True)
+        message = "beeld:%s voor:%s" % (os.path.basename(achtergrond), os.path.basename(voor_pad))
+    # Teleprompters: elk de uitsnede van de eigen camera.
+    tp_aan = _op("beeld_tp_aan")
+    tp_token = None
+    tp_comps = []
+    if tp_aan is not None and len(extra_args) >= 22 + 3 * 20:
+        tp_token = int(base.fetch("beeld_tp_token", 0) or 0) + 1
+        base.store("beeld_tp_token", tp_token)
+        for nummer in (1, 2, 3):
+            start = 22 + (nummer - 1) * 20
+            tp_achter = _beeld_tekst(extra_args, start)
+            tp_voor = _beeld_tekst(extra_args, start + 1)
+            if os.path.isfile(tp_achter):
+                _beeld_movie(_op("beeld_tp%d_achtergrond" % nummer), tp_achter, False)
+            tp_voor_pad = tp_voor if os.path.isfile(tp_voor) else _empty_alpha_path()
+            tp_clip = duur > 0 and tp_voor_pad.lower().endswith(".mov")
+            tp_movie = _op("beeld_tp%d_voorgrond" % nummer)
+            _beeld_movie(tp_movie, tp_voor_pad, tp_clip)
+            if tp_clip:
+                te_spelen.append(tp_movie)
+            _beeld_spelers(extra_args, start + 2, "beeld_tp%d_snij_%%d" % nummer, "beeld_tp%d_plek_%%d" % nummer, False)
+            tp_comp = _op("beeld_tp%d_comp" % nummer)
+            if tp_comp is not None:
+                tp_comps.append(tp_comp)
+        message = (message + " " if message else "") + "teleprompters"
     try:
-        if clip and hasattr(voor, "preload"):
-            voor.preload()
-        comp.cook(force=True)
+        for movie in te_spelen:
+            if hasattr(movie, "preload"):
+                movie.preload()
+        if hoofd:
+            comp.cook(force=True)
+        for tp_comp in tp_comps:
+            tp_comp.cook(force=True)
     except Exception as err:
         _beeld_log(cue_id, "preload", "warning", err)
     run(
-        "if args[1].fetch('beeld_token', 0) == args[2]:\\n"
+        "if args[0] is not None and args[1].fetch('beeld_token', 0) == args[2]:\\n"
         "    args[3].cook(force=True)\\n"
         "    args[4](args[0], 1)\\n"
-        "    if args[6]:\\n"
-        "        if hasattr(args[5].par, 'cuepulse'):\\n"
-        "            args[5].par.cuepulse.pulse()\\n"
-        "        args[5].par.play = 1",
-        aan, base, token, comp, _beeld_zet, voor, clip, delayFrames=3,
+        "if args[5] is not None and args[1].fetch('beeld_tp_token', 0) == args[6]:\\n"
+        "    for c in args[7]:\\n"
+        "        c.cook(force=True)\\n"
+        "    args[4](args[5], 1)\\n"
+        "for m in args[8]:\\n"
+        "    args[9](m)",
+        aan if hoofd else None, base, int(base.fetch("beeld_token", 0) or 0), comp, _beeld_zet,
+        tp_aan if tp_token is not None else None, tp_token, tp_comps, te_spelen, _beeld_speel, delayFrames=3,
     )
-    if clip:
-        # Vangnet als de clip toch zou herhalen: stilzetten vlak voor het einde.
+    if te_spelen:
+        # Vangnet als een clip toch zou herhalen: stilzetten vlak voor het einde.
         run(
-            "if args[1].fetch('beeld_token', 0) == args[2]:\\n    args[0].par.play = 0",
-            voor, base, token, delayMilliSeconds=int(duur * 1000) - 60,
+            "for m in args[0]:\\n    m.par.play = 0",
+            te_spelen, delayMilliSeconds=int(duur * 1000) - 60,
         )
-    message = "beeld:%s voor:%s" % (os.path.basename(achtergrond), os.path.basename(voor_pad))
-    _beeld_log(cue_id, "applied", "ok", message)
-    ack(cue_id, command, "applied", "ok", message)
+    _beeld_log(cue_id, "applied", "ok", message or "beeld")
+    ack(cue_id, command, "applied", "ok", message or "beeld")
     return True
 # --- einde For_You een beeld met de spelers erin ---
 
@@ -177,9 +253,13 @@ ROUTER_CALL_NEW = '''    if command == "td.samen.beeld":
 
 
 def patch_router_text(text):
-    """Geeft de nieuwe routertekst terug. Zelfde tekst als hij al gepatcht is."""
+    """Geeft de nieuwe routertekst terug. Is hij al gepatcht, dan wordt het blok vervangen."""
     if ROUTER_MARKER in text:
-        return text
+        einde = "# --- einde For_You een beeld met de spelers erin ---"
+        start = text.index(ROUTER_MARKER)
+        stop = text.index(einde, start) + len(einde)
+        nieuw = ROUTER_CODE[:ROUTER_CODE.index(einde) + len(einde)]
+        return text[:start] + nieuw + text[stop:]
     if text.count(ROUTER_CALL_OLD) != 1:
         raise RuntimeError("td_qhub_router: aanroep van td.samen.shot niet herkend, niets veranderd")
     anchor = "def _parse_callback_args(callback_args):"
@@ -264,6 +344,63 @@ def apply_beeld_schoon(root):
     return [root.op("beeld_schoon_%d" % n) for n in (1, 2, 3)]
 
 
+# Teleprompters: per speler de uitsnede van zijn eigen camera, zoals het hoofdscherm die toont.
+# beeld_tpN_comp (Composite): voorgrond, de drie camera's (eigen snij + plek), achtergrond.
+# select_camN_0 (bron van tel_left_N) kiest beeld_tpN_comp zolang beeld_tp_aan aan staat.
+TP_SELECT_EXPR = "'/project1/beeld_tp%d_comp' if op('/project1/beeld_tp_aan')['aan'] else '/project1/video%d'"
+
+
+def apply_beeld_teleprompters(root):
+    for nummer in (1, 2, 3):
+        if root.op("select_cam%d_0" % nummer) is None or root.op("beeld_fit_%d" % nummer) is None:
+            raise RuntimeError("select_cam%d_0 of beeld_fit_%d ontbreekt; niets veranderd" % (nummer, nummer))
+        bron = root.op("select_cam%d_0" % nummer).par.top
+        uitdrukking = (bron.expr or "").strip()
+        if uitdrukking not in ("", TP_SELECT_EXPR % (nummer, nummer)) or (not uitdrukking and str(bron.eval()) != "/project1/video%d" % nummer):
+            raise RuntimeError("select_cam%d_0 kijkt niet naar video%d (%s); niets veranderd" % (nummer, nummer, bron.eval()))
+    basis = root.op("beeld_comp")
+    x, y = basis.nodeX, basis.nodeY - 3600
+    leeg = os.path.join(project.folder, "empty-alpha-1920x1080.png")
+    aan = _get_or_create(root, constantCHOP, "beeld_tp_aan", x, y + 600)
+    for naam, waarde in (("const0name", "aan"), ("name0", "aan")):
+        par = getattr(aan.par, naam, None)
+        if par is not None:
+            par.val = waarde
+    if aan.numChans != 1 or aan.chan(0).name != "aan":
+        raise RuntimeError("beeld_tp_aan: kanaal 'aan' zetten lukt niet")
+    for nummer in (1, 2, 3):
+        dy = -1500 * nummer
+        achter = _get_or_create(root, moviefileinTOP, "beeld_tp%d_achtergrond" % nummer, x - 3000, y + dy)
+        voor = _get_or_create(root, moviefileinTOP, "beeld_tp%d_voorgrond" % nummer, x - 3000, y + dy + 300)
+        for movie in (achter, voor):
+            if os.path.isfile(leeg) and not movie.par.file.eval():
+                movie.par.file = leeg
+        plekken = []
+        for camera in (1, 2, 3):
+            snij = _get_or_create(root, transformTOP, "beeld_tp%d_snij_%d" % (nummer, camera), x - 1800, y + dy - 300 * camera)
+            snij.inputConnectors[0].connect(root.op("beeld_fit_%d" % camera))
+            _set(snij, "extend", "zero")
+            plek = _get_or_create(root, transformTOP, "beeld_tp%d_plek_%d" % (nummer, camera), x - 1200, y + dy - 300 * camera)
+            plek.inputConnectors[0].connect(snij)
+            _set(plek, "extend", "zero")
+            _set(plek, "sx", 0)
+            _set(plek, "sy", 0)
+            plekken.append(plek)
+        comp = _get_or_create(root, compositeTOP, "beeld_tp%d_comp" % nummer, x - 600, y + dy)
+        for index, bron in enumerate([voor] + plekken + [achter]):
+            comp.inputConnectors[index].connect(bron)
+        _set(comp, "operand", "over")
+        _set(comp, "prefit", "fill")
+        _set(comp, "outputresolution", "custom")
+        _set(comp, "resolutionw", 1080)
+        _set(comp, "resolutionh", 1920)
+        _set(comp, "outputaspect", "resolution")
+    # Pas als alles staat: de teleprompters mogen het beeld kiezen (beeld_tp_aan staat nog op 0).
+    for nummer in (1, 2, 3):
+        root.op("select_cam%d_0" % nummer).par.top.expr = TP_SELECT_EXPR % (nummer, nummer)
+    return aan
+
+
 def apply_beeld_patch():
     root = op("/project1")
     switch10 = root.op("switch10")
@@ -335,6 +472,8 @@ def apply_beeld_patch():
     _set(comp, "resolutionw", 1080)
     _set(comp, "resolutionh", 1920)
     _set(comp, "outputaspect", "resolution")
+
+    apply_beeld_teleprompters(root)
 
     # 3. switch10: vijfde ingang en de keuze.
     switch10.inputConnectors[4].connect(comp)
