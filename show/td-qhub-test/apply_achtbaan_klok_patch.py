@@ -11,6 +11,10 @@ environment_33 komt; voor elke andere omgeving blijft het afspelen zoals het was
 - prepared_background, samen_achtergrond, omvallen_bestand (Movie File In TOP)
 - prepared_soundscape (Audio File In CHOP)
 
+De rit begint bij het begin zodra de scène start (fase 2); tussen de scènes (de preview op de
+teleprompters en het scherm) staat het eerste beeld stil. Het startmoment onthoudt
+achtbaan_start_exec (CHOP Execute op phase_value) als /project1.fetch('achtbaan_start').
+
 Gebruik: zet dit bestand in ~/ForYou/td-opdrachten/in/ of draai het in de Textport.
 Terugdraaien: zet TERUG = True (of draai `terug()` in de Textport).
 Bewaart het project niet.
@@ -29,9 +33,41 @@ OPS = {
 }
 
 HIER = "('%s' in me.par.file.eval())" % OMGEVING
+# Seconden sinds de start van de scène, 0 buiten de scène.
+KLOK = ("(((absTime.seconds - op('/project1').fetch('achtbaan_start', absTime.seconds)) %% %s) "
+        "if op('/project1/phase_value')['phase'] == 2 else 0)" % DUUR)
+START_EXEC = """# For_You Achtbaan: onthoudt wanneer de scène start (fase 2).
+def onValueChange(channel, sampleIndex, val, prev):
+    if channel.name == 'phase' and val == 2 and prev != 2:
+        op('/project1').store('achtbaan_start', absTime.seconds)
+    return
+"""
+
+
+def start_exec():
+    root = op("/project1")
+    fase = root.op("phase_value")
+    if fase is None:
+        raise RuntimeError("phase_value niet gevonden")
+    ex = root.op("achtbaan_start_exec")
+    if ex is None:
+        ex = root.create(chopexecuteDAT, "achtbaan_start_exec")
+        ex.nodeX = fase.nodeX
+        ex.nodeY = fase.nodeY - 200
+    ex.text = START_EXEC
+    ex.par.chops = fase.path
+    ex.par.valuechange = True
+    for naam in ("offtoon", "ontooff", "whileon", "whileoff"):
+        par = getattr(ex.par, naam, None)
+        if par is not None:
+            par.val = False
+    ex.par.active = True
+    if fase["phase"].eval() == 2 and root.fetch("achtbaan_start", None) is None:
+        root.store("achtbaan_start", absTime.seconds)
 
 
 def toepassen():
+    start_exec()
     for naam, (oud_index, _oude_eenheid) in OPS.items():
         o = op("/project1/" + naam)
         if o is None:
@@ -46,7 +82,7 @@ def toepassen():
                 "index_val": o.par.index.val,
             })
         o.par.indexunit = "seconds"
-        o.par.index.expr = "(absTime.seconds %% %s) if %s else (%s)" % (DUUR, HIER, oud_index)
+        o.par.index.expr = "%s if %s else (%s)" % (KLOK, HIER, oud_index)
         o.par.index.mode = ParMode.EXPRESSION
         o.par.playmode.expr = "'specify' if %s else 'sequential'" % HIER
         o.par.playmode.mode = ParMode.EXPRESSION
@@ -75,6 +111,9 @@ def terug():
             o.par.index.val = voor["index_val"]
         o.unstore("achtbaan_klok_voor")
         print(naam, "terug naar", o.par.playmode.eval())
+    ex = op("/project1/achtbaan_start_exec")
+    if ex is not None:
+        ex.destroy()
     print("achtbaan-klok teruggedraaid (niet bewaard)")
 
 
