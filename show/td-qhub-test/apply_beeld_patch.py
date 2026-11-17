@@ -346,18 +346,23 @@ def apply_beeld_schoon(root):
 
 # Teleprompters: per speler de uitsnede van zijn eigen camera, zoals het hoofdscherm die toont.
 # beeld_tpN_comp (Composite): voorgrond, de drie camera's (eigen snij + plek), achtergrond.
-# select_camN_0 (bron van tel_left_N) kiest beeld_tpN_comp zolang beeld_tp_aan aan staat.
+# select_camN_0 en _1 (bron van tel_left_N in fase 0 inloop en 1 tussen de scènes; in fase 2 toont
+# de teleprompter het hoofdscherm) kiezen beeld_tpN_comp zolang beeld_tp_aan aan staat.
+TP_FASEN = (0, 1)
 TP_SELECT_EXPR = "'/project1/beeld_tp%d_comp' if op('/project1/beeld_tp_aan')['aan'] else '/project1/video%d'"
 
 
 def apply_beeld_teleprompters(root):
     for nummer in (1, 2, 3):
-        if root.op("select_cam%d_0" % nummer) is None or root.op("beeld_fit_%d" % nummer) is None:
-            raise RuntimeError("select_cam%d_0 of beeld_fit_%d ontbreekt; niets veranderd" % (nummer, nummer))
-        bron = root.op("select_cam%d_0" % nummer).par.top
-        uitdrukking = (bron.expr or "").strip()
-        if uitdrukking not in ("", TP_SELECT_EXPR % (nummer, nummer)) or (not uitdrukking and str(bron.eval()) != "/project1/video%d" % nummer):
-            raise RuntimeError("select_cam%d_0 kijkt niet naar video%d (%s); niets veranderd" % (nummer, nummer, bron.eval()))
+        if root.op("beeld_fit_%d" % nummer) is None:
+            raise RuntimeError("beeld_fit_%d ontbreekt; niets veranderd" % nummer)
+        for fase in TP_FASEN:
+            select = root.op("select_cam%d_%d" % (nummer, fase))
+            if select is None:
+                raise RuntimeError("select_cam%d_%d ontbreekt; niets veranderd" % (nummer, fase))
+            uitdrukking = (select.par.top.expr or "").strip()
+            if uitdrukking not in ("", TP_SELECT_EXPR % (nummer, nummer)) or (not uitdrukking and str(select.par.top.eval()) != "/project1/video%d" % nummer):
+                raise RuntimeError("select_cam%d_%d kijkt niet naar video%d (%s); niets veranderd" % (nummer, fase, nummer, select.par.top.eval()))
     basis = root.op("beeld_comp")
     x, y = basis.nodeX, basis.nodeY - 3600
     leeg = os.path.join(project.folder, "empty-alpha-1920x1080.png")
@@ -383,8 +388,6 @@ def apply_beeld_teleprompters(root):
             plek = _get_or_create(root, transformTOP, "beeld_tp%d_plek_%d" % (nummer, camera), x - 1200, y + dy - 300 * camera)
             plek.inputConnectors[0].connect(snij)
             _set(plek, "extend", "zero")
-            _set(plek, "sx", 0)
-            _set(plek, "sy", 0)
             plekken.append(plek)
         comp = _get_or_create(root, compositeTOP, "beeld_tp%d_comp" % nummer, x - 600, y + dy)
         for index, bron in enumerate([voor] + plekken + [achter]):
@@ -397,7 +400,8 @@ def apply_beeld_teleprompters(root):
         _set(comp, "outputaspect", "resolution")
     # Pas als alles staat: de teleprompters mogen het beeld kiezen (beeld_tp_aan staat nog op 0).
     for nummer in (1, 2, 3):
-        root.op("select_cam%d_0" % nummer).par.top.expr = TP_SELECT_EXPR % (nummer, nummer)
+        for fase in TP_FASEN:
+            root.op("select_cam%d_%d" % (nummer, fase)).par.top.expr = TP_SELECT_EXPR % (nummer, nummer)
     return aan
 
 
