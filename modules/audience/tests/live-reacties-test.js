@@ -177,9 +177,9 @@ const wachtOp = async (fn, ms = 3000) => {
     ok("emoji die niet in de lijst staat wordt geweigerd");
 
     const opgeslagen = await post("/audience/admin/reacties", { vraag: "  Wat   vond je ervan? ", reacties: [
-      { emoji: "🔥", telt: "positief" }, { emoji: "😂", telt: "niet" }, { emoji: "<b>", telt: "positief" }, { emoji: "🔥", telt: "negatief" },
+      { emoji: "🤮", telt: "negatief" }, { emoji: "😂", telt: "niet" }, { emoji: "<b>", telt: "positief" }, { emoji: "🤮", telt: "positief" },
     ] });
-    assert.deepEqual(opgeslagen.reacties, [{ emoji: "🔥", telt: "positief" }, { emoji: "😂", telt: "niet" }]);
+    assert.deepEqual(opgeslagen.reacties, [{ emoji: "🤮", telt: "negatief" }, { emoji: "😂", telt: "niet" }]);
     assert.equal(opgeslagen.naSceneVraag, "Wat vond je ervan?");
     assert.ok(await wachtOp(() => tel.msgs.some((m) => m.type === "reacties" && m.reacties.length === 2 && m.naSceneVraag === "Wat vond je ervan?")));
     ok("Admin: emoji-lijst opslaan (dubbel en HTML eruit), telefoons krijgen de nieuwe lijst");
