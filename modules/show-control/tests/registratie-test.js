@@ -1,6 +1,6 @@
 "use strict";
 
-// Registratie: namen, vanzelf stoppen als de run weg is, en het gesprek met TouchDesigner.
+// Registratie: namen, niets vanzelf behalve stoppen bij een volle schijf, en het gesprek met TouchDesigner.
 // Raakt TouchDesigner niet: de opdrachtenmap is een tijdelijke map met een namaak-TouchDesigner.
 
 const assert = require("node:assert/strict");
@@ -9,7 +9,6 @@ const os = require("node:os");
 const path = require("node:path");
 const {
   naamVoor,
-  registratieBijStartShow,
   registratieStatus,
   registratieTick,
   startRegistratie,
@@ -19,7 +18,7 @@ const {
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "registratie-test-"));
 const opdrachtenDir = path.join(tmp, "td");
 for (const d of ["in", "uit", "gedaan"]) fs.mkdirSync(path.join(opdrachtenDir, d), { recursive: true });
-const options = { opdrachtenDir, doelDir: path.join(tmp, "testruns"), standPad: path.join(tmp, "registratie.json"), wachtMs: 2000 };
+const options = { opdrachtenDir, doelDir: path.join(tmp, "shows"), standPad: path.join(tmp, "registratie.json"), wachtMs: 2000 };
 
 // Namaak-TouchDesigner: leest de opdracht en antwoordt zoals stuur.stand() dat doet.
 const td = { opname: false, pad: "", aanwezig: true, gezien: [] };
@@ -43,44 +42,32 @@ const klok = setInterval(() => {
 const run = { showRunId: "show-run-a", status: "running", createdAt: new Date(2026, 10, 17, 10, 50).toISOString() };
 
 (async () => {
-  assert.deepEqual(naamVoor(run), { map: "2026-11-17-run-1050", showRunId: "show-run-a" });
-  assert.equal(naamVoor(null, new Date(2026, 10, 17, 9, 5)).map, "2026-11-17-los-0905");
+  const nu = new Date(2026, 10, 17, 14, 32);
+  assert.deepEqual(naamVoor(run, nu), { naam: "2026-11-17-1432-run-1050", showRunId: "show-run-a" });
+  assert.equal(naamVoor(null, nu).naam, "2026-11-17-1432-los");
 
-  // Vanzelf starten staat uit: er gebeurt niets.
-  assert.equal(await registratieBijStartShow(run, { ...options, registratie: "uit" }), null);
-  assert.equal(td.gezien.length, 0);
-
-  // START SHOW: opname in de map van de run.
-  const eerste = await registratieBijStartShow(run, options);
+  // Starten: één bestand in de map van de gedocumenteerde shows.
+  const eerste = await startRegistratie(run, { ...options, nu });
   assert.equal(eerste.ok, true);
-  assert.equal(eerste.pad, path.join(options.doelDir, "2026-11-17-run-1050", "2026-11-17-run-1050-registratie.mov"));
+  assert.equal(eerste.pad, path.join(options.doelDir, "2026-11-17-1432-run-1050.mov"));
   assert.equal(td.opname, true);
 
   // Nog een keer starten verandert niets.
-  const dubbel = await startRegistratie(run, options);
-  assert.equal(dubbel.alBezig, true);
+  assert.equal((await startRegistratie(run, options)).alBezig, true);
 
-  // De run loopt nog: de klok laat de opname staan.
-  assert.equal(await registratieTick(run, options), null);
+  // De klok laat de opname staan, ook als de run voorbij is; alleen een volle schijf stopt hem.
+  assert.equal(await registratieTick({ ...options, vrijGb: 50 }), null);
   assert.equal(td.opname, true);
-
-  // RESET RUN (andere run): de opname stopt.
-  const gestopt = await registratieTick({ showRunId: "show-run-b", status: "running" }, options);
-  assert.equal(gestopt.ok, true);
+  const vol = await registratieTick({ ...options, vrijGb: 1 });
+  assert.equal(vol.ok, true);
   assert.equal(td.opname, false);
   assert.equal((await registratieStatus(options)).opname, false);
 
-  // Tweede opname in dezelfde run krijgt een volgnummer als het eerste bestand er staat.
+  // Zelfde minuut nog een keer: volgnummer.
   fs.writeFileSync(eerste.pad, "x");
-  const tweede = await startRegistratie(run, options);
-  assert.match(tweede.pad, /-registratie-2\.mov$/);
+  const tweede = await startRegistratie(run, { ...options, nu });
+  assert.match(tweede.pad, /-run-1050-2\.mov$/);
   assert.equal((await stopRegistratie(options)).ok, true);
-
-  // Met de hand buiten een run: stopt niet vanzelf.
-  const los = await startRegistratie(null, options);
-  assert.equal(los.showRunId, null);
-  assert.equal(await registratieTick({ showRunId: "show-run-c", status: "running" }, options), null);
-  await stopRegistratie(options);
 
   // TouchDesigner heeft de patch niet: nette melding, geen opname onthouden.
   td.aanwezig = false;
