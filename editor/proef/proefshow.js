@@ -270,12 +270,15 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
 
   // Dezelfde opdrachten als de knoppen van de Stream Deck.
   const KNOPPEN = {
-    // Eén knop, drie standen: START RUN (inloop) → START SHOW (de eerste scène wordt gekozen) → RESET RUN.
+    // Eén knop: START RUN (inloop) → CONTENT WARNING (als er een tekst is) → START SHOW (de eerste scène wordt gekozen) → RESET RUN.
     async run() {
       const rt = await runNu();
       if (rt && rt.showRunId && rt.status !== "idle" && !rt.activeSituation && !(rt.playedSituations || []).length) {
         const stemming = await vraag("audience", "/audience/stage/start-stemming", { timeoutMs: 1500 });
-        if (stemming.ok && stemming.body && stemming.body.showGestart === false) return vraag("audience", "/audience/admin/show/start", { method: "POST", body: {} });
+        if (stemming.ok && stemming.body && stemming.body.showGestart === false) {
+          if (stemming.body.waarschuwingNodig) return vraag("audience", "/audience/admin/waarschuwing/toon", { method: "POST", body: {} });
+          return vraag("audience", "/audience/admin/show/start", { method: "POST", body: {} });
+        }
       }
       if (rt && rt.showRunId && rt.status !== "idle") {
         const reset = await cue("/v0/show-control/cues", { name: "Proef reset run", actions: [{ command: "runtime.resetRun", ackMode: "acknowledged-async", payload: { showRunId: rt.showRunId }, timeoutMs: 5000 }] });
@@ -378,6 +381,8 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       stemronde: Boolean(stemronde.ok && stemronde.body && stemronde.body.lopend),
       // De run loopt, maar START SHOW is nog niet gegeven: het inloopscherm staat nog.
       wachtOpShow: Boolean(loopt && !scene && !(rt.playedSituations || []).length && stemming.ok && stemming.body && stemming.body.showGestart === false),
+      // De stap ervoor: de content warning moet nog in beeld komen.
+      wachtOpWaarschuwing: Boolean(loopt && !scene && !(rt.playedSituations || []).length && stemming.ok && stemming.body && stemming.body.showGestart === false && stemming.body.waarschuwingNodig),
     };
   }
 

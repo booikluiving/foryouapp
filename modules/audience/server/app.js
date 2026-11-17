@@ -294,13 +294,15 @@ function createAudienceApp(options = {}) {
       startscene: stemming ? stemming.startscene || null : null,
       // Is START SHOW al gegeven voor de run die loopt?
       showGestart: service.isShowGestart(),
+      // De stap vóór START SHOW: moet de content warning nog in beeld komen, en staat hij er nu?
+      waarschuwingNodig: waarschuwing.nodig(),
+      waarschuwingStaat: !!waarschuwing.publiek(),
     });
   });
   app.post("/audience/admin/show/start", (_req, res) => {
-    const wasGestart = service.isShowGestart();
     const result = service.startShow();
-    // De show begint: de content warning komt één keer in beeld (alleen als het team een tekst heeft ingevuld).
-    if (result.ok && !wasGestart) waarschuwing.toon();
+    // De show begint: de content warning (de stap ervoor) gaat van het scherm.
+    if (result.ok) waarschuwing.weg();
     res.status(result.ok ? 200 : 409).json(result);
   });
 

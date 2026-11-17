@@ -297,6 +297,14 @@ function createShowControlApp(options = {}) {
     res.status(antwoord.ok ? 201 : 409).json({ ok: antwoord.ok, ...body });
   }));
 
+  // CONTENT WARNING: de stap tussen START RUN en START SHOW; de tekst van het team komt in beeld.
+  app.post("/v0/show-control/cues/content-warning", asyncRoute(async (_req, res) => {
+    const publiek = String(process.env.SHOW_CONTROL_AUDIENCE_URL || "http://127.0.0.1:3026").replace(/\/+$/, "");
+    const antwoord = await fetch(`${publiek}/audience/admin/waarschuwing/toon`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: AbortSignal.timeout(3000) });
+    const body = await antwoord.json().catch(() => ({}));
+    res.status(antwoord.ok ? 201 : 409).json({ ok: antwoord.ok, ...body });
+  }));
+
   // Registratie (beeld hoofdscherm + geluid): status, starten en stoppen. Alleen op verzoek
   // (knop OPNAME op de Stream Deck); er start niets vanzelf.
   app.get("/v0/show-control/registratie", asyncRoute(async (_req, res) => {
