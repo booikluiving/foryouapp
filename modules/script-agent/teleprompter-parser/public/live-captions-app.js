@@ -112,15 +112,28 @@
     if (cursor < text.length) target.appendChild(document.createTextNode(text.slice(cursor)));
   }
 
+  // De titel in beeld is de titel van de situatie, niet een kopregel uit het script.
+  function situationTitle() {
+    const prepared = String(preparedScene && preparedScene.title || "").trim();
+    if (prepared && prepared !== "Volgende scene") return prepared;
+    const parsed = String(teleprompt && teleprompt.title || "").trim();
+    return parsed && parsed !== "Teleprompt" ? parsed : "";
+  }
+
   function captionForIndex(index) {
     const lines = teleprompt && Array.isArray(teleprompt.lines) ? teleprompt.lines : [];
-    if (!lines.length || index <= 0) return null;
+    // Cue 0 = de scène is gestart en er is nog geen zin gezegd: de titel staat er meteen.
+    if (index <= 0) {
+      const text = situationTitle();
+      return text ? { type: "title", text } : null;
+    }
+    if (!lines.length) return null;
     if (index >= lines.length + 1) return { type: "end", text: "Einde" };
     const line = lines[index - 1];
     if (!line || !line.text) return null;
-    // Regel die met # begint (de eerste regel van een gegenereerd script) = titel in een zwart blok.
+    // Een kopregel (#) die nog in het script staat, toont ook de titel van de situatie.
     const titel = line.type !== "dialogue" && /^\s*#+\s*(.+)$/.exec(line.text);
-    if (titel) return { type: "title", text: titel[1].trim() };
+    if (titel) return { type: "title", text: situationTitle() || titel[1].trim() };
     // Dialoog op het hoofdscherm altijd als "Naam: tekst".
     if (line.type === "dialogue") return { type: "dialogue", speaker: String(line.speakerLabel || "").trim(), text: line.text };
     return { type: "direction", text: line.text };

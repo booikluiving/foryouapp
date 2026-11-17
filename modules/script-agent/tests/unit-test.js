@@ -220,6 +220,14 @@ async function main() {
   assert.deepEqual(legacyParsed.lines.map((line) => line.type), ["dialogue", "dialogue", "stage_direction"]);
   assert.equal(legacyParsed.characters[0].color, "#4cc9f0");
 
+  const situatieTitel = parseTeleprompt({
+    title: "Mark moet kinderziekenhuis opblazen na verlies monopoly",
+    rawText: "# Monopoly\n\nAda: Hallo Ben.\nRegie: Ze wachten.",
+    source: "unit",
+  });
+  assert.equal(situatieTitel.title, "Mark moet kinderziekenhuis opblazen na verlies monopoly");
+  assert.deepEqual(situatieTitel.lines.map((line) => line.text), ["Hallo Ben.", "Ze wachten."]);
+
   const legacyStore = createTelepromptStore();
   legacyStore.prepareScene({
     sceneId: 1,
