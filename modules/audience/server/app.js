@@ -202,6 +202,49 @@ function createAudienceApp(options = {}) {
     res.json(rapport);
   }));
 
+  // Up next: de scène die klaarstaat, welk personage elke speler speelt (per plek in de ring), hoe
+  // sterk het algoritme nu naar elk label trekt, de topfavoriet als die in de scène zit, en of de
+  // operator READY heeft gedrukt.
+  let upNextReady = { situationId: "", ready: false, at: 0 };
+  app.post("/audience/admin/ready", asyncRoute(async (req, res) => {
+    const ready = !(req.body && req.body.ready === false);
+    // READY hoort bij de scène die nu klaarstaat; bij de volgende scène is het weer uit.
+    let situationId = String((req.body && req.body.situationId) || "");
+    if (!situationId) {
+      const result = await fetchRuntimeView().catch(() => null);
+      const klaar = result && result.ok && result.state ? result.state.resolvedPreparedNext || result.state.preparedNext : null;
+      situationId = klaar && klaar.situationId ? String(klaar.situationId) : "";
+    }
+    upNextReady = { situationId, ready, at: Date.now() };
+    service.emit("broadcast", { type: "up_next_ready", ready, situationId });
+    res.json({ ok: true, ...upNextReady });
+  }));
+  app.get("/audience/stage/up-next", asyncRoute(async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    const result = await fetchRuntimeView().catch(() => null);
+    const view = result && result.ok ? result.state : null;
+    const klaar = view && view.resolvedPreparedNext;
+    if (!view || !view.showRunId || !klaar) { res.json({ ok: true, klaar: false }); return; }
+    const catalog = (view.showRunSnapshot && view.showRunSnapshot.catalog) || {};
+    const plekVan = new Map((catalog.performers || []).map((speler) => [speler.id, Number(speler.performerSlot) || 0]));
+    const plekken = (klaar.performerSlots || [])
+      .filter((slot) => slot && slot.characterId)
+      .map((slot) => ({ plek: plekVan.get(slot.performerId) || Number(slot.slotIndex) || 0, personage: String(slot.characterName || "").trim(), characterId: String(slot.characterId) }))
+      .filter((rij) => rij.plek >= 1 && rij.plek <= 3);
+    let report = null;
+    try {
+      const response = await fetch(`${algorithmBaseUrl()}/v0/algorithm/scoring-contexts/${encodeURIComponent(view.showRunId)}/report`, { signal: AbortSignal.timeout(2500) });
+      if (response.ok) report = await response.json();
+    } catch (_err) {
+      report = null;
+    }
+    const labels = report && Array.isArray(report.labelTrek) ? report.labelTrek.map((rij) => ({ naam: rij.name, procent: rij.procent })) : [];
+    const top = report && Array.isArray(report.favorieten) ? report.favorieten[0] : null;
+    const favoriet = top && plekken.some((rij) => rij.characterId === top.characterId) ? top.name : null;
+    const ready = upNextReady.ready && upNextReady.situationId === klaar.situationId;
+    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", plekken, labels, favoriet, ready, speelt: !!view.activeSituation });
+  }));
+
   // De vragen na de scène: de stand (wat er openstaat, de tellingen, de laatste uitslag).
   app.get("/audience/stage/beoordeling", (_req, res) => {
     res.set("Cache-Control", "no-store");
