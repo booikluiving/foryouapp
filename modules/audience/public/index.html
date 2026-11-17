@@ -527,7 +527,7 @@
       #beoordeelKeuzes button:disabled { opacity: 1; }
       #beoordeelKeuzes button:disabled:not(.gekozen) { opacity: 0.35; }
       #beoordeelKeuzes.emoji button.gekozen { background: transparent; outline: 4px solid var(--a); outline-offset: -4px; }
-      #beoordeelKeuzes.emoji button { text-align: center; font-size: min(clamp(64px, 14dvh, 120px), 16vw); line-height: 1; padding: 0; }
+      #beoordeelKeuzes.emoji button { text-align: center; font-size: min(clamp(64px, 14dvh, 120px), 24vw); line-height: 1; padding: 0; }
       /* Personages: de foto van de speler vult de knop, de naam staat eronder in een balk. */
       /* Naast elkaar als staande tegels, zodat de staande foto (gezicht op een derde van boven) heel blijft. */
       #beoordeelKeuzes.personage { align-content: center; grid-auto-rows: auto; }
@@ -1718,7 +1718,9 @@
         keuzesEl.className = vraag.soort;
         keuzesEl.textContent = "";
         // Emoji en personages naast elkaar, de rest onder elkaar.
-        keuzesEl.style.gridTemplateColumns = vraag.soort === "emoji" || vraag.soort === "personage" ? "repeat(" + vraag.keuzes.length + ", minmax(0, 1fr))" : "";
+        // Vier emoji als vier vlakken (2 × 2); minder emoji en de personages naast elkaar.
+        const kolommen = vraag.soort === "emoji" && vraag.keuzes.length === 4 ? 2 : vraag.keuzes.length;
+        keuzesEl.style.gridTemplateColumns = vraag.soort === "emoji" || vraag.soort === "personage" ? "repeat(" + kolommen + ", minmax(0, 1fr))" : "";
         for (const keuze of vraag.keuzes) {
           const button = document.createElement("button");
           button.type = "button";
