@@ -222,6 +222,12 @@ function createAudienceApp(options = {}) {
     res.status(result.ok ? 200 : 400).json(result);
   });
 
+  // Hoeveel deelnemers er in deze sessie meedoen (telefoons met een naam, geen bots).
+  app.get("/audience/stage/deelnemers", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, deelnemers: service.aantalDeelnemers() });
+  });
+
   // De ranking van de chat: wie het meest schreef.
   app.get("/audience/stage/ranking", (_req, res) => {
     res.set("Cache-Control", "no-store");
