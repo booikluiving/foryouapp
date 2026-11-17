@@ -221,6 +221,49 @@ def _set(op_obj, name, value):
         print("For_You een beeld: %s.%s = %s lukt niet: %s" % (op_obj.name, name, value, err))
 
 
+# Op het witte papier van de meme valt elk half doorzichtig stukje van de key op (schaduw op het
+# doek, rand van het camerabeeld). Per camera een filter tussen beeld_cam_N en beeld_fit_N:
+# alleen het stevige deel van de key blijft, en de zijkanten van het camerabeeld lopen zacht weg.
+BEELD_SCHOON_GLSL = """uniform vec2 uKey;    // onder x: weg, boven y: helemaal
+uniform vec2 uZij;    // deel van de breedte dat links en rechts wegloopt (begin, eind)
+out vec4 fragColor;
+void main() {
+    vec4 c = texture(sTD2DInputs[0], vUV.st);
+    float a = c.a;
+    vec3 kleur = a > 0.0001 ? c.rgb / a : vec3(0.0);
+    float na = smoothstep(uKey.x, uKey.y, a);
+    float x = vUV.s;
+    na *= smoothstep(uZij.x, uZij.y, x) * smoothstep(uZij.x, uZij.y, 1.0 - x);
+    fragColor = TDOutputSwizzle(vec4(kleur * na, na));
+}
+"""
+BEELD_SCHOON_KEY = (0.45, 0.85)
+BEELD_SCHOON_ZIJ = (0.04, 0.12)
+
+
+def apply_beeld_schoon(root):
+    pixel = _get_or_create(root, textDAT, "beeld_schoon_glsl", root.op("beeld_cam_1").nodeX, root.op("beeld_cam_1").nodeY + 400)
+    pixel.text = BEELD_SCHOON_GLSL
+    for nummer in (1, 2, 3):
+        select = root.op("beeld_cam_%d" % nummer)
+        fit = root.op("beeld_fit_%d" % nummer)
+        if select is None or fit is None:
+            raise RuntimeError("beeld_cam_%d of beeld_fit_%d ontbreekt" % (nummer, nummer))
+        schoon = _get_or_create(root, glslTOP, "beeld_schoon_%d" % nummer, select.nodeX + 300, select.nodeY - 200)
+        _set(schoon, "pixeldat", pixel.path)
+        _set(schoon, "outputresolution", "useinput")
+        _set(schoon, "format", "rgba8fixed")
+        _set(schoon, "vec0name", "uKey")
+        _set(schoon, "vec0valuex", BEELD_SCHOON_KEY[0])
+        _set(schoon, "vec0valuey", BEELD_SCHOON_KEY[1])
+        _set(schoon, "vec1name", "uZij")
+        _set(schoon, "vec1valuex", BEELD_SCHOON_ZIJ[0])
+        _set(schoon, "vec1valuey", BEELD_SCHOON_ZIJ[1])
+        schoon.inputConnectors[0].connect(select)
+        fit.inputConnectors[0].connect(schoon)
+    return [root.op("beeld_schoon_%d" % n) for n in (1, 2, 3)]
+
+
 def apply_beeld_patch():
     root = op("/project1")
     switch10 = root.op("switch10")
@@ -281,8 +324,9 @@ def apply_beeld_patch():
         _set(plek, "sy", 0.2)
         _set(plek, "rotate", 0)
         plekken.append(plek)
+    apply_beeld_schoon(root)
 
-    comp = _get_or_create(root, compositeTOP, "beeld_comp", x - 600, y - 1200)
+    comp =_get_or_create(root, compositeTOP, "beeld_comp", x - 600, y - 1200)
     for index, bron in enumerate([voorgrond, plekken[0], plekken[1], plekken[2], achtergrond]):
         comp.inputConnectors[index].connect(bron)
     _set(comp, "operand", "over")
