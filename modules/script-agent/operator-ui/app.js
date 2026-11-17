@@ -823,6 +823,12 @@ async function toggleSceneTest() {
       body: JSON.stringify({ enabled }),
     });
     renderSceneTest();
+    // Bij het aanzetten: lijsten van nu, en situatie en omgeving bij elkaar.
+    if (sceneTestState.enabled) {
+      await verversLijsten();
+      testKeuzeGelijk();
+      els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
+    }
   } catch (err) {
     renderSceneTest(err.message || "Scènes testen zetten lukte niet.", true);
   }
@@ -1032,7 +1038,9 @@ els.sceneTestStart.addEventListener("click", () => startTestScene());
 els.situation.addEventListener("change", () => {
   els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
   manualSelectionDirty = true;
+  laatstGekozen = "situatie";
   updateSituationSelection({ preserveManualCharacters: false });
+  matchEnvironmentToSituation();
   sendManualDraftPreview();
 });
 els.character.addEventListener("change", () => {
@@ -1056,12 +1064,68 @@ function matchSituationToEnvironment() {
   const current = situaties.find((item) => String(item.id) === String(els.situation.value || ""));
   if (current && String(current.environmentId || "") === environmentId) return;
   const match = situaties.find((item) => String(item.environmentId || "") === environmentId);
-  if (!match || !selectHasValue(els.situation, match.id)) return;
+  if (!match || !selectHasValue(els.situation, match.id)) {
+    // Bij deze omgeving hoort geen situatie: de gekozen situatie blijft staan en speelt hier.
+    const omgeving = (catalogIndex.omgevingen || []).find((item) => String(item.id) === environmentId);
+    if (current) renderSceneTest(`Bij ${omgeving ? omgeving.naam : "deze omgeving"} hoort geen situatie. Start scène speelt "${current.naam}" in deze omgeving.`);
+    return;
+  }
   els.situation.value = match.id;
   updateSituationSelection({ preserveManualCharacters: false });
+  renderSceneTest();
 }
 
+// Andersom ook: in de testmodus gaat de omgeving mee met de gekozen situatie. Zonder dit bleef de
+// omgeving van de vorige scène staan en speelde de nieuwe situatie daarin.
+function matchEnvironmentToSituation() {
+  if (!sceneTestState.enabled) return;
+  const current = (catalogIndex.situaties || []).find((item) => String(item.id) === String(els.situation.value || ""));
+  const environmentId = current ? String(current.environmentId || "") : "";
+  if (!environmentId || String(els.environment.value || "") === environmentId) return;
+  if (!selectHasValue(els.environment, environmentId)) return;
+  els.environment.value = environmentId;
+  updateEnvironmentPreview();
+  renderSceneTest();
+}
+
+// Wat het laatst met de hand gekozen is, wint als de testmodus pas daarna aangaat.
+let laatstGekozen = "situatie";
+function testKeuzeGelijk() {
+  if (laatstGekozen === "omgeving") matchSituationToEnvironment();
+  else matchEnvironmentToSituation();
+}
+
+// Situaties en omgevingen die tijdens de run in de catalogus zijn gezet, komen in de lijsten
+// zonder de pagina te herladen. Wat gekozen is blijft staan.
+let catalogusKijkt = false;
+async function verversLijsten() {
+  if (catalogusKijkt) return;
+  if (document.activeElement === els.situation || document.activeElement === els.environment) return;
+  catalogusKijkt = true;
+  try {
+    const data = await api("/v0/script-agent/operator/catalog/index");
+    const ids = (index) => [...(index.situaties || []), ...(index.omgevingen || [])]
+      .map((item) => `${item.id}|${item.naam}|${item.environmentId || ""}`).join("\n");
+    if (ids(data) === ids(catalogIndex)) return;
+    const situatie = els.situation.value;
+    const omgeving = els.environment.value;
+    catalogIndex = data;
+    els.situation.innerHTML = '<option value="">Kies een situatie</option>' +
+      (catalogIndex.situaties || []).map((item) => `<option value="${esc(item.id)}">${esc(item.naam)}</option>`).join("");
+    els.situation.value = selectHasValue(els.situation, situatie) ? situatie : "";
+    els.environment.innerHTML = '<option value="">Geen / situatie kiest</option>' +
+      (catalogIndex.omgevingen || []).map((item) => `<option value="${esc(item.id)}">${esc(item.naam)}</option>`).join("");
+    els.environment.value = selectHasValue(els.environment, omgeving) ? omgeving : "";
+  } catch (_err) {
+    // de lijsten van daarnet blijven staan
+  } finally {
+    catalogusKijkt = false;
+  }
+}
+setInterval(() => { if (sceneTestState.enabled) verversLijsten(); }, 10000);
+
 els.environment.addEventListener("change", () => {
+  laatstGekozen = "omgeving";
   matchSituationToEnvironment();
   els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
   manualSelectionDirty = true;
