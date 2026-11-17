@@ -32,8 +32,8 @@ function defaultAlgorithmConfig() {
       // Publieksvraag na de scène over het label (te veel / precies goed / mag meer): de voorkeur, van -1
       // tot 1, telt met dit gewicht op bij elke scène met dat label.
       labelVoorkeur: 1,
-      // Publieksvraag na de scène, meer of minder van elk personage: de voorkeur, van -1 tot 1, telt met
-      // dit gewicht op bij elke scène met dat personage.
+      // Publieksvraag na de scène welk personage je nog een keer wilt zien: het aandeel van de stemmen
+      // (0 tot 1) telt met dit gewicht op bij elke scène met dat personage.
       personageVoorkeur: 1,
     },
     normalization: {
@@ -310,7 +310,7 @@ function buildRunProfile(observations = [], liveObservation = null, config = def
     characters: new Map(),
     // Wat het publiek na de scène over het label zei: per label een voorkeur van -1 tot 1.
     labelVoorkeur: new Map(),
-    // Meer of minder van elk personage: per personage een voorkeur van -1 tot 1.
+    // Welk personage het publiek nog een keer wil zien: per personage het aandeel van de stemmen.
     personageVoorkeur: new Map(),
     includesLive: !!liveObservation,
   };
@@ -331,8 +331,8 @@ function buildRunProfile(observations = [], liveObservation = null, config = def
     const personages = observation.personageVoorkeur;
     if (personages && Array.isArray(personages.keuzes)) {
       for (const keuze of personages.keuzes) {
-        if (keuze && keuze.characterId && Number.isFinite(Number(keuze.delta))) {
-          addWeightedProfile(profile.personageVoorkeur, String(keuze.characterId), Number(keuze.delta), weight, source);
+        if (keuze && keuze.characterId && Number.isFinite(Number(keuze.aandeel))) {
+          addWeightedProfile(profile.personageVoorkeur, String(keuze.characterId), Number(keuze.aandeel), weight, source);
         }
       }
     }
@@ -493,7 +493,7 @@ function buildScoreFeed({
     components.labelVoorkeur = rounded(voorkeur, 4);
     predictedScore += voorkeur;
     if (voorkeur !== 0) reasons.push("publiek_label_voorkeur");
-    // Meer of minder van de personages: hun voorkeur opgeteld (een scène met twee favorieten krijgt beide).
+    // Personages waar het publiek op stemde: hun aandeel opgeteld (een scène met twee favorieten krijgt beide).
     const personageVoorkeur = (situation.characterIds || [])
       .map((id) => runProfile.personageVoorkeur.get(id))
       .filter((entry) => entry && entry.weight > 0)
@@ -608,13 +608,13 @@ function labelTrek({ catalog, observations = [], liveObservation = null, config 
   return rijen.sort((a, b) => b.trek - a.trek);
 }
 
-// Favoriete personages volgens de vraag na de scène: wie het publiek vaker wil zien (voorkeur boven 0).
+// Favoriete personages volgens de stemmen na de scène: gemiddeld aandeel van de stemmen.
 function personageFavorieten({ observations = [], config = defaultAlgorithmConfig() }) {
   const runProfile = buildRunProfile(observations, null, normalizeAlgorithmConfig(config));
   return [...runProfile.personageVoorkeur.entries()]
-    .map(([characterId, entry]) => ({ characterId, voorkeur: rounded(profileEntryValue(entry), 4), rondes: entry.count }))
-    .filter((rij) => rij.voorkeur > 0)
-    .sort((a, b) => b.voorkeur - a.voorkeur || b.rondes - a.rondes);
+    .map(([characterId, entry]) => ({ characterId, aandeel: rounded(profileEntryValue(entry), 4), rondes: entry.count }))
+    .filter((rij) => rij.aandeel > 0)
+    .sort((a, b) => b.aandeel - a.aandeel || b.rondes - a.rondes);
 }
 
 module.exports = {
