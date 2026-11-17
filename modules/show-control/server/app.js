@@ -52,6 +52,13 @@ const {
 const { buildEnvironmentFaseCue, environmentFasesStatus, publicFasesStatus } = require("../cue-library/environment-fases");
 const { sceneEindeTick } = require("../cue-library/scene-einde");
 const { buildEnvironmentKnopCue, environmentKnoppenStatus } = require("../cue-library/environment-knoppen");
+const {
+  registratieBijStartShow,
+  registratieStatus,
+  registratieTick,
+  startRegistratie,
+  stopRegistratie,
+} = require("../registratie/registratie");
 const { cameraBaseUrl } = require("../target-adapters/camera-adapter");
 const { dmxBaseUrl } = require("../target-adapters/dmx-adapter");
 const { perfectCueBaseUrl } = require("../target-adapters/perfect-cue-adapter");
@@ -289,6 +296,25 @@ function createShowControlApp(options = {}) {
     const antwoord = await fetch(`${publiek}/audience/admin/show/start`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: AbortSignal.timeout(3000) });
     const body = await antwoord.json().catch(() => ({}));
     res.status(antwoord.ok ? 201 : 409).json({ ok: antwoord.ok, ...body });
+    // De opname van de run begint; de knop wacht er niet op.
+    if (antwoord.ok) {
+      runtimeStateQuick({}, clients).then((state) => registratieBijStartShow(state, options.registratie || {})).catch(() => {});
+    }
+  }));
+
+  // Registratie van de run (beeld hoofdscherm + geluid): status, en met de hand starten en stoppen.
+  // Vanzelf: start bij START SHOW (hierboven), stopt als de run voorbij is (klok van de server).
+  app.get("/v0/show-control/registratie", asyncRoute(async (_req, res) => {
+    res.json(await registratieStatus(options.registratie || {}));
+  }));
+  app.post("/v0/show-control/registratie/start", asyncRoute(async (req, res) => {
+    const runtimeState = await runtimeStateQuick(req, clients);
+    const uitkomst = await startRegistratie(runtimeState, options.registratie || {});
+    res.status(uitkomst.ok ? 201 : 409).json(uitkomst);
+  }));
+  app.post("/v0/show-control/registratie/stop", asyncRoute(async (_req, res) => {
+    const uitkomst = await stopRegistratie(options.registratie || {});
+    res.status(uitkomst.ok ? 200 : 409).json(uitkomst);
   }));
 
   app.post("/v0/show-control/cues/save", asyncRoute(async (req, res) => {
@@ -566,6 +592,8 @@ function createShowControlApp(options = {}) {
   app.locals.environmentVanzelfTick = async () => {
     const runtimeResult = await clients.fetchCurrentRuntimeState();
     if (!runtimeResult || !runtimeResult.ok) return null;
+    // De run is voorbij (RESET RUN): een lopende opname van die run stopt.
+    registratieTick(runtimeResult.state || {}, options.registratie || {}).catch(() => {});
     // Vangnet: is de scène buiten show-control om geëindigd, dan gaat alsnog alles van die scène uit.
     const einde = sceneEindeTick(runtimeResult.state || {});
     if (einde) executeCue(einde, { ...executeOptions, runtimeState: runtimeResult.state }).then(() => saveCue(einde)).catch(() => {});
