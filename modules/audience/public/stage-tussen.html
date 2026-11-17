@@ -272,6 +272,10 @@
       #p-stem.groot #stemGetal { transform: translate(-50%, calc(-50% + 470px)) scale(1); transition: none; }
       /* Eerst kiest het universum; de klok komt pas in beeld als de scène gekozen is. */
       #p-stem.groot.zoekt #stemGetal { opacity: 0; }
+      /* Onder de grote klok, alleen zolang hij groot staat. */
+      #stemKijk { position: absolute; left: 60px; right: 60px; top: 1360px; text-align: center; font-weight: 700; font-size: 72px; line-height: 1; letter-spacing: -0.035em;
+        opacity: 0; transition: opacity 300ms var(--curve); }
+      #p-stem.groot:not(.zoekt) #stemKijk { opacity: 1; }
       #p-stem.groot #stemGetal { transition: opacity 300ms var(--curve); }
       #stemBalk { position: absolute; left: 60px; top: 884px; width: 960px; height: 12px; transition: opacity 300ms; }
       #stemBalk::before { content: ""; position: absolute; left: 0; right: 0; top: 5px; height: 2px; background: var(--wit-3); }
@@ -379,6 +383,7 @@
         <div class="qr" data-qr></div>
         <svg id="stemCirkel" viewBox="0 0 500 500"><circle class="spoor" cx="250" cy="250" r="230" /><circle class="loop" id="stemLoop" cx="250" cy="250" r="230" /></svg>
         <div id="stemGetal"><span></span></div>
+        <div id="stemKijk">Kijk op je telefoon!</div>
         <div id="stemBalk"><i></i></div>
         <div id="stemTal"></div>
       </div>
@@ -867,7 +872,7 @@
       // universum weg (NA_KEUZE_MS), daarna schuift de klok omhoog. Kiest het universum niet, zoals in
       // de startfase, dan na GROOT_MAX_MS. Het schrijven begint als de klok op zijn plek staat.
       const GROOT_MS = 1800, GROOT_MAX_MS = 12000, NA_KEUZE_MS = 1800, OMHOOG_MS = 800, SCHRIJF_NA_OMHOOG_MS = 200, CIRKEL = 2 * Math.PI * 230;
-      const stemFase = { id: "", opent: 0, tot: 0, schrijf: false, schrijfGevraagd: "", lus: 0, schrijfTimer: 0, kiest: false, gekozen: false, klokVanaf: 0, grootTot: 0, ping: 0 };
+      const stemFase = { id: "", opent: 0, tot: 0, schrijf: false, schrijfGevraagd: "", lus: 0, schrijfTimer: 0, kiest: false, gekozen: false, klokVanaf: 0, grootTot: 0, ping: 0, klokGestart: "" };
       // Het universum mag verder (nieuwe scènes vrij, kiezer): tot het kiest, elke halve seconde opnieuw,
       // want het luistert pas als het de stop van de scène gezien heeft.
       function kiezenStop() {
@@ -879,6 +884,16 @@
         stemFase.schrijfTimer = setTimeout(() => {
           if (stemFase.schrijfGevraagd !== stemFase.id && stemFase.tot > Date.now()) vraagSchrijven();
         }, Math.max(0, stemFase.grootTot + OMHOOG_MS + SCHRIJF_NA_OMHOOG_MS - Date.now()));
+      }
+      // De klok komt voor het eerst in beeld: hij begint bij de volle duur, hier meteen en via de
+      // publieksdienst ook op de telefoons. Eén keer per stemronde.
+      function klokStart() {
+        if (stemFase.klokGestart === stemFase.id) return;
+        stemFase.klokGestart = stemFase.id;
+        const duur = stemFase.tot - stemFase.opent;
+        stemFase.opent = Date.now();
+        stemFase.tot = stemFase.opent + duur;
+        fetch("/audience/stage/stemklok-start", { method: "POST" }).catch(() => {});
       }
       // De kiezer is geland: nog even groot, dan schuift de klok omhoog.
       function stemGekozen() {
@@ -905,6 +920,7 @@
         stemFase.lus = 0;
         const nu = Date.now();
         if (stemFase.tot <= nu) { stemKlaar(); return; }
+        if (nu >= stemFase.grootTot || (stemFase.gekozen ? nu >= stemFase.klokVanaf : !stemFase.kiest)) klokStart();
         const vlak = el("p-stem"), loop = el("stemLoop");
         const duur = Math.max(1, stemFase.tot - stemFase.opent), over = Math.min(duur, stemFase.tot - nu), s = Math.ceil(over / 1000);
         const tik = () => (s <= 5 ? geluid.aftel(s) : geluid.seconde(s));
@@ -914,7 +930,7 @@
           vlak.classList.remove("klok");
           const klokZichtbaar = stemFase.gekozen ? nu >= stemFase.klokVanaf : !stemFase.kiest;
           vlak.classList.toggle("zoekt", !klokZichtbaar);
-          // De klok komt in beeld: het universum gaat weg.
+          // De klok komt in beeld: het universum gaat weg en de klok begint (ook op de telefoons) bij 30.
           if (klokZichtbaar && stemFase.kiest && stemFase.gekozen) { stemFase.kiest = false; zetFase(); }
           loop.style.strokeDashoffset = String(CIRKEL);
           zetStemGetal(s, klokZichtbaar ? tik : null);

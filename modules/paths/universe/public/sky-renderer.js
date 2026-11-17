@@ -370,6 +370,8 @@
     const REGIE_NA_KEUZE = Math.max(0, Number(REGIE_OPTIES.get("naKeuze")) || 0);
     // Zo lang knippert de gekozen scène (drie keer aan en uit).
     const REGIE_KNIPPER_MS = 1200;
+    // Na de keuze staat de titel bij de gekozen scène: tijdens het knipperen en de rust daarna.
+    const regieGekozenTitelNu = (nu) => !!regie.gekozenSinds && nu - regie.gekozenSinds < REGIE_KNIPPER_MS + REGIE_NA_KEUZE;
     // Met vlot=1: na een scène meteen uitgezoomd (geen camerabeweging), nieuwe scènes komen per laag
     // tegelijk vrij, geen pauzes, een kortere kiezer en inzoomen zodra de keuze er is.
     const REGIE_VLOT = REGIE_OPTIES.get("vlot") === "1";
@@ -3868,9 +3870,12 @@
             alpha: stem.verloren ? 0.45 : 1,
           });
           if (groot) stemKoplopers.push({ node, stem });
-        } else if ((regie.ring === sceneId || (REGIE_GEKOZEN_TITEL && regie.gekozen === sceneId)) && !isFocus) {
+        } else if ((regie.ring === sceneId || (regie.gekozen === sceneId && (REGIE_GEKOZEN_TITEL || regieGekozenTitelNu(nu)))) && !isFocus) {
+          // De titel staat bij de kiezer; bij de gekozen scène knippert hij mee met de ster.
           const regels = regieTitelRegels(node.title);
-          etiketten.push({ regels, x: punt.x, y: punt.y - straal - 20 - (regels.length - 1) * 19, grootte: 15, kleur: "#ffffff", alpha: 1, regelhoogte: 19 });
+          const knipper = regie.gekozen === sceneId && regie.gekozenSinds ? nu - regie.gekozenSinds : -1;
+          const aan = !(knipper >= 0 && knipper < REGIE_KNIPPER_MS) || Math.floor(knipper / (REGIE_KNIPPER_MS / 6)) % 2 === 0;
+          etiketten.push({ regels, x: punt.x, y: punt.y - straal - 20 - (regels.length - 1) * 19, grootte: 15, kleur: "#ffffff", alpha: aan ? 1 : 0.12, regelhoogte: 19 });
         } else if (state.tweaks.labels) {
           etiketten.push({ regels: [node.title], x: punt.x, y: punt.y - straal - 9, grootte: 11, kleur: "rgba(255,255,255,0.66)", alpha: vrij ? 1 : 0.3 });
         }

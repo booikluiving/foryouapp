@@ -266,6 +266,23 @@ function createBeoordeling(service) {
       .finally(() => store.setSetting(UITSLAGEN_KEY, uitslagen));
   }
 
+  // Het zaalscherm laat de klok zien (na de keuze van de volgende scène): de klok begint opnieuw bij
+  // de volle duur, op het scherm en op de telefoons. Eén keer per stemronde.
+  function klokOpnieuw() {
+    if (!lopend || lopend.klokOpnieuw) return null;
+    const nu = Date.now();
+    if (Date.parse(lopend.endsAt) <= nu) return null;
+    lopend.klokOpnieuw = true;
+    lopend.opentAt = new Date(nu).toISOString();
+    lopend.endsAt = new Date(nu + instellingen.duur * 1000).toISOString();
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => sluit("klok"), instellingen.duur * 1000);
+    if (typeof timer.unref === "function") timer.unref();
+    service.emit("broadcast", { type: "beoordeling", beoordeling: publiek() });
+    service.emit("admin-state-changed");
+    return publiek();
+  }
+
   // De scène is afgelopen: de vragen gaan open, de klok loopt.
   function start() {
     sluit("nieuwe_scene");
@@ -344,7 +361,7 @@ function createBeoordeling(service) {
     fotos.clear();
   }
 
-  return { onthoudScene, zetFoto, start, sluit, antwoord, publiek, stand, zetInstellingen, reset, uitslagen: () => uitslagen.slice() };
+  return { onthoudScene, zetFoto, start, sluit, klokOpnieuw, antwoord, publiek, stand, zetInstellingen, reset, uitslagen: () => uitslagen.slice() };
 }
 
 module.exports = { createBeoordeling, normalizeInstellingen };

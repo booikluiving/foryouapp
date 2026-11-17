@@ -219,6 +219,11 @@ function createAudienceApp(options = {}) {
     service.emit("broadcast", { type: "up_next_ready", ready, situationId });
     res.json({ ok: true, ...upNextReady });
   }));
+  // Het zaalscherm laat de klok zien: die begint dan bij de volle duur (scherm en telefoons).
+  app.post("/audience/stage/stemklok-start", (_req, res) => {
+    const beoordeling = service.beoordeling.klokOpnieuw();
+    res.json({ ok: true, opnieuw: !!beoordeling });
+  });
   // De kiezer op het zaalscherm is geland: nu ziet ook de teleprompter de volgende scène.
   app.post("/audience/stage/keuze-getoond", asyncRoute(async (_req, res) => {
     const basis = String(process.env.AUDIENCE_SCRIPT_AGENT_URL || "http://127.0.0.1:3027").replace(/\/+$/, "");
