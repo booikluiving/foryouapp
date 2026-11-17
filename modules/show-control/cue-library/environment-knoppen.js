@@ -8,6 +8,7 @@
 // - haperen: het vakje van één speler hapert zolang de knop is ingedrukt (houden: true; het deck
 //   stuurt fase "druk" bij indrukken en fase "los" bij loslaten);
 // - keuze: na de laatste stap van omvallen een eigen knop per afloop (links of rechts);
+// - plaatje: bij een bord 1 t/m 5 (blind ranking) het volgende plaatje in beeld;
 // - begin: zet alles van deze omgeving terug naar het begin.
 // Een omgeving zonder iets geeft een lege lijst.
 
@@ -15,6 +16,7 @@ const { buildEnvironmentFaseCue, environmentFasesStatus } = require("./environme
 const { buildEnvironmentOmvallenCue, environmentOmvallenStatus } = require("./environment-omvallen");
 const { buildStartGeluidCue, startGeluidStatus } = require("./environment-startgeluid");
 const { buildEnvironmentHaperCue, environmentHaperenStatus } = require("./environment-haperen");
+const { buildEnvironmentBordCue, environmentBordStatus } = require("./environment-bord");
 
 const MAX_KNOPPEN = 3;
 
@@ -28,6 +30,19 @@ function environmentKnoppenStatus(runtimeState, options = {}) {
   const omvallen = environmentOmvallenStatus(runtimeState, options.environmentOmvallen || {});
   const knoppen = [];
   let verzet = false;
+  // Bord (blind ranking): elke druk toont het volgende plaatje. Doet het zodra de scène speelt.
+  const bord = environmentBordStatus(runtimeState, options.environmentFases || {});
+  if (bord.klaar) {
+    knoppen.push({
+      soort: "plaatje",
+      actie: "volgende",
+      label: "PLAATJE",
+      nu: "",
+      teller: `${bord.getoond}/${bord.totaal}`,
+      staat: bord.speelt && bord.getoond < bord.totaal ? "klaar" : "uit",
+    });
+    verzet = verzet || bord.getoond > 0;
+  }
   if (fases.klaar && fases.fases.length > 1) {
     const laatste = fases.actief >= fases.fases.length - 1;
     const volgende = fases.fases[(fases.actief + 1) % fases.fases.length];
@@ -91,6 +106,7 @@ function environmentKnoppenStatus(runtimeState, options = {}) {
     heeftFases: fases.klaar && fases.fases.length > 1,
     heeftOmvallen: omvallen.klaar,
     heeftHaperen: haperen.klaar,
+    heeftBord: bord.klaar,
   };
 }
 
@@ -116,6 +132,7 @@ function buildEnvironmentKnopCue(runtimeState, input = {}, options = {}) {
   }
   const faseOptions = options.environmentFases || {};
   const omvallenOptions = options.environmentOmvallen || {};
+  if (knop.soort === "plaatje") return buildEnvironmentBordCue(runtimeState, { actie: "volgende", source: input.source }, faseOptions);
   if (knop.soort === "intro") return buildStartGeluidCue(runtimeState, { source: input.source }, faseOptions);
   if (knop.soort === "fase") return buildEnvironmentFaseCue(runtimeState, { actie: "volgende", source: input.source }, faseOptions);
   if (knop.soort === "keuze") return buildEnvironmentOmvallenCue(runtimeState, { actie: "keuze", keuze: knop.keuze, source: input.source }, omvallenOptions);
@@ -126,6 +143,7 @@ function buildEnvironmentKnopCue(runtimeState, input = {}, options = {}) {
   if (status.heeftFases) cues.push(buildEnvironmentFaseCue(runtimeState, { index: 0, source: input.source }, faseOptions));
   if (status.heeftOmvallen) cues.push(buildEnvironmentOmvallenCue(runtimeState, { actie: "begin", source: input.source }, omvallenOptions));
   if (status.heeftHaperen) cues.push(buildEnvironmentHaperCue(runtimeState, { actie: "begin", source: input.source }, omvallenOptions));
+  if (status.heeftBord) cues.push(buildEnvironmentBordCue(runtimeState, { actie: "begin", source: input.source }, faseOptions));
   const cue = cues[0];
   for (const extra of cues.slice(1)) {
     for (const action of extra.actions) {

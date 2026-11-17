@@ -1,12 +1,11 @@
 (function () {
   "use strict";
 
-  // Bord 1 t/m 5 (blind ranking). Volgt de tekst van de teleprompter: de bordstappen hangen aan
-  // de regels (line.bord) en gaan af zodra de speler die regel bereikt. Tussen twee plaatjes
-  // rouleert het vak door alles wat nog niet op het bord staat.
+  // Bord 1 t/m 5 (blind ranking). Een plaatje komt in beeld als de operator op de knop drukt
+  // (payload.bord.getoond) en blijft staan. Het gaat naar zijn plek zodra de speler bij die regel
+  // is (line.bord), of anders bij de druk voor het volgende plaatje. Zonder druk is het vak leeg.
   const PLEKKEN = 5;
   const VLIEG_MS = 430;
-  const ROL_MS = 90;
   const params = new URLSearchParams(window.location.search);
   const vel = document.getElementById("vel");
   const bordEl = document.getElementById("bord");
@@ -19,13 +18,10 @@
 
   let sleutel = "";        // welke tekst er nu ligt
   let stappen = [];        // alle bordstappen van die tekst, met de cue waarop ze afgaan
-  let namen = [];
   let gedaan = 0;          // hoeveel stappen al in beeld zijn
   let plekken = new Array(PLEKKEN).fill(null);
   let open = null;
   let bezig = false;
-  let rol = null;
-  let rolIndex = 0;
   let doel = 0;
 
   function schaal() {
@@ -72,13 +68,6 @@
     });
   }
 
-  const over = () => namen.filter((naam) => !plekken.includes(naam) && naam !== open);
-
-  function stopRol() {
-    if (rol) window.clearInterval(rol);
-    rol = null;
-  }
-
   function terugNaarStart() {
     nieuw.classList.add("vast");
     ["left", "top", "width", "height"].forEach((k) => nieuw.style.removeProperty(k));
@@ -86,33 +75,12 @@
     nieuw.classList.remove("vast");
   }
 
-  // Elk plaatje dat nog over is staat klaar in het vak; rouleren is alleen wisselen welke bovenop ligt.
+  // Geen plaatje open: het vak is leeg tot de operator het volgende plaatje toont.
   function rouleer() {
-    stopRol();
-    const rest = over();
-    if (!rest.length || open) {
-      if (!open) nieuw.classList.add("weg");
-      return;
-    }
-    terugNaarStart();
-    nieuw.textContent = "";
-    const kaarten = rest.map((naam) => {
-      const el = kaart(naam);
-      el.style.visibility = "hidden";
-      nieuw.appendChild(el);
-      return el;
-    });
-    nieuw.classList.remove("weg");
-    const tik = () => {
-      rolIndex = (rolIndex + 1) % kaarten.length;
-      kaarten.forEach((el, i) => { el.style.visibility = i === rolIndex ? "visible" : "hidden"; });
-    };
-    tik();
-    if (kaarten.length > 1) rol = window.setInterval(tik, ROL_MS);
+    if (!open) nieuw.classList.add("weg");
   }
 
   function toon(naam) {
-    stopRol();
     open = naam;
     terugNaarStart();
     nieuw.textContent = "";
@@ -143,7 +111,6 @@
 
   // Zonder animatie naar de stand na n stappen (bij terugklikken of een nieuwe tekst).
   function zetStand(n) {
-    stopRol();
     plekken = new Array(PLEKKEN).fill(null);
     open = null;
     stappen.slice(0, n).forEach((stap) => {
@@ -166,6 +133,21 @@
     else vlieg(stap, verder);
   }
 
+  // Tot welke stap het bord mag: een plaatje pas na de druk van de operator; een plek zodra de
+  // speler bij die regel is, of eerder als de operator het volgende plaatje al toont.
+  function doelVoor(cueIndex, getoond) {
+    let n = 0;
+    let plaatjes = 0;
+    for (const stap of stappen) {
+      if (stap.soort === "plaatje") {
+        if (plaatjes >= getoond) break;
+        plaatjes += 1;
+      } else if (stap.cue > cueIndex && plaatjes >= getoond) break;
+      n += 1;
+    }
+    return n;
+  }
+
   function verwerk(payload) {
     if (!payload || !payload.ok) return;
     const tp = payload.teleprompt || null;
@@ -175,27 +157,26 @@
     const heeftBord = !!(tp && tp.bord && Array.isArray(tp.bord.namen) && tp.bord.namen.length);
     if (!live || !heeftBord) {
       vel.classList.remove("aan");
-      stopRol();
       sleutel = "";
       return;
     }
     const nieuweSleutel = `${tp.version || 0}:${tp.title || ""}:${(tp.lines || []).length}`;
     const cueIndex = Number(payload.cue && payload.cue.index || 0);
+    const getoond = Number(payload.bord && payload.bord.getoond || 0);
     if (nieuweSleutel !== sleutel) {
       sleutel = nieuweSleutel;
-      namen = tp.bord.namen.slice();
       stappen = (tp.bord.begin || []).map((stap) => ({ ...stap, cue: 0 }));
       (tp.lines || []).forEach((line, i) => {
         (line.bord || []).forEach((stap) => stappen.push({ ...stap, cue: i + 1 }));
       });
       bezig = false;
-      doel = stappen.filter((stap) => stap.cue <= cueIndex).length;
+      doel = doelVoor(cueIndex, getoond);
       zetStand(doel);
       vel.classList.add("aan");
       return;
     }
     vel.classList.add("aan");
-    doel = stappen.filter((stap) => stap.cue <= cueIndex).length;
+    doel = doelVoor(cueIndex, getoond);
     speel();
   }
 

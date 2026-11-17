@@ -295,6 +295,7 @@ function mountTeleprompterParser(app, options = {}) {
       captionStyle: store.getCaptionStyle(),
       autoCameraSwitch: store.getAutoCameraSwitch(),
       preparedScene: store.getPreparedScene(),
+      bord: store.getBord(),
     };
   }
 
@@ -838,6 +839,15 @@ function mountTeleprompterParser(app, options = {}) {
       captionStyle: store.getCaptionStyle(),
       autoCameraSwitch: store.getAutoCameraSwitch(),
     });
+  });
+
+  // Bord (blind ranking): de knop van de operator. { actie: "volgende" } zet het volgende plaatje
+  // in beeld, { actie: "begin" } haalt alles weer weg.
+  app.post(`${adminPrefix}/bord`, requireAdmin, (req, res) => {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const result = store.setBord(String(body.actie || "volgende") === "volgende" ? "volgende" : "begin");
+    if (result.changed) broadcast("bord");
+    res.json({ ok: true, bord: result.bord, changed: result.changed });
   });
 
   app.post(`${adminPrefix}/reveal`, requireAdmin, (_req, res) => {

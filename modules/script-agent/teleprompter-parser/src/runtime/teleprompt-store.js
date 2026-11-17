@@ -182,6 +182,27 @@ function createTelepromptStore(options = {}) {
   let autoCameraSwitchUpdatedAt = cueUpdatedAt;
   let preparedScene = null;
   let preparedSceneVersion = 0;
+  // Bord (blind ranking): hoeveel plaatjes de operator met de knop in beeld heeft gezet.
+  let bordGetoond = 0;
+  let bordVersion = 0;
+
+  function bordTotaal() {
+    const namen = current && current.bord && Array.isArray(current.bord.namen) ? current.bord.namen : [];
+    return namen.length;
+  }
+
+  function getBord() {
+    return { getoond: Math.min(bordGetoond, bordTotaal()), totaal: bordTotaal(), version: bordVersion };
+  }
+
+  // actie "volgende": het volgende plaatje in beeld; "begin": alles weer weg.
+  function setBord(actie) {
+    const voor = bordGetoond;
+    bordGetoond = actie === "volgende" ? Math.min(bordGetoond + 1, bordTotaal()) : 0;
+    const changed = bordGetoond !== voor;
+    if (changed) bordVersion += 1;
+    return { bord: getBord(), changed };
+  }
 
   function deckLength() {
     const lines = current && Array.isArray(current.lines) ? current.lines : [];
@@ -328,6 +349,7 @@ function createTelepromptStore(options = {}) {
     cueIndex = 0;
     cueVersion += 1;
     cueUpdatedAt = current.updatedAt;
+    setBord("begin");
     return current;
   }
 
@@ -375,6 +397,7 @@ function createTelepromptStore(options = {}) {
       preparedSceneVersion += 1;
     }
     const cueResult = resetCueIndex();
+    setBord("begin");
     return {
       preparedScene: getPreparedScene(),
       cue: cueResult.cue,
@@ -397,6 +420,8 @@ function createTelepromptStore(options = {}) {
     prepareScene,
     setPreparedReady,
     revealPreparedScene,
+    getBord,
+    setBord,
   };
 }
 

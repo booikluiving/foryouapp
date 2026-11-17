@@ -114,7 +114,8 @@ async function main() {
   assert.deepEqual(acties[0].payload.alleen, undefined, "alle sporen, niet alleen de intro");
   assert.deepEqual(tdUitSoorten(acties.slice(0, 9)), VERWACHT_TD, "elk effect in TouchDesigner krijgt zijn uit");
   const klaarzetten = acties.findIndex((action) => action.command === "teleprompter.prepare");
-  assert.equal(klaarzetten, 9, "klaarzetten komt na het opruimen");
+  assert.equal(acties[9].command, "teleprompter.bord", "het bord (blind ranking) gaat mee uit");
+  assert.equal(klaarzetten, 10, "klaarzetten komt na het opruimen");
   assert.equal(acties[klaarzetten].delayMs, WACHT_VOOR_KLAARZETTEN_MS, "en wacht tot TouchDesigner klaar is met opruimen");
   assert.equal(acties[acties.length - 2].command, "td.environment.prepare");
   assert.equal(acties[acties.length - 1].command, "td.samen.beeld", "daarna de teleprompters (voorbeeld of terug)");

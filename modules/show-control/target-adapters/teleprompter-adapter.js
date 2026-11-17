@@ -39,6 +39,13 @@ function requestForTeleprompterAction(action) {
       },
     };
   }
+  if (action.command === "teleprompter.bord") {
+    return {
+      method: "POST",
+      path: "/v0/script-agent/teleprompter-parser/bord",
+      body: { actie: payload.actie === "begin" ? "begin" : "volgende", source: payload.source || "show-control" },
+    };
+  }
   throw new Error(`show_control_teleprompter_command_not_supported:${action.command}`);
 }
 

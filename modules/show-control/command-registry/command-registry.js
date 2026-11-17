@@ -572,6 +572,16 @@ const DEFINITIONS = Object.freeze([
     description: "Advances the shared teleprompter cue state from physical inputs such as Perfect Cue.",
   }),
   command({
+    name: "teleprompter.bord",
+    title: "Bord: volgend plaatje of leeg",
+    targetId: "teleprompter",
+    adapter: "teleprompter",
+    ackMode: "fire-and-forget",
+    transport: "http-script-agent",
+    request: { method: "POST", path: "/v0/script-agent/teleprompter-parser/bord" },
+    description: "Blind ranking: actie volgende zet het volgende plaatje in beeld, actie begin haalt alles weg.",
+  }),
+  command({
     name: "script-agent.operator.prepareDraft",
     title: "Script Agent prepare operator draft",
     targetId: "script-agent",
