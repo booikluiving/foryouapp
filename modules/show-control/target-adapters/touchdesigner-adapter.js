@@ -2,6 +2,7 @@
 
 const { normalizeAckMode } = require("../command-registry/command-registry");
 const { sendOsc } = require("./osc-lite");
+const beeld = require("../cue-library/environment-beeld");
 
 const DEFAULT_TD_OSC_HOST = "127.0.0.1";
 const DEFAULT_TD_OSC_PORT = 9100;
@@ -40,6 +41,10 @@ function oscArgsForAction(action) {
       String(Number(payload.schaal) || 0.6),
       String(Number(payload.omhoog) || 0),
     );
+  }
+  // td.samen.beeld: één beeld met de spelers erin; alles uitgerekend in de OSC-args.
+  if (action.command === "td.samen.beeld") {
+    args.push(...beeld.beeldOscArgs(action.payload || {}));
   }
   // td.sfeer.volume: het volume (0-1) van het sfeergeluid dat nu klaarstaat.
   if (action.command === "td.sfeer.volume") {
@@ -117,8 +122,40 @@ function shotUitArgsFor(action) {
   return [`${action.cueId}-shot-uit`, "td.extra.shot", "-", "", "0", "1"];
 }
 
-async function sendTouchDesignerCommand(action, context = {}) {
+// Eén beeld met de spelers erin (environment-beeld.js). Zolang dat aan staat:
+// - is een stap van de knoppen (td.effect.omvallen) een stap in dat beeld, in de uitsnede van nu;
+// - kiest een cameraknop de uitsnede dichtbij van die speler.
+function beeldOpties(options = {}) {
+  return {
+    ...(options.catalogMediaRoot ? { catalogMediaRoot: options.catalogMediaRoot } : {}),
+    ...(options.beeld !== undefined ? { beeld: options.beeld } : {}),
+    ...(options.fileExists ? { fileExists: options.fileExists } : {}),
+  };
+}
+
+function beeldActieVoor(action, options = {}) {
+  const payload = action.payload || {};
+  if (action.command === "td.effect.omvallen" && !payload.overlay && beeld.beeldStaatAan(payload.environmentId)) {
+    const wens = payload.uit ? { stap: "begin" } : { stap: beeld.stapNaam(payload.filePath), duur: payload.duur };
+    const nieuw = beeld.beeldPayload(payload.environmentId, wens, beeldOpties(options));
+    return nieuw ? { ...action, command: "td.samen.beeld", payload: { ...payload, ...nieuw } } : null;
+  }
+  return null;
+}
+
+function beeldNaCamera(action, options = {}) {
+  if (action.command !== "td.camera.set" || !beeld.beeldStaatAan()) return null;
+  const payload = action.payload || {};
+  const camera = Math.round(Number(payload.camera));
+  if (![1, 2, 3].includes(camera)) return null;
+  const environmentId = beeld.actieveOmgeving();
+  const nieuw = beeld.beeldPayload(environmentId, { uitsnede: String(camera) }, beeldOpties(options));
+  return nieuw ? [`${action.cueId}-beeld`, "td.samen.beeld", "-", ...beeld.beeldOscArgs(nieuw)] : null;
+}
+
+async function sendTouchDesignerCommand(inputAction, context = {}) {
   const options = context.adapterOptions || {};
+  const action = beeldActieVoor(inputAction, options) || inputAction;
   const shotUitArgs = shotUitArgsFor(action);
   if (shotUitArgs) {
     // Een shot dat bleef staan (duur 0) is nu ook weg: de volgende druk toont hem weer.
@@ -136,6 +173,9 @@ async function sendTouchDesignerCommand(action, context = {}) {
     address: "/td/cue",
     args,
   });
+  // Na de camera: de uitsnede dichtbij van die speler in het ene beeld.
+  const beeldArgs = beeldNaCamera(action, options);
+  if (beeldArgs) await sendOscMessage(options, { address: "/td/cue", args: beeldArgs }).catch(() => {});
   return {
     stage: "sent",
     state: "pending",
@@ -155,6 +195,8 @@ async function sendTouchDesignerCommand(action, context = {}) {
 }
 
 module.exports = {
+  beeldActieVoor,
+  beeldNaCamera,
   DEFAULT_TD_ACK_PORT,
   DEFAULT_TD_OSC_HOST,
   DEFAULT_TD_OSC_PORT,

@@ -19,6 +19,7 @@ const { resetHoldState } = require("./environment-extras");
 const { resetFasesState } = require("./environment-fases");
 const { resetOmvallenState } = require("./environment-omvallen");
 const { resetHaperenState } = require("./environment-haperen");
+const { beeldUitPayload } = require("./environment-beeld");
 
 // Zo lang wacht het klaarzetten van de volgende scène na het opruimen. De fase zet in
 // TouchDesigner het sfeergeluid van de omgeving terug, een fractie later; het klaarzetten zet
@@ -53,6 +54,8 @@ function sceneEindeActions(input = {}) {
     // Extra shot en gezamenlijk shot: weg.
     tdUit("td.extra.shot", { ...common, filePath: "", duur: 0, uit: true }),
     tdUit("td.samen.shot", { ...common, uit: true }),
+    // Eén beeld met de spelers erin: weg, terug naar de gewone camera's.
+    tdUit("td.samen.beeld", beeldUitPayload(common)),
   ];
 }
 

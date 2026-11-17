@@ -15,6 +15,8 @@ const {
   normalizeEnvironmentExtras,
 } = require("../../../shared/environment-extras/environment-extras-v0");
 
+const { beeldLabel, beeldPayload } = require("./environment-beeld");
+
 const DEFAULT_CATALOG_DB_PATH = path.resolve(__dirname, "../../catalog/db/catalog.sqlite");
 const DEFAULT_MEDIA_ROOT = path.resolve(__dirname, "../../catalog/media");
 const EXTRA_KINDS = ["shot", "geluid"];
@@ -209,12 +211,16 @@ function environmentExtrasStatus(runtimeState, options = {}) {
   const extras = normalizeEnvironmentExtras(record.extras);
   const resolvedName = ref.resolved && ref.resolved.environment ? ref.resolved.environment.name : "";
   const samen = readSamen(ref.environmentId, options);
+  // Eén beeld met de spelers erin (environment-beeld.js): de shotknop toont dan het overzicht.
+  const overzicht = beeldLabel(ref.environmentId, options);
   const result = {
     ok: true,
     environmentId: ref.environmentId,
     environmentName: record.name || resolvedName || ref.environmentId,
     bron: ref.bron,
-    shot: samen ? resolveSamen(samen, options) : resolveExtra("shot", extras.shot, read.mediaAssets || [], options),
+    shot: overzicht
+      ? { label: overzicht, omschrijving: "", bron: "beeld", actie: "Toont het overzicht met alle spelers.", klaar: true, reden: "", filePath: "", beeld: true, duur: 0 }
+      : samen ? resolveSamen(samen, options) : resolveExtra("shot", extras.shot, read.mediaAssets || [], options),
     geluid: resolveExtra("geluid", extras.geluid, read.mediaAssets || [], options),
     sfeerVolume: extras.sfeer.volume,
   };
@@ -230,7 +236,7 @@ const holdState = { environmentId: "", aan: false, samen: false };
 // Kort voor deck-status: geen bestandspaden.
 function publicExtrasStatus(status) {
   const strip = (extra) => {
-    const { filePath, assetId, samen, ...rest } = extra || {};
+    const { filePath, assetId, samen, beeld, ...rest } = extra || {};
     return rest;
   };
   return { ...status, shot: strip(status.shot), geluid: strip(status.geluid) };
@@ -305,6 +311,11 @@ function buildEnvironmentExtraCue(runtimeState, input = {}, options = {}) {
       // daarna terug op het niveau van de omgeving.
       ...(extra.dempSfeer ? { dempSfeer: { terug: status.sfeerVolume } } : {}),
     }));
+  } else if (extra.beeld) {
+    // Eén beeld met de spelers erin: terug naar het overzicht (de cameraknoppen gaan dichtbij).
+    const payload = beeldPayload(status.environmentId, { uitsnede: "overzicht" }, options);
+    if (!payload) throw extraError("bestand_ontbreekt", status);
+    actions.push(cueAction(cueId, 0, "touchdesigner", "td.samen.beeld", "fire-and-forget", { ...common, ...payload }));
   } else if (extra.samen) {
     // Aan/uit: de eerste druk zet het gezamenlijke shot neer, de volgende haalt het weg.
     const uit = holdState.aan && holdState.environmentId === status.environmentId;

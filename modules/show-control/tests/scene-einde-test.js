@@ -40,6 +40,7 @@ const VERWACHT_TD = [
   "td.effect.haper 3,0",
   "td.extra.shot ,0,1",
   "td.samen.shot 1,2,3,,,0.6,0",
+  "td.samen.beeld 1",
 ];
 
 async function main() {
@@ -111,9 +112,9 @@ async function main() {
   const acties = stop.generatedActions;
   assert.equal(acties[0].command, "audio.extra.stop", "eerst het geluid");
   assert.deepEqual(acties[0].payload.alleen, undefined, "alle sporen, niet alleen de intro");
-  assert.deepEqual(tdUitSoorten(acties.slice(0, 8)), VERWACHT_TD, "elk effect in TouchDesigner krijgt zijn uit");
+  assert.deepEqual(tdUitSoorten(acties.slice(0, 9)), VERWACHT_TD, "elk effect in TouchDesigner krijgt zijn uit");
   const klaarzetten = acties.findIndex((action) => action.command === "teleprompter.prepare");
-  assert.equal(klaarzetten, 8, "klaarzetten komt na het opruimen");
+  assert.equal(klaarzetten, 9, "klaarzetten komt na het opruimen");
   assert.equal(acties[klaarzetten].delayMs, WACHT_VOOR_KLAARZETTEN_MS, "en wacht tot TouchDesigner klaar is met opruimen");
   assert.equal(acties[acties.length - 1].command, "td.environment.prepare");
 

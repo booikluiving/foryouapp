@@ -1,5 +1,6 @@
 "use strict";
 
+const { beeldStartAction } = require("../cue-library/environment-beeld");
 const { fetchJson, joinUrl } = require("./http-json");
 const {
   performerSlotsFromRuntimeState,
@@ -185,6 +186,21 @@ function generatedSpelerStartAction(runtimeState, context = {}) {
   }
 }
 
+function generatedBeeldStartAction(runtimeState, context = {}) {
+  const options = context.adapterOptions || {};
+  try {
+    const resolved = runtimeState && runtimeState.activeSituation && runtimeState.activeSituation.resolved;
+    const environmentId = resolved && (resolved.environmentId || (resolved.environment && resolved.environment.id));
+    if (!environmentId) return null;
+    return beeldStartAction(String(environmentId), {
+      ...(options.catalogMediaRoot ? { catalogMediaRoot: options.catalogMediaRoot } : {}),
+      ...(options.beeld !== undefined ? { beeld: options.beeld } : {}),
+    });
+  } catch (_err) {
+    return null;
+  }
+}
+
 function canGeneratePrepare(runtimeState) {
   return !!(runtimeState && runtimeState.resolvedPreparedNext);
 }
@@ -310,6 +326,9 @@ async function sendRuntimeCommand(action, context = {}) {
     if (command === "runtime.startSituation" && canGenerateGo(result.body)) {
       const spelers = generatedSpelerStartAction(result.body, context);
       if (spelers) generatedActions.push(spelers);
+      // Eén beeld met de spelers erin (trolleyprobleem): het overzicht, als de omgeving dat heeft.
+      const beeldStart = generatedBeeldStartAction(result.body, context);
+      if (beeldStart) generatedActions.push(beeldStart);
     }
     // Aan het eind van de scène: alles wat de knoppen van de scène hebben aangezet gaat uit
     // (geluid, fase, stappen, haperen, extra shot). Eén plek: cue-library/scene-einde.js.

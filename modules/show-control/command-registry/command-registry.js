@@ -194,6 +194,15 @@ const DEFINITIONS = Object.freeze([
     description: "Toont twee camera's naast elkaar op het staande scherm (payload: cameras, achtergrond, voorgrond, schaal, omhoog, uit). Per omgeving in samen/samen.json bij de media.",
   }),
   command({
+    name: "td.samen.beeld",
+    title: "TD één beeld met de spelers erin",
+    targetId: "touchdesigner",
+    adapter: "touchdesigner",
+    ackMode: "fire-and-forget",
+    transport: "osc-control-port",
+    description: "Zet de drie camera's klein in één plaat (payload: achtergrond, voorgrond, spelers met schaal, draai, plek en afsnijden, uit). Per omgeving in beeld/beeld.json bij de media.",
+  }),
+  command({
     name: "td.sfeer.volume",
     title: "TD volume sfeergeluid",
     targetId: "touchdesigner",
