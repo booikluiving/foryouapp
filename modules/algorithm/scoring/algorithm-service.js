@@ -418,9 +418,51 @@ async function observeAudienceSignals(event) {
   };
 }
 
+// Het antwoord van het publiek op de labelvraag na een scène (beoordeelmoment van de publieksdienst).
+// Komt meestal na de observatie van die scène binnen; komt het eerder, dan wacht het tot die er is.
+async function observeLabelVoorkeur(event = {}) {
+  const state = await getScoringContext(event.showRunId);
+  const delta = Math.max(-1, Math.min(1, Number(event.delta)));
+  if (!event.labelId || !Number.isFinite(delta)) return { ok: false, error: "label_of_delta_ontbreekt" };
+  const voorkeur = {
+    labelId: String(event.labelId),
+    delta: Math.round(delta * 1000) / 1000,
+    stemmen: Math.max(0, Number(event.stemmen) || 0),
+    situationRunId: String(event.situationRunId || ""),
+    at: new Date().toISOString(),
+  };
+  const observations = Array.isArray(state.observations) ? state.observations : [];
+  const observation = observations.find((item) => item && voorkeur.situationRunId && item.situationRunId === voorkeur.situationRunId)
+    || (voorkeur.situationRunId ? null : observations[observations.length - 1]);
+  if (observation) {
+    observation.labelVoorkeur = voorkeur;
+  } else {
+    state.labelVoorkeurWacht = Array.isArray(state.labelVoorkeurWacht) ? state.labelVoorkeurWacht : [];
+    state.labelVoorkeurWacht.push(voorkeur);
+  }
+  state.scoreFeed = buildScoreFeed({
+    showRunId: state.showRunId,
+    catalog: state.catalog,
+    observations: state.observations,
+    liveObservation: state.liveAudienceObservation || null,
+    config: state.config,
+  });
+  state.updatedAt = new Date().toISOString();
+  state.log = Array.isArray(state.log) ? state.log : [];
+  state.log.push({ type: "publiek_label_voorkeur", at: state.updatedAt, ...voorkeur, wacht: !observation });
+  await saveScoringContextState(state);
+  return { ok: true, voorkeur, wacht: !observation, scoreFeed: state.scoreFeed };
+}
+
 async function observeSituation(event) {
   const state = await getScoringContext(event && event.showRunId);
   const observation = await buildObservation(event, state);
+  const wacht = Array.isArray(state.labelVoorkeurWacht) ? state.labelVoorkeurWacht : [];
+  const eerder = wacht.find((item) => item.situationRunId && item.situationRunId === observation.situationRunId);
+  if (eerder) {
+    observation.labelVoorkeur = eerder;
+    state.labelVoorkeurWacht = wacht.filter((item) => item !== eerder);
+  }
   const observedScore = observation.observedScore;
   state.observations.push(observation);
   state.scoreFeed = buildScoreFeed({
@@ -486,6 +528,7 @@ module.exports = {
   getScoringContext,
   listScoringContexts,
   observeAudienceSignals,
+  observeLabelVoorkeur,
   observeSituation,
   readAlgorithmConfig,
   simulateSituationObservation,

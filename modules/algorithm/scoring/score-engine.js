@@ -29,6 +29,9 @@ function defaultAlgorithmConfig() {
       // (de helft kijkt minstens 5 seconden weg, omlaag of met de ogen dicht).
       cameraLaugh: 2,
       cameraBored: -2,
+      // Publieksvraag na de scène over het label (te veel / precies goed / mag meer): de voorkeur, van -1
+      // tot 1, telt met dit gewicht op bij elke scène met dat label.
+      labelVoorkeur: 1,
     },
     normalization: {
       timeCorrection: 1,
@@ -94,6 +97,7 @@ function normalizeAlgorithmConfig(input = {}, options = {}) {
       roomSound: rounded(clampNumber(sourceWeights.roomSound, 0, 10, baseWeights.roomSound ?? 0), 3),
       cameraLaugh: rounded(clampNumber(sourceWeights.cameraLaugh, -10, 10, baseWeights.cameraLaugh ?? 0), 3),
       cameraBored: rounded(clampNumber(sourceWeights.cameraBored, -10, 10, baseWeights.cameraBored ?? 0), 3),
+      labelVoorkeur: rounded(clampNumber(sourceWeights.labelVoorkeur, -10, 10, baseWeights.labelVoorkeur ?? 1), 3),
       sceneRepeatPenalty: rounded(clampNumber(
         sourceWeights.sceneRepeatPenalty ?? source.sceneRepeatPenalty,
         0,
@@ -300,6 +304,8 @@ function buildRunProfile(observations = [], liveObservation = null, config = def
     situations: new Map(),
     labels: new Map(),
     characters: new Map(),
+    // Wat het publiek na de scène over het label zei: per label een voorkeur van -1 tot 1.
+    labelVoorkeur: new Map(),
     includesLive: !!liveObservation,
   };
   const addObservation = (observation, weight, source = {}) => {
@@ -311,6 +317,10 @@ function buildRunProfile(observations = [], liveObservation = null, config = def
     }
     for (const characterId of observation.characterIds || []) {
       addWeightedProfile(profile.characters, characterId, score, weight, source);
+    }
+    const voorkeur = observation.labelVoorkeur;
+    if (voorkeur && voorkeur.labelId && Number.isFinite(Number(voorkeur.delta))) {
+      addWeightedProfile(profile.labelVoorkeur, String(voorkeur.labelId), Number(voorkeur.delta), weight, source);
     }
   };
   observations.forEach((observation, index) => {
@@ -448,6 +458,7 @@ function buildScoreFeed({
       explorationBonus: 0,
       retryBonus: 0,
       sceneRepeatPenalty: 0,
+      labelVoorkeur: 0,
     };
     const reasons = [];
     const labelProfile = profileAverageForIds(runProfile.labels, situation.labelIds || []);
@@ -462,6 +473,11 @@ function buildScoreFeed({
     components.profileCharacterAffinity = rounded(characterAffinity, 4);
     components.affinity = rounded(labelAffinity + characterAffinity, 4);
     predictedScore += labelAffinity + characterAffinity;
+    const voorkeur = profileAverageForIds(runProfile.labelVoorkeur, situation.labelIds || [])
+      * safeNumber(normalizedConfig.weights.labelVoorkeur, 1);
+    components.labelVoorkeur = rounded(voorkeur, 4);
+    predictedScore += voorkeur;
+    if (voorkeur !== 0) reasons.push("publiek_label_voorkeur");
     if (labelProfile !== 0) reasons.push("profile_label_affinity");
     if (characterProfile !== 0) reasons.push("profile_character_affinity");
     if (runProfile.includesLive && (

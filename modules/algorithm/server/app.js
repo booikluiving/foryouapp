@@ -14,6 +14,7 @@ const {
   getScoreFeed,
   listScoringContexts,
   observeAudienceSignals,
+  observeLabelVoorkeur,
   observeSituation,
   readAlgorithmConfig,
   simulateSituationObservation,
@@ -135,6 +136,12 @@ function createAlgorithmApp(options = {}) {
   app.post("/v0/algorithm/events/audience-signals", asyncRoute(async (req, res) => {
     const result = await observeAudienceSignals(req.body || {});
     res.status(201).json(result);
+  }));
+
+  // Publieksvraag na de scène: meer of minder van het label van die scène.
+  app.post("/v0/algorithm/events/label-voorkeur", asyncRoute(async (req, res) => {
+    const result = await observeLabelVoorkeur(req.body || {});
+    res.status(result.ok ? 201 : 400).json(result);
   }));
 
   app.post("/v0/algorithm/simulate", asyncRoute(async (req, res) => {
