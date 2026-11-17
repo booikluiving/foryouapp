@@ -368,6 +368,8 @@
     const REGIE_KIES_TEMPO = Math.min(5, Math.max(0.3, Number(REGIE_OPTIES.get("kiesTempo")) || REGIE_TEMPO));
     const REGIE_SPRONGEN = Math.min(40, Math.max(3, Number(REGIE_OPTIES.get("sprongen")) || 0));
     const REGIE_NA_KEUZE = Math.max(0, Number(REGIE_OPTIES.get("naKeuze")) || 0);
+    // Zo lang knippert de gekozen scène (drie keer aan en uit).
+    const REGIE_KNIPPER_MS = 1200;
     // Met vlot=1: na een scène meteen uitgezoomd (geen camerabeweging), nieuwe scènes komen per laag
     // tegelijk vrij, geen pauzes, een kortere kiezer en inzoomen zodra de keuze er is.
     const REGIE_VLOT = REGIE_OPTIES.get("vlot") === "1";
@@ -3820,10 +3822,20 @@
         }
         // Ring: springt langs de vrije scènes en blijft op de gekozen scène staan.
         if ((regie.ring === sceneId || regie.gekozen === sceneId) && !isFocus) {
-          // De kiezer: vier witte hoeken om de ster.
+          // De kiezer: vier witte hoeken om de ster. Is hij geland, dan knippert de gekozen scène een paar keer.
           const m = straal + 9;
           const h = m * 0.45;
-          ctx.globalAlpha = fade;
+          const knipper = regie.gekozen === sceneId && regie.gekozenSinds ? nu - regie.gekozenSinds : -1;
+          const knippert = knipper >= 0 && knipper < REGIE_KNIPPER_MS;
+          const aan = !knippert || Math.floor(knipper / (REGIE_KNIPPER_MS / 6)) % 2 === 0;
+          if (knippert && aan) {
+            ctx.globalAlpha = fade;
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.arc(punt.x, punt.y, straal * 1.6, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.globalAlpha = aan ? fade : fade * 0.15;
           ctx.strokeStyle = "#ffffff";
           ctx.lineWidth = 1.6;
           ctx.lineCap = "butt";
@@ -3896,7 +3908,8 @@
       });
       // Staat de kaart stil en verandert er niets, dan wordt er ook niets getekend.
       const verborgen = podium.doek && podium.doek.style.visibility === "hidden";
-      if (!verborgen && (!regie.stil || podium.vuil || podium.tweens.length || pops)) {
+      const knippert = !!(regie.gekozen && regie.gekozenSinds && klok - regie.gekozenSinds < REGIE_KNIPPER_MS + 100);
+      if (!verborgen && (!regie.stil || podium.vuil || podium.tweens.length || pops || knippert)) {
         podiumTeken(klok);
         podium.vuil = false;
       }
@@ -4366,6 +4379,7 @@
       if (gen !== regie.gen) return;
       regie.ring = 0;
       regie.gekozen = wil;
+      regie.gekozenSinds = Date.now();
       if (!doel.cur) regieTik("slot", wil);
       regieToon(model, doel, true);
       if (!REGIE_VLOT) await regieWacht((doel.cur ? 400 : doel.stemWinnaar === wil ? 3500 : 2500) / REGIE_TEMPO);

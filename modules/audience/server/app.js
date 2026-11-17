@@ -219,6 +219,16 @@ function createAudienceApp(options = {}) {
     service.emit("broadcast", { type: "up_next_ready", ready, situationId });
     res.json({ ok: true, ...upNextReady });
   }));
+  // De kiezer op het zaalscherm is geland: nu ziet ook de teleprompter de volgende scène.
+  app.post("/audience/stage/keuze-getoond", asyncRoute(async (_req, res) => {
+    const basis = String(process.env.AUDIENCE_SCRIPT_AGENT_URL || "http://127.0.0.1:3027").replace(/\/+$/, "");
+    try {
+      const antwoord = await fetch(`${basis}/v0/script-agent/teleprompter-parser/keuze`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wacht: false }), signal: AbortSignal.timeout(2000) });
+      res.json({ ok: antwoord.ok });
+    } catch (err) {
+      res.json({ ok: false, fout: err && err.message ? String(err.message).slice(0, 200) : "onbekend" });
+    }
+  }));
   app.get("/audience/stage/up-next", asyncRoute(async (_req, res) => {
     res.set("Cache-Control", "no-store");
     const result = await fetchRuntimeView().catch(() => null);

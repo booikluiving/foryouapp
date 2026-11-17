@@ -225,11 +225,10 @@
       html.snel #tussenlaag { transition-duration: 340ms; }
       /* Tijdens de grote klok kiest het universum de volgende scène; daarna is het weg tot Up next. */
       #stage.stemfase:not(.kiest) #universum { opacity: 0; }
-      /* Zolang de klok groot staat: alleen de klok, het universum dat kiest en de spelers (nog zonder
-         personage). De oproep, de pijl en de QR-code komen als de klok klein wordt. */
+      /* Zolang de klok groot staat: alleen de klok, het universum dat kiest en de spelers (het personage
+         verschijnt zodra de kiezer landt). De oproep, de pijl en de QR-code komen als de klok klein wordt. */
       #p-stem .oproep, #p-stem .pijl, #p-stem .qr { transition: opacity 400ms var(--curve); }
       #p-stem.groot .oproep, #p-stem.groot .pijl, #p-stem.groot .qr { opacity: 0; }
-      #stage.kiest .spelerrij .speler .rol { opacity: 0; }
       /* Up next: na het stemmen. De scène die komt, de topfavoriet als die erin zit, en hoe sterk het
          algoritme nu naar elk label trekt. Groen zodra de operator READY drukt. */
       #p-upnext { left: 60px; top: 300px; width: 560px; --wx: -700px; display: grid; gap: 14px; }
@@ -465,7 +464,7 @@
       const SNEL = TEMPO > 1;
       // De kiezer na de scène: rustiger dan de rest van de reeks, en daarna even stil op de keuze.
       const KIES_TEMPO = Number(new URLSearchParams(location.search).get("kiesTempo")) || 1;
-      const RUST_MS = 1500;
+      const RUST_MS = 1000;
       if (SNEL) document.documentElement.classList.add("snel");
       // Het rapport: bij scène RAPPORT_SNELST_BIJ duurt het nog dit deel van de eerste keer, sneller wordt het niet.
       const RAPPORT_SNELST = 0.2, RAPPORT_SNELST_BIJ = 10;
@@ -1127,6 +1126,8 @@
             gekozen = { id: stand.sceneId, titel: stand.titel, omgeving: stand.omgeving || null, score: hierna && zelfdeTitel(hierna.titel, stand.titel) ? hierna.score : null };
             stemGekozen();
             haalUpNext();
+            // Op hetzelfde moment krijgen de spelers de scène op de teleprompter.
+            fetch("/audience/stage/keuze-getoond", { method: "POST" }).catch(() => {});
             // De stemlijst maakt plaats voor de titel van de winnaar.
             stem.actief = false;
             stem.tot = 0;
