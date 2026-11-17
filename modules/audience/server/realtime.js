@@ -185,6 +185,7 @@ function attachAudienceRealtime(server, service, options = {}) {
       reacties: service.getReacties(),
       naSceneVraag: service.getNaSceneVraag(),
       beoordeling: service.beoordeling.publiek(),
+      waarschuwing: service.waarschuwing ? service.waarschuwing.publiek() : null,
       ranking: service.getRanking(),
     });
   }

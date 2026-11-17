@@ -35,6 +35,7 @@ const { AudienceService, isLoopbackIp } = require("./audience-service");
 const { loadExpress } = require("./express-loader");
 
 const express = loadExpress();
+const { createWaarschuwing } = require("./waarschuwing");
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
 
 function asyncRoute(handler) {
@@ -71,6 +72,9 @@ function createAudienceApp(options = {}) {
     clients: options.clients || audienceClients(),
   });
   app.locals.audienceService = service;
+  // De content warning bij START SHOW (waarschuwing.js); de telefoons krijgen de stand bij het verbinden.
+  const waarschuwing = createWaarschuwing(service);
+  service.waarschuwing = waarschuwing;
   app.use(express.json({ limit: "512kb" }));
   app.use("/audience/vendor", express.static(path.join(PUBLIC_DIR, "vendor"), { fallthrough: false }));
 
@@ -271,7 +275,7 @@ function createAudienceApp(options = {}) {
   });
 
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
-  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag", "ranking", "beoordeling", "beoordeling_dicht", "beoordeling_stem"]);
+  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag", "ranking", "beoordeling", "beoordeling_dicht", "beoordeling_stem", "waarschuwing"]);
   // Stand van de stemming op de startscène, voor het zaalscherm en het universum.
   app.get("/audience/stage/start-stemming", (_req, res) => {
     const stemming = service.getStartStemming();
@@ -293,8 +297,31 @@ function createAudienceApp(options = {}) {
     });
   });
   app.post("/audience/admin/show/start", (_req, res) => {
+    const wasGestart = service.isShowGestart();
     const result = service.startShow();
+    // De show begint: de content warning komt één keer in beeld (alleen als het team een tekst heeft ingevuld).
+    if (result.ok && !wasGestart) waarschuwing.toon();
     res.status(result.ok ? 200 : 409).json(result);
+  });
+
+  // De content warning: de stand, de instellingen uit Admin, en met de hand tonen of weghalen.
+  app.get("/audience/stage/waarschuwing", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(waarschuwing.stand());
+  });
+  app.get("/audience/stage/waarschuwing.js", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.sendFile(path.join(PUBLIC_DIR, "stage-waarschuwing.js"));
+  });
+  app.post("/audience/admin/waarschuwing/instellingen", (req, res) => {
+    res.json({ ok: true, instellingen: waarschuwing.zetInstellingen(req.body || {}) });
+  });
+  app.post("/audience/admin/waarschuwing/toon", (_req, res) => {
+    const getoond = waarschuwing.toon();
+    res.status(getoond ? 200 : 409).json(getoond ? { ok: true, waarschuwing: getoond } : { ok: false, error: "geen_tekst" });
+  });
+  app.post("/audience/admin/waarschuwing/weg", (_req, res) => {
+    res.json({ ok: true, weg: waarschuwing.weg() });
   });
 
   app.get("/audience/stage/stroom", (req, res) => {
@@ -326,6 +353,7 @@ function createAudienceApp(options = {}) {
       berichten,
       ranking: service.getRanking(),
       beoordeling: service.beoordeling.publiek(),
+      waarschuwing: waarschuwing.publiek(),
     });
     const doorsturen = (msg) => {
       if (!msg || !STROOM_TYPES.has(msg.type)) return;

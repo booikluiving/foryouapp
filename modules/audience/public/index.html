@@ -465,6 +465,26 @@
         color: var(--b);
       }
       /* ------------------------------------------------ de vragen na de scène */
+      /* De content warning bij het begin van de show: het hele scherm, alleen de tekst van het team. */
+      #waarschuwingBox {
+        position: fixed;
+        inset: 0;
+        z-index: 70;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        padding: max(24px, env(safe-area-inset-top, 0px)) 24px max(24px, env(safe-area-inset-bottom, 0px));
+        background: var(--bg);
+        color: var(--a);
+        font-weight: 700;
+        font-size: 30px;
+        line-height: 1.05;
+        letter-spacing: -0.025em;
+        white-space: pre-line;
+        overflow-wrap: anywhere;
+        overflow-y: auto;
+      }
+      #waarschuwingBox[hidden] { display: none; }
       /* Zelfde vorm als het stemmen: het hele scherm, één vraag tegelijk, één tik is een antwoord. */
       #beoordeelBox {
         position: fixed;
@@ -881,6 +901,7 @@
       <div id="beoordeelKeuzes"></div>
       <div id="beoordeelMeta"><span id="beoordeelStap"></span><span></span></div>
     </div>
+    <div id="waarschuwingBox" hidden></div>
     <div id="rankingBalk" hidden></div>
     <div id="topComment" hidden></div>
     <div id="chatFeed"></div>
@@ -1618,6 +1639,19 @@
       }
 
       // ── De vragen na de scène ─────────────────────────────────────────────────────────────────
+      // De content warning bij START SHOW: de tekst van het team over het hele scherm, weg na de
+      // ingestelde tijd of als de server hem weghaalt.
+      let waarschuwingTimer = null;
+      function toonWaarschuwing(w) {
+        const box = document.getElementById("waarschuwingBox");
+        clearTimeout(waarschuwingTimer);
+        waarschuwingTimer = null;
+        if (!w || !String(w.tekst || "").trim() || w.waar === "zaalscherm") { box.hidden = true; return; }
+        box.textContent = String(w.tekst);
+        box.hidden = false;
+        if (Number.isFinite(w.overMs)) waarschuwingTimer = setTimeout(() => { box.hidden = true; }, Math.max(0, w.overMs));
+      }
+
       // De server stuurt na elke scène een paar vragen met een klok. Eén vraag tegelijk; na de laatste,
       // of als de klok op nul staat, komt de chat terug.
       const beoordeelBoxEl = document.getElementById("beoordeelBox");
@@ -3074,6 +3108,7 @@
               noteServerSeen();
               if (msg.poll) showPoll(msg.poll);
               toonBeoordeling(msg.beoordeling || null);
+              toonWaarschuwing(msg.waarschuwing || null);
               zetRanking(msg.ranking);
               if (Array.isArray(msg.reacties)) renderReactieKnoppen(msg.reacties);
               if (typeof msg.naSceneVraag === "string") naSceneVraag = msg.naSceneVraag;
@@ -3194,6 +3229,11 @@
             }
             if (msg.type === "beoordeling") {
               toonBeoordeling(msg.beoordeling);
+              noteServerSeen();
+              return;
+            }
+            if (msg.type === "waarschuwing") {
+              toonWaarschuwing(msg.waarschuwing || null);
               noteServerSeen();
               return;
             }

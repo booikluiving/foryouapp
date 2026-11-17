@@ -470,6 +470,31 @@
           </div>
           <div id="startStemState" class="muted"></div>
         </section>
+        <section class="card">
+          <h2>Stemmen na de scène</h2>
+          <div class="row">
+            <label>Klok (s) <input id="beoordeelDuur" type="number" min="10" max="300" step="5" value="45" /></label>
+          </div>
+        </section>
+        <section class="card">
+          <h2>Content warning</h2>
+          <textarea id="waarschuwingTekst" maxlength="600"></textarea>
+          <div class="row">
+            <label>In beeld (s, 0 = tot Weg) <input id="waarschuwingDuur" type="number" min="0" max="120" step="1" value="10" /></label>
+            <label>Waar
+              <select id="waarschuwingWaar">
+                <option value="beide">Zaalscherm en telefoons</option>
+                <option value="zaalscherm">Zaalscherm</option>
+                <option value="telefoons">Telefoons</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <button id="waarschuwingToonBtn" type="button">Toon nu</button>
+            <button id="waarschuwingWegBtn" type="button">Weg</button>
+          </div>
+          <div class="muted">Komt in beeld bij START SHOW. Zonder tekst komt er niets.</div>
+        </section>
 
         <section class="card">
           <h2>Live chat (recent)</h2>
@@ -1704,6 +1729,38 @@
         post("/audience/admin/start-stemming/instellingen", {
           durationSeconds: Number(document.getElementById("startStemDuur").value || 45),
         }).catch(() => {});
+      });
+      // De klok van het stemmen na de scène en de content warning: eigen instellingen, één keer ophalen.
+      api("/audience/stage/beoordeling").then((data) => {
+        if (data.instellingen) document.getElementById("beoordeelDuur").value = data.instellingen.duur;
+      }).catch(() => {});
+      document.getElementById("beoordeelDuur").addEventListener("change", (ev) => {
+        post("/audience/admin/beoordeling/instellingen", { duur: Number(ev.target.value || 45) })
+          .then((data) => { ev.target.value = data.instellingen.duur; setActionMessage(""); })
+          .catch((err) => setActionMessage("Klok opslaan mislukt: " + err.message, true));
+      });
+      api("/audience/stage/waarschuwing").then((data) => {
+        const inst = data.instellingen || {};
+        document.getElementById("waarschuwingTekst").value = inst.tekst || "";
+        document.getElementById("waarschuwingDuur").value = inst.duur;
+        document.getElementById("waarschuwingWaar").value = inst.waar;
+      }).catch(() => {});
+      const bewaarWaarschuwing = () => post("/audience/admin/waarschuwing/instellingen", {
+        tekst: document.getElementById("waarschuwingTekst").value,
+        duur: Number(document.getElementById("waarschuwingDuur").value || 0),
+        waar: document.getElementById("waarschuwingWaar").value,
+      }).then(() => setActionMessage(""));
+      for (const id of ["waarschuwingTekst", "waarschuwingDuur", "waarschuwingWaar"]) {
+        document.getElementById(id).addEventListener("change", () => {
+          bewaarWaarschuwing().catch((err) => setActionMessage("Content warning opslaan mislukt: " + err.message, true));
+        });
+      }
+      document.getElementById("waarschuwingToonBtn").addEventListener("click", () => {
+        bewaarWaarschuwing().then(() => post("/audience/admin/waarschuwing/toon"))
+          .catch((err) => setActionMessage(err.message === "geen_tekst" ? "Vul eerst een tekst in." : "Tonen mislukt: " + err.message, true));
+      });
+      document.getElementById("waarschuwingWegBtn").addEventListener("click", () => {
+        post("/audience/admin/waarschuwing/weg").catch(() => {});
       });
       document.getElementById("sluitStemBtn").addEventListener("click", () => {
         runAction("/audience/admin/polls/close", {}, "Stemming gesloten.");
