@@ -472,19 +472,24 @@
         z-index: 70;
         box-sizing: border-box;
         display: flex;
+        flex-direction: column;
         align-items: center;
-        padding: max(24px, env(safe-area-inset-top, 0px)) 24px max(24px, env(safe-area-inset-bottom, 0px));
+        justify-content: center;
+        gap: 28px;
+        padding: max(32px, env(safe-area-inset-top, 0px)) 32px max(32px, env(safe-area-inset-bottom, 0px));
         background: var(--bg);
         color: var(--a);
+        text-align: center;
         font-weight: 700;
-        font-size: 30px;
-        line-height: 1.05;
-        letter-spacing: -0.025em;
-        white-space: pre-line;
-        overflow-wrap: anywhere;
+        overflow-wrap: break-word;
         overflow-y: auto;
       }
       #waarschuwingBox[hidden] { display: none; }
+      /* De eerste regel van de tekst is de kop: groot, in kapitalen. */
+      #waarschuwingKop { font-size: 50px; line-height: 0.88; letter-spacing: -0.045em; text-transform: uppercase; }
+      #waarschuwingRegels { font-size: 19px; line-height: 1.2; letter-spacing: -0.02em; }
+      #waarschuwingRegels p { margin: 0; }
+      #waarschuwingRegels p + p { margin-top: 0.75em; }
       /* Zelfde vorm als het stemmen: het hele scherm, één vraag tegelijk, één tik is een antwoord. */
       #beoordeelBox {
         position: fixed;
@@ -901,7 +906,7 @@
       <div id="beoordeelKeuzes"></div>
       <div id="beoordeelMeta"><span id="beoordeelStap"></span><span></span></div>
     </div>
-    <div id="waarschuwingBox" hidden></div>
+    <div id="waarschuwingBox" hidden><div id="waarschuwingKop"></div><div id="waarschuwingRegels"></div></div>
     <div id="rankingBalk" hidden></div>
     <div id="topComment" hidden></div>
     <div id="chatFeed"></div>
@@ -1647,7 +1652,15 @@
         clearTimeout(waarschuwingTimer);
         waarschuwingTimer = null;
         if (!w || !String(w.tekst || "").trim() || w.waar === "zaalscherm") { box.hidden = true; return; }
-        box.textContent = String(w.tekst);
+        const regels = String(w.tekst).split("\n").map((regel) => regel.trim()).filter(Boolean);
+        document.getElementById("waarschuwingKop").textContent = regels[0] || "";
+        const onder = document.getElementById("waarschuwingRegels");
+        onder.textContent = "";
+        for (const regel of regels.slice(1)) {
+          const p = document.createElement("p");
+          p.textContent = regel;
+          onder.appendChild(p);
+        }
         box.hidden = false;
         if (Number.isFinite(w.overMs)) waarschuwingTimer = setTimeout(() => { box.hidden = true; }, Math.max(0, w.overMs));
       }
