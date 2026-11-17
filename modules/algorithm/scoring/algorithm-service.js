@@ -454,14 +454,14 @@ async function observeLabelVoorkeur(event = {}) {
   return { ok: true, voorkeur, wacht: !observation, scoreFeed: state.scoreFeed };
 }
 
-// Het antwoord van het publiek op de personagevraag na een scène: welk personage wil je nog een keer
-// zien. Per personage het aandeel van de stemmen; wacht net als de labelvraag op de observatie.
+// Het antwoord van het publiek op de personagevraag na een scène: meer of minder van elk personage.
+// Per personage een voorkeur van -1 tot 1; wacht net als de labelvraag op de observatie.
 async function observePersonageVoorkeur(event = {}) {
   const state = await getScoringContext(event.showRunId);
   const stemmen = Math.max(0, Number(event.stemmen) || 0);
   const keuzes = (Array.isArray(event.keuzes) ? event.keuzes : [])
-    .filter((keuze) => keuze && keuze.characterId && Number.isFinite(Number(keuze.aandeel)))
-    .map((keuze) => ({ characterId: String(keuze.characterId), aandeel: Math.round(Math.max(0, Math.min(1, Number(keuze.aandeel))) * 1000) / 1000 }));
+    .filter((keuze) => keuze && keuze.characterId && Number.isFinite(Number(keuze.delta)))
+    .map((keuze) => ({ characterId: String(keuze.characterId), delta: Math.round(Math.max(-1, Math.min(1, Number(keuze.delta))) * 1000) / 1000, stemmen: Math.max(0, Number(keuze.stemmen) || 0) }));
   if (!keuzes.length || !stemmen) return { ok: false, error: "geen_stemmen" };
   const voorkeur = { keuzes, stemmen, situationRunId: String(event.situationRunId || ""), at: new Date().toISOString() };
   const observations = Array.isArray(state.observations) ? state.observations : [];

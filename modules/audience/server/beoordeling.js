@@ -1,8 +1,8 @@
 "use strict";
 
 // Het beoordeelmoment: na elke scène krijgt het publiek op de telefoon een paar korte vragen, met
-// een klok. De vragen gaan over de scène die net gespeeld is: wat vond je ervan en welk personage
-// wil je nog een keer zien (met de foto van de speler als die er is), en een vraag over het label van de
+// een klok. De vragen gaan over de scène die net gespeeld is: wat vond je ervan, meer of minder van elk
+// personage (met de foto van de speler als die er is), en een vraag over het label van de
 // scène (te veel, precies goed, mag meer; of zelf iets typen bij Anders). De antwoorden worden per scène
 // bewaard; het antwoord op de labelvraag gaat naar het algoritme als voorkeur voor dat label.
 
@@ -13,6 +13,9 @@ const MAX_UITSLAGEN = 60;
 const ALGORITME_URL = String(process.env.AUDIENCE_ALGORITHM_URL || "http://127.0.0.1:3023").replace(/\/+$/, "");
 // De drie antwoorden op de labelvraag en wat ze voor het algoritme betekenen.
 const LABEL_KEUZES = [["minder", -1], ["goed", 0], ["meer", 1]];
+// Per personage: minder of meer. Een antwoord is "<characterId>|minder" of "<characterId>|meer".
+const PERSONAGE_RICHTINGEN = [["minder", -1], ["meer", 1]];
+const OUDE_PERSONAGEVRAAG = "Welk personage wil je nog een keer zien?";
 
 const STANDAARD = {
   aan: true,
@@ -21,7 +24,7 @@ const STANDAARD = {
   // Zo lang staat de klok (seconden). De klok is ook de omkleedtijd van de spelers.
   duur: 30,
   scene: { aan: true, vraag: "Wat vond je van de scène?", keuzes: [{ id: "leuk", emoji: "❤️" }, { id: "slecht", emoji: "👎" }, { id: "lachen", emoji: "😂" }, { id: "vuur", emoji: "🔥" }] },
-  personage: { aan: true, vraag: "Welk personage wil je nog een keer zien?" },
+  personage: { aan: true, vraag: "Meer of minder van…", minder: "Minder", meer: "Meer" },
   // Per label een eigen vraag en drie antwoorden (in te vullen in Admin). Niet ingevuld: de naam van het
   // label als vraag en de standaardantwoorden hieronder.
   label: { aan: true, anders: true, minder: "Te veel", goed: "Precies goed", meer: "Mag meer", vragen: {} },
@@ -61,7 +64,13 @@ function normalizeInstellingen(raw) {
       vraag: tekst(deel("scene").vraag, STANDAARD.scene.vraag),
       keuzes: keuzes.length >= 2 ? keuzes : STANDAARD.scene.keuzes.map((keuze) => ({ ...keuze })),
     },
-    personage: { aan: deel("personage").aan === undefined ? true : Boolean(deel("personage").aan), vraag: tekst(deel("personage").vraag, STANDAARD.personage.vraag) },
+    personage: {
+      aan: deel("personage").aan === undefined ? true : Boolean(deel("personage").aan),
+      // De vraag van vroeger (één personage kiezen) past niet meer bij meer/minder: dan de standaard.
+      vraag: deel("personage").vraag === OUDE_PERSONAGEVRAAG ? STANDAARD.personage.vraag : tekst(deel("personage").vraag, STANDAARD.personage.vraag),
+      minder: tekst(deel("personage").minder, STANDAARD.personage.minder, 30),
+      meer: tekst(deel("personage").meer, STANDAARD.personage.meer, 30),
+    },
     label: {
       aan: deel("label").aan === undefined ? STANDAARD.label.aan : Boolean(deel("label").aan),
       anders: deel("label").anders === undefined ? STANDAARD.label.anders : Boolean(deel("label").anders),
@@ -145,11 +154,12 @@ function createBeoordeling(service) {
       if (instellingen.label.anders) keuzes.push({ id: "anders", naam: "Anders…", anders: true });
       vragen.push({ id: "label", soort: "keuze", labelId: label.id, labelNaam: label.naam, vraag: eigen.vraag || `${label.naam}?`, keuzes });
     }
-    if (instellingen.personage.aan && van.personages.length >= 2) {
+    if (instellingen.personage.aan && van.personages.length) {
       vragen.push({
         id: "personage",
         soort: "personage",
         vraag: instellingen.personage.vraag,
+        richtingen: PERSONAGE_RICHTINGEN.map(([id]) => ({ id, naam: instellingen.personage[id] })),
         keuzes: van.personages.map((personage) => ({ id: personage.id, naam: personage.naam, speler: personage.speler, foto: fotoVan(van.situationRunId, personage.plek) })),
       });
     }
@@ -159,10 +169,18 @@ function createBeoordeling(service) {
   function tellingen() {
     if (!lopend) return {};
     const uit = {};
-    for (const vraag of lopend.vragen) uit[vraag.id] = Object.fromEntries(vraag.keuzes.map((keuze) => [keuze.id, 0]));
+    for (const vraag of lopend.vragen) {
+      uit[vraag.id] = vraag.soort === "personage"
+        ? Object.fromEntries(vraag.keuzes.map((keuze) => [keuze.id, { minder: 0, meer: 0 }]))
+        : Object.fromEntries(vraag.keuzes.map((keuze) => [keuze.id, 0]));
+    }
     for (const antwoord of lopend.antwoorden.values()) {
       for (const [vraag, keuze] of Object.entries(antwoord.keuzes)) {
+        if (vraag === "personage") continue;
         if (uit[vraag] && uit[vraag][keuze] !== undefined) uit[vraag][keuze] += 1;
+      }
+      for (const [characterId, richting] of Object.entries(antwoord.personages || {})) {
+        if (uit.personage && uit.personage[characterId] && uit.personage[characterId][richting] !== undefined) uit.personage[characterId][richting] += 1;
       }
     }
     return uit;
@@ -226,13 +244,17 @@ function createBeoordeling(service) {
     return uitslag;
   }
 
-  // Het antwoord op de personagevraag als voorkeur: per personage het aandeel van de stemmen.
+  // Het antwoord op de personagevraag als voorkeur: per personage (meer − minder) / wie over dat
+  // personage iets zei, van −1 tot 1.
   function stuurPersonageVoorkeur(uitslag) {
     const telling = uitslag.tellingen && uitslag.tellingen.personage;
     if (!telling || !uitslag.showRunId) return;
-    const stemmen = Object.values(telling).reduce((som, n) => som + (Number(n) || 0), 0);
+    const keuzes = Object.entries(telling)
+      .map(([characterId, n]) => ({ characterId, meer: Number(n && n.meer) || 0, minder: Number(n && n.minder) || 0 }))
+      .filter((rij) => rij.meer + rij.minder > 0)
+      .map((rij) => ({ characterId: rij.characterId, delta: Math.round(((rij.meer - rij.minder) / (rij.meer + rij.minder)) * 1000) / 1000, stemmen: rij.meer + rij.minder }));
+    const stemmen = keuzes.reduce((som, rij) => som + rij.stemmen, 0);
     if (!stemmen) return;
-    const keuzes = Object.entries(telling).map(([characterId, n]) => ({ characterId, aandeel: Math.round(((Number(n) || 0) / stemmen) * 1000) / 1000 }));
     uitslag.personageVoorkeur = { keuzes, stemmen };
     store.setSetting(UITSLAGEN_KEY, uitslagen);
     if (typeof fetch !== "function") return;
@@ -315,16 +337,27 @@ function createBeoordeling(service) {
   function antwoord(clientKey, { id, vraag, keuze, tekst: getypt, naam } = {}) {
     if (!lopend || String(id) !== lopend.id) return { error: { code: "beoordeling_voorbij", message: "De vragen zijn gesloten." } };
     const gevraagd = lopend.vragen.find((item) => item.id === String(vraag));
-    if (!gevraagd || !gevraagd.keuzes.some((item) => item.id === String(keuze))) return { error: { code: "beoordeling_ongeldig", message: "Ongeldig antwoord." } };
+    const ongeldig = { error: { code: "beoordeling_ongeldig", message: "Ongeldig antwoord." } };
+    if (!gevraagd) return ongeldig;
     const sleutel = String(clientKey || "");
-    if (!sleutel) return { error: { code: "beoordeling_ongeldig", message: "Ongeldig antwoord." } };
-    const van = lopend.antwoorden.get(sleutel) || { keuzes: {} };
+    if (!sleutel) return ongeldig;
+    const van = lopend.antwoorden.get(sleutel) || { keuzes: {}, personages: {} };
+    if (gevraagd.soort === "personage") {
+      // Per personage minder of meer; de vraag is beantwoord als elk personage een antwoord heeft.
+      const [characterId, richting] = String(keuze).split("|");
+      if (!gevraagd.keuzes.some((item) => item.id === characterId) || !PERSONAGE_RICHTINGEN.some(([id]) => id === richting)) return ongeldig;
+      van.personages = van.personages || {};
+      van.personages[characterId] = richting;
+      if (gevraagd.keuzes.every((item) => van.personages[item.id])) van.keuzes[gevraagd.id] = "klaar";
+    } else if (!gevraagd.keuzes.some((item) => item.id === String(keuze))) {
+      return ongeldig;
+    }
     if (String(keuze) === "anders") {
       const zin = String(getypt || "").replace(/\s+/g, " ").trim().slice(0, 140);
       if (!zin) return { error: { code: "beoordeling_leeg", message: "Typ eerst iets." } };
       lopend.anders.set(sleutel, { naam: String(naam || "").slice(0, 40), tekst: zin, vraag: gevraagd.vraag });
     }
-    van.keuzes[gevraagd.id] = String(keuze);
+    if (gevraagd.soort !== "personage") van.keuzes[gevraagd.id] = String(keuze);
     lopend.antwoorden.set(sleutel, van);
     // Het zaalscherm laat zien dát er gestemd wordt en door hoeveel mensen, niet waarop.
     service.emit("broadcast", { type: "beoordeling_stem", id: lopend.id, gestemd: lopend.antwoorden.size, mensen: service.onlineMensen() });
