@@ -261,7 +261,17 @@ function createAudienceApp(options = {}) {
     const ready = upNextReady.ready && upNextReady.situationId === klaar.situationId;
     // Toppersonages volgens de personagevraag (voor de tussenkaart met het rapport).
     const toppersonages = report && Array.isArray(report.favorieten) ? report.favorieten.slice(0, 3).map((rij) => rij.name) : [];
-    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", plekken, labels, sceneLabels, favoriet, toppersonages, ready, speelt: !!view.activeSituation });
+    // De lange lijst voor de tussenkaart: personages op gemiddelde score van hun scènes, met hoe vaak ze
+    // speelden, de hartjes en hoe vaak ze bij de personagevraag gekozen werden.
+    const gekozen = new Map((report && Array.isArray(report.favorieten) ? report.favorieten : []).map((rij) => [rij.characterId, rij.aandeel]));
+    const personages = (report && Array.isArray(report.characters) ? report.characters : []).slice(0, 10).map((rij) => ({
+      naam: rij.name,
+      score: rij.averageScore,
+      scenes: rij.scenes,
+      hartjes: rij.hearts,
+      gekozen: gekozen.has(rij.id) ? Math.round(gekozen.get(rij.id) * 100) : null,
+    }));
+    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", plekken, labels, sceneLabels, favoriet, toppersonages, personages, ready, speelt: !!view.activeSituation });
   }));
 
   // De vragen na de scène: de stand (wat er openstaat, de tellingen, de laatste uitslag).

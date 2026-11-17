@@ -332,6 +332,10 @@
       .staaf.nu { color: #fff; }
       .staaf.nu .spoor i { background: #fff; }
       .staaf.leeg { color: var(--wit-3); }
+      /* Toppersonages op de tussenkaart: naam met eronder scènes, positief en hoe vaak gekozen. */
+      .staaf.persoon { padding: 7px 0; }
+      .staaf.persoon b { font-size: 52px; }
+      .staaf.persoon span small { display: block; font-size: 24px; color: var(--wit-3); padding-top: 2px; }
       /* Uitsneden van lachende gezichten uit de publiekscamera. */
       #rpCamUitleg { color: #fff; line-height: 1.25; }
       #rpCamUitleg:empty, #rpCamKop:empty { display: none; }
@@ -1033,35 +1037,77 @@
         // De laatste stemmen moeten eerst in het algoritme zijn.
         setTimeout(haalUpNext, 700);
       }
-      // Het blad 'Dit publiek' van het rapport: per label hoe sterk het algoritme nu trekt, en de
-      // toppersonages van de personagevraag.
+      // Het blad 'Dit publiek' van het rapport, opgebouwd zoals het rapport: eerst per label hoe sterk het
+      // algoritme nu trekt, dan de toppersonages met hun score (gemiddelde score van hun scènes).
       let kaartGetekend = "";
       function tekenKaart() {
         const data = upNext || {};
         const labels = (data.labels || []).filter((label) => label.procent > 0);
-        const personages = data.toppersonages || [];
+        const personages = data.personages || [];
         // Niets te melden: meteen door naar Up next.
         if (upNext && !labels.length && !personages.length && kaart.tot) { kaart.tot = 0; clearTimeout(kaart.timer); zetFase(); return; }
         const sleutel = JSON.stringify([labels, personages]);
-        if (!kaart.tot || sleutel === kaartGetekend) return;
+        if (!kaart.tot || !upNext || kaartGetekend) return;
         kaartGetekend = sleutel;
         rpLeeg();
         rpBlad(2, true);
-        el("rpPubliekKop").textContent = "Dit publiek is:";
-        el("rpPubliekUitleg").textContent = "";
-        labels.forEach((label) => {
-          const staaf = maak("div", "staaf aan");
-          const spoor = maak("div", "spoor");
-          const vulling = maak("i");
-          spoor.append(vulling);
-          staaf.append(maak("span", "", label.naam), spoor, maak("b", "", `${label.procent}%`));
-          el("rpLabels").append(staaf);
-          requestAnimationFrame(() => { vulling.style.width = `${label.procent}%`; });
-        });
-        if (personages.length) {
-          el("rpLabels").append(maak("div", "kop", "Toppersonages:"));
-          personages.forEach((naam) => el("rpLabels").append(maak("div", "staaf aan", naam)));
+        const na = (ms, fn) => rpTimers.push(setTimeout(fn, ms));
+        let t = 0;
+        // 1. Dit publiek is: label voor label, de balk groeit.
+        if (labels.length) {
+          el("rpPubliekKop").textContent = "Dit publiek is:";
+          el("rpPubliekUitleg").textContent = "";
+          labels.forEach((label, index) => {
+            const staaf = maak("div", "staaf");
+            const spoor = maak("div", "spoor");
+            const vulling = maak("i");
+            spoor.append(vulling);
+            const getal = maak("b", "", "");
+            staaf.append(maak("span", "", label.naam), spoor, getal);
+            el("rpLabels").append(staaf);
+            na(350 + index * 200, () => {
+              staaf.classList.add("aan");
+              geluid.relais();
+              requestAnimationFrame(() => { vulling.style.width = `${label.procent}%`; });
+              rpTelOp(getal, label.procent, 500, (n) => `${Math.round(n)}%`, true);
+            });
+          });
+          t = 350 + labels.length * 200 + 2600;
         }
+        // 2. Toppersonages: de lange lijst, regel voor regel, de score telt op.
+        if (personages.length) {
+          const bereik = Math.max(...personages.map((rij) => Math.abs(rij.score || 0)), 0.01);
+          na(t, () => {
+            el("rpLabels").replaceChildren();
+            el("rpPubliekKop").textContent = "Toppersonages:";
+            el("rpPubliekUitleg").textContent = "gemiddelde score van hun scènes";
+            geluid.schakel();
+            personages.forEach((rij, index) => {
+              const staaf = maak("div", "staaf persoon" + (index === 0 ? " nu" : ""));
+              const spoor = maak("div", "spoor");
+              const vulling = maak("i");
+              spoor.append(vulling);
+              const naam = maak("span", "", `${index + 1}. ${rij.naam}`);
+              const meer = [`${rij.scenes} ${rij.scenes === 1 ? "scène" : "scènes"}`, `${rij.hartjes} positief`];
+              if (rij.gekozen != null) meer.push(`${rij.gekozen}% gekozen`);
+              naam.append(maak("small", "", meer.join(" · ")));
+              const getal = maak("b", "", "");
+              staaf.append(naam, spoor, getal);
+              el("rpLabels").append(staaf);
+              rpTimers.push(setTimeout(() => {
+                staaf.classList.add("aan");
+                geluid.relais();
+                requestAnimationFrame(() => { vulling.style.width = `${(Math.abs(rij.score || 0) / bereik) * 100}%`; });
+                rpTelOp(getal, rij.score || 0, 600, teken, true);
+              }, 350 + index * 260));
+            });
+          });
+          t += 350 + personages.length * 260 + 3500;
+        }
+        // De kaart blijft staan tot alles opgebouwd en even te lezen is; dan Up next.
+        kaart.tot = Date.now() + t;
+        clearTimeout(kaart.timer);
+        kaart.timer = setTimeout(() => { kaart.tot = 0; zetFase(); }, t);
       }
 
       // ── Up next ───────────────────────────────────────────────────────────────────────────────
@@ -1216,7 +1262,7 @@
         node.append(maak("span", "", links), maak("b", "", rechts));
         return node;
       }
-      function rpTelOp(node, doel, ms, vorm) {
+      function rpTelOp(node, doel, ms, vorm, stil) {
         const begin = performance.now();
         const mijn = rpRonde;
         let vorige = "";
@@ -1224,7 +1270,7 @@
           if (mijn !== rpRonde) return;
           const deel = Math.min(1, (nu - begin) / ms);
           const tekst = vorm(doel * (1 - Math.pow(1 - deel, 3)));
-          if (tekst !== vorige) { node.textContent = tekst; vorige = tekst; geluid.tel(deel); }
+          if (tekst !== vorige) { node.textContent = tekst; vorige = tekst; if (!stil) geluid.tel(deel); }
           if (deel < 1) requestAnimationFrame(stapje);
         };
         requestAnimationFrame(stapje);
