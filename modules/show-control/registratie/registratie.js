@@ -4,10 +4,11 @@
 // de spelers en de show. TouchDesigner neemt zelf op (/project1/fy_registratie, neergezet door
 // show/td-qhub-test/apply_registratie_patch.py); hier staat alleen wanneer en waarheen.
 //
-// Start vanzelf bij START SHOW, stopt vanzelf als de run voorbij is (RESET RUN), en kan met de
-// hand: POST /v0/show-control/registratie/start en /stop, of tools/registratie.js.
+// Er wordt alleen opgenomen als iemand daar zelf om vraagt: de knop OPNAME op de Stream Deck
+// (OVERZICHT), POST /v0/show-control/registratie/start en /stop, of tools/registratie.js.
+// Niets start vanzelf. Een opname stopt alleen vanzelf als de schijf volloopt.
 // Opdrachten gaan via de opdrachtenmap van TouchDesigner (~/ForYou/td-opdrachten), geen netwerk.
-// De bestanden blijven op deze Mac, in ~/ForYou/testruns/<datum>-run-<tijd>/.
+// De bestanden blijven op deze Mac, in ~/ForYou/gedocumenteerde-shows/.
 
 const fs = require("node:fs");
 const os = require("node:os");
@@ -20,9 +21,8 @@ const MIN_VRIJ_DOOR_GB = 3;
 function instellingen(options = {}) {
   const env = process.env;
   return {
-    uit: /^(uit|off|0)$/i.test(String(options.registratie ?? env.SHOW_CONTROL_REGISTRATIE ?? "aan")),
     opdrachtenDir: options.opdrachtenDir || env.FY_TD_OPDRACHTEN || path.join(os.homedir(), "ForYou", "td-opdrachten"),
-    doelDir: options.doelDir || env.SHOW_CONTROL_REGISTRATIE_DIR || path.join(os.homedir(), "ForYou", "testruns"),
+    doelDir: options.doelDir || env.SHOW_CONTROL_REGISTRATIE_DIR || path.join(os.homedir(), "ForYou", "gedocumenteerde-shows"),
     standPad: options.standPad || env.SHOW_CONTROL_REGISTRATIE_STAND
       || path.join(os.homedir(), "Library", "Application Support", "ForYouApp", "registratie.json"),
     wachtMs: Number(options.wachtMs ?? 5000),
@@ -50,13 +50,13 @@ function twee(n) {
   return String(n).padStart(2, "0");
 }
 
-// Mapnaam en bestandsnaam: datum en begintijd van de run (lokale tijd), of van nu zonder run.
+// Bestandsnaam: datum en tijd van de start van de opname, en de begintijd van de run die loopt.
 function naamVoor(runtimeState, nu = new Date()) {
   const run = runtimeState && runtimeState.showRunId && runtimeState.status === "running" ? runtimeState : null;
-  const begin = run && run.createdAt ? new Date(run.createdAt) : nu;
-  const datum = `${begin.getFullYear()}-${twee(begin.getMonth() + 1)}-${twee(begin.getDate())}`;
-  const tijd = `${twee(begin.getHours())}${twee(begin.getMinutes())}`;
-  return { map: `${datum}-${run ? "run" : "los"}-${tijd}`, showRunId: run ? run.showRunId : null };
+  const stempel = (d) => `${twee(d.getHours())}${twee(d.getMinutes())}`;
+  const datum = `${nu.getFullYear()}-${twee(nu.getMonth() + 1)}-${twee(nu.getDate())}`;
+  const deel = run && run.createdAt ? `run-${stempel(new Date(run.createdAt))}` : "los";
+  return { naam: `${datum}-${stempel(nu)}-${deel}`, showRunId: run ? run.showRunId : null };
 }
 
 function vrijGb(dir) {
@@ -101,18 +101,17 @@ async function startRegistratie(runtimeState, options = {}) {
   if (vrij !== null && vrij < MIN_VRIJ_START_GB) {
     return { ok: false, opname: false, fout: `te weinig schijfruimte (${vrij.toFixed(1)} GB vrij, ${MIN_VRIJ_START_GB} nodig)` };
   }
-  const { map, showRunId } = naamVoor(runtimeState, options.nu);
-  const dir = path.join(inst.doelDir, map);
-  fs.mkdirSync(dir, { recursive: true });
+  const { naam, showRunId } = naamVoor(runtimeState, options.nu);
+  fs.mkdirSync(inst.doelDir, { recursive: true });
   let nummer = 1;
   let pad;
   do {
-    pad = path.join(dir, `${map}-registratie${nummer > 1 ? `-${nummer}` : ""}.mov`);
+    pad = path.join(inst.doelDir, `${naam}${nummer > 1 ? `-${nummer}` : ""}.mov`);
     nummer += 1;
   } while (fs.existsSync(pad));
   const antwoord = await tdOpdracht(inst, `${STUUR}.start(${JSON.stringify(pad)})`);
   if (!antwoord.ok) return { ok: false, opname: false, fout: antwoord.fout };
-  const stand = { pad: antwoord.td.pad, showRunId, bron: options.bron || "hand", gestartOp: new Date().toISOString() };
+  const stand = { pad: antwoord.td.pad, showRunId, gestartOp: new Date().toISOString() };
   schrijfStand(inst, stand);
   return { ok: true, opname: true, ...stand, td: antwoord.td };
 }
@@ -133,32 +132,20 @@ async function registratieStatus(options = {}) {
   return {
     ok: antwoord.ok,
     opname: antwoord.ok ? antwoord.td.opname : Boolean(loopt),
-    vanzelf: !inst.uit,
     vrijGb: vrijGb(fs.existsSync(inst.doelDir) ? inst.doelDir : os.homedir()),
     ...(loopt || {}),
     ...(antwoord.ok ? { td: antwoord.td } : { fout: antwoord.fout }),
   };
 }
 
-// START SHOW: de opname van deze run begint. Doet niets als het vanzelf starten uit staat.
-async function registratieBijStartShow(runtimeState, options = {}) {
-  if (instellingen(options).uit) return null;
-  return startRegistratie(runtimeState, { ...options, bron: "start-show" });
-}
-
-// Vanuit de klok van de server: hoort de lopende opname bij een run en is die run weg of een
-// andere (RESET RUN), dan stopt de opname. Ook als de schijf volloopt. Een opname die met de hand
-// buiten een run is gestart, stopt alleen met de hand (of bij een volle schijf).
+// Vanuit de klok van de server: loopt de schijf vol, dan stopt de opname. Verder nergens om.
 let bezig = false;
-async function registratieTick(runtimeState, options = {}) {
+async function registratieTick(options = {}) {
   const inst = instellingen(options);
   const loopt = leesStand(inst);
   if (!loopt || bezig) return null;
-  const state = runtimeState || {};
-  const runWeg = loopt.showRunId && (state.showRunId !== loopt.showRunId || state.status !== "running");
-  const vrij = vrijGb(path.dirname(loopt.pad));
-  const vol = vrij !== null && vrij < MIN_VRIJ_DOOR_GB;
-  if (!runWeg && !vol) return null;
+  const vrij = options.vrijGb ?? vrijGb(path.dirname(loopt.pad));
+  if (vrij === null || vrij >= MIN_VRIJ_DOOR_GB) return null;
   bezig = true;
   try {
     return await stopRegistratie(options);
@@ -169,7 +156,6 @@ async function registratieTick(runtimeState, options = {}) {
 
 module.exports = {
   naamVoor,
-  registratieBijStartShow,
   registratieStatus,
   registratieTick,
   startRegistratie,

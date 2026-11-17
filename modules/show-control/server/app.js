@@ -53,7 +53,6 @@ const { buildEnvironmentFaseCue, environmentFasesStatus, publicFasesStatus } = r
 const { sceneEindeTick } = require("../cue-library/scene-einde");
 const { buildEnvironmentKnopCue, environmentKnoppenStatus } = require("../cue-library/environment-knoppen");
 const {
-  registratieBijStartShow,
   registratieStatus,
   registratieTick,
   startRegistratie,
@@ -296,14 +295,10 @@ function createShowControlApp(options = {}) {
     const antwoord = await fetch(`${publiek}/audience/admin/show/start`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: AbortSignal.timeout(3000) });
     const body = await antwoord.json().catch(() => ({}));
     res.status(antwoord.ok ? 201 : 409).json({ ok: antwoord.ok, ...body });
-    // De opname van de run begint; de knop wacht er niet op.
-    if (antwoord.ok) {
-      runtimeStateQuick({}, clients).then((state) => registratieBijStartShow(state, options.registratie || {})).catch(() => {});
-    }
   }));
 
-  // Registratie van de run (beeld hoofdscherm + geluid): status, en met de hand starten en stoppen.
-  // Vanzelf: start bij START SHOW (hierboven), stopt als de run voorbij is (klok van de server).
+  // Registratie (beeld hoofdscherm + geluid): status, starten en stoppen. Alleen op verzoek
+  // (knop OPNAME op de Stream Deck); er start niets vanzelf.
   app.get("/v0/show-control/registratie", asyncRoute(async (_req, res) => {
     res.json(await registratieStatus(options.registratie || {}));
   }));
@@ -592,8 +587,8 @@ function createShowControlApp(options = {}) {
   app.locals.environmentVanzelfTick = async () => {
     const runtimeResult = await clients.fetchCurrentRuntimeState();
     if (!runtimeResult || !runtimeResult.ok) return null;
-    // De run is voorbij (RESET RUN): een lopende opname van die run stopt.
-    registratieTick(runtimeResult.state || {}, options.registratie || {}).catch(() => {});
+    // Een lopende opname stopt als de schijf volloopt.
+    registratieTick(options.registratie || {}).catch(() => {});
     // Vangnet: is de scène buiten show-control om geëindigd, dan gaat alsnog alles van die scène uit.
     const einde = sceneEindeTick(runtimeResult.state || {});
     if (einde) executeCue(einde, { ...executeOptions, runtimeState: runtimeResult.state }).then(() => saveCue(einde)).catch(() => {});
