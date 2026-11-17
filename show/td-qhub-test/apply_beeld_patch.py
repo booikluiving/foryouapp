@@ -95,7 +95,15 @@ def _beeld_movie(movie, pad, clip):
         movie.par.file = pad
         if hasattr(movie.par, "cuepulse"):
             movie.par.cuepulse.pulse()
-    elif _text(movie.par.file.eval()) != pad:
+        return
+    # Een stilstaande plaat. Na een clip staat afspelen uit (vangnet aan het eind van de clip), en
+    # zolang dat uit staat leest de Movie File In geen nieuw bestand in: dan bleef de voorgrond van
+    # het vorige shot over het nieuwe staan. Dus altijd eerst afspelen aan.
+    try:
+        movie.par.play = 1
+    except Exception:
+        pass
+    if _text(movie.par.file.eval()) != pad:
         movie.par.file = pad
 
 
@@ -227,9 +235,11 @@ def handle_samen_beeld(cue_id, extra_args):
     )
     if te_spelen:
         # Vangnet als een clip toch zou herhalen: stilzetten vlak voor het einde.
+        # Alleen als de clip er dan nog in staat: is er intussen van shot gewisseld, dan blijft de
+        # plaat van dat shot gewoon aan.
         run(
-            "for m in args[0]:\\n    m.par.play = 0",
-            te_spelen, delayMilliSeconds=int(duur * 1000) - 60,
+            "for m, pad in args[0]:\\n    if str(m.par.file.eval()) == pad:\\n        m.par.play = 0",
+            [(m, str(m.par.file.eval())) for m in te_spelen], delayMilliSeconds=int(duur * 1000) - 60,
         )
     _beeld_log(cue_id, "applied", "ok", message or "beeld")
     ack(cue_id, command, "applied", "ok", message or "beeld")
