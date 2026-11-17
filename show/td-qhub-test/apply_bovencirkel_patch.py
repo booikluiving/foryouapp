@@ -13,7 +13,7 @@
 # Terugdraaien: zet BOVENCIRKEL_TERUG = True en voer opnieuw uit.
 
 BOVENCIRKEL_TERUG = globals().get('BOVENCIRKEL_TERUG', False)
-NDI_NAAM = 'PTVL-ZCAM (Chan1)'
+NDI_NAAM = 'PTVL-ZCAM (Chan1, 192.168.1.199)'
 
 ouder = op('/project1')
 hoofd = ouder.op('hoofd_een')
@@ -54,6 +54,7 @@ else:
     ndi = ouder.op('fy_boven_ndi') or ouder.create(ndiinTOP, 'fy_boven_ndi')
     ndi.par.name = NDI_NAAM
     ndi.par.hwdecode = True
+    ndi.par.extraips = '192.168.1.199'
     ndi.nodeX, ndi.nodeY = bord.nodeX - 400, bord.nodeY - 300
 
     dat = ouder.op('fy_boven_cirkel_pixel') or ouder.create(textDAT, 'fy_boven_cirkel_pixel')
