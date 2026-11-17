@@ -536,16 +536,13 @@
       #beoordeelKeuzes.emoji button { text-align: center; font-size: min(clamp(64px, 14dvh, 120px), 24vw); line-height: 1; padding: 0; }
       /* Personages: de foto van de speler vult de knop, de naam staat eronder in een balk. */
       /* Naast elkaar als staande tegels, zodat de staande foto (gezicht op een derde van boven) heel blijft. */
-      /* Per personage een tegel met de foto en eronder Minder en Meer. */
       #beoordeelKeuzes.personage { align-content: center; grid-auto-rows: auto; }
-      #beoordeelKeuzes.personage .tegel { display: flex; flex-direction: column; gap: 8px; min-width: 0; width: 100%; max-width: 260px; justify-self: center; }
-      #beoordeelKeuzes.personage .foto { position: relative; display: flex; align-items: flex-end; aspect-ratio: 9 / 14; width: 100%; background: #111 center 25% / cover no-repeat; border: 1px solid var(--a); }
-      #beoordeelKeuzes.personage .naam { width: 100%; box-sizing: border-box; padding: 8px 10px; background: rgba(7, 8, 11, 0.78); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 16px; line-height: 1.15; overflow-wrap: anywhere; }
-      #beoordeelKeuzes.personage .naam small { font-weight: 400; font-size: 14px; color: var(--b); }
-      #beoordeelKeuzes.personage .richting { display: grid; grid-template-columns: 1fr; gap: 6px; }
-      #beoordeelKeuzes.personage .richting button[data-beoordeel-keuze$="|meer"] { order: -1; }
-      #beoordeelKeuzes.personage .richting button { padding: 12px 4px; text-align: center; font-size: 16px; }
-      #beoordeelKeuzes.personage .richting button:not(.gekozen).uit { opacity: 0.35; }
+      #beoordeelKeuzes.personage button { position: relative; padding: 0; display: flex; align-items: flex-end; aspect-ratio: 9 / 16; max-height: 100%; width: 100%; justify-self: center; background: #111 center 25% / cover no-repeat; }
+      #beoordeelKeuzes.personage button .naam { width: 100%; box-sizing: border-box; padding: 8px 10px; background: rgba(7, 8, 11, 0.78); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 16px; line-height: 1.15; overflow-wrap: anywhere; }
+      #beoordeelKeuzes.personage button .naam small { font-weight: 400; font-size: 14px; color: var(--b); }
+      #beoordeelKeuzes.personage button.gekozen { outline: 4px solid var(--a); outline-offset: -4px; }
+      #beoordeelKeuzes.personage button.gekozen .naam { background: var(--a); color: var(--bg); }
+      #beoordeelKeuzes.personage button.gekozen .naam small { color: var(--bg); }
       #beoordeelMeta { flex: none; min-height: 1.3em; font-size: 14px; color: var(--b); display: flex; justify-content: space-between; }
 
       #pollMeta {
@@ -1737,12 +1734,7 @@
           if (vraag.soort === "emoji") {
             button.textContent = keuze.emoji;
           } else if (vraag.soort === "personage") {
-            // Een tegel per personage: foto met naam, eronder Minder en Meer.
-            const tegel = document.createElement("div");
-            tegel.className = "tegel";
-            const foto = document.createElement("div");
-            foto.className = "foto";
-            if (keuze.foto) foto.style.backgroundImage = "url(" + keuze.foto + ")";
+            if (keuze.foto) button.style.backgroundImage = "url(" + keuze.foto + ")";
             const naam = document.createElement("span");
             naam.className = "naam";
             const tekst = document.createElement("span");
@@ -1750,20 +1742,7 @@
             const speler = document.createElement("small");
             speler.textContent = keuze.speler || "";
             naam.append(tekst, speler);
-            foto.appendChild(naam);
-            const rij = document.createElement("div");
-            rij.className = "richting";
-            for (const richting of vraag.richtingen || [{ id: "minder", naam: "Minder" }, { id: "meer", naam: "Meer" }]) {
-              const knop = document.createElement("button");
-              knop.type = "button";
-              knop.textContent = richting.naam;
-              knop.setAttribute("data-beoordeel-keuze", keuze.id + "|" + richting.id);
-              knop.setAttribute("data-personage", keuze.id);
-              rij.appendChild(knop);
-            }
-            tegel.append(foto, rij);
-            keuzesEl.appendChild(tegel);
-            continue;
+            button.appendChild(naam);
           } else {
             button.textContent = keuze.naam;
             if (keuze.anders) { button.classList.add("anders"); button.setAttribute("data-anders", ""); }
@@ -1836,20 +1815,6 @@
         try {
           ws.send(JSON.stringify({ type: "beoordeling_antwoord", id: beoordeling.id, vraag: vraag.id, keuze: button.getAttribute("data-beoordeel-keuze"), clientTag }));
         } catch { ensureFreshConnection(); return; }
-        // Personages: per tegel een antwoord (nog te wisselen); als elk personage er een heeft, door.
-        if (vraag.soort === "personage") {
-          const personage = button.getAttribute("data-personage");
-          for (const knop of document.querySelectorAll('#beoordeelKeuzes [data-personage="' + personage + '"]')) {
-            knop.classList.toggle("gekozen", knop === button);
-            knop.classList.toggle("uit", knop !== button);
-          }
-          const tegels = document.querySelectorAll("#beoordeelKeuzes .tegel").length;
-          if (document.querySelectorAll("#beoordeelKeuzes .richting button.gekozen").length >= tegels) {
-            for (const knop of document.querySelectorAll("#beoordeelKeuzes button")) knop.disabled = true;
-            naarVolgendeVraag();
-          }
-          return;
-        }
         // Het antwoord licht even op, dan de volgende vraag.
         for (const knop of document.querySelectorAll("#beoordeelKeuzes button")) knop.disabled = true;
         button.classList.add("gekozen");
