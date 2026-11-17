@@ -454,6 +454,39 @@ async function observeLabelVoorkeur(event = {}) {
   return { ok: true, voorkeur, wacht: !observation, scoreFeed: state.scoreFeed };
 }
 
+// Het antwoord van het publiek op de personagevraag na een scène: welk personage wil je nog een keer
+// zien. Per personage het aandeel van de stemmen; wacht net als de labelvraag op de observatie.
+async function observePersonageVoorkeur(event = {}) {
+  const state = await getScoringContext(event.showRunId);
+  const stemmen = Math.max(0, Number(event.stemmen) || 0);
+  const keuzes = (Array.isArray(event.keuzes) ? event.keuzes : [])
+    .filter((keuze) => keuze && keuze.characterId && Number.isFinite(Number(keuze.aandeel)))
+    .map((keuze) => ({ characterId: String(keuze.characterId), aandeel: Math.round(Math.max(0, Math.min(1, Number(keuze.aandeel))) * 1000) / 1000 }));
+  if (!keuzes.length || !stemmen) return { ok: false, error: "geen_stemmen" };
+  const voorkeur = { keuzes, stemmen, situationRunId: String(event.situationRunId || ""), at: new Date().toISOString() };
+  const observations = Array.isArray(state.observations) ? state.observations : [];
+  const observation = observations.find((item) => item && voorkeur.situationRunId && item.situationRunId === voorkeur.situationRunId)
+    || (voorkeur.situationRunId ? null : observations[observations.length - 1]);
+  if (observation) {
+    observation.personageVoorkeur = voorkeur;
+  } else {
+    state.personageVoorkeurWacht = Array.isArray(state.personageVoorkeurWacht) ? state.personageVoorkeurWacht : [];
+    state.personageVoorkeurWacht.push(voorkeur);
+  }
+  state.scoreFeed = buildScoreFeed({
+    showRunId: state.showRunId,
+    catalog: state.catalog,
+    observations: state.observations,
+    liveObservation: state.liveAudienceObservation || null,
+    config: state.config,
+  });
+  state.updatedAt = new Date().toISOString();
+  state.log = Array.isArray(state.log) ? state.log : [];
+  state.log.push({ type: "publiek_personage_voorkeur", at: state.updatedAt, ...voorkeur, wacht: !observation });
+  await saveScoringContextState(state);
+  return { ok: true, voorkeur, wacht: !observation, scoreFeed: state.scoreFeed };
+}
+
 async function observeSituation(event) {
   const state = await getScoringContext(event && event.showRunId);
   const observation = await buildObservation(event, state);
@@ -462,6 +495,12 @@ async function observeSituation(event) {
   if (eerder) {
     observation.labelVoorkeur = eerder;
     state.labelVoorkeurWacht = wacht.filter((item) => item !== eerder);
+  }
+  const wachtPersonage = Array.isArray(state.personageVoorkeurWacht) ? state.personageVoorkeurWacht : [];
+  const eerderPersonage = wachtPersonage.find((item) => item.situationRunId && item.situationRunId === observation.situationRunId);
+  if (eerderPersonage) {
+    observation.personageVoorkeur = eerderPersonage;
+    state.personageVoorkeurWacht = wachtPersonage.filter((item) => item !== eerderPersonage);
   }
   const observedScore = observation.observedScore;
   state.observations.push(observation);
@@ -529,6 +568,7 @@ module.exports = {
   listScoringContexts,
   observeAudienceSignals,
   observeLabelVoorkeur,
+  observePersonageVoorkeur,
   observeSituation,
   readAlgorithmConfig,
   simulateSituationObservation,

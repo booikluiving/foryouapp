@@ -222,7 +222,28 @@ function createBeoordeling(service) {
     service.emit("broadcast", { type: "beoordeling_dicht", id: uitslag.id });
     service.emit("admin-state-changed");
     stuurLabelVoorkeur(uitslag);
+    stuurPersonageVoorkeur(uitslag);
     return uitslag;
+  }
+
+  // Het antwoord op de personagevraag als voorkeur: per personage het aandeel van de stemmen.
+  function stuurPersonageVoorkeur(uitslag) {
+    const telling = uitslag.tellingen && uitslag.tellingen.personage;
+    if (!telling || !uitslag.showRunId) return;
+    const stemmen = Object.values(telling).reduce((som, n) => som + (Number(n) || 0), 0);
+    if (!stemmen) return;
+    const keuzes = Object.entries(telling).map(([characterId, n]) => ({ characterId, aandeel: Math.round(((Number(n) || 0) / stemmen) * 1000) / 1000 }));
+    uitslag.personageVoorkeur = { keuzes, stemmen };
+    store.setSetting(UITSLAGEN_KEY, uitslagen);
+    if (typeof fetch !== "function") return;
+    fetch(`${ALGORITME_URL}/v0/algorithm/events/personage-voorkeur`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ showRunId: uitslag.showRunId, situationRunId: uitslag.id, situationId: uitslag.situationId, keuzes, stemmen }),
+      signal: AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined,
+    }).then((res) => { uitslag.personageVoorkeur.algoritme = res.ok ? "ok" : `fout ${res.status}`; })
+      .catch((err) => { uitslag.personageVoorkeur.algoritme = `niet bereikt (${err.message})`; })
+      .finally(() => store.setSetting(UITSLAGEN_KEY, uitslagen));
   }
 
   // Het antwoord op de labelvraag als voorkeur: (mag meer − te veel) / alle antwoorden, van −1 tot 1.
