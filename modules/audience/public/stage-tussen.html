@@ -469,7 +469,7 @@
       const SNEL = TEMPO > 1;
       // De kiezer na de scène: rustiger dan de rest van de reeks, en daarna even stil op de keuze.
       const KIES_TEMPO = Number(new URLSearchParams(location.search).get("kiesTempo")) || 1;
-      const RUST_MS = 3000;
+      const RUST_MS = 2000;
       if (SNEL) document.documentElement.classList.add("snel");
       // Het rapport: bij scène RAPPORT_SNELST_BIJ duurt het nog dit deel van de eerste keer, sneller wordt het niet.
       const RAPPORT_SNELST = 0.2, RAPPORT_SNELST_BIJ = 10;
@@ -871,7 +871,7 @@
       // keuze er, dan blijft het even stil (RUST_MS), dan komt de klok groot in beeld en gaat het
       // universum weg (NA_KEUZE_MS), daarna schuift de klok omhoog. Kiest het universum niet, zoals in
       // de startfase, dan na GROOT_MAX_MS. Het schrijven begint als de klok op zijn plek staat.
-      const GROOT_MS = 1800, GROOT_MAX_MS = 12000, NA_KEUZE_MS = 5000, OMHOOG_MS = 800, SCHRIJF_NA_OMHOOG_MS = 200, CIRKEL = 2 * Math.PI * 230;
+      const GROOT_MS = 1800, GROOT_MAX_MS = 12000, NA_KEUZE_MS = 3500, OMHOOG_MS = 800, SCHRIJF_NA_OMHOOG_MS = 200, CIRKEL = 2 * Math.PI * 230;
       const stemFase = { id: "", opent: 0, tot: 0, schrijf: false, schrijfGevraagd: "", lus: 0, schrijfTimer: 0, kiest: false, gekozen: false, klokVanaf: 0, grootTot: 0, ping: 0, klokGestart: "" };
       // Het universum mag verder (nieuwe scènes vrij, kiezer): tot het kiest, elke halve seconde opnieuw,
       // want het luistert pas als het de stop van de scène gezien heeft.
