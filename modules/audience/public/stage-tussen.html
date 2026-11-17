@@ -334,6 +334,8 @@
       .staaf.leeg { color: var(--wit-3); }
       /* Toppersonages op de tussenkaart: naam met eronder scènes, positief en hoe vaak gekozen. */
       .staaf.persoon { padding: 7px 0; }
+      .rp-rijen .tussenkop { font-size: 64px; font-weight: 700; color: #fff; padding: 48px 0 8px; visibility: hidden; }
+      .rp-rijen .tussenkop.aan { visibility: visible; }
       .staaf.persoon b { font-size: 52px; }
       .staaf.persoon span small { display: block; font-size: 24px; color: var(--wit-3); padding-top: 2px; }
       /* Uitsneden van lachende gezichten uit de publiekscamera. */
@@ -1037,8 +1039,8 @@
         // De laatste stemmen moeten eerst in het algoritme zijn.
         setTimeout(haalUpNext, 700);
       }
-      // Het blad 'Dit publiek' van het rapport, opgebouwd zoals het rapport: eerst per label hoe sterk het
-      // algoritme nu trekt, dan de toppersonages met hun score (gemiddelde score van hun scènes).
+      // Eén kaart na het stemmen, opgebouwd zoals het rapport: eerst per label hoe sterk het algoritme nu
+      // trekt, daaronder de toppersonages met hun score (gemiddelde score van hun scènes). Dan Up next.
       let kaartGetekend = "";
       function tekenKaart() {
         const data = upNext || {};
@@ -1072,16 +1074,17 @@
               rpTelOp(getal, label.procent, 500, (n) => `${Math.round(n)}%`, true);
             });
           });
-          t = 350 + labels.length * 200 + 2600;
+          t = 350 + labels.length * 200 + 1200;
         }
         // 2. Toppersonages: de lange lijst, regel voor regel, de score telt op.
         if (personages.length) {
           const bereik = Math.max(...personages.map((rij) => Math.abs(rij.score || 0)), 0.01);
+          if (!labels.length) { el("rpPubliekKop").textContent = "Toppersonages:"; el("rpPubliekUitleg").textContent = ""; }
+          const kop = maak("div", "tussenkop", "Toppersonages:");
+          if (labels.length) el("rpLabels").append(kop);
           na(t, () => {
-            el("rpLabels").replaceChildren();
-            el("rpPubliekKop").textContent = "Toppersonages:";
-            el("rpPubliekUitleg").textContent = "gemiddelde score van hun scènes";
-            geluid.schakel();
+            kop.classList.add("aan");
+            geluid.relais();
             personages.forEach((rij, index) => {
               const staaf = maak("div", "staaf persoon" + (index === 0 ? " nu" : ""));
               const spoor = maak("div", "spoor");
