@@ -2,7 +2,9 @@
 
 const crypto = require("node:crypto");
 const EventEmitter = require("node:events");
+const fs = require("node:fs");
 const os = require("node:os");
+const path = require("node:path");
 
 const {
   AUDIENCE_SIGNAL_SCHEMA_VERSION,
@@ -26,6 +28,7 @@ const {
   ChatSimulator,
 } = require("../simulation/chat-simulator");
 const { createWordFilter } = require("./word-filter");
+const { createBeoordeling } = require("./beoordeling");
 
 const SERVICE_VERSION = "audience.0";
 const ACCESS_COOKIE = "fy_audience_access";
@@ -34,6 +37,7 @@ const JOIN_TOKEN_TTL_MINUTES = 720;
 // Emoji die het publiek kan sturen; instelbaar in Admin. "telt" bepaalt wat het algoritme ermee doet:
 // positief = heart, negatief = bored, niet = alleen in beeld.
 const REACTIES_KEY = "reactie_emoji";
+const ACTIEF_MS = 10 * 60 * 1000;
 const REACTIE_TELT = Object.freeze({ positief: "heart", negatief: "bored", niet: "emoji" });
 const REACTIES_MAX = 8;
 const REACTIES_STANDAARD = Object.freeze([
@@ -46,14 +50,13 @@ const NA_SCENE_VRAAG_KEY = "na_scene_vraag";
 // Stemmen op de startscène: welke stemming het is, bij welke run, en de uitslag.
 const START_STEMMING_KEY = "start_stemming";
 const START_STEMMING_INSTELLINGEN_KEY = "start_stemming_instellingen";
-const START_STEMMING_VRAAG = "Welke scène wil je als eerste zien?";
 
 function normalizeStartStemmingInstellingen(input) {
   const bron = input && typeof input === "object" ? input : {};
   const duur = Number(bron.durationSeconds);
   const min = Number(bron.minVotes);
   return {
-    durationSeconds: Number.isFinite(duur) ? Math.min(600, Math.max(10, Math.round(duur))) : 45,
+    durationSeconds: Number.isFinite(duur) ? Math.min(600, Math.max(10, Math.round(duur))) : 90,
     minVotes: Number.isFinite(min) ? Math.min(1000, Math.max(0, Math.round(min))) : 0,
   };
 }
@@ -63,6 +66,7 @@ const RONDE_KEY = "ronde";
 const CHAT_GEWIST_KEY = "chat_gewist";
 // De run waar de chat bij hoort; verdwijnt die (RESET RUN), dan wordt de chat gewist.
 const CHAT_RUN_KEY = "chat_show_run";
+const SHOW_GESTART_KEY = "show_gestart_run";
 const NA_SCENE_VRAAG_STANDAARD = "En?";
 
 function normalizeNaSceneVraag(raw) {
@@ -523,11 +527,22 @@ class AudienceService extends EventEmitter {
     this.fase = { fase: "tussen", titel: null, situationRunId: null, sinds: nowIso(), bekend: false };
     this.faseTimer = null;
     this.ronde = this.laadRonde();
+    // Ranking: hoeveel berichten elke kijker in deze run in de chat zette (naam → { naam, aantal }).
+    this.ranking = new Map();
+    // Wanneer elke telefoon voor het laatst iets deed (aanmelden, typen, emoji, like, stemmen).
+    this.actief = new Map();
+    this.rankingTimer = null;
+    // Het laatste beeld van elke speler (plek 1..3) voor het zaalscherm tijdens het laden. Alleen in het geheugen.
+    this.spelerbeeld = new Map();
     // Publiekscamera per scène (situationRunId → { stats, groepen, fotos }). Alleen in het geheugen.
     this.camera = new Map();
     this.cameraLaatste = null;
     this.setMaxListeners(50);
     this.chatRun = this.store.getSetting(CHAT_RUN_KEY, null) || null;
+    // De run waarvoor START SHOW is gegeven: daarvoor blijft het inloopscherm staan.
+    this.showGestartRun = this.store.getSetting(SHOW_GESTART_KEY, null) || null;
+    // De vragen na elke scène (beoordeling.js).
+    this.beoordeling = createBeoordeling(this);
     this.pollAutoCloseTimer = null;
     this.internalSimulatorKey = crypto.randomBytes(16).toString("hex");
     this.liveScoreDispatchWork = Promise.resolve();
@@ -686,7 +701,10 @@ class AudienceService extends EventEmitter {
     } else if (fase === "tussen" && this.ronde.start && !this.ronde.eind) {
       this.ronde.eind = this.fase.sinds;
       this.bewaarRonde();
+      // De scène is net afgelopen: de vragen aan het publiek gaan open.
+      this.beoordeling.start();
     }
+    if (fase === "scene") this.beoordeling.sluit("nieuwe_scene");
     this.emit("broadcast", { type: "fase", ...this.getFase(), ronde: this.getRonde() });
     this.emit("admin-state-changed");
     return this.getFase();
@@ -700,6 +718,7 @@ class AudienceService extends EventEmitter {
     if (!result || !result.ok || !result.state) return this.getFase();
     this.volgRun(result.state);
     this.onthoudScene(result.state);
+    this.beoordeling.onthoudScene(result.state);
     const active = result.state.activeSituation;
     return this.setFase(active
       ? { fase: "scene", titel: active.title, situationRunId: active.situationRunId || active.situationId || "actief" }
@@ -726,6 +745,21 @@ class AudienceService extends EventEmitter {
     return this.laatsteScene || null;
   }
 
+  // START SHOW: na START RUN blijft het inloopscherm staan (het publiek komt binnen); pas hierna
+  // wordt de eerste scène gekozen, of gaat in de startfase de eerste stemming open.
+  isShowGestart() {
+    return !!this.chatRun && this.showGestartRun === this.chatRun;
+  }
+
+  startShow() {
+    if (!this.chatRun) return { ok: false, error: "geen_run" };
+    this.showGestartRun = this.chatRun;
+    this.store.setSetting(SHOW_GESTART_KEY, this.showGestartRun);
+    this.emit("broadcast", { type: "show_gestart", showRunId: this.chatRun });
+    this.emit("admin-state-changed");
+    return { ok: true, showRunId: this.chatRun };
+  }
+
   // Reset van de run, langs welke weg ook (Stream Deck, operator, runtime): de run die liep is weg.
   volgRun(state = {}) {
     const run = state.showRunId && !["idle", "reset"].includes(String(state.status || "")) ? String(state.showRunId) : null;
@@ -735,6 +769,7 @@ class AudienceService extends EventEmitter {
     this.store.setSetting(CHAT_RUN_KEY, run);
     if (vorige) this.wisChat("reset_run");
     this.camera.clear();
+    this.beoordeling.reset();
   }
 
   // Publiekscamera (show/publiekscamera/publiek_sensor.py): de tellingen van de lopende scène en
@@ -823,7 +858,101 @@ class AudienceService extends EventEmitter {
   }
 
   // Lege chat op de telefoons en op het zaalscherm; ook de tellingen van de laatste scène gaan weg.
+  // Eén bericht erbij voor deze kijker; de stand gaat hoogstens één keer per seconde naar iedereen.
+  // Een like op je bericht telt net zo zwaar als een bericht.
+  telRanking(naam, isBot, { berichten = 1, likes = 0 } = {}) {
+    const sleutel = String(naam || "").toLowerCase();
+    if (!sleutel) return;
+    const rij = this.ranking.get(sleutel) || { naam, aantal: 0, likes: 0, isBot: !!isBot, sinds: Date.now() };
+    rij.naam = naam;
+    rij.aantal += berichten;
+    rij.likes = Math.max(0, Number(rij.likes || 0) + likes);
+    this.ranking.set(sleutel, rij);
+    if (this.rankingTimer) return;
+    this.rankingTimer = setTimeout(() => {
+      this.rankingTimer = null;
+      this.emit("broadcast", { type: "ranking", ranking: this.getRanking() });
+    }, 1000);
+    if (typeof this.rankingTimer.unref === "function") this.rankingTimer.unref();
+  }
+
+  // Wie het meest in de chat zette, hoogste eerst; bij gelijke stand wie er het eerst was.
+  getRanking(max = 10) {
+    // Na een herstart: de stand opnieuw tellen uit de berichten van deze run.
+    if (!this.rankingGeteld) {
+      this.rankingGeteld = true;
+      const session = this.getActiveSession();
+      if (session && !this.ranking.size) {
+        const tot = this.chatGewistTot(session);
+        const berichten = this.store.chatMessages({ sessionId: session.id, status: "accepted" }).filter((m) => m.id > tot).reverse();
+        for (const m of berichten) {
+          const sleutel = String(m.name || "").toLowerCase();
+          const rij = this.ranking.get(sleutel) || { naam: m.name, aantal: 0, likes: 0, isBot: !!m.isBot, sinds: m.id };
+          rij.aantal += 1;
+          this.ranking.set(sleutel, rij);
+        }
+      }
+    }
+    return [...this.ranking.values()]
+      .sort((a, b) => (b.aantal + (b.likes || 0)) - (a.aantal + (a.likes || 0)) || a.sinds - b.sinds)
+      .slice(0, max)
+      .map((rij, i) => ({ plek: i + 1, naam: rij.naam, punten: rij.aantal + (rij.likes || 0), aantal: rij.aantal, likes: rij.likes || 0, kleur: getNameColorHex(rij.naam), isBot: rij.isBot }));
+  }
+
+  // Hoeveel telefoons meedoen: verbonden en in de laatste tien minuten iets gedaan. Wie langer stil
+  // is telt niet meer mee, tot hij weer iets doet. Bots van de simulatie tellen mee zolang ze er zijn.
+  onlineMensen() {
+    const session = this.getActiveSession();
+    if (!session) return 0;
+    const grens = Date.now() - ACTIEF_MS;
+    const sleutels = new Set();
+    for (const client of this.store.listOnlineClients(session.id)) {
+      const sleutel = String(client.clientKey || client.id);
+      if (client.isBot ? this.simulation && this.simulation.running : (this.actief.get(sleutel) || 0) >= grens) sleutels.add(sleutel);
+    }
+    return sleutels.size;
+  }
+
+  wisRanking() {
+    this.ranking.clear();
+    this.emit("broadcast", { type: "ranking", ranking: [] });
+  }
+
+  // Een beeld van een speler die zich klaarmaakt (JPEG, plek 1..3), voor het zaalscherm tijdens het laden.
+  zetSpelerbeeld(plek, jpeg) {
+    const nummer = Number(plek);
+    if (!Number.isInteger(nummer) || nummer < 1 || nummer > 3) return { ok: false, error: "plek_ontbreekt" };
+    if (!Buffer.isBuffer(jpeg) || jpeg.length < 100) return { ok: false, error: "beeld_leeg" };
+    this.spelerbeeld.set(nummer, { jpeg, at: Date.now() });
+    return { ok: true, plek: nummer };
+  }
+
+  // Het beeld van een speler, als het vers genoeg is. Het komt binnen via zetSpelerbeeld, of uit de map
+  // waar TouchDesigner de camerabeelden bewaart (plekN_a.jpg en plekN_b.jpg om en om; het nieuwste
+  // bestand dat al af is telt).
+  getSpelerbeeld(plek, maxMs = 10000) {
+    const nummer = Number(plek);
+    if (!Number.isInteger(nummer) || nummer < 1 || nummer > 3) return null;
+    const nu = Date.now();
+    let beste = this.spelerbeeld.get(nummer) || null;
+    const map = process.env.AUDIENCE_SPELERBEELD_DIR || path.join(os.homedir(), "ForYou", "spelerbeeld");
+    for (const letter of ["a", "b"]) {
+      try {
+        const bestand = path.join(map, `plek${nummer}_${letter}.jpg`);
+        const at = fs.statSync(bestand).mtimeMs;
+        // Een bestand dat net geschreven wordt is misschien nog niet af.
+        if (nu - at < 150 || (beste && beste.at >= at)) continue;
+        if (beste && beste.bestand === bestand && beste.at === at) continue;
+        const jpeg = fs.readFileSync(bestand);
+        if (jpeg.length > 100) beste = { jpeg, at, bestand };
+      } catch (_err) {}
+    }
+    if (beste && beste.bestand) this.spelerbeeld.set(nummer, beste);
+    return beste && nu - beste.at <= maxMs ? beste.jpeg : null;
+  }
+
   wisChat(reden = "admin") {
+    this.wisRanking();
     const session = this.getActiveSession();
     const totId = this.store.laatsteChatMessageId();
     if (session) this.store.setSetting(CHAT_GEWIST_KEY, { sessionId: session.id, totId, at: nowIso(), reden: String(reden) });
@@ -1177,7 +1306,12 @@ class AudienceService extends EventEmitter {
     meta.isBot = isBot;
     meta.clientKey = buildClientKey(meta.ip, meta.clientTag);
     this.store.upsertClient(meta);
+    this.markeerActief(meta.clientKey);
     this.emit("admin-state-changed");
+  }
+
+  markeerActief(clientKey) {
+    if (clientKey) this.actief.set(String(clientKey), Date.now());
   }
 
   registerClient(meta, payload = {}) {
@@ -1190,8 +1324,21 @@ class AudienceService extends EventEmitter {
     }
     meta.name = nextName;
     meta.clientKey = buildClientKey(meta.ip, meta.clientTag);
+    // Nieuw in deze sessie (met een naam, geen bot): het hoofdscherm meldt het in de chat en telt mee.
+    const nieuw = !!(meta.sessionId && !meta.isBot && payload.name && !this.store.db
+      .prepare("SELECT 1 FROM clients WHERE session_id = ? AND client_key = ? AND is_bot = 0 LIMIT 1")
+      .get(Number(meta.sessionId), String(meta.clientKey)));
     this.persistClient(meta);
+    if (nieuw) this.emit("broadcast", { type: "deelnemer", naam: meta.name, kleur: getNameColorHex(meta.name), deelnemers: this.aantalDeelnemers(), time: nowIso() });
     return { ok: true, meta };
+  }
+
+  // Deelnemers: iedereen die in deze sessie heeft meegedaan (telefoons, geen bots), ook als hij nu weg is.
+  aantalDeelnemers() {
+    const session = this.getActiveSession();
+    if (!session) return 0;
+    const rij = this.store.db.prepare("SELECT COUNT(DISTINCT client_key) AS n FROM clients WHERE session_id = ? AND is_bot = 0").get(Number(session.id));
+    return Number(rij && rij.n) || 0;
   }
 
   disconnectClient(meta) {
@@ -1631,9 +1778,6 @@ class AudienceService extends EventEmitter {
     const cleanName = sanitizeName(name || meta.name);
     const cleanText = sanitizeText(text);
     if (!cleanText) return null;
-    if (this.fase.fase === "scene") {
-      return { error: { code: "scene_typen_dicht", message: "Typen kan weer na de scène." } };
-    }
     const isBot = isSimulatorBotIdentity(meta, cleanName, meta.clientTag) || !!meta.isBot || !!meta.simulated;
     meta.name = cleanName;
     meta.isBot = isBot;
@@ -1714,6 +1858,7 @@ class AudienceService extends EventEmitter {
     payload.likes = 0;
     await this.recordSignal({ type: "chat", meta, text: cleanText });
     this.emit("broadcast", payload);
+    this.telRanking(cleanName, isBot);
     this.simulation.observeAcceptedComment({ ...payload, isBot });
     this.emit("admin-state-changed");
     return { ok: true, payload };
@@ -1721,6 +1866,7 @@ class AudienceService extends EventEmitter {
 
   async acceptReaction(meta, reaction) {
     this.activeSessionRequired();
+    if (meta) this.markeerActief(meta.clientKey || buildClientKey(meta.ip, sanitizeClientTag(meta.clientTag)));
     const gevraagd = String(reaction || "").trim();
     // Oude namen (heart/bored, o.a. simulator) wijzen naar de eerste positieve/negatieve emoji.
     const oud = { heart: "positief", bored: "negatief" }[gevraagd.toLowerCase()];
@@ -1752,6 +1898,7 @@ class AudienceService extends EventEmitter {
     const session = this.activeSessionRequired();
     meta.clientTag = sanitizeClientTag(meta.clientTag);
     meta.clientKey = buildClientKey(meta.ip, meta.clientTag);
+    this.markeerActief(meta.clientKey);
     const enforcement = this.enforceClient(meta);
     if (!enforcement.ok) return { error: enforcement };
     const id = Number.parseInt(String(messageId || ""), 10);
@@ -1763,7 +1910,9 @@ class AudienceService extends EventEmitter {
       return { error: { code: "like_eigen", message: "Je eigen reactie kun je niet liken." } };
     }
     if (!this.allowRate(this.likeRate, meta.clientKey, 150)) return { ok: true, throttled: true };
+    const had = this.store.commentLikeCount(id);
     const result = this.store.toggleCommentLike({ sessionId: session.id, messageId: id, clientKey: meta.clientKey, liked });
+    if (result.likes !== had) this.telRanking(message.name, !!message.isBot, { berichten: 0, likes: result.likes - had });
     this.emit("broadcast", { type: "comment_likes", id, likes: result.likes });
     return { ok: true, id, liked: result.liked, likes: result.likes };
   }
@@ -1792,6 +1941,8 @@ class AudienceService extends EventEmitter {
       endsAt,
       durationSeconds: poll.durationSeconds,
       start: !!(this.startStemming && Number(this.startStemming.pollId) === Number(poll.id)),
+      // De hoeveelste startscène dit is en hoeveel er zijn ({ nummer, van }), voor de teller 1/3.
+      startscene: this.startStemming && Number(this.startStemming.pollId) === Number(poll.id) ? this.startStemming.startscene || null : null,
       remainingMs: Number.isFinite(endsAtTs) ? Math.max(0, endsAtTs - Date.now()) : null,
     };
   }
@@ -1921,8 +2072,11 @@ class AudienceService extends EventEmitter {
     this.store.setSetting(START_STEMMING_INSTELLINGEN_KEY, instellingen);
     // Eerst leegmaken: een stemming die nog openstaat sluit dan als gewone poll.
     this.bewaarStartStemming(null);
+    // De run begint met een vast aantal startscènes: dit is nummer zoveel van zoveel.
+    const van = Math.max(1, Number(state.startPhase.required) || 1);
+    const startscene = { nummer: Math.min(van, (Number(state.startPhase.played) || 0) + 1), van };
     const snapshot = this.startPoll({
-      question: START_STEMMING_VRAAG,
+      question: `Startscène ${startscene.nummer}/${startscene.van}`,
       options: keuzes.slice(0, 12).map((keuze) => keuze.titel),
       durationSeconds: instellingen.durationSeconds,
       maxOptions: 12,
@@ -1933,9 +2087,10 @@ class AudienceService extends EventEmitter {
       keuzes: keuzes.slice(0, 12),
       minVotes: instellingen.minVotes,
       startedAt: snapshot.startedAt,
+      startscene,
       uitslag: null,
     });
-    const metVlag = { ...snapshot, start: true };
+    const metVlag = { ...snapshot, start: true, startscene };
     this.emit("broadcast", { type: "start_stemming", poll: metVlag });
     this.emit("admin-state-changed");
     return metVlag;
@@ -1969,7 +2124,7 @@ class AudienceService extends EventEmitter {
       fout: null,
     };
     this.bewaarStartStemming({ ...stemming, uitslag });
-    this.emit("broadcast", { type: "start_stemming_uitslag", pollId: poll.id, opties: stemming.keuzes.map((keuze) => keuze.titel), uitslag });
+    this.emit("broadcast", { type: "start_stemming_uitslag", pollId: poll.id, opties: stemming.keuzes.map((keuze) => keuze.titel), uitslag, startscene: stemming.startscene || null });
     const prepare = this.clients && this.clients.prepareChosenSituation;
     try {
       if (typeof prepare !== "function") throw new Error("geen_koppeling");
@@ -2011,6 +2166,22 @@ class AudienceService extends EventEmitter {
     this.emit("broadcast", { type: "poll_update", pollId: poll.id, counts: snapshot.counts, totalVotes: snapshot.totalVotes });
     this.emit("admin-state-changed");
     return { ok: true, pollId: poll.id, optionIndex: index };
+  }
+
+  // Een antwoord op een vraag na de scène (beoordeling.js).
+  acceptBeoordeling(meta, msg = {}) {
+    if (!this.getActiveSession()) return { error: { code: "session_inactive", message: "Geen sessie." } };
+    meta.clientTag = sanitizeClientTag(meta.clientTag);
+    meta.clientKey = buildClientKey(meta.ip, meta.clientTag);
+    this.persistClient(meta);
+    const enforcement = this.enforceClient(meta);
+    if (!enforcement.ok) return { error: enforcement };
+    // Een getypt antwoord (Anders): niet als het een link, telefoonnummer of scheldwoord bevat.
+    const getypt = String(msg.tekst || "");
+    if (getypt && (containsLink(getypt) || containsPhoneNumber(getypt) || this.wordFilter.match(getypt, { allowSubword: true }))) {
+      return { error: { code: "beoordeling_geweigerd", message: "Dat antwoord kan niet." } };
+    }
+    return this.beoordeling.antwoord(meta.clientKey, { ...msg, naam: meta.name });
   }
 
   async acceptSimulatedComment(bot, text) {

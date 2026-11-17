@@ -462,7 +462,7 @@
         <section class="card">
           <h2>Stemmen op de startscène</h2>
           <div class="row">
-            <label>Duur (s) <input id="startStemDuur" type="number" min="10" max="600" step="5" value="45" /></label>
+            <label>Duur (s) <input id="startStemDuur" type="number" min="10" max="600" step="5" value="90" /></label>
           </div>
           <div class="row">
             <button id="startStemBtn" class="primary" type="button">Open stemming</button>
@@ -475,6 +475,15 @@
           <div class="row">
             <label>Klok (s) <input id="beoordeelDuur" type="number" min="10" max="300" step="5" value="30" /></label>
           </div>
+          <h3>Vraag over het label</h3>
+          <div class="row">
+            <label><input id="labelVraagAan" type="checkbox" /> Vraag stellen</label>
+            <label><input id="labelAndersAan" type="checkbox" /> Anders (typen)</label>
+          </div>
+          <div class="muted">Per label een vraag en drie antwoorden. Leeg = het grijze voorbeeld. Te veel telt min, mag meer telt plus voor scènes met dat label.</div>
+          <div id="labelVragen"></div>
+          <h3>Anders, laatste scène</h3>
+          <div id="labelAnders" class="muted"></div>
         </section>
         <section class="card">
           <h2>Content warning</h2>
@@ -1721,19 +1730,76 @@
           session_inactive: "Er is geen publiekssessie gestart.",
         };
         post("/audience/admin/start-stemming/start", {
-          durationSeconds: Number(document.getElementById("startStemDuur").value || 45),
+          durationSeconds: Number(document.getElementById("startStemDuur").value || 90),
         }).then(() => { setActionMessage(""); return refresh(); })
           .catch((err) => setActionMessage(fouten[err.message] || ("Stemming openen mislukt: " + err.message), true));
       });
       document.getElementById("startStemDuur").addEventListener("change", () => {
         post("/audience/admin/start-stemming/instellingen", {
-          durationSeconds: Number(document.getElementById("startStemDuur").value || 45),
+          durationSeconds: Number(document.getElementById("startStemDuur").value || 90),
         }).catch(() => {});
       });
       // De klok van het stemmen na de scène en de content warning: eigen instellingen, één keer ophalen.
       api("/audience/stage/beoordeling").then((data) => {
         if (data.instellingen) document.getElementById("beoordeelDuur").value = data.instellingen.duur;
       }).catch(() => {});
+      // Vragen per label: vier velden per label; opslaan bij elke wijziging van dat label.
+      function tekenLabelVragen(data) {
+        const inst = (data && data.instellingen && data.instellingen.label) || {};
+        document.getElementById("labelVraagAan").checked = inst.aan !== false;
+        document.getElementById("labelAndersAan").checked = inst.anders !== false;
+        const vak = document.getElementById("labelVragen");
+        const labels = (data && data.labels) || [];
+        vak.textContent = labels.length ? "" : "De labels verschijnen hier zodra er een run loopt.";
+        for (const label of labels) {
+          const eigen = (inst.vragen || {})[label.id] || {};
+          const rij = document.createElement("div");
+          rij.className = "row";
+          rij.dataset.label = label.id;
+          const kop = document.createElement("strong");
+          kop.textContent = label.naam;
+          kop.style.minWidth = "9em";
+          rij.appendChild(kop);
+          for (const [veld, voorbeeld, breed] of [["vraag", label.naam + "?", "16em"], ["minder", inst.minder || "Te veel", "8em"], ["goed", inst.goed || "Precies goed", "8em"], ["meer", inst.meer || "Mag meer", "8em"]]) {
+            const invoer = document.createElement("input");
+            invoer.type = "text";
+            invoer.maxLength = veld === "vraag" ? 120 : 30;
+            invoer.placeholder = voorbeeld;
+            invoer.value = eigen[veld] || "";
+            invoer.dataset.veld = veld;
+            invoer.style.width = breed;
+            rij.appendChild(invoer);
+          }
+          vak.appendChild(rij);
+        }
+        const laatste = data && data.laatste;
+        const anders = (laatste && laatste.anders) || [];
+        document.getElementById("labelAnders").textContent = anders.length
+          ? anders.map((a) => (a.naam ? a.naam + ": " : "") + a.tekst).join("\n")
+          : "Nog niets.";
+        document.getElementById("labelAnders").style.whiteSpace = "pre-line";
+      }
+      document.getElementById("labelVragen").addEventListener("change", (ev) => {
+        const rij = ev.target.closest("[data-label]");
+        if (!rij) return;
+        const item = {};
+        for (const invoer of rij.querySelectorAll("input[data-veld]")) item[invoer.dataset.veld] = invoer.value.trim();
+        post("/audience/admin/beoordeling/instellingen", { label: { vragen: { [rij.dataset.label]: item } } })
+          .then(() => setActionMessage(""))
+          .catch((err) => setActionMessage("Labelvraag opslaan mislukt: " + err.message, true));
+      });
+      for (const [id, sleutel] of [["labelVraagAan", "aan"], ["labelAndersAan", "anders"]]) {
+        document.getElementById(id).addEventListener("change", (ev) => {
+          post("/audience/admin/beoordeling/instellingen", { label: { [sleutel]: ev.target.checked } })
+            .catch((err) => setActionMessage("Opslaan mislukt: " + err.message, true));
+        });
+      }
+      api("/audience/stage/beoordeling").then(tekenLabelVragen).catch(() => {});
+      setInterval(() => api("/audience/stage/beoordeling").then((data) => {
+        const anders = (data.laatste && data.laatste.anders) || [];
+        document.getElementById("labelAnders").textContent = anders.length ? anders.map((a) => (a.naam ? a.naam + ": " : "") + a.tekst).join("\n") : "Nog niets.";
+        if (!document.querySelector("#labelVragen [data-label]") && (data.labels || []).length) tekenLabelVragen(data);
+      }).catch(() => {}), 15000);
       document.getElementById("beoordeelDuur").addEventListener("change", (ev) => {
         post("/audience/admin/beoordeling/instellingen", { duur: Number(ev.target.value || 30) })
           .then((data) => { ev.target.value = data.instellingen.duur; setActionMessage(""); })
