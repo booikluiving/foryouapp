@@ -271,6 +271,9 @@
       #stemGetal span.tik { animation: stemGetalTik 260ms var(--curve); }
       @keyframes stemGetalTik { from { transform: scale(1.18); } to { transform: scale(1); } }
       #p-stem.groot #stemGetal { transform: translate(-50%, calc(-50% + 470px)) scale(1); transition: none; }
+      /* Eerst kiest het universum; de klok komt pas in beeld als de scène gekozen is. */
+      #p-stem.groot.zoekt #stemGetal { opacity: 0; }
+      #p-stem.groot #stemGetal { transition: opacity 300ms var(--curve); }
       #stemBalk { position: absolute; left: 60px; top: 884px; width: 960px; height: 12px; transition: opacity 300ms; }
       #stemBalk::before { content: ""; position: absolute; left: 0; right: 0; top: 5px; height: 2px; background: var(--wit-3); }
       #stemBalk i { position: absolute; left: 0; top: 0; height: 100%; width: 0; background: #fff; transition: width 300ms var(--curve); }
@@ -857,11 +860,11 @@
       // gaat het universum verder: nieuwe scènes komen vrij en de kiezer landt op de geschreven scène.
       // Eerst staat de klok groot in het midden (GROOT_MS), dan schuift hij in OMHOOG_MS naar zijn plek.
       // Het schrijven begint als de klok op zijn plek staat.
-      // Terwijl de klok groot staat, kiest het universum de volgende scène. De klok blijft groot tot de
-      // keuze er is (minstens GROOT_MS, daarna nog NA_KEUZE_MS; kiest het universum
-      // niet, zoals in de startfase, dan na GROOT_MAX_MS). Het schrijven begint als de klok op zijn plek staat.
-      const GROOT_MS = 1800, GROOT_MAX_MS = 10000, NA_KEUZE_MS = 1600, OMHOOG_MS = 800, SCHRIJF_NA_OMHOOG_MS = 200, CIRKEL = 2 * Math.PI * 230;
-      const stemFase = { id: "", opent: 0, tot: 0, schrijf: false, schrijfGevraagd: "", lus: 0, schrijfTimer: 0, kiest: false, grootTot: 0, ping: 0 };
+      // Eerst kiest het universum de volgende scène (de klok loopt al, maar is nog niet te zien). Is de
+      // keuze er, dan komt de klok groot in beeld (NA_KEUZE_MS) en schuift daarna omhoog. Kiest het
+      // universum niet, zoals in de startfase, dan na GROOT_MAX_MS. Het schrijven begint als de klok op zijn plek staat.
+      const GROOT_MS = 1800, GROOT_MAX_MS = 10000, NA_KEUZE_MS = 2200, OMHOOG_MS = 800, SCHRIJF_NA_OMHOOG_MS = 200, CIRKEL = 2 * Math.PI * 230;
+      const stemFase = { id: "", opent: 0, tot: 0, schrijf: false, schrijfGevraagd: "", lus: 0, schrijfTimer: 0, kiest: false, gekozen: false, grootTot: 0, ping: 0 };
       // Het universum mag verder (nieuwe scènes vrij, kiezer): tot het kiest, elke halve seconde opnieuw,
       // want het luistert pas als het de stop van de scène gezien heeft.
       function kiezenStop() {
@@ -878,6 +881,7 @@
       function stemGekozen() {
         if (!stemFase.kiest || stemFase.tot <= Date.now()) return;
         kiezenStop();
+        stemFase.gekozen = true;
         stemFase.grootTot = Math.max(stemFase.opent + GROOT_MS, Date.now() + NA_KEUZE_MS);
         planSchrijven();
       }
@@ -901,15 +905,16 @@
         const duur = Math.max(1, stemFase.tot - stemFase.opent), over = Math.min(duur, stemFase.tot - nu), s = Math.ceil(over / 1000);
         const tik = () => (s <= 5 ? geluid.aftel(s) : geluid.seconde(s));
         if (nu < stemFase.grootTot) {
-          // Groot in het midden: de klok loopt al.
+          // Groot in het midden: de klok loopt al, maar is pas te zien als de scène gekozen is.
           vlak.classList.add("groot");
           vlak.classList.remove("klok");
+          vlak.classList.toggle("zoekt", stemFase.kiest && !stemFase.gekozen);
           loop.style.strokeDashoffset = String(CIRKEL);
-          zetStemGetal(s, tik);
+          zetStemGetal(s, stemFase.gekozen ? tik : null);
         } else if (nu < stemFase.grootTot + OMHOOG_MS) {
           // Het getal schuift omhoog naar zijn plek en de cirkel wordt rondgetrokken tot waar de klok is.
           // Het universum gaat weg.
-          if (vlak.classList.contains("groot")) { vlak.classList.remove("groot"); geluid.schakel(); }
+          if (vlak.classList.contains("groot")) { vlak.classList.remove("groot", "zoekt"); geluid.schakel(); }
           if (stemFase.kiest) { stemFase.kiest = false; kiezenStop(); zetFase(); }
           const p = (nu - stemFase.grootTot) / OMHOOG_MS, rond = Math.min(1, Math.max(0, (p - 0.4) / 0.6));
           loop.style.strokeDashoffset = String(CIRKEL * (1 - rond * (over / duur)));
@@ -950,6 +955,7 @@
             el("stemGetal").firstElementChild.textContent = "";
             // De klok staat groot en het universum kiest.
             stemFase.kiest = true;
+            stemFase.gekozen = false;
             stemFase.grootTot = opent + GROOT_MAX_MS;
             kiezenStop();
             universumVerder();
