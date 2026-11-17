@@ -463,6 +463,9 @@
       const TEMPO = Number(new URLSearchParams(location.search).get("tempo")) || 3.5;
       const VLOT = new URLSearchParams(location.search).get("vlot") !== "0";
       const SNEL = TEMPO > 1;
+      // De kiezer na de scène: rustiger dan de rest van de reeks, en daarna even stil op de keuze.
+      const KIES_TEMPO = Number(new URLSearchParams(location.search).get("kiesTempo")) || 1;
+      const RUST_MS = 1500;
       if (SNEL) document.documentElement.classList.add("snel");
       // Het rapport: bij scène RAPPORT_SNELST_BIJ duurt het nog dit deel van de eerste keer, sneller wordt het niet.
       const RAPPORT_SNELST = 0.2, RAPPORT_SNELST_BIJ = 10;
@@ -482,7 +485,7 @@
       const UNIVERSUM_PAD = /^\/[\w\-/]+$/.test(universumParam) ? universumParam : "/universe";
       const opPoort = (poort) => (EEN_ADRES ? location.origin : `${location.protocol}//${location.hostname}:${poort}`);
       const wsOpPoort = (poort) => `${location.protocol === "https:" ? "wss" : "ws"}://${EEN_ADRES ? location.host : `${location.hostname}:${poort}`}`;
-      el("universum").src = `${opPoort(UNIVERSUM_POORT)}${UNIVERSUM_PAD}/stage.html?naScene=${NA_SCENE_MAX}&vrijgave=1&padZoom=1&tempo=${Number(new URLSearchParams(location.search).get("tempo")) || 3.5}${new URLSearchParams(location.search).get("meet") ? "&meet=1" : ""}${new URLSearchParams(location.search).get("vlot") !== "0" ? "&vlot=1" : ""}&binnenTitel=0&gekozenTitel=0&stemTekst=0&zicht=${zichtNu().join(",")}${STAND ? `&stand=${encodeURIComponent(STAND)}` : ""}`;
+      el("universum").src = `${opPoort(UNIVERSUM_POORT)}${UNIVERSUM_PAD}/stage.html?naScene=${NA_SCENE_MAX}&vrijgave=1&padZoom=1&tempo=${Number(new URLSearchParams(location.search).get("tempo")) || 3.5}${new URLSearchParams(location.search).get("meet") ? "&meet=1" : ""}${new URLSearchParams(location.search).get("vlot") !== "0" ? "&vlot=1" : ""}&kiesTempo=${KIES_TEMPO}&sprongen=12&naKeuze=${RUST_MS + 1500}&binnenTitel=0&gekozenTitel=0&stemTekst=0&zicht=${zichtNu().join(",")}${STAND ? `&stand=${encodeURIComponent(STAND)}` : ""}`;
       function naarUniversum(bericht) {
         try { el("universum").contentWindow.postMessage({ bron: "for_you-scherm", ...bericht }, "*"); } catch (_err) {}
       }
@@ -861,10 +864,11 @@
       // Eerst staat de klok groot in het midden (GROOT_MS), dan schuift hij in OMHOOG_MS naar zijn plek.
       // Het schrijven begint als de klok op zijn plek staat.
       // Eerst kiest het universum de volgende scène (de klok loopt al, maar is nog niet te zien). Is de
-      // keuze er, dan komt de klok groot in beeld (NA_KEUZE_MS) en schuift daarna omhoog. Kiest het
-      // universum niet, zoals in de startfase, dan na GROOT_MAX_MS. Het schrijven begint als de klok op zijn plek staat.
-      const GROOT_MS = 1800, GROOT_MAX_MS = 10000, NA_KEUZE_MS = 2200, OMHOOG_MS = 800, SCHRIJF_NA_OMHOOG_MS = 200, CIRKEL = 2 * Math.PI * 230;
-      const stemFase = { id: "", opent: 0, tot: 0, schrijf: false, schrijfGevraagd: "", lus: 0, schrijfTimer: 0, kiest: false, gekozen: false, grootTot: 0, ping: 0 };
+      // keuze er, dan blijft het even stil (RUST_MS), dan komt de klok groot in beeld en gaat het
+      // universum weg (NA_KEUZE_MS), daarna schuift de klok omhoog. Kiest het universum niet, zoals in
+      // de startfase, dan na GROOT_MAX_MS. Het schrijven begint als de klok op zijn plek staat.
+      const GROOT_MS = 1800, GROOT_MAX_MS = 12000, NA_KEUZE_MS = 1800, OMHOOG_MS = 800, SCHRIJF_NA_OMHOOG_MS = 200, CIRKEL = 2 * Math.PI * 230;
+      const stemFase = { id: "", opent: 0, tot: 0, schrijf: false, schrijfGevraagd: "", lus: 0, schrijfTimer: 0, kiest: false, gekozen: false, klokVanaf: 0, grootTot: 0, ping: 0 };
       // Het universum mag verder (nieuwe scènes vrij, kiezer): tot het kiest, elke halve seconde opnieuw,
       // want het luistert pas als het de stop van de scène gezien heeft.
       function kiezenStop() {
@@ -882,7 +886,8 @@
         if (!stemFase.kiest || stemFase.tot <= Date.now()) return;
         kiezenStop();
         stemFase.gekozen = true;
-        stemFase.grootTot = Math.max(stemFase.opent + GROOT_MS, Date.now() + NA_KEUZE_MS);
+        stemFase.klokVanaf = Date.now() + RUST_MS;
+        stemFase.grootTot = Math.max(stemFase.opent + GROOT_MS, stemFase.klokVanaf + NA_KEUZE_MS);
         planSchrijven();
       }
       let tekstGemeld = "", wachtUniversum = false, tekstTijdensStemmen = false;
@@ -908,9 +913,12 @@
           // Groot in het midden: de klok loopt al, maar is pas te zien als de scène gekozen is.
           vlak.classList.add("groot");
           vlak.classList.remove("klok");
-          vlak.classList.toggle("zoekt", stemFase.kiest && !stemFase.gekozen);
+          const klokZichtbaar = stemFase.gekozen ? nu >= stemFase.klokVanaf : !stemFase.kiest;
+          vlak.classList.toggle("zoekt", !klokZichtbaar);
+          // De klok komt in beeld: het universum gaat weg.
+          if (klokZichtbaar && stemFase.kiest && stemFase.gekozen) { stemFase.kiest = false; zetFase(); }
           loop.style.strokeDashoffset = String(CIRKEL);
-          zetStemGetal(s, stemFase.gekozen ? tik : null);
+          zetStemGetal(s, klokZichtbaar ? tik : null);
         } else if (nu < stemFase.grootTot + OMHOOG_MS) {
           // Het getal schuift omhoog naar zijn plek en de cirkel wordt rondgetrokken tot waar de klok is.
           // Het universum gaat weg.

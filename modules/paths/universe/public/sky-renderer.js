@@ -363,6 +363,11 @@
     const REGIE_VRIJGAVE = REGIE_OPTIES.get("vrijgave") === "1";
     // Met tempo=2 gaat de hele reeks na een scène twee keer zo snel: uitzoomen, vrijkomen, kiezen en inzoomen.
     const REGIE_TEMPO = Math.min(5, Math.max(0.5, Number(REGIE_OPTIES.get("tempo")) || 1));
+    // De kiezer apart: kiesTempo (standaard het gewone tempo) en het aantal sprongen; naKeuze = zo lang
+    // (ms) blijft de kaart stil op de gekozen ster voor de camera vertrekt.
+    const REGIE_KIES_TEMPO = Math.min(5, Math.max(0.3, Number(REGIE_OPTIES.get("kiesTempo")) || REGIE_TEMPO));
+    const REGIE_SPRONGEN = Math.min(40, Math.max(3, Number(REGIE_OPTIES.get("sprongen")) || 0));
+    const REGIE_NA_KEUZE = Math.max(0, Number(REGIE_OPTIES.get("naKeuze")) || 0);
     // Met vlot=1: na een scène meteen uitgezoomd (geen camerabeweging), nieuwe scènes komen per laag
     // tegelijk vrij, geen pauzes, een kortere kiezer en inzoomen zodra de keuze er is.
     const REGIE_VLOT = REGIE_OPTIES.get("vlot") === "1";
@@ -4337,7 +4342,7 @@
     async function regieRoulette(kandidaten, wil) {
       const gen = regie.gen;
       let vorige = 0;
-      const sprongen = REGIE_VLOT ? 8 : 15;
+      const sprongen = REGIE_SPRONGEN || (REGIE_VLOT ? 8 : 15);
       for (let i = 0; i < sprongen; i += 1) {
         const keuze = i === sprongen - 1 ? [wil] : kandidaten.filter((id) => id !== vorige && (i < sprongen - 2 || id !== wil));
         const id = keuze.length ? keuze[Math.floor(Math.random() * keuze.length)] : wil;
@@ -4346,7 +4351,7 @@
         regieTik("stap", id);
         vorige = id;
         const j = (i * 14) / (sprongen - 1);
-        await regieWacht((70 + j * j * 2.4) / REGIE_TEMPO);
+        await regieWacht((70 + j * j * 2.4) / REGIE_KIES_TEMPO);
         if (gen !== regie.gen) return;
       }
     }
@@ -4364,6 +4369,7 @@
       if (!doel.cur) regieTik("slot", wil);
       regieToon(model, doel, true);
       if (!REGIE_VLOT) await regieWacht((doel.cur ? 400 : doel.stemWinnaar === wil ? 3500 : 2500) / REGIE_TEMPO);
+      else if (REGIE_NA_KEUZE && !doel.cur) await regieWacht(REGIE_NA_KEUZE);
       if (gen !== regie.gen) return;
       regieMeet("pauze na keuze klaar");
       const laatste = regieStand(regie.doel);
