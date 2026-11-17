@@ -100,6 +100,20 @@ assert.throws(() => buildEnvironmentOmvallenCue(scene("environment:26", "c"), {}
   fs.rmSync(root, { recursive: true, force: true });
 }
 
+// Overlay (Lingo-bord): de clip gaat als losse laag over elk shot; plaats en breedte in de OSC-args.
+{
+  resetOmvallenState();
+  const bord = { ...manifest, environmentId: "environment:29", overlay: { x: 0.5, y: 0.675, breedte: 0.61 } };
+  const optBord = { ...options, manifest: bord };
+  const cueBord = buildEnvironmentOmvallenCue(scene("environment:29", "lingo"), {}, optBord);
+  assert.deepEqual(cueBord.actions[0].payload.overlay, { x: 0.5, y: 0.675, breedte: 0.61 });
+  assert.deepEqual(oscArgsForAction({ ...cueBord.actions[0], cueId: cueBord.cueId }).slice(3), ["/media/environments/environment_29/omvallen/stap-1.mov", "0", "2.44", "0.5", "0.675", "0.61"]);
+  // Terug naar het begin: gewoon uit, zonder plaats.
+  const uit = buildEnvironmentOmvallenCue(scene("environment:29", "lingo"), { actie: "begin" }, optBord);
+  assert.deepEqual(oscArgsForAction({ ...uit.actions[0], cueId: uit.cueId }).slice(3), ["", "1", "0"]);
+  resetOmvallenState();
+}
+
 console.log("show-control environment-omvallen: ok");
 
 // Vanzelf: af en toe een clip uit zichzelf, alleen bij een scène die speelt, niet door een druk heen.
