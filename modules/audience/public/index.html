@@ -523,6 +523,12 @@
         overflow: hidden;
       }
       #beoordeelKeuzes button.gekozen { background: var(--a); color: var(--bg); }
+      /* Labelvraag: drie antwoorden onder elkaar, Anders kleiner eronder. Anders opent een regel om te typen. */
+      #beoordeelKeuzes.keuze button.anders { font-weight: 400; color: var(--b); border-style: dashed; }
+      #beoordeelKeuzes.typ { grid-auto-rows: auto; align-content: start; gap: 10px; }
+      #beoordeelKeuzes.typ input { font: inherit; font-size: 20px; color: var(--a); background: transparent; border: 1px solid var(--a); padding: 14px; min-width: 0; }
+      #beoordeelKeuzes.typ .rij { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+      #beoordeelKeuzes.typ button { padding: 14px; text-align: center; }
       /* Na de tik staan de knoppen even vast; de gekozen blijft helder, de rest zakt weg. */
       #beoordeelKeuzes button:disabled { opacity: 1; }
       #beoordeelKeuzes button:disabled:not(.gekozen) { opacity: 0.35; }
@@ -1739,6 +1745,7 @@
             button.appendChild(naam);
           } else {
             button.textContent = keuze.naam;
+            if (keuze.anders) { button.classList.add("anders"); button.setAttribute("data-anders", ""); }
           }
           keuzesEl.appendChild(button);
         }
@@ -1760,17 +1767,36 @@
         if (beoordeelTimer) clearInterval(beoordeelTimer);
         beoordeelTimer = setInterval(tekenBeoordeelKlok, 200);
       }
-      document.getElementById("beoordeelKeuzes").addEventListener("click", (event) => {
-        const button = event.target && event.target.closest ? event.target.closest("[data-beoordeel-keuze]") : null;
-        if (!button || !beoordeling || button.disabled) return;
-        const vraag = beoordeling.vragen[beoordeling.stap];
-        if (!ws || ws.readyState !== WebSocket.OPEN) { ensureFreshConnection(); return; }
-        try {
-          ws.send(JSON.stringify({ type: "beoordeling_antwoord", id: beoordeling.id, vraag: vraag.id, keuze: button.getAttribute("data-beoordeel-keuze"), clientTag }));
-        } catch { ensureFreshConnection(); return; }
-        // Het antwoord licht even op, dan de volgende vraag.
-        for (const knop of document.querySelectorAll("#beoordeelKeuzes button")) knop.disabled = true;
-        button.classList.add("gekozen");
+      // Anders: een regel om zelf iets te typen, met Stuur en Terug.
+      function toonAnders(vraag) {
+        const keuzesEl = document.getElementById("beoordeelKeuzes");
+        keuzesEl.className = "typ";
+        keuzesEl.style.gridTemplateColumns = "";
+        keuzesEl.textContent = "";
+        const veld = document.createElement("input");
+        veld.type = "text"; veld.maxLength = 140; veld.placeholder = "Typ je antwoord"; veld.autocomplete = "off"; veld.enterKeyHint = "send";
+        const rij = document.createElement("div"); rij.className = "rij";
+        const terug = document.createElement("button"); terug.type = "button"; terug.textContent = "Terug";
+        const stuur = document.createElement("button"); stuur.type = "button"; stuur.textContent = "Stuur";
+        rij.append(terug, stuur);
+        keuzesEl.append(veld, rij);
+        terug.addEventListener("click", (e) => { e.stopPropagation(); tekenBeoordeling(); });
+        const verstuur = (e) => {
+          if (e) { e.preventDefault(); e.stopPropagation(); }
+          const tekst = veld.value.trim();
+          if (!tekst || !beoordeling) { veld.focus(); return; }
+          if (!ws || ws.readyState !== WebSocket.OPEN) { ensureFreshConnection(); return; }
+          try {
+            ws.send(JSON.stringify({ type: "beoordeling_antwoord", id: beoordeling.id, vraag: vraag.id, keuze: "anders", tekst, clientTag }));
+          } catch { ensureFreshConnection(); return; }
+          stuur.disabled = true; terug.disabled = true; veld.disabled = true;
+          naarVolgendeVraag();
+        };
+        stuur.addEventListener("click", verstuur);
+        veld.addEventListener("keydown", (e) => { if (e.key === "Enter") verstuur(e); });
+        setTimeout(() => veld.focus(), 50);
+      }
+      function naarVolgendeVraag() {
         const id = beoordeling.id;
         const volgende = beoordeling.stap + 1;
         try { localStorage.setItem("live_beoordeling", JSON.stringify({ id, stap: volgende })); } catch {}
@@ -1779,6 +1805,20 @@
           beoordeling.stap = volgende;
           tekenBeoordeling();
         }, 450);
+      }
+      document.getElementById("beoordeelKeuzes").addEventListener("click", (event) => {
+        const button = event.target && event.target.closest ? event.target.closest("[data-beoordeel-keuze]") : null;
+        if (!button || !beoordeling || button.disabled) return;
+        const vraag = beoordeling.vragen[beoordeling.stap];
+        if (button.hasAttribute("data-anders")) { toonAnders(vraag); return; }
+        if (!ws || ws.readyState !== WebSocket.OPEN) { ensureFreshConnection(); return; }
+        try {
+          ws.send(JSON.stringify({ type: "beoordeling_antwoord", id: beoordeling.id, vraag: vraag.id, keuze: button.getAttribute("data-beoordeel-keuze"), clientTag }));
+        } catch { ensureFreshConnection(); return; }
+        // Het antwoord licht even op, dan de volgende vraag.
+        for (const knop of document.querySelectorAll("#beoordeelKeuzes button")) knop.disabled = true;
+        button.classList.add("gekozen");
+        naarVolgendeVraag();
       });
 
       function closePoll() {
