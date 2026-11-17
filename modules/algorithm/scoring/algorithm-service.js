@@ -557,19 +557,36 @@ async function simulateSituationObservation(event) {
   };
 }
 
+// Per run één wijziging tegelijk: lezen, aanpassen en bewaren van de stand mogen elkaar niet
+// overlappen (de labelvraag, de personagevraag en de live reacties komen vaak tegelijk binnen;
+// anders gaat er een wijziging verloren of raakt het bestand beschadigd).
+const rijen = new Map();
+function achterElkaar(sleutelVan, fn) {
+  return (...args) => {
+    const sleutel = String(sleutelVan(...args) || "");
+    const vorige = rijen.get(sleutel) || Promise.resolve();
+    const deze = vorige.catch(() => {}).then(() => fn(...args));
+    const staart = deze.catch(() => {});
+    rijen.set(sleutel, staart);
+    staart.then(() => { if (rijen.get(sleutel) === staart) rijen.delete(sleutel); });
+    return deze;
+  };
+}
+const perRun = (event) => (event && event.showRunId) || "";
+
 module.exports = {
   assertNoPromptSettings,
   assertNoRuntimeOwnershipFields,
-  createAlgorithmRun,
-  createScoringContext,
+  createAlgorithmRun: achterElkaar(perRun, createAlgorithmRun),
+  createScoringContext: achterElkaar(perRun, createScoringContext),
   getAlgorithmConfigSnapshot,
   getScoreFeed,
   getScoringContext,
   listScoringContexts,
-  observeAudienceSignals,
-  observeLabelVoorkeur,
-  observePersonageVoorkeur,
-  observeSituation,
+  observeAudienceSignals: achterElkaar(perRun, observeAudienceSignals),
+  observeLabelVoorkeur: achterElkaar(perRun, observeLabelVoorkeur),
+  observePersonageVoorkeur: achterElkaar(perRun, observePersonageVoorkeur),
+  observeSituation: achterElkaar(perRun, observeSituation),
   readAlgorithmConfig,
   simulateSituationObservation,
   summarizeScoringContext,

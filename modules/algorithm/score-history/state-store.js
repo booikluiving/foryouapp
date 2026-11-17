@@ -62,7 +62,10 @@ async function fileExists(filePath) {
 async function saveScoringContextState(state) {
   const filePath = scoringContextFilePath(state.showRunId);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  // Eerst naar een tijdelijk bestand, dan in één keer op zijn plek: nooit een half geschreven stand.
+  const tijdelijk = `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+  await fs.writeFile(tijdelijk, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  await fs.rename(tijdelijk, filePath);
   return { filePath };
 }
 
