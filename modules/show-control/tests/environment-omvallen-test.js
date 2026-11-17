@@ -199,3 +199,56 @@ console.log("show-control environment-omvallen: ok");
   assert.deepEqual(namen, ["a.wav", "b.wav", "c.wav", "a.wav"]);
   resetOmvallenState();
 }
+
+// Beeldvullende stappen (achtbaan: POV, van afstand): een cameraknop haalt het shot weg en de
+// knop begint opnieuw. Bij een omgeving zonder "beeldvullend" blijft de stap staan.
+(async () => {
+  const { beeldvullendeStapUit } = require("../cue-library/environment-omvallen");
+  const { sendTouchDesignerCommand } = require("../target-adapters/touchdesigner-adapter");
+  const { createOscServer } = require("../target-adapters/osc-lite");
+  const m = {
+    schemaVersion: "omvallen.v0",
+    environmentId: "environment:33",
+    beeldvullend: true,
+    drukken: [{ druk: 1, naam: "POV", clip: "shot-vooruit.mp4", duur: 32.5 }, { druk: 2, naam: "Van afstand", clip: "shot-afstand.mp4", duur: 32.5 }],
+  };
+  const opt = { manifest: m, catalogMediaRoot: "/media", fileExists: () => true };
+  const speelt = scene("environment:33", "h");
+  resetOmvallenState();
+  assert.equal(beeldvullendeStapUit(), "");
+  buildEnvironmentOmvallenCue(speelt, {}, opt);
+  assert.equal(environmentOmvallenStatus(speelt, opt).pos, 1);
+
+  const ontvangen = [];
+  const port = 41000 + (process.pid % 1000);
+  const server = createOscServer({ port, onMessage: (message) => ontvangen.push(message) });
+  const camera = { cueId: "c", command: "td.camera.set", payloadId: "p", payload: { camera: 1 } };
+  const adapter = { adapterOptions: { tdOscHost: "127.0.0.1", tdOscPort: port } };
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await sendTouchDesignerCommand(camera, adapter);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const args = ontvangen.map((message) => message.args.map((arg) => (arg && typeof arg === "object" && "value" in arg ? arg.value : arg)));
+    assert.deepEqual(args.map((a) => a[1]), ["td.extra.shot", "td.effect.omvallen", "td.camera.set"]);
+    assert.deepEqual(args[1], ["c-stap-uit", "td.effect.omvallen", "-", "", "1", "0"]);
+    assert.deepEqual([environmentOmvallenStatus(speelt, opt).pos, environmentOmvallenStatus(speelt, opt).volgende], [0, "POV"]);
+
+    // Zonder shot: de cameraknop stuurt geen omvallen-uit.
+    ontvangen.length = 0;
+    await sendTouchDesignerCommand(camera, adapter);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(ontvangen.length, 2);
+
+    // Gewone stappen (kasten die vallen) blijven staan bij een cameraknop.
+    buildEnvironmentOmvallenCue(scene("environment:26", "i"), {}, options);
+    ontvangen.length = 0;
+    await sendTouchDesignerCommand(camera, adapter);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(ontvangen.length, 2);
+    assert.equal(environmentOmvallenStatus(scene("environment:26", "i"), options).pos, 1);
+  } finally {
+    server.close();
+    resetOmvallenState();
+  }
+  console.log("show-control environment-omvallen beeldvullend: ok");
+})().catch((err) => { console.error(err); process.exit(1); });

@@ -167,6 +167,10 @@ async function sendTouchDesignerCommand(inputAction, context = {}) {
     if (samenAan) {
       await sendOscMessage(options, { address: "/td/cue", args: [`${action.cueId}-samen-uit`, "td.samen.shot", "-", "1"] }).catch(() => {});
     }
+    // En voor een beeldvullende stap van de omgevingsknop (achtbaan: POV, van afstand).
+    if (require("../cue-library/environment-omvallen").beeldvullendeStapUit()) {
+      await sendOscMessage(options, { address: "/td/cue", args: [`${action.cueId}-stap-uit`, "td.effect.omvallen", "-", "", "1", "0"] }).catch(() => {});
+    }
   }
   const args = oscArgsForAction(action);
   await sendOscMessage(options, {

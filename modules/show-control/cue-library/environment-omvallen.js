@@ -60,7 +60,8 @@ function fileExists(filePath, options = {}) {
 
 // Waar het effect staat: per omgeving en per scène; een nieuwe scène begint weer bij het begin.
 // "keuze": welke afloop gekozen is (zie "keuzes" hieronder), -1 = nog geen.
-const state = { sleutel: "", pos: 0, keuze: -1 };
+// "beeldvullend": de stap die nu staat is een beeldvullend shot (achtbaan: POV, van afstand).
+const state = { sleutel: "", pos: 0, keuze: -1, beeldvullend: false };
 
 // Vanzelf: zolang de scène speelt komt er af en toe uit zichzelf een korte clip langs
 // (bij de persconferentie: één flits). Staat in omvallen.json onder "vanzelf":
@@ -71,10 +72,23 @@ function resetOmvallenState() {
   state.sleutel = "";
   state.pos = 0;
   state.keuze = -1;
+  state.beeldvullend = false;
   vanzelf.sleutel = "";
   vanzelf.volgendeOp = 0;
   vanzelf.bezigTot = 0;
   vanzelf.teller = 0;
+}
+
+// "beeldvullend": true in omvallen.json: de stappen zijn shots die het hele beeld vullen.
+// Een cameraknop wint daarvan: staat er zo'n shot, dan gaat het weg en begint de knop opnieuw.
+// Geeft de omgeving terug als er een shot weg moet, anders "".
+function beeldvullendeStapUit() {
+  if (!state.beeldvullend) return "";
+  const environmentId = String(state.sleutel).split("|")[0];
+  state.pos = 0;
+  state.keuze = -1;
+  state.beeldvullend = false;
+  return environmentId;
 }
 
 function vanzelfConfig(manifest) {
@@ -220,6 +234,7 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
     state.sleutel = status.sleutel;
     state.pos = 0;
     state.keuze = -1;
+    state.beeldvullend = false;
   } else {
     const druk = keuzeIndex >= 0
       ? { druk: status.totaal + 1 + keuzeIndex, ...keuzesVan(status.manifest)[keuzeIndex] }
@@ -254,6 +269,7 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
     const speler = spelerPayload(druk.speler, common);
     if (speler) actions.push(cueAction(cueId, actions.length, "touchdesigner", "td.effect.speler", speler));
     state.sleutel = status.sleutel;
+    state.beeldvullend = status.manifest.beeldvullend === true;
     if (keuzeIndex >= 0) state.keuze = keuzeIndex;
     else {
       state.pos = status.pos + 1;
@@ -342,6 +358,7 @@ function omvallenSpelerStartAction(runtimeState, options = {}) {
 }
 
 module.exports = {
+  beeldvullendeStapUit,
   buildEnvironmentOmvallenCue,
   omvallenSpelerStartAction,
   environmentVanzelfTick,
