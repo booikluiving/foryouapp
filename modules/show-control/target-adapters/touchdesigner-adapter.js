@@ -50,6 +50,10 @@ function oscArgsForAction(action) {
   if (action.command === "td.effect.omvallen") {
     const payload = action.payload || {};
     args.push(String(payload.filePath || ""), payload.uit ? "1" : "0", String(Number(payload.duur) || 0));
+    // Losse laag over elk shot (Lingo-bord): midden x, midden y en breedte als deel van het beeld.
+    if (payload.overlay) {
+      args.push(String(Number(payload.overlay.x)), String(Number(payload.overlay.y)), String(Number(payload.overlay.breedte)));
+    }
   }
   // td.effect.fase: beeld, uit, schok, de wachttijd tot de klap en het sfeergeluid in de OSC-args.
   if (action.command === "td.effect.fase") {

@@ -90,6 +90,19 @@ function vanzelfConfig(manifest) {
   };
 }
 
+// "overlay" in omvallen.json: de clips zijn een losse laag (bij Lingo: het bord) die over elk
+// shot komt, ook over het gezamenlijke shot, in plaats van de voorgrond van één paneel te vervangen.
+// { x, y, breedte }: midden en breedte van de laag als deel van het staande beeld (0-1).
+function overlayConfig(manifest) {
+  const o = manifest && manifest.overlay;
+  if (!o || typeof o !== "object") return null;
+  const deel = (waarde, standaard) => {
+    const getal = Number(waarde);
+    return Number.isFinite(getal) ? Math.min(1, Math.max(0, getal)) : standaard;
+  };
+  return { x: deel(o.x, 0.5), y: deel(o.y, 0.5), breedte: deel(o.breedte, 0.6) || 0.6 };
+}
+
 function vanzelfWachttijdMs(config, options = {}) {
   const random = typeof options.random === "function" ? options.random : Math.random;
   return Math.round((config.minSec + random() * (config.maxSec - config.minSec)) * 1000);
@@ -193,7 +206,10 @@ function buildEnvironmentOmvallenCue(runtimeState, input = {}, options = {}) {
     const clip = path.join(dir, String(druk.clip || ""));
     if (!fileExists(clip, options)) throw omvallenError("clip_ontbreekt", status);
     naam = druk.naam || `stap ${druk.druk}`;
-    actions.push(cueAction(cueId, 0, "touchdesigner", "td.effect.omvallen", { ...common, filePath: clip, uit: false, druk: druk.druk, duur: Number(druk.duur) || 0 }));
+    const overlay = overlayConfig(status.manifest);
+    actions.push(cueAction(cueId, 0, "touchdesigner", "td.effect.omvallen", {
+      ...common, filePath: clip, uit: false, druk: druk.druk, duur: Number(druk.duur) || 0, ...(overlay ? { overlay } : {}),
+    }));
     const geluid = druk.geluid ? path.join(mediaRoot(options), String(druk.geluid)) : "";
     if (geluid && fileExists(geluid, options)) {
       actions.push(cueAction(cueId, actions.length, "mac-audio", "audio.extra.play", {
