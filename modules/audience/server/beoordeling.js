@@ -20,12 +20,37 @@ const STANDAARD = {
   aanloop: 0,
   // Zo lang staat de klok (seconden). De klok is ook de omkleedtijd van de spelers.
   duur: 30,
-  scene: { aan: true, vraag: "Wat vond je van de scène?", keuzes: [{ id: "leuk", emoji: "❤️" }, { id: "slecht", emoji: "👎" }, { id: "huilen", emoji: "😭" }, { id: "kots", emoji: "🤮" }] },
-  personage: { aan: true, vraag: "Welk personage wil je nog een keer zien?" },
+  // De scène op een thermometer: van onder (slechtst) naar boven (best). Loslaten op een vak is het antwoord.
+  scene: {
+    aan: true,
+    vraag: "Wat vond je van de scène?",
+    keuzes: [
+      { id: "nooit", emoji: "🤮", naam: "Nooit meer" },
+      { id: "matig", emoji: "👎", naam: "Matig" },
+      { id: "goed", emoji: "❤️", naam: "Goed" },
+      { id: "top", emoji: "🔥", naam: "Nog een keer" },
+    ],
+  },
+  personage: { aan: true, vraag: "Wie wil je terugzien?" },
   // Per label een eigen vraag en drie antwoorden (in te vullen in Admin). Niet ingevuld: de naam van het
   // label als vraag en de standaardantwoorden hieronder.
   label: { aan: true, anders: true, minder: "Te veel", goed: "Precies goed", meer: "Mag meer", vragen: {} },
 };
+
+// Per label de twee richtingen (vergrotende trap). Per label te overschrijven in Admin (vraag en antwoorden).
+const RICHTINGEN = {
+  grof: { meer: "grover", tegen: "subtieler" },
+  maatschappelijk: { meer: "maatschappelijker", tegen: "persoonlijker" },
+  absurd: { meer: "absurder", tegen: "herkenbaarder" },
+  herkenbaar: { meer: "herkenbaarder", tegen: "absurder" },
+  satirisch: { meer: "satirischer", tegen: "oprechter" },
+  verwarring: { meer: "verwarrender", tegen: "helderder" },
+};
+function richtingVan(labelNaam) {
+  const naam = String(labelNaam || "").trim();
+  return RICHTINGEN[naam.toLowerCase()] || { meer: `meer ${naam.toLowerCase()}`, tegen: `minder ${naam.toLowerCase()}` };
+}
+const hoofd = (woord) => woord.charAt(0).toUpperCase() + woord.slice(1);
 
 function tekst(waarde, standaard, max = 120) {
   const schoon = String(waarde == null ? "" : waarde).trim().slice(0, max);
@@ -50,7 +75,7 @@ function normalizeInstellingen(raw) {
   const duur = Number(bron.duur);
   const aanloop = Number(bron.aanloop);
   const keuzes = Array.isArray(deel("scene").keuzes)
-    ? deel("scene").keuzes.map((keuze) => ({ id: tekst(keuze && keuze.id, "", 20), emoji: tekst(keuze && keuze.emoji, "", 8) })).filter((keuze) => keuze.id && keuze.emoji).slice(0, 4)
+    ? deel("scene").keuzes.map((keuze) => ({ id: tekst(keuze && keuze.id, "", 20), emoji: tekst(keuze && keuze.emoji, "", 8), naam: tekst(keuze && keuze.naam, "", 30) })).filter((keuze) => keuze.id && keuze.emoji).slice(0, 4)
     : [];
   return {
     aan: bron.aan === undefined ? STANDAARD.aan : Boolean(bron.aan),
@@ -132,26 +157,31 @@ function createBeoordeling(service) {
     return { ok: true, situationRunId: id, plek: nummer };
   }
 
+  // Volgorde: de scène (thermometer), het personage (kaarten), dan het label (meter).
   function vragenVoor(van) {
     const vragen = [];
     if (instellingen.scene.aan) {
-      vragen.push({ id: "scene", soort: "emoji", vraag: instellingen.scene.vraag, keuzes: instellingen.scene.keuzes.map((keuze) => ({ id: keuze.id, emoji: keuze.emoji })) });
+      vragen.push({ id: "scene", soort: "thermometer", vraag: instellingen.scene.vraag, keuzes: instellingen.scene.keuzes.map((keuze) => ({ id: keuze.id, emoji: keuze.emoji, naam: keuze.naam || "" })) });
+    }
+    if (instellingen.personage.aan && van.personages.length >= 1) {
+      const keuzes = van.personages.map((personage) => ({ id: personage.id, naam: personage.naam, speler: personage.speler, foto: fotoVan(van.situationRunId, personage.plek) }));
+      // Eén personage: niets te kiezen, dus ja (de kaart) of "Hoeft niet".
+      const een = keuzes.length === 1;
+      if (een) keuzes.push({ id: "nee", naam: "Hoeft niet", nee: true });
+      vragen.push({ id: "personage", soort: "personage", vraag: een ? `Wil je ${keuzes[0].naam} terugzien?` : instellingen.personage.vraag, keuzes });
     }
     if (instellingen.label.aan && van.labels.length) {
-      // Het eerste label van de scène: een gerichte vraag met drie antwoorden, en eventueel Anders.
+      // Het eerste label van de scène, tegenover zijn tegendeel: "Mag het grover of subtieler?".
+      // Links (minder) het tegendeel, midden zo houden, rechts (meer) meer van het label.
       const label = van.labels[0];
       const eigen = instellingen.label.vragen[label.id] || {};
-      const keuzes = LABEL_KEUZES.map(([id]) => ({ id, naam: eigen[id] || instellingen.label[id] }));
-      if (instellingen.label.anders) keuzes.push({ id: "anders", naam: "Anders…", anders: true });
-      vragen.push({ id: "label", soort: "keuze", labelId: label.id, labelNaam: label.naam, vraag: eigen.vraag || `${label.naam}?`, keuzes });
-    }
-    if (instellingen.personage.aan && van.personages.length >= 2) {
-      vragen.push({
-        id: "personage",
-        soort: "personage",
-        vraag: instellingen.personage.vraag,
-        keuzes: van.personages.map((personage) => ({ id: personage.id, naam: personage.naam, speler: personage.speler, foto: fotoVan(van.situationRunId, personage.plek) })),
-      });
+      const r = richtingVan(label.naam);
+      const keuzes = [
+        { id: "minder", naam: eigen.minder || hoofd(r.tegen) },
+        { id: "goed", naam: eigen.goed || "Zo houden" },
+        { id: "meer", naam: eigen.meer || hoofd(r.meer) },
+      ];
+      vragen.push({ id: "label", soort: "meter", labelId: label.id, labelNaam: label.naam, vraag: eigen.vraag || `Mag het ${r.meer} of ${r.tegen}?`, keuzes });
     }
     return vragen.slice(0, 3);
   }
