@@ -7,8 +7,8 @@ const { isBlindRanking, plaatjesNamen } = require("../../../shared/blind-ranking
 
 const BORD_REGIE = [
   "Bord:",
-  "- Zet op een eigen regel [PLAATJE: naam] vóór de regel waarin het plaatje voor het eerst genoemd of bekeken wordt.",
-  "- Zet op een eigen regel [PLEK: cijfer] op het moment dat het plaatje op een plek gezet wordt.",
+  "- Zet op een eigen regel [PLAATJE: naam] vlak vóór de eerste regel over dat plaatje; daar komt het in beeld.",
+  "- Zet op een eigen regel [PLEK: cijfer] direct ná de regel waarin het plaatje op die plek gezet wordt.",
   "- Gebruik de namen precies zoals hieronder, in die volgorde, en elke plek één keer.",
 ].join("\n");
 

@@ -146,14 +146,14 @@ function parseTeleprompt(input = {}) {
       const bordregel = leesBordregel(withoutBullet);
       if (bordregel) {
         const stappen = bord.verwerk(bordregel);
-        // Een nieuw plaatje staat één klik eerder stil: op de regel vóór de bordregel. Zo staat het al
-        // vast als de speler erover begint. Plekken gaan af met de regel erna.
+        // [PLEK] staat direct ná de regel waarin de speler de plek noemt: de plek gaat af met die regel.
+        // Een nieuw plaatje komt pas met de regel ná [PLAATJE]; de regel ervoor gaat nog over het vorige.
+        // Een plaatje vóór de eerste regel staat al stil op de titelkaart.
         const vorige = lines[lines.length - 1];
-        if (bordregel.soort === "plaatje" && vorige) {
+        if (bordregel.soort === "plek" && vorige && !wachtend.some((stap) => stap.soort === "plaatje")) {
           vorige.bord = [...(vorige.bord || []), ...wachtend, ...stappen];
           wachtend = [];
-        } else if (bordregel.soort === "plaatje" && !vorige) {
-          // Plaatje vóór de eerste regel: staat al stil op de titelkaart.
+        } else if (bordregel.soort === "plaatje" && !lines.length) {
           beginBord.push(...wachtend, ...stappen);
           wachtend = [];
         } else {
