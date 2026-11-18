@@ -8,8 +8,8 @@ in de Textport:
 
 Wat het doet: maakt /project1/fy_registratie (Base COMP), los van de keten naar het zaalscherm:
 - beeld (Select TOP): het hoofdscherm vóór het kantelen naar het zaalscherm (staand, 1080x1920).
-- sq (Audio Device In CHOP): de USB-kanalen van de SQ-5. 1-3 zijn de spelers (direct out, dus
-  ook als het kanaal op de tafel dicht staat). Staat alleen aan tijdens een opname.
+- sq (Audio Device In CHOP): de USB-kanalen van de SQ-5. Kanaal 1 is de groep Mics (alle spelers,
+  alleen te horen als hun kanaal op de tafel open staat). Staat alleen aan tijdens een opname.
 - muziek (Select CHOP): wat TouchDesigner zelf naar de tafel stuurt (inloop, loading, sfeer).
 - links / rechts / geluid: spelers in het midden, muziek links en rechts.
   Het geluid dat de Mac buiten TouchDesigner om afspeelt (extra geluiden, stappen, geluidjes van
@@ -29,10 +29,12 @@ REGISTRATIE_TERUG = False
 _REG_BEELD = 'extra_shot_switch'   # ingang van fit2, die het beeld naar Main_TV kantelt
 REGISTRATIE_KWALITEIT = 0.8       # 0-1; hoger = groter bestand
 REGISTRATIE_TAFELMIX = None       # bijvoorbeeld (31, 32) als Main LR op USB 31/32 staat
-_REG_SPELERS = 'chan1 chan2 chan3'
-# De spelers komen ruw binnen (vóór de fader van de tafel) en zijn zonder versterking naast de
-# muziek niet te horen: gemeten 17 nov rond -45 dB in het spraakgebied.
-REGISTRATIE_SPELERS_DB = 18
+# USB 1 = de groep Mics van de tafel (alle spelers, na fader en mute; gepatcht 18 nov op de tafel:
+# I/O > Outputs > USB, bron Mix Out). De losse spelerskanalen kwamen niet alle drie over USB.
+_REG_SPELERS = 'chan1'
+# De groep komt zacht binnen (pieken rond -35 dB bij gewoon praten, gemeten 18 nov) en is zonder
+# versterking naast de muziek niet te horen.
+REGISTRATIE_SPELERS_DB = 24
 _REG_MUZIEK = 'null11'             # ingang van audiodevout2
 
 _REG_STUUR = '''
