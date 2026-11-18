@@ -1223,10 +1223,59 @@ els.saveStageStyle.addEventListener("click", () => withUiError(saveStageStyle));
 els.secretForm.addEventListener("submit", (event) => withUiError(() => saveSecret(event)));
 els.clearSecret.addEventListener("click", () => withUiError(clearSecret));
 
+// Publiek: het kijkvenster met de telefoonpagina en het invoerveld voor de publiekschat.
+const STORAGE_PUBLIEK_NAAM_KEY = "script_agent_operator_publiek_naam";
+const publiek = {
+  kijk: $("#telefoonKijk"),
+  form: $("#publiekChatForm"),
+  naam: $("#publiekChatNaam"),
+  input: $("#publiekChatInput"),
+  msg: $("#publiekChatMsg"),
+};
+
+function setPubliekMsg(text, isError = false) {
+  publiek.msg.textContent = text || "";
+  publiek.msg.style.color = isError ? "var(--bad)" : "";
+}
+
+async function loadPubliek() {
+  try { publiek.naam.value = localStorage.getItem(STORAGE_PUBLIEK_NAAM_KEY) || ""; } catch (_err) { /* opslag niet beschikbaar */ }
+  const info = await api("/v0/script-agent/operator/publiek");
+  publiek.kijk.src = `${location.protocol}//${location.hostname}:${info.port}${info.kijkPath}`;
+}
+
+async function submitPubliekChat() {
+  const name = publiek.naam.value.trim();
+  const text = publiek.input.value.trim();
+  if (!text) return;
+  if (!name) {
+    setPubliekMsg("Vul eerst een naam in.", true);
+    publiek.naam.focus();
+    return;
+  }
+  try {
+    await api("/v0/script-agent/operator/publiek/chat", { method: "POST", body: JSON.stringify({ name, text }) });
+  } catch (err) {
+    setPubliekMsg(err.message || "Bericht niet geplaatst.", true);
+    return;
+  }
+  publiek.input.value = "";
+  setPubliekMsg("");
+}
+
+publiek.naam.addEventListener("change", () => {
+  try { localStorage.setItem(STORAGE_PUBLIEK_NAAM_KEY, publiek.naam.value.trim()); } catch (_err) { /* opslag niet beschikbaar */ }
+});
+publiek.form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitPubliekChat();
+});
+
 async function boot() {
   emptyChat();
   applyStageStyle({ font: "jetbrains", cursor: "block", fontSize: 30 });
   connectStage();
+  loadPubliek().catch((err) => setPubliekMsg(err.message || "publiek niet geladen", true));
   await Promise.all([
     loadStageStyle().catch((err) => setMsg(err.message || "stage style niet geladen", true)),
     loadSettings().catch((err) => {

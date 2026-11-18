@@ -105,6 +105,22 @@
 
       <aside class="panel operator-right">
         <section class="side-section">
+          <h2>Publiek</h2>
+          <div class="telefoon-venster">
+            <iframe id="telefoonKijk" title="Telefoon van het publiek" tabindex="-1" scrolling="no"></iframe>
+          </div>
+          <form id="publiekChatForm" class="publiek-chat">
+            <label>Naam in de chat
+              <input id="publiekChatNaam" maxlength="24" autocomplete="off">
+            </label>
+            <div class="operator-form">
+              <input id="publiekChatInput" maxlength="140" autocomplete="off" placeholder="Zeg iets in de publiekschat">
+              <button type="submit">Stuur</button>
+            </div>
+            <p id="publiekChatMsg" class="meta-line"></p>
+          </form>
+        </section>
+        <section class="side-section">
           <h2>Stats</h2>
           <div class="operator-stats">
             <div class="stat-box">

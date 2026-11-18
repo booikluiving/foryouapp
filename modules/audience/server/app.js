@@ -31,12 +31,13 @@ const {
   buildAlgorithmInput,
   createAudienceSignal,
 } = require("../signal-normalizer/signal-normalizer");
-const { AudienceService, isLoopbackIp } = require("./audience-service");
+const { AudienceService, isLoopbackIp, getNameColorHex, sanitizeName, sanitizeText } = require("./audience-service");
 const { loadExpress } = require("./express-loader");
 
 const express = loadExpress();
 const { createWaarschuwing } = require("./waarschuwing");
 const { createSpelersReady } = require("./spelers-ready");
+const { KIJK_PATH, isKijkvenster } = require("./kijkvenster");
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
 
 function asyncRoute(handler) {
@@ -85,6 +86,23 @@ function createAudienceApp(options = {}) {
   });
 
   app.get(["/", "/app", "/audience/public"], (_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, "index.html"));
+  });
+
+  // Kijkvenster voor de operator: dezelfde telefoonpagina, maar een verbinding vanaf dit adres
+  // telt niet als publiek en kan niets insturen (zie realtime.js).
+  // De telefoonpagina vraagt eerst een naam; het kijkvenster kan niets aantikken en slaat die stap over.
+  // De naam hieronder wordt nooit verstuurd (een kijkvenster kan niets insturen).
+  app.get(`${KIJK_PATH}/start`, (_req, res) => {
+    res.type("html").send(
+      `<!doctype html><meta charset="utf-8"><title>For_You</title><body style="background:#000"><script>
+try { if (!localStorage.getItem("live_name")) localStorage.setItem("live_name", "Kijkvenster"); } catch (e) {}
+location.replace(${JSON.stringify(KIJK_PATH)});
+</script></body>`
+    );
+  });
+
+  app.get(KIJK_PATH, (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "index.html"));
   });
 
@@ -514,7 +532,9 @@ function createAudienceApp(options = {}) {
 
   app.get("/audience/public/history", (req, res) => {
     const ip = req.socket && req.socket.remoteAddress;
-    const access = service.ensureSessionAccessForRequest(req, ip);
+    const access = isKijkvenster(req) && service.getActiveSession()
+      ? { ok: true }
+      : service.ensureSessionAccessForRequest(req, ip);
     if (!access.ok) {
       res.status(access.reason === "session_inactive" ? 410 : 403).json({
         ok: false,
@@ -568,6 +588,48 @@ function createAudienceApp(options = {}) {
   // Chat leegmaken op de telefoons en het zaalscherm (gebeurt vanzelf bij RESET RUN).
   app.post("/audience/admin/chat/wis", (_req, res) => {
     res.json(service.wisChat("admin"));
+  });
+
+  // De operator praat mee in de chat (invoerveld op de operatorpagina). Het bericht komt op de telefoons
+  // en het zaalscherm, maar telt nergens mee: geen signaal naar het algoritme, geen plek in de tellingen.
+  app.post("/audience/admin/chat/zeg", (req, res) => {
+    const session = service.activeSessionRequired();
+    const ruweNaam = String(req.body && req.body.name || "").trim();
+    const text = sanitizeText(req.body && req.body.text);
+    if (!ruweNaam) {
+      res.status(400).json({ ok: false, error: "naam_ontbreekt", message: "Vul eerst een naam in." });
+      return;
+    }
+    if (!text) {
+      res.status(400).json({ ok: false, error: "tekst_ontbreekt", message: "Geen tekst." });
+      return;
+    }
+    if (service.fase && service.fase.fase === "scene") {
+      res.status(409).json({ ok: false, error: "scene_typen_dicht", message: "Typen kan weer na de scène." });
+      return;
+    }
+    const name = sanitizeName(ruweNaam);
+    const payload = {
+      type: "comment",
+      time: new Date().toISOString(),
+      name,
+      text,
+      nameColor: getNameColorHex(name),
+      isBot: true,
+      simulated: false,
+    };
+    payload.id = service.store.insertChatMessage({
+      sessionId: session.id,
+      name,
+      text,
+      status: "accepted",
+      detail: "operator",
+      isBot: true,
+    });
+    payload.likes = 0;
+    service.emit("broadcast", payload);
+    service.emit("admin-state-changed");
+    res.json({ ok: true, payload });
   });
 
   // Podiumpagina's (emoji, chat, tussen) laten herladen, bv. na een update; TD hoeft niets te doen.
