@@ -96,6 +96,39 @@
     while (card.firstChild) card.removeChild(card.firstChild);
   }
 
+  // Een aanwijzing (*gromt zacht*) hoort bij wat de speler doet, niet bij wat hij zegt: die staat los
+  // in het midden van het beeld. Wat gezegd wordt blijft op de plek van de ondertitel.
+  const action = document.createElement("section");
+  action.className = "caption-action";
+  action.hidden = true;
+  root.appendChild(action);
+
+  function splitActions(input) {
+    const actions = [];
+    const spoken = String(input || "")
+      .replace(/\*([^*\n]+)\*/g, (_match, inner) => {
+        const text = inner.trim();
+        if (text) actions.push(text);
+        return " ";
+      })
+      .replace(/\s+/g, " ")
+      .replace(/\s+([.,!?;:])/g, "$1")
+      .trim();
+    // Alleen leestekens over: er wordt niets gezegd.
+    return { actions, spoken: /[\p{L}\p{N}]/u.test(spoken) ? spoken : "" };
+  }
+
+  function showActions(actions) {
+    while (action.firstChild) action.removeChild(action.firstChild);
+    action.hidden = !actions.length;
+    actions.forEach((text) => {
+      const regel = document.createElement("span");
+      regel.className = "caption-action-line";
+      regel.textContent = text;
+      action.appendChild(regel);
+    });
+  }
+
   function appendFormattedText(target, input) {
     const text = String(input || "");
     const pattern = /\*([^*\n]+)\*/g;
@@ -142,8 +175,12 @@
     const titel = line.type !== "dialogue" && /^\s*#+\s*(.+)$/.exec(line.text);
     if (titel) return { type: "title", text: situationTitle() || titel[1].trim() };
     // Dialoog op het hoofdscherm altijd met de naam: "Naam:" en de zin op de regel eronder.
-    if (line.type === "dialogue") return { type: "dialogue", speaker: String(line.speakerLabel || "").trim(), text: line.text };
-    return { type: "direction", text: line.text };
+    if (line.type === "dialogue") {
+      const { actions, spoken } = splitActions(line.text);
+      return { type: "dialogue", speaker: String(line.speakerLabel || "").trim(), text: spoken, actions };
+    }
+    // Een regel die alleen een aanwijzing is, staat ook in het midden.
+    return { type: "direction", text: "", actions: [String(line.text).replace(/^\*+|\*+$/g, "").trim()].filter(Boolean) };
   }
 
   function atEndCard() {
@@ -172,6 +209,7 @@
     clearCard();
     root.dataset.cueIndex = String(cue.index || 0);
     root.dataset.captionText = activeCaption ? activeCaption.text : "";
+    root.dataset.captionAction = activeCaption && activeCaption.actions ? activeCaption.actions.join(" / ") : "";
     root.dataset.live = captionsAreLive() ? "1" : "0";
     if (debugEnabled && debug) {
       const title = teleprompt && teleprompt.title ? teleprompt.title : "geen scene";
@@ -179,7 +217,8 @@
       const status = captionsAreLive() ? "live" : "verborgen";
       debug.textContent = `Live captions ${status} | cue ${cue.index || 0}/${Math.max(deckLength() - 1, 0)} | ${title}`;
     }
-    if (!activeCaption) {
+    showActions(activeCaption && activeCaption.actions ? activeCaption.actions : []);
+    if (!activeCaption || (!activeCaption.text && activeCaption.actions)) {
       card.hidden = true;
       card.className = "caption-card";
       return;
@@ -214,6 +253,8 @@
     // Met een bord (blind ranking) staat het plaatje midden in beeld: de ondertitel gaat eronder.
     const stijl = payload.captionStyle || DEFAULT_CAPTION_STYLE;
     applyCaptionStyle(teleprompt && teleprompt.bord ? { ...stijl, verticalPosition: 84 } : stijl);
+    // Het plaatje van het bord staat in het midden: de aanwijzing gaat er dan onder.
+    root.style.setProperty("--caption-action-top", teleprompt && teleprompt.bord ? "72%" : "50%");
     render();
   }
 

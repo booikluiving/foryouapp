@@ -848,6 +848,38 @@ label {
   box-decoration-break: clone;
 }
 
+/* Aanwijzing (*gromt zacht*): los in het midden van het beeld, zelfde letter en rand als de ondertitel. */
+.caption-action {
+  position: absolute;
+  top: var(--caption-action-top, 50%);
+  left: 50%;
+  width: var(--caption-width);
+  transform: translate(-50%, -50%);
+  color: #ffffff;
+  font-family: "ForYou Caption", "Metropolis", Arial, Helvetica, sans-serif;
+  font-size: calc(70px * var(--caption-size-scale));
+  font-style: italic;
+  font-weight: 500;
+  line-height: 1.14;
+  text-align: center;
+  -webkit-text-fill-color: #ffffff;
+  text-shadow: var(--caption-outline);
+}
+
+.caption-action-line {
+  display: block;
+}
+
+.caption-body.caption-debug-mode .caption-action,
+.caption-body.caption-browser-preview-mode .caption-action {
+  width: min(var(--caption-width), 980px);
+  font-size: clamp(
+    calc(44px * var(--caption-size-scale)),
+    calc(5.2vw * var(--caption-size-scale)),
+    calc(78px * var(--caption-size-scale))
+  );
+}
+
 .caption-inline-direction {
   font-style: italic;
   font-weight: 500;
