@@ -165,9 +165,9 @@
 
       /* De eerste scène van een run staat klaar: de QR-code nog een keer groot in het midden, voor
          wie later binnenkomt. */
-      #p-qrmidden { left: 340px; top: 760px; width: 400px; text-align: center; }
+      #p-qrmidden { left: 380px; top: 800px; width: 320px; text-align: center; }
       #p-qrmidden.uit { opacity: 0; }
-      #p-qrmidden .qr { width: 400px; height: 400px; padding: 20px; }
+      #p-qrmidden .qr { width: 320px; height: 320px; padding: 16px; }
       #p-qrmidden .klein { font-size: 26px; margin-top: 16px; white-space: nowrap; color: #fff; text-shadow: 0 0 4px #000, 0 2px 12px rgba(0, 0, 0, 0.95); }
 
       /* Stemmen: links de lijst met balken, rechts de QR-code met de tijd die er nog is. */
@@ -297,12 +297,19 @@
       #stemCirkel { position: absolute; left: 290px; top: 340px; width: 500px; height: 500px; overflow: visible; }
       /* In TouchDesigner (html.een): staat de klok, dan is de cirkel een gat in het vel. TouchDesigner legt
          daaronder het bovenaanzicht van de ring; het getal en de cirkellijn blijven erboven. */
-      html.een #tussenlaag { background: radial-gradient(circle 226px at 540px 590px, transparent 99.5%, var(--nacht) 100%); }
+      #stage { --gat-x: 540px; --gat-y: 590px; --gat-r: 226px;
+        /* Bovenaanzicht in Up next (na de klok, tot alle spelers ready zijn): plek en grootte. Dezelfde drie
+           getallen staan in TouchDesigner op fy_boven_cirkel, uDoel2 (apply_bovencirkel_patch.py). */
+        --upboven-x: 540px; --upboven-y: 790px; --upboven-r: 226px; }
+      #stage.bovenplek { --gat-x: var(--upboven-x); --gat-y: var(--upboven-y); --gat-r: var(--upboven-r); }
+      html.een #tussenlaag { background: radial-gradient(circle var(--gat-r) at var(--gat-x) var(--gat-y), transparent 99.5%, var(--nacht) 100%); }
+      /* In Up next ligt het universum over het gat: daar krijgt het hetzelfde gat. */
+      html.een #stage.bovenplek #universum { -webkit-mask-image: radial-gradient(circle var(--gat-r) at var(--gat-x) var(--gat-y), transparent 99.5%, #000 100%); mask-image: radial-gradient(circle var(--gat-r) at var(--gat-x) var(--gat-y), transparent 99.5%, #000 100%); }
       /* Het gat zit er altijd; een deksel in de kleur van het vel ligt erop en vervaagt zodra de klok staat.
          Zo vloeit het bovenaanzicht in en uit in plaats van te springen. */
-      #stemDeksel { position: absolute; left: 306px; top: 356px; width: 468px; height: 468px; border-radius: 50%; background: var(--nacht);
+      #stemDeksel { position: absolute; left: calc(var(--gat-x) - var(--gat-r) - 8px); top: calc(var(--gat-y) - var(--gat-r) - 8px); width: calc(2 * var(--gat-r) + 16px); height: calc(2 * var(--gat-r) + 16px); border-radius: 50%; background: var(--nacht);
         will-change: opacity; transition: opacity 260ms var(--curve); }
-      html.een #stage.cirkelgat #stemDeksel { opacity: 0; transition-duration: 600ms; }
+      html.een #stage.cirkelgat #stemDeksel, html.een #stage.bovenopen #stemDeksel { opacity: 0; transition-duration: 600ms; }
       #stemCirkel circle { fill: none; }
       #stemCirkel .spoor { stroke: var(--wit-3); stroke-width: 2; transition: opacity 300ms; }
       #stemCirkel .loop { stroke: #fff; stroke-width: 10; transform: rotate(-90deg); transform-origin: 250px 250px; }
@@ -313,7 +320,8 @@
       @keyframes stemGetalTik { from { transform: scale(1.18); } to { transform: scale(1); } }
       #p-stem.groot #stemGetal { transform: translate(-50%, calc(-50% + 470px)) scale(1); transition: none; }
       /* Eerst kiest het universum; de klok komt pas in beeld als de scène gekozen is. */
-      #p-stem.groot.zoekt #stemGetal { opacity: 0; }
+      /* Verbergen gaat meteen (anders was de 30 nog even te zien terwijl hij wegvaagde); verschijnen vloeit. */
+      #p-stem.groot.zoekt #stemGetal { opacity: 0; transition: none; }
       /* Boven de grote klok, alleen zolang hij groot staat. */
       #stemKijk { position: absolute; left: 60px; right: 60px; top: 520px; text-align: center; font-weight: 700; font-size: 112px; line-height: 0.95; letter-spacing: -0.045em; text-wrap: balance;
         opacity: 0; transition: opacity 300ms var(--curve); }
@@ -519,6 +527,9 @@
       // groter, de randen van het universum vallen dan buiten beeld). Dit geldt alleen op dat moment;
       // inloop, startfase en Up next houden hun eigen strook.
       const KIEZER = { boven: 60, onder: 1507, schaal: 1.3 };
+      // Het universum op het scherm 'Doe mee' (de inloop, ook na RESET RUN): dezelfde drie getallen.
+      // boven = net onder 'Doe mee' en de QR-code.
+      const INLOOP = { boven: 400, onder: 1507, schaal: 1.3 };
       stage.style.setProperty("--focus-schaal", String(TITEL.focus.schaal));
       stage.style.setProperty("--focus-duur", TITEL.focus.duur + "ms");
       stage.style.setProperty("--schrijf-top", TITEL.schrijf.top + "px");
@@ -550,10 +561,13 @@
       let zichtUpnext = false;
       const zichtUpnextNu = () => {
         const titel = document.getElementById("p-titel");
-        return [Math.max(400, titel.offsetTop + titel.offsetHeight + 50), 1340];
+        // In TouchDesigner staat daar ook het bovenaanzicht: het pad begint eronder.
+        const maat = (naam) => parseFloat(getComputedStyle(stage).getPropertyValue(naam)) || 0;
+        const boven = document.documentElement.classList.contains("een") ? maat("--upboven-y") + maat("--upboven-r") + 30 : 0;
+        return [Math.max(400, titel.offsetTop + titel.offsetHeight + 50, boven), 1340];
       };
-      let zichtKiezer = false;
-      const zichtNu = () => (zichtKiezer ? [KIEZER.boven, KIEZER.onder, KIEZER.schaal] : zichtUpnext ? zichtUpnextNu() : [TEKST_ONDER + 30, Math.max(TEKST_ONDER + 330, chatPlek().y - 30)]);
+      let zichtKiezer = false, zichtInloop = false;
+      const zichtNu = () => (zichtKiezer ? [KIEZER.boven, KIEZER.onder, KIEZER.schaal] : zichtInloop ? [INLOOP.boven, INLOOP.onder, INLOOP.schaal] : zichtUpnext ? zichtUpnextNu() : [TEKST_ONDER + 30, Math.max(TEKST_ONDER + 330, chatPlek().y - 30)]);
 
       // Het universum (padendienst, poort 3022) speelt de reeks: stemmen of kiezen, inzoomen op het pad,
       // en na elke scène uitzoomen en nieuwe scènes laten vrijkomen. Het meldt waar het is.
@@ -880,6 +894,7 @@
 
       // Zet de vlakken van de fase in beeld: eerst wat weg moet eruit, dan wat nieuw is erin.
       let faseNu = "", toonTimer = 0, stemGevraagd = "";
+      let bovenWil = false, bovenTimer = 0; // bovenaanzicht in Up next, zie zetBoven
       // ── Live camerabeeld ──────────────────────────────────────────────────────────────────────
       // De stroom loopt alleen terwijl het vlak in beeld is; het vlak komt pas als er een beeld binnen is.
       let cameraBinnen = false, cameraStop = null;
@@ -1105,6 +1120,9 @@
             stemFase.schrijf = false;
             tekstTijdensStemmen = false;
             el("stemGetal").firstElementChild.textContent = "";
+            // De klok is weg vóór het vlak in beeld komt.
+            el("p-stem").classList.remove("klok");
+            el("p-stem").classList.add("groot", "zoekt");
             // De klok staat groot en het universum kiest.
             stemFase.kiest = true;
             stemFase.gekozen = false;
@@ -1305,6 +1323,22 @@
         }
         aftelVorige = rest;
         zetAftelFocus(rest > 0, tot);
+        zetBoven();
+      }
+      // Up next: het bovenaanzicht van de ring blijft in beeld zolang de spelers zich klaarmaken. Zijn ze
+      // alle drie ready (het aftellen begint), dan gaat het deksel dicht, met de rest van het beeld.
+      // Het gat verhuist alleen terwijl het deksel dicht is.
+      function zetBoven() {
+        const wil = faseNu === "upnext" && !laagWeg && !(spelersReady && spelersReady.aftellenTot);
+        if (wil === bovenWil) return;
+        bovenWil = wil;
+        clearTimeout(bovenTimer);
+        if (wil) {
+          bovenTimer = setTimeout(() => { stage.classList.add("bovenplek"); void stage.offsetHeight; stage.classList.add("bovenopen"); }, stage.classList.contains("bovenplek") ? 0 : 320);
+        } else {
+          stage.classList.remove("bovenopen");
+          bovenTimer = setTimeout(() => stage.classList.remove("bovenplek"), 320);
+        }
       }
       // Tijdens het aftellen blijft alleen de titel over en komt hij naar voren. Begint de scène, dan
       // blijft dat zo tot het vel uit beeld is; wordt het aftellen afgebroken, dan komt alles terug.
@@ -1353,6 +1387,8 @@
         stage.classList.toggle("kiest", fase === "stem" && stemFase.kiest);
         stage.classList.toggle("upnextfase", fase === "upnext");
         if (fase === "upnext" && faseNu !== "upnext") haalUpNext();
+        // Het scherm 'Doe mee': er is nog geen scène gekozen, dus geen personages bij de spelers.
+        if (fase === "inloop" && upNext) wisUpNext();
         volgSpelers(wil.has("spelers") || wil.has("stemspelers"));
         if (fase === "gekozen" || fase === "tekst" || fase === "upnext") vulTitel(fase);
         if (fase === "stem") vulSchrijfKop();
@@ -1373,9 +1409,13 @@
           }
         }
         faseNu = fase;
+        zetBoven();
         // De hele stemfase: na de keuze is het universum uit beeld, zo krimpt het niet zichtbaar terug.
         const kiezerNu = fase === "stem";
-        if ((fase === "upnext") !== zichtUpnext || kiezerNu !== zichtKiezer) { zichtUpnext = fase === "upnext"; zichtKiezer = kiezerNu; meldZicht(); }
+        // Zolang er in deze run nog niets gespeeld is (inloop, stemmen op de startscène, de keuze en
+        // de eerste scène die klaarstaat) houdt het universum de grote strook van de inloop.
+        const inloopNu = fase === "inloop" || (!(universum && universum.gespeeld) && ["stemmen", "kiezen", "gekozen", "tekst"].includes(fase));
+        if ((fase === "upnext") !== zichtUpnext || kiezerNu !== zichtKiezer || inloopNu !== zichtInloop) { zichtUpnext = fase === "upnext"; zichtKiezer = kiezerNu; zichtInloop = inloopNu; meldZicht(); }
         // Staat het vel niet in beeld, dan hoeft er niets te schuiven.
         const stil = !!direct || laagWeg;
         if (stil) stage.classList.add("direct");
@@ -1949,6 +1989,10 @@
         vlak.style.top = plek.y + "px";
         vlak.style.height = plek.hoogte + "px";
         vlak.style.fontSize = plek.letter + "px";
+        // De QR-code in het midden staat tussen het venster met de tekst en de chat, zodat hij de
+        // chat niet raakt (blok = code 320 + adres).
+        const qrBlok = 320 + 16 + 32;
+        el("p-qrmidden").style.top = Math.round(Math.max(TEKST_ONDER + 30, (TEKST_ONDER + 30 + plek.y - 30 - qrBlok) / 2)) + "px";
         if (meester) meester.gain.value = geluidVolume();
         meldZicht();
         tekenChat();
