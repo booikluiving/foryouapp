@@ -39,4 +39,5 @@ Starten, stoppen, klaarzetten, overslaan en reset van de run gaan alleen via sho
   - Klaar: `POST /v0/show-control/regie/vrijgeven`. De scène stopt en de run gaat terug naar het begin.
 - Heeft iemand anders de regie, dan krijg je 423 met de naam. Wacht, of vraag Booi. Neem nooit over met `forceer` zonder ja van Booi.
 - De knoppen in de zaal (Stream Deck, klikker, ready van de spelers) werken altijd.
-- Proef zonder show: `node modules/show-control/tests/regie-proef.js` (pagina op :4325/regie/). Test: `node modules/show-control/tests/regie-test.js`.
+- Bewaker (in show control): kijkt om de paar seconden of TouchDesigner (fase) en de teleprompter (klaargezette scène) de runtime volgen en herstelt het; ziet een herstart van TouchDesigner aan de pid in `~/Library/Application Support/ForYouApp/td-show.json` (schrijft de TD-waakhond). Wat hij vond staat op de regiepagina onder Controle en in `GET /v0/show-control/regie` → `controle`.
+- Proef zonder show: `node modules/show-control/tests/regie-proef.js` (pagina op :4325/regie/). Tests: `regie-test.js`, `bewaker-test.js` in `modules/show-control/tests`.

@@ -34,6 +34,8 @@ MODUS_BESTAND="${FORYOU_TD_WAAKHOND_MODUS_BESTAND:-$STATE_DIR/td-waakhond-modus}
 TOESTEMMING="${FORYOU_TD_WAAKHOND_TOESTEMMING:-$STATE_DIR/td-waakhond-toestemming}"
 VERSIE_BESTAND="${FORYOU_TD_VERSIE_BESTAND:-$HOME/ForYou/td-versie.txt}"
 LOG="${FORYOU_TD_WAAKHOND_LOG:-$HOME/Library/Logs/ForYou/td-waakhond.log}"
+# Welke show-TD draait (pid met de OSC-poort): show control ziet aan een nieuwe pid dat TD herstart is.
+TD_SHOW_BESTAND="${FORYOU_TD_SHOW_STAND:-$STATE_DIR/td-show.json}"
 LOG_MAX="${FORYOU_TD_WAAKHOND_LOG_MAX:-300}"
 LAUNCHER="${FORYOU_TD_WAAKHOND_LAUNCHER:-$REPO_ROOT/scripts/open-current-showcontrol-td.command}"
 
@@ -148,6 +150,14 @@ sluit() {
   return 0
 }
 
+VORIGE_TD_SHOW="-"
+schrijf_td_show() {
+  local pid="$1"
+  [[ "$pid" == "$VORIGE_TD_SHOW" ]] && return 0
+  VORIGE_TD_SHOW="$pid"
+  printf '{"pid":%s,"sinds":"%s"}\n' "${pid:-null}" "$(date '+%Y-%m-%dT%H:%M:%S')" > "$TD_SHOW_BESTAND.tmp" && mv "$TD_SHOW_BESTAND.tmp" "$TD_SHOW_BESTAND"
+}
+
 VORIGE_STAND=""
 
 ronde() {
@@ -165,6 +175,12 @@ ronde() {
     fi
     stand+="$pid:$poort:${args##*/};"
   done <<< "$regels"
+
+  # De show-TD met de poort (precies één): naar het bestand voor show control.
+  local met_poort_pid="" aantal_poort=0
+  for r in "${show[@]+"${show[@]}"}"; do IFS='|' read -r pid leeftijd poort args <<< "$r"; (( poort )) && { aantal_poort=$((aantal_poort+1)); met_poort_pid=$pid; }; done
+  (( aantal_poort == 1 )) || met_poort_pid=""
+  schrijf_td_show "$met_poort_pid"
 
   if [[ "$stand" != "$VORIGE_STAND" ]]; then
     log "STAND modus=$(modus) show=${#show[@]} anders=${#vreemd[@]} [$stand]"

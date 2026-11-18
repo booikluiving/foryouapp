@@ -45,6 +45,7 @@ const rt = {
   updatedAt: new Date().toISOString(),
 };
 const logboek = [];
+let teleprompterKwijt = false;
 
 function zetKlaar(situationId) {
   const s = catalogus.situations.find((item) => item.id === situationId) || catalogus.situations[1];
@@ -108,6 +109,9 @@ const scriptAgent = http.createServer(async (req, res) => {
   const pad = req.url;
   logboek.push(`script-agent ${req.method} ${pad}${body.schrijven === false ? " (bewaard script)" : ""}`);
   if (pad === "/v0/script-agent/operator/catalog/index") return stuur(res, { ok: true, ...catalogus });
+  if (pad === "/v0/script-agent/teleprompter-parser/current") {
+    return stuur(res, { preparedScene: teleprompterKwijt || !rt.preparedNext ? null : { sceneId: Number(rt.preparedNext.situationId.split(":")[1]) } });
+  }
   if (pad === "/v0/script-agent/operator/status") return stuur(res, { stage: { sessionId: rt.showRunId } });
   if (pad.startsWith("/v0/script-agent/operator/session/")) return stuur(res, { ok: true });
   const sit = body.situation && body.situation.situationId
@@ -131,8 +135,11 @@ async function main() {
   const { createShowControlApp } = require("../server/app");
   const { createRegie } = require("../regie/regie");
   const regiePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "regie-proef-")), "regie.json");
+  const tdShowPad = path.join(path.dirname(regiePath), "td-show.json");
+  fs.writeFileSync(tdShowPad, JSON.stringify({ pid: 111 }));
   const app = createShowControlApp({
     regiePath,
+    tdShowPad,
     adapters: {
       touchdesigner: nep("td"),
       dmx: nep("dmx"),
@@ -187,6 +194,31 @@ async function main() {
   stap("Overslaan (deck) in random: andere random scène");
   r = await post("/v0/show-control/cues/overslaan", { name: "Stream Deck overslaan" });
   console.log(`   ${r.status} klaar: ${r.json.klaar && r.json.klaar.title}`); toon();
+
+  stap("Bewaker: alles klopt (twee rondes)");
+  await app.locals.environmentVanzelfTick(); await app.locals.environmentVanzelfTick();
+  let regie = await (await fetch(`http://127.0.0.1:${SC}/v0/show-control/regie`)).json();
+  console.log(`   meldingen: ${regie.controle.meldingen.length}, fase ${regie.controle.fase}`);
+  toon();
+
+  stap("Bewaker: script-agent herstart (teleprompter kwijt) → opnieuw klaargezet");
+  teleprompterKwijt = true;
+  await app.locals.environmentVanzelfTick();
+  teleprompterKwijt = false;
+  await app.locals.environmentVanzelfTick();
+  teleprompterKwijt = true;
+  await app.locals.environmentVanzelfTick(); await app.locals.environmentVanzelfTick();
+  teleprompterKwijt = false;
+  regie = await (await fetch(`http://127.0.0.1:${SC}/v0/show-control/regie`)).json();
+  console.log(`   ${regie.controle.meldingen.map((m) => `${m.tekst} → ${m.herstel}`).join(" | ")}`);
+  toon();
+
+  stap("Bewaker: TouchDesigner herstart (andere pid)");
+  fs.writeFileSync(tdShowPad, JSON.stringify({ pid: 222 }));
+  await app.locals.environmentVanzelfTick();
+  regie = await (await fetch(`http://127.0.0.1:${SC}/v0/show-control/regie`)).json();
+  console.log(`   ${regie.controle.meldingen[0].tekst} → ${regie.controle.meldingen[0].herstel}`);
+  toon();
 
   stap("Vrijgeven");
   r = await post("/v0/show-control/regie/vrijgeven", {}, "operator");

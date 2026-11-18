@@ -23,7 +23,7 @@ const {
   readCues,
   readTriggerBinding,
   readTriggerBindings,
-  saveCue,
+  saveCue: saveCueOpslag,
   saveTriggerBinding,
 } = require("../cue-engine/state-store");
 const {
@@ -66,6 +66,16 @@ const { sq5BaseUrl } = require("../target-adapters/sq5-adapter");
 const { streamDeckBaseUrl } = require("../target-adapters/streamdeck-adapter");
 const { loadExpress } = require("./express-loader");
 const { createRegie } = require("../regie/regie");
+const { createBewaker } = require("../regie/bewaker");
+
+// Elke cue die show control bewaart, gaat langs de bewaker (welke fase TouchDesigner bevestigde).
+let bewakerZag = null;
+async function saveCue(cue) {
+  if (bewakerZag) {
+    try { bewakerZag(cue); } catch (_err) { /* de bewaker mag het bewaren nooit hinderen */ }
+  }
+  return saveCueOpslag(cue);
+}
 
 const express = loadExpress();
 
@@ -220,6 +230,28 @@ function createShowControlApp(options = {}) {
     },
   });
   app.locals.regie = regie;
+  // Bewaker: TouchDesigner en teleprompter volgen de runtime; herstelt afwijkingen (zie bewaker.js).
+  const bewaker = options.bewaker === false ? null : createBewaker({
+    tdPad: options.tdShowPad,
+    cues: {
+      buildGoCue,
+      buildPhaseCue,
+      buildPrepareCue,
+      executeCue: (cue, extra = {}) => executeCue(cue, { ...executeOptions, ...extra }),
+      saveCue,
+    },
+  });
+  app.locals.bewaker = bewaker;
+  if (bewaker) {
+    bewakerZag = (cue) => bewaker.zagCue(cue);
+    // Bij het opstarten: de laatst bevestigde fase uit de bewaarde cues.
+    readCues({ includeArchived: true })
+      .then((lijst) => lijst
+        .filter((cue) => (cue.actions || []).some((action) => action.command === "td.phase.set"))
+        .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+        .forEach((cue) => bewaker.zagCue(cue)))
+      .catch(() => {});
+  }
   const regieRoutes = [
     "/v0/show-control/cues/start-run",
     "/v0/show-control/cues/start-situation",
@@ -305,7 +337,7 @@ function createShowControlApp(options = {}) {
     };
   }
   const regieWie = (req) => (req.get("x-foryou-wie") || (req.body && req.body.wie) || "");
-  app.get("/v0/show-control/regie", regieRoute(() => regie.overzicht()));
+  app.get("/v0/show-control/regie", regieRoute(async () => ({ ...(await regie.overzicht()), controle: bewaker ? bewaker.status() : null })));
   app.get("/v0/show-control/regie/catalogus", regieRoute(() => regie.catalogus()));
   app.post("/v0/show-control/regie/overnemen", regieRoute((req) => regie.overnemen({ wie: regieWie(req), stand: req.body && req.body.stand, minuten: req.body && req.body.minuten, forceer: !!(req.body && req.body.forceer === true) })));
   app.post("/v0/show-control/regie/vrijgeven", regieRoute((req) => regie.vrijgeven({ wie: regieWie(req) })));
@@ -386,9 +418,12 @@ function createShowControlApp(options = {}) {
       actions: req.body && Array.isArray(req.body.actions) ? req.body.actions : [],
       steps: req.body && Array.isArray(req.body.steps) ? req.body.steps : null,
     });
-    if (raaktRun(req.body)) await regie.slot(() => executeCue(cue, executeOptions));
-    else await executeCue(cue, executeOptions);
-    await saveCue(cue);
+    if (raaktRun(req.body)) {
+      await regie.slot(async () => { await executeCue(cue, executeOptions); await saveCue(cue); });
+    } else {
+      await executeCue(cue, executeOptions);
+      await saveCue(cue);
+    }
     res.status(201).json({ ok: true, cue });
     // READY (de spelers staan klaar): het stemmen na de scène hoeft niet uit te lopen.
     const acties = [...(req.body && Array.isArray(req.body.actions) ? req.body.actions : []), ...((req.body && Array.isArray(req.body.steps) ? req.body.steps : []).flatMap((stap) => (stap && Array.isArray(stap.actions) ? stap.actions : [])))];
@@ -475,8 +510,7 @@ function createShowControlApp(options = {}) {
       phase: numericPhase,
       phaseName: body.phaseName || null,
     });
-    await executeCue(cue, executeOptions);
-    await saveCue(cue);
+    await regie.slot(async () => { await executeCue(cue, executeOptions); await saveCue(cue); });
     res.status(201).json({ ok: true, cue });
   }));
 
@@ -485,8 +519,7 @@ function createShowControlApp(options = {}) {
       name: req.body ? req.body.name : null,
       autoPrepareNext: !(req.body && req.body.autoPrepareNext === false),
     });
-    await regie.slot(() => executeCue(cue, executeOptions));
-    await saveCue(cue);
+    await regie.slot(async () => { await executeCue(cue, executeOptions); await saveCue(cue); });
     res.status(201).json({ ok: true, cue });
   }));
 
@@ -498,8 +531,7 @@ function createShowControlApp(options = {}) {
       showRunId,
       actions: req.body && Array.isArray(req.body.actions) ? req.body.actions : [],
     });
-    await regie.slot(() => executeCue(cue, { ...executeOptions, runtimeState }));
-    await saveCue(cue);
+    await regie.slot(async () => { await executeCue(cue, { ...executeOptions, runtimeState }); await saveCue(cue); });
     res.status(201).json({ ok: true, cue });
   }));
 
@@ -810,6 +842,11 @@ function createShowControlApp(options = {}) {
     registratieTick(options.registratie || {}).catch(() => {});
     // Een verlopen regie geeft zichzelf vrij (als er geen scène speelt).
     regie.tick().catch(() => {});
+    // De bewaker kijkt of TouchDesigner en de teleprompter de runtime volgen (één voor één met de rest).
+    if (bewaker) await regie.slot(async () => {
+      const verse = await clients.fetchCurrentRuntimeState();
+      await bewaker.ronde(verse && verse.ok ? verse.state : null);
+    }).catch(() => {});
     // Vangnet: is de scène buiten show-control om geëindigd, dan gaat alsnog alles van die scène uit.
     const einde = sceneEindeTick(runtimeResult.state || {});
     if (einde) executeCue(einde, { ...executeOptions, runtimeState: runtimeResult.state }).then(() => saveCue(einde)).catch(() => {});

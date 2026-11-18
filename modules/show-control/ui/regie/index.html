@@ -33,6 +33,9 @@
   .scene .omg { color:var(--zacht); font-size:13px; }
   .scene.klaar { outline:1px solid var(--let); }
   .scene.speelt { outline:1px solid var(--goed); }
+  #controleKop.goed { color:var(--goed); }
+  #controleKop.fout { color:var(--fout); font-weight:700; }
+  #controleLijst div { padding:3px 0; }
   label.schakel { display:flex; gap:6px; align-items:center; }
 </style>
 </head>
@@ -66,6 +69,11 @@
       <button id="volgende">Random volgende</button>
     </div>
     <div id="melding"></div>
+  </section>
+  <section>
+    <h2>Controle</h2>
+    <div id="controleKop"></div>
+    <div id="controleLijst" class="zacht"></div>
   </section>
   <section>
     <h2>Scènes</h2>
@@ -136,10 +144,36 @@ function teken() {
   $("start").disabled = bezig || !ik || !!run.speelt || !run.klaar;
   $("stop").disabled = bezig || !ik || !run.speelt;
   $("volgende").disabled = bezig || !ik;
+  tekenControle(o.controle);
   for (const knop of document.querySelectorAll(".scene button")) knop.disabled = bezig || !ik;
   for (const rij of document.querySelectorAll(".scene")) {
     rij.classList.toggle("klaar", !!(run.klaar && rij.dataset.id === run.klaar.situationId));
     rij.classList.toggle("speelt", !!(run.speelt && rij.dataset.id === run.speelt.situationId));
+  }
+}
+
+// Wat de bewaker van show control zag: TouchDesigner en teleprompter volgen de runtime.
+function tekenControle(c) {
+  const kop = $("controleKop");
+  const lijst = $("controleLijst");
+  if (!c) { kop.textContent = "Geen bewaker."; kop.className = ""; lijst.textContent = ""; return; }
+  const td = c.td || {};
+  const recent = (c.meldingen || []).filter((m) => Date.now() - Date.parse(m.at) < 10 * 60000);
+  if (td.reageert === false) {
+    kop.textContent = "TouchDesigner antwoordt niet.";
+    kop.className = "fout";
+  } else if (recent.length) {
+    kop.textContent = `Hersteld: ${recent[0].tekst}${recent[0].herstel ? ` → ${recent[0].herstel}` : ""}`;
+    kop.className = "fout";
+  } else {
+    kop.textContent = `Alles klopt${c.fase !== null && c.fase !== undefined ? ` (TouchDesigner fase ${c.fase})` : ""}.`;
+    kop.className = "goed";
+  }
+  lijst.textContent = "";
+  for (const m of (c.meldingen || []).slice(0, 6)) {
+    const rij = document.createElement("div");
+    rij.textContent = `${tijd(m.at)}  ${m.tekst}${m.herstel ? ` → ${m.herstel}` : ""}${m.keer > 1 ? ` (${m.keer}×)` : ""}`;
+    lijst.appendChild(rij);
   }
 }
 

@@ -1067,7 +1067,8 @@
         if (nu >= stemFase.grootTot || (stemFase.gekozen ? nu >= stemFase.klokVanaf : !stemFase.kiest)) klokStart();
         const vlak = el("p-stem"), loop = el("stemLoop");
         const duur = Math.max(1, stemFase.tot - stemFase.opent), over = Math.min(duur, stemFase.tot - nu), s = Math.ceil(over / 1000);
-        const tik = () => (s <= 5 ? geluid.aftel(s) : geluid.seconde(s));
+        // Geen tik zolang TouchDesigner nog de scène toont: geen klok horen zonder hem te zien.
+        const tik = () => (inScene ? null : s <= 5 ? geluid.aftel(s) : geluid.seconde(s));
         if (nu < stemFase.grootTot) {
           // Groot in het midden: de klok loopt al, maar is pas te zien als de scène gekozen is.
           vlak.classList.add("groot");

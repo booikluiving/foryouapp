@@ -13,7 +13,7 @@ chmod +x "$T/launcher"
 export FORYOU_TD_WAAKHOND_TEST_PS="$T/ps" FORYOU_TD_WAAKHOND_MODUS_BESTAND="$T/modus" \
   FORYOU_TD_WAAKHOND_LOG="$T/log" FORYOU_TD_WAAKHOND_LAUNCHER="$T/launcher" \
   FORYOU_TD_WAAKHOND_STATE_DIR="$T" FORYOU_TD_WAAKHOND_TOESTEMMING="$T/toestemming" \
-  FORYOU_TD_VERSIE_BESTAND="$T/td-versie.txt"
+  FORYOU_TD_VERSIE_BESTAND="$T/td-versie.txt" FORYOU_TD_SHOW_STAND="$T/td-show.json"
 W="$DIR/td-waakhond.sh"
 fout=0
 check() { # naam wel-regex niet-regex
@@ -47,6 +47,10 @@ geval "twee zonder poort: houd de oudste" sluiten "" "SLUIT pid=900007 \(tweede 
 900007|300|$SHOW
 EOF
 geval "show via Finder (geen argument, wel poort) blijft" sluiten "900008" "STAND" "SLUIT|OPEN" <<< "900008|900|"
+
+# Show-TD voor show control: de pid met de poort
+geval "td-show.json krijgt de pid met de poort" sluiten "900005" "STAND" <<< "900005|300|$SHOW"
+grep -q '"pid":900005' "$T/td-show.json" && echo "ok: td-show.json pid" || { echo "FOUT: td-show.json"; cat "$T/td-show.json"; fout=1; }
 
 # Versiebestand
 grep -q "versie: v1.69" "$T/td-versie.txt" && echo "ok: versiebestand v1.69" || { echo "FOUT: versiebestand"; cat "$T/td-versie.txt"; fout=1; }
