@@ -70,6 +70,8 @@ function normalizeCharacter(character = {}, index = 0) {
     legacyId: character.legacyId || character.legacyCharacterId || null,
     name: displayName(character, id),
     performerIds: uniqueIds(character.performerIds),
+    // Vaste plek uit de situatie: een vrij personage gaat dan niet door de loting.
+    vastePlek: normalizeSlotIndex(character.vastePlek),
     index,
   };
 }
@@ -202,13 +204,26 @@ function performerSlotsForCharacters({ characters = [], performers = [], seed = 
     ? performerSlotIndexes
     : Array.from({ length: MAX_PERFORMER_SLOT }, (_, index) => index + 1);
   const openSlots = [...new Set(knownSlots)].filter((slotIndex) => !takenSlots.has(slotIndex)).sort((a, b) => a - b);
+  // Personages met een vaste plek (het meubel staat in dat vak) krijgen die plek als hij vrij is.
+  const geloot = [];
+  const vastGezet = new Set();
+  for (const character of freeCharacters) {
+    const plek = character.vastePlek;
+    if (plek != null && openSlots.includes(plek) && !vastGezet.has(plek)) {
+      vastGezet.add(plek);
+      addSlot(plek, null, null, character);
+    } else {
+      geloot.push(character);
+    }
+  }
+  const restSlots = openSlots.filter((slotIndex) => !vastGezet.has(slotIndex));
   const chosenSlots = slotsForFreeCharacters({
-    count: Math.min(freeCharacters.length, openSlots.length),
-    openSlots,
+    count: Math.min(geloot.length, restSlots.length),
+    openSlots: restSlots,
     seed,
     recentSlotIndexes: Array.isArray(recentSlotIndexes) ? recentSlotIndexes : [],
   });
-  freeCharacters.forEach((character, index) => {
+  geloot.forEach((character, index) => {
     // Meer vrije personages dan vrije plekken: de rest sluit achteraan aan.
     const slotIndex = index < chosenSlots.length ? chosenSlots[index] : slots.length + 1;
     addSlot(slotIndex, null, null, character);

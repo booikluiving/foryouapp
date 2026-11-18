@@ -1,6 +1,31 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const { assignPerformerSlots, seededRandom } = require("../../../shared/casting/performer-slots");
+
+// Situaties waar een vrij personage in het vak uit de catalogus blijft (het meubel staat daar).
+// Wordt bij elk klaarzetten opnieuw gelezen.
+const VASTE_PLEKKEN_FILE = process.env.RUNTIME_VASTE_PLEKKEN_FILE
+  || path.join(__dirname, "..", "..", "..", "shared", "casting", "vaste-plekken.json");
+
+function leesVastePlekken(file = VASTE_PLEKKEN_FILE) {
+  try {
+    const data = JSON.parse(fs.readFileSync(file, "utf8"));
+    const lijst = Array.isArray(data) ? data : data && data.situationIds;
+    return new Set(Array.isArray(lijst) ? lijst.map(String) : []);
+  } catch (_err) {
+    return new Set();
+  }
+}
+
+function vastePlekVoor(situation, characterId, filled = []) {
+  const ingevuld = filled.find((entry) => entry.character.id === characterId);
+  if (ingevuld) return ingevuld.slotIndex;
+  const slot = (situation.characterSlots || []).find((item) => item && item.characterId === characterId);
+  const slotIndex = slot ? Number(slot.slotIndex) : NaN;
+  return Number.isInteger(slotIndex) && slotIndex > 0 ? slotIndex : null;
+}
 
 function situationById(catalog, situationId) {
   return (catalog.situations || []).find((item) => item.id === situationId) || null;
@@ -39,7 +64,7 @@ function fillRandomSlots({ catalog, situation, seed, recentCharacterIds }) {
     const choices = fresh.length ? fresh : open;
     if (!choices.length) break;
     const character = choices[Math.floor(random() * choices.length)];
-    filled.push({ placeholder: `personage${filled.length + 1}`, character });
+    filled.push({ placeholder: `personage${filled.length + 1}`, character, slotIndex: Number(slot.slotIndex) || null });
   }
   return filled;
 }
@@ -68,8 +93,11 @@ function materializePreparedNext({ catalog, preparedNext, seed = "", environment
   // Scènes testen: de operator kiest zelf de omgeving bij deze situatie.
   const chosenEnvironment = environmentId ? environmentById(catalog, environmentId) : null;
   if (chosenEnvironment) environment = chosenEnvironment;
+  const vastePlekken = leesVastePlekken().has(situation.id);
   const castAssignment = assignPerformerSlots({
-    characters,
+    characters: vastePlekken
+      ? characters.map((item) => ({ ...item, vastePlek: vastePlekVoor(situation, item.id, filled) }))
+      : characters,
     performers: catalog.performers || [],
     // Vrije personages worden verloot over de spelers die nog niets hebben.
     seed,

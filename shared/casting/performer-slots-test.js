@@ -108,6 +108,24 @@ for (let index = 0; index < 600; index += 1) {
 assert(vrijPerSpeler[3] >= vrijPerSpeler[1] && vrijPerSpeler[3] >= vrijPerSpeler[2], `speler 3 krijgt zijn deel: ${JSON.stringify(vrijPerSpeler)}`);
 
 
+// Vaste plek: het vrije personage blijft in zijn vak, wat het lot ook zegt.
+for (let index = 0; index < 200; index += 1) {
+  const result = assignPerformerSlots({ characters: [vast1, { ...vrijA, vastePlek: 2 }], performers, seed: `vast-${index}` });
+  assert.deepEqual(slotsOf(result), [[1, "character:vast1"], [2, "character:vrijA"]], "vaste plek 2");
+}
+// Twee vrije personages, één met vaste plek: de ander loot over wat overblijft.
+for (let index = 0; index < 200; index += 1) {
+  const result = assignPerformerSlots({ characters: [{ ...vrijA, vastePlek: 1 }, vrijB], performers, seed: `half-${index}` });
+  assertDistinct(result, "vaste plek en loting botsen niet");
+  assert.equal(result.performerSlots.find((slot) => slot.characterId === "character:vrijA").slotIndex, 1);
+}
+// Vaste plek bezet door een vaste speler: dan gewoon de loting.
+{
+  const result = assignPerformerSlots({ characters: [vast2, { ...vrijA, vastePlek: 2 }], performers, seed: "bezet" });
+  assertDistinct(result, "bezette vaste plek");
+  assert.notEqual(result.performerSlots.find((slot) => slot.characterId === "character:vrijA").slotIndex, 2);
+}
+
 console.log(JSON.stringify({
   ok: true,
   eenVastEenVrij,
