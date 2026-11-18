@@ -30,6 +30,7 @@ const els = {
   starterExtra: $("#starterExtra"),
   sceneToChat: $("#sceneToChat"),
   refreshRuntimeDraft: $("#refreshRuntimeDraft"),
+  overslaan: $("#overslaan"),
   operatorMsg: $("#operatorMsg"),
   sceneTestToggle: $("#sceneTestToggle"),
   sceneTestStart: $("#sceneTestStart"),
@@ -779,6 +780,17 @@ async function sceneToChat() {
   setMsg(`Scene verstuurd: ${body.draft && body.draft.situationTitle || "runtime draft"}`);
 }
 
+// OVERSLAAN: de klaargezette scène vervalt voor deze run; de volgende wordt meteen geschreven.
+async function overslaan() {
+  els.overslaan.disabled = true;
+  try {
+    const body = await api("/v0/script-agent/operator/overslaan", { method: "POST", body: "{}" });
+    setMsg(`Overgeslagen: ${body.overgeslagen && body.overgeslagen.title || "scène"}. Nu: ${body.klaar && body.klaar.title || "volgende scène"}.`);
+  } finally {
+    els.overslaan.disabled = false;
+  }
+}
+
 async function refreshRuntimeDraft() {
   const body = await api("/v0/script-agent/operator/draft/from-runtime", {
     method: "POST",
@@ -1235,6 +1247,7 @@ els.starterExtra.addEventListener("input", () => {
 });
 els.sceneToChat.addEventListener("click", () => withUiError(sceneToChat));
 els.refreshRuntimeDraft.addEventListener("click", () => withUiError(refreshRuntimeDraft));
+els.overslaan.addEventListener("click", () => withUiError(overslaan));
 els.chatForm.addEventListener("submit", (event) => {
   event.preventDefault();
   withUiError(submitChat);

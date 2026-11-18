@@ -433,6 +433,66 @@ function createShowControlApp(options = {}) {
     res.json({ ok: true, ...(await sceneVanzelfNaarChat()) });
   }));
 
+  // OVERSLAAN: de scène die klaarstaat niet spelen. De runtime zet de volgende in de keten klaar
+  // (de overgeslagen komt deze run niet terug) en die wordt meteen geschreven; wat er nog geschreven
+  // werd, stopt. Klok, stemming en universum lopen gewoon door. Kan tot de scène start, ook vaker.
+  let overslaanBezig = false;
+  app.post("/v0/show-control/cues/overslaan", asyncRoute(async (req, res) => {
+    if (overslaanBezig) {
+      res.status(409).json({ ok: false, error: "overslaan_bezig" });
+      return;
+    }
+    overslaanBezig = true;
+    try {
+      const result = await clients.fetchCurrentRuntimeState();
+      const state = result && result.ok ? result.state : null;
+      if (!state || !state.showRunId || state.status !== "running") {
+        res.status(409).json({ ok: false, error: "geen_run" });
+        return;
+      }
+      if (state.activeSituation) {
+        res.status(409).json({ ok: false, error: "scene_speelt" });
+        return;
+      }
+      if (!state.preparedNext || !state.preparedNext.situationId) {
+        res.status(409).json({ ok: false, error: "niets_klaar" });
+        return;
+      }
+      const overgeslagen = state.preparedNext;
+      const runtimeBasis = String(process.env.SHOW_CONTROL_RUNTIME_URL || "http://127.0.0.1:3024").replace(/\/+$/, "");
+      const antwoord = await fetch(`${runtimeBasis}/v0/runtime/runs/${encodeURIComponent(state.showRunId)}/skip-prepared`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ situationId: overgeslagen.situationId }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const nieuw = await antwoord.json().catch(() => ({}));
+      if (!antwoord.ok) {
+        const fout = String(nieuw.error || `runtime_${antwoord.status}`);
+        const meldingen = { runtime_skip_nothing_left: "niets_meer_vrij", runtime_skip_stale: "al_overgeslagen", runtime_skip_requires_no_active_situation: "scene_speelt" };
+        res.status(409).json({ ok: false, error: meldingen[fout] || fout });
+        return;
+      }
+      // Niet ook nog vanzelf naar de chat als het tekstvenster straks in beeld komt.
+      vanzelfGestuurd = `${nieuw.showRunId}|${nieuw.preparedNext.situationId}|${nieuw.preparedNext.chosenAt}`;
+      const cue = buildSceneToChatCue(nieuw, {
+        name: "Overslaan: volgende scène naar chat",
+        sourceId: "show-control-overslaan",
+        overslaan: true,
+        overgeslagenSituationId: overgeslagen.situationId,
+      });
+      executeCue(cue, executeOptions).then(() => saveCue(cue)).catch(() => {});
+      res.status(201).json({
+        ok: true,
+        overgeslagen: { situationId: overgeslagen.situationId, title: overgeslagen.title || null },
+        klaar: { situationId: nieuw.preparedNext.situationId, title: nieuw.preparedNext.title || null },
+        aantalOvergeslagen: Array.isArray(nieuw.skippedSituations) ? nieuw.skippedSituations.length : 0,
+      });
+    } finally {
+      overslaanBezig = false;
+    }
+  }));
+
   app.post("/v0/show-control/cues/stop-situation", asyncRoute(async (req, res) => {
     const runtimeState = req.body && req.body.runtimeState ? req.body.runtimeState : null;
     const showRunId = (req.body && req.body.showRunId) || (runtimeState && runtimeState.showRunId) || null;

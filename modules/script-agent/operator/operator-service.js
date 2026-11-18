@@ -857,7 +857,11 @@ function createOperatorService(options = {}) {
   // en met Enter bevestigt, gaat niet als bericht naar het model maar wordt bewaard en meegegeven
   // met de volgende scène. Wie nog typt als het venster afloopt krijgt even uitstel; wat er dan
   // staat telt ook.
-  const opmerking = { bewaard: "", klaar: null, timer: null, hardEind: 0, laatsteScene: "" };
+  const opmerking = { bewaard: "", klaar: null, timer: null, hardEind: 0, laatsteScene: "", sceneDaarvoor: "", laatstGenomen: "" };
+  // Elke nieuwe tekst krijgt een nummer. Begint er een nieuwe terwijl de vorige nog loopt (knop
+  // OVERSLAAN), dan stopt de vorige en komt er niets meer van in beeld of op de teleprompter.
+  let generatieTeller = 0;
+  const VERVANGEN = "script_vervangen";
   // Een opmerking erbij: meerdere opmerkingen staan achter elkaar; dezelfde komt er niet twee keer in.
   // Ze staat ook als regel in de operator-chat, zodat te zien is dat ze is aangekomen.
   function bewaarOpmerking(tekst) {
@@ -1136,6 +1140,9 @@ function createOperatorService(options = {}) {
     stageState.messages = [];
     opmerking.bewaard = "";
     opmerking.laatsteScene = "";
+    opmerking.sceneDaarvoor = "";
+    opmerking.laatstGenomen = "";
+    session.laatsteBeurt = null;
     stageState.updatedAt = nowIso();
     emitStage("clear_session");
     return sessionInfo(sessionId);
@@ -1393,7 +1400,17 @@ function createOperatorService(options = {}) {
       content: normalizeText(message.content, 12000),
     }));
     let fullText = "";
+    const generatie = ++generatieTeller;
+    const vervangen = () => generatie !== generatieTeller;
+    const vervangenAntwoord = () => {
+      log(JSON.stringify({ at: nowIso(), event: "script_agent_generation_replaced", situationId: promptInput.situation && promptInput.situation.situationId, sessionId }));
+      assistantMessage.streaming = false;
+      assistantMessage.error = "vervangen";
+      emit({ type: "error", assistantId, error: "vervangen door een nieuwe scène" });
+      return { type: "replaced", assistantId };
+    };
     const publish = (delta, replace = false) => {
+      if (vervangen()) throw new Error(VERVANGEN);
       fullText = replace ? delta : fullText + delta;
       assistantMessage.content = fullText;
       stageState.updatedAt = nowIso();
@@ -1452,6 +1469,7 @@ function createOperatorService(options = {}) {
         } catch (err) {
           claudeError = err;
         }
+        if (vervangen()) throw new Error(VERVANGEN);
         const refused = result && result.stopReason === "refusal";
         if ((claudeError || refused) && deepSeekKey) {
           if (result) recordUsage(session, result.priced, "claude");
@@ -1475,6 +1493,7 @@ function createOperatorService(options = {}) {
         throw new Error(`script_afgekapt: tokenlimiet bereikt na ${fullText.length} tekens tekst (maxTokens ${settings.maxTokens})`);
       }
     } catch (err) {
+      if (vervangen()) return vervangenAntwoord();
       const message = err && err.message ? String(err.message) : `${provider}_stream_error`;
       logGeneration({ error: normalizeText(message, 300) });
       assistantMessage.streaming = false;
@@ -1492,11 +1511,16 @@ function createOperatorService(options = {}) {
       throw err;
     }
 
+    if (vervangen()) {
+      recordUsage(session, result.priced, provider);
+      return vervangenAntwoord();
+    }
     logGeneration();
     const priced = result.priced;
     recordUsage(session, priced, provider);
     session.messages.push({ role: "user", content: userText, at: userMessage.at });
     session.messages.push({ role: "assistant", content: fullText, at: nowIso() });
+    session.laatsteBeurt = { situationId: promptInput.situation && promptInput.situation.situationId, berichten: session.messages.length };
     assistantMessage.streaming = false;
     const bucket = session.providerUsage[provider];
     assistantMessage.meta = {
@@ -1516,6 +1540,7 @@ function createOperatorService(options = {}) {
     };
     const scriptOutput = createScriptOutput({ promptInput, scriptText: fullText });
     await appendScriptOutput(scriptOutput);
+    if (vervangen()) return vervangenAntwoord();
     if (onScriptOutput) await onScriptOutput({ promptInput, scriptOutput, source: "operator_chat" });
     stageState.streaming = false;
     stageState.active = null;
@@ -1573,16 +1598,35 @@ function createOperatorService(options = {}) {
       sourceId,
     });
     const sessionId = normalizeSessionId(body.sessionId || nextDraft.showRunId || stageState.sessionId);
+    // Na OVERSLAAN: de overgeslagen scène telde niet. De opmerking over de scène daarvoor gaat mee
+    // naar de nieuwe, en een al afgemaakte tekst van de overgeslagen scène gaat uit de geschiedenis.
+    const overslaan = body.overslaan === true;
+    const overgeslagen = normalizeText(body.overgeslagenSituationId, 200);
+    if (overslaan) {
+      const session = getSession(sessionId);
+      const beurt = session.laatsteBeurt;
+      if (beurt && overgeslagen && beurt.situationId === overgeslagen && beurt.berichten === session.messages.length) {
+        session.messages = session.messages.slice(0, -2);
+        session.laatsteBeurt = null;
+      }
+      if (overgeslagen && opmerking.laatsteScene === overgeslagen) opmerking.laatsteScene = opmerking.sceneDaarvoor;
+    }
     // Een trendscène (omgeving Trend) is puur beeld: geen taalmodel, een vast script met de emoji.
     // Een opmerking van de operator blijft liggen voor de volgende gewone scène.
     if (nextDraft.promptInput && isTrendOmgeving(nextDraft.promptInput.environment)) {
+      // Loopt er nog een tekst (OVERSLAAN), dan stopt die: de trendscène komt ervoor in de plaats.
+      generatieTeller += 1;
       const done = await trendZonderChat(nextDraft.promptInput, sessionId, sourceId, emit);
       return { sessionId, draft: nextDraft, opmerking: null, done };
     }
-    const operatorOpmerking = neemOpmerking();
+    const operatorOpmerking = overslaan
+      ? [...new Set([opmerking.laatstGenomen, neemOpmerking()].filter(Boolean))].join("\n")
+      : neemOpmerking();
+    opmerking.laatstGenomen = operatorOpmerking || "";
     // Dezelfde scène nog een keer: dan gaat de opmerking over de vorige versie en moet er een
     // nieuwe versie komen. Anders is het een les uit de vorige scène voor deze.
     const zelfdeScene = !!nextDraft.situationId && nextDraft.situationId === opmerking.laatsteScene;
+    opmerking.sceneDaarvoor = opmerking.laatsteScene;
     opmerking.laatsteScene = nextDraft.situationId || "";
     const bijsturing = !operatorOpmerking ? ""
       : zelfdeScene

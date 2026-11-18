@@ -202,6 +202,36 @@ function createScriptAgentApp(options = {}) {
   }));
 
   // Scènes testen: alleen in een testrun elke situatie starten, los van de paden.
+  // Knop OVERSLAAN op de operatorpagina: show control zet de volgende scène klaar en laat die schrijven.
+  app.post("/v0/script-agent/operator/overslaan", asyncRoute(async (_req, res) => {
+    const env = options.env || process.env;
+    const basis = String(env.SCRIPT_AGENT_SHOW_CONTROL_URL || env.SHOW_CONTROL_URL || "http://127.0.0.1:3025").replace(/\/+$/, "");
+    let antwoord;
+    try {
+      antwoord = await (options.fetchImpl || fetch)(`${basis}/v0/show-control/cues/overslaan`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+        signal: AbortSignal.timeout(10000),
+      });
+    } catch (_err) {
+      throw httpError(502, "Show control is niet bereikbaar.");
+    }
+    const body = await antwoord.json().catch(() => ({}));
+    if (!antwoord.ok) {
+      const meldingen = {
+        niets_meer_vrij: "Er is geen andere scène meer vrij.",
+        scene_speelt: "Er speelt een scène: eerst stoppen.",
+        niets_klaar: "Er staat geen scène klaar.",
+        geen_run: "Er loopt geen run.",
+        overslaan_bezig: "Overslaan loopt al.",
+        al_overgeslagen: "Die scène is al overgeslagen.",
+      };
+      throw httpError(409, meldingen[body.error] || body.error || "Overslaan lukte niet.");
+    }
+    res.json(body);
+  }));
+
   app.get("/v0/script-agent/operator/scene-test", asyncRoute(async (_req, res) => {
     res.json({ ok: true, ...(await sceneTest.status()), sync: readSyncStatus() });
   }));
