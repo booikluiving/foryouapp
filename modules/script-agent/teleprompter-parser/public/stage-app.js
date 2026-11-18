@@ -168,8 +168,10 @@
     return lines.length + 2;
   }
 
+  // De scène opent met de eerste regel (cue 1): er is geen titelkaart meer vóór het dialoog.
   function clampIndex(index) {
-    return Math.max(0, Math.min(index, Math.max(deckLength() - 1, 0)));
+    const first = canUseTelepromptLines() ? 1 : 0;
+    return Math.max(first, Math.min(index, Math.max(deckLength() - 1, 0)));
   }
 
   function clearCard() {
@@ -578,7 +580,7 @@
       move(-1);
     } else if (event.key === "Home") {
       event.preventDefault();
-      currentIndex = 0;
+      currentIndex = clampIndex(0);
       render();
       publishCue();
     }

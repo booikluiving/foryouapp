@@ -46,18 +46,35 @@ function titleFromFirstLine(rawText) {
   return stripOuterMarks(withoutBullet);
 }
 
-// Met een opgegeven titel (de titel van de situatie) vervalt elke kopregel bovenaan het script,
-// ook als het taalmodel daar een eigen titel van heeft gemaakt.
-function removeTitleHeading(rawText, title, dropAnyHeading = false) {
-  if (!title) return rawText;
-  const lines = String(rawText || "").split("\n");
-  const titleLower = title.toLowerCase();
-  return lines
-    .filter((line, index) => {
-      if (index > 4) return true;
-      if (dropAnyHeading && /^#{1,3}\s+\S/.test(line.trim())) return false;
-      const cleaned = line.trim().replace(/^#{1,3}\s+/, "").trim().toLowerCase();
-      return cleaned !== titleLower;
+const HEADING_RE = /^#{1,6}\s*\S/;
+const TITLE_PREFIX_RE = /^(titel|title)\s*:/i;
+
+// Het script begint met dialoog: de titel staat al op het zaalscherm terwijl het script geschreven
+// wordt. Schrijft het taalmodel toch een titel, dan vervalt die hier en wordt hij geen regel of cue:
+// elke kopregel (#), een regel "Titel: …", een regel die gelijk is aan de titel, en een losse eerste
+// regel die geen dialoog, regie of bordregel is.
+function removeTitleLines(rawText, title) {
+  const titleLower = stripOuterMarks(String(title || "")).toLowerCase();
+  let seenContent = false;
+  return String(rawText || "")
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      const first = !seenContent;
+      const bare = stripOuterMarks(trimmed.replace(/^#{1,6}\s*/, "").replace(/^[-•]\s+/, ""));
+      if (HEADING_RE.test(trimmed) || TITLE_PREFIX_RE.test(bare)) return false;
+      if (first && titleLower && bare.toLowerCase() === titleLower) return false;
+      seenContent = true;
+      if (!first) return true;
+      const withoutBullet = trimmed.replace(/^[-•]\s+/, "").trim();
+      if (/^\*\*.+\*\*$/.test(withoutBullet)) return false;
+      const keep =
+        DIALOGUE_RE.test(withoutBullet) ||
+        STAGE_PREFIX_RE.test(withoutBullet) ||
+        isBracketedStageDirection(withoutBullet) ||
+        !!leesBordregel(withoutBullet);
+      return keep;
     })
     .join("\n");
 }
@@ -100,7 +117,7 @@ function parseTeleprompt(input = {}) {
   const rawText = cleanText(input.rawText || input.text || "");
   const explicitTitle = cleanText(input.title || "");
   const inferredTitle = explicitTitle || titleFromHeading(rawText) || titleFromFirstLine(rawText) || "Teleprompt";
-  const sourceText = removeTitleHeading(rawText, inferredTitle, !!explicitTitle);
+  const sourceText = removeTitleLines(rawText, inferredTitle);
   const characters = [];
   const charactersByLabel = new Map();
   const lines = [];
