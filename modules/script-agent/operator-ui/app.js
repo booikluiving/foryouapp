@@ -222,7 +222,7 @@ function toonModel(model) {
     knop.classList.toggle("active", aan);
     knop.setAttribute("aria-pressed", aan ? "true" : "false");
   }
-  els.operatorStatusText.textContent = ["DeepSeek", actief, statusDraftLabel].filter(Boolean).join(" | ");
+  els.operatorStatusText.textContent = [actief.includes("/") ? "OpenRouter" : "DeepSeek", actief, statusDraftLabel].filter(Boolean).join(" | ");
 }
 
 async function kiesModel(model) {
@@ -577,6 +577,13 @@ function connectStage() {
 function renderSecretStatus(status = {}) {
   const secret = status.deepseek || status.secrets && status.secrets.deepseek || {};
   els.secretStatus.textContent = secret.configured ? `DeepSeek key ingesteld (${secret.source || "env"})` : "DeepSeek key ontbreekt";
+  // Modellen via OpenRouter (Hydrogen) blijven donker zonder OpenRouter-sleutel.
+  const openrouter = status.openrouter || status.secrets && status.secrets.openrouter;
+  if (!openrouter) return;
+  for (const knop of els.modelKeuze.querySelectorAll('button[data-model*="/"]')) {
+    knop.disabled = !openrouter.configured;
+    knop.title = openrouter.configured ? "" : "OpenRouter-sleutel ontbreekt";
+  }
 }
 
 async function loadStatus() {
@@ -1085,7 +1092,7 @@ els.sessionId.addEventListener("change", () => {
 els.model.addEventListener("change", () => withUiError(saveModel));
 els.modelKeuze.addEventListener("click", (event) => {
   const knop = event.target.closest("button[data-model]");
-  if (knop) withUiError(() => kiesModel(knop.dataset.model));
+  if (knop && !knop.disabled) withUiError(() => kiesModel(knop.dataset.model));
 });
 els.savedScenesList.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-script-id]");
