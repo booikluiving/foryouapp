@@ -8,8 +8,10 @@ const {
   catalogFromRunSnapshot,
   defaultAlgorithmConfig,
   normalizeAlgorithmConfig,
-  observedScoreForEvent,
+  personagesUitCatalogus,
+  scoreOnderdelen,
 } = require("./score-engine");
+const { beoordeelMetModel, beoordeelMetWoorden } = require("./chat-toon");
 const {
   listScoringContextStates,
   readAlgorithmConfigFile,
@@ -136,6 +138,7 @@ function applyLiveObservationFallback(event = {}, state = {}) {
     chatAppSignals: cloneJson(live.chatAppSignals || {}),
     camera: event.camera || live.camera || null,
     rawChat: Array.isArray(live.rawChat) ? cloneJson(live.rawChat) : [],
+    perTelefoon: live.perTelefoon || null,
     finalizedFromLiveAudience: true,
   };
 }
@@ -286,6 +289,49 @@ function normalizeCamera(input) {
   };
 }
 
+// Per telefoon (geen bots) hoeveel likes en saai er kwamen: zo hoeft niet elke like bewaard te worden.
+function telefoonsUitRefs(event = {}) {
+  if (!Array.isArray(event.signalRefs)) return event.perTelefoon && typeof event.perTelefoon === "object" ? event.perTelefoon : null;
+  const per = {};
+  for (const ref of event.signalRefs) {
+    if (!ref || ref.isBot || ref.simulated) continue;
+    const sleutel = String(ref.clientKey || ref.clientId || ref.sessionId || "");
+    if (!sleutel) continue;
+    const rij = per[sleutel] || (per[sleutel] = { hart: 0, saai: 0 });
+    if (ref.type === "heart") rij.hart += 1;
+    else if (ref.type === "bored") rij.saai += 1;
+  }
+  return per;
+}
+
+function livePerTelefoon(state, situationRunId) {
+  const live = state && state.liveAudienceObservation;
+  return live && live.situationRunId === situationRunId && live.perTelefoon ? cloneJson(live.perTelefoon) : null;
+}
+
+// De chatberichten van mensen (geen bots) in een observatie.
+function menselijkeChat(observation = {}) {
+  return (Array.isArray(observation.rawChat) ? observation.rawChat : [])
+    .filter((bericht) => bericht && !bericht.isBot && !bericht.simulated && bericht.signalId && String(bericht.text || "").trim());
+}
+
+// De score van een observatie (opnieuw) uitrekenen: met de beoordeling van de chat die er nu is,
+// het oordeel na de scène als dat binnen is, en de likes per telefoon.
+function berekenScore(observation, state) {
+  const cache = state.chatOordeel && typeof state.chatOordeel === "object" ? state.chatOordeel : {};
+  const chatOordeel = {};
+  for (const bericht of menselijkeChat(observation)) {
+    if (cache[bericht.signalId]) chatOordeel[bericht.signalId] = cache[bericht.signalId];
+  }
+  observation.chatOordeel = chatOordeel;
+  const delen = scoreOnderdelen(observation, state.config, { personages: personagesUitCatalogus(state.catalog) });
+  const { chatNamen, ...rest } = delen;
+  observation.scoreDelen = rest;
+  observation.chatNamen = chatNamen;
+  observation.observedScore = delen.totaal;
+  return observation;
+}
+
 async function buildObservation(event, state) {
   assertNoRuntimeOwnershipFields(event);
   if (!event || event.type !== "situationObserved") throw new Error("algorithm_invalid_observed_event_type");
@@ -293,9 +339,8 @@ async function buildObservation(event, state) {
   if (!event.situationRunId) throw new Error("algorithm_missing_situation_run_id");
   if (!event.situationId) throw new Error("algorithm_missing_situation_id");
   const sourceEvent = applyLiveObservationFallback(event, state);
-  const observedScore = observedScoreForEvent(sourceEvent, state.config);
   const context = observationContext(state.catalog, sourceEvent.situationId);
-  return {
+  return berekenScore({
     schemaVersion: SITUATION_OBSERVED_SCHEMA_VERSION,
     type: "situationObserved",
     showRunId: sourceEvent.showRunId,
@@ -312,11 +357,14 @@ async function buildObservation(event, state) {
     roomSound: normalizeRoomSound(sourceEvent.roomSound),
     camera: normalizeCamera(sourceEvent.camera),
     rawChat: Array.isArray(sourceEvent.rawChat) ? cloneJson(sourceEvent.rawChat) : [],
+    // De runtime stuurt bij het einde alleen de totalen mee; de likes per telefoon komen dan uit de
+    // laatste live stand van dezelfde scène.
+    perTelefoon: telefoonsUitRefs(sourceEvent) || livePerTelefoon(state, sourceEvent.situationRunId),
     finalizedFromAudienceAggregate: !!sourceEvent.finalizedFromAudienceAggregate,
     finalizedFromLiveAudience: !!sourceEvent.finalizedFromLiveAudience,
-    observedScore,
+    observedScore: 0,
     observedAt: new Date().toISOString(),
-  };
+  }, state);
 }
 
 function durationSecondsForLiveEvent(event) {
@@ -338,9 +386,8 @@ async function buildLiveAudienceObservation(event, state) {
     ...event,
     durationSeconds: durationSecondsForLiveEvent(event),
   };
-  const observedScore = observedScoreForEvent(liveEvent, state.config);
   const context = observationContext(state.catalog, event.situationId);
-  return {
+  return berekenScore({
     schemaVersion: "algorithm.audience-signals-live.v0",
     type: "audienceSignalsLive",
     scorePhase: "live",
@@ -356,10 +403,11 @@ async function buildLiveAudienceObservation(event, state) {
     chatAppSignals: event.chatAppSignals || {},
     camera: normalizeCamera(event.camera),
     rawChat: Array.isArray(event.rawChat) ? cloneJson(event.rawChat) : [],
+    perTelefoon: telefoonsUitRefs(liveEvent),
     audienceAggregateVersion: event.audienceAggregateVersion == null ? null : Number(event.audienceAggregateVersion),
-    observedScore,
+    observedScore: 0,
     observedAt: new Date().toISOString(),
-  };
+  }, state);
 }
 
 async function observeAudienceSignals(event) {
@@ -410,6 +458,7 @@ async function observeAudienceSignals(event) {
     observedScore: liveAudienceObservation.observedScore,
   });
   await saveScoringContextState(state);
+  planChatBeoordeling(state.showRunId);
   return {
     ok: true,
     scorePhase: "live",
@@ -502,6 +551,13 @@ async function observeSituation(event) {
     observation.personageVoorkeur = eerderPersonage;
     state.personageVoorkeurWacht = wachtPersonage.filter((item) => item !== eerderPersonage);
   }
+  const wachtOordeel = Array.isArray(state.oordeelWacht) ? state.oordeelWacht : [];
+  const eerderOordeel = wachtOordeel.find((item) => item.situationRunId && item.situationRunId === observation.situationRunId);
+  if (eerderOordeel) {
+    observation.oordeel = eerderOordeel;
+    state.oordeelWacht = wachtOordeel.filter((item) => item !== eerderOordeel);
+  }
+  berekenScore(observation, state);
   const observedScore = observation.observedScore;
   state.observations.push(observation);
   state.scoreFeed = buildScoreFeed({
@@ -523,10 +579,139 @@ async function observeSituation(event) {
     observedScore,
   });
   await saveScoringContextState(state);
+  planChatBeoordeling(state.showRunId, 0);
   return {
     observation,
     scoreFeed: state.scoreFeed,
   };
+}
+
+// Het oordeel na de scène (de thermometer): het gemiddelde van -1 tot 1, het zwaarste deel van de
+// score van die scène. Komt na de observatie van de scène binnen; komt het eerder, dan wacht het.
+async function observeSceneOordeel(event = {}) {
+  const state = await getScoringContext(event.showRunId);
+  const gemiddelde = Number(event.gemiddelde);
+  const stemmen = Math.max(0, Number(event.stemmen) || 0);
+  if (!Number.isFinite(gemiddelde) || !stemmen) return { ok: false, error: "geen_stemmen" };
+  const oordeel = {
+    gemiddelde: Math.round(Math.max(-1, Math.min(1, gemiddelde)) * 1000) / 1000,
+    stemmen,
+    mensen: Math.max(0, Number(event.mensen) || 0),
+    telling: event.telling && typeof event.telling === "object" ? cloneJson(event.telling) : {},
+    situationRunId: String(event.situationRunId || ""),
+    at: new Date().toISOString(),
+  };
+  const observations = Array.isArray(state.observations) ? state.observations : [];
+  const observation = observations.find((item) => item && oordeel.situationRunId && item.situationRunId === oordeel.situationRunId)
+    || (oordeel.situationRunId ? null : observations[observations.length - 1]);
+  if (observation) {
+    observation.oordeel = oordeel;
+    berekenScore(observation, state);
+  } else {
+    state.oordeelWacht = Array.isArray(state.oordeelWacht) ? state.oordeelWacht : [];
+    state.oordeelWacht.push(oordeel);
+  }
+  state.scoreFeed = buildScoreFeed({
+    showRunId: state.showRunId,
+    catalog: state.catalog,
+    observations: state.observations,
+    liveObservation: state.liveAudienceObservation || null,
+    config: state.config,
+  });
+  state.updatedAt = new Date().toISOString();
+  state.log = Array.isArray(state.log) ? state.log : [];
+  state.log.push({
+    type: "publiek_oordeel",
+    at: state.updatedAt,
+    situationRunId: oordeel.situationRunId,
+    gemiddelde: oordeel.gemiddelde,
+    stemmen,
+    observedScore: observation ? observation.observedScore : null,
+    wacht: !observation,
+  });
+  await saveScoringContextState(state);
+  return { ok: true, oordeel, wacht: !observation, observedScore: observation ? observation.observedScore : null, scoreDelen: observation ? observation.scoreDelen : null, scoreFeed: state.scoreFeed };
+}
+
+// De chat beoordelen met het taalmodel, op de achtergrond: kort na nieuwe berichten, en meteen na
+// het einde van een scène. Tot het antwoord er is telt de woordenlijst. Lukt het model niet, dan
+// blijft de woordenlijst staan (en wordt dat bericht niet opnieuw gevraagd).
+const chatPlanning = new Map();
+function planChatBeoordeling(showRunId, wachtMs = 1500) {
+  if (!showRunId || process.env.ALGORITHM_CHAT_MODEL === "uit") return;
+  const plan = chatPlanning.get(showRunId) || { timer: null, bezig: null, opnieuw: false };
+  chatPlanning.set(showRunId, plan);
+  if (plan.bezig) {
+    plan.opnieuw = true;
+    return;
+  }
+  if (plan.timer) clearTimeout(plan.timer);
+  plan.timer = setTimeout(() => {
+    plan.timer = null;
+    plan.bezig = beoordeelChat(showRunId)
+      .catch(() => {})
+      .finally(() => {
+        plan.bezig = null;
+        if (plan.opnieuw) {
+          plan.opnieuw = false;
+          planChatBeoordeling(showRunId, 0);
+        }
+      });
+  }, wachtMs);
+}
+
+// Wacht (hooguit ms) tot de geplande of lopende chatbeoordeling klaar is.
+async function wachtOpChat(showRunId, ms = 3000) {
+  const plan = chatPlanning.get(showRunId);
+  if (!plan) return;
+  if (plan.timer) {
+    clearTimeout(plan.timer);
+    plan.timer = null;
+    plan.bezig = beoordeelChat(showRunId).catch(() => {}).finally(() => { plan.bezig = null; });
+  }
+  if (plan.bezig) await Promise.race([plan.bezig, new Promise((resolve) => setTimeout(resolve, ms))]);
+}
+
+async function beoordeelChat(showRunId) {
+  const state = await getScoringContext(showRunId);
+  const cache = state.chatOordeel && typeof state.chatOordeel === "object" ? state.chatOordeel : {};
+  const bronnen = [state.liveAudienceObservation, ...(state.observations || []).slice(-2)].filter(Boolean);
+  const open = new Map();
+  for (const bron of bronnen) {
+    for (const bericht of menselijkeChat(bron)) {
+      if (!cache[bericht.signalId]) open.set(bericht.signalId, { id: bericht.signalId, tekst: String(bericht.text) });
+    }
+  }
+  if (!open.size) return;
+  const personages = personagesUitCatalogus(state.catalog);
+  const berichten = [...open.values()];
+  let uit = {};
+  try {
+    uit = await beoordeelMetModel(berichten, personages);
+  } catch {
+    uit = {};
+  }
+  for (const bericht of berichten) {
+    if (!uit[bericht.id]) uit[bericht.id] = beoordeelMetWoorden(bericht.tekst, personages);
+  }
+  await module.exports.bewaarChatOordeel({ showRunId, uit });
+}
+
+async function bewaarChatOordeel({ showRunId, uit = {} }) {
+  const state = await getScoringContext(showRunId);
+  state.chatOordeel = { ...(state.chatOordeel || {}), ...uit };
+  for (const observation of (state.observations || []).slice(-2)) berekenScore(observation, state);
+  if (state.liveAudienceObservation) berekenScore(state.liveAudienceObservation, state);
+  state.scoreFeed = buildScoreFeed({
+    showRunId: state.showRunId,
+    catalog: state.catalog,
+    observations: state.observations,
+    liveObservation: state.liveAudienceObservation || null,
+    config: state.config,
+  });
+  state.updatedAt = new Date().toISOString();
+  await saveScoringContextState(state);
+  return { ok: true, beoordeeld: Object.keys(uit).length };
 }
 
 async function simulateSituationObservation(event) {
@@ -573,6 +758,7 @@ function achterElkaar(sleutelVan, fn) {
   };
 }
 const perRun = (event) => (event && event.showRunId) || "";
+const sceneOordeelInRij = achterElkaar(perRun, observeSceneOordeel);
 
 module.exports = {
   assertNoPromptSettings,
@@ -587,6 +773,12 @@ module.exports = {
   observeLabelVoorkeur: achterElkaar(perRun, observeLabelVoorkeur),
   observePersonageVoorkeur: achterElkaar(perRun, observePersonageVoorkeur),
   observeSituation: achterElkaar(perRun, observeSituation),
+  // Eerst de chat van die scène laten beoordelen (hooguit 3 s), dan het oordeel verwerken.
+  observeSceneOordeel: async (event = {}) => {
+    await wachtOpChat(event.showRunId, 3000);
+    return sceneOordeelInRij(event);
+  },
+  bewaarChatOordeel: achterElkaar(perRun, bewaarChatOordeel),
   readAlgorithmConfig,
   simulateSituationObservation,
   summarizeScoringContext,

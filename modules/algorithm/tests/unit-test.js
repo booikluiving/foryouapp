@@ -141,9 +141,9 @@ async function main() {
 
   const persisted = await updateAlgorithmConfig({
     weights: {
-      heart: 99,
-      bored: -4,
-      message: 0.75,
+      likes: 99,
+      oordeel: -4,
+      chat: 0.75,
       diversity: 4,
     },
     normalization: {
@@ -152,7 +152,8 @@ async function main() {
     },
     neutralPredictedScore: 3.25,
   });
-  assert.equal(persisted.weights.heart, 10, "heart weight should clamp");
+  assert.equal(persisted.weights.likes, 10, "likes weight should clamp");
+  assert.equal(persisted.weights.oordeel, 0, "oordeel weight should clamp");
   assert.equal(persisted.normalization.timeCorrection, 1, "time correction should clamp");
   assert.equal(persisted.normalization.audienceSize, 0, "audience normalization should clamp");
   assert.equal((await readAlgorithmConfig()).neutralPredictedScore, 3.25, "config should persist");
@@ -303,34 +304,37 @@ async function main() {
   const fallbackContext = await getScoringContext(fallbackRunId);
   assert.equal(fallbackContext.liveAudienceObservation, null, "final fallback should still clear live state");
 
-  const scoreConfig = normalizeAlgorithmConfig({
-    weights: {
-      heart: 2,
-      bored: -3,
-      message: 1,
-    },
-    normalization: {
-      timeCorrection: 1,
-      audienceSize: 1,
-    },
-  });
-  const heartsLow = observedScoreForEvent(observedEvent({ chatAppSignals: { heartCount: 1, boredCount: 0, rawMessages: [] }, audience: { activeClients: 1 }, durationSeconds: 60 }), scoreConfig);
-  const heartsHigh = observedScoreForEvent(observedEvent({ chatAppSignals: { heartCount: 5, boredCount: 0, rawMessages: [] }, audience: { activeClients: 1 }, durationSeconds: 60 }), scoreConfig);
-  const boredHigh = observedScoreForEvent(observedEvent({ chatAppSignals: { heartCount: 5, boredCount: 4, rawMessages: [] }, audience: { activeClients: 1 }, durationSeconds: 60 }), scoreConfig);
-  const chatHigh = observedScoreForEvent(observedEvent({ chatAppSignals: { heartCount: 5, boredCount: 0, rawMessages: ["a", "b", "c"] }, audience: { activeClients: 1 }, durationSeconds: 60 }), scoreConfig);
-  const longDuration = observedScoreForEvent(observedEvent({ chatAppSignals: { heartCount: 5, boredCount: 0, rawMessages: [] }, audience: { activeClients: 1 }, durationSeconds: 240 }), scoreConfig);
-  const bigAudience = observedScoreForEvent(observedEvent({ chatAppSignals: { heartCount: 5, boredCount: 0, rawMessages: [] }, audience: { activeClients: 100 }, durationSeconds: 60 }), scoreConfig);
-  assert(heartsHigh > heartsLow, "heart weight should increase observed score");
-  assert(boredHigh < heartsHigh, "bored weight should reduce observed score");
-  assert(chatHigh > heartsHigh, "message weight should increase observed score");
-  assert(longDuration < heartsHigh, "time correction should normalize long duration");
-  assert(bigAudience < heartsHigh, "audience normalization should reduce same signal for bigger audience");
+  // De score: oordeel na de scène (zwaarst), chat (positief of negatief) en likes (begrensd per telefoon).
+  const scoreConfig = normalizeAlgorithmConfig({});
+  const refs = (telefoon, hart, saai = 0) => [
+    ...Array.from({ length: hart }, () => ({ type: "heart", clientKey: telefoon })),
+    ...Array.from({ length: saai }, () => ({ type: "bored", clientKey: telefoon })),
+  ];
+  const heartsLow = observedScoreForEvent({ signalRefs: refs("a", 1) }, scoreConfig);
+  const heartsHigh = observedScoreForEvent({ signalRefs: refs("a", 5) }, scoreConfig);
+  const heartsSpam = observedScoreForEvent({ signalRefs: refs("a", 500) }, scoreConfig);
+  const heartsCapped = observedScoreForEvent({ signalRefs: refs("a", 10) }, scoreConfig);
+  const boredHigh = observedScoreForEvent({ signalRefs: refs("a", 5, 4) }, scoreConfig);
+  const botsOnly = observedScoreForEvent({ signalRefs: refs("bot", 50).map((ref) => ({ ...ref, isBot: true })) }, scoreConfig);
+  const chatPositief = observedScoreForEvent({ signalRefs: refs("a", 5), rawChat: [{ signalId: "c1", clientKey: "a", text: "haha geweldig" }] }, scoreConfig);
+  const chatNegatief = observedScoreForEvent({ signalRefs: refs("a", 5), rawChat: [{ signalId: "c1", clientKey: "a", text: "boring" }] }, scoreConfig);
+  const chatSpam = observedScoreForEvent({ rawChat: Array.from({ length: 20 }, (_, i) => ({ signalId: `c${i}`, clientKey: "a", text: "lol" })) }, scoreConfig);
+  const metOordeel = observedScoreForEvent({ signalRefs: refs("a", 500), oordeel: { gemiddelde: -1, stemmen: 1 } }, scoreConfig);
+  const bigAudience = observedScoreForEvent({ signalRefs: refs("a", 5), oordeel: { gemiddelde: 0, stemmen: 10 } }, scoreConfig);
+  assert(heartsHigh > heartsLow, "more likes should increase observed score");
+  assert.equal(heartsSpam, heartsCapped, "likes are capped per phone");
+  assert(boredHigh < heartsHigh, "bored should reduce observed score");
+  assert.equal(botsOnly, 0, "bots do not count");
+  assert(chatPositief > heartsHigh, "positive chat should increase observed score");
+  assert(chatNegatief < heartsHigh, "negative chat should reduce observed score");
+  assert.equal(chatSpam, 1, "chat is capped per phone (3 messages, divided by phones)");
+  assert(metOordeel < 0, "a bad verdict outweighs spammed likes");
+  assert(bigAudience < heartsHigh, "the same likes count less in a bigger audience");
 
   const effectConfig = normalizeAlgorithmConfig({
     weights: {
-      heart: 1,
-      bored: -1,
-      message: 0,
+      likes: 1,
+      chat: 0,
       labelAffinity: 0,
       characterAffinity: 0,
       diversity: 2,

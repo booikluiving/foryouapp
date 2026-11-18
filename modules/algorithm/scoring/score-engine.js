@@ -4,6 +4,7 @@ const {
   ALGORITHM_CONFIG_SCHEMA_VERSION,
   ALGORITHM_SCORE_FEED_SCHEMA_VERSION,
 } = require("../../../shared/contracts/algorithm-v0");
+const { beoordeelMetWoorden } = require("./chat-toon");
 
 function defaultAlgorithmConfig() {
   return {
@@ -13,10 +14,19 @@ function defaultAlgorithmConfig() {
       type: "algorithm-v0-default-config",
       readOnly: true,
     },
+    // De score van een scène is de som van drie delen, elk van -1 tot 1, keer het gewicht:
+    // het oordeel na de scène (het zwaarst), de chat en de likes tijdens de scène.
     weights: {
-      heart: 1,
-      bored: -1,
-      message: 0.05,
+      // Oordeel na de scène (thermometer): Nooit meer -1, Matig -1/3, Goed +1/3, Nog een keer +1, gemiddeld.
+      oordeel: 3,
+      // Chat: per bericht positief +1, neutraal 0, negatief -1 (taalmodel); per telefoon hooguit 3,
+      // gedeeld door het aantal telefoons.
+      chat: 1,
+      // Likes tijdens de scène: per telefoon tellen hooguit 10 likes (en 10 saai), gedeeld door 10 × telefoons.
+      likes: 0.5,
+      // Een personage dat in de chat genoemd wordt (voor of tegen) telt als dit deel van een stem
+      // bij de personagevraag.
+      chatNaam: 0.5,
       labelAffinity: 0.25,
       characterAffinity: 0.15,
       diversity: 0,
@@ -26,15 +36,20 @@ function defaultAlgorithmConfig() {
       // Zaalgeluid: punten per dB dat de piek boven het gewone niveau van de scène uitkomt. 0 = telt niet mee.
       roomSound: 0,
       // Publiekscamera: punten per lachmoment (een flink deel van de zaal lacht) en per saai moment
-      // (de helft kijkt minstens 5 seconden weg, omlaag of met de ogen dicht).
-      cameraLaugh: 2,
-      cameraBored: -2,
+      // (de helft kijkt minstens 5 seconden weg, omlaag of met de ogen dicht). 0 = telt niet mee.
+      cameraLaugh: 0,
+      cameraBored: 0,
       // Publieksvraag na de scène over het label (te veel / precies goed / mag meer): de voorkeur, van -1
       // tot 1, telt met dit gewicht op bij elke scène met dat label.
       labelVoorkeur: 1,
       // Publieksvraag na de scène welk personage je nog een keer wilt zien: het aandeel van de stemmen
       // (0 tot 1) telt met dit gewicht op bij elke scène met dat personage.
       personageVoorkeur: 1,
+    },
+    // Grenzen tegen spammen: zoveel telt er per telefoon per scène.
+    grenzen: {
+      likesPerTelefoon: 10,
+      chatPerTelefoon: 3,
     },
     normalization: {
       timeCorrection: 1,
@@ -76,6 +91,8 @@ function normalizeAlgorithmConfig(input = {}, options = {}) {
   const baseNormalization = base.normalization && typeof base.normalization === "object"
     ? base.normalization
     : defaults.normalization;
+  const sourceGrenzen = source.grenzen && typeof source.grenzen === "object" ? source.grenzen : {};
+  const baseGrenzen = base.grenzen && typeof base.grenzen === "object" ? base.grenzen : defaults.grenzen;
   const sourceProfile = source.profile && typeof source.profile === "object" ? source.profile : {};
   const baseProfile = base.profile && typeof base.profile === "object" ? base.profile : defaults.profile;
   const now = new Date().toISOString();
@@ -89,9 +106,10 @@ function normalizeAlgorithmConfig(input = {}, options = {}) {
       readOnly: !!(source.source && source.source.readOnly),
     },
     weights: {
-      heart: rounded(clampNumber(sourceWeights.heart ?? source.heartWeight, -10, 10, baseWeights.heart), 3),
-      bored: rounded(clampNumber(sourceWeights.bored ?? source.boredWeight, -10, 10, baseWeights.bored), 3),
-      message: rounded(clampNumber(sourceWeights.message ?? source.messageWeight ?? source.chatWeight, -10, 10, baseWeights.message), 3),
+      oordeel: rounded(clampNumber(sourceWeights.oordeel, 0, 10, baseWeights.oordeel ?? defaults.weights.oordeel), 3),
+      chat: rounded(clampNumber(sourceWeights.chat, 0, 10, baseWeights.chat ?? defaults.weights.chat), 3),
+      likes: rounded(clampNumber(sourceWeights.likes, 0, 10, baseWeights.likes ?? defaults.weights.likes), 3),
+      chatNaam: rounded(clampNumber(sourceWeights.chatNaam, 0, 10, baseWeights.chatNaam ?? defaults.weights.chatNaam), 3),
       labelAffinity: rounded(clampNumber(sourceWeights.labelAffinity ?? source.labelAffinity, -10, 10, baseWeights.labelAffinity), 3),
       characterAffinity: rounded(clampNumber(sourceWeights.characterAffinity ?? source.characterAffinity, -10, 10, baseWeights.characterAffinity), 3),
       diversity: rounded(clampNumber(sourceWeights.diversity ?? source.diversityWeight, 0, 50, baseWeights.diversity), 3),
@@ -108,6 +126,10 @@ function normalizeAlgorithmConfig(input = {}, options = {}) {
         50,
         baseWeights.sceneRepeatPenalty
       ), 3),
+    },
+    grenzen: {
+      likesPerTelefoon: Math.round(clampNumber(sourceGrenzen.likesPerTelefoon, 1, 1000, baseGrenzen.likesPerTelefoon ?? defaults.grenzen.likesPerTelefoon)),
+      chatPerTelefoon: Math.round(clampNumber(sourceGrenzen.chatPerTelefoon, 1, 100, baseGrenzen.chatPerTelefoon ?? defaults.grenzen.chatPerTelefoon)),
     },
     normalization: {
       timeCorrection: rounded(clampNumber(
@@ -208,16 +230,134 @@ function cameraPoints(event, weights = {}) {
   return (moments.laugh * safeNumber(weights.cameraLaugh, 0)) + (moments.bored * safeNumber(weights.cameraBored, 0));
 }
 
-function observedScoreForEvent(event, config = defaultAlgorithmConfig()) {
+// De telefoons van echte mensen (geen bots) die in deze scène iets deden, per telefoon wat ze deden.
+function mensenInScene(event = {}) {
+  const per = new Map();
+  const van = (sleutel) => {
+    if (!per.has(sleutel)) per.set(sleutel, { hart: 0, saai: 0, chat: [] });
+    return per.get(sleutel);
+  };
+  const refs = Array.isArray(event.signalRefs) ? event.signalRefs : null;
+  const bewaard = !refs && event.perTelefoon && typeof event.perTelefoon === "object" ? event.perTelefoon : null;
+  if (bewaard) {
+    for (const [sleutel, rij] of Object.entries(bewaard)) {
+      const mens = van(sleutel);
+      mens.hart += Math.max(0, Number(rij && rij.hart) || 0);
+      mens.saai += Math.max(0, Number(rij && rij.saai) || 0);
+    }
+  }
+  if (refs) {
+    for (const ref of refs) {
+      if (!ref || ref.isBot || ref.simulated) continue;
+      const sleutel = String(ref.clientKey || ref.clientId || ref.sessionId || "");
+      if (!sleutel) continue;
+      if (ref.type === "heart") van(sleutel).hart += 1;
+      else if (ref.type === "bored") van(sleutel).saai += 1;
+      else van(sleutel);
+    }
+  }
+  const chat = Array.isArray(event.rawChat) ? event.rawChat : [];
+  chat.forEach((bericht, i) => {
+    if (!bericht || bericht.isBot || bericht.simulated || !String(bericht.text || "").trim()) return;
+    const sleutel = String(bericht.clientKey || bericht.clientId || `bericht:${i}`);
+    van(sleutel).chat.push({ id: String(bericht.signalId || `bericht:${i}`), tekst: String(bericht.text) });
+  });
+  return { per, metRefs: !!(refs || bewaard) };
+}
+
+// Het oordeel na de scène: gemiddelde van -1 tot 1 en hoeveel telefoons stemden.
+function oordeelVan(event = {}) {
+  const oordeel = event.oordeel;
+  if (!oordeel || typeof oordeel !== "object") return null;
+  const gemiddelde = Number(oordeel.gemiddelde);
+  const stemmen = Math.max(0, Number(oordeel.stemmen) || 0);
+  if (!stemmen || !Number.isFinite(gemiddelde)) return null;
+  return { gemiddelde: clampNumber(gemiddelde, -1, 1, 0), stemmen, mensen: Math.max(0, Number(oordeel.mensen) || 0) };
+}
+
+// De beoordeling van elk chatbericht: van het taalmodel als die er is, anders de woordenlijst.
+function chatBeoordeling(event, bericht, personages) {
+  const bekend = event && event.chatOordeel && event.chatOordeel[bericht.id];
+  return bekend && Number.isFinite(Number(bekend.toon)) ? bekend : beoordeelMetWoorden(bericht.tekst, personages);
+}
+
+function personagesUitCatalogus(catalog) {
+  return ((catalog && catalog.characters) || [])
+    .filter((item) => item && item.id && String(item.name || "").trim())
+    .map((item) => ({ id: String(item.id), naam: String(item.name).trim() }));
+}
+
+// De delen van de score van een scène: oordeel, chat en likes (elk van -1 tot 1), het aantal telefoons
+// waardoor gedeeld wordt, en de personages die in de chat genoemd werden.
+function scoreOnderdelen(event = {}, config = defaultAlgorithmConfig(), options = {}) {
   const normalizedConfig = normalizeAlgorithmConfig(config);
-  const counts = signalCounts(event);
   const weights = normalizedConfig.weights || {};
-  const raw = (counts.hearts * safeNumber(weights.heart, 1))
-    + (counts.bored * safeNumber(weights.bored, -1))
-    + (counts.messages * safeNumber(weights.message, 0.05))
-    + (roomSoundLift(event) * safeNumber(weights.roomSound, 0))
-    + cameraPoints(event, weights);
-  return rounded(raw * audienceFactor(counts.activeClients, normalizedConfig) * durationFactor(counts.durationSeconds, normalizedConfig), 4);
+  const grenzen = normalizedConfig.grenzen || {};
+  const likesMax = Math.max(1, safeNumber(grenzen.likesPerTelefoon, 10));
+  const chatMax = Math.max(1, safeNumber(grenzen.chatPerTelefoon, 3));
+  const personages = options.personages || [];
+  const { per, metRefs } = mensenInScene(event);
+  const oordeel = oordeelVan(event);
+  const counts = signalCounts(event);
+  const telefoons = Math.max(
+    1,
+    per.size,
+    oordeel ? oordeel.stemmen : 0,
+    oordeel ? oordeel.mensen : 0,
+    metRefs ? 0 : counts.activeClients,
+  );
+  let likesSom = 0;
+  if (metRefs) {
+    for (const mens of per.values()) likesSom += Math.min(mens.hart, likesMax) - Math.min(mens.saai, likesMax);
+  } else {
+    likesSom = Math.min(counts.hearts, likesMax * telefoons) - Math.min(counts.bored, likesMax * telefoons);
+  }
+  const likes = clampNumber(likesSom / (likesMax * telefoons), -1, 1, 0);
+  let chatSom = 0;
+  let berichten = 0;
+  const namen = new Map();
+  const losseBerichten = !Array.isArray(event.rawChat) || !event.rawChat.length
+    ? (Array.isArray((event.chatAppSignals || {}).rawMessages) ? event.chatAppSignals.rawMessages : [])
+    : [];
+  const telefoonChat = [...per.values()].map((mens) => mens.chat).filter((lijst) => lijst.length);
+  losseBerichten.forEach((tekst, i) => telefoonChat.push([{ id: `los:${i}`, tekst: String(tekst || "") }]));
+  for (const lijst of telefoonChat) {
+    let toon = 0;
+    const genoemd = new Map();
+    for (const bericht of lijst) {
+      const beoordeling = chatBeoordeling(event, bericht, personages);
+      toon += Math.sign(Number(beoordeling.toon) || 0);
+      for (const p of beoordeling.personages || []) genoemd.set(p.id, (genoemd.get(p.id) || 0) + Math.sign(Number(p.toon) || 0));
+      berichten += 1;
+    }
+    chatSom += clampNumber(toon, -chatMax, chatMax, 0);
+    for (const [id, waarde] of genoemd) namen.set(id, (namen.get(id) || 0) + clampNumber(waarde, -1, 1, 0));
+  }
+  const chat = clampNumber(chatSom / telefoons, -1, 1, 0);
+  const chatNamen = [...namen.entries()]
+    .filter(([, waarde]) => waarde !== 0)
+    .map(([characterId, waarde]) => ({ characterId, waarde: rounded(clampNumber(waarde / telefoons, -1, 1, 0) * safeNumber(weights.chatNaam, 0.5), 4) }));
+  const delen = {
+    oordeel: oordeel ? rounded(oordeel.gemiddelde, 4) : null,
+    oordeelStemmen: oordeel ? oordeel.stemmen : 0,
+    chat: rounded(chat, 4),
+    chatBerichten: berichten,
+    likes: rounded(likes, 4),
+    telefoons,
+    zaalgeluid: rounded(roomSoundLift(event) * safeNumber(weights.roomSound, 0), 4),
+    camera: rounded(cameraPoints(event, weights), 4),
+  };
+  delen.punten = {
+    oordeel: rounded((oordeel ? oordeel.gemiddelde : 0) * safeNumber(weights.oordeel, 3), 4),
+    chat: rounded(chat * safeNumber(weights.chat, 1), 4),
+    likes: rounded(likes * safeNumber(weights.likes, 0.5), 4),
+  };
+  delen.totaal = rounded(delen.punten.oordeel + delen.punten.chat + delen.punten.likes + delen.zaalgeluid + delen.camera, 4);
+  return { ...delen, chatNamen };
+}
+
+function observedScoreForEvent(event, config = defaultAlgorithmConfig(), options = {}) {
+  return scoreOnderdelen(event, config, options).totaal;
 }
 
 function affinityForSituation(situation, observedSituation, config) {
@@ -328,13 +468,25 @@ function buildRunProfile(observations = [], liveObservation = null, config = def
     if (voorkeur && voorkeur.labelId && Number.isFinite(Number(voorkeur.delta))) {
       addWeightedProfile(profile.labelVoorkeur, String(voorkeur.labelId), Number(voorkeur.delta), weight, source);
     }
+    // Per personage: het aandeel van de stemmen bij de personagevraag, plus wat de chat over dat
+    // personage zei (ook personages die niet in de scène zaten: "wij willen Bea weer").
+    const perPersonage = new Map();
     const personages = observation.personageVoorkeur;
     if (personages && Array.isArray(personages.keuzes)) {
       for (const keuze of personages.keuzes) {
         if (keuze && keuze.characterId && Number.isFinite(Number(keuze.aandeel))) {
-          addWeightedProfile(profile.personageVoorkeur, String(keuze.characterId), Number(keuze.aandeel), weight, source);
+          perPersonage.set(String(keuze.characterId), Number(keuze.aandeel));
         }
       }
+    }
+    for (const naam of Array.isArray(observation.chatNamen) ? observation.chatNamen : []) {
+      if (naam && naam.characterId && Number.isFinite(Number(naam.waarde))) {
+        const id = String(naam.characterId);
+        perPersonage.set(id, (perPersonage.get(id) || 0) + Number(naam.waarde));
+      }
+    }
+    for (const [characterId, waarde] of perPersonage) {
+      addWeightedProfile(profile.personageVoorkeur, characterId, waarde, weight, source);
     }
   };
   observations.forEach((observation, index) => {
@@ -628,6 +780,8 @@ module.exports = {
   audienceFactor,
   normalizeAlgorithmConfig,
   observedScoreForEvent,
+  personagesUitCatalogus,
+  scoreOnderdelen,
   roomSoundLift,
   cameraMoments,
   cameraPoints,

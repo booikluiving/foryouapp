@@ -11,6 +11,7 @@ const UITSLAGEN_KEY = "beoordeling_uitslagen";
 const MAX_FOTO_BYTES = 150 * 1024;
 const MAX_UITSLAGEN = 60;
 const ALGORITME_URL = String(process.env.AUDIENCE_ALGORITHM_URL || "http://127.0.0.1:3023").replace(/\/+$/, "");
+const RUNTIME_URL = String(process.env.AUDIENCE_RUNTIME_URL || "http://127.0.0.1:3024").replace(/\/+$/, "");
 // De drie antwoorden op de labelvraag en wat ze voor het algoritme betekenen.
 const LABEL_KEUZES = [["minder", -1], ["goed", 0], ["meer", 1]];
 
@@ -249,11 +250,78 @@ function createBeoordeling(service) {
     uitslagen.push(uitslag);
     while (uitslagen.length > MAX_UITSLAGEN) uitslagen.shift();
     store.setSetting(UITSLAGEN_KEY, uitslagen);
+    // De uitslag gaat naar het algoritme. De volgende scène ligt al vast (de keuze loopt één scène
+    // vooruit): het oordeel telt mee voor de keuze daarna.
     service.emit("broadcast", { type: "beoordeling_dicht", id: uitslag.id });
     service.emit("admin-state-changed");
-    stuurLabelVoorkeur(uitslag);
-    stuurPersonageVoorkeur(uitslag);
+    Promise.all([stuurOordeel(uitslag), stuurLabelVoorkeur(uitslag), stuurPersonageVoorkeur(uitslag)])
+      .then(() => stuurScoresNaarRuntime(uitslag));
     return uitslag;
+  }
+
+  // De nieuwste scores (met het oordeel erin) naar de runtime, zodat de keuze bij de start van de
+  // volgende scène ermee rekent. De scène die al klaarstaat blijft staan.
+  async function stuurScoresNaarRuntime(uitslag) {
+    if (!uitslag.showRunId || typeof fetch !== "function") return;
+    try {
+      const res = await fetch(`${ALGORITME_URL}/v0/algorithm/scoring-contexts/${encodeURIComponent(uitslag.showRunId)}/scores`, {
+        signal: AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined,
+      });
+      if (!res.ok) throw new Error(`algoritme ${res.status}`);
+      const scoreFeed = await res.json();
+      await post(`${RUNTIME_URL}/v0/runtime/runs/${encodeURIComponent(uitslag.showRunId)}/scores`, { ...scoreFeed, source: "publiek_oordeel" });
+      uitslag.scoresNaarRuntime = "ok";
+    } catch (err) {
+      uitslag.scoresNaarRuntime = `niet bereikt (${err.message})`;
+    }
+    store.setSetting(UITSLAGEN_KEY, uitslagen);
+  }
+
+  // Een POST naar een andere dienst; geeft het antwoord (of gooit een fout).
+  async function post(url, body, ms = 4000) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout ? AbortSignal.timeout(ms) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`fout ${res.status}`);
+    return data;
+  }
+
+  // Het oordeel over de scène (de thermometer): van onder (-1) tot boven (+1), gelijk verdeeld over de
+  // keuzes (Nooit meer -1, Matig -1/3, Goed +1/3, Nog een keer +1); het gemiddelde gaat naar het algoritme.
+  async function stuurOordeel(uitslag) {
+    const vraag = (uitslag.vragen || []).find((item) => item.id === "scene");
+    const telling = uitslag.tellingen && uitslag.tellingen.scene;
+    if (!vraag || !telling || !uitslag.showRunId) return;
+    const n = vraag.keuzes.length;
+    let stemmen = 0;
+    let som = 0;
+    vraag.keuzes.forEach((keuze, i) => {
+      const aantal = Number(telling[keuze.id]) || 0;
+      stemmen += aantal;
+      som += aantal * (n > 1 ? -1 + (2 * i) / (n - 1) : 0);
+    });
+    if (!stemmen) return;
+    uitslag.oordeel = { gemiddelde: Math.round((som / stemmen) * 1000) / 1000, stemmen, mensen: service.onlineMensen() };
+    store.setSetting(UITSLAGEN_KEY, uitslagen);
+    if (typeof fetch !== "function") return;
+    try {
+      const data = await post(`${ALGORITME_URL}/v0/algorithm/events/scene-oordeel`, {
+        showRunId: uitslag.showRunId,
+        situationRunId: uitslag.id,
+        situationId: uitslag.situationId,
+        ...uitslag.oordeel,
+        telling,
+      }, 8000);
+      uitslag.oordeel.algoritme = "ok";
+      if (data && data.observedScore != null) uitslag.oordeel.score = data.observedScore;
+    } catch (err) {
+      uitslag.oordeel.algoritme = `niet bereikt (${err.message})`;
+    }
+    store.setSetting(UITSLAGEN_KEY, uitslagen);
   }
 
   // Het antwoord op de personagevraag als voorkeur: per personage het aandeel van de stemmen.
@@ -266,7 +334,7 @@ function createBeoordeling(service) {
     uitslag.personageVoorkeur = { keuzes, stemmen };
     store.setSetting(UITSLAGEN_KEY, uitslagen);
     if (typeof fetch !== "function") return;
-    fetch(`${ALGORITME_URL}/v0/algorithm/events/personage-voorkeur`, {
+    return fetch(`${ALGORITME_URL}/v0/algorithm/events/personage-voorkeur`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ showRunId: uitslag.showRunId, situationRunId: uitslag.id, situationId: uitslag.situationId, keuzes, stemmen }),
@@ -286,7 +354,7 @@ function createBeoordeling(service) {
     uitslag.labelVoorkeur = { labelId: uitslag.label.id, delta: Math.round(delta * 1000) / 1000, stemmen };
     store.setSetting(UITSLAGEN_KEY, uitslagen);
     if (typeof fetch !== "function") return;
-    fetch(`${ALGORITME_URL}/v0/algorithm/events/label-voorkeur`, {
+    return fetch(`${ALGORITME_URL}/v0/algorithm/events/label-voorkeur`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ showRunId: uitslag.showRunId, situationRunId: uitslag.id, situationId: uitslag.situationId, labelId: uitslag.label.id, delta: uitslag.labelVoorkeur.delta, stemmen }),
