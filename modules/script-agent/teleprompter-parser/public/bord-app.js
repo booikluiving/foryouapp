@@ -8,6 +8,7 @@
   const PLEKKEN = 5;
   const VLIEG_MS = 430;
   const ROL_MS = 90;
+  const START_ROL_MS = 2500; // na BORD AAN eerst even rouleren, ook als het eerste plaatje al vaststaat
   const params = new URLSearchParams(window.location.search);
   const vel = document.getElementById("vel");
   const bordEl = document.getElementById("bord");
@@ -192,8 +193,20 @@
       });
       bezig = false;
       doel = stappen.filter((stap) => stap.cue <= cueIndex).length;
+      const vers = !vel.classList.contains("aan");
       zetStand(doel);
       vel.classList.add("aan");
+      if (vers && open) {
+        // Net aangezet en er staat al een plaatje klaar: eerst rouleren, dan pas stilstaan.
+        const naam = open;
+        open = null;
+        rouleer();
+        bezig = true;
+        window.setTimeout(() => {
+          bezig = false;
+          if (sleutel === nieuweSleutel) { toon(naam); speel(); }
+        }, START_ROL_MS);
+      }
       return;
     }
     vel.classList.add("aan");
