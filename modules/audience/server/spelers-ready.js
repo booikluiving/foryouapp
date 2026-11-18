@@ -31,6 +31,9 @@ function createSpelersReady({ service, fetchRuntimeView }) {
     const view = result && result.ok ? result.state : null;
     const klaar = view && view.resolvedPreparedNext;
     if (!view || !view.showRunId || view.status === "idle" || !klaar) return { sleutel: "", speelt: !!(view && view.activeSituation) };
+    // In de startfase kiest het publiek: pas als de winnaar klaarstaat, kan er ready gedrukt worden.
+    const reden = view.preparedNext ? String(view.preparedNext.reason || "") : "";
+    if (view.startPhase && view.startPhase.active && reden !== "operator_chosen") return { sleutel: "", speelt: !!view.activeSituation };
     // Alle drie de spelers drukken op READY, ook wie niet in de scène speelt.
     let geschreven = false;
     try {
@@ -98,25 +101,27 @@ function createSpelersReady({ service, fetchRuntimeView }) {
     stand.timer = setTimeout(() => { start(sleutel).catch(() => {}); }, AFTEL_MS);
   }
 
-  async function cue(name, actions) {
-    const antwoord = await fetch(`${showControlUrl}/v0/show-control/cues`, {
+  async function cue(pad, body) {
+    const antwoord = await fetch(`${showControlUrl}${pad}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, actions }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(8000),
     });
     return antwoord.ok;
   }
 
-  // Na het aftellen: dezelfde weg als READY op de deck en daarna de klikker.
+  // Na het aftellen: dezelfde weg als READY en daarna START SCENE op de deck.
   async function start(sleutel) {
     stand.timer = null;
     stand.start = true;
     try {
       const nu = await bij();
       if (nu.sleutel !== sleutel || nu.speelt || !iedereen() || !stand.geschreven) { stopAftellen(); meld(); return; }
-      await cue("Spelers ready: READY", [{ command: "teleprompter.ready", ackMode: "acknowledged-async", payload: { ready: true }, timeoutMs: 3000 }]);
-      await cue("Spelers ready: start scène", [{ command: "teleprompter.cue", ackMode: "acknowledged-async", payload: { direction: "next", source: "spelers_ready" }, timeoutMs: 5000 }]);
+      await cue("/v0/show-control/cues", { name: "Spelers ready: READY", actions: [{ command: "teleprompter.ready", ackMode: "acknowledged-async", payload: { ready: true }, timeoutMs: 3000 }] });
+      const result = await fetchRuntimeView().catch(() => null);
+      const rt = result && result.ok ? result.state : null;
+      if (rt && !rt.activeSituation) await cue("/v0/show-control/cues/start-situation", { name: "Spelers ready: start scène", showRunId: rt.showRunId, runtimeState: rt });
     } finally {
       stand.start = false;
       stopAftellen();
