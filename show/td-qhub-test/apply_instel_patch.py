@@ -29,7 +29,9 @@ Wat het doet, in /project1:
 - het linkervlak van de teleprompters (multiMix met Layersource0 = tel_left_N): Scale0 0,6 -> 0,5625,
   zodat het hele camerabeeld te zien is (zoals op het hoofdscherm).
 
-Terugdraaien: Scale0x/Scale0y van die multiMix terug op 0,6; select_camN_0.par.top.expr terug naar wat in INSTEL_OUD_LINKS staat; switch6/7/8:
+- regiemonitor: monitor/cameraN_bron toont instel_N zolang instel aan staat, anders videoN.
+
+Terugdraaien: monitor/cameraN_bron weer op /project1/videoN; Scale0x/Scale0y van die multiMix terug op 0,6; select_camN_0.par.top.expr terug naar wat in INSTEL_OUD_LINKS staat; switch6/7/8:
 index constant 1 en ingang 0 weer aan select_inloop. De instel_*-operators mogen blijven staan.
 Nogmaals draaien kan: wat er al staat, wordt hergebruikt; de routercode wordt vervangen.
 """
@@ -274,6 +276,15 @@ def apply_instel_patch():
             par = getattr(mix.par, naam, None)
             if par is not None:
                 par.val = 0.5625
+
+    # 6. Regiemonitor: de camerategels tonen in de instelstand hetzelfde als de teleprompter (eigen
+    # camera rauw of key over wit), niet de omgeving die van een vorige scène nog geladen is.
+    monitor = root.op("monitor")
+    if monitor is not None:
+        for nummer in (1, 2, 3):
+            tegel = monitor.op("camera%d_bron" % nummer)
+            if tegel is not None:
+                _expr(tegel.par.top, "'/project1/instel_%d' if op('/project1/instel')['aan'] else '/project1/video%d'" % (nummer, nummer))
 
     print("For_You instelbeeld: klaar, NIET bewaard")
     return True
