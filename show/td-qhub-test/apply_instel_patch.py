@@ -249,7 +249,7 @@ def apply_instel_patch():
         _set_par(tekst, "resolutionw", 1080)
         _set_par(tekst, "resolutionh", 120)
         _expr(tekst.par.text, "('KEY' if op('/project1/instel')['key%d'] else 'RAUW') + '  ·  hand omhoog = wissel'" % nummer)
-        _set_par(tekst, "fontsizex", 64)
+        _set_par(tekst, "fontsizex", 34)
         _set_par(tekst, "alignx", "center")
         _set_par(tekst, "aligny", "center")
         for kanaal, waarde in (("bgcolorr", 0), ("bgcolorg", 0), ("bgcolorb", 0), ("bgalpha", 0.75)):
