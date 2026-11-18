@@ -18,7 +18,7 @@ function activeEnvironments(catalog) {
   return (catalog.environments || []).filter((item) => item.active && !item.archivedAt);
 }
 
-function materializePreparedNext({ catalog, preparedNext, seed = "", environmentId = "" }) {
+function materializePreparedNext({ catalog, preparedNext, seed = "", environmentId = "", recentSlotIndexes = [] }) {
   if (!preparedNext || !preparedNext.situationId) return null;
   const situation = situationById(catalog, preparedNext.situationId);
   if (!situation) throw new Error(`runtime_materialize_missing_situation:${preparedNext.situationId}`);
@@ -35,6 +35,9 @@ function materializePreparedNext({ catalog, preparedNext, seed = "", environment
   const castAssignment = assignPerformerSlots({
     characters,
     performers: catalog.performers || [],
+    // Vrije personages worden verloot over de spelers die nog niets hebben.
+    seed,
+    recentSlotIndexes,
   });
   return {
     situationId: situation.id,

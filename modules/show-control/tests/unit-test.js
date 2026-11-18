@@ -390,10 +390,10 @@ async function main() {
     castPayload.performerSlots.map((slot) => [slot.slotIndex, slot.performerId, slot.characterId]),
     [
       [1, "performer:1", "character:bobby"],
-      [1, null, "character:flex"],
       [2, "performer:2", "character:adolf"],
+      [3, null, "character:flex"],
     ],
-    "Show Control fallback should reflect catalog performer choices without redistributing roles"
+    "Show Control fallback should give a character without a fixed performer the slot that is still open"
   );
   const castWarningPayload = resolvedPayloadFromRuntimeState({
     showRunId: "show-run-cast-warning",

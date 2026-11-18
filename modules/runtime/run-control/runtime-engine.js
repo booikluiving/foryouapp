@@ -533,7 +533,17 @@ function applyEligiblePoolUpdate(state, eligiblePool, reason) {
   return state.lastRankChangeSummary;
 }
 
-function choosePreparedNext({ catalog, eligiblePool, reason = "runtime_order" }) {
+// Per eerdere scène van deze run de plekken die in beeld waren (oudste eerst), zodat de
+// loting van vrije personages de speler voor laat gaan die het langst niets had.
+function recentSlotIndexesFor(state) {
+  return ((state && state.situationRuns) || [])
+    .map((run) => ((run && run.resolved && run.resolved.performerSlots) || [])
+      .map((slot) => Number(slot.slotIndex))
+      .filter((slotIndex) => Number.isFinite(slotIndex)))
+    .filter((slotIndexes) => slotIndexes.length);
+}
+
+function choosePreparedNext({ catalog, eligiblePool, reason = "runtime_order", recentSlotIndexes = [] }) {
   if (!eligiblePool || eligiblePool.length === 0) return null;
   const candidate = eligiblePool[0];
   const seed = crypto.createHash("sha256")
@@ -551,6 +561,7 @@ function choosePreparedNext({ catalog, eligiblePool, reason = "runtime_order" })
       catalog,
       preparedNext: candidate,
       seed,
+      recentSlotIndexes,
     }),
   };
 }
@@ -579,6 +590,7 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
     catalog: state.showRunSnapshot.catalog,
     eligiblePool,
     reason,
+    recentSlotIndexes: recentSlotIndexesFor(state),
   });
   state.pathEvaluation = pathEvaluation;
   state.eligiblePool = eligiblePool;
@@ -1275,7 +1287,7 @@ async function prepareChosenSituation(state, clients, options = {}) {
     .digest("hex")
     .slice(0, 16);
   const candidate = { situationId: situation.id, legacySituationId: situation.legacyId, title: situation.title };
-  state.resolvedPreparedNext = materializePreparedNext({ catalog, preparedNext: candidate, seed, environmentId: wantedEnvironmentId });
+  state.resolvedPreparedNext = materializePreparedNext({ catalog, preparedNext: candidate, seed, environmentId: wantedEnvironmentId, recentSlotIndexes: recentSlotIndexesFor(state) });
   state.preparedNext = { ...candidate, chosenAt, reason: "operator_chosen", seed, ...(options.testRun === true ? { testKeuze: true } : {}) };
   state.updatedAt = chosenAt;
   appendRunLog(state, {
