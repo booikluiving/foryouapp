@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Geluid</title>
+    <link rel="stylesheet" href="/shared/ui/foryou.css">
+    <style>
+      .geluid-main { max-width: 980px; margin: 0 auto; padding: 16px; }
+      .geluid-nu { font-size: 15px; margin: 0 0 14px; opacity: .8; }
+      .geluid-blok { margin: 0 0 22px; }
+      .geluid-blok h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; margin: 0 0 8px; }
+      .geluid-omg { border-top: 1px solid rgba(127,127,127,.25); padding: 10px 0; }
+      .geluid-omg.is-live { border: 2px solid #3ddc84; border-radius: 8px; padding: 12px; }
+      .geluid-naam { font-weight: 700; margin-bottom: 6px; display: flex; gap: 10px; align-items: baseline; }
+      .geluid-naam small { font-weight: 400; opacity: .7; }
+      .geluid-rij { display: grid; grid-template-columns: 120px 1fr 52px 84px; gap: 10px; align-items: center; min-height: 40px; }
+      .geluid-rij label { font-size: 14px; }
+      .geluid-rij label small { display: block; opacity: .65; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .geluid-rij input[type=range] { width: 100%; height: 32px; }
+      .geluid-pct { text-align: right; font-variant-numeric: tabular-nums; }
+      .geluid-rij button { min-height: 34px; }
+      .geluid-status { font-size: 13px; min-height: 18px; opacity: .8; }
+      .geluid-tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: rgba(61,220,132,.2); }
+      @media (max-width: 600px) { .geluid-rij { grid-template-columns: 90px 1fr 46px; } .geluid-rij button { grid-column: 1 / -1; } }
+    </style>
+  </head>
+  <body class="fy-page">
+    <header class="fy-topbar">
+      <div class="fy-bar">
+        <div class="fy-brand">
+          <span class="fy-brand-mark">FY</span>
+          <div class="fy-brand-text">
+            <strong>Geluid</strong>
+            <span id="topMeta">Laden...</span>
+          </div>
+        </div>
+      </div>
+    </header>
+    <main class="geluid-main">
+      <p class="geluid-nu" id="nu"></p>
+      <section class="geluid-blok" id="liveBlok"></section>
+      <section class="geluid-blok">
+        <h2>Nieuw sinds 11 nov</h2>
+        <div id="nieuwLijst"></div>
+      </section>
+      <section class="geluid-blok">
+        <h2>Alle andere omgevingen</h2>
+        <div id="restLijst"></div>
+      </section>
+    </main>
+    <script src="/catalog/geluid.js"></script>
+  </body>
+</html>
