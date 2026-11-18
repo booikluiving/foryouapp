@@ -14,6 +14,7 @@ const {
 } = require("../../../shared/contracts/show-control-v0");
 const { isBlindRanking } = require("../../../shared/blind-ranking/blind-ranking");
 const { currentEnvironmentRef } = require("./environment-extras");
+const { buildEnvironmentFaseCue } = require("./environment-fases");
 
 const DEFAULT_CATALOG_DB_PATH = path.resolve(__dirname, "../../catalog/db/catalog.sqlite");
 
@@ -88,8 +89,19 @@ function buildEnvironmentBordCue(runtimeState, input = {}, options = {}) {
     err.code = status.reden || "scene_speelt_niet";
     throw err;
   }
+  const wasAan = status.aan;
   state.sleutel = status.sleutel;
   state.aan = actie === "aan";
+  // Heeft de omgeving fases (zoals "de ranking" met de muziek van het filter), dan gaat bij de
+  // eerste druk de volgende fase mee aan: de muziek begint als het bord opkomt.
+  let faseActies = [];
+  if (actie === "aan" && !wasAan) {
+    try {
+      faseActies = buildEnvironmentFaseCue(runtimeState, { actie: "volgende", source: input.source }, options).actions;
+    } catch (_err) {
+      faseActies = [];
+    }
+  }
   const createdAtDate = options.createdAtDate || new Date();
   const cueId = createShowControlId("show-cue", createdAtDate);
   const payloadId = `${cueId}:payload:01`;
@@ -117,7 +129,7 @@ function buildEnvironmentBordCue(runtimeState, input = {}, options = {}) {
       transport: { type: "http-or-internal" },
       simulate: null,
       status: { stage: "queued", state: "queued", message: null, updatedAt: null },
-    }],
+    }, ...faseActies],
   };
 }
 
