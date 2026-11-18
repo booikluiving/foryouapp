@@ -10,7 +10,7 @@ const {
 const { listCommands } = require("../command-registry/command-registry");
 const { fetchCurrentRuntimeState } = require("../client/runtime-client");
 const { listActiveStreamDeckCues } = require("../streamdeck-active-cues");
-const { applyAck, executeCue, normalizeCue } = require("../cue-engine/cue-engine");
+const { applyAck, executeCue, executeUitgesteld, normalizeCue } = require("../cue-engine/cue-engine");
 const { recordAck } = require("../cue-engine/ack-tracker");
 const { findCachedPayload } = require("../cue-engine/payload-cache");
 const { summarizeCue, summarizeCues } = require("../cue-engine/cue-summary");
@@ -65,6 +65,7 @@ const { perfectCueBaseUrl } = require("../target-adapters/perfect-cue-adapter");
 const { sq5BaseUrl } = require("../target-adapters/sq5-adapter");
 const { streamDeckBaseUrl } = require("../target-adapters/streamdeck-adapter");
 const { loadExpress } = require("./express-loader");
+const { createRegie } = require("../regie/regie");
 
 const express = loadExpress();
 
@@ -201,12 +202,57 @@ function createShowControlApp(options = {}) {
   // De run-stand die de teleprompter en Scènes testen meesturen is ruim 1 MB (de catalogus zit erin).
   app.use(express.json({ limit: "16mb" }));
 
+  // Regie: de ene weg om run en scènes te bedienen (stand show/test/random, één eigenaar, één voor één).
+  const regie = options.regie || createRegie({
+    bestand: options.regiePath,
+    fetchImpl: options.regieFetch,
+    cues: {
+      buildCompoundCue,
+      buildPhaseCue,
+      buildPrepareCue,
+      buildSceneToChatCue,
+      buildStartRunCue,
+      buildStartSituationCue,
+      buildStopSituationCue,
+      executeCue: (cue, extra = {}) => executeCue(cue, { ...executeOptions, ...extra }),
+      executeUitgesteld: (cue) => executeUitgesteld(cue, executeOptions),
+      saveCue,
+    },
+  });
+  app.locals.regie = regie;
+  const regieRoutes = [
+    "/v0/show-control/cues/start-run",
+    "/v0/show-control/cues/start-situation",
+    "/v0/show-control/cues/stop-situation",
+    "/v0/show-control/cues/prepare",
+    "/v0/show-control/cues/prepare-situation",
+    "/v0/show-control/cues/overslaan",
+    "/v0/show-control/cues/scene-to-chat",
+    "/v0/show-control/cues/phase",
+  ];
+  function regieWacht(req, res, next) {
+    const uitkomst = regie.mag(req);
+    if (!uitkomst.ok) {
+      res.status(uitkomst.status).json(uitkomst.body);
+      return;
+    }
+    next();
+  }
+  app.post(regieRoutes, regieWacht);
+  // Losse cues die de run veranderen (RESET RUN op de deck) of READY: zelfde bewaking.
+  function raaktRun(body) {
+    const acties = [...(body && Array.isArray(body.actions) ? body.actions : []), ...((body && Array.isArray(body.steps) ? body.steps : []).flatMap((stap) => (stap && Array.isArray(stap.actions) ? stap.actions : [])))];
+    return acties.some((actie) => actie && /^runtime\.|^teleprompter\.ready$/.test(String(actie.command || "")));
+  }
+  app.post("/v0/show-control/cues", (req, res, next) => (raaktRun(req.body) ? regieWacht(req, res, next) : next()));
+
   app.get("/", (_req, res) => {
     res.redirect("/show-control/");
   });
 
   app.use("/shared/ui", express.static(sharedUiRoot));
   app.use("/show-control", express.static(uiRoot, { extensions: ["html"] }));
+  app.use("/regie", express.static(path.resolve(__dirname, "../ui/regie"), { extensions: ["html"] }));
 
   app.get("/health", (_req, res) => {
     const port = Number(process.env.SHOW_CONTROL_PORT || process.env.PORT || options.port || 3025);
@@ -243,14 +289,74 @@ function createShowControlApp(options = {}) {
     res.json({ ok: true, count: cues.length, cues });
   });
 
-  app.post("/v0/show-control/cues/prepare", asyncRoute(async (req, res) => {
-    const runtimeState = await runtimeStateForRequest(req, clients);
-    const cue = buildPrepareCue(runtimeState, {
-      simulateTargetTimeout: !!(req.body && req.body.simulateTargetTimeout),
+  // ---------- Regie ----------
+  function regieRoute(fn) {
+    return async (req, res) => {
+      try {
+        res.json(await fn(req));
+      } catch (err) {
+        res.status(err && err.statusCode ? err.statusCode : 500).json({
+          ok: false,
+          error: err && err.code ? err.code : "regie_fout",
+          message: err && err.message ? err.message : "Er ging iets mis.",
+          ...(err && err.eigenaar ? { eigenaar: err.eigenaar } : {}),
+        });
+      }
+    };
+  }
+  const regieWie = (req) => (req.get("x-foryou-wie") || (req.body && req.body.wie) || "");
+  app.get("/v0/show-control/regie", regieRoute(() => regie.overzicht()));
+  app.get("/v0/show-control/regie/catalogus", regieRoute(() => regie.catalogus()));
+  app.post("/v0/show-control/regie/overnemen", regieRoute((req) => regie.overnemen({ wie: regieWie(req), stand: req.body && req.body.stand, minuten: req.body && req.body.minuten, forceer: !!(req.body && req.body.forceer === true) })));
+  app.post("/v0/show-control/regie/vrijgeven", regieRoute((req) => regie.vrijgeven({ wie: regieWie(req) })));
+  app.post("/v0/show-control/regie/schrijven", regieRoute((req) => regie.zetSchrijven({ wie: regieWie(req), schrijven: req.body && req.body.schrijven === true })));
+  app.post("/v0/show-control/regie/laad", regieRoute((req) => regie.laad({
+    wie: regieWie(req),
+    situationId: req.body && req.body.situationId,
+    environmentId: req.body && req.body.environmentId,
+    start: !!(req.body && req.body.start === true),
+    schrijven: req.body && typeof req.body.schrijven === "boolean" ? req.body.schrijven : undefined,
+  })));
+  app.post("/v0/show-control/regie/start", regieRoute((req) => regie.start({ wie: regieWie(req) })));
+  app.post("/v0/show-control/regie/stop", regieRoute((req) => regie.stop({ wie: regieWie(req) })));
+  app.post("/v0/show-control/regie/random", regieRoute((req) => regie.volgendeRandom({ wie: regieWie(req) })));
+
+  // Een gekozen scène klaarzetten (stemwinnaar): runtime én TouchDesigner/teleprompter in één stap,
+  // via de ene weg. Vroeger zette het publiek de runtime zelf klaar en volgde show control misschien.
+  app.post("/v0/show-control/cues/prepare-situation", asyncRoute(async (req, res) => {
+    const body = req.body || {};
+    const situationId = String(body.situationId || "").trim();
+    if (!situationId) throw httpError(400, "show_control_missing_situation_id");
+    await regie.slot(async () => {
+      const huidig = await clients.fetchCurrentRuntimeState();
+      const showRunId = String(body.showRunId || (huidig && huidig.ok && huidig.state ? huidig.state.showRunId : "") || "");
+      if (!showRunId) throw httpError(409, "show_control_no_show_run");
+      const runtimeBasis = String(process.env.SHOW_CONTROL_RUNTIME_URL || "http://127.0.0.1:3024").replace(/\/+$/, "");
+      const antwoord = await fetch(`${runtimeBasis}/v0/runtime/runs/${encodeURIComponent(showRunId)}/prepare-situation`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ situationId }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const state = await antwoord.json().catch(() => null);
+      if (!antwoord.ok || !state) throw httpError(antwoord.status || 502, (state && state.error) || "show_control_runtime_prepare_failed");
+      const cue = buildPrepareCue(state);
+      await executeCue(cue, executeOptions);
+      await saveCue(cue);
+      res.status(201).json({ ok: true, state, cueId: cue.cueId });
     });
-    await executeCue(cue, executeOptions);
-    await saveCue(cue);
-    res.status(201).json({ ok: true, cue });
+  }));
+
+  app.post("/v0/show-control/cues/prepare", asyncRoute(async (req, res) => {
+    await regie.slot(async () => {
+      const runtimeState = await runtimeStateForRequest(req, clients);
+      const cue = buildPrepareCue(runtimeState, {
+        simulateTargetTimeout: !!(req.body && req.body.simulateTargetTimeout),
+      });
+      await executeCue(cue, executeOptions);
+      await saveCue(cue);
+      res.status(201).json({ ok: true, cue });
+    });
   }));
 
   app.post("/v0/show-control/cues/go", asyncRoute(async (req, res) => {
@@ -280,7 +386,8 @@ function createShowControlApp(options = {}) {
       actions: req.body && Array.isArray(req.body.actions) ? req.body.actions : [],
       steps: req.body && Array.isArray(req.body.steps) ? req.body.steps : null,
     });
-    await executeCue(cue, executeOptions);
+    if (raaktRun(req.body)) await regie.slot(() => executeCue(cue, executeOptions));
+    else await executeCue(cue, executeOptions);
     await saveCue(cue);
     res.status(201).json({ ok: true, cue });
     // READY (de spelers staan klaar): het stemmen na de scène hoeft niet uit te lopen.
@@ -378,7 +485,7 @@ function createShowControlApp(options = {}) {
       name: req.body ? req.body.name : null,
       autoPrepareNext: !(req.body && req.body.autoPrepareNext === false),
     });
-    await executeCue(cue, executeOptions);
+    await regie.slot(() => executeCue(cue, executeOptions));
     await saveCue(cue);
     res.status(201).json({ ok: true, cue });
   }));
@@ -391,7 +498,7 @@ function createShowControlApp(options = {}) {
       showRunId,
       actions: req.body && Array.isArray(req.body.actions) ? req.body.actions : [],
     });
-    await executeCue(cue, { ...executeOptions, runtimeState });
+    await regie.slot(() => executeCue(cue, { ...executeOptions, runtimeState }));
     await saveCue(cue);
     res.status(201).json({ ok: true, cue });
   }));
@@ -443,50 +550,70 @@ function createShowControlApp(options = {}) {
       return;
     }
     overslaanBezig = true;
+    // Test of random: overslaan = een andere willekeurige scène klaarzetten.
+    const regieStand = regie.stand();
+    if (regieStand.stand !== "show" && regieStand.eigenaar && !regieStand.verlopen) {
+      try {
+        const klaar = await regie.slot(() => regie.binnen.overslaan());
+        res.status(201).json({ ok: true, klaar: klaar && klaar.preparedNext ? { situationId: klaar.preparedNext.situationId, title: klaar.preparedNext.title || null } : null, stand: regieStand.stand });
+      } catch (err) {
+        res.status(err.statusCode || 409).json({ ok: false, error: err.code || "overslaan_mislukt", message: err.message });
+      } finally {
+        overslaanBezig = false;
+      }
+      return;
+    }
     try {
-      const result = await clients.fetchCurrentRuntimeState();
-      const state = result && result.ok ? result.state : null;
-      if (!state || !state.showRunId || state.status !== "running") {
-        res.status(409).json({ ok: false, error: "geen_run" });
-        return;
-      }
-      if (state.activeSituation) {
-        res.status(409).json({ ok: false, error: "scene_speelt" });
-        return;
-      }
-      if (!state.preparedNext || !state.preparedNext.situationId) {
-        res.status(409).json({ ok: false, error: "niets_klaar" });
-        return;
-      }
-      const overgeslagen = state.preparedNext;
-      const runtimeBasis = String(process.env.SHOW_CONTROL_RUNTIME_URL || "http://127.0.0.1:3024").replace(/\/+$/, "");
-      const antwoord = await fetch(`${runtimeBasis}/v0/runtime/runs/${encodeURIComponent(state.showRunId)}/skip-prepared`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ situationId: overgeslagen.situationId }),
-        signal: AbortSignal.timeout(8000),
-      });
-      const nieuw = await antwoord.json().catch(() => ({}));
-      if (!antwoord.ok) {
-        const fout = String(nieuw.error || `runtime_${antwoord.status}`);
-        const meldingen = { runtime_skip_nothing_left: "niets_meer_vrij", runtime_skip_stale: "al_overgeslagen", runtime_skip_requires_no_active_situation: "scene_speelt" };
-        res.status(409).json({ ok: false, error: meldingen[fout] || fout });
-        return;
-      }
-      // Niet ook nog vanzelf naar de chat als het tekstvenster straks in beeld komt.
-      vanzelfGestuurd = `${nieuw.showRunId}|${nieuw.preparedNext.situationId}|${nieuw.preparedNext.chosenAt}`;
-      const cue = buildSceneToChatCue(nieuw, {
-        name: "Overslaan: volgende scène naar chat",
-        sourceId: "show-control-overslaan",
-        overslaan: true,
-        overgeslagenSituationId: overgeslagen.situationId,
-      });
-      executeCue(cue, executeOptions).then(() => saveCue(cue)).catch(() => {});
-      res.status(201).json({
-        ok: true,
-        overgeslagen: { situationId: overgeslagen.situationId, title: overgeslagen.title || null },
-        klaar: { situationId: nieuw.preparedNext.situationId, title: nieuw.preparedNext.title || null },
-        aantalOvergeslagen: Array.isArray(nieuw.skippedSituations) ? nieuw.skippedSituations.length : 0,
+      await regie.slot(async () => {
+        const result = await clients.fetchCurrentRuntimeState();
+        const state = result && result.ok ? result.state : null;
+        if (!state || !state.showRunId || state.status !== "running") {
+          res.status(409).json({ ok: false, error: "geen_run" });
+          return;
+        }
+        if (state.activeSituation) {
+          res.status(409).json({ ok: false, error: "scene_speelt" });
+          return;
+        }
+        if (!state.preparedNext || !state.preparedNext.situationId) {
+          res.status(409).json({ ok: false, error: "niets_klaar" });
+          return;
+        }
+        const overgeslagen = state.preparedNext;
+        const runtimeBasis = String(process.env.SHOW_CONTROL_RUNTIME_URL || "http://127.0.0.1:3024").replace(/\/+$/, "");
+        const antwoord = await fetch(`${runtimeBasis}/v0/runtime/runs/${encodeURIComponent(state.showRunId)}/skip-prepared`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ situationId: overgeslagen.situationId }),
+          signal: AbortSignal.timeout(8000),
+        });
+        const nieuw = await antwoord.json().catch(() => ({}));
+        if (!antwoord.ok) {
+          const fout = String(nieuw.error || `runtime_${antwoord.status}`);
+          const meldingen = { runtime_skip_nothing_left: "niets_meer_vrij", runtime_skip_stale: "al_overgeslagen", runtime_skip_requires_no_active_situation: "scene_speelt" };
+          res.status(409).json({ ok: false, error: meldingen[fout] || fout });
+          return;
+        }
+        // De nieuwe scène ook klaarzetten in TouchDesigner en op de teleprompter (anders bleef daar de
+        // overgeslagen omgeving staan).
+        const klaarCue = buildPrepareCue(nieuw);
+        await executeCue(klaarCue, executeOptions);
+        await saveCue(klaarCue);
+        // Niet ook nog vanzelf naar de chat als het tekstvenster straks in beeld komt.
+        vanzelfGestuurd = `${nieuw.showRunId}|${nieuw.preparedNext.situationId}|${nieuw.preparedNext.chosenAt}`;
+        const cue = buildSceneToChatCue(nieuw, {
+          name: "Overslaan: volgende scène naar chat",
+          sourceId: "show-control-overslaan",
+          overslaan: true,
+          overgeslagenSituationId: overgeslagen.situationId,
+        });
+        executeCue(cue, executeOptions).then(() => saveCue(cue)).catch(() => {});
+        res.status(201).json({
+          ok: true,
+          overgeslagen: { situationId: overgeslagen.situationId, title: overgeslagen.title || null },
+          klaar: { situationId: nieuw.preparedNext.situationId, title: nieuw.preparedNext.title || null },
+          aantalOvergeslagen: Array.isArray(nieuw.skippedSituations) ? nieuw.skippedSituations.length : 0,
+        });
       });
     } finally {
       overslaanBezig = false;
@@ -500,9 +627,16 @@ function createShowControlApp(options = {}) {
       name: req.body ? req.body.name : null,
       showRunId,
     });
-    await executeCue(cue, { ...executeOptions, runtimeState });
-    await saveCue(cue);
-    res.status(201).json({ ok: true, cue });
+    // Eerst de stop zelf (scène uit, TouchDesigner naar loading, opruimen); het klaarzetten van de
+    // volgende scène komt na het antwoord. Zo is een stop snel en wacht niemand op TouchDesigner.
+    await regie.slot(async () => {
+      await executeCue(cue, { ...executeOptions, runtimeState, uitstellen: true });
+      await saveCue(cue);
+      res.status(201).json({ ok: true, cue });
+      await executeUitgesteld(cue, executeOptions).then(() => saveCue(cue)).catch(() => {});
+      // Test of random: het script bij wat er nu klaarstaat (in random eerst een nieuwe keuze).
+      await regie.binnen.naStop().catch(() => {});
+    });
     // Na het antwoord: de operator krijgt even de tijd voor een opmerking over deze scène.
     opmerkingVensterOpen();
   }));
@@ -674,6 +808,8 @@ function createShowControlApp(options = {}) {
     if (!runtimeResult || !runtimeResult.ok) return null;
     // Een lopende opname stopt als de schijf volloopt.
     registratieTick(options.registratie || {}).catch(() => {});
+    // Een verlopen regie geeft zichzelf vrij (als er geen scène speelt).
+    regie.tick().catch(() => {});
     // Vangnet: is de scène buiten show-control om geëindigd, dan gaat alsnog alles van die scène uit.
     const einde = sceneEindeTick(runtimeResult.state || {});
     if (einde) executeCue(einde, { ...executeOptions, runtimeState: runtimeResult.state }).then(() => saveCue(einde)).catch(() => {});

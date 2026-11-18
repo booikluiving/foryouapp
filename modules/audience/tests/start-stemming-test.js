@@ -38,9 +38,16 @@ const runtime = http.createServer(async (req, res) => {
   }
   res.end(JSON.stringify(view));
 });
+// Nep-show-control: de winnaar wordt via show control klaargezet (runtime én TouchDesigner in één stap).
 const show = http.createServer(async (req, res) => {
-  cues.push({ url: req.url, body: await lees(req) });
+  const body = await lees(req);
+  cues.push({ url: req.url, body });
   res.setHeader("content-type", "application/json");
+  if (req.url === "/v0/show-control/cues/prepare-situation") {
+    klaargezet.push(body.situationId);
+    res.end(JSON.stringify({ ok: true, state: { showRunId: "show-test", preparedNext: { situationId: body.situationId } } }));
+    return;
+  }
   res.end(JSON.stringify({ ok: true }));
 });
 
@@ -111,12 +118,12 @@ let child, logs = "";
     await post("/audience/admin/polls/close");
     assert.ok(await wachtOp(() => klaargezet.length === 1 && cues.length === 1));
     assert.equal(klaargezet[0], "situation:6");
-    assert.equal(cues[0].url, "/v0/show-control/cues/prepare");
+    assert.equal(cues[0].url, "/v0/show-control/cues/prepare-situation");
     assert.ok(tels[0].msgs.some((m) => m.type === "start_stemming_uitslag" && m.uitslag.titel === "Scène 6" && m.uitslag.geloot === null));
     const na = await (await lan("/audience/stage/start-stemming")).json();
     assert.equal(na.actief, false);
     assert.ok(await wachtOp(async () => (await (await lan("/audience/stage/start-stemming")).json()).uitslag.klaargezet === "ja"));
-    ok("meeste stemmen wint: Scène 6 klaargezet in runtime en via show control");
+    ok("meeste stemmen wint: Scène 6 klaargezet via show control");
 
     // 2. Te weinig stemmen: loten uit alle vier
     s = await post("/audience/admin/start-stemming/start", { durationSeconds: 10, minVotes: 5 });

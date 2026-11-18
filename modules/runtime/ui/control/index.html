@@ -46,16 +46,19 @@
           <span>Startscènes eerst</span>
           <span id="startSceneCountStatus"></span>
         </label>
-        <div class="fy-actions runtime-actions live-actions">
+        <!-- Starten, stoppen, klaarzetten en reset gaan alleen via show control (de regie): die zet ook
+             TouchDesigner, licht en microfoons. Deze pagina kijkt alleen. -->
+        <div class="fy-actions runtime-actions live-actions" hidden>
           <button id="situationToggleBtn" class="fy-button fy-button-dark" type="button">Start situatie</button>
           <button id="previousSituationBtn" class="fy-button" type="button">Vorige situatie</button>
           <button id="runToggleBtn" class="fy-button fy-button-primary" type="button">Start run</button>
         </div>
-        <div class="fy-actions runtime-actions kies-actions">
+        <div class="fy-actions runtime-actions kies-actions" hidden>
           <select id="kiesSituatieSelect" aria-label="Situatie om klaar te zetten"></select>
           <button id="kiesSituatieBtn" class="fy-button" type="button">Zet klaar</button>
           <button id="willekeurigeSituatieBtn" class="fy-button" type="button">Willekeurig</button>
         </div>
+        <p class="message">Starten, stoppen en scènes kiezen: <a href="#" onclick="location.href=location.protocol+'//'+location.hostname+':3025/regie/';return false;">regie</a> of de Stream Deck.</p>
         <div id="message" class="message" role="status"></div>
       </section>
 

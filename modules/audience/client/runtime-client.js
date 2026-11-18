@@ -96,21 +96,16 @@ async function postJsonRuim(url, body, timeoutMs = 8000) {
   }
 }
 
-// De winnaar van de stemming klaarzetten: eerst in de runtime, daarna via show control in
-// TouchDesigner, de teleprompter en de operator.
+// De winnaar van de stemming klaarzetten: via show control (de ene weg), die de runtime én
+// TouchDesigner, de teleprompter en de operator klaarzet.
 async function prepareChosenSituation({ showRunId, situationId } = {}) {
   if (!showRunId || !situationId) throw new Error("audience_missing_prepare_input");
-  const state = await postJsonRuim(
-    `${runtimeBaseUrl()}/v0/runtime/runs/${encodeURIComponent(showRunId)}/prepare-situation`,
-    { situationId }
-  );
-  let showControl = true;
-  try {
-    await postJsonRuim(`${showControlBaseUrl()}/v0/show-control/cues/prepare`, { runtimeState: state });
-  } catch (_err) {
-    showControl = false;
-  }
-  return { ok: true, showControl, state };
+  const result = await postJsonRuim(`${showControlBaseUrl()}/v0/show-control/cues/prepare-situation`, {
+    name: "Stemwinnaar klaarzetten",
+    showRunId,
+    situationId,
+  }, 20000);
+  return { ok: true, showControl: true, state: result && result.state ? result.state : null };
 }
 
 async function sendAudienceSignalsToAlgorithm(input = {}) {

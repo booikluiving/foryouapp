@@ -22,6 +22,7 @@ const {
   assertPathUnderApp,
   readLatestScriptOutput,
   readPromptInput,
+  readScriptOutputs,
   scriptAgentDbDir,
 } = require("../script-output/state-store");
 
@@ -1589,6 +1590,47 @@ function createOperatorService(options = {}) {
     return done;
   }
 
+  // Scène inladen zonder schrijven (regie, teststand): geen taalmodel. Het laatst bewaarde script van
+  // deze situatie gaat naar de teleprompter; is er geen, dan een leeg script, zodat de teleprompter
+  // bij deze scène hoort en niet de tekst van de vorige toont.
+  async function zonderSchrijven(promptInput, sessionId, sourceId, emit = () => {}) {
+    const situationId = promptInput && promptInput.situation ? String(promptInput.situation.situationId || "") : "";
+    let bewaard = null;
+    try {
+      bewaard = (await readScriptOutputs())
+        .filter((item) => item && item.scriptText && item.situationId === situationId)
+        .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+        .at(-1) || null;
+    } catch (_err) {
+      bewaard = null;
+    }
+    const scriptText = bewaard ? String(bewaard.scriptText) : "";
+    generatieTeller += 1;
+    stageState.sessionId = sessionId;
+    stageState.draft = "";
+    stageState.draftSourceId = normalizeSourceId(sourceId || "regie-zonder-schrijven");
+    stageState.draftInfo = draftInfoFromPromptInput(promptInput, "regie");
+    stageState.streaming = false;
+    stageState.active = null;
+    stageState.revision += 1;
+    stageState.updatedAt = nowIso();
+    const scriptOutput = createScriptOutput({ promptInput, scriptText });
+    if (onScriptOutput) await onScriptOutput({ promptInput, scriptOutput, source: "regie" });
+    log(JSON.stringify({ at: nowIso(), event: "script_agent_zonder_schrijven", situationId, bewaard: bewaard ? bewaard.scriptId : null }));
+    const done = {
+      type: "done",
+      text: scriptText,
+      promptInputId: promptInput.promptInputId,
+      scriptOutput,
+      provider: "bewaard",
+      model: bewaard ? bewaard.scriptId : "geen",
+      bewaard: !!bewaard,
+    };
+    emit(done);
+    emitStage("chat_done");
+    return done;
+  }
+
   async function sceneToChat(body = {}, emit = () => {}) {
     const sourceId = normalizeSourceId(body.sourceId || "show-control-scene-chat");
     // Staat het venster voor een opmerking nog open, dan telt wat er nu staat.
@@ -1610,6 +1652,10 @@ function createOperatorService(options = {}) {
         session.laatsteBeurt = null;
       }
       if (overgeslagen && opmerking.laatsteScene === overgeslagen) opmerking.laatsteScene = opmerking.sceneDaarvoor;
+    }
+    if (body.schrijven === false) {
+      const done = await zonderSchrijven(nextDraft.promptInput, sessionId, sourceId, emit);
+      return { sessionId, draft: nextDraft, opmerking: null, done };
     }
     // Een trendscène (omgeving Trend) is puur beeld: geen taalmodel, een vast script met de emoji.
     // Een opmerking van de operator blijft liggen voor de volgende gewone scène.

@@ -411,11 +411,15 @@ async function sendRuntimeCommand(action, context = {}) {
     }
     if (command === "runtime.stopSituation" && payload.autoPrepareNext !== false && canGeneratePrepare(result.body)) {
       // Even wachten: het opruimen in TouchDesigner is klaar voordat de volgende scène klaargezet wordt.
-      generatedActions.push({ ...generatedTeleprompterPrepareAction(action, result.body, context), delayMs: WACHT_VOOR_KLAARZETTEN_MS });
-      generatedActions.push(generatedOperatorPrepareDraftAction(action, result.body, context));
-      generatedActions.push(generatedPrepareAction(action, result.body, context));
-      const voorbeeld = generatedBeeldVoorbeeldAction(result.body, context);
-      if (voorbeeld) generatedActions.push(voorbeeld);
+      // Het klaarzetten draait na het antwoord van de stop (naAntwoord): de stop zelf is dan snel
+      // (scène uit, loading, opruimen) en wacht niet op TouchDesigner die de volgende omgeving laadt.
+      const klaarzetten = [
+        { ...generatedTeleprompterPrepareAction(action, result.body, context), delayMs: WACHT_VOOR_KLAARZETTEN_MS },
+        generatedOperatorPrepareDraftAction(action, result.body, context),
+        generatedPrepareAction(action, result.body, context),
+        generatedBeeldVoorbeeldAction(result.body, context),
+      ].filter(Boolean);
+      generatedActions.push(...klaarzetten.map((item) => ({ ...item, naAntwoord: true })));
     }
     return {
       stage: "applied",

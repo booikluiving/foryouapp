@@ -1,104 +1,74 @@
 "use strict";
 
-// Scènes testen: de operator start elke situatie in een testrun, via runtime en show control.
-// Runtime en show control zijn hier nagebootst; er gaat niets naar de echte diensten.
+// Scènes testen vanuit de operator loopt via de regie van show control (één weg). Show control is
+// hier nagebootst; er gaat niets naar de echte diensten.
 
 const assert = require("node:assert/strict");
 const { createSceneTest } = require("../operator/scene-test");
 
-function fakeServices() {
+function fakeRegie() {
   const calls = [];
-  let run = { showRunId: "run-1", status: "running", activeSituation: null, finalizationStatus: { status: "idle" } };
+  let overzicht = { ok: true, stand: "show", eigenaar: null, verlopen: false, schrijven: false, run: { showRunId: "run-1", status: "running", testRun: false, speelt: null, klaar: null } };
   const json = (status, body) => ({ ok: status < 400, status, json: async () => body });
   const fetchImpl = async (url, options = {}) => {
     const method = options.method || "GET";
     const body = options.body ? JSON.parse(options.body) : null;
     const pathname = new URL(url).pathname;
-    calls.push(`${method} ${pathname}`);
-    if (pathname === "/v0/runtime/runs/current") return json(200, run);
-    if (pathname.endsWith("/test-run")) {
-      run = { ...run, testRun: { enabled: body.enabled === true, markedAt: "2026-11-11T12:00:00.000Z" } };
-      return json(200, run);
+    calls.push({ method, pathname, wie: options.headers && options.headers["x-foryou-wie"], body });
+    if (pathname === "/v0/show-control/regie") return json(200, overzicht);
+    if (pathname === "/v0/show-control/regie/overnemen") {
+      if (overzicht.eigenaar && overzicht.eigenaar.wie !== body.wie) return json(423, { ok: false, error: "regie_bezet", message: `De regie is van ${overzicht.eigenaar.wie}.` });
+      overzicht = { ...overzicht, stand: body.stand, eigenaar: { wie: body.wie }, run: { ...overzicht.run, testRun: true } };
+      return json(200, overzicht);
     }
-    if (pathname.endsWith("/prepare-situation")) {
-      if (!run.testRun || !run.testRun.enabled) return json(409, { ok: false, error: "runtime_not_test_run" });
-      if (body.situationId === "situation:weg") return json(404, { ok: false, error: "runtime_unknown_situation" });
-      assert.equal(body.testRun, true);
-      run = {
-        ...run,
-        preparedNext: { situationId: body.situationId || "situation:1", title: "Lingo met Myrthe" },
-        resolvedPreparedNext: { environment: body.environmentId ? { id: body.environmentId, name: "Trein" } : null },
-      };
-      return json(200, run);
+    if (pathname === "/v0/show-control/regie/vrijgeven") {
+      overzicht = { ...overzicht, stand: "show", eigenaar: null, run: { ...overzicht.run, status: "reset", testRun: false } };
+      return json(200, overzicht);
     }
-    if (pathname === "/v0/show-control/cues/stop-situation") {
-      run = { ...run, activeSituation: null, finalizationStatus: { status: "idle" } };
-      return json(201, { ok: true });
+    if (pathname === "/v0/show-control/regie/laad") {
+      overzicht = { ...overzicht, run: { ...overzicht.run, speelt: body.start ? { situationId: body.situationId, title: "Lingo met Myrthe" } : null, klaar: { situationId: body.situationId, title: "Lingo met Myrthe" } } };
+      return json(200, overzicht);
     }
-    if (pathname === "/v0/show-control/cues/prepare") {
-      assert.equal(body.runtimeState.preparedNext.situationId, run.preparedNext.situationId);
-      return json(201, { ok: true });
-    }
-    if (pathname === "/v0/show-control/cues/start-situation") {
-      assert.equal(body.showRunId, "run-1");
-      run = { ...run, activeSituation: { situationId: run.preparedNext.situationId, title: run.preparedNext.title }, preparedNext: null };
-      return json(201, { ok: true });
-    }
-    return json(404, {});
+    return json(404, { ok: false });
   };
-  return { calls, fetchImpl, setRun: (next) => { run = next; }, getRun: () => run };
+  return { calls, fetchImpl, zetEigenaar: (wie) => { overzicht = { ...overzicht, stand: "test", eigenaar: { wie } }; } };
 }
 
-async function main() {
-  const services = fakeServices();
-  const sceneTest = createSceneTest({
-    fetchImpl: services.fetchImpl,
-    runtimeUrl: "http://runtime.test",
-    showControlUrl: "http://show-control.test",
-    wait: async () => {},
-  });
+(async () => {
+  const regie = fakeRegie();
+  const test = createSceneTest({ fetchImpl: regie.fetchImpl, showControlUrl: "http://sc.test" });
 
-  assert.deepEqual((await sceneTest.status()).enabled, false);
-  await assert.rejects(() => sceneTest.startScene("situation:84"), /Scènes testen/, "zonder testrun start er niets");
-  assert.ok(!services.calls.some((call) => call.includes("start-situation")));
+  let status = await test.status();
+  assert.equal(status.enabled, false);
+  assert.equal(status.running, true);
 
-  assert.equal((await sceneTest.setEnabled(true)).enabled, true);
-  const started = await sceneTest.startScene("situation:84");
-  assert.equal(started.title, "Lingo met Myrthe");
-  assert.equal(started.status.activeSituation.situationId, "situation:84");
+  status = await test.setEnabled(true);
+  assert.equal(status.enabled, true, "aanzetten = regie overnemen als operator");
+  assert.equal(regie.calls.at(-1).wie, "operator");
+  assert.equal(regie.calls.at(-1).body.stand, "test");
 
-  // Speelt er al een scène, dan stopt die eerst via show control.
-  services.calls.length = 0;
-  await sceneTest.startScene("situation:14");
-  const order = services.calls.filter((call) => call.startsWith("POST"));
-  assert.deepEqual(order, [
-    "POST /v0/show-control/cues/stop-situation",
-    "POST /v0/runtime/runs/run-1/prepare-situation",
-    "POST /v0/show-control/cues/prepare",
-    "POST /v0/show-control/cues/start-situation",
-  ]);
+  const gestart = await test.startScene("situation:29", "");
+  assert.equal(gestart.situationId, "situation:29");
+  assert.equal(regie.calls.at(-1).pathname, "/v0/show-control/regie/laad");
+  assert.equal(regie.calls.at(-1).body.start, true, "start scène = inladen en starten via de regie");
 
-  await assert.rejects(() => sceneTest.startScene("situation:weg"), /catalogus/);
-  await assert.rejects(() => sceneTest.startScene(""), /Kies eerst/);
+  status = await test.setRandom(true);
+  assert.equal(status.random.enabled, true);
 
-  // Met een omgeving erbij, of alleen een omgeving.
-  const inTrein = await sceneTest.startScene("situation:84", "environment:7");
-  assert.equal(inTrein.environment, "Trein");
-  const alleenOmgeving = await sceneTest.startScene("", "environment:7");
-  assert.equal(alleenOmgeving.situationId, "situation:1");
-  assert.equal(alleenOmgeving.environment, "Trein");
+  status = await test.setEnabled(false);
+  assert.equal(status.enabled, false, "uitzetten = vrijgeven");
+  assert.equal(regie.calls.at(-1).pathname, "/v0/show-control/regie/vrijgeven");
 
-  assert.equal((await sceneTest.setEnabled(false)).enabled, false);
-  await assert.rejects(() => sceneTest.startScene("situation:84"), /Scènes testen/);
+  // Iemand anders heeft de regie: de operator krijgt de melding van de regie.
+  regie.zetEigenaar("escape-room");
+  await assert.rejects(test.setEnabled(true), (err) => err.statusCode === 423 && /escape-room/.test(err.message));
+  status = await test.status();
+  assert.equal(status.enabled, false);
+  assert.equal(status.regie.eigenaar.wie, "escape-room");
 
-  services.setRun({ status: "idle" });
-  assert.equal((await sceneTest.status()).running, false);
-  await assert.rejects(() => sceneTest.setEnabled(true), /geen run/);
-
-  process.stdout.write("script-agent scene-test: ok\n");
-}
-
-main().catch((err) => {
-  process.stderr.write(`${err.stack || err.message}\n`);
+  await assert.rejects(test.startScene("", ""), (err) => err.statusCode === 400);
+  console.log("scene-test-test: ok");
+})().catch((err) => {
+  console.error(err);
   process.exit(1);
 });

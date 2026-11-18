@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>For_You regie</title>
+<style>
+  :root { --bg:#0b0b0d; --vlak:#16161a; --lijn:#2a2a30; --tekst:#f2f2f2; --zacht:#9a9aa3; --goed:#4ad07a; --let:#f0b429; --fout:#ff5a5a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--tekst); font:15px/1.4 -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  header { padding:16px; border-bottom:1px solid var(--lijn); display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+  h1 { font-size:18px; margin:0 12px 0 0; }
+  .stand { font-weight:700; padding:4px 10px; border:1px solid var(--lijn); }
+  .stand.show { color:var(--goed); border-color:var(--goed); }
+  .stand.test, .stand.random { color:var(--let); border-color:var(--let); }
+  main { padding:16px; display:grid; gap:16px; grid-template-columns:minmax(0,1fr); max-width:1100px; }
+  section { background:var(--vlak); border:1px solid var(--lijn); padding:14px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--zacht); margin:0 0 10px; }
+  button { background:#24242a; color:var(--tekst); border:1px solid #3a3a42; padding:9px 14px; font:inherit; cursor:pointer; }
+  button:hover:not(:disabled) { border-color:var(--tekst); }
+  button:disabled { opacity:.35; cursor:default; }
+  button.hoofd { background:var(--tekst); color:var(--bg); border-color:var(--tekst); font-weight:700; }
+  .rij { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  input[type=text], input[type=search] { background:#0f0f12; color:var(--tekst); border:1px solid #3a3a42; padding:9px 10px; font:inherit; }
+  .nu { display:grid; gap:4px; margin-bottom:10px; }
+  .nu b { font-weight:700; }
+  .zacht { color:var(--zacht); }
+  #melding { min-height:1.4em; margin-top:8px; }
+  #melding.fout { color:var(--fout); }
+  .lijst { display:grid; gap:2px; max-height:60vh; overflow:auto; }
+  .scene { display:flex; gap:8px; align-items:center; padding:7px 8px; border-bottom:1px solid var(--lijn); }
+  .scene .naam { flex:1; min-width:0; }
+  .scene .omg { color:var(--zacht); font-size:13px; }
+  .scene.klaar { outline:1px solid var(--let); }
+  .scene.speelt { outline:1px solid var(--goed); }
+  label.schakel { display:flex; gap:6px; align-items:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>For_You regie</h1>
+  <span id="stand" class="stand">…</span>
+  <span id="eigenaar" class="zacht"></span>
+</header>
+<main>
+  <section>
+    <h2>Wie bedient</h2>
+    <div class="rij">
+      <input id="wie" type="text" placeholder="Je naam" aria-label="Je naam">
+      <button id="neemTest">Test overnemen</button>
+      <button id="neemRandom">Random overnemen</button>
+      <button id="vrij">Vrijgeven</button>
+      <label class="schakel"><input id="schrijven" type="checkbox"> Script schrijven</label>
+    </div>
+    <p class="zacht">Test en random: alleen jij bedient tot je vrijgeeft. Vrijgeven stopt de scène en zet de run terug naar het begin.</p>
+  </section>
+  <section>
+    <h2>Nu</h2>
+    <div class="nu">
+      <div>Speelt: <b id="speelt">–</b></div>
+      <div>Klaar: <b id="klaar">–</b> <span id="omgeving" class="zacht"></span></div>
+    </div>
+    <div class="rij">
+      <button id="start" class="hoofd">Start</button>
+      <button id="stop">Stop</button>
+      <button id="volgende">Random volgende</button>
+    </div>
+    <div id="melding"></div>
+  </section>
+  <section>
+    <h2>Scènes</h2>
+    <div class="rij" style="margin-bottom:8px">
+      <input id="zoek" type="search" placeholder="Zoek op titel of omgeving" style="flex:1">
+    </div>
+    <div id="lijst" class="lijst"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let overzicht = null;
+let situaties = [];
+let bezig = false;
+
+function wie() {
+  return $("wie").value.trim();
+}
+try { $("wie").value = localStorage.getItem("regie-wie") || ""; } catch (_e) {}
+$("wie").addEventListener("change", () => { try { localStorage.setItem("regie-wie", wie()); } catch (_e) {} teken(); });
+
+async function api(pad, body) {
+  const antwoord = await fetch(`/v0/show-control/regie${pad}`, body === undefined ? {} : {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-foryou-wie": wie() },
+    body: JSON.stringify({ wie: wie(), ...body }),
+  });
+  const json = await antwoord.json().catch(() => ({}));
+  if (!antwoord.ok) {
+    const err = new Error(json.message || json.error || `Fout ${antwoord.status}`);
+    err.code = json.error;
+    throw err;
+  }
+  return json;
+}
+
+function melding(tekst, fout = false) {
+  $("melding").textContent = tekst || "";
+  $("melding").className = fout ? "fout" : "";
+}
+
+function tijd(iso) {
+  const d = new Date(iso || "");
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+}
+
+function mijn() {
+  return !!(overzicht && overzicht.eigenaar && !overzicht.verlopen && overzicht.eigenaar.wie === wie());
+}
+
+function teken() {
+  const o = overzicht || {};
+  const stand = o.stand || "?";
+  $("stand").textContent = stand.toUpperCase();
+  $("stand").className = `stand ${stand}`;
+  $("eigenaar").textContent = o.eigenaar && !o.verlopen ? `${o.eigenaar.wie}, tot ${tijd(o.eigenaar.tot)}` : (stand === "show" ? "voorstelling: pad en publiek kiezen" : "vrij");
+  const run = o.run || {};
+  $("speelt").textContent = run.speelt ? run.speelt.title || run.speelt.situationId : "–";
+  $("klaar").textContent = run.klaar ? run.klaar.title || run.klaar.situationId : "–";
+  $("omgeving").textContent = o.run && o.run.omgevingKlaar ? `in ${o.run.omgevingKlaar}` : "";
+  $("schrijven").checked = !!o.schrijven;
+  const ik = mijn();
+  const naam = !!wie();
+  $("neemTest").disabled = bezig || !naam || (ik && stand === "test");
+  $("neemRandom").disabled = bezig || !naam || (ik && stand === "random");
+  $("vrij").disabled = bezig || !ik;
+  $("schrijven").disabled = bezig || !ik;
+  $("start").disabled = bezig || !ik || !!run.speelt || !run.klaar;
+  $("stop").disabled = bezig || !ik || !run.speelt;
+  $("volgende").disabled = bezig || !ik;
+  for (const knop of document.querySelectorAll(".scene button")) knop.disabled = bezig || !ik;
+  for (const rij of document.querySelectorAll(".scene")) {
+    rij.classList.toggle("klaar", !!(run.klaar && rij.dataset.id === run.klaar.situationId));
+    rij.classList.toggle("speelt", !!(run.speelt && rij.dataset.id === run.speelt.situationId));
+  }
+}
+
+function tekenLijst() {
+  const zoek = $("zoek").value.trim().toLowerCase();
+  const lijst = $("lijst");
+  lijst.textContent = "";
+  for (const s of situaties) {
+    if (zoek && !`${s.titel} ${s.omgeving}`.toLowerCase().includes(zoek)) continue;
+    const rij = document.createElement("div");
+    rij.className = "scene";
+    rij.dataset.id = s.id;
+    const naam = document.createElement("div");
+    naam.className = "naam";
+    naam.textContent = s.titel;
+    const omg = document.createElement("div");
+    omg.className = "omg";
+    omg.textContent = s.omgeving;
+    naam.appendChild(omg);
+    const laad = document.createElement("button");
+    laad.textContent = "Inladen";
+    laad.addEventListener("click", () => doe(`Inladen: ${s.titel}…`, () => api("/laad", { situationId: s.id })));
+    const speel = document.createElement("button");
+    speel.textContent = "Inladen + start";
+    speel.addEventListener("click", () => doe(`Inladen en starten: ${s.titel}…`, () => api("/laad", { situationId: s.id, start: true })));
+    rij.append(naam, laad, speel);
+    lijst.appendChild(rij);
+  }
+  teken();
+}
+
+async function doe(tekst, fn) {
+  if (bezig) return;
+  bezig = true;
+  melding(tekst);
+  teken();
+  try {
+    overzicht = await fn();
+    melding("");
+  } catch (err) {
+    melding(err.message, true);
+  } finally {
+    bezig = false;
+    teken();
+  }
+}
+
+async function neem(stand) {
+  try {
+    overzicht = await api("/overnemen", { stand });
+  } catch (err) {
+    if (err.code === "regie_bezet" && confirm(`${err.message}\n\nToch overnemen?`)) {
+      overzicht = await api("/overnemen", { stand, forceer: true });
+    } else {
+      throw err;
+    }
+  }
+  return overzicht;
+}
+
+$("neemTest").addEventListener("click", () => doe("Regie overnemen (test)…", () => neem("test")));
+$("neemRandom").addEventListener("click", () => doe("Regie overnemen (random)…", () => neem("random")));
+$("vrij").addEventListener("click", () => {
+  if (!confirm("Vrijgeven: de scène stopt en de run gaat terug naar het begin. Doorgaan?")) return;
+  doe("Vrijgeven…", () => api("/vrijgeven", {}));
+});
+$("schrijven").addEventListener("change", () => doe("", () => api("/schrijven", { schrijven: $("schrijven").checked })));
+$("start").addEventListener("click", () => doe("Starten…", () => api("/start", {})));
+$("stop").addEventListener("click", () => doe("Stoppen…", () => api("/stop", {})));
+$("volgende").addEventListener("click", () => doe("Random scène inladen…", () => api("/random", {})));
+$("zoek").addEventListener("input", tekenLijst);
+
+async function ververs() {
+  if (!bezig) {
+    try { overzicht = await api(""); } catch (_e) { /* volgende keer */ }
+    teken();
+  }
+}
+
+async function laadCatalogus() {
+  try {
+    const c = await api("/catalogus");
+    situaties = (c.situaties || []).sort((a, b) => a.titel.localeCompare(b.titel, "nl"));
+    tekenLijst();
+  } catch (err) {
+    melding(`Catalogus: ${err.message}`, true);
+  }
+}
+
+ververs();
+laadCatalogus();
+setInterval(ververs, 1500);
+</script>
+</body>
+</html>

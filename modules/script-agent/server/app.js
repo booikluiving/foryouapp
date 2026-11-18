@@ -105,12 +105,10 @@ function createScriptAgentApp(options = {}) {
     }),
   });
   app.locals.operatorService = operatorService;
+  // Scènes testen loopt via de regie van show control (stand test/random, script schrijven of bewaard).
   const sceneTest = options.sceneTest || createSceneTest({
     env: options.env || process.env,
     fetchImpl: options.fetchImpl,
-    // Random scènes testen: staat er een nieuwe scène klaar, dan wordt het script meteen geschreven
-    // (in een testrun schrijft verder niets vanzelf).
-    onPrepared: () => operatorService.sceneToChat({ force: true, sourceId: "scene-test-random" }),
   });
   app.locals.teleprompterParser = teleprompterParser;
   app.locals.stopOperatorDraftSync = null;

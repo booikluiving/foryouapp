@@ -806,16 +806,20 @@ let sceneTestState = { running: false, enabled: false, activeSituation: null };
 function renderSceneTest(message, error = false) {
   const { running, enabled, activeSituation } = sceneTestState;
   els.sceneTestToggle.checked = enabled;
-  els.sceneTestToggle.disabled = !running;
+  els.sceneTestToggle.disabled = false;
   els.sceneTestToggle.closest(".scene-test").classList.toggle("on", enabled);
   els.sceneTestStart.hidden = !enabled;
   const random = sceneTestState.random || {};
   els.sceneTestRandom.checked = !!random.enabled;
-  els.sceneTestRandom.disabled = !running;
+  els.sceneTestRandom.disabled = false;
   els.sceneTestRandom.closest(".scene-test").classList.toggle("on", !!random.enabled);
   els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
-  const standaard = !running
-    ? "Kan alleen als er een run loopt."
+  const regie = sceneTestState.regie || {};
+  const ander = regie.eigenaar && regie.eigenaar.wie !== "operator" ? regie.eigenaar.wie : "";
+  const standaard = ander
+    ? `De regie is van ${ander} (${regie.stand}). Wacht tot die vrijgeeft.`
+    : !running && !enabled
+    ? "Aanzetten neemt de regie over (test); er start zo nodig een run."
     : random.enabled
       ? `Random. ${activeSituation ? `Nu: ${activeSituation.title}. ` : ""}${random.error || (random.next ? `Klaar: ${random.next.title}. Start en stop met de deck.` : "Scène kiezen...")}`
     : enabled
@@ -866,7 +870,7 @@ async function loadSceneTest() {
 async function toggleSceneTest() {
   const enabled = els.sceneTestToggle.checked;
   if (enabled && !sceneTestState.markedAt
-    && !confirm("Scènes testen maakt van de lopende run een testrun, tot de reset. Doorgaan?")) {
+    && !confirm("Scènes testen neemt de regie over (test). Uitzetten geeft hem vrij: de scène stopt en de run gaat terug naar het begin. Doorgaan?")) {
     renderSceneTest();
     return;
   }
@@ -891,7 +895,7 @@ async function toggleSceneTest() {
 async function toggleSceneTestRandom() {
   const enabled = els.sceneTestRandom.checked;
   if (enabled && !sceneTestState.markedAt
-    && !confirm("Random scènes testen maakt van de lopende run een testrun, tot de reset. Doorgaan?")) {
+    && !confirm("Random scènes testen neemt de regie over (random). Doorgaan?")) {
     renderSceneTest();
     return;
   }
@@ -906,40 +910,12 @@ async function toggleSceneTestRandom() {
   }
 }
 
-// Het script op de teleprompter hoort bij de scène die start. Staat er nog het script van een
-// andere scène (in een testrun schrijft niets vanzelf), dan wordt het eerst geschreven. Zonder dit
-// speelde de nieuwe omgeving met de tekst en de titel van de vorige scène.
-async function schrijfTestScript() {
-  const nummer = (waarde) => Number((String(waarde || "").match(/(\d+)$/) || [])[1] || 0);
-  const wil = nummer(els.situation.value);
-  if (!wil) return true;
-  const bron = async () => {
-    const tele = await api("/v0/script-agent/teleprompter-parser/current").catch(() => null);
-    return tele && tele.teleprompt && tele.teleprompt.source ? tele.teleprompt.source : {};
-  };
-  const eerst = await bron();
-  if (nummer(eerst.sceneId) === wil) return true;
-  renderSceneTest("Script schrijven voor deze scène...");
-  manualSelectionDirty = true;
-  await sceneToChat();
-  const tot = Date.now() + 120000;
-  while (Date.now() < tot) {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    const nu = await bron();
-    if (nummer(nu.sceneId) === wil && nu.generatedAt !== eerst.generatedAt) return true;
-  }
-  return false;
-}
-
 async function startTestScene() {
   if (!els.situation.value && !els.environment.value) return;
   els.sceneTestStart.disabled = true;
   try {
-    if (!(await schrijfTestScript())) {
-      renderSceneTest("Het script voor deze scène kwam niet. De scène is niet gestart; probeer het opnieuw.", true);
-      return;
-    }
-    renderSceneTest("Scène starten...");
+    // De regie laadt de scène (bewaard script of schrijven, zoals ingesteld op de regiepagina) en start hem.
+    renderSceneTest("Scène inladen en starten...");
     const body = await api("/v0/script-agent/operator/scene-test/start", {
       method: "POST",
       body: JSON.stringify({ situationId: els.situation.value, environmentId: els.environment.value }),

@@ -26,3 +26,17 @@ De waakhond `scripts/td-waakhond.sh` (LaunchAgent `nl.foryou.td-waakhond`) houdt
 - Welke versie geldt staat in `~/ForYou/td-versie.txt`. Werk altijd op die versie. Na het bewaren van een nieuwe versie staat hij er vanzelf in.
 - Een andere TD (bijvoorbeeld de Greenscreen Lab) vraagt eerst toestemming: `scripts/td-waakhond.sh toestemming greenscreen 60 greenscreen-lab`. Klaar: `scripts/td-waakhond.sh klaar greenscreen`, dan gaat hij dicht. Een verlopen toestemming sluit hem ook.
 - Logboek: `~/Library/Logs/ForYou/td-waakhond.log`. Test: `scripts/td-waakhond-test.sh`.
+
+## Regie: één weg voor run en scènes
+
+Starten, stoppen, klaarzetten, overslaan en reset van de run gaan alleen via show control (:3025). Nooit rechtstreeks naar de runtime (:3024) en nooit een eigen omweg. Show control doet ze één voor één en zet ook TouchDesigner, licht, microfoons en teleprompter.
+
+- Stand staat op de regiepagina `http://<show-mac>:3025/regie/` en in `GET /v0/show-control/regie`: `show` (pad en publiek kiezen), `test` of `random` (één eigenaar).
+- Een scène testen of bekijken: eerst de regie overnemen, met je eigen naam (bijvoorbeeld de naam van je sessie). Stuur bij elke vraag de kop `x-foryou-wie: <naam>` mee.
+  - `POST /v0/show-control/regie/overnemen {"stand":"test"}`
+  - `POST /v0/show-control/regie/laad {"situationId":"situation:96","start":true}` (zonder schrijven: het laatst bewaarde script; `"schrijven":true` laat het taalmodel schrijven)
+  - `POST /v0/show-control/regie/stop`, `/start`, `/random`
+  - Klaar: `POST /v0/show-control/regie/vrijgeven`. De scène stopt en de run gaat terug naar het begin.
+- Heeft iemand anders de regie, dan krijg je 423 met de naam. Wacht, of vraag Booi. Neem nooit over met `forceer` zonder ja van Booi.
+- De knoppen in de zaal (Stream Deck, klikker, ready van de spelers) werken altijd.
+- Proef zonder show: `node modules/show-control/tests/regie-proef.js` (pagina op :4325/regie/). Test: `node modules/show-control/tests/regie-test.js`.
