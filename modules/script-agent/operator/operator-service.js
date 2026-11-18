@@ -375,6 +375,7 @@ function defaultOperatorSettings() {
     maxTokens: 4096,
     temperature: 0.8,
     reasoningEffort: "low",
+    firstSceneLengthFactor: DEFAULT_FIRST_SCENE_LENGTH_FACTOR,
     fallbackModel: DEFAULT_FALLBACK_MODEL,
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     promptTemplate: DEFAULT_PROMPT_TEMPLATE,
@@ -398,6 +399,7 @@ function normalizeOperatorSettings(input = {}, base = defaultOperatorSettings())
     temperature: Math.max(0, Math.min(2, Number(source.temperature ?? base.temperature ?? 0.8) || 0.8)),
     reasoningEffort: normalizeReasoningEffort(source.reasoningEffort ?? base.reasoningEffort),
     reasoningByModel: normalizeReasoningByModel(source.reasoningByModel ?? base.reasoningByModel),
+    firstSceneLengthFactor: normalizeFirstSceneLengthFactor(source.firstSceneLengthFactor ?? base.firstSceneLengthFactor),
     fallbackModel: normalizeText(source.fallbackModel || base.fallbackModel || DEFAULT_FALLBACK_MODEL, 120) || DEFAULT_FALLBACK_MODEL,
     systemPrompt: withoutTitleRule(normalizeText(source.systemPrompt || base.systemPrompt || DEFAULT_SYSTEM_PROMPT, 12000)),
     promptTemplate: normalizeText(source.promptTemplate || base.promptTemplate || DEFAULT_PROMPT_TEMPLATE, 12000),
@@ -410,6 +412,22 @@ function normalizeOperatorSettings(input = {}, base = defaultOperatorSettings())
 function normalizeReasoningEffort(value) {
   const effort = String(value ?? "low").trim().toLowerCase();
   return ["off", "low", "high", "max"].includes(effort) ? effort : "low";
+}
+
+// De eerste scène van een run heeft nog geen eerdere scène als maat en loopt daardoor uit.
+// De aantallen in de lengteregel ("16 tot 20 regels") gaan voor die scène met deze factor omlaag.
+const DEFAULT_FIRST_SCENE_LENGTH_FACTOR = 0.7;
+
+function normalizeFirstSceneLengthFactor(value) {
+  const factor = Number(value);
+  if (!Number.isFinite(factor) || factor <= 0) return DEFAULT_FIRST_SCENE_LENGTH_FACTOR;
+  return Math.max(0.3, Math.min(1, factor));
+}
+
+function shortenLengthRule(text, factor) {
+  if (!(factor < 1)) return text;
+  const scale = (n) => String(Math.max(1, Math.round(Number(n) * factor)));
+  return String(text || "").replace(/(\d+) tot (\d+) regels/g, (_all, a, b) => `${scale(a)} tot ${scale(b)} regels`);
 }
 
 // Nadenken per model: bij wisselen van model komt de stand terug die dat model het laatst had.
@@ -1304,9 +1322,12 @@ function createOperatorService(options = {}) {
       : await currentDraft({ refreshRuntime: !draft });
     const promptInput = body.promptInput || (activeDraft && activeDraft.promptInput)
       || (activeDraft && activeDraft.promptInputId ? await readPromptInput(activeDraft.promptInputId) : null);
-    const userText = normalizeText(body.message, 12000)
+    const rawUserText = normalizeText(body.message, 12000)
       || normalizeText(stageState.draft, 12000)
       || normalizeText(activeDraft && activeDraft.text, 12000);
+    const userText = session.messages.length === 0
+      ? shortenLengthRule(rawUserText, settings.firstSceneLengthFactor)
+      : rawUserText;
     if (!userText) throw new Error("script_agent_operator_message_required");
     if (!promptInput) throw new Error("script_agent_operator_prompt_input_missing");
 
