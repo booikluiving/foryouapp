@@ -1097,7 +1097,7 @@
               staaf.classList.add("aan");
               geluid.relais();
               requestAnimationFrame(() => { vulling.style.width = `${label.procent}%`; });
-              rpTelOp(getal, label.procent, 500, (n) => `${Math.round(n)}%`, true);
+              rpTelOp(getal, label.procent, 500, (n) => `${Math.round(n)}%`);
             });
           });
           t = 350 + labels.length * 200 + 1200;
@@ -1127,7 +1127,7 @@
                 staaf.classList.add("aan");
                 geluid.relais();
                 requestAnimationFrame(() => { vulling.style.width = `${(Math.abs(rij.score || 0) / bereik) * 100}%`; });
-                rpTelOp(getal, rij.score || 0, 600, teken, true);
+                rpTelOp(getal, rij.score || 0, 600, teken);
               }, 350 + index * 260));
             });
           });
