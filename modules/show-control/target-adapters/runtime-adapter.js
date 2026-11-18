@@ -132,13 +132,35 @@ function micsVanzelf(payload = {}) {
   try { return !fs.existsSync(MICS_OPEN_PATH); } catch (_err) { return true; }
 }
 
-function generatedMicsAction(action, gedempt) {
+// Vaste plekken in de ring en het kanaal op de SQ-5 (zelfde indeling als spelers-ready.js).
+const KANAAL_PER_PLEK = Object.freeze({ 1: "booi", 2: "megan", 3: "brent" });
+
+// Wie speelt mee in de scène die nu begint: alleen hun kanalen gaan open.
+// Niet uit te lezen: geen lijst, dan gaan alle spelers open (liever te veel dan iemand die je niet hoort).
+function meespelendeKanalen(runtimeState) {
+  try {
+    const kanalen = performerSlotsFromRuntimeState(runtimeState, "activeSituation")
+      .filter((slot) => slot && slot.characterId)
+      .map((slot) => KANAAL_PER_PLEK[Number(slot.slotIndex)])
+      .filter(Boolean);
+    return kanalen.length ? [...new Set(kanalen)] : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+function generatedMicsAction(action, gedempt, spelers = null) {
   return {
     command: "sq5.spelers",
     targetId: "sq5",
     ackMode: "fire-and-forget",
     timeoutMs: 1500,
-    payload: { stand: gedempt ? "dicht" : "open", cueIntent: gedempt ? "mics_dicht" : "mics_open", generatedBy: action.command },
+    payload: {
+      stand: gedempt ? "dicht" : "open",
+      ...(!gedempt && spelers ? { spelers } : {}),
+      cueIntent: gedempt ? "mics_dicht" : "mics_open",
+      generatedBy: action.command,
+    },
   };
 }
 
@@ -364,9 +386,10 @@ async function sendRuntimeCommand(action, context = {}) {
     if (command === "runtime.startSituation" && payload.autoRevealTeleprompter !== false && canGenerateGo(result.body)) {
       generatedActions.push(generatedTeleprompterRevealAction(action, result.body, context));
     }
-    // De spelers zijn alleen tijdens de scène te horen.
+    // De spelers zijn alleen tijdens de scène te horen, en alleen wie in de scène meespeelt.
     if (micsVanzelf(payload) && (command === "runtime.stopSituation" || canGenerateGo(result.body))) {
-      generatedActions.push(generatedMicsAction(action, command === "runtime.stopSituation"));
+      const stop = command === "runtime.stopSituation";
+      generatedActions.push(generatedMicsAction(action, stop, stop ? null : meespelendeKanalen(result.body)));
     }
     // Startgeluid van de omgeving (de intro) begint vanzelf met de scène.
     if (command === "runtime.startSituation" && payload.autoStartGeluid !== false && canGenerateGo(result.body)) {

@@ -774,7 +774,7 @@ function commandCatalog() {
         { method: "POST", path: "/api/output/:name/level", body: "{ db }", description: "Output fader level." },
         { method: "POST", path: "/api/output/:name/get", body: "{ parameter: 'mute'|'level' }", description: "Get output mute/level." },
         { method: "POST", path: "/api/spelers/dicht", body: "", description: "Spelerskanalen dicht (buiten de scène); onthoudt welke hier zijn dichtgezet." },
-        { method: "POST", path: "/api/spelers/open", body: "", description: "Zet de spelerskanalen open die hier zijn dichtgezet." },
+        { method: "POST", path: "/api/spelers/open", body: "{\"spelers\":[\"booi\",\"megan\"]}", description: "Zet de spelerskanalen open die hier zijn dichtgezet; met spelers alleen die, de rest gaat dicht." },
         { method: "GET", path: "/api/streamdeck/state", body: "", description: "Compacte mute-state voor Companion feedback." },
         { method: "POST", path: "/api/streamdeck/:target/mute", body: "", description: "Expliciet muten voor Stream Deck." },
         { method: "POST", path: "/api/streamdeck/:target/unmute", body: "", description: "Expliciet unmuten voor Stream Deck." },
@@ -1386,7 +1386,7 @@ function bewaarSpelersDicht(lijst) {
   fs.writeFileSync(SPELERS_PATH, JSON.stringify(lijst));
 }
 
-async function handleSpelers(stand, source = "http") {
+async function handleSpelers(stand, source = "http", meespelers = null) {
   const dicht = leesSpelersDicht();
   const gedaan = [];
   if (stand === "dicht") {
@@ -1400,11 +1400,35 @@ async function handleSpelers(stand, source = "http") {
     }
     bewaarSpelersDicht(dicht);
   } else if (stand === "open") {
-    for (const key of dicht) {
-      await handleInputAction(key, "mute", { muted: false }, source, { spelers: "open" });
-      gedaan.push(key);
+    // Met een lijst (wie in de scène meespeelt): alleen die gaan open; wie niet meespeelt gaat dicht.
+    const mee = Array.isArray(meespelers) ? meespelers.filter((key) => SPELERS.includes(key)) : [];
+    if (!mee.length) {
+      for (const key of dicht) {
+        await handleInputAction(key, "mute", { muted: false }, source, { spelers: "open" });
+        gedaan.push(key);
+      }
+      bewaarSpelersDicht([]);
+    } else {
+      const blijftDicht = [];
+      for (const key of SPELERS) {
+        if (mee.includes(key)) {
+          if (!dicht.includes(key)) continue;
+          await handleInputAction(key, "mute", { muted: false }, source, { spelers: "open" });
+          gedaan.push(key);
+          continue;
+        }
+        const mute = controlState[key] && controlState[key].mute;
+        const stondDicht = Boolean(mute && mute.value === true);
+        if (!stondDicht) {
+          await handleInputAction(key, "mute", { muted: true }, source, { spelers: "speelt niet mee" });
+          gedaan.push(`${key} dicht`);
+          blijftDicht.push(key);
+        } else if (dicht.includes(key)) {
+          blijftDicht.push(key);
+        }
+      }
+      bewaarSpelersDicht(blijftDicht);
     }
-    bewaarSpelersDicht([]);
   } else {
     throw new Error(`Onbekende stand voor de spelers: ${stand}`);
   }
@@ -1546,7 +1570,7 @@ async function routeApi(req, res, url) {
 
   const spelersMatch = url.pathname.match(/^\/api\/spelers\/(dicht|open)$/);
   if (req.method === "POST" && spelersMatch) {
-    sendJson(res, 200, await handleSpelers(spelersMatch[1], "spelers"));
+    sendJson(res, 200, await handleSpelers(spelersMatch[1], "spelers", payload && payload.spelers));
     return;
   }
 
