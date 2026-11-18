@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#07080b">
+<title>For_You ready</title>
+<style>
+  :root { --nacht: #07080b; --wit-2: rgba(255,255,255,.66); --wit-3: rgba(255,255,255,.3); --groen: #37d67a; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--nacht); color: #fff; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; overflow: hidden; user-select: none; -webkit-user-select: none; }
+  body { display: flex; flex-direction: column; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); gap: 16px; }
+  .kop { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .wie { font-size: 28px; font-weight: 700; letter-spacing: -.02em; }
+  .wissel { background: none; border: 0; color: var(--wit-2); font: inherit; font-size: 16px; text-decoration: underline; }
+  .rij { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .rij div { border: 3px solid var(--wit-3); padding: 10px 4px; text-align: center; font-size: 18px; font-weight: 700; color: var(--wit-2); }
+  .rij div.aan { border-color: var(--groen); color: #fff; background: rgba(55,214,122,.18); }
+  .rij div.niet { opacity: .3; }
+  #knop { flex: 1; border: 6px solid #fff; background: transparent; color: #fff; font: inherit; font-size: min(26vw, 160px); font-weight: 700; letter-spacing: -.04em; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; touch-action: manipulation; }
+  #knop small { font-size: 18px; font-weight: 400; letter-spacing: 0; color: var(--wit-2); }
+  #knop.aan { background: var(--groen); border-color: var(--groen); color: var(--nacht); }
+  #knop.aan small { color: rgba(7,8,11,.7); }
+  #knop.dicht { border-color: var(--wit-3); color: var(--wit-3); }
+  #knop.tel { background: var(--groen); border-color: var(--groen); color: var(--nacht); font-size: min(60vw, 360px); }
+  .kies { flex: 1; display: grid; gap: 16px; align-content: center; }
+  .kies p { font-size: 22px; color: var(--wit-2); }
+  .kies button { border: 4px solid #fff; background: none; color: #fff; font: inherit; font-size: 40px; font-weight: 700; padding: 28px 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="kies" id="kies" hidden><p>Wie ben jij?</p></div>
+  <div class="kop" id="kop" hidden><div class="wie" id="wie"></div><button class="wissel" id="wissel">wissel</button></div>
+  <div class="rij" id="rij" hidden></div>
+  <button id="knop" hidden>READY<small></small></button>
+<script>
+  const q = new URLSearchParams(location.search);
+  let plek = Number(q.get("plek")) || 0;
+  try { if (!plek) plek = Number(localStorage.getItem("fy-ready-plek")) || 0; } catch {}
+  let stand = null, bezig = false, verschil = 0;
+  const el = (id) => document.getElementById(id);
+
+  // Een kort geluidje bij elke klik (en een tik bij het aftellen).
+  let audio = null;
+  function toon(freq, ms, vol = 0.25) {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === "suspended") audio.resume();
+      const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime;
+      o.type = "sine"; o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
+      o.connect(g).connect(audio.destination); o.start(t); o.stop(t + ms / 1000 + 0.02);
+    } catch {}
+  }
+
+  async function haal() {
+    try {
+      const data = await fetch("/audience/ready/stand", { cache: "no-store" }).then((r) => r.json());
+      if (data && data.nu) verschil = data.nu - Date.now();
+      if (!bezig) { stand = data; teken(); }
+    } catch {}
+  }
+  function teken() {
+    const spelers = (stand && stand.spelers) || [{ plek: 1, naam: "Booi" }, { plek: 2, naam: "Megan" }, { plek: 3, naam: "Brent" }];
+    const ik = spelers.find((s) => s.plek === plek);
+    el("kies").hidden = !!ik;
+    el("kop").hidden = el("rij").hidden = el("knop").hidden = !ik;
+    if (!ik) {
+      if (!el("kies").querySelector("button")) for (const s of spelers) {
+        const b = document.createElement("button");
+        b.textContent = s.naam;
+        b.onclick = () => { plek = s.plek; try { localStorage.setItem("fy-ready-plek", String(plek)); } catch {} teken(); haal(); };
+        el("kies").append(b);
+      }
+      return;
+    }
+    el("wie").textContent = ik.naam;
+    const plekken = new Set((stand && stand.plekken) || []);
+    const nodig = new Set((stand && stand.nodig) || [1, 2, 3]);
+    el("rij").innerHTML = spelers.map((s) => `<div class="${plekken.has(s.plek) ? "aan" : ""} ${nodig.has(s.plek) ? "" : "niet"}">${s.naam}</div>`).join("");
+    const knop = el("knop");
+    const klaar = !!(stand && stand.klaar);
+    const aan = plekken.has(plek);
+    const tot = stand && stand.aftellenTot ? stand.aftellenTot - verschil : 0;
+    const rest = tot ? Math.ceil((tot - Date.now()) / 1000) : 0;
+    knop.className = rest > 0 ? "tel" : !klaar ? "dicht" : aan ? "aan" : "";
+    knop.firstChild.textContent = rest > 0 ? String(rest) : !klaar ? "WACHT" : "READY";
+    knop.querySelector("small").textContent = rest > 0 ? "" : !klaar ? "nog geen scène" : aan ? "tik nog eens = toch niet" : stand.geschreven ? "tik als je klaar bent" : "tekst wordt geschreven";
+  }
+  el("knop").addEventListener("click", async () => {
+    if (!stand || !stand.klaar || (stand.aftellenTot && stand.aftellenTot - verschil > Date.now())) return;
+    const ready = !(stand.plekken || []).includes(plek);
+    toon(ready ? 880 : 440, ready ? 260 : 180);
+    if (navigator.vibrate) navigator.vibrate(ready ? 60 : 20);
+    // Meteen tonen, daarna de echte stand.
+    stand.plekken = ready ? [...(stand.plekken || []), plek] : (stand.plekken || []).filter((p) => p !== plek);
+    teken();
+    bezig = true;
+    try {
+      const data = await fetch("/audience/ready/speler", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ plek, ready }) }).then((r) => r.json());
+      if (data && data.spelers) stand = data;
+    } catch {}
+    bezig = false;
+    teken();
+  });
+  el("wissel").addEventListener("click", () => { plek = 0; try { localStorage.removeItem("fy-ready-plek"); } catch {} teken(); });
+  let vorige = 0;
+  setInterval(() => {
+    teken();
+    const tot = stand && stand.aftellenTot ? stand.aftellenTot - verschil : 0;
+    const rest = tot ? Math.ceil((tot - Date.now()) / 1000) : 0;
+    if (rest > 0 && rest !== vorige) toon(rest === 1 ? 660 : 520, 120, 0.2);
+    vorige = rest;
+  }, 100);
+  setInterval(haal, 600);
+  haal();
+</script>
+</body>
+</html>

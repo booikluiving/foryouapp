@@ -36,6 +36,7 @@ const { loadExpress } = require("./express-loader");
 
 const express = loadExpress();
 const { createWaarschuwing } = require("./waarschuwing");
+const { createSpelersReady } = require("./spelers-ready");
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
 
 function asyncRoute(handler) {
@@ -74,6 +75,7 @@ function createAudienceApp(options = {}) {
   app.locals.audienceService = service;
   // De content warning bij START SHOW (waarschuwing.js); de telefoons krijgen de stand bij het verbinden.
   const waarschuwing = createWaarschuwing(service);
+  const spelersReady = createSpelersReady({ service, fetchRuntimeView });
   service.waarschuwing = waarschuwing;
   app.use(express.json({ limit: "512kb" }));
   app.use("/audience/vendor", express.static(path.join(PUBLIC_DIR, "vendor"), { fallthrough: false }));
@@ -111,6 +113,22 @@ function createAudienceApp(options = {}) {
   });
 
   // Tussenscherm: titel, het script dat gegenereerd wordt, tellingen en reacties van de vorige scène.
+  // Ready per speler: de knop op de telefoon van de speler (alleen op het netwerk van de show).
+  app.get("/audience/ready", (_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, "ready.html"));
+  });
+  app.get("/audience/ready/stand", asyncRoute(async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, ...(await spelersReady.haal()) });
+  }));
+  app.post("/audience/ready/speler", asyncRoute(async (req, res) => {
+    const body = req.body || {};
+    res.json(await spelersReady.zet(body.plek, body.ready !== false));
+  }));
+  // De klikker (via de teleprompter) tussen de scènes: de speler met de klikker is ready.
+  app.post("/audience/ready/klikker", asyncRoute(async (req, res) => {
+    res.json(await spelersReady.zet(spelersReady.KLIKKER_PLEK, !(req.body && req.body.ready === false)));
+  }));
   app.get("/audience/stage/tussen", (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "stage-tussen.html"));
   });
@@ -271,7 +289,7 @@ function createAudienceApp(options = {}) {
       hartjes: rij.hearts,
       gekozen: gekozen.has(rij.id) ? Math.round(gekozen.get(rij.id) * 100) : null,
     }));
-    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", plekken, labels, sceneLabels, favoriet, toppersonages, personages, ready, speelt: !!view.activeSituation });
+    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", plekken, labels, sceneLabels, favoriet, toppersonages, personages, ready, spelersReady: spelersReady.publiek(), speelt: !!view.activeSituation });
   }));
 
   // De vragen na de scène: de stand (wat er openstaat, de tellingen, de laatste uitslag).
@@ -353,7 +371,7 @@ function createAudienceApp(options = {}) {
   });
 
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
-  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag", "ranking", "beoordeling", "beoordeling_dicht", "beoordeling_stem", "waarschuwing"]);
+  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag", "ranking", "beoordeling", "beoordeling_dicht", "beoordeling_stem", "waarschuwing", "spelers_ready", "speler_ready"]);
   // Stand van de stemming op de startscène, voor het zaalscherm en het universum.
   app.get("/audience/stage/start-stemming", (_req, res) => {
     const stemming = service.getStartStemming();
