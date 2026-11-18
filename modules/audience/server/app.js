@@ -422,7 +422,7 @@ location.replace(${JSON.stringify(KIJK_PATH)});
   });
 
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
-  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag", "ranking", "beoordeling", "beoordeling_dicht", "beoordeling_stem", "waarschuwing", "spelers_ready", "speler_ready"]);
+  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag", "ranking", "beoordeling", "beoordeling_dicht", "beoordeling_stem", "waarschuwing", "spelers_ready", "speler_ready", "show_gestart"]);
   // Stand van de stemming op de startscène, voor het zaalscherm en het universum.
   app.get("/audience/stage/start-stemming", (_req, res) => {
     const stemming = service.getStartStemming();
@@ -503,6 +503,8 @@ location.replace(${JSON.stringify(KIJK_PATH)});
       ranking: service.getRanking(),
       beoordeling: service.beoordeling.publiek(),
       waarschuwing: waarschuwing.publiek(),
+      // Inloop: zolang START SHOW niet gegeven is, toont het zaalscherm nog geen scène.
+      showGestart: service.isShowGestart(),
     });
     const doorsturen = (msg) => {
       if (!msg || !STROOM_TYPES.has(msg.type)) return;

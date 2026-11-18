@@ -2,7 +2,7 @@
 For_You: instelbeeld op de teleprompters in de inloop (cue td.instel) in het show-TD.
 
 Wens Booi (18 nov 2026): tijdens de inloop staat er nog niets klaar. Elke speler ziet op zijn eigen
-teleprompter links zijn eigen camera (rauw, of met de key over het universum) en rechts het
+teleprompter links zijn eigen camera (rauw, of met de key over wit) en rechts het
 universum, om camera en key goed te zetten. Hand omhoog = key aan/uit (via hand_ready, publiek en
 show control).
 
@@ -14,8 +14,8 @@ Wat het doet, in /project1:
 - instel (Constant CHOP): kanalen aan (instelstand), key1, key2, key3 (0 = rauw, 1 = key).
 - per speler N (1-3):
   instel_rauw_N (Select: CameraN/raw) -> instel_rauwfit_N (Fit 1080x1920)
-  instel_cam_N (Select: camN, de gekeyde camera) + instel_achter_N (Select: Inloop)
-    -> instel_key_N (Over: camera over het universum, 1080x1920)
+  instel_cam_N (Select: camN, de gekeyde camera) -> instel_key_N (Over: camera over wit, zodat
+    een randje of kleurrest van de key meteen opvalt; instel_wit, 1080x1920)
   instel_wissel_N (Switch: rauw / key, index uit instel keyN)
   instel_tekst_N (Text: RAUW of KEY, en "hand omhoog = wissel")
   instel_N (Over: tekst over het beeld)
@@ -211,7 +211,13 @@ def apply_instel_patch():
     stand = _get_or_create(root, constantCHOP, "instel", x, y + 400)
     _zet_kanalen(stand, (("aan", 1), ("key1", 0), ("key2", 0), ("key3", 0)))
 
-    # 3. Per speler het instelbeeld.
+    # 3. Per speler het instelbeeld. Achter de key: wit.
+    wit = _get_or_create(root, constantTOP, "instel_wit", x, y + 200)
+    _set_par(wit, "outputresolution", "custom")
+    _set_par(wit, "resolutionw", 1080)
+    _set_par(wit, "resolutionh", 1920)
+    for kanaal in ("colorr", "colorg", "colorb", "alpha"):
+        _set_par(wit, kanaal, 1)
     for nummer, camera, cam, select, oud in links:
         dy = -700 * nummer
         rauw = _get_or_create(root, selectTOP, "instel_rauw_%d" % nummer, x, y + dy)
@@ -220,12 +226,14 @@ def apply_instel_patch():
         keycam = _get_or_create(root, selectTOP, "instel_cam_%d" % nummer, x, y + dy - 150)
         keycam.par.top = cam.path
         keyfit = _fit(root, "instel_camfit_%d" % nummer, keycam, 1080, 1920, x + 200, y + dy - 150)
-        achter = _get_or_create(root, selectTOP, "instel_achter_%d" % nummer, x, y + dy - 300)
-        achter.par.top = inloop.path
-        achterfit = _fit(root, "instel_achterfit_%d" % nummer, achter, 1080, 1920, x + 200, y + dy - 300)
+        # Key over wit (wens Booi): een randje of kleurrest van de key valt daarop meteen op.
+        for oud_naam in ("instel_achter_%d" % nummer, "instel_achterfit_%d" % nummer):
+            oud_op = root.op(oud_naam)
+            if oud_op is not None:
+                oud_op.destroy()
         key = _get_or_create(root, overTOP, "instel_key_%d" % nummer, x + 400, y + dy - 150)
         key.inputConnectors[0].connect(keyfit)
-        key.inputConnectors[1].connect(achterfit)
+        key.inputConnectors[1].connect(wit)
         _set_par(key, "outputresolution", "custom")
         _set_par(key, "resolutionw", 1080)
         _set_par(key, "resolutionh", 1920)
@@ -237,8 +245,8 @@ def apply_instel_patch():
         _set_par(tekst, "outputresolution", "custom")
         _set_par(tekst, "resolutionw", 1080)
         _set_par(tekst, "resolutionh", 1920)
-        _expr(tekst.par.text, "('KEY' if op('/project1/instel')['key%d'] else 'RAUW') + '\\nhand omhoog = wissel'" % nummer)
-        _set_par(tekst, "fontsizex", 64)
+        _expr(tekst.par.text, "('KEY' if op('/project1/instel')['key%d'] else 'RAUW') + '  ·  hand omhoog = wissel'" % nummer)
+        _set_par(tekst, "fontsizex", 52)
         _set_par(tekst, "alignx", "center")
         _set_par(tekst, "aligny", "bottom")
         _set_par(tekst, "bgalpha", 0)

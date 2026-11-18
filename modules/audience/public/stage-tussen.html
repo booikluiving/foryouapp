@@ -833,8 +833,12 @@
         // Tussen het stemmen en Up next: het blad 'Dit publiek' van het rapport.
         kaart: ["rapport"],
       };
+      // Inloop: vóór START SHOW weet nog niemand iets; ook als de runtime al een scène klaar heeft,
+      // blijft het scherm op de inloop (geen titel, geen rollen).
+      let showGestart = true;
       function bepaalFase() {
         const u = universum || {};
+        if (!showGestart && !u.speelt && !u.gespeeld && !stem.actief) return "inloop";
         if (rapport.aan) return "rapport";
         if (stemFase.tot > Date.now()) return "stem";
         if (stem.actief || stem.tot > Date.now()) return "stemmen";
@@ -2127,6 +2131,7 @@
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.type === "stage_herlaad") { location.reload(); return; }
         if (msg.type === "begin") {
+          if (typeof msg.showGestart === "boolean") showGestart = msg.showGestart;
           toepassen(msg.settings);
           reacties = msg.reacties || [];
           ronde = msg.ronde || ronde;
@@ -2160,7 +2165,9 @@
         else if (msg.type === "start_stemming") stemStart(msg.poll);
         else if (msg.type === "poll_update" && Number(msg.pollId) === stem.pollId && stem.actief) { stem.counts = (msg.counts || []).slice(); tekenStemmen(); geluid.stem(); }
         else if (msg.type === "start_stemming_uitslag") stemUitslag(msg);
+        else if (msg.type === "show_gestart") { showGestart = true; zetFase(); }
         else if (msg.type === "session_reset" || msg.type === "session_closed" || msg.type === "chat_reset") {
+          if (msg.type === "chat_reset" && msg.reden === "reset_run") { showGestart = false; zetFase(); }
           berichten = [];
           tekenChat();
           ronde.emoji = {};
