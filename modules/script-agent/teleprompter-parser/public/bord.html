@@ -25,6 +25,12 @@
       #nieuw .kaart small { font-size: 46px; padding: 12px 22px; }
       #nieuw.weg { visibility: hidden; }
       #nieuw.vast { transition: none; }
+      /* ?vak=los: alleen het rouleervak, beeldvullend (TD zet het op het voorhoofd). ?vak=weg: zonder rouleervak. */
+      body.vaklos #vel { width: 100vw; height: 100vh; transform: none !important; }
+      body.vaklos #bord { display: none; }
+      body.vaklos #nieuw { left: 0; top: 0; width: 100vw; height: 100vh; border-width: 2vmin; transition: none; }
+      body.vaklos #nieuw .kaart small { font-size: 7vmin; padding: 1.6vmin 3vmin; }
+      body.vakweg #nieuw { display: none; }
     </style>
   </head>
   <body>

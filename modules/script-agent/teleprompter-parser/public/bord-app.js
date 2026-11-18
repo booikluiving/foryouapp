@@ -14,6 +14,9 @@
   const bordEl = document.getElementById("bord");
   const nieuw = document.getElementById("nieuw");
   if (params.get("proef") === "1") document.body.classList.add("proef");
+  const vakLos = params.get("vak") === "los";   // alleen het rouleervak, zonder geluid (voorhoofd in TD)
+  if (vakLos) document.body.classList.add("vaklos");
+  if (params.get("vak") === "weg") document.body.classList.add("vakweg");
   [["bx", "--bx"], ["by", "--by"], ["rx", "--rx"], ["ry", "--ry"]].forEach(([naam, eigenschap]) => {
     const waarde = Number(params.get(naam));
     if (params.has(naam) && Number.isFinite(waarde)) vel.style.setProperty(eigenschap, `${waarde}px`);
@@ -36,13 +39,14 @@
   schudden.loop = true;
   schudden.volume = 0.5;
   function leg() {
-    if (stil) return;
+    if (stil || vakLos) return;
     const klap = new Audio("/script-agent/teleprompter-parser/geluid/leg.wav");
     klap.volume = 0.9;
     klap.play().catch(() => {});
   }
 
   function schaal() {
+    if (vakLos) return;
     const s = Math.min(window.innerWidth / 1080, window.innerHeight / 1920);
     vel.style.transform = `scale(${s})`;
   }
@@ -126,7 +130,7 @@
     tik();
     if (kaarten.length > 1) {
       rol = window.setInterval(tik, ROL_MS);
-      if (!stil) schudden.play().catch(() => {});
+      if (!stil && !vakLos) schudden.play().catch(() => {});
     }
   }
 
@@ -144,6 +148,15 @@
     const vak = document.getElementById(`vak${stap.plek}`);
     if (open !== stap.naam) toon(stap.naam);
     open = null;
+    if (vakLos) {
+      window.setTimeout(() => {
+        plekken[stap.plek - 1] = stap.naam;
+        tekenBord();
+        nieuw.classList.add("weg");
+        klaar();
+      }, VLIEG_MS);
+      return;
+    }
     const bord = bordEl.getBoundingClientRect();
     const v = vak.getBoundingClientRect();
     const s = vel.getBoundingClientRect();
@@ -176,7 +189,7 @@
     stil = true;
     if (open) toon(open); else rouleer();
     stil = false;
-    if (rol && vel.classList.contains("aan")) schudden.play().catch(() => {});
+    if (rol && !vakLos && vel.classList.contains("aan")) schudden.play().catch(() => {});
   }
 
   function speel() {

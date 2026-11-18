@@ -1925,7 +1925,7 @@
         el("emoji").src = "/audience/stage/emoji";
         el("ondertitel").src = `${opPoort(3027)}/script-agent/teleprompter-parser/live-captions`;
         // Bord 1 t/m 5 (blind ranking): blijft leeg zolang het script geen bordregels heeft.
-        el("bord").src = `${opPoort(3027)}/script-agent/teleprompter-parser/bord.html`;
+        el("bord").src = `${opPoort(3027)}/script-agent/teleprompter-parser/bord.html?vak=weg`;
       }
       window.forYouFase = (fase, direct) => {
         const scene = Number(fase) === 2;
