@@ -5,14 +5,17 @@ Draaien in TouchDesigner (opdrachtenmap of Textport), met het showbestand open:
 
     exec(open('/Users/for_you/ForYou/voorhoofd/maak_voorhoofd.py').read())
 
-Maakt /project1/fy_voorhoofd, LOS van de show: niets in de show wordt aangesloten of veranderd.
-- bron: kijkt naar /project1/speler_zicht_1 (camera 1, na spiegelen en faden)
+Maakt /project1/fy_voorhoofd en sluit het aan op de drie camera's.
+- bron: de camera die op het hoofdscherm staat (Camera_Switch: 0, 1, 2 = speler_zicht_1, 2, 3),
+  of de nepcamera als fy_voorhoofd.fetch('nep') aan staat (zie testopstelling.py)
 - klein: kwart resolutie, 8-bit (Vision heeft genoeg aan ± 540 breed)
 - volger: FY Voorhoofd (C++ TOP, Apple Vision op een eigen thread)
 - waarden: x, y, maat, hoek, volgt, gezicht, ...
 - kaart -> passend -> geplaatst: het testplaatje op het voorhoofd
 - uit: geplaatst over het camerabeeld (alleen om te bekijken)
-Bewaart NIET. Weghalen: op('/project1/fy_voorhoofd').destroy()
+- per camera N: speler_voorhoofd_N = kaartje (alleen zichtbaar op de camera die op het hoofdscherm staat)
+  over het camerabeeld, in comp1 / comp5 / comp6 op de plek van speler_zicht_N.
+Bewaart NIET. Terug: voorhoofd_los.py
 """
 
 import glob
@@ -20,9 +23,12 @@ import time
 import os
 
 MAP = "/Users/for_you/ForYou/voorhoofd"
-BRON = "/project1/speler_zicht_1"
+BRON = "/project1/voorhoofd_volgbron"
+CAMERAS = {1: "comp1", 2: "comp5", 3: "comp6"}
+NEP = "/Users/for_you/ForYou/voorhoofd/test/nepcamera.mp4"
+NEP_AAN = "op('/project1/fy_voorhoofd').fetch('nep', 0)"
+ACTIEF = "(0 if %s else int(min(2, max(0, op('/project1/Camera_Switch')['camera']))))" % NEP_AAN
 VAK_URL = "http://127.0.0.1:3027/script-agent/teleprompter-parser/bord.html?vak=los"
-COMP = "/project1/comp1"       # hier komt het camerabeeld met het kaartje in, op de plek van speler_zicht_1
 
 
 def _nieuwste_plugin():
@@ -40,11 +46,34 @@ def _maak(ouder, soort, naam, x, y):
     return o
 
 
+def _soort(ouder, soort, naam, x, y):
+    o = ouder.op(naam)
+    if o is not None and o.OPType != soort.__name__:
+        o.destroy()
+    return _maak(ouder, soort, naam, x, y)
+
+
+def bronnen():
+    # Welke camera de volger bekijkt: de camera op het hoofdscherm, of de nepcamera in de test.
+    root = op("/project1")
+    z1 = op("/project1/speler_zicht_1")
+    nep = _maak(root, moviefileinTOP, "voorhoofd_nepcamera_1", z1.nodeX, z1.nodeY - 400)
+    nep.par.file = NEP
+    b1 = _soort(root, switchTOP, "voorhoofd_bron_1", z1.nodeX + 130, z1.nodeY - 400)
+    b1.inputConnectors[0].connect(z1)
+    b1.inputConnectors[1].connect(nep)
+    b1.par.index.expr = "1 if %s else 0" % NEP_AAN
+    vb = _soort(root, switchTOP, "voorhoofd_volgbron", z1.nodeX + 260, z1.nodeY - 400)
+    vb.inputConnectors[0].connect(b1)
+    vb.inputConnectors[1].connect(op("/project1/speler_zicht_2"))
+    vb.inputConnectors[2].connect(op("/project1/speler_zicht_3"))
+    vb.par.index.expr = ACTIEF
+
+
 def maak_voorhoofd():
     root = op("/project1")
-    if op(BRON) is None:
-        raise RuntimeError("niet gevonden: " + BRON)
     c = _maak(root, baseCOMP, "fy_voorhoofd", -1200, -1400)
+    bronnen()
     c.color = (0.9, 0.75, 0.1)
 
     bron = _maak(c, selectTOP, "bron", 0, 0)
@@ -139,23 +168,28 @@ _pomp()
 
 
 def aansluiten():
-    # In de show: comp1 krijgt camera 1 mét kaartje. Terug: voorhoofd_los() of comp1 weer aan speler_zicht_1.
+    # Per camera: compN krijgt het camerabeeld met het kaartje (alleen zichtbaar op de camera op het hoofdscherm).
     root = op("/project1")
-    zicht = op(BRON)
-    comp = op(COMP)
-    plek = [i.path for i in comp.inputs].index(zicht.path) if zicht in comp.inputs else None
-    sel = _maak(root, selectTOP, "voorhoofd_kaart_1", zicht.nodeX + 130, zicht.nodeY - 260)
+    sel = _maak(root, selectTOP, "voorhoofd_geplaatst", -1200, -1700)
     sel.par.top = "/project1/fy_voorhoofd/geplaatst"
-    over = _maak(root, overTOP, "speler_voorhoofd_1", zicht.nodeX + 260, zicht.nodeY - 260)
-    over.inputConnectors[0].connect(sel)
-    over.inputConnectors[1].connect(zicht)
-    if plek is None:
-        if over in comp.inputs:
-            print("comp1 hing al aan speler_voorhoofd_1")
-            return
-        raise RuntimeError("comp1 hangt niet aan speler_zicht_1; niets aangesloten")
-    comp.inputConnectors[plek].connect(over)
-    print("aangesloten: comp1 ingang", plek, "= speler_voorhoofd_1")
+    for n, comp_naam in CAMERAS.items():
+        zicht = op("/project1/speler_zicht_%d" % n)
+        achter = op("/project1/voorhoofd_bron_1") if n == 1 else zicht
+        comp = op("/project1/" + comp_naam)
+        kaart = _soort(root, levelTOP, "voorhoofd_kaart_%d" % n, zicht.nodeX + 130, zicht.nodeY - 260)
+        kaart.inputConnectors[0].connect(sel)
+        kaart.par.opacity.expr = "1 if %s == %d else 0" % (ACTIEF, n - 1)
+        over = _maak(root, overTOP, "speler_voorhoofd_%d" % n, zicht.nodeX + 260, zicht.nodeY - 260)
+        over.inputConnectors[0].connect(kaart)
+        over.inputConnectors[1].connect(achter)
+        namen = [i.name for i in comp.inputs]
+        if over.name in namen:
+            print(comp_naam, "hing al aan", over.name)
+        elif zicht.name in namen:
+            comp.inputConnectors[namen.index(zicht.name)].connect(over)
+            print("aangesloten:", comp_naam, "=", over.name)
+        else:
+            print("LET OP:", comp_naam, "hangt niet aan", zicht.name, "; niet aangesloten", namen)
 
 
 aansluiten()

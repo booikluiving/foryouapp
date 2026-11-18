@@ -1,60 +1,41 @@
 """
-For_You: testen van het kaartje op het voorhoofd zonder dat er iemand voor camera 1 staat.
+For_You: het kaartje op het voorhoofd testen zonder dat er iemand voor de camera staat.
 
     exec(open('/Users/for_you/ForYou/voorhoofd/testopstelling.py').read())
-    test(True)    # nepcamera (video met een gezicht) in plaats van camera 1, opname van het hoofdscherm
-    test(False)   # terug naar camera 1, opname stopt
+    test(True)    # nepcamera (video met gezichten) als camera 1, volger kijkt daarnaar, opname van het hoofdscherm
+    test(False)   # terug naar de echte camera's, opname stopt
 
-- voorhoofd_bron_1 (Switch): 0 = speler_zicht_1 (camera 1), 1 = voorhoofd_nepcamera_1 (video)
-  fy_voorhoofd/bron en speler_voorhoofd_1 kijken naar deze switch.
-- fy_voorhoofd/opname (Movie File Out): extra_shot_switch (het hoofdscherm), alleen beeld,
-  naar ~/ForYou/voorhoofd/test/opname.mov. Alleen voor deze test; niet de run-registratie.
-Bewaart NIET.
+Werkt met wat maak_voorhoofd.py neerzet (voorhoofd_bron_1 / voorhoofd_volgbron volgen fy_voorhoofd.fetch('nep')).
+Opname: fy_voorhoofd/opname (Movie File Out van extra_shot_switch, alleen beeld) naar
+~/ForYou/voorhoofd/test/opname.mov. Alleen voor deze test, niet de run-registratie; weggooien na bekijken.
 """
 
-NEP = "/Users/for_you/ForYou/voorhoofd/test/nepcamera.mp4"
 OPNAME = "/Users/for_you/ForYou/voorhoofd/test/opname.mov"
 
 
-def _maak(ouder, soort, naam, x, y):
-    o = ouder.op(naam)
-    if o is None:
-        o = ouder.create(soort, naam)
-        o.nodeX, o.nodeY = x, y
-    return o
-
-
 def opstelling():
-    root = op("/project1")
-    zicht = op("/project1/speler_zicht_1")
-    nep = _maak(root, moviefileinTOP, "voorhoofd_nepcamera_1", zicht.nodeX, zicht.nodeY - 400)
-    nep.par.file = NEP
-    sw = _maak(root, switchTOP, "voorhoofd_bron_1", zicht.nodeX + 130, zicht.nodeY - 400)
-    sw.inputConnectors[0].connect(zicht)
-    sw.inputConnectors[1].connect(nep)
-    op("/project1/fy_voorhoofd/bron").par.top = sw.path
-    op("/project1/speler_voorhoofd_1").inputConnectors[1].connect(sw)
     c = op("/project1/fy_voorhoofd")
-    beeld = _maak(c, selectTOP, "opname_beeld", 600, -400)
+    beeld = c.op("opname_beeld") or c.create(selectTOP, "opname_beeld")
+    beeld.nodeX, beeld.nodeY = 600, -400
     beeld.par.top = "/project1/extra_shot_switch"
-    uit = _maak(c, moviefileoutTOP, "opname", 750, -400)
+    uit = c.op("opname") or c.create(moviefileoutTOP, "opname")
+    uit.nodeX, uit.nodeY = 750, -400
     uit.inputConnectors[0].connect(beeld)
     uit.par.file = OPNAME
-    uit.par.record = False
-    return sw, uit
+    return c, uit
 
 
 def test(aan):
-    sw, uit = opstelling()
+    c, uit = opstelling()
+    nep = op("/project1/voorhoofd_nepcamera_1")
     if aan:
-        nep = op("/project1/voorhoofd_nepcamera_1")
         nep.par.cuepulse.pulse()
         nep.par.play = True
-        sw.par.index = 1
+        c.store("nep", 1)
         uit.par.record = True
-        print("test aan: nepcamera, opname loopt")
+        print("test aan: nepcamera als camera 1, opname loopt")
     else:
         uit.par.record = False
-        sw.par.index = 0
-        op("/project1/voorhoofd_nepcamera_1").par.play = False
-        print("test uit: camera 1, opname gestopt")
+        c.store("nep", 0)
+        nep.par.play = False
+        print("test uit: echte camera's, opname gestopt")
