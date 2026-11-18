@@ -527,6 +527,8 @@
       // groter, de randen van het universum vallen dan buiten beeld). Dit geldt alleen op dat moment;
       // inloop, startfase en Up next houden hun eigen strook.
       const KIEZER = { boven: 60, onder: 1507, schaal: 1.3 };
+      // Booi (18 nov): in Up next geen bovenaanzicht van de ring meer; het gat blijft dicht.
+      const BOVEN_IN_UPNEXT = false;
       // Het universum op het scherm 'Doe mee' (de inloop, ook na RESET RUN): dezelfde drie getallen.
       // boven = net onder 'Doe mee' en de QR-code.
       const INLOOP = { boven: 400, onder: 1507, schaal: 1.3 };
@@ -563,7 +565,7 @@
         const titel = document.getElementById("p-titel");
         // In TouchDesigner staat daar ook het bovenaanzicht: het pad begint eronder.
         const maat = (naam) => parseFloat(getComputedStyle(stage).getPropertyValue(naam)) || 0;
-        const boven = document.documentElement.classList.contains("een") ? maat("--upboven-y") + maat("--upboven-r") + 30 : 0;
+        const boven = BOVEN_IN_UPNEXT && document.documentElement.classList.contains("een") ? maat("--upboven-y") + maat("--upboven-r") + 30 : 0;
         return [Math.max(400, titel.offsetTop + titel.offsetHeight + 50, boven), 1340];
       };
       let zichtKiezer = false, zichtInloop = false;
@@ -1334,7 +1336,7 @@
       // alle drie ready (het aftellen begint), dan gaat het deksel dicht, met de rest van het beeld.
       // Het gat verhuist alleen terwijl het deksel dicht is.
       function zetBoven() {
-        const wil = faseNu === "upnext" && !laagWeg && !(spelersReady && spelersReady.aftellenTot);
+        const wil = BOVEN_IN_UPNEXT && faseNu === "upnext" && !laagWeg && !(spelersReady && spelersReady.aftellenTot);
         if (wil === bovenWil) return;
         bovenWil = wil;
         clearTimeout(bovenTimer);
