@@ -297,12 +297,19 @@
       #stemCirkel { position: absolute; left: 290px; top: 340px; width: 500px; height: 500px; overflow: visible; }
       /* In TouchDesigner (html.een): staat de klok, dan is de cirkel een gat in het vel. TouchDesigner legt
          daaronder het bovenaanzicht van de ring; het getal en de cirkellijn blijven erboven. */
-      html.een #tussenlaag { background: radial-gradient(circle 226px at 540px 590px, transparent 99.5%, var(--nacht) 100%); }
+      #stage { --gat-x: 540px; --gat-y: 590px; --gat-r: 226px;
+        /* Bovenaanzicht in Up next (na de klok, tot alle spelers ready zijn): plek en grootte. Dezelfde drie
+           getallen staan in TouchDesigner op fy_boven_cirkel, uDoel2 (apply_bovencirkel_patch.py). */
+        --upboven-x: 540px; --upboven-y: 790px; --upboven-r: 226px; }
+      #stage.bovenplek { --gat-x: var(--upboven-x); --gat-y: var(--upboven-y); --gat-r: var(--upboven-r); }
+      html.een #tussenlaag { background: radial-gradient(circle var(--gat-r) at var(--gat-x) var(--gat-y), transparent 99.5%, var(--nacht) 100%); }
+      /* In Up next ligt het universum over het gat: daar krijgt het hetzelfde gat. */
+      html.een #stage.bovenplek #universum { -webkit-mask-image: radial-gradient(circle var(--gat-r) at var(--gat-x) var(--gat-y), transparent 99.5%, #000 100%); mask-image: radial-gradient(circle var(--gat-r) at var(--gat-x) var(--gat-y), transparent 99.5%, #000 100%); }
       /* Het gat zit er altijd; een deksel in de kleur van het vel ligt erop en vervaagt zodra de klok staat.
          Zo vloeit het bovenaanzicht in en uit in plaats van te springen. */
-      #stemDeksel { position: absolute; left: 306px; top: 356px; width: 468px; height: 468px; border-radius: 50%; background: var(--nacht);
+      #stemDeksel { position: absolute; left: calc(var(--gat-x) - var(--gat-r) - 8px); top: calc(var(--gat-y) - var(--gat-r) - 8px); width: calc(2 * var(--gat-r) + 16px); height: calc(2 * var(--gat-r) + 16px); border-radius: 50%; background: var(--nacht);
         will-change: opacity; transition: opacity 260ms var(--curve); }
-      html.een #stage.cirkelgat #stemDeksel { opacity: 0; transition-duration: 600ms; }
+      html.een #stage.cirkelgat #stemDeksel, html.een #stage.bovenopen #stemDeksel { opacity: 0; transition-duration: 600ms; }
       #stemCirkel circle { fill: none; }
       #stemCirkel .spoor { stroke: var(--wit-3); stroke-width: 2; transition: opacity 300ms; }
       #stemCirkel .loop { stroke: #fff; stroke-width: 10; transform: rotate(-90deg); transform-origin: 250px 250px; }
@@ -553,7 +560,10 @@
       let zichtUpnext = false;
       const zichtUpnextNu = () => {
         const titel = document.getElementById("p-titel");
-        return [Math.max(400, titel.offsetTop + titel.offsetHeight + 50), 1340];
+        // In TouchDesigner staat daar ook het bovenaanzicht: het pad begint eronder.
+        const maat = (naam) => parseFloat(getComputedStyle(stage).getPropertyValue(naam)) || 0;
+        const boven = document.documentElement.classList.contains("een") ? maat("--upboven-y") + maat("--upboven-r") + 30 : 0;
+        return [Math.max(400, titel.offsetTop + titel.offsetHeight + 50, boven), 1340];
       };
       let zichtKiezer = false, zichtInloop = false;
       const zichtNu = () => (zichtKiezer ? [KIEZER.boven, KIEZER.onder, KIEZER.schaal] : zichtInloop ? [INLOOP.boven, INLOOP.onder, INLOOP.schaal] : zichtUpnext ? zichtUpnextNu() : [TEKST_ONDER + 30, Math.max(TEKST_ONDER + 330, chatPlek().y - 30)]);
@@ -883,6 +893,7 @@
 
       // Zet de vlakken van de fase in beeld: eerst wat weg moet eruit, dan wat nieuw is erin.
       let faseNu = "", toonTimer = 0, stemGevraagd = "";
+      let bovenWil = false, bovenTimer = 0; // bovenaanzicht in Up next, zie zetBoven
       // ── Live camerabeeld ──────────────────────────────────────────────────────────────────────
       // De stroom loopt alleen terwijl het vlak in beeld is; het vlak komt pas als er een beeld binnen is.
       let cameraBinnen = false, cameraStop = null;
@@ -1308,6 +1319,22 @@
         }
         aftelVorige = rest;
         zetAftelFocus(rest > 0, tot);
+        zetBoven();
+      }
+      // Up next: het bovenaanzicht van de ring blijft in beeld zolang de spelers zich klaarmaken. Zijn ze
+      // alle drie ready (het aftellen begint), dan gaat het deksel dicht, met de rest van het beeld.
+      // Het gat verhuist alleen terwijl het deksel dicht is.
+      function zetBoven() {
+        const wil = faseNu === "upnext" && !laagWeg && !(spelersReady && spelersReady.aftellenTot);
+        if (wil === bovenWil) return;
+        bovenWil = wil;
+        clearTimeout(bovenTimer);
+        if (wil) {
+          bovenTimer = setTimeout(() => { stage.classList.add("bovenplek"); void stage.offsetHeight; stage.classList.add("bovenopen"); }, stage.classList.contains("bovenplek") ? 0 : 320);
+        } else {
+          stage.classList.remove("bovenopen");
+          bovenTimer = setTimeout(() => stage.classList.remove("bovenplek"), 320);
+        }
       }
       // Tijdens het aftellen blijft alleen de titel over en komt hij naar voren. Begint de scène, dan
       // blijft dat zo tot het vel uit beeld is; wordt het aftellen afgebroken, dan komt alles terug.
@@ -1378,6 +1405,7 @@
           }
         }
         faseNu = fase;
+        zetBoven();
         // De hele stemfase: na de keuze is het universum uit beeld, zo krimpt het niet zichtbaar terug.
         const kiezerNu = fase === "stem";
         const inloopNu = fase === "inloop";
