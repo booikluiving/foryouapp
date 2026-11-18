@@ -94,3 +94,18 @@ def maak_voorhoofd():
 
 
 maak_voorhoofd()
+
+
+def _pomp():
+    # De volger moet elk beeld rekenen, ook als niemand naar fy_voorhoofd kijkt.
+    c = op("/project1/fy_voorhoofd")
+    p = c.op("pomp")
+    if p is None:
+        p = c.create(executeDAT, "pomp")
+    p.nodeX, p.nodeY = 300, 200
+    p.text = "def onFrameStart(frame):\n    op('volger').cook(force=True)\n    return\n"
+    p.par.framestart = True
+    p.par.active = True
+
+
+_pomp()
