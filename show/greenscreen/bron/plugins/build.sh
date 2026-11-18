@@ -39,4 +39,4 @@ PLIST
 bundle FYVisionMatte "$HERE/src/VisionEngine.mm" -framework Vision
 bundle FYRvmMatte "$HERE/src/RvmEngine.mm" -framework CoreML
 bundle FYKeyMatte "$HERE/src/KeyEngine.mm" "$HERE/src/VisionEngine.mm" "$HERE/src/RvmEngine.mm" -DENGINE_EMBEDDED -framework Vision -framework CoreML
-bundle FYKeyWand "$HERE/src/KeyEngine.mm" "$HERE/src/VisionEngine.mm" "$HERE/src/RvmEngine.mm" -DENGINE_EMBEDDED -DCALIB_PLUGIN -framework Vision -framework CoreML
+bundle FYWandKey "$HERE/src/KeyEngine.mm" "$HERE/src/VisionEngine.mm" "$HERE/src/RvmEngine.mm" -DENGINE_EMBEDDED -DCALIB_PLUGIN -framework Vision -framework CoreML
