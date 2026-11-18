@@ -14,6 +14,7 @@ const {
 const { assignPerformerSlots } = require("../../../shared/casting/performer-slots");
 const { buildPromptInput, hashContent } = require("../prompt-builder/prompt-builder");
 const { bordRegieVoor } = require("../prompt-builder/bord-prompt");
+const { isTrendOmgeving, trendScript } = require("../../../shared/trend/trend");
 const { createScriptOutput } = require("../script-output/script-service");
 const {
   appendPromptInput,
@@ -1532,6 +1533,37 @@ function createOperatorService(options = {}) {
     return done;
   }
 
+  // Trendscène: het script staat vast (één regel per emoji) en gaat zonder taalmodel naar de
+  // teleprompter. Op het zaalscherm staat in het tekstvenster alleen de rij emoji, en de laadbalk vol.
+  async function trendZonderChat(promptInput, sessionId, sourceId, emit = () => {}) {
+    const { emoji, scriptText } = trendScript(promptInput);
+    if (!emoji.length) throw new Error("trend_zonder_emoji: zet de emoji in de situatietekst");
+    const rij = emoji.join(" ");
+    const assistantId = `assistant_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const assistantMessage = { id: assistantId, role: "assistant", content: rij, streaming: false, provider: "trend", model: "vast", at: nowIso() };
+    stageState.sessionId = sessionId;
+    stageState.draft = "";
+    stageState.draftSourceId = normalizeSourceId(sourceId || "submit");
+    stageState.draftInfo = draftInfoFromPromptInput(promptInput, promptInput.source && promptInput.source.type || "trend");
+    stageState.revision += 1;
+    stageState.messages.push(assistantMessage);
+    stageState.messages = stageState.messages.slice(-MAX_STAGE_MESSAGES);
+    stageState.updatedAt = nowIso();
+    // Eerst als "bezig", dan klaar: zo zet het zaalscherm de laadbalk op vol.
+    emitter.emit("stage", { type: "operator_stage_delta", assistantId, text: rij, fullText: rij, updatedAt: stageState.updatedAt });
+    const scriptOutput = createScriptOutput({ promptInput, scriptText });
+    await appendScriptOutput(scriptOutput);
+    if (onScriptOutput) await onScriptOutput({ promptInput, scriptOutput, source: "trend" });
+    stageState.streaming = false;
+    stageState.active = null;
+    stageState.updatedAt = nowIso();
+    log(JSON.stringify({ at: nowIso(), event: "script_agent_trend", situationId: promptInput.situation && promptInput.situation.situationId, emoji: emoji.length }));
+    const done = { type: "done", assistantId, text: rij, promptInputId: promptInput.promptInputId, scriptOutput, provider: "trend", model: "vast" };
+    emit(done);
+    emitStage("chat_done");
+    return done;
+  }
+
   async function sceneToChat(body = {}, emit = () => {}) {
     const sourceId = normalizeSourceId(body.sourceId || "show-control-scene-chat");
     // Staat het venster voor een opmerking nog open, dan telt wat er nu staat.
@@ -1541,6 +1573,12 @@ function createOperatorService(options = {}) {
       sourceId,
     });
     const sessionId = normalizeSessionId(body.sessionId || nextDraft.showRunId || stageState.sessionId);
+    // Een trendscène (omgeving Trend) is puur beeld: geen taalmodel, een vast script met de emoji.
+    // Een opmerking van de operator blijft liggen voor de volgende gewone scène.
+    if (nextDraft.promptInput && isTrendOmgeving(nextDraft.promptInput.environment)) {
+      const done = await trendZonderChat(nextDraft.promptInput, sessionId, sourceId, emit);
+      return { sessionId, draft: nextDraft, opmerking: null, done };
+    }
     const operatorOpmerking = neemOpmerking();
     // Dezelfde scène nog een keer: dan gaat de opmerking over de vorige versie en moet er een
     // nieuwe versie komen. Anders is het een les uit de vorige scène voor deze.

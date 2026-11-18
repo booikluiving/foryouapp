@@ -19,6 +19,7 @@ const { createScriptOutput } = require("../script-output/script-service");
 const { parseTeleprompt } = require("../teleprompter-parser/src/domain/parse-teleprompt");
 const { createTelepromptStore } = require("../teleprompter-parser/src/runtime/teleprompt-store");
 const { createTeleprompterParserBridge } = require("../teleprompter-parser/src/integration/script-agent-bridge");
+const { shouldEndSceneFromCueAdvance } = require("../teleprompter-parser/src/integration/express-router");
 const { parseScriptText } = require("../text-parser/text-parser");
 
 const runtimeState = {
@@ -518,6 +519,47 @@ async function main() {
   assert.equal(operatorService.opmerkingStand().bewaard, "", "na het meegeven is de opmerking weg");
   const zonderOpmerking = await operatorService.sceneToChat({ sourceId: "unit-scene-chat" });
   assert.equal(zonderOpmerking.opmerking, null);
+
+  // Trendscène (omgeving Trend): geen taalmodel, een vast script met één regel per emoji, en de druk
+  // na de laatste emoji eindigt de scène (geen kaart "Einde").
+  {
+    const trendState = cloneJson(runtimeState);
+    trendState.resolvedPreparedNext.environment = { id: "environment:32", legacyId: 32, name: "Trend" };
+    trendState.resolvedPreparedNext.promptText = "Boven elke speler staat een rij emoji: 🐙 🦀 🕊️ 🐔 🦋 🐛 🐶 🐱. Schrijf geen dialoog.";
+    const naarTeleprompter = [];
+    const trendService = createOperatorService({
+      clients: {
+        fetchCurrentRuntimeState: async () => ({ ok: true, state: cloneJson(trendState) }),
+        fetchCatalogSnapshot: async () => ({ ok: true, catalog: cloneJson(runtimeState.showRunSnapshot.catalog) }),
+      },
+      env: {},
+      fetchImpl: async () => { throw new Error("trend mag het taalmodel niet aanroepen"); },
+      onScriptOutput: async (uit) => { naarTeleprompter.push(uit); },
+      log: () => {},
+    });
+    trendService.voegOpmerkingToe("bewaar mij");
+    const trendEvents = [];
+    trendService.emitter.on("stage", (event) => trendEvents.push(event.type));
+    const trend = await trendService.sceneToChat({ sourceId: "unit-trend" });
+    assert.equal(trend.done.provider, "trend");
+    assert.equal(trend.done.text, "🐙 🦀 🕊️ 🐔 🦋 🐛 🐶 🐱");
+    assert.equal(naarTeleprompter.length, 1);
+    const trendDeck = parseTeleprompt({ title: "Dans als dieren", rawText: naarTeleprompter[0].scriptOutput.scriptText });
+    assert.deepEqual(trendDeck.lines.map((line) => line.text), ["🐙", "🦀", "🕊️", "🐔", "🦋", "🐛", "🐶", "🐱"]);
+    assert(trendDeck.lines.every((line) => line.type === "stage_direction"));
+    assert.deepEqual(trendEvents.slice(-2), ["operator_stage_delta", "operator_stage_state"], "zaalscherm: eerst bezig, dan klaar");
+    assert.equal(trendService.snapshotStage().streaming, false);
+    assert.equal(trendService.opmerkingStand().bewaard, "bewaar mij", "de opmerking blijft voor de volgende gewone scène");
+
+    const deck = 8 + 2;
+    const trendScene = { status: "playing", environment: { name: "Trend" } };
+    const gewoon = { status: "playing", environment: { name: "Studio" } };
+    assert.equal(shouldEndSceneFromCueAdvance({ cue: { index: 7, deckLength: deck }, requestedIndex: 8, preparedScene: trendScene }), false);
+    assert.equal(shouldEndSceneFromCueAdvance({ cue: { index: 8, deckLength: deck }, requestedIndex: 9, preparedScene: trendScene }), true, "na de laatste emoji is de scène klaar");
+    assert.equal(shouldEndSceneFromCueAdvance({ cue: { index: 8, deckLength: deck }, requestedIndex: 7, preparedScene: trendScene }), false, "terug mag");
+    assert.equal(shouldEndSceneFromCueAdvance({ cue: { index: 8, deckLength: deck }, requestedIndex: 9, preparedScene: gewoon }), false, "gewone scène: eerst Einde");
+    assert.equal(shouldEndSceneFromCueAdvance({ cue: { index: 9, deckLength: deck }, requestedIndex: 10, preparedScene: gewoon }), true);
+  }
 
   process.stdout.write(JSON.stringify({
     ok: true,

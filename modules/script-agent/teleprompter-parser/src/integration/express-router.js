@@ -5,6 +5,7 @@ const os = require("os");
 const path = require("path");
 const { createTelepromptStore } = require("../runtime/teleprompt-store");
 const { isBlindRanking, plaatjeSlug } = require("../../../../../shared/blind-ranking/blind-ranking");
+const { isTrendOmgeving } = require("../../../../../shared/trend/trend");
 
 const DEFAULT_CAPTION_STYLE_PATH = path.join(__dirname, "..", "..", "..", "db", "teleprompter-caption-style.json");
 
@@ -56,7 +57,9 @@ function firstDialogueCue(teleprompt, baseCue = {}) {
 function shouldEndSceneFromCueAdvance({ cue, requestedIndex, preparedScene }) {
   const currentIndex = Number(cue && cue.index || 0);
   const deckLength = Number(cue && cue.deckLength || 0);
-  const atEndCard = deckLength > 0 && currentIndex >= deckLength - 1;
+  // Een trendscène heeft geen kaart "Einde": de druk na de laatste emoji eindigt de scène.
+  const trend = isTrendOmgeving(preparedScene && preparedScene.environment);
+  const atEndCard = deckLength > 0 && currentIndex >= deckLength - (trend ? 2 : 1);
   const wantsPastEnd = Number.isFinite(requestedIndex) && requestedIndex > currentIndex;
   const preparedStatus = preparedScene ? String(preparedScene.status || "") : "";
   return atEndCard && wantsPastEnd && (!preparedStatus || preparedStatus === "playing");
