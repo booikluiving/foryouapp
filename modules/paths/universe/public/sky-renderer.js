@@ -388,10 +388,11 @@
     const regieStapSleutel = (a, b) => (Number(a) < Number(b) ? `${a}-${b}` : `${b}-${a}`);
     // Het hoofdscherm kan opgeven in welke strook van het beeld de kaart hoort: zicht=boven,onder,
     // in beeldpunten van een scherm van 1920 hoog. Boven en onder die strook staan titel, tekst en chat.
-    // Zonder opgave vult de kaart het hele beeld.
+    // Zonder opgave vult de kaart het hele beeld. Een derde getal vergroot de kaart binnen de strook
+    // (1 = passend; groter dan 1 laat de randen van de kaart buiten beeld vallen).
     const regieZichtUit = (waarde) => {
-      const [boven, onder] = String(waarde || "").split(",").map(Number);
-      return Number.isFinite(boven) && Number.isFinite(onder) && onder - boven >= 200 ? { boven: boven / 1920, onder: onder / 1920 } : null;
+      const [boven, onder, schaal] = String(waarde || "").split(",").map(Number);
+      return Number.isFinite(boven) && Number.isFinite(onder) && onder - boven >= 200 ? { boven: boven / 1920, onder: onder / 1920, schaal: schaal > 0 ? Math.min(4, schaal) : 1 } : null;
     };
     let regieZicht = regieZichtUit(REGIE_OPTIES.get("zicht"));
     // Het hoofdscherm zet de titel van de gekozen scène en de stand van het stemmen zelf in beeld.
@@ -3609,7 +3610,7 @@
       const hoog = (regieZicht.onder - regieZicht.boven) * podium.hoogte;
       const rand = 44; // ruimte voor de beweging van de sterren en een titel erboven
       return {
-        k: Math.min(podium.breedte / (kader.b + rand * 2), hoog / (kader.h + rand * 2)),
+        k: Math.min(podium.breedte / (kader.b + rand * 2), hoog / (kader.h + rand * 2)) * regieZicht.schaal,
         mx: kader.x,
         my: kader.y,
         sx: podium.breedte / 2,
