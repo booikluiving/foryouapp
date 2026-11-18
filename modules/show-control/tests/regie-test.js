@@ -154,12 +154,19 @@ async function testRandomEnVrijgeven() {
   await regie.start({ wie: "r" });
   await regie.stop({ wie: "r" });
   assert.ok(wereld.runtime.preparedNext.situationId !== eerste, "na de stop staat er een andere random scène klaar");
+  // Schrijf nieuw script: voor de scène die klaarstaat, met het taalmodel.
+  wereld.cues.length = 0;
+  const geschreven = await regie.schrijfNu({ wie: "r" });
+  assert.equal(geschreven.schrijft, true);
+  assert.deepEqual(wereld.cues.map((c) => [c.soort, c.schrijven]), [["chat", true]], "schrijven met het taalmodel");
+  await regie.start({ wie: "r" });
+  await assert.rejects(regie.schrijfNu({ wie: "r" }), (err) => err.code === "scene_speelt", "niet terwijl er een scène speelt");
   wereld.cues.length = 0;
   await regie.vrijgeven({ wie: "r" });
-  assert.deepEqual(wereld.cues.map((c) => c.soort), ["compound", "phase"], "vrijgeven: reset en inloop");
+  assert.deepEqual(wereld.cues.map((c) => c.soort), ["stop"], "vrijgeven: alleen de scène stoppen, geen reset");
+  assert.equal(wereld.runtime.status, "running", "de run blijft staan");
   assert.equal(regie.stand().stand, "show");
   assert.equal(regie.stand().eigenaar, null);
-  assert.ok(wereld.log.some((regel) => regel.startsWith("DELETE /v0/script-agent/operator/session/")), "script van het tussenscherm weg");
   // Verlopen: geeft zichzelf vrij als er niets speelt.
   await regie.overnemen({ wie: "r", stand: "test", minuten: 1 });
   verzet(2 * 60000);

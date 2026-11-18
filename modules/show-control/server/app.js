@@ -359,7 +359,7 @@ function createShowControlApp(options = {}) {
   app.get("/v0/show-control/regie/catalogus", regieRoute(() => regie.catalogus()));
   app.post("/v0/show-control/regie/overnemen", regieRoute((req) => regie.overnemen({ wie: regieWie(req), stand: req.body && req.body.stand, minuten: req.body && req.body.minuten, forceer: !!(req.body && req.body.forceer === true) })));
   app.post("/v0/show-control/regie/vrijgeven", regieRoute((req) => regie.vrijgeven({ wie: regieWie(req) })));
-  app.post("/v0/show-control/regie/schrijven", regieRoute((req) => regie.zetSchrijven({ wie: regieWie(req), schrijven: req.body && req.body.schrijven === true })));
+  app.post("/v0/show-control/regie/schrijf", regieRoute((req) => regie.schrijfNu({ wie: regieWie(req) })));
   app.post("/v0/show-control/regie/laad", regieRoute((req) => regie.laad({
     wie: regieWie(req),
     situationId: req.body && req.body.situationId,

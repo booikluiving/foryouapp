@@ -8,7 +8,8 @@
 //   random  één iemand; de regie zet steeds een willekeurige scène klaar.
 // In test en random heeft precies één iemand de regie, tot hij vrijgeeft of de tijd om is. Een ander
 // krijgt "bezet". De knoppen in de zaal (Stream Deck, klikker, ready van de spelers) werken altijd.
-// Vrijgeven = de scène stopt, de run gaat terug naar het begin (reset, inloop) en de stand wordt show.
+// Vrijgeven = de scène stopt en de stand wordt weer show; de run blijft staan. Een voorstelling begint
+// altijd met RESET RUN + START RUN (deck): dan staat alles weer bij het begin.
 //
 // Alles wat de run of de scène verandert, gaat één voor één (slot): een stop, het klaarzetten daarna
 // en een nieuwe keuze lopen nooit door elkaar.
@@ -265,29 +266,6 @@ function createRegie(options = {}) {
     return run();
   }
 
-  async function resetRun(naam) {
-    const state = await run();
-    if (state && state.showRunId && state.status !== "idle") {
-      const cue = cues.buildCompoundCue({
-        name: naam,
-        actions: [{ command: "runtime.resetRun", ackMode: "acknowledged-async", payload: { showRunId: state.showRunId }, timeoutMs: 5000 }],
-      });
-      await cues.executeCue(cue, {});
-      await cues.saveCue(cue);
-    }
-    const fase = cues.buildPhaseCue({ name: `${naam}: terug naar inloop`, phase: 0, phaseName: "inloop" });
-    await cues.executeCue(fase, {});
-    await cues.saveCue(fase);
-    // Het script dat nog op het tussenscherm stond weg (zoals RESET RUN op de deck).
-    const status = await vraag(scriptAgentUrl, "/v0/script-agent/operator/status", { timeoutMs: 1500 }).catch(() => null);
-    const sessies = new Set([state && state.showRunId, status && status.ok && status.json && status.json.stage ? status.json.stage.sessionId : null].filter(Boolean));
-    for (const sessie of sessies) {
-      await vraag(scriptAgentUrl, `/v0/script-agent/operator/session/${encodeURIComponent(sessie)}`, { method: "DELETE", timeoutMs: 2500 }).catch(() => null);
-    }
-    random.huidige = null;
-    random.gehad = new Set();
-  }
-
   function kiesRandom(state) {
     const items = (state.pathEvaluation && state.pathEvaluation.items) || [];
     const start = new Set(items.filter((item) => item.isPathStart === true).map((item) => item.situationId));
@@ -332,12 +310,12 @@ function createRegie(options = {}) {
       const nieuw = bewaar({
         stand: nieuweStand,
         eigenaar: { wie: naam, sinds: s.eigenaar && s.eigenaar.wie === naam ? s.eigenaar.sinds : new Date(nu()).toISOString(), minuten: min, tot: new Date(nu() + min * 60000).toISOString() },
-        schrijven: s.schrijven === true,
+        schrijven: false,
       });
       if (nieuweStand === "random") {
         random.gehad = new Set();
         const state = await run();
-        if (!bezig(state)) await laadRandom(nieuw.schrijven);
+        if (!bezig(state)) await laadRandom(false);
       }
       return overzicht();
     });
@@ -350,20 +328,23 @@ function createRegie(options = {}) {
       if (!systeem && s.eigenaar && !s.verlopen && s.eigenaar.wie !== naam) {
         throw regieFout(423, "regie_bezet", `De regie is van ${s.eigenaar.wie}; alleen die kan vrijgeven.`, { eigenaar: s.eigenaar });
       }
-      if (s.stand !== "show") {
-        await stopScene("Regie: vrijgeven, stop scène");
-        await resetRun("Regie: vrijgeven, reset run");
-      }
-      bewaar({ stand: "show", eigenaar: null, schrijven: s.schrijven === true });
+      if (s.stand !== "show") await stopScene("Regie: vrijgeven, stop scène");
+      bewaar({ stand: "show", eigenaar: null, schrijven: false });
+      random.huidige = null;
       return overzicht();
     });
   }
 
-  async function zetSchrijven({ wie, schrijven } = {}) {
+  // Knop "Schrijf nieuw script": het taalmodel schrijft nu een script voor de scène die klaarstaat
+  // (de tekst verschijnt in de operator-chat). Inladen zelf gebruikt het laatst bewaarde script.
+  async function schrijfNu({ wie } = {}) {
     return slot(async () => {
-      const s = eisEigenaar(schoneNaam(wie));
-      verleng({ ...s, schrijven: schrijven === true });
-      return overzicht();
+      verleng(eisEigenaar(schoneNaam(wie)));
+      const state = await run();
+      if (state && state.activeSituation) throw regieFout(409, "scene_speelt", "Er speelt een scène; stop hem eerst.");
+      if (!state || !state.resolvedPreparedNext) throw regieFout(409, "niets_klaar", "Er staat geen scène klaar; laad er eerst een in.");
+      await scriptVoorKlaar(state, true);
+      return { ...(await overzicht()), schrijft: true };
     });
   }
 
@@ -375,7 +356,7 @@ function createRegie(options = {}) {
     if (!sit && !omg) throw regieFout(400, "geen_keuze", "Kies een situatie of een omgeving.");
     const geladen = await slot(async () => {
       const s = verleng(eisEigenaar(naam));
-      const metSchrijven = schrijven === undefined ? s.schrijven === true : schrijven === true;
+      const metSchrijven = schrijven === true;
       let state = await zorgVoorTestrun();
       if (bezig(state)) state = await stopScene("Regie: stop voor inladen");
       const klaar = await zetKlaar(state, { situationId: sit, environmentId: omg }, metSchrijven);
@@ -413,8 +394,8 @@ function createRegie(options = {}) {
 
   async function volgendeRandom({ wie } = {}) {
     return slot(async () => {
-      const s = verleng(eisEigenaar(schoneNaam(wie)));
-      await laadRandom(s.schrijven === true);
+      verleng(eisEigenaar(schoneNaam(wie)));
+      await laadRandom(false);
       return overzicht();
     });
   }
@@ -424,14 +405,13 @@ function createRegie(options = {}) {
   async function naStop() {
     const s = stand();
     if (s.stand === "show" || !s.eigenaar || s.verlopen) return null;
-    if (s.stand === "random") return laadRandom(s.schrijven === true);
-    return scriptVoorKlaar(await run(), s.schrijven === true);
+    if (s.stand === "random") return laadRandom(false);
+    return scriptVoorKlaar(await run(), false);
   }
 
   // OVERSLAAN (deck, operator) in test of random: een andere willekeurige scène klaarzetten.
   async function overslaan() {
-    const s = stand();
-    return laadRandom(s.schrijven === true);
+    return laadRandom(false);
   }
 
   async function overzicht() {
@@ -495,7 +475,7 @@ function createRegie(options = {}) {
     tick,
     volgendeRandom,
     vrijgeven,
-    zetSchrijven,
+    schrijfNu,
   };
 }
 
