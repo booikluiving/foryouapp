@@ -17,7 +17,7 @@ Wat het doet, in /project1:
   instel_cam_N (Select: camN, de gekeyde camera) -> instel_key_N (Over: camera over wit, zodat
     een randje of kleurrest van de key meteen opvalt; instel_wit, 1080x1920)
   instel_wissel_N (Switch: rauw / key, index uit instel keyN)
-  instel_tekst_N (Text: RAUW of KEY, en "hand omhoog = wissel")
+  instel_tekst_N (Text: balk bovenaan met RAUW of KEY en "hand omhoog = wissel")
   instel_N (Over: tekst over het beeld)
 - select_camN_0 (links op teleprompter N in fase 0) kiest instel_N als instel aan staat, anders
   wat hij al koos.
@@ -209,7 +209,8 @@ def apply_instel_patch():
     # 2. De stand: aan + key per speler. Bij het opstarten van TouchDesigner is het de inloop.
     x, y = inloop.nodeX, inloop.nodeY - 2400
     stand = _get_or_create(root, constantCHOP, "instel", x, y + 400)
-    _zet_kanalen(stand, (("aan", 1), ("key1", 0), ("key2", 0), ("key3", 0)))
+    if [c.name for c in stand.chans()] != ["aan", "key1", "key2", "key3"]:
+        _zet_kanalen(stand, (("aan", 1), ("key1", 0), ("key2", 0), ("key3", 0)))
 
     # 3. Per speler het instelbeeld. Achter de key: wit.
     wit = _get_or_create(root, constantTOP, "instel_wit", x, y + 200)
@@ -241,13 +242,14 @@ def apply_instel_patch():
         wissel.inputConnectors[0].connect(rauwfit)
         wissel.inputConnectors[1].connect(key)
         _expr(wissel.par.index, "op('/project1/instel')['key%d']" % nummer)
-        # Een donkere balk onderaan met RAUW of KEY: leesbaar op het camerabeeld én op wit.
+        # Een donkere balk bovenaan met RAUW of KEY: leesbaar op het camerabeeld én op wit (onderaan
+        # snijdt de teleprompter het beeld iets af).
         tekst = _get_or_create(root, textTOP, "instel_tekst_%d" % nummer, x + 600, y + dy - 150)
         _set_par(tekst, "outputresolution", "custom")
         _set_par(tekst, "resolutionw", 1080)
         _set_par(tekst, "resolutionh", 120)
         _expr(tekst.par.text, "('KEY' if op('/project1/instel')['key%d'] else 'RAUW') + '  ·  hand omhoog = wissel'" % nummer)
-        _set_par(tekst, "fontsizex", 48)
+        _set_par(tekst, "fontsizex", 64)
         _set_par(tekst, "alignx", "center")
         _set_par(tekst, "aligny", "center")
         for kanaal, waarde in (("bgcolorr", 0), ("bgcolorg", 0), ("bgcolorb", 0), ("bgalpha", 0.75)):
@@ -259,7 +261,7 @@ def apply_instel_patch():
         _set_par(beeld, "resolutionw", 1080)
         _set_par(beeld, "resolutionh", 1920)
         _set_par(beeld, "prefit", "nativeres")
-        _set_par(beeld, "justifyv", "bottom")
+        _set_par(beeld, "justifyv", "top")
         _set_par(beeld, "justifyh", "center")
         # Links op teleprompter N in fase 0: het instelbeeld zolang de instelstand aan staat.
         _expr(select.par.top, INSTEL_LINKS_EXPR % (nummer, oud))
