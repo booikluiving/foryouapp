@@ -30,6 +30,9 @@ _REG_BEELD = 'extra_shot_switch'   # ingang van fit2, die het beeld naar Main_TV
 REGISTRATIE_KWALITEIT = 0.8       # 0-1; hoger = groter bestand
 REGISTRATIE_TAFELMIX = None       # bijvoorbeeld (31, 32) als Main LR op USB 31/32 staat
 _REG_SPELERS = 'chan1 chan2 chan3'
+# De spelers komen ruw binnen (vóór de fader van de tafel) en zijn zonder versterking naast de
+# muziek niet te horen: gemeten 17 nov rond -45 dB in het spraakgebied.
+REGISTRATIE_SPELERS_DB = 18
 _REG_MUZIEK = 'null11'             # ingang van audiodevout2
 
 _REG_STUUR = '''
@@ -124,6 +127,7 @@ else:
     else:
         _sp = _b.create(mathCHOP, 'spelers')
         _sp.par.chanop = 'add'
+        _sp.par.gain = 10 ** (REGISTRATIE_SPELERS_DB / 20.0)
         _sp.inputConnectors[0].connect(_kies('kies_spelers', _REG_SPELERS))
         _zij = []
         for _zijde, _kanaal, _uit in (('links', 'chan1', 'chan1'), ('rechts', 'chan2', 'chan2')):
