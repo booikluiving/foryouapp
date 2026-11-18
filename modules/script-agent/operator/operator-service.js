@@ -397,6 +397,7 @@ function normalizeOperatorSettings(input = {}, base = defaultOperatorSettings())
     maxTokens: Math.max(256, Math.min(16000, Number(source.maxTokens || base.maxTokens || 4096) || 4096)),
     temperature: Math.max(0, Math.min(2, Number(source.temperature ?? base.temperature ?? 0.8) || 0.8)),
     reasoningEffort: normalizeReasoningEffort(source.reasoningEffort ?? base.reasoningEffort),
+    reasoningByModel: normalizeReasoningByModel(source.reasoningByModel ?? base.reasoningByModel),
     fallbackModel: normalizeText(source.fallbackModel || base.fallbackModel || DEFAULT_FALLBACK_MODEL, 120) || DEFAULT_FALLBACK_MODEL,
     systemPrompt: withoutTitleRule(normalizeText(source.systemPrompt || base.systemPrompt || DEFAULT_SYSTEM_PROMPT, 12000)),
     promptTemplate: normalizeText(source.promptTemplate || base.promptTemplate || DEFAULT_PROMPT_TEMPLATE, 12000),
@@ -409,6 +410,17 @@ function normalizeOperatorSettings(input = {}, base = defaultOperatorSettings())
 function normalizeReasoningEffort(value) {
   const effort = String(value ?? "low").trim().toLowerCase();
   return ["off", "low", "high", "max"].includes(effort) ? effort : "low";
+}
+
+// Nadenken per model: bij wisselen van model komt de stand terug die dat model het laatst had.
+function normalizeReasoningByModel(input) {
+  const out = {};
+  if (!input || typeof input !== "object") return out;
+  for (const [key, value] of Object.entries(input).slice(0, 40)) {
+    const model = normalizeText(key, 120);
+    if (model) out[model] = normalizeReasoningEffort(value);
+  }
+  return out;
 }
 
 function reasoningRequestFields(effort) {
@@ -631,7 +643,18 @@ function createOperatorService(options = {}) {
 
   async function saveSettings(patch = {}) {
     const current = await readSettings();
-    settingsCache = normalizeOperatorSettings({ ...current, ...patch, updatedAt: nowIso() }, current);
+    const next = { ...(patch && typeof patch === "object" ? patch : {}) };
+    const nextModel = normalizeText(next.model || "", 120);
+    if (nextModel && nextModel !== current.model) {
+      const byModel = { ...current.reasoningByModel, [current.model]: current.reasoningEffort };
+      if (!Object.prototype.hasOwnProperty.call(next, "reasoningEffort")) {
+        next.reasoningEffort = byModel[nextModel] ?? current.reasoningEffort;
+      }
+      next.reasoningByModel = byModel;
+    } else {
+      delete next.reasoningByModel;
+    }
+    settingsCache = normalizeOperatorSettings({ ...current, ...next, updatedAt: nowIso() }, current);
     await writeJsonObject(operatorSettingsFilePath(), settingsCache, 0o644);
     stageState.style = normalizeStageStyle(settingsCache.stageStyle);
     stageState.model = settingsCache.model;
@@ -759,7 +782,8 @@ function createOperatorService(options = {}) {
   function updateStageControl(message = {}) {
     const previousSessionId = stageState.sessionId;
     stageState.sessionId = normalizeSessionId(message.sessionId || message.sessie_id || stageState.sessionId);
-    if (message.model) stageState.model = normalizeText(message.model, 120) || stageState.model;
+    // Het model komt uit de instellingen, niet uit wat een pagina toevallig in zijn veld heeft staan.
+    if (settingsCache) stageState.model = settingsCache.model;
     stageState.provider = "deepseek";
     stageState.updatedAt = nowIso();
     if (previousSessionId !== stageState.sessionId && !stageState.streaming) {

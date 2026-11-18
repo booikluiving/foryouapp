@@ -799,3 +799,9 @@ textarea:focus {
   padding: 8px;
   border: 1px solid var(--warn);
 }
+
+/* Keuze van het model dat schrijft: het actieve model is wit. */
+.model-keuze { display: inline-flex; margin-right: 12px; }
+.model-keuze button + button { border-left: 0; }
+.model-keuze button { color: var(--fg-2); }
+.model-keuze button.active { background: var(--fg); color: var(--bg); border-color: var(--fg); }

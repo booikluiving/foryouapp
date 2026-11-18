@@ -20,6 +20,7 @@ const els = {
   reloadCatalog: $("#reloadCatalog"),
   sessionId: $("#sessionId"),
   model: $("#model"),
+  modelKeuze: $("#modelKeuze"),
   situation: $("#situation"),
   situationPreview: $("#situationPreview"),
   character: $("#character"),
@@ -202,11 +203,34 @@ function applyStageStyle(style = {}) {
 }
 
 function applyOperatorSettings(settings = {}) {
-  els.model.value = settings.model || els.model.value || "deepseek-chat";
+  toonModel(settings.model || els.model.value || "deepseek-chat");
   els.systemPrompt.value = settings.systemPrompt || "";
   els.promptTemplate.value = settings.promptTemplate || "";
   els.temperature.value = String(settings.temperature ?? 0.8);
   els.maxTokens.value = String(settings.maxTokens || 4096);
+}
+
+// Het model dat nu schrijft: zichtbaar in de keuze boven de chat en in de statusregel.
+let statusDraftLabel = "";
+function toonModel(model) {
+  const actief = String(model || "").trim();
+  if (!actief) return;
+  if (document.activeElement !== els.model) els.model.value = actief;
+  for (const knop of els.modelKeuze.querySelectorAll("button")) {
+    const aan = knop.dataset.model === actief;
+    knop.classList.toggle("active", aan);
+    knop.setAttribute("aria-pressed", aan ? "true" : "false");
+  }
+  els.operatorStatusText.textContent = ["DeepSeek", actief, statusDraftLabel].filter(Boolean).join(" | ");
+}
+
+async function kiesModel(model) {
+  const body = await api("/v0/script-agent/operator/settings", {
+    method: "PATCH",
+    body: JSON.stringify({ model }),
+  });
+  toonModel(body.settings.model);
+  sendStageControl();
 }
 
 function settingsFromControls() {
@@ -444,7 +468,7 @@ function applyDraftInfo(info = {}) {
 
 function applyStageState(stage = {}, remoteSourceId = "") {
   if (Number.isFinite(Number(stage.revision))) stageRevision = Number(stage.revision);
-  if (stage.model && document.activeElement !== els.model) els.model.value = stage.model;
+  if (stage.model) toonModel(stage.model);
   if (stage.sessionId && document.activeElement !== els.sessionId) {
     els.sessionId.value = stage.sessionId;
     try { localStorage.setItem(STORAGE_SESSION_KEY, currentSessionId()); } catch {}
@@ -554,12 +578,8 @@ async function loadStatus() {
     renderSync(null);
   });
   const status = await api("/v0/script-agent/operator/status");
-  els.operatorStatusText.textContent = [
-    "DeepSeek",
-    status.model || els.model.value || "deepseek-chat",
-    status.draft ? `draft ${status.draft.situationTitle || status.draft.situationId}` : "geen draft",
-  ].join(" | ");
-  els.model.value = status.model || els.model.value || "deepseek-chat";
+  statusDraftLabel = status.draft ? `draft ${status.draft.situationTitle || status.draft.situationId}` : "geen draft";
+  toonModel(status.model || els.model.value || "deepseek-chat");
   els.statSessions.textContent = Number(status.activeSessions || 0).toLocaleString();
   renderSecretStatus(status.secrets || {});
   if (status.stage) applyStageState(status.stage);
@@ -590,7 +610,7 @@ async function saveModel() {
     method: "PATCH",
     body: JSON.stringify({ model: els.model.value || "deepseek-chat" }),
   });
-  els.model.value = body.settings.model || els.model.value;
+  toonModel(body.settings.model || els.model.value);
   sendStageControl();
 }
 
@@ -1030,6 +1050,10 @@ els.sessionId.addEventListener("change", () => {
   withUiError(loadSession);
 });
 els.model.addEventListener("change", () => withUiError(saveModel));
+els.modelKeuze.addEventListener("click", (event) => {
+  const knop = event.target.closest("button[data-model]");
+  if (knop) withUiError(() => kiesModel(knop.dataset.model));
+});
 els.savedScenesList.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-script-id]");
   if (!button) return;
