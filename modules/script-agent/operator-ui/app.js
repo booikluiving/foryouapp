@@ -32,10 +32,6 @@ const els = {
   refreshRuntimeDraft: $("#refreshRuntimeDraft"),
   overslaan: $("#overslaan"),
   operatorMsg: $("#operatorMsg"),
-  sceneTestToggle: $("#sceneTestToggle"),
-  sceneTestStart: $("#sceneTestStart"),
-  sceneTestRandom: $("#sceneTestRandom"),
-  sceneTestMsg: $("#sceneTestMsg"),
   syncMsg: $("#syncMsg"),
   chatLog: $("#chatLog"),
   chatForm: $("#chatForm"),
@@ -803,31 +799,8 @@ async function refreshRuntimeDraft() {
 // maakt de lopende run een testrun (tot de reset).
 let sceneTestState = { running: false, enabled: false, activeSituation: null };
 
-function renderSceneTest(message, error = false) {
-  const { running, enabled, activeSituation } = sceneTestState;
-  els.sceneTestToggle.checked = enabled;
-  els.sceneTestToggle.disabled = false;
-  els.sceneTestToggle.closest(".scene-test").classList.toggle("on", enabled);
-  els.sceneTestStart.hidden = !enabled;
-  const random = sceneTestState.random || {};
-  els.sceneTestRandom.checked = !!random.enabled;
-  els.sceneTestRandom.disabled = false;
-  els.sceneTestRandom.closest(".scene-test").classList.toggle("on", !!random.enabled);
-  els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
-  const regie = sceneTestState.regie || {};
-  const ander = regie.eigenaar && regie.eigenaar.wie !== "operator" ? regie.eigenaar.wie : "";
-  const standaard = ander
-    ? `De regie is van ${ander} (${regie.stand}). Wacht tot die vrijgeeft.`
-    : !running && !enabled
-    ? "Aanzetten neemt de regie over (test); er start zo nodig een run."
-    : random.enabled
-      ? `Random. ${activeSituation ? `Nu: ${activeSituation.title}. ` : ""}${random.error || (random.next ? `Klaar: ${random.next.title}. Start en stop met de deck.` : "Scène kiezen...")}`
-    : enabled
-      ? `Testrun. ${activeSituation ? `Nu: ${activeSituation.title}. ` : ""}Kies een situatie, een omgeving of allebei en druk op Start scène.`
-      : "";
-  els.sceneTestMsg.textContent = message || standaard;
-  els.sceneTestMsg.style.color = error ? "var(--bad)" : "";
-}
+// Scènes testen staat in de regie (onderaan de pagina); hier blijft alleen de stand bijgehouden.
+function renderSceneTest() {}
 
 function klokTijd(iso) {
   const date = new Date(iso || "");
@@ -865,69 +838,6 @@ async function loadSceneTest() {
   sceneTestState = body;
   renderSceneTest();
   renderSync(body.sync);
-}
-
-async function toggleSceneTest() {
-  const enabled = els.sceneTestToggle.checked;
-  if (enabled && !sceneTestState.markedAt
-    && !confirm("Scènes testen neemt de regie over (test). Uitzetten geeft hem vrij: de scène stopt en de run gaat terug naar het begin. Doorgaan?")) {
-    renderSceneTest();
-    return;
-  }
-  try {
-    sceneTestState = await api("/v0/script-agent/operator/scene-test", {
-      method: "POST",
-      body: JSON.stringify({ enabled }),
-    });
-    renderSceneTest();
-    // Bij het aanzetten: lijsten van nu, en situatie en omgeving bij elkaar.
-    if (sceneTestState.enabled) {
-      await verversLijsten();
-      testKeuzeGelijk();
-      els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
-    }
-  } catch (err) {
-    renderSceneTest(err.message || "Scènes testen zetten lukte niet.", true);
-  }
-}
-
-// Random scènes testen: de dienst zet steeds een willekeurige scène klaar, nooit een startscène.
-async function toggleSceneTestRandom() {
-  const enabled = els.sceneTestRandom.checked;
-  if (enabled && !sceneTestState.markedAt
-    && !confirm("Random scènes testen neemt de regie over (random). Doorgaan?")) {
-    renderSceneTest();
-    return;
-  }
-  try {
-    sceneTestState = await api("/v0/script-agent/operator/scene-test/random", {
-      method: "POST",
-      body: JSON.stringify({ enabled }),
-    });
-    renderSceneTest();
-  } catch (err) {
-    renderSceneTest(err.message || "Random scènes testen zetten lukte niet.", true);
-  }
-}
-
-async function startTestScene() {
-  if (!els.situation.value && !els.environment.value) return;
-  els.sceneTestStart.disabled = true;
-  try {
-    // De regie laadt de scène (bewaard script of schrijven, zoals ingesteld op de regiepagina) en start hem.
-    renderSceneTest("Scène inladen en starten...");
-    const body = await api("/v0/script-agent/operator/scene-test/start", {
-      method: "POST",
-      body: JSON.stringify({ situationId: els.situation.value, environmentId: els.environment.value }),
-    });
-    sceneTestState = body.status || sceneTestState;
-    manualSelectionDirty = false;
-    renderSceneTest(`Gestart: ${body.title || "scène"}${body.environment ? ` in ${body.environment}` : ""}.`);
-  } catch (err) {
-    renderSceneTest(err.message || "Scène starten lukte niet.", true);
-  } finally {
-    els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
-  }
 }
 
 function parseSseBuffer(buffer, onEvent) {
@@ -1114,11 +1024,7 @@ document.querySelectorAll("[data-opmerking]").forEach((knop) => {
 });
 document.getElementById("opmerkingWis").addEventListener("click", () => withUiError(() => stuurOpmerking({ wis: true })));
 setInterval(() => api("/v0/script-agent/operator/opmerking").then(toonOpmerkingen).catch(() => {}), 3000);
-els.sceneTestToggle.addEventListener("change", () => toggleSceneTest());
-els.sceneTestRandom.addEventListener("change", () => toggleSceneTestRandom());
-els.sceneTestStart.addEventListener("click", () => startTestScene());
 els.situation.addEventListener("change", () => {
-  els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
   manualSelectionDirty = true;
   laatstGekozen = "situatie";
   updateSituationSelection({ preserveManualCharacters: false });
@@ -1173,12 +1079,7 @@ function matchEnvironmentToSituation() {
   renderSceneTest();
 }
 
-// Wat het laatst met de hand gekozen is, wint als de testmodus pas daarna aangaat.
 let laatstGekozen = "situatie";
-function testKeuzeGelijk() {
-  if (laatstGekozen === "omgeving") matchSituationToEnvironment();
-  else matchEnvironmentToSituation();
-}
 
 // Situaties en omgevingen die tijdens de run in de catalogus zijn gezet, komen in de lijsten
 // zonder de pagina te herladen. Wat gekozen is blijft staan.
@@ -1212,7 +1113,6 @@ setInterval(() => { if (sceneTestState.enabled) verversLijsten(); }, 10000);
 els.environment.addEventListener("change", () => {
   laatstGekozen = "omgeving";
   matchSituationToEnvironment();
-  els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
   manualSelectionDirty = true;
   updateEnvironmentPreview();
   sendManualDraftPreview();
@@ -1331,3 +1231,34 @@ async function boot() {
 }
 
 withUiError(boot);
+
+// Regie onderaan de pagina: de regiepagina van show control (:3025/regie/), ingebed. Vult het scherm
+// tot onderaan; de systeeminstellingen staan achter de knop Instellingen.
+(function regieOnderaan() {
+  // ?regiepoort=4325: de losse proef van de regie (modules/show-control/tests/regie-proef.js).
+  const poort = new URLSearchParams(location.search).get("regiepoort") || "3025";
+  const regieUrl = `${location.protocol}//${location.hostname}:${poort}/regie/`;
+  const venster = document.getElementById("regieVenster");
+  const los = document.getElementById("regieLos");
+  if (los) los.href = regieUrl;
+  if (venster) {
+    venster.src = `${regieUrl}?ingebed=1`;
+    const hoogte = () => {
+      const boven = venster.getBoundingClientRect().top + window.scrollY;
+      venster.style.height = `${Math.max(640, window.innerHeight - Math.min(boven, window.innerHeight * 0.55))}px`;
+    };
+    hoogte();
+    setTimeout(hoogte, 1500);
+    window.addEventListener("resize", hoogte);
+  }
+  const knop = document.getElementById("instellingenKnop");
+  const instellingen = document.querySelector(".system-settings");
+  if (knop && instellingen) {
+    knop.addEventListener("click", (event) => {
+      event.preventDefault();
+      instellingen.hidden = !instellingen.hidden;
+      knop.textContent = instellingen.hidden ? "Instellingen" : "Instellingen sluiten";
+      if (!instellingen.hidden) instellingen.scrollIntoView({ behavior: "smooth" });
+    });
+  }
+})();

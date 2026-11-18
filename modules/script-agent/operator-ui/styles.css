@@ -174,6 +174,20 @@ h2 {
   border-top: 1px solid var(--fg);
 }
 
+/* Regie onderaan, over de volle breedte; de hoogte vult het scherm (app.js). */
+.operator-regie {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--fg);
+  padding: 0;
+}
+.operator-regie iframe {
+  display: block;
+  width: 100%;
+  height: 900px;
+  border: 0;
+  background: var(--bg);
+}
+
 .panel {
   min-width: 0;
   padding: 16px 20px 20px;

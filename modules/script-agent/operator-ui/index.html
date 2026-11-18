@@ -18,13 +18,15 @@
         <a href="http://127.0.0.1:3024/runtime" target="_blank" rel="noreferrer">Runtime</a>
         <a href="http://127.0.0.1:3026/audience/admin" target="_blank" rel="noreferrer">Audience</a>
         <a href="http://127.0.0.1:4210" target="_blank" rel="noreferrer">Beat</a>
+        <a id="regieLos" href="#" target="_blank" rel="noreferrer">Regie</a>
+        <a id="instellingenKnop" href="#">Instellingen</a>
       </nav>
     </header>
 
     <main class="operator-shell">
       <section class="panel operator-left">
         <div class="section-head compact">
-          <h2>Regie</h2>
+          <h2>Script</h2>
           <button id="reloadCatalog" type="button">Herlaad</button>
         </div>
 
@@ -72,20 +74,6 @@
           </div>
           <p id="opmerkingStand" class="meta-line"></p>
         </div>
-        <div class="scene-test">
-          <label class="scene-test-toggle">
-            <input id="sceneTestToggle" type="checkbox">
-            <span>Scènes testen</span>
-          </label>
-          <button id="sceneTestStart" type="button" hidden>Start scène</button>
-        </div>
-        <div class="scene-test">
-          <label class="scene-test-toggle">
-            <input id="sceneTestRandom" type="checkbox">
-            <span>Random scènes testen</span>
-          </label>
-        </div>
-        <p id="sceneTestMsg" class="meta-line"></p>
         <p id="syncMsg" class="meta-line"></p>
         <p id="operatorMsg" class="meta-line"></p>
       </section>
@@ -169,7 +157,13 @@
         </section>
       </aside>
 
-      <section class="panel system-settings">
+      <!-- Regie (show control): stand, wie bedient, wat speelt en klaarstaat, scènes inladen. Eén weg,
+           dezelfde pagina als :3025/regie/. -->
+      <section class="panel operator-regie">
+        <iframe id="regieVenster" title="Regie"></iframe>
+      </section>
+
+      <section class="panel system-settings" hidden>
         <div class="section-head compact">
           <div>
             <h2>Systeeminstellingen</h2>
