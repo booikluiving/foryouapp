@@ -20,7 +20,8 @@ import os
 
 MAP = "/Users/for_you/ForYou/voorhoofd"
 BRON = "/project1/speler_zicht_1"
-KAART = "/Users/for_you/ForYou/main/modules/catalog/media/environments/environment_36/fx/bowlen-16423a4438ea27a7.jpg"
+VAK_URL = "http://127.0.0.1:3027/script-agent/teleprompter-parser/bord.html?vak=los"
+COMP = "/project1/comp1"       # hier komt het camerabeeld met het kaartje in, op de plek van speler_zicht_1
 
 
 def _nieuwste_plugin():
@@ -65,8 +66,19 @@ def maak_voorhoofd():
     info = _maak(c, infoCHOP, "waarden", 450, 0)
     info.par.op = volger
 
-    kaart = _maak(c, moviefileinTOP, "kaart", 0, -200)
-    kaart.par.file = KAART
+    oud = c.op("kaart")
+    if oud is not None and oud.OPType != "webrenderTOP":
+        oud.destroy()
+    kaart = _maak(c, webrenderTOP, "kaart", 0, -200)
+    kaart.par.url = VAK_URL
+    kaart.par.active = True
+    kaart.par.transparent = True
+    kaart.par.audio = "off"
+    kaart.par.alwayscook = True
+    kaart.par.maxrenderrate = 30
+    kaart.par.outputresolution = "custom"
+    kaart.par.resolutionw = 640
+    kaart.par.resolutionh = 640
 
     passend = _maak(c, fitTOP, "passend", 150, -200)
     passend.inputConnectors[0].connect(kaart)
@@ -88,7 +100,7 @@ def maak_voorhoofd():
     uit.inputConnectors[0].connect(geplaatst)
     uit.inputConnectors[1].connect(bron)
 
-    print("fy_voorhoofd klaar (los van de show, NIET bewaard); plugin", os.path.basename(plugin))
+    print("fy_voorhoofd klaar (NIET bewaard); plugin", os.path.basename(plugin))
     print("bron", op(BRON).width, "x", op(BRON).height, "klein", klein.width, "x", klein.height)
     return c
 
@@ -109,3 +121,26 @@ def _pomp():
 
 
 _pomp()
+
+
+def aansluiten():
+    # In de show: comp1 krijgt camera 1 mét kaartje. Terug: voorhoofd_los() of comp1 weer aan speler_zicht_1.
+    root = op("/project1")
+    zicht = op(BRON)
+    comp = op(COMP)
+    plek = [i.path for i in comp.inputs].index(zicht.path) if zicht in comp.inputs else None
+    sel = _maak(root, selectTOP, "voorhoofd_kaart_1", zicht.nodeX + 130, zicht.nodeY - 260)
+    sel.par.top = "/project1/fy_voorhoofd/geplaatst"
+    over = _maak(root, overTOP, "speler_voorhoofd_1", zicht.nodeX + 260, zicht.nodeY - 260)
+    over.inputConnectors[0].connect(sel)
+    over.inputConnectors[1].connect(zicht)
+    if plek is None:
+        if over in comp.inputs:
+            print("comp1 hing al aan speler_voorhoofd_1")
+            return
+        raise RuntimeError("comp1 hangt niet aan speler_zicht_1; niets aangesloten")
+    comp.inputConnectors[plek].connect(over)
+    print("aangesloten: comp1 ingang", plek, "= speler_voorhoofd_1")
+
+
+aansluiten()
