@@ -178,6 +178,12 @@ const CUES = {
     if (status.ok && status.body && status.body.stage && status.body.stage.streaming) return skip("CHAT\nBEZIG");
     return { request: post("/v0/show-control/cues/scene-to-chat", { name: "Stream Deck scene naar chat" }, 90000) };
   },
+  "overslaan": async () => {
+    const { rt, volgorde } = await volgordeNu();
+    if (!rt) return skip("SKIP\n--");
+    if (!volgorde.overslaan.mag) return skip(volgorde.overslaan.waarom);
+    return { bezig: "SKIP\n...", klaar: "SKIP\nOK", request: post("/v0/show-control/cues/overslaan", {}, 10000) };
+  },
   "teleprompter-ready": async () => {
     const { rt, volgorde } = await volgordeNu();
     if (!rt) return skip("READY\n--");

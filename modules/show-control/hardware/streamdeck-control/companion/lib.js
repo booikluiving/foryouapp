@@ -242,6 +242,8 @@ function showVolgorde(rt, tp, stem) {
     // Stemmen kan alleen in de startfase, tussen twee scènes. Loopt de stemming, dan sluit de knop hem.
     stem: algemeen || (stemLoopt ? mag : !startfase ? nee("STARTS\nKLAAR") : gekozen ? nee("AL\nGEKOZEN") : mag),
     chat: voorScene || mag,
+    // OVERSLAAN: de scène die klaarstaat vervalt; kan tot de scène start, ook vaker achter elkaar.
+    overslaan: voorScene || mag,
     ready_knop: voorScene || (ready ? nee("AL\nREADY") : gate.allowed ? mag : nee(geenTeleprompter ? "READY\n--" : "EERST\nCHAT")),
     // Stoppen mag altijd; starten pas als READY is gegeven voor de scène die klaarstaat.
     sit: !run ? nee("NO\nRUN") : scene ? mag : voorScene || (ready ? mag : nee(gate.allowed || geenTeleprompter ? "EERST\nREADY" : "EERST\nCHAT")),

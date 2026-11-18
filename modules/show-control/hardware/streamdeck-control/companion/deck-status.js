@@ -137,6 +137,7 @@ function compute(deck, g) {
       }
       else if (cue === "toggle-situation") { t = activeSit ? "STOP\nSCENE" : "START\nSCENE"; s = showRuns && activeRun && volgorde.sit.mag ? (activeSit ? "actief" : "klaar") : "uit"; }
       else if (cue === "scene-chat") { s = showRuns && volgorde.chat.mag ? "klaar" : "uit"; }
+      else if (cue === "overslaan") { s = showRuns && volgorde.overslaan.mag ? "klaar" : "uit"; }
       else if (cue === "teleprompter-ready") {
         // Is READY gegeven, dan blijft de knop aan tot de scène start.
         if (showRuns && volgorde.ready && !activeSit) { t = "READY\nOK"; s = "aan"; }
