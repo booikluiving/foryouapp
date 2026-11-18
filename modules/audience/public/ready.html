@@ -90,7 +90,10 @@
   el("knop").addEventListener("click", async () => {
     if (!stand || !stand.klaar || (stand.aftellenTot && stand.aftellenTot - verschil > Date.now())) return;
     const ready = !(stand.plekken || []).includes(plek);
-    toon(ready ? 880 : 440, ready ? 260 : 180);
+    // Hoe meer spelers ready, hoe hoger de toon (do, mi, sol).
+    const aantal = (stand.plekken || []).length + (ready ? 1 : 0);
+    const basis = [523, 659, 784][Math.min(2, Math.max(0, aantal - 1))];
+    toon(ready ? basis : basis * 0.75, ready ? 260 : 180);
     if (navigator.vibrate) navigator.vibrate(ready ? 60 : 20);
     // Meteen tonen, daarna de echte stand.
     stand.plekken = ready ? [...(stand.plekken || []), plek] : (stand.plekken || []).filter((p) => p !== plek);
