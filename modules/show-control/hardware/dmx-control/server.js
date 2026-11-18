@@ -408,20 +408,22 @@ function startKiezen(state, opties = {}, source = "http") {
   addActivity(state, { type: "effect-start", naam: "kiezen", source, piek, bodem, periodeMs });
 }
 
-// Lichtspel op de muziek van de loadingfase: de accentlampen pulsen op de kick. De muziekmotor
+// Lichtspel op de muziek van de loadingfase: elke kick licht de volgende lamp op, alle negen rond. De muziekmotor
 // meldt elke zestiende wat er klinkt (lichtspel, poort 4240); de instellingen (bodem, piek, verval,
 // kleur per versie) komen over dezelfde stroom, zodat schuiven op de bedienpagina meteen werkt.
-// Altijd wit: licht tussen de scènes heeft nooit kleur. De voorlampen blijven staan zoals ze
-// stonden. Elke andere lichtstand stopt het spel.
-const MUZIEK = Object.freeze({ bron: "http://127.0.0.1:4240/stroom", bodem: 8, piek: 30, vervalMs: 220, plafond: 120 });
+// Altijd wit: licht tussen de scènes heeft nooit kleur. Elke andere lichtstand stopt het spel.
+const MUZIEK = Object.freeze({ bron: "http://127.0.0.1:4240/stroom", bodem: 8, piek: 30, vervalMs: 350, plafond: 120 });
+// Elke kick gaat naar de volgende lamp, zodat het licht rondgaat. Volgorde in lampnummers.
+const MUZIEK_RONDE = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+const MUZIEK_WIT = 116;   // kleurtemperatuur van de voorlampen: neutraal wit
 
 function startMuziek(state, opties = {}, source = "http") {
   if (state.effect && state.effect.naam === "muziek") return;
   stopEffect(state, true);
   const bron = String(opties.bron || process.env.SHOW_CONTROL_DMX_MUZIEK_BRON || MUZIEK.bron);
-  const accent = LAMPEN.filter((lamp) => lamp.modus === "hsi");
-  const inst = { bodem: MUZIEK.bodem, piek: MUZIEK.piek, vervalMs: MUZIEK.vervalMs, wijze: "samen", vertragingMs: 0 };
-  const slagen = accent.map(() => 0);
+  const ronde = MUZIEK_RONDE.map((nummer) => LAMPEN[nummer - 1]).filter(Boolean);
+  const inst = { bodem: MUZIEK.bodem, piek: MUZIEK.piek, vervalMs: MUZIEK.vervalMs, vertragingMs: 0 };
+  const slagen = ronde.map(() => 0);
   let beurt = 0;
   let dicht = false;
   let verzoek = null;
@@ -434,11 +436,9 @@ function startMuziek(state, opties = {}, source = "http") {
       inst.bodem = Math.min(inst.piek, clampInt(w.bodem, 0, MUZIEK.plafond, inst.bodem));
       inst.vervalMs = clampInt(w.vervalMs, 40, 4000, inst.vervalMs);
       inst.vertragingMs = clampInt(w.vertragingMs, 0, 500, inst.vertragingMs);
-      inst.wijze = w.wijze === "rond" ? "rond" : "samen";
     } else if (bericht.t === "tel" && (Number(bericht.ev) & 1)) {
-      const op = Date.now() + inst.vertragingMs;
-      if (inst.wijze === "rond") { slagen[beurt % slagen.length] = op; beurt += 1; }
-      else slagen.fill(op);
+      slagen[beurt % slagen.length] = Date.now() + inst.vertragingMs;
+      beurt += 1;
     }
   };
 
@@ -464,13 +464,13 @@ function startMuziek(state, opties = {}, source = "http") {
 
   const stap = () => {
     const nu = Date.now();
-    accent.forEach((lamp, index) => {
+    ronde.forEach((lamp, index) => {
       const sinds = nu - slagen[index];
       const puls = slagen[index] && sinds >= 0 ? Math.exp(-sinds / inst.vervalMs) : 0;
       const kanaal = lamp.address - 1;
       state.channels[kanaal] = Math.round(inst.bodem + (inst.piek - inst.bodem) * puls);
-      state.channels[kanaal + 1] = 0;
-      state.channels[kanaal + 2] = 0;
+      state.channels[kanaal + 1] = lamp.modus === "hsi" ? 0 : MUZIEK_WIT;
+      state.channels[kanaal + 2] = lamp.modus === "hsi" ? 0 : 128;
     });
   };
 
