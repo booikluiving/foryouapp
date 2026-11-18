@@ -104,8 +104,9 @@ let bezig = false;
 function wie() {
   return $("wie").value.trim();
 }
-try { $("wie").value = localStorage.getItem("regie-wie") || ""; } catch (_e) {}
-$("wie").addEventListener("change", () => { try { localStorage.setItem("regie-wie", wie()); } catch (_e) {} teken(); });
+// Zonder naam bleven de knoppen grijs; standaard bedient "operator" (aanpassen mag).
+try { $("wie").value = localStorage.getItem("regie-wie") || "operator"; } catch (_e) { $("wie").value = "operator"; }
+$("wie").addEventListener("input", () => { try { localStorage.setItem("regie-wie", wie()); } catch (_e) {} teken(); });
 
 async function api(pad, body) {
   const antwoord = await fetch(`/v0/show-control/regie${pad}`, body === undefined ? {} : {
