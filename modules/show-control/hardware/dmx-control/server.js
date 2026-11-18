@@ -411,7 +411,8 @@ function startKiezen(state, opties = {}, source = "http") {
 // Lichtspel op de muziek van de loadingfase: de accentlampen pulsen op de kick. De muziekmotor
 // meldt elke zestiende wat er klinkt (lichtspel, poort 4240); de instellingen (bodem, piek, verval,
 // kleur per versie) komen over dezelfde stroom, zodat schuiven op de bedienpagina meteen werkt.
-// De voorlampen blijven staan zoals ze stonden. Elke andere lichtstand stopt het spel.
+// Altijd wit: licht tussen de scènes heeft nooit kleur. De voorlampen blijven staan zoals ze
+// stonden. Elke andere lichtstand stopt het spel.
 const MUZIEK = Object.freeze({ bron: "http://127.0.0.1:4240/stroom", bodem: 8, piek: 30, vervalMs: 220, plafond: 120 });
 
 function startMuziek(state, opties = {}, source = "http") {
@@ -419,7 +420,7 @@ function startMuziek(state, opties = {}, source = "http") {
   stopEffect(state, true);
   const bron = String(opties.bron || process.env.SHOW_CONTROL_DMX_MUZIEK_BRON || MUZIEK.bron);
   const accent = LAMPEN.filter((lamp) => lamp.modus === "hsi");
-  const inst = { bodem: MUZIEK.bodem, piek: MUZIEK.piek, vervalMs: MUZIEK.vervalMs, wijze: "samen", vertragingMs: 0, tint: 0, verzadiging: 0 };
+  const inst = { bodem: MUZIEK.bodem, piek: MUZIEK.piek, vervalMs: MUZIEK.vervalMs, wijze: "samen", vertragingMs: 0 };
   const slagen = accent.map(() => 0);
   let beurt = 0;
   let dicht = false;
@@ -434,8 +435,6 @@ function startMuziek(state, opties = {}, source = "http") {
       inst.vervalMs = clampInt(w.vervalMs, 40, 4000, inst.vervalMs);
       inst.vertragingMs = clampInt(w.vertragingMs, 0, 500, inst.vertragingMs);
       inst.wijze = w.wijze === "rond" ? "rond" : "samen";
-      inst.tint = clampInt(w.tint, 0, 360, inst.tint);
-      inst.verzadiging = clampInt(w.verzadiging, 0, 255, inst.verzadiging);
     } else if (bericht.t === "tel" && (Number(bericht.ev) & 1)) {
       const op = Date.now() + inst.vertragingMs;
       if (inst.wijze === "rond") { slagen[beurt % slagen.length] = op; beurt += 1; }
@@ -470,8 +469,8 @@ function startMuziek(state, opties = {}, source = "http") {
       const puls = slagen[index] && sinds >= 0 ? Math.exp(-sinds / inst.vervalMs) : 0;
       const kanaal = lamp.address - 1;
       state.channels[kanaal] = Math.round(inst.bodem + (inst.piek - inst.bodem) * puls);
-      state.channels[kanaal + 1] = Math.round((inst.tint / 360) * 255);
-      state.channels[kanaal + 2] = inst.verzadiging;
+      state.channels[kanaal + 1] = 0;
+      state.channels[kanaal + 2] = 0;
     });
   };
 
