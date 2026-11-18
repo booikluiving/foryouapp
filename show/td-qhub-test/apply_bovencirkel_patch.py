@@ -6,7 +6,8 @@
 # Het getal en de cirkellijn van de pagina blijven erboven. Tijdens de scène (fase 2) staat de laag uit,
 # omdat de pagina dan doorzichtig is; na de scène komt de laag pas terug als het vel van de pagina weer dicht is.
 # Na de klok, in Up next, toont de pagina het bovenaanzicht op een tweede plek (uDoel2) tot alle spelers ready
-# zijn. De laag tekent beide plekken; de pagina laat er steeds één zien (het deksel ligt op de andere).
+# zijn. De laag kijkt in de pagina (tweede ingang) op welke van de twee plekken het gat open is en tekent
+# de ring daar; de plekken mogen elkaar dus overlappen.
 #
 # Keten: fy_boven_ndi (NDI In) → fy_boven_cirkel (GLSL, 1080×1920) → fy_boven_onder = over(fy_boven_cirkel, bord_keuze)
 #        → hoofd_een (tweede ingang, was bord_keuze).
@@ -29,11 +30,23 @@ uniform vec3 uDoel;      // midden (x, y van linksboven) en straal op de pagina 
 uniform vec3 uDoel2;     // tweede plek op de pagina (Up next)
 uniform float uZicht;    // 0 tijdens de scène
 out vec4 fragColor;
+// Hoe open is het gat van de pagina op deze plek: gemeten op acht punten die niet in de andere plek liggen.
+float open(vec3 doel, vec3 ander) {
+    float o = 0.0;
+    for (int i = 0; i < 8; i++) {
+        float h = 6.2831853 * (float(i) + 0.5) / 8.0;
+        vec2 pt = doel.xy + 0.8 * doel.z * vec2(cos(h), sin(h));
+        if (distance(pt, ander.xy) < ander.z) continue;
+        o = max(o, 1.0 - texture(sTD2DInputs[1], vec2(pt.x / 1080.0, 1.0 - pt.y / 1920.0)).a);
+    }
+    return o;
+}
 void main() {
     vec2 pagina = vec2(vUV.s * 1080.0, (1.0 - vUV.t) * 1920.0);
     vec2 p = (pagina - uDoel.xy) / uDoel.z;          // -1..1 binnen de cirkel
     vec2 p2 = (pagina - uDoel2.xy) / max(uDoel2.z, 1.0);
-    if (length(p2) < length(p)) p = p2;
+    if (min(length(p), length(p2)) > 1.0) { fragColor = vec4(0.0); return; }
+    if (open(uDoel2, uDoel) > open(uDoel, uDoel2) + 0.02) p = p2;
     float d = length(p);
     float a = (1.0 - smoothstep(0.985, 1.0, d)) * uZicht;
     vec2 res = uTD2DInfos[0].res.zw;
@@ -70,6 +83,7 @@ else:
 
     gl = ouder.op('fy_boven_cirkel') or ouder.create(glslTOP, 'fy_boven_cirkel')
     gl.inputConnectors[0].connect(ndi)
+    gl.inputConnectors[1].connect(ouder.op('audience_tussen_web'))
     gl.par.pixeldat = dat
     gl.par.outputresolution = 'custom'
     gl.par.resolutionw, gl.par.resolutionh = 1080, 1920
