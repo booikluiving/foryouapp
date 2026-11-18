@@ -27,7 +27,7 @@ assert.throws(kapot((d) => { show(d).find((k) => k.key === "brent").plek = [0, 0
 assert.throws(kapot((d) => { d.ontwerp.soorten.run.kleur = d.ontwerp.standen.volgende.vlak; }), /al een standkleur/);
 assert.throws(kapot((d) => { d.ontwerp.soorten.run.standen.push("paars"); }), /stand paars bestaat niet/);
 assert.throws(kapot((d) => { show(d).find((k) => k.key === "cam1").actie = { link: "http://x" }; }), /een link is soort web/);
-assert.throws(kapot((d) => { show(d).find((k) => k.key === "nav_show_schermen").plek = [1, 7]; show(d).find((k) => k.key === "opname").plek = [3, 6]; }), /navigatie alleen in de onderste rij|mag niet in rij/);
+assert.throws(kapot((d) => { show(d).find((k) => k.key === "nav_show_schermen").plek = [1, 7]; show(d).find((k) => k.key === "af").plek = [3, 6]; }), /navigatie alleen in de onderste rij|mag niet in rij/);
 
 // --- deck-status: een nagebootste stand van de show ---
 const scene = { situationId: "situation:49", legacySituationId: 49, title: "Een" };
