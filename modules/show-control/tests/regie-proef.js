@@ -213,7 +213,7 @@ async function main() {
   assert.equal(r.status, 201);
   await new Promise((res) => setTimeout(res, 800)); toon();
 
-  stap("Vrijgeven: stop, reset, inloop, stand show");
+  stap("Vrijgeven: stop, stand show, run blijft");
   r = await post("/v0/show-control/regie/vrijgeven", {}, "escape-room");
   assert.equal(r.json.stand, "show"); toon();
 

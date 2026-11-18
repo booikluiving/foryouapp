@@ -34,9 +34,10 @@ Starten, stoppen, klaarzetten, overslaan en reset van de run gaan alleen via sho
 - Stand staat op de regiepagina `http://<show-mac>:3025/regie/` en in `GET /v0/show-control/regie`: `show` (pad en publiek kiezen), `test` of `random` (één eigenaar).
 - Een scène testen of bekijken: eerst de regie overnemen, met je eigen naam (bijvoorbeeld de naam van je sessie). Stuur bij elke vraag de kop `x-foryou-wie: <naam>` mee.
   - `POST /v0/show-control/regie/overnemen {"stand":"test"}`
-  - `POST /v0/show-control/regie/laad {"situationId":"situation:96","start":true}` (zonder schrijven: het laatst bewaarde script; `"schrijven":true` laat het taalmodel schrijven)
+  - `POST /v0/show-control/regie/laad {"situationId":"situation:96","start":true}` (het laatst bewaarde script; `"schrijven":true` laat het taalmodel schrijven)
+  - `POST /v0/show-control/regie/schrijf`: nieuw script voor de scène die klaarstaat
   - `POST /v0/show-control/regie/stop`, `/start`, `/random`
-  - Klaar: `POST /v0/show-control/regie/vrijgeven`. De scène stopt en de run gaat terug naar het begin.
+  - Klaar: `POST /v0/show-control/regie/vrijgeven`. De scène stopt en de stand wordt show; de run blijft (een testrun). Een voorstelling begint met RESET RUN + START RUN.
 - Heeft iemand anders de regie, dan krijg je 423 met de naam. Wacht, of vraag Booi. Neem nooit over met `forceer` zonder ja van Booi.
 - De knoppen in de zaal (Stream Deck, klikker, ready van de spelers) werken altijd.
 - Bewaker (in show control): kijkt om de paar seconden of TouchDesigner (fase) en de teleprompter (klaargezette scène) de runtime volgen en herstelt het; ziet een herstart van TouchDesigner aan de pid in `~/Library/Application Support/ForYouApp/td-show.json` (schrijft de TD-waakhond). Wat hij vond staat op de regiepagina onder Controle en in `GET /v0/show-control/regie` → `controle`.

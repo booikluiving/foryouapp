@@ -37,6 +37,7 @@
   #controleKop.fout { color:var(--fout); font-weight:700; }
   #controleLijst div { padding:3px 0; }
   .uitleg { color:var(--fg3); font-size:13px; margin:8px 0 0; }
+  .testrun { color:var(--let); }
 
   /* Ingebed onderaan de operatorpagina: links bediening, rechts de scènes. */
   body.ingebed header h1 { display:none; }
@@ -53,6 +54,7 @@
   <h1>For_You regie</h1>
   <span id="stand" class="stand">…</span>
   <span id="eigenaar" class="zacht"></span>
+  <span id="testrun" class="testrun" hidden>Testrun: RESET RUN voor de voorstelling</span>
 </header>
 <main>
   <div class="links">
@@ -63,9 +65,8 @@
       <button id="neemTest">Test overnemen</button>
       <button id="neemRandom">Random overnemen</button>
       <button id="vrij">Vrijgeven</button>
-      <label class="schakel"><input id="schrijven" type="checkbox"> Script schrijven</label>
     </div>
-    <p class="uitleg">Test en random: alleen jij bedient tot je vrijgeeft. Vrijgeven stopt de scène en zet de run terug naar het begin.</p>
+    <p class="uitleg">Test en random: alleen jij bedient tot je vrijgeeft. Vrijgeven stopt de scène; de run blijft staan. Een voorstelling begin je met RESET RUN en START RUN.</p>
   </section>
   <section>
     <h2>Nu</h2>
@@ -76,6 +77,7 @@
     <div class="rij">
       <button id="start" class="hoofd">Start</button>
       <button id="stop">Stop</button>
+      <button id="schrijf">Schrijf nieuw script</button>
       <button id="volgende">Random volgende</button>
     </div>
     <div id="melding"></div>
@@ -147,13 +149,13 @@ function teken() {
   $("speelt").textContent = run.speelt ? run.speelt.title || run.speelt.situationId : "–";
   $("klaar").textContent = run.klaar ? run.klaar.title || run.klaar.situationId : "–";
   $("omgeving").textContent = o.run && o.run.omgevingKlaar ? `in ${o.run.omgevingKlaar}` : "";
-  $("schrijven").checked = !!o.schrijven;
+  $("testrun").hidden = !(stand === "show" && run.testRun);
   const ik = mijn();
   const naam = !!wie();
   $("neemTest").disabled = bezig || !naam || (ik && stand === "test");
   $("neemRandom").disabled = bezig || !naam || (ik && stand === "random");
   $("vrij").disabled = bezig || !ik;
-  $("schrijven").disabled = bezig || !ik;
+  $("schrijf").disabled = bezig || !ik || !!run.speelt || !run.klaar;
   $("start").disabled = bezig || !ik || !!run.speelt || !run.klaar;
   $("stop").disabled = bezig || !ik || !run.speelt;
   $("volgende").disabled = bezig || !ik;
@@ -249,11 +251,12 @@ async function neem(stand) {
 
 $("neemTest").addEventListener("click", () => doe("Regie overnemen (test)…", () => neem("test")));
 $("neemRandom").addEventListener("click", () => doe("Regie overnemen (random)…", () => neem("random")));
-$("vrij").addEventListener("click", () => {
-  if (!confirm("Vrijgeven: de scène stopt en de run gaat terug naar het begin. Doorgaan?")) return;
-  doe("Vrijgeven…", () => api("/vrijgeven", {}));
-});
-$("schrijven").addEventListener("change", () => doe("", () => api("/schrijven", { schrijven: $("schrijven").checked })));
+$("vrij").addEventListener("click", () => doe("Vrijgeven…", () => api("/vrijgeven", {})));
+$("schrijf").addEventListener("click", () => doe("Script schrijven…", async () => {
+  const o = await api("/schrijf", {});
+  setTimeout(() => melding("Het script wordt geschreven: zie de operator-chat. READY kan zodra het er is."), 0);
+  return o;
+}));
 $("start").addEventListener("click", () => doe("Starten…", () => api("/start", {})));
 $("stop").addEventListener("click", () => doe("Stoppen…", () => api("/stop", {})));
 $("volgende").addEventListener("click", () => doe("Random scène inladen…", () => api("/random", {})));
