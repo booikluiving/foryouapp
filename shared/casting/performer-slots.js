@@ -261,4 +261,5 @@ module.exports = {
   canAssignCast,
   castWarningsForCharacters,
   performerSlotsForCharacters,
+  seededRandom,
 };

@@ -268,9 +268,23 @@ function buildManualPromptInput({ catalog = {}, runtimeState = null, body = {}, 
   const showRunId = runtimeState && runtimeState.showRunId
     ? normalizeSessionId(runtimeState.showRunId)
     : normalizeSessionId(body.sessionId || "show_default");
-  const performerSlots = performerSlotsForManual(characters, catalog.performers || []);
+  // Invulscène: de runtime heeft de willekeurige plek al ingevuld en een speler geloot.
+  // Zelfde scène en dezelfde personages: neem die invulling en plekken over.
+  const resolved = runtimeState && runtimeState.resolvedPreparedNext;
+  const ingevuld = resolved && normalizeId(resolved.situationId) === normalizeId(situation.id) && Array.isArray(resolved.ingevuld)
+    ? resolved.ingevuld
+    : [];
+  const resolvedIds = uniqueIds((resolved && resolved.characters || []).map((item) => item.id));
+  const sameCast = ingevuld.length && resolvedIds.length === characterIds.length
+    && characterIds.every((id) => resolvedIds.includes(id));
+  const performerSlots = sameCast && Array.isArray(resolved.performerSlots) && resolved.performerSlots.length
+    ? JSON.parse(JSON.stringify(resolved.performerSlots))
+    : performerSlotsForManual(characters, catalog.performers || []);
+  const promptSituation = ingevuld.length
+    ? { ...situation, promptText: ingevuld.reduce((out, entry) => out.split(`{${entry.placeholder}}`).join(entry.name), displayDescription(situation)) }
+    : situation;
   const promptText = buildManualPromptText({
-    situation,
+    situation: promptSituation,
     environment,
     characters,
     extra: body.extra,

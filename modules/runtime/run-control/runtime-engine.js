@@ -543,7 +543,15 @@ function recentSlotIndexesFor(state) {
     .filter((slotIndexes) => slotIndexes.length);
 }
 
-function choosePreparedNext({ catalog, eligiblePool, reason = "runtime_order", recentSlotIndexes = [] }) {
+// Personages van de laatste scène van de run (de spelende of de vorige): een invulscène
+// trekt die liever niet meteen opnieuw.
+function recentCharacterIdsFor(state) {
+  const runs = (state && state.situationRuns) || [];
+  const last = runs.length ? runs[runs.length - 1] : null;
+  return ((last && last.resolved && last.resolved.characterIds) || []).slice();
+}
+
+function choosePreparedNext({ catalog, eligiblePool, reason = "runtime_order", recentSlotIndexes = [], recentCharacterIds = [] }) {
   if (!eligiblePool || eligiblePool.length === 0) return null;
   const candidate = eligiblePool[0];
   const seed = crypto.createHash("sha256")
@@ -562,6 +570,7 @@ function choosePreparedNext({ catalog, eligiblePool, reason = "runtime_order", r
       preparedNext: candidate,
       seed,
       recentSlotIndexes,
+      recentCharacterIds,
     }),
   };
 }
@@ -591,6 +600,7 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
     eligiblePool,
     reason,
     recentSlotIndexes: recentSlotIndexesFor(state),
+    recentCharacterIds: recentCharacterIdsFor(state),
   });
   state.pathEvaluation = pathEvaluation;
   state.eligiblePool = eligiblePool;
@@ -1287,7 +1297,7 @@ async function prepareChosenSituation(state, clients, options = {}) {
     .digest("hex")
     .slice(0, 16);
   const candidate = { situationId: situation.id, legacySituationId: situation.legacyId, title: situation.title };
-  state.resolvedPreparedNext = materializePreparedNext({ catalog, preparedNext: candidate, seed, environmentId: wantedEnvironmentId, recentSlotIndexes: recentSlotIndexesFor(state) });
+  state.resolvedPreparedNext = materializePreparedNext({ catalog, preparedNext: candidate, seed, environmentId: wantedEnvironmentId, recentSlotIndexes: recentSlotIndexesFor(state), recentCharacterIds: recentCharacterIdsFor(state) });
   state.preparedNext = { ...candidate, chosenAt, reason: "operator_chosen", seed, ...(options.testRun === true ? { testKeuze: true } : {}) };
   state.updatedAt = chosenAt;
   appendRunLog(state, {
