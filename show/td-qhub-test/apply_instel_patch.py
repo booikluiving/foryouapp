@@ -17,8 +17,7 @@ Wat het doet, in /project1:
   instel_cam_N (Select: camN, de gekeyde camera) -> instel_key_N (Over: camera over wit, zodat
     een randje of kleurrest van de key meteen opvalt; instel_wit, 1080x1920)
   instel_wissel_N (Switch: rauw / key, index uit instel keyN)
-  instel_tekst_N (Text: balk bovenaan met RAUW of KEY en "hand omhoog = wissel")
-  instel_N (Over: tekst over het beeld)
+  instel_N (Null): het beeld, zonder tekst erover (de randen van de key moeten te zien zijn)
 - select_camN_0 (links op teleprompter N in fase 0) kiest instel_N als instel aan staat, anders
   wat hij al koos.
 - instel_universum (Fit: Inloop naar 1312x1080) wordt ingang 0 van switch6/7/8 (rechts op de
@@ -242,27 +241,16 @@ def apply_instel_patch():
         wissel.inputConnectors[0].connect(rauwfit)
         wissel.inputConnectors[1].connect(key)
         _expr(wissel.par.index, "op('/project1/instel')['key%d']" % nummer)
-        # Een donkere balk bovenaan met RAUW of KEY: leesbaar op het camerabeeld én op wit (onderaan
-        # snijdt de teleprompter het beeld iets af).
-        tekst = _get_or_create(root, textTOP, "instel_tekst_%d" % nummer, x + 600, y + dy - 150)
-        _set_par(tekst, "outputresolution", "custom")
-        _set_par(tekst, "resolutionw", 1080)
-        _set_par(tekst, "resolutionh", 230)  # de teleprompter snijdt bovenaan ± 60 pixels af
-        _expr(tekst.par.text, "('KEY' if op('/project1/instel')['key%d'] else 'RAUW') + '  ·  hand omhoog = wissel'" % nummer)
-        _set_par(tekst, "fontsizex", 34)
-        _set_par(tekst, "alignx", "center")
-        _set_par(tekst, "aligny", "center")
-        for kanaal, waarde in (("bgcolorr", 0), ("bgcolorg", 0), ("bgcolorb", 0), ("bgalpha", 0.75)):
-            _set_par(tekst, kanaal, waarde)
-        beeld = _get_or_create(root, overTOP, "instel_%d" % nummer, x + 800, y + dy)
-        beeld.inputConnectors[0].connect(tekst)
-        beeld.inputConnectors[1].connect(wissel)
-        _set_par(beeld, "outputresolution", "custom")
-        _set_par(beeld, "resolutionw", 1080)
-        _set_par(beeld, "resolutionh", 1920)
-        _set_par(beeld, "prefit", "nativeres")
-        _set_par(beeld, "justifyv", "top")
-        _set_par(beeld, "justifyh", "center")
+        # Geen tekst of balk over het beeld (Booi): de spelers moeten de randen van de key kunnen zien.
+        for oud_naam in ("instel_tekst_%d" % nummer,):
+            oud_op = root.op(oud_naam)
+            if oud_op is not None:
+                oud_op.destroy()
+        beeld = root.op("instel_%d" % nummer)
+        if beeld is not None and beeld.type != "null":
+            beeld.destroy()
+        beeld = _get_or_create(root, nullTOP, "instel_%d" % nummer, x + 800, y + dy)
+        beeld.inputConnectors[0].connect(wissel)
         # Links op teleprompter N in fase 0: het instelbeeld zolang de instelstand aan staat.
         _expr(select.par.top, INSTEL_LINKS_EXPR % (nummer, oud))
 
