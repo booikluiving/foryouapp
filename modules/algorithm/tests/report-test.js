@@ -61,18 +61,20 @@ assert.equal(report.stats.heartsPerMinute, 7);
 assert.equal(report.stats.heartShare, 67);
 assert.equal(report.stats.best.title, "Een");
 assert.equal(report.stats.worst.title, "Twee");
-assert.deepEqual(report.scenes[0].calculation, { raw: 11.05, roomSound: 0, cameraLaugh: 0, cameraBored: 0, durationFactor: 1, audienceFactor: 0.32 });
+// Zonder telefoongegevens: 12 likes en 1 saai over 10 kijkers (hooguit 10 per telefoon) = 0,11 × 0,5.
+assert.equal(report.scenes[0].calculation.likes, 0.11);
+assert.equal(report.scenes[0].calculation.telefoons, 10);
+assert.equal(report.scenes[0].calculation.oordeel, null);
+assert.equal(report.scenes[0].calculation.punten.likes, 0.055);
 assert.equal(leeg.stats.heartShare, null);
 
-// Zaalgeluid telt alleen mee als het gewicht is ingesteld.
+// Zaalgeluid en publiekscamera tellen alleen mee als hun gewicht is ingesteld (standaard 0).
 const { observedScoreForEvent } = require("../scoring/score-engine");
-const metGeluid = { durationSeconds: 60, audience: { activeClients: 1 }, chatAppSignals: { heartCount: 10, boredCount: 0, rawMessages: [] }, roomSound: { averageDb: 60, peakDb: 80, liftDb: 20 } };
-assert.equal(observedScoreForEvent(metGeluid, {}), 10);
-assert.equal(observedScoreForEvent(metGeluid, { weights: { roomSound: 0.5 } }), 20);
-
-// Publiekscamera: lachmomenten en saaie momenten tellen met hun gewicht (standaard +2 en −2).
+const metGeluid = { audience: { activeClients: 1 }, chatAppSignals: { heartCount: 10, boredCount: 0, rawMessages: [] }, roomSound: { averageDb: 60, peakDb: 80, liftDb: 20 } };
+assert.equal(observedScoreForEvent(metGeluid, {}), 0.5);
+assert.equal(observedScoreForEvent(metGeluid, { weights: { roomSound: 0.5 } }), 10.5);
 const metCamera = { ...metGeluid, roomSound: null, camera: { seconds: 60, laughMoments: 3, boredMoments: 1 } };
-assert.equal(observedScoreForEvent(metCamera, {}), 14);
-assert.equal(observedScoreForEvent(metCamera, { weights: { cameraLaugh: 0, cameraBored: 0 } }), 10);
+assert.equal(observedScoreForEvent(metCamera, {}), 0.5);
+assert.equal(observedScoreForEvent(metCamera, { weights: { cameraLaugh: 2, cameraBored: -2 } }), 4.5);
 
 console.log("publieksrapport: ok");

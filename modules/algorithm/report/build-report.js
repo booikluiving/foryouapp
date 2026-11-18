@@ -4,12 +4,9 @@
 // personage, en wat het algoritme daardoor verwacht van de scènes die nog komen.
 
 const {
-  audienceFactor,
-  durationFactor,
   normalizeAlgorithmConfig,
-  cameraMoments,
-  cameraPoints,
-  roomSoundLift,
+  personagesUitCatalogus,
+  scoreOnderdelen,
   signalCounts,
   labelTrek,
   personageFavorieten,
@@ -64,6 +61,24 @@ function buildAudienceReport(state = {}) {
   const observations = Array.isArray(state.observations) ? state.observations : [];
   const config = normalizeAlgorithmConfig(state.config || {});
   const weights = config.weights || {};
+  const personages = personagesUitCatalogus(state.catalog);
+  const berekening = (observation) => {
+    const delen = observation.scoreDelen && observation.scoreDelen.punten
+      ? observation.scoreDelen
+      : scoreOnderdelen(observation, config, { personages });
+    return {
+      oordeel: delen.oordeel,
+      oordeelStemmen: delen.oordeelStemmen || 0,
+      chat: delen.chat,
+      chatBerichten: delen.chatBerichten || 0,
+      likes: delen.likes,
+      telefoons: delen.telefoons,
+      punten: delen.punten,
+      zaalgeluid: delen.zaalgeluid || 0,
+      camera: delen.camera || 0,
+      totaal: delen.totaal,
+    };
+  };
 
   const scenes = observations.map((observation, index) => {
     const situation = situations.get(observation.situationId) || {};
@@ -90,15 +105,8 @@ function buildAudienceReport(state = {}) {
       score: round(observation.observedScore),
       heartsPerMinute: round(counts.hearts / (counts.durationSeconds / 60), 1),
       // De som achter de score, zodat te zien is waar het getal vandaan komt.
-      calculation: {
-        raw: round((counts.hearts * Number(weights.heart)) + (counts.bored * Number(weights.bored)) + (counts.messages * Number(weights.message))
-          + (roomSoundLift(observation) * Number(weights.roomSound || 0)) + cameraPoints(observation, weights)),
-        roomSound: round(roomSoundLift(observation) * Number(weights.roomSound || 0)),
-        cameraLaugh: round(cameraMoments(observation).laugh * Number(weights.cameraLaugh || 0)),
-        cameraBored: round(cameraMoments(observation).bored * Number(weights.cameraBored || 0)) + 0,
-        durationFactor: round(durationFactor(counts.durationSeconds, config)),
-        audienceFactor: round(audienceFactor(counts.activeClients, config)),
-      },
+      // De som achter de score: oordeel, chat en likes (elk van -1 tot 1) keer hun gewicht.
+      calculation: berekening(observation),
       roomSound: sound,
       camera: observation.camera && typeof observation.camera === "object" ? observation.camera : null,
     };
@@ -197,6 +205,7 @@ function buildAudienceReport(state = {}) {
       bySituation: Object.fromEntries(forecast.map((item) => [item.situationId, item.predictedScore])),
     },
     weights,
+    grenzen: config.grenzen,
   };
 }
 

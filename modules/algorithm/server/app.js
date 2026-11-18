@@ -16,6 +16,7 @@ const {
   observeAudienceSignals,
   observeLabelVoorkeur,
   observePersonageVoorkeur,
+  observeSceneOordeel,
   observeSituation,
   readAlgorithmConfig,
   simulateSituationObservation,
@@ -142,6 +143,12 @@ function createAlgorithmApp(options = {}) {
   // Publieksvraag na de scène: meer of minder van het label van die scène.
   app.post("/v0/algorithm/events/label-voorkeur", asyncRoute(async (req, res) => {
     const result = await observeLabelVoorkeur(req.body || {});
+    res.status(result.ok ? 201 : 400).json(result);
+  }));
+
+  // Publieksvraag na de scène: wat vond je van de scène (het oordeel, het zwaarste deel van de score).
+  app.post("/v0/algorithm/events/scene-oordeel", asyncRoute(async (req, res) => {
+    const result = await observeSceneOordeel(req.body || {});
     res.status(result.ok ? 201 : 400).json(result);
   }));
 

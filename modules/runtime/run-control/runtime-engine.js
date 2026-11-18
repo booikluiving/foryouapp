@@ -603,6 +603,52 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
   return state;
 }
 
+// Keuzes van het algoritme zelf; alleen die mogen na het oordeel opnieuw gekozen worden. Een keuze van
+// de operator, de winnaar van een stemming of een vastgehouden testscène blijft staan.
+const OPNIEUW_TE_KIEZEN = new Set([
+  "start_run",
+  "runtime_order",
+  "after_start_situation",
+  "after_stop_situation",
+  "after_situation_finalized",
+  "after_previous_situation",
+  "after_test_run_off",
+  "after_beoordeling",
+]);
+
+// Na het oordeel van het publiek (de stemronde na de scène is dicht): de volgende scène opnieuw kiezen
+// met de nieuwste scores. Niet als er al een scène speelt, in de startfase, of als de keuze niet van
+// het algoritme is. Geeft { gekozen, reden, vorige, situationId }.
+async function kiesOpnieuwNaOordeel(state, clients, options = {}) {
+  normalizeRuntimeDerivedState(state);
+  const vorige = state.preparedNext ? state.preparedNext.situationId : null;
+  const uit = (reden) => ({ gekozen: false, reden, vorige, situationId: vorige });
+  if (!state || state.status !== "running") return uit("geen_lopende_run");
+  if (state.activeSituation) return uit("scene_speelt");
+  if (state.startPhase && state.startPhase.active) return uit("startfase");
+  if (state.preparedNext && !OPNIEUW_TE_KIEZEN.has(String(state.preparedNext.reason || ""))) return uit(`keuze_blijft:${state.preparedNext.reason}`);
+  if (clients && typeof clients.fetchAlgorithmScoreFeed === "function") {
+    try {
+      const feed = await clients.fetchAlgorithmScoreFeed(state.showRunId);
+      if (feed && Array.isArray(feed.scores)) receiveScores(state, { ...feed, source: "algorithm_na_oordeel" });
+    } catch (err) {
+      appendRunLog(state, { type: "score_feed_na_oordeel_mislukt", at: new Date().toISOString(), error: String(err && err.message || err) });
+    }
+  }
+  await computeAndSetPreparedNext(state, clients, "after_beoordeling");
+  const situationId = state.preparedNext ? state.preparedNext.situationId : null;
+  appendRunLog(state, {
+    type: "opnieuw_gekozen_na_oordeel",
+    at: new Date().toISOString(),
+    situationRunId: options.situationRunId || null,
+    vorige,
+    situationId,
+    veranderd: vorige !== situationId,
+  });
+  if (!options.skipSave) await saveRunState(state);
+  return { gekozen: true, reden: "after_beoordeling", vorige, situationId };
+}
+
 async function refreshEligiblePool(state, clients, reason = "runtime_refresh") {
   normalizeRuntimeDerivedState(state);
   const playedSituationIds = (state.playedSituations || []).map((item) => item.situationId);
@@ -1376,6 +1422,7 @@ async function resetRun(state) {
 
 module.exports = {
   assertNoAlgorithmRuntimeOwnershipFields,
+  kiesOpnieuwNaOordeel,
   buildEligiblePool,
   computeAndSetPreparedNext,
   createIdleRuntimeState,

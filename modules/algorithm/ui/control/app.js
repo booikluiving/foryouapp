@@ -11,9 +11,12 @@
   };
 
   const controls = [
-    { id: "heart", label: "Heart weight", group: "weights", key: "heart", min: -10, max: 10, step: 0.1 },
-    { id: "bored", label: "Bored weight", group: "weights", key: "bored", min: -10, max: 10, step: 0.1 },
-    { id: "message", label: "Chat/message weight", group: "weights", key: "message", min: -10, max: 10, step: 0.05 },
+    { id: "oordeel", label: "Oordeel na de scène", group: "weights", key: "oordeel", min: 0, max: 10, step: 0.1 },
+    { id: "chat", label: "Chat (positief/negatief)", group: "weights", key: "chat", min: 0, max: 10, step: 0.1 },
+    { id: "likes", label: "Likes tijdens de scène", group: "weights", key: "likes", min: 0, max: 10, step: 0.1 },
+    { id: "chatNaam", label: "Naam in de chat (deel van een stem)", group: "weights", key: "chatNaam", min: 0, max: 10, step: 0.1 },
+    { id: "likesPerTelefoon", label: "Likes per telefoon (hooguit)", group: "grenzen", key: "likesPerTelefoon", min: 1, max: 100, step: 1 },
+    { id: "chatPerTelefoon", label: "Chatberichten per telefoon (hooguit)", group: "grenzen", key: "chatPerTelefoon", min: 1, max: 20, step: 1 },
     { id: "cameraLaugh", label: "Camera: lachmoment", group: "weights", key: "cameraLaugh", min: -10, max: 10, step: 0.1 },
     { id: "cameraBored", label: "Camera: saai moment", group: "weights", key: "cameraBored", min: -10, max: 10, step: 0.1 },
     { id: "timeCorrection", label: "Time correction", group: "normalization", key: "timeCorrection", min: 0, max: 1, step: 0.05 },
@@ -71,6 +74,7 @@
     if (!config) return 0;
     if (control.group === "weights") return Number((config.weights || {})[control.key] || 0);
     if (control.group === "normalization") return Number((config.normalization || {})[control.key] || 0);
+    if (control.group === "grenzen") return Number((config.grenzen || {})[control.key] || 0);
     return Number(config[control.key] || 0);
   }
 
@@ -98,11 +102,12 @@
   }
 
   function readConfigPayload() {
-    const payload = { weights: {}, normalization: {} };
+    const payload = { weights: {}, normalization: {}, grenzen: {} };
     for (const control of controls) {
       const value = Number($(`config-${control.id}`).value);
       if (control.group === "weights") payload.weights[control.key] = value;
       else if (control.group === "normalization") payload.normalization[control.key] = value;
+      else if (control.group === "grenzen") payload.grenzen[control.key] = value;
       else payload[control.key] = value;
     }
     return payload;

@@ -5,6 +5,7 @@ const path = require("node:path");
 const { RUNTIME_STATE_SCHEMA_VERSION } = require("../../../shared/contracts/runtime-v0");
 const {
   fetchAlgorithmConfigSnapshot,
+  fetchAlgorithmScoreFeed,
   evaluatePaths,
   fetchAudienceAlgorithmInput,
   fetchCatalogSnapshot,
@@ -14,6 +15,7 @@ const {
 } = require("../client/service-clients");
 const {
   finalizePendingSituation,
+  kiesOpnieuwNaOordeel,
   normalizeRuntimeDerivedState,
   prepareChosenSituation,
   previousSituation,
@@ -45,6 +47,7 @@ function asyncRoute(handler) {
 function runtimeClients() {
   return {
     fetchAlgorithmConfigSnapshot,
+    fetchAlgorithmScoreFeed,
     fetchAudienceAlgorithmInput,
     fetchCatalogSnapshot,
     fetchPathsSnapshot,
@@ -380,6 +383,18 @@ function createRuntimeApp(options = {}) {
     }
     await persistRunState(next);
     res.json(next);
+  }));
+
+  // Het publiek heeft na de scène gestemd: de volgende scène opnieuw kiezen met de nieuwste scores.
+  app.post("/v0/runtime/runs/:showRunId/kies-opnieuw", asyncRoute(async (req, res) => {
+    const state = await readRunStateCached(req.params.showRunId);
+    const uitkomst = await kiesOpnieuwNaOordeel(state, clients, { ...(req.body || {}), skipSave: true });
+    if (uitkomst.gekozen) await persistRunState(state);
+    res.json({
+      ok: true,
+      ...uitkomst,
+      title: state.preparedNext ? state.preparedNext.title : null,
+    });
   }));
 
   // Scènes testen aan of uit: maakt de lopende run een testrun (blijft zo tot de reset).
