@@ -1,6 +1,6 @@
 "use strict";
 
-// Tekent per knop en per stand de achtergrond (72×72 PNG) volgens het ontwerpsysteem
+// Tekent per knop en per stand de achtergrond (288×288 PNG, Companion verkleint naar de knop) volgens het ontwerpsysteem
 // (deck.json → ontwerp, uitleg in ONTWERP.md): strook bovenaan = soort, vlak = stand.
 // Uitvoer: plaatjes.json  { "<key>": { "<stand>": "<base64 png>" } }
 // De tekst zet Companion erop; die zit niet in het plaatje.
@@ -15,6 +15,8 @@ const { DIR, allButtons, loadDeck } = require("./lib");
 
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const SIZE = 72;
+// scherp op elk scherm: tekenen op 4× en Companion verkleint het naar de knop
+const SCHAAL = 4;
 
 function standenVoor(deck, knop) {
   if (knop.soort === "nav") return ["kan"];
@@ -37,10 +39,10 @@ function jobs(deck) {
 }
 
 const PAGE = (data, standen) => `<!doctype html><meta charset="utf-8"><body><textarea id="out"></textarea><script>
-const S=${SIZE}, JOBS=${JSON.stringify(data)}, ST=${JSON.stringify(standen)};
+const S=${SIZE}, K=${SCHAAL}, JOBS=${JSON.stringify(data)}, ST=${JSON.stringify(standen)};
 const STROOK=14;
 function draw(j){
-  const c=document.createElement("canvas");c.width=c.height=S;const g=c.getContext("2d");
+  const c=document.createElement("canvas");c.width=c.height=S*K;const g=c.getContext("2d");g.scale(K,K);
   const st=ST[j.knip?j.basis:j.stand];
   // vlak
   g.fillStyle = j.knip || j.soort==="nav" ? "#000000" : st.vlak; g.fillRect(0,0,S,S);
