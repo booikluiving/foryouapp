@@ -1,6 +1,6 @@
 // GPU auto-key, pas 1: key-alfa.
 // in0 = camera, in1 = kalibratieraster (R = blauw-niveau papier per vak, G/B = papiertint r,g)
-uniform vec4 uKey;   // x = key onder, y = key boven, z = tint-tolerantie
+uniform vec4 uKey;   // x = key onder, y = key boven, z = tint-tolerantie (schuif Tint)
 out vec4 fragColor;
 
 vec3 calibAt(vec2 uv)

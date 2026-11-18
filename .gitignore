@@ -43,3 +43,4 @@ modules/runtime/.tmp-ui-db/
 show/greenscreen/status/
 show/greenscreen/models/*.mlpackage/
 modules/show-control/tools/speel-fade/speel-fade
+show/greenscreen/instellingen/
