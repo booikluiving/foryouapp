@@ -108,6 +108,16 @@
     return el;
   }
 
+  // Kaarten voor het vak worden één keer gemaakt en daarna hergebruikt: een nieuw <img> is het eerste
+  // beeld nog leeg (zwart vak), een kaart die al eens getoond is niet.
+  const vakKaarten = new Map();
+  function vakKaart(naam) {
+    if (!vakKaarten.has(naam)) vakKaarten.set(naam, kaart(naam));
+    const el = vakKaarten.get(naam);
+    el.style.visibility = "";
+    return el;
+  }
+
   function tekenBord() {
     bordEl.textContent = "";
     plekken.forEach((naam, i) => {
@@ -152,7 +162,7 @@
     terugNaarStart();
     nieuw.textContent = "";
     const kaarten = rest.map((naam) => {
-      const el = kaart(naam);
+      const el = vakKaart(naam);
       el.style.visibility = "hidden";
       nieuw.appendChild(el);
       return el;
@@ -174,7 +184,7 @@
     open = naam;
     terugNaarStart();
     nieuw.textContent = "";
-    nieuw.appendChild(kaart(naam));
+    nieuw.appendChild(vakKaart(naam));
     nieuw.classList.remove("weg");
     leg();
   }
@@ -292,6 +302,8 @@
       sleutel = nieuweSleutel;
       namen = tp.bord.namen.slice();
       namen.forEach(laad);
+      // Alle vakkaarten meteen in het vak (onzichtbaar), zodat ze al gedecodeerd zijn als ze aan de beurt zijn.
+      namen.forEach((naam) => { const el = vakKaart(naam); el.style.visibility = "hidden"; nieuw.appendChild(el); });
       stappen = (tp.bord.begin || []).map((stap) => ({ ...stap, cue: 0 }));
       (tp.lines || []).forEach((line, i) => {
         (line.bord || []).forEach((stap) => stappen.push({ ...stap, cue: i + 1 }));
