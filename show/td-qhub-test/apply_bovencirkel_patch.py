@@ -95,7 +95,7 @@ else:
     gl.par.vec2valuex, gl.par.vec2valuey, gl.par.vec2valuez = 540, 590, 228
     gl.par.vec3name = 'uZicht'
     gl.par.vec4name = 'uDoel2'
-    gl.par.vec4valuex, gl.par.vec4valuey, gl.par.vec4valuez = 540, 790, 228
+    gl.par.vec4valuex, gl.par.vec4valuey, gl.par.vec4valuez = 540, 790, 273
     # Zicht: 0 tijdens de scène. Na de scène blijft de laag nog 0,8 s uit (het vel van de pagina schuift dan
     # nog terug) en vloeit daarna in 0,2 s in; bij het begin van de scène meteen weg.
     fase = ouder.op('fy_boven_fase') or ouder.create(constantCHOP, 'fy_boven_fase')
