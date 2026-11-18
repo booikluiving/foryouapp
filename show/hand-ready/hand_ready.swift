@@ -1,6 +1,6 @@
 // Hand omhoog = ready. Kijkt naar de strook met de drie spelers die TouchDesigner wegschrijft
 // (~/ForYou/spelerbeeld/strook_0..2.jpg, drie beelden naast elkaar: plek 1, 2, 3). Houdt een speler
-// een hand omhoog (pols boven de schouder) twee seconden vast, dan meldt dit programma die speler
+// een hand omhoog (onderarm rechtop) een seconde vast, dan meldt dit programma die speler
 // als ready bij de publieksdienst (POST /audience/ready/speler). Hand omlaag zet ready niet terug.
 // Alleen tussen de scènes, als er een scène klaarstaat (GET /audience/ready/stand → klaar).
 //
@@ -17,7 +17,7 @@ func opt(_ naam: String) -> String? {
 }
 let map = (opt("--map") ?? "~/ForYou/spelerbeeld").replacingOccurrences(of: "~", with: NSHomeDirectory())
 let server = opt("--server") ?? "http://127.0.0.1:3026"
-let vastSeconden = Double(opt("--vast") ?? "2.0") ?? 2.0
+let vastSeconden = Double(opt("--vast") ?? "1.0") ?? 1.0
 let droog = argv.contains("--droog")
 let eenmaal = opt("--eenmaal")
 let minVertrouwen: Float = 0.3
