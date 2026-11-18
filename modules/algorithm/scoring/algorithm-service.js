@@ -304,6 +304,11 @@ function telefoonsUitRefs(event = {}) {
   return per;
 }
 
+function livePerTelefoon(state, situationRunId) {
+  const live = state && state.liveAudienceObservation;
+  return live && live.situationRunId === situationRunId && live.perTelefoon ? cloneJson(live.perTelefoon) : null;
+}
+
 // De chatberichten van mensen (geen bots) in een observatie.
 function menselijkeChat(observation = {}) {
   return (Array.isArray(observation.rawChat) ? observation.rawChat : [])
@@ -352,7 +357,9 @@ async function buildObservation(event, state) {
     roomSound: normalizeRoomSound(sourceEvent.roomSound),
     camera: normalizeCamera(sourceEvent.camera),
     rawChat: Array.isArray(sourceEvent.rawChat) ? cloneJson(sourceEvent.rawChat) : [],
-    perTelefoon: telefoonsUitRefs(sourceEvent),
+    // De runtime stuurt bij het einde alleen de totalen mee; de likes per telefoon komen dan uit de
+    // laatste live stand van dezelfde scène.
+    perTelefoon: telefoonsUitRefs(sourceEvent) || livePerTelefoon(state, sourceEvent.situationRunId),
     finalizedFromAudienceAggregate: !!sourceEvent.finalizedFromAudienceAggregate,
     finalizedFromLiveAudience: !!sourceEvent.finalizedFromLiveAudience,
     observedScore: 0,

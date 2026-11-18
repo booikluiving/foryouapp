@@ -907,6 +907,7 @@ function situationObservedEvent(state, active, stoppedAt, options = {}) {
     reactionLabSignals: options.reactionLabSignals || {},
     camera: options.camera && typeof options.camera === "object" ? cloneJson(options.camera) : null,
     rawChat: Array.isArray(options.rawChat) ? cloneJson(options.rawChat) : [],
+    perTelefoon: options.perTelefoon && typeof options.perTelefoon === "object" ? cloneJson(options.perTelefoon) : null,
     finalizedFromAudienceAggregate: !!options.finalizedFromAudienceAggregate,
     finalizedFromLiveAudience: !!options.finalizedFromLiveAudience,
   };
@@ -918,6 +919,21 @@ function hasExplicitAudienceObservationOptions(options = {}) {
     || Object.prototype.hasOwnProperty.call(options, "chatAppSignals")
     || Object.prototype.hasOwnProperty.call(options, "rawChat")
     || Object.prototype.hasOwnProperty.call(options, "reactionLabSignals");
+}
+
+// Likes en saai per telefoon (geen bots), voor de grens per telefoon in het algoritme.
+function likesPerTelefoon(signalRefs) {
+  if (!Array.isArray(signalRefs)) return null;
+  const per = {};
+  for (const ref of signalRefs) {
+    if (!ref || ref.isBot || ref.simulated) continue;
+    const sleutel = String(ref.clientKey || ref.clientId || ref.sessionId || "");
+    if (!sleutel) continue;
+    const rij = per[sleutel] || (per[sleutel] = { hart: 0, saai: 0 });
+    if (ref.type === "heart") rij.hart += 1;
+    else if (ref.type === "bored") rij.saai += 1;
+  }
+  return per;
 }
 
 function countRawMessages(chatAppSignals = {}) {
@@ -964,6 +980,7 @@ async function resolveStopSituationObservationOptions(state, active, clients, op
       audience,
       chatAppSignals,
       rawChat,
+      perTelefoon: likesPerTelefoon(input && input.signalRefs),
       camera: input && input.camera && typeof input.camera === "object" ? cloneJson(input.camera) : null,
       finalizedFromAudienceAggregate: true,
     };

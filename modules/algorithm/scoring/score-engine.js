@@ -238,6 +238,14 @@ function mensenInScene(event = {}) {
     return per.get(sleutel);
   };
   const refs = Array.isArray(event.signalRefs) ? event.signalRefs : null;
+  const bewaard = !refs && event.perTelefoon && typeof event.perTelefoon === "object" ? event.perTelefoon : null;
+  if (bewaard) {
+    for (const [sleutel, rij] of Object.entries(bewaard)) {
+      const mens = van(sleutel);
+      mens.hart += Math.max(0, Number(rij && rij.hart) || 0);
+      mens.saai += Math.max(0, Number(rij && rij.saai) || 0);
+    }
+  }
   if (refs) {
     for (const ref of refs) {
       if (!ref || ref.isBot || ref.simulated) continue;
@@ -254,7 +262,7 @@ function mensenInScene(event = {}) {
     const sleutel = String(bericht.clientKey || bericht.clientId || `bericht:${i}`);
     van(sleutel).chat.push({ id: String(bericht.signalId || `bericht:${i}`), tekst: String(bericht.text) });
   });
-  return { per, metRefs: !!refs };
+  return { per, metRefs: !!(refs || bewaard) };
 }
 
 // Het oordeel na de scène: gemiddelde van -1 tot 1 en hoeveel telefoons stemden.
