@@ -140,11 +140,13 @@ function buildRuntimeOverlay(view, stemming) {
   if (!view || !view.pathEvaluation || !Array.isArray(view.pathEvaluation.items)) return null;
   const items = view.pathEvaluation.items;
   const metStatus = (status) => items.filter((item) => item && item.status === status).map(sceneIdVan).filter(Boolean);
-  const played = new Set(metStatus("played"));
+  // Eerst in de volgorde waarin ze gespeeld zijn: zo tekent het universum het pad van de avond.
+  const played = new Set();
   for (const item of view.playedSituations || []) {
     const id = sceneIdVan(item);
     if (id) played.add(id);
   }
+  for (const id of metStatus("played")) played.add(id);
   const currentId = sceneIdVan(view.activeSituation);
   const prepared = view.preparedNext || null;
   const preparedId = sceneIdVan(prepared);

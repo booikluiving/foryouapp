@@ -229,18 +229,29 @@
          verschijnt zodra de kiezer landt). De oproep, de pijl en de QR-code komen als de klok klein wordt. */
       #p-stem .oproep, #p-stem .pijl, #p-stem .qr { transition: opacity 400ms var(--curve); }
       #p-stem.groot .oproep, #p-stem.groot .pijl, #p-stem.groot .qr { opacity: 0; }
-      /* Up next: na het stemmen. De scène die komt, de topfavoriet als die erin zit, en hoe sterk het
-         algoritme nu naar elk label trekt. Groen zodra de operator READY drukt. */
-      #p-upnext { left: 60px; top: 60px; width: 960px; --wx: -1100px; }
-      #upKop { font-size: 64px; letter-spacing: -0.035em; transition: color 400ms var(--curve); }
-      #p-upnext.ready #upKop { color: #37d67a; }
-      /* In Up next staat de titel onder "Up next", met eronder de labels van de scène zoals het
-         algoritme nu trekt en de topfavoriet als die meespeelt. */
-      #stage.upnextfase #p-titel { top: 160px; }
-      #upLabels, #upFavoriet { font-size: 34px; line-height: 1.15; color: var(--wit-2); }
-      #upLabels:empty, #upFavoriet:empty { display: none; }
-      #upFavoriet { color: #fff; }
-      #stage:not(.upnextfase) #upLabels, #stage:not(.upnextfase) #upFavoriet { display: none; }
+      /* Up next: na het stemmen. Bovenaan de scène die komt met het vakje van de omgeving, in het midden
+         het hele pad door het universum met de stap naar de gekozen ster, onderin groot de spelers met
+         hun personage eronder en de chat er linksonder overheen. Zodra de operator READY drukt, worden
+         de kaders van de spelers groen. */
+      #p-upnext { left: 70px; top: 80px; width: 600px; --wx: -1100px; }
+      #upKop { font-size: 64px; font-weight: 400; letter-spacing: -0.02em; color: var(--wit-2); }
+      #stage.upnextfase #p-titel { left: 70px; top: 90px; width: 940px; gap: 40px; }
+      #stage.upnextfase #p-titel .links { padding-top: 80px; }
+      #stage.upnextfase #titelTekst { font-size: 100px; font-weight: 500; line-height: 1.05; letter-spacing: -0.02em; }
+      #stage.upnextfase #titelTekst.lang { font-size: 86px; }
+      #stage.upnextfase #titelTekst.langer { font-size: 72px; }
+      #stage.upnextfase #titelBeeld { width: 230px; height: 230px; }
+      #stage.upnextfase #p-spelers { left: 300px; top: 1380px; width: 710px; gap: 40px; }
+      #stage.upnextfase #p-spelers { row-gap: 12px; }
+      #stage.upnextfase .spelerrij .speler { border-width: 4px; transition: border-color 400ms var(--curve); }
+      #stage.upnextfase .spelerrij .speler .rol { display: none; }
+      /* De naam van het personage staat onder het venster. */
+      .spelerrij .namen { display: none; }
+      #stage.upnextfase .spelerrij .namen { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; font-size: 40px; font-weight: 500; line-height: 1.05; text-align: center; hyphens: auto; overflow-wrap: break-word; }
+      #stage.upnextfase.klaar .spelerrij .speler { border: 8px solid #37d67a; }
+      #stage.upnextfase #p-chat { left: 70px; top: 1380px !important; height: 380px !important; width: 640px; font-size: 40px !important; z-index: 5; text-shadow: 0 0 4px #000, 0 2px 12px rgba(0, 0, 0, 0.95); }
+      #stage.upnextfase .chatregel { color: #fff; }
+      #stage.upnextfase .chatregel b { font-weight: 500; }
       /* Bij elke speler het personage dat hij in de volgende scène speelt. */
       .spelerrij .speler .rol { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 8px 8px; font-weight: 700; font-size: 26px; line-height: 1.05; text-align: center; overflow-wrap: anywhere; hyphens: auto;
         background: linear-gradient(transparent, rgba(0, 0, 0, 0.75)); opacity: 0; transition: opacity 400ms var(--curve); }
@@ -369,7 +380,7 @@
         <div class="klein" data-adres></div>
       </div>
       <div class="p uit" id="p-titel">
-        <div class="links"><div class="kop" id="titelTekst"></div><div id="titelScore"></div><div id="upLabels"></div><div id="upFavoriet"></div></div>
+        <div class="links"><div class="kop" id="titelTekst"></div><div id="titelScore"></div></div>
         <div class="beeld" id="titelBeeld" hidden></div>
       </div>
       <div class="p uit" id="p-tekst">
@@ -380,7 +391,7 @@
       <div class="p uit" id="p-camera"><div class="venster"><img id="cameraBeeld" alt="" /></div><div class="klein">Beelden worden niet opgeslagen.</div></div>
       <div class="p uit" id="p-chat"><div id="chatRegels"></div></div>
       <div class="p uit" id="p-ranking"></div>
-      <div class="p uit spelerrij geen" id="p-spelers"><div class="speler leeg"><img alt="" /><div class="rol"></div></div><div class="speler leeg"><img alt="" /><div class="rol"></div></div><div class="speler leeg"><img alt="" /><div class="rol"></div></div></div>
+      <div class="p uit spelerrij geen" id="p-spelers"><div class="speler leeg"><img alt="" /><div class="rol"></div></div><div class="speler leeg"><img alt="" /><div class="rol"></div></div><div class="speler leeg"><img alt="" /><div class="rol"></div></div><div class="namen"><span></span><span></span><span></span></div></div>
       <div class="p uit spelerrij geen" id="p-stemspelers"><div class="speler leeg"><img alt="" /><div class="rol"></div></div><div class="speler leeg"><img alt="" /><div class="rol"></div></div><div class="speler leeg"><img alt="" /><div class="rol"></div></div></div>
       <div class="p uit" id="p-stem">
         <div class="oproep">Beïnvloed het algoritme</div>
@@ -460,7 +471,13 @@
         hoogte: getal(settings.tussenChatHoogte, 385),
         letter: getal(settings.tussenChatGrootte, 36),
       });
-      const zichtNu = () => [TEKST_ONDER + 30, Math.max(TEKST_ONDER + 330, chatPlek().y - 30)];
+      // In Up next staat het hele pad tussen de titel (twee of drie regels) en de spelers.
+      let zichtUpnext = false;
+      const zichtUpnextNu = () => {
+        const titel = document.getElementById("p-titel");
+        return [Math.max(400, titel.offsetTop + titel.offsetHeight + 50), 1340];
+      };
+      const zichtNu = () => (zichtUpnext ? zichtUpnextNu() : [TEKST_ONDER + 30, Math.max(TEKST_ONDER + 330, chatPlek().y - 30)]);
 
       // Het universum (padendienst, poort 3022) speelt de reeks: stemmen of kiezen, inzoomen op het pad,
       // en na elke scène uitzoomen en nieuwe scènes laten vrijkomen. Het meldt waar het is.
@@ -494,7 +511,7 @@
       const UNIVERSUM_PAD = /^\/[\w\-/]+$/.test(universumParam) ? universumParam : "/universe";
       const opPoort = (poort) => (EEN_ADRES ? location.origin : `${location.protocol}//${location.hostname}:${poort}`);
       const wsOpPoort = (poort) => `${location.protocol === "https:" ? "wss" : "ws"}://${EEN_ADRES ? location.host : `${location.hostname}:${poort}`}`;
-      el("universum").src = `${opPoort(UNIVERSUM_POORT)}${UNIVERSUM_PAD}/stage.html?naScene=${NA_SCENE_MAX}&vrijgave=1&padZoom=1&tempo=${Number(new URLSearchParams(location.search).get("tempo")) || 3.5}${new URLSearchParams(location.search).get("meet") ? "&meet=1" : ""}${new URLSearchParams(location.search).get("vlot") !== "0" ? "&vlot=1" : ""}&kiesTempo=${KIES_TEMPO}&sprongen=12&naKeuze=${RUST_MS + 1500}&binnenTitel=0&gekozenTitel=0&stemTekst=0&zicht=${zichtNu().join(",")}${STAND ? `&stand=${encodeURIComponent(STAND)}` : ""}`;
+      el("universum").src = `${opPoort(UNIVERSUM_POORT)}${UNIVERSUM_PAD}/stage.html?naScene=${NA_SCENE_MAX}&vrijgave=1&padZoom=1&heelPad=1&tempo=${Number(new URLSearchParams(location.search).get("tempo")) || 3.5}${new URLSearchParams(location.search).get("meet") ? "&meet=1" : ""}${new URLSearchParams(location.search).get("vlot") !== "0" ? "&vlot=1" : ""}&kiesTempo=${KIES_TEMPO}&sprongen=12&naKeuze=${RUST_MS + 1500}&binnenTitel=0&gekozenTitel=0&stemTekst=0&zicht=${zichtNu().join(",")}${STAND ? `&stand=${encodeURIComponent(STAND)}` : ""}`;
       function naarUniversum(bericht) {
         try { el("universum").contentWindow.postMessage({ bron: "for_you-scherm", ...bericht }, "*"); } catch (_err) {}
       }
@@ -1143,13 +1160,13 @@
             const wie = (data.plekken || []).find((item) => item.plek === plek);
             if (wie) rol.textContent = wie.personage;
             rol.classList.toggle("aan", !!wie);
+            const naam = rij.querySelector(`.namen span:nth-child(${plek})`);
+            if (naam) naam.textContent = wie ? wie.personage : "";
           });
         }
-        el("upFavoriet").textContent = data.favoriet ? `met topfavoriet ${data.favoriet}` : "";
-        el("upLabels").textContent = (data.sceneLabels || []).map((label) => `${label.naam} ${label.procent}%`).join(" · ");
         tekenKaart();
-        const was = el("p-upnext").classList.contains("ready");
-        el("p-upnext").classList.toggle("ready", !!data.ready);
+        const was = stage.classList.contains("klaar");
+        stage.classList.toggle("klaar", !!data.ready);
         if (data.ready && !was && faseNu === "upnext") geluid.slot();
       }
       setInterval(() => { if (faseNu === "upnext") haalUpNext(); }, 2000);
@@ -1189,6 +1206,7 @@
           }
         }
         faseNu = fase;
+        if ((fase === "upnext") !== zichtUpnext) { zichtUpnext = fase === "upnext"; meldZicht(); }
         // Staat het vel niet in beeld, dan hoeft er niets te schuiven.
         const stil = !!direct || laagWeg;
         if (stil) stage.classList.add("direct");

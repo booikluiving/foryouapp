@@ -382,6 +382,10 @@
     const REGIE_PAD = REGIE_OPTIES.get("padZoom") === "1";
     const REGIE_PAD_OMHOOG = 0.17; // het pad staat boven het midden; eronder is ruimte voor de tekst
     const REGIE_PAD_FADE = 0.16; // zo flauw blijft de rest van de kaart zichtbaar
+    // Met heelPad=1 staat niet alleen de laatste stap in beeld, maar het hele gespeelde pad met de
+    // stap naar de gekozen scène gestippeld en een kring om die scène (Up next op het zaalscherm).
+    const REGIE_HEEL_PAD = REGIE_OPTIES.get("heelPad") === "1";
+    const regieStapSleutel = (a, b) => (Number(a) < Number(b) ? `${a}-${b}` : `${b}-${a}`);
     // Het hoofdscherm kan opgeven in welke strook van het beeld de kaart hoort: zicht=boven,onder,
     // in beeldpunten van een scherm van 1920 hoog. Boven en onder die strook staan titel, tekst en chat.
     // Zonder opgave vult de kaart het hele beeld.
@@ -3658,7 +3662,7 @@
       }
       // Ingezoomd blijven lijnen en sterren fijn: ze groeien minder hard mee dan de afstanden.
       const dun = padZoom !== 1 ? 1 / Math.pow(padZoom, 0.62) : 1;
-      const inPad = (sceneId) => !!regie.pad && (sceneId === regie.pad.a || sceneId === regie.pad.b);
+      const inPad = (sceneId) => !!regie.pad && (sceneId === regie.pad.a || sceneId === regie.pad.b || (!!regie.pad.punten && regie.pad.punten.includes(sceneId)));
       const pos = new Map();
       (networkMap.nodes || []).forEach((node) => {
         const punt = podiumPunt(node.sceneId, tijd);
@@ -3687,7 +3691,11 @@
           if (!edgeIsReleased(edge)) alpha = 0.09;
           const bocht = networkEdgeCurve(a, b, edge);
           // Het pad waar de camera op staat is de helderste lijn in beeld.
-          const padLijn = !!regie.pad && regie.pad.a !== regie.pad.b && inPad(Number(edge.fromSceneId)) && inPad(Number(edge.toSceneId));
+          const stap = regieStapSleutel(edge.fromSceneId, edge.toSceneId);
+          const padLijn = !!regie.pad && (regie.pad.stappen ? regie.pad.stappen.has(stap)
+            : regie.pad.a !== regie.pad.b && inPad(Number(edge.fromSceneId)) && inPad(Number(edge.toSceneId)));
+          // De stap naar de gekozen scène is gestippeld.
+          ctx.setLineDash(padLijn && regie.pad.laatste === stap ? [9 * dun, 8 * dun] : []);
           ctx.lineWidth = (padLijn ? 2.6 : Math.min(0.85 + Math.max(Number(edge.pathCount || edge.count || 1), 1) * 0.34, 3.2)) * dun;
           ctx.strokeStyle = kleur;
           ctx.globalAlpha = padLijn ? 1 : alpha * fade;
@@ -3695,6 +3703,7 @@
           ctx.moveTo(a.x, a.y);
           ctx.bezierCurveTo(bocht.c1.x, bocht.c1.y, bocht.c2.x, bocht.c2.y, b.x, b.y);
           ctx.stroke();
+          ctx.setLineDash([]);
           // Een lijn die zich tekent naar een scène die vrijkomt.
           const groei = regie.lijn && regie.lijn.edgeId === edge.edgeId ? regie.lijn
             : regie.lijnen ? regie.lijnen.find((lijn) => lijn.edgeId === edge.edgeId) : null;
@@ -3720,6 +3729,27 @@
           }
         }
         ctx.globalAlpha = 1;
+      }
+
+      // Stappen van het hele pad die niet langs een lijn van de kaart lopen: een zachte boog.
+      if (regie.pad && regie.pad.los && regie.pad.los.length) {
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "#ffffff";
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 2.6 * dun;
+        for (const [van, naar] of regie.pad.los) {
+          const a = pos.get(Number(van));
+          const b = pos.get(Number(naar));
+          if (!a || !b) continue;
+          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+          const dx = b.x - a.x, dy = b.y - a.y;
+          ctx.setLineDash(regie.pad.laatste === regieStapSleutel(van, naar) ? [9 * dun, 8 * dun] : []);
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.quadraticCurveTo(mx - dy * 0.18, my + dx * 0.18, b.x, b.y);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
       }
 
       // Sterren
@@ -3881,6 +3911,19 @@
         }
       }
 
+      // Het hele pad: een gestippelde kring om de gekozen scène.
+      if (regie.pad && regie.pad.punten && pos.get(regie.pad.b)) {
+        const punt = pos.get(regie.pad.b);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2 * dun;
+        ctx.setLineDash([6 * dun, 6 * dun]);
+        ctx.beginPath();
+        ctx.arc(punt.x, punt.y, 26 * dun, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
       // Eén titel boven de kring van startscènes: de winnaar, of de koploper als er precies één is.
       const stemKop = stemKoplopers.find((item) => item.stem.winnaar) || (stemKoplopers.length === 1 ? stemKoplopers[0] : null);
       if (REGIE_STEM_TEKST && stemKop && stemMidden) {
@@ -4007,6 +4050,8 @@
       // Het scherm verlegt de strook van de kaart (de chat is hoger of lager gezet).
       if (Array.isArray(bericht.zicht)) {
         regieZicht = regieZichtUit(bericht.zicht.join(","));
+        // Staat de camera op het hele pad, dan past hij zich aan de nieuwe strook aan.
+        if (REGIE_PAD && regie.pad && regie.pad.punten && regie.scherp) regie.cam.lz = Math.log(regiePadZoom());
         podium.vuil = true;
         regieCameraToepassen();
       }
@@ -4058,6 +4103,8 @@
 
     // Waar de camera op staat: de ster, of het midden van het pad naar de gekozen scène.
     function regieCameraPunt(tijd) {
+      const kader = regiePadKader(tijd);
+      if (kader) return { x: kader.x, y: kader.y };
       if (regie.pad) {
         const a = podiumPunt(regie.pad.a, tijd);
         const b = podiumPunt(regie.pad.b, tijd);
@@ -4071,12 +4118,41 @@
     function regiePadVoor(wil, played) {
       const kandidaten = [regie.herkomst, ...Array.from(played || []).reverse()].filter((id) => id && id !== wil);
       const van = kandidaten.find((id) => regieRand(id, wil));
-      return { a: van || wil, b: wil };
+      const pad = { a: van || wil, b: wil };
+      if (!REGIE_HEEL_PAD) return pad;
+      const gespeeld = Array.from(played || []).filter((id) => id && id !== wil);
+      if (!gespeeld.length) return pad;
+      // Elke stap van het pad: langs de lijn van de kaart als die er is, anders een losse boog.
+      const stappen = new Set();
+      const los = [];
+      const reeks = [...gespeeld, wil];
+      for (let i = 1; i < reeks.length; i += 1) {
+        if (regieRand(reeks[i - 1], reeks[i])) stappen.add(regieStapSleutel(reeks[i - 1], reeks[i]));
+        else los.push([reeks[i - 1], reeks[i]]);
+      }
+      const vorige = gespeeld[gespeeld.length - 1];
+      return Object.assign(pad, { punten: reeks, stappen, los, laatste: regieStapSleutel(vorige, wil) });
+    }
+
+    // Het kader om alle sterren van het hele pad.
+    function regiePadKader(tijd) {
+      const punten = regie.pad && regie.pad.punten ? regie.pad.punten.map((id) => podiumPunt(id, tijd)).filter(Boolean) : [];
+      if (punten.length < 2) return null;
+      const xs = punten.map((punt) => punt.x);
+      const ys = punten.map((punt) => punt.y);
+      const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, b: Math.max(x1 - x0, 40), h: Math.max(y1 - y0, 40) };
     }
 
     // Zo ver inzoomen dat het pad een flink deel van het beeld vult.
     function regiePadZoom() {
       const tijd = podiumTijd(Date.now());
+      const kader = regiePadKader(tijd);
+      if (kader) {
+        const beeldNu = podiumBeeld();
+        const hoog = regieZicht ? (regieZicht.onder - regieZicht.boven) * podium.hoogte : podium.hoogte;
+        return clamp(Math.min((0.74 * podium.breedte) / (kader.b * beeldNu.k), (0.8 * hoog) / (kader.h * beeldNu.k)), 1, 9);
+      }
       const a = regie.pad ? podiumPunt(regie.pad.a, tijd) : null;
       const b = regie.pad ? podiumPunt(regie.pad.b, tijd) : null;
       const afstand = a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
