@@ -121,7 +121,7 @@
   }
 
   // Een trendscène (omgeving Trend) heeft geen tekst in beeld: de emoji-laag zegt wat er gebeurt.
-  // Alleen de titel bij de start en "Einde" blijven; de regels staan nog wel op de teleprompter.
+  // Alleen "Einde" blijft; de regels staan nog wel op de teleprompter.
   const ZONDER_TEKST_OMGEVING_RE = /^\s*trend\s*$/i;
 
   function sceneZonderTekst() {
@@ -131,11 +131,8 @@
 
   function captionForIndex(index) {
     const lines = teleprompt && Array.isArray(teleprompt.lines) ? teleprompt.lines : [];
-    // Cue 0 = de scène is gestart en er is nog geen zin gezegd: de titel staat er meteen.
-    if (index <= 0) {
-      const text = situationTitle();
-      return text ? { type: "title", text } : null;
-    }
+    // De scène begint met de eerste regel; de titel stond al op het zaalscherm tijdens het schrijven.
+    if (index <= 0) return null;
     if (!lines.length) return null;
     if (index >= lines.length + 1) return { type: "end", text: "Einde" };
     if (sceneZonderTekst()) return null;

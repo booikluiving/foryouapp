@@ -240,6 +240,18 @@ async function main() {
   assert.equal(legacyStore.getPreparedScene().status, "prepared");
   legacyStore.revealPreparedScene();
   assert.equal(legacyStore.getPreparedScene().status, "playing");
+  // De scène opent met de eerste regel: geen titelkaart meer op cue 0.
+  assert.equal(legacyStore.getCue().index, 1);
+  assert.equal(legacyStore.setCueIndex(0).cue.index, 1);
+
+  // Een titel die het taalmodel toch schrijft, wordt geen regel in het script.
+  for (const kop of ["# Monopoly", "## De val", "**Monopoly**", "Titel: Monopoly", "Monopoly in het ziekenhuis", "Open Scene"]) {
+    const zonderTitel = parseTeleprompt({ title: "Open Scene", rawText: `${kop}\n\nAda: Hallo Ben.\nBen: Dag Ada.`, source: "unit" });
+    assert.equal(zonderTitel.title, "Open Scene");
+    assert.deepEqual(zonderTitel.lines.map((line) => `${line.speakerLabel}: ${line.text}`), ["Ada: Hallo Ben.", "Ben: Dag Ada."], kop);
+  }
+  const metRegie = parseTeleprompt({ title: "Open Scene", rawText: "Regie: Ze wachten.\nAda: Hallo Ben.", source: "unit" });
+  assert.deepEqual(metRegie.lines.map((line) => line.text), ["Ze wachten.", "Hallo Ben."]);
   assert.equal(legacyStore.setCaptionStyle({ fontSizeScale: 9, verticalPosition: 10 }).captionStyle.fontSizeScale, 1.25);
 
   const bridge = createTeleprompterParserBridge({

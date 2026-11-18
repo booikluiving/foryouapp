@@ -215,11 +215,17 @@ function createTelepromptStore(options = {}) {
     return lines.length ? lines.length + 2 : 0;
   }
 
+  // De scène opent met de eerste regel: er is geen titelkaart meer vóór het dialoog. De telling
+  // blijft zoals hij was (regel n = cue n, daarna "Einde"); cue 0 bestaat alleen nog zonder tekst.
+  function firstCueIndex() {
+    return deckLength() ? 1 : 0;
+  }
+
   function clampCueIndex(index) {
     const max = Math.max(deckLength() - 1, 0);
     const numeric = Number.parseInt(index, 10);
-    if (!Number.isFinite(numeric)) return 0;
-    return Math.max(0, Math.min(numeric, max));
+    if (!Number.isFinite(numeric)) return firstCueIndex();
+    return Math.max(firstCueIndex(), Math.min(numeric, max));
   }
 
   function cueLocked() {
@@ -260,8 +266,8 @@ function createTelepromptStore(options = {}) {
   }
 
   function resetCueIndex() {
-    const changed = cueIndex !== 0;
-    cueIndex = 0;
+    const changed = cueIndex !== firstCueIndex();
+    cueIndex = firstCueIndex();
     cueVersion += 1;
     cueUpdatedAt = new Date().toISOString();
     return {
@@ -352,7 +358,7 @@ function createTelepromptStore(options = {}) {
       version,
       updatedAt: parsed.source.generatedAt,
     };
-    cueIndex = 0;
+    cueIndex = firstCueIndex();
     cueVersion += 1;
     cueUpdatedAt = current.updatedAt;
     setBord("begin");

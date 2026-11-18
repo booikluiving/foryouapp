@@ -224,7 +224,7 @@ async function main() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ direction: "next", source: "smoke-perfect-cue" }),
     });
-    assert.equal(manualAdvance.cue.index, 1);
+    assert.equal(manualAdvance.cue.index, 2);
     assert.equal(manualAdvance.cueAction.direction, "next");
 
     const promptResponse = await fetchJson(scriptAgentBase, "/v0/script-agent/prompt-inputs", {
@@ -325,7 +325,7 @@ async function main() {
     assert.equal(legacyTeleprompterState.teleprompt.title, promptInput.situation.title);
     assert(legacyTeleprompterState.teleprompt.lines.length > 0);
     assert.equal(legacyTeleprompterState.preparedScene.title, promptInput.situation.title);
-    assert.equal(legacyTeleprompterState.cue.index, 0);
+    assert.equal(legacyTeleprompterState.cue.index, 1);
     const preparedStageCharacter = legacyTeleprompterState.preparedScene.characters.find((character) => (
       Number(character.slot || 0) === Number(slot.slotIndex || 0)
     ));

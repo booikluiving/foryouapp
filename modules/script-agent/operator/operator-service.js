@@ -62,12 +62,21 @@ Werk snel en direct met de operator.
 
 Schrijf alleen scene-tekst wanneer de operator daarom vraagt of wanneer er een voorbereide scene-prompt wordt gestuurd.
 Gebruik de opgegeven situatie, personages en omgeving als harde context.
-Begin een scene met "# Titel" en schrijf dialoog als "Personage: zin.".
+Begin direct met dialoog, zonder titel of kopregel. Schrijf dialoog als "Personage: zin.".
 Gebruik de personagenamen precies zoals ze in de lijst staan.
 Geen regieaanwijzingen, alleen dialoog.
 Maximaal 2500 tekens per scene.
 Geen uitleg vooraf, geen nabrander.
 `.trim();
+
+// De titel staat al op het zaalscherm terwijl het script geschreven wordt. Een bewaarde prompt met de
+// oude regel ("# Titel" bovenaan) krijgt bij het inlezen de nieuwe regel; de rest blijft zoals hij is.
+const OLD_TITLE_RULE = 'Begin een scene met "# Titel" en schrijf dialoog als "Personage: zin.".';
+const TITLE_RULE = 'Begin direct met dialoog, zonder titel of kopregel. Schrijf dialoog als "Personage: zin.".';
+
+function withoutTitleRule(prompt) {
+  return String(prompt || "").split(OLD_TITLE_RULE).join(TITLE_RULE);
+}
 
 const DEFAULT_PROMPT_TEMPLATE = `
 Schrijf een speelbare scene voor de volgende klaargezette situatie.
@@ -389,7 +398,7 @@ function normalizeOperatorSettings(input = {}, base = defaultOperatorSettings())
     temperature: Math.max(0, Math.min(2, Number(source.temperature ?? base.temperature ?? 0.8) || 0.8)),
     reasoningEffort: normalizeReasoningEffort(source.reasoningEffort ?? base.reasoningEffort),
     fallbackModel: normalizeText(source.fallbackModel || base.fallbackModel || DEFAULT_FALLBACK_MODEL, 120) || DEFAULT_FALLBACK_MODEL,
-    systemPrompt: normalizeText(source.systemPrompt || base.systemPrompt || DEFAULT_SYSTEM_PROMPT, 12000),
+    systemPrompt: withoutTitleRule(normalizeText(source.systemPrompt || base.systemPrompt || DEFAULT_SYSTEM_PROMPT, 12000)),
     promptTemplate: normalizeText(source.promptTemplate || base.promptTemplate || DEFAULT_PROMPT_TEMPLATE, 12000),
     stageStyle: normalizeStageStyle(source.stageStyle || base.stageStyle || {}),
     updatedAt: source.updatedAt || base.updatedAt || nowIso(),
