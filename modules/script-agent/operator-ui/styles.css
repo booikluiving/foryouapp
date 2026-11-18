@@ -799,3 +799,25 @@ textarea:focus {
   padding: 8px;
   border: 1px solid var(--warn);
 }
+
+/* Publiek: de telefoonpagina verkleind, alleen kijken. De pagina is op telefoonmaat getekend
+   (390 × 844) en wordt geschaald tot de breedte van het venster. */
+.telefoon-venster {
+  --telefoon-schaal: 0.5;
+  position: relative;
+  width: calc(390px * var(--telefoon-schaal));
+  height: calc(844px * var(--telefoon-schaal));
+  border: 1px solid var(--line);
+  overflow: hidden;
+  background: #000;
+}
+.telefoon-venster iframe {
+  width: 390px;
+  height: 844px;
+  border: 0;
+  transform: scale(var(--telefoon-schaal));
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.publiek-chat { display: grid; gap: 8px; }
+.publiek-chat .operator-form { align-items: center; }

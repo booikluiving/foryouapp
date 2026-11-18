@@ -295,6 +295,35 @@ function createScriptAgentApp(options = {}) {
     res.json({ ok: true, ...operatorService.opmerkingStand() });
   });
 
+  // Publiek op de operatorpagina: waar het kijkvenster (de telefoonpagina) staat, en een bericht van
+  // de operator in de publiekschat. De publieksdienst doet het werk; dit geeft het alleen door.
+  const publiekUrl = String((options.env || process.env).SCRIPT_AGENT_AUDIENCE_URL || "http://127.0.0.1:3026").replace(/\/+$/, "");
+  app.get("/v0/script-agent/operator/publiek", (_req, res) => {
+    let port = 3026;
+    try { port = Number(new URL(publiekUrl).port) || 3026; } catch (_err) { /* standaardpoort */ }
+    res.json({ ok: true, port, kijkPath: "/audience/kijk/start" });
+  });
+  app.post("/v0/script-agent/operator/publiek/chat", asyncRoute(async (req, res) => {
+    const fetchImpl = options.fetchImpl || fetch;
+    let antwoord;
+    try {
+      antwoord = await fetchImpl(`${publiekUrl}/audience/admin/chat/zeg`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: req.body && req.body.name, text: req.body && req.body.text }),
+        signal: AbortSignal.timeout(3000),
+      });
+    } catch (_err) {
+      throw httpError(502, "De publieksdienst is niet bereikbaar.");
+    }
+    const body = await antwoord.json().catch(() => ({}));
+    if (!antwoord.ok) {
+      const meldingen = { session_inactive: "Er is geen publiekssessie." };
+      throw httpError(antwoord.status, body.message || meldingen[body.error] || body.error || "Bericht niet geplaatst.");
+    }
+    res.json({ ok: true });
+  }));
+
   app.post("/v0/script-agent/operator/scene-to-chat", asyncRoute(async (req, res) => {
     const events = [];
     const result = await operatorService.sceneToChat(req.body || {}, (event) => {
