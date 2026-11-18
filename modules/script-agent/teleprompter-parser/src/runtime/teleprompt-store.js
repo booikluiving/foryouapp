@@ -182,6 +182,12 @@ function createTelepromptStore(options = {}) {
   let autoCameraSwitchUpdatedAt = cueUpdatedAt;
   let preparedScene = null;
   let preparedSceneVersion = 0;
+  // Na een scène kiest het universum op het zaalscherm de volgende scène. Zolang dat bezig is, wacht
+  // de teleprompter met de volgende scène, zodat spelers en publiek de keuze tegelijk zien. Het wachten
+  // begint vanzelf als na een gespeelde scène een andere scène wordt klaargezet en stopt als het
+  // zaalscherm de keuze meldt. Vangnet: na KEUZE_WACHT_MAX_MS toont de teleprompter hem toch.
+  const KEUZE_WACHT_MAX_MS = 12000;
+  let keuzeWachtSinds = 0;
   // Bord (blind ranking): hoeveel plaatjes de operator met de knop in beeld heeft gezet.
   let bordGetoond = 0;
   let bordVersion = 0;
@@ -364,12 +370,24 @@ function createTelepromptStore(options = {}) {
           characters: preparedScene.characters.map((character) => ({ ...character })),
           environment: preparedScene.environment ? { ...preparedScene.environment } : null,
           version: preparedSceneVersion,
+          // Zo lang (ms) wacht de teleprompter nog op de keuze op het zaalscherm; 0 = niet (meer).
+          keuzeWachtMs: keuzeWachtSinds && preparedScene.status === "prepared" ? Math.max(0, keuzeWachtSinds + KEUZE_WACHT_MAX_MS - Date.now()) : 0,
         }
       : null;
   }
 
+  function setKeuzeWacht(wacht) {
+    keuzeWachtSinds = wacht ? Date.now() : 0;
+    preparedSceneVersion += 1;
+    return { preparedScene: getPreparedScene(), changed: true };
+  }
+
   function prepareScene(input = {}) {
     const nextPreparedScene = sanitizePreparedScene({ ...input, status: "prepared", ready: false });
+    // Een scène is net gestopt en de volgende wordt klaargezet: wachten op de keuze op het zaalscherm.
+    if (preparedScene && preparedScene.status === "playing" && nextPreparedScene.sceneId && nextPreparedScene.sceneId !== preparedScene.sceneId) {
+      keuzeWachtSinds = Date.now();
+    }
     preparedScene = nextPreparedScene.sceneId || nextPreparedScene.title ? nextPreparedScene : null;
     preparedSceneVersion += 1;
     return {
@@ -392,6 +410,7 @@ function createTelepromptStore(options = {}) {
   }
 
   function revealPreparedScene() {
+    keuzeWachtSinds = 0;
     if (preparedScene) {
       preparedScene = sanitizePreparedScene({ ...preparedScene, status: "playing" }, preparedScene);
       preparedSceneVersion += 1;
@@ -408,6 +427,7 @@ function createTelepromptStore(options = {}) {
   return {
     ingest,
     getCurrent,
+    setKeuzeWacht,
     getCue,
     setCueIndex,
     resetCueIndex,

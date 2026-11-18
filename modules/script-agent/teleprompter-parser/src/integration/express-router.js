@@ -841,6 +841,15 @@ function mountTeleprompterParser(app, options = {}) {
     });
   });
 
+  // Het universum op het zaalscherm heeft de volgende scène gekozen ({ wacht: false }): de teleprompter
+  // toont hem nu. { wacht: true } zet het wachten met de hand aan.
+  app.post(`${adminPrefix}/keuze`, requireAdmin, (req, res) => {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const result = store.setKeuzeWacht(body.wacht === true);
+    broadcast("keuze");
+    res.json({ ok: true, preparedScene: result.preparedScene });
+  });
+
   // Bord (blind ranking): de knop van de operator. { actie: "volgende" } zet het volgende plaatje
   // in beeld, { actie: "begin" } haalt alles weer weg.
   app.post(`${adminPrefix}/bord`, requireAdmin, (req, res) => {

@@ -11,6 +11,8 @@ const {
   cameraPoints,
   roomSoundLift,
   signalCounts,
+  labelTrek,
+  personageFavorieten,
 } = require("../scoring/score-engine");
 
 function round(value, digits = 2) {
@@ -182,6 +184,11 @@ function buildAudienceReport(state = {}) {
     // Alle labels van de catalogus, ook die waar nog geen scène van gespeeld is.
     labelNames: [...labelNames.values()],
     characters,
+    // Hoe sterk het algoritme nu naar elk label trekt, in procenten (sterkste label = 100).
+    labelTrek: labelTrek({ catalog, observations, liveObservation: state.liveAudienceObservation || null, config: state.config }),
+    // Favoriete personages volgens de personagevraag, met naam.
+    favorieten: personageFavorieten({ observations, config: state.config })
+      .map((rij) => ({ ...rij, name: characterNames.get(rij.characterId) || rij.characterId })),
     scenes,
     forecast: {
       highest: forecast.slice(0, 5),

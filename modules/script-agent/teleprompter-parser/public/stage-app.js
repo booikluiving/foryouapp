@@ -267,6 +267,21 @@
     progress.textContent = "0 / 0";
   }
 
+  // Het universum op het zaalscherm kiest nog: de volgende scène komt pas op het moment dat het
+  // publiek hem ook ziet.
+  function renderKeuzeWacht() {
+    clearNoShowState();
+    root.classList.add("is-prep-card");
+    root.classList.remove("is-title-card", "is-end-card", "is-ready");
+    card.className = "stage-card prep-card";
+    card.style.removeProperty("--speaker-color");
+    clearCard();
+    appendTextElement("p", "stage-prep-kicker", "VOLGENDE SCENE");
+    appendTextElement("h1", "stage-prep-title", "…");
+    setSceneTitle("Volgende scene");
+    progress.textContent = "PREP";
+  }
+
   function renderNoShow() {
     root.classList.add("is-no-show", "is-title-card");
     root.classList.remove("is-prep-card", "is-ready", "is-end-card");
@@ -406,7 +421,8 @@
       return;
     }
     if (preparedScene && preparedScene.status === "prepared") {
-      renderPrepCard();
+      if (Number(preparedScene.keuzeWachtMs) > 0) renderKeuzeWacht();
+      else renderPrepCard();
       return;
     }
     if (!canUseTelepromptLines()) {

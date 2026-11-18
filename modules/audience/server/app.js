@@ -202,6 +202,78 @@ function createAudienceApp(options = {}) {
     res.json(rapport);
   }));
 
+  // Up next: de scène die klaarstaat, welk personage elke speler speelt (per plek in de ring), hoe
+  // sterk het algoritme nu naar elk label trekt, de topfavoriet als die in de scène zit, en of de
+  // operator READY heeft gedrukt.
+  let upNextReady = { situationId: "", ready: false, at: 0 };
+  app.post("/audience/admin/ready", asyncRoute(async (req, res) => {
+    const ready = !(req.body && req.body.ready === false);
+    // READY hoort bij de scène die nu klaarstaat; bij de volgende scène is het weer uit.
+    let situationId = String((req.body && req.body.situationId) || "");
+    if (!situationId) {
+      const result = await fetchRuntimeView().catch(() => null);
+      const klaar = result && result.ok && result.state ? result.state.resolvedPreparedNext || result.state.preparedNext : null;
+      situationId = klaar && klaar.situationId ? String(klaar.situationId) : "";
+    }
+    upNextReady = { situationId, ready, at: Date.now() };
+    service.emit("broadcast", { type: "up_next_ready", ready, situationId });
+    res.json({ ok: true, ...upNextReady });
+  }));
+  // Het zaalscherm laat de klok zien: die begint dan bij de volle duur (scherm en telefoons).
+  app.post("/audience/stage/stemklok-start", (_req, res) => {
+    const beoordeling = service.beoordeling.klokOpnieuw();
+    res.json({ ok: true, opnieuw: !!beoordeling });
+  });
+  // De kiezer op het zaalscherm is geland: nu ziet ook de teleprompter de volgende scène.
+  app.post("/audience/stage/keuze-getoond", asyncRoute(async (_req, res) => {
+    const basis = String(process.env.AUDIENCE_SCRIPT_AGENT_URL || "http://127.0.0.1:3027").replace(/\/+$/, "");
+    try {
+      const antwoord = await fetch(`${basis}/v0/script-agent/teleprompter-parser/keuze`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wacht: false }), signal: AbortSignal.timeout(2000) });
+      res.json({ ok: antwoord.ok });
+    } catch (err) {
+      res.json({ ok: false, fout: err && err.message ? String(err.message).slice(0, 200) : "onbekend" });
+    }
+  }));
+  app.get("/audience/stage/up-next", asyncRoute(async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    const result = await fetchRuntimeView().catch(() => null);
+    const view = result && result.ok ? result.state : null;
+    const klaar = view && view.resolvedPreparedNext;
+    if (!view || !view.showRunId || !klaar) { res.json({ ok: true, klaar: false }); return; }
+    const catalog = (view.showRunSnapshot && view.showRunSnapshot.catalog) || {};
+    const plekVan = new Map((catalog.performers || []).map((speler) => [speler.id, Number(speler.performerSlot) || 0]));
+    const plekken = (klaar.performerSlots || [])
+      .filter((slot) => slot && slot.characterId)
+      .map((slot) => ({ plek: plekVan.get(slot.performerId) || Number(slot.slotIndex) || 0, personage: String(slot.characterName || "").trim(), characterId: String(slot.characterId) }))
+      .filter((rij) => rij.plek >= 1 && rij.plek <= 3);
+    let report = null;
+    try {
+      const response = await fetch(`${algorithmBaseUrl()}/v0/algorithm/scoring-contexts/${encodeURIComponent(view.showRunId)}/report`, { signal: AbortSignal.timeout(2500) });
+      if (response.ok) report = await response.json();
+    } catch (_err) {
+      report = null;
+    }
+    const labels = report && Array.isArray(report.labelTrek) ? report.labelTrek.map((rij) => ({ id: rij.id, naam: rij.name, procent: rij.procent })) : [];
+    // De labels van de scène die komt, met hoe sterk het algoritme er nu naar trekt.
+    const sceneLabels = (klaar.labelIds || []).map((id) => labels.find((rij) => rij.id === id)).filter(Boolean);
+    const top = report && Array.isArray(report.favorieten) ? report.favorieten[0] : null;
+    const favoriet = top && plekken.some((rij) => rij.characterId === top.characterId) ? top.name : null;
+    const ready = upNextReady.ready && upNextReady.situationId === klaar.situationId;
+    // Toppersonages volgens de personagevraag (voor de tussenkaart met het rapport).
+    const toppersonages = report && Array.isArray(report.favorieten) ? report.favorieten.slice(0, 3).map((rij) => rij.name) : [];
+    // De lange lijst voor de tussenkaart: personages op gemiddelde score van hun scènes, met hoe vaak ze
+    // speelden, de hartjes en hoe vaak ze bij de personagevraag gekozen werden.
+    const gekozen = new Map((report && Array.isArray(report.favorieten) ? report.favorieten : []).map((rij) => [rij.characterId, rij.aandeel]));
+    const personages = (report && Array.isArray(report.characters) ? report.characters : []).slice(0, 10).map((rij) => ({
+      naam: rij.name,
+      score: rij.averageScore,
+      scenes: rij.scenes,
+      hartjes: rij.hearts,
+      gekozen: gekozen.has(rij.id) ? Math.round(gekozen.get(rij.id) * 100) : null,
+    }));
+    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", plekken, labels, sceneLabels, favoriet, toppersonages, personages, ready, speelt: !!view.activeSituation });
+  }));
+
   // De vragen na de scène: de stand (wat er openstaat, de tellingen, de laatste uitslag).
   app.get("/audience/stage/beoordeling", (_req, res) => {
     res.set("Cache-Control", "no-store");

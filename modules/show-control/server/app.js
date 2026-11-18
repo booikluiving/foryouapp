@@ -283,9 +283,13 @@ function createShowControlApp(options = {}) {
     res.status(201).json({ ok: true, cue });
     // READY (de spelers staan klaar): het stemmen na de scène hoeft niet uit te lopen.
     const acties = [...(req.body && Array.isArray(req.body.actions) ? req.body.actions : []), ...((req.body && Array.isArray(req.body.steps) ? req.body.steps : []).flatMap((stap) => (stap && Array.isArray(stap.actions) ? stap.actions : [])))];
-    if (acties.some((actie) => actie && actie.command === "teleprompter.ready" && !(actie.payload && actie.payload.ready === false))) {
+    const readyActie = acties.find((actie) => actie && actie.command === "teleprompter.ready");
+    if (readyActie) {
       const publiek = String(process.env.SHOW_CONTROL_AUDIENCE_URL || "http://127.0.0.1:3026").replace(/\/+$/, "");
-      fetch(`${publiek}/audience/admin/beoordeling/sluit`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: AbortSignal.timeout(2000) }).catch(() => {});
+      const ready = !(readyActie.payload && readyActie.payload.ready === false);
+      if (ready) fetch(`${publiek}/audience/admin/beoordeling/sluit`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: AbortSignal.timeout(2000) }).catch(() => {});
+      // Up next op het hoofdscherm laat zien dat de spelers klaar zijn.
+      fetch(`${publiek}/audience/admin/ready`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ready }), signal: AbortSignal.timeout(3000) }).catch(() => {});
     }
   }));
 

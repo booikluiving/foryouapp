@@ -252,7 +252,28 @@ function createBeoordeling(service) {
     service.emit("broadcast", { type: "beoordeling_dicht", id: uitslag.id });
     service.emit("admin-state-changed");
     stuurLabelVoorkeur(uitslag);
+    stuurPersonageVoorkeur(uitslag);
     return uitslag;
+  }
+
+  // Het antwoord op de personagevraag als voorkeur: per personage het aandeel van de stemmen.
+  function stuurPersonageVoorkeur(uitslag) {
+    const telling = uitslag.tellingen && uitslag.tellingen.personage;
+    if (!telling || !uitslag.showRunId) return;
+    const stemmen = Object.values(telling).reduce((som, n) => som + (Number(n) || 0), 0);
+    if (!stemmen) return;
+    const keuzes = Object.entries(telling).map(([characterId, n]) => ({ characterId, aandeel: Math.round(((Number(n) || 0) / stemmen) * 1000) / 1000 }));
+    uitslag.personageVoorkeur = { keuzes, stemmen };
+    store.setSetting(UITSLAGEN_KEY, uitslagen);
+    if (typeof fetch !== "function") return;
+    fetch(`${ALGORITME_URL}/v0/algorithm/events/personage-voorkeur`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ showRunId: uitslag.showRunId, situationRunId: uitslag.id, situationId: uitslag.situationId, keuzes, stemmen }),
+      signal: AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined,
+    }).then((res) => { uitslag.personageVoorkeur.algoritme = res.ok ? "ok" : `fout ${res.status}`; })
+      .catch((err) => { uitslag.personageVoorkeur.algoritme = `niet bereikt (${err.message})`; })
+      .finally(() => store.setSetting(UITSLAGEN_KEY, uitslagen));
   }
 
   // Het antwoord op de labelvraag als voorkeur: (mag meer − te veel) / alle antwoorden, van −1 tot 1.
@@ -273,6 +294,23 @@ function createBeoordeling(service) {
     }).then((res) => { uitslag.labelVoorkeur.algoritme = res.ok ? "ok" : `fout ${res.status}`; })
       .catch((err) => { uitslag.labelVoorkeur.algoritme = `niet bereikt (${err.message})`; })
       .finally(() => store.setSetting(UITSLAGEN_KEY, uitslagen));
+  }
+
+  // Het zaalscherm laat de klok zien (na de keuze van de volgende scène): de klok begint opnieuw bij
+  // de volle duur, op het scherm en op de telefoons. Eén keer per stemronde.
+  function klokOpnieuw() {
+    if (!lopend || lopend.klokOpnieuw) return null;
+    const nu = Date.now();
+    if (Date.parse(lopend.endsAt) <= nu) return null;
+    lopend.klokOpnieuw = true;
+    lopend.opentAt = new Date(nu).toISOString();
+    lopend.endsAt = new Date(nu + instellingen.duur * 1000).toISOString();
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => sluit("klok"), instellingen.duur * 1000);
+    if (typeof timer.unref === "function") timer.unref();
+    service.emit("broadcast", { type: "beoordeling", beoordeling: publiek() });
+    service.emit("admin-state-changed");
+    return publiek();
   }
 
   // De scène is afgelopen: de vragen gaan open, de klok loopt.
@@ -353,7 +391,7 @@ function createBeoordeling(service) {
     fotos.clear();
   }
 
-  return { onthoudScene, zetFoto, start, sluit, antwoord, publiek, stand, zetInstellingen, reset, uitslagen: () => uitslagen.slice() };
+  return { onthoudScene, zetFoto, start, sluit, klokOpnieuw, antwoord, publiek, stand, zetInstellingen, reset, uitslagen: () => uitslagen.slice() };
 }
 
 module.exports = { createBeoordeling, normalizeInstellingen };

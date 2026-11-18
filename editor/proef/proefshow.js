@@ -305,11 +305,9 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       return vraag("audience", "/audience/admin/start-stemming/start", { method: "POST", body: {} });
     },
     chat: () => cue("/v0/show-control/cues/scene-to-chat", { name: "Proef scene naar chat" }, 90000),
-    // READY tijdens het stemmen sluit het stemmen (de klok hoeft niet uit te lopen); daarna is het weer
-    // de gewone READY voor de teleprompter.
+    // READY zoals de deck: de teleprompter op ready; show control sluit dan ook het stemmen en zet
+    // Up next op het hoofdscherm op klaar.
     async ready() {
-      const stemronde = await vraag("audience", "/audience/stage/beoordeling", { timeoutMs: 1500 });
-      if (stemronde.ok && stemronde.body && stemronde.body.lopend) return vraag("audience", "/audience/admin/beoordeling/sluit", { method: "POST", body: {} });
       return cue("/v0/show-control/cues", { name: "Proef teleprompter ready", actions: [{ command: "teleprompter.ready", ackMode: "acknowledged-async", timeoutMs: 1500, payload: { ready: true, source: "proef" } }] });
     },
     async scene() {
