@@ -315,6 +315,8 @@ function buildSceneToChatCue(runtimeState, options = {}) {
         force: true,
         cueIntent: "operator_scene_to_chat",
         situation: payload.situation,
+        // Na OVERSLAAN: de tekst die nog loopt wordt vervangen.
+        ...(options.overslaan ? { overslaan: true, overgeslagenSituationId: options.overgeslagenSituationId || null } : {}),
       }, { timeoutMs: options.timeoutMs || 90000 }),
     ],
     createdAtDate,

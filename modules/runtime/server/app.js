@@ -16,6 +16,7 @@ const {
   finalizePendingSituation,
   normalizeRuntimeDerivedState,
   prepareChosenSituation,
+  skipPreparedSituation,
   previousSituation,
   receiveScores,
   refreshEligiblePool,
@@ -395,6 +396,23 @@ function createRuntimeApp(options = {}) {
     } catch (err) {
       if (err && (err.statusCode === 404 || err.statusCode === 409)) {
         res.status(err.statusCode).json({ ok: false, error: err.message });
+        return;
+      }
+      throw err;
+    }
+    await persistRunState(next);
+    res.json(next);
+  }));
+
+  // Knop OVERSLAAN: de klaargezette scène vervalt voor deze run, de volgende wordt klaargezet.
+  app.post("/v0/runtime/runs/:showRunId/skip-prepared", asyncRoute(async (req, res) => {
+    const state = await readRunStateCached(req.params.showRunId);
+    let next;
+    try {
+      next = await skipPreparedSituation(state, clients, { ...(req.body || {}), skipSave: true });
+    } catch (err) {
+      if (err && err.statusCode === 409) {
+        res.status(409).json({ ok: false, error: err.message });
         return;
       }
       throw err;

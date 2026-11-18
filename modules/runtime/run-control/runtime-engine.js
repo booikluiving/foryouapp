@@ -150,6 +150,7 @@ function normalizeRuntimeDerivedState(state = {}) {
   state.finalizationStatus = state.finalizationStatus && typeof state.finalizationStatus === "object"
     ? state.finalizationStatus
     : { status: "idle", updatedAt: null };
+  state.skippedSituations = Array.isArray(state.skippedSituations) ? state.skippedSituations : [];
   state.lastAppliedScoreFeedRevision = state.lastAppliedScoreFeedRevision && typeof state.lastAppliedScoreFeedRevision === "object"
     ? state.lastAppliedScoreFeedRevision
     : null;
@@ -397,15 +398,19 @@ function buildEligiblePool({
   scoreFeed,
   orderSettings,
   rankingTieBreaks,
+  skippedSituations = [],
 }) {
   const situationMap = catalogSituationMap(catalog);
   const scoreBySituation = scoreMapFromFeed(scoreFeed);
   const playedSet = new Set((playedSituations || []).map((item) => item.situationId));
+  // Overgeslagen scènes (knop OVERSLAAN) komen deze run niet meer terug.
+  const skippedSet = new Set((skippedSituations || []).map((item) => item && item.situationId).filter(Boolean));
   const activeSituationId = activeSituation ? activeSituation.situationId : null;
   const available = (pathEvaluation.items || [])
     .filter((item) => item.status === "available")
     .filter((item) => situationMap.has(item.situationId))
     .filter((item) => !playedSet.has(item.situationId))
+    .filter((item) => !skippedSet.has(item.situationId))
     .filter((item) => item.situationId !== activeSituationId)
     .map((item) => ({
       situationId: item.situationId,
@@ -583,6 +588,7 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
     scoreFeed: state.lastScoreFeed,
     orderSettings: state.orderSettings,
     rankingTieBreaks: state.rankingTieBreaks,
+    skippedSituations: state.skippedSituations,
   });
   applyEligiblePoolUpdate(state, eligiblePool, reason);
   state.startPhase = startPhaseFor(pathEvaluation, state.orderSettings, state.activeSituation ? state.activeSituation.situationId : null);
@@ -633,6 +639,7 @@ async function refreshEligiblePool(state, clients, reason = "runtime_refresh") {
     scoreFeed: state.lastScoreFeed,
     orderSettings: state.orderSettings,
     rankingTieBreaks: state.rankingTieBreaks,
+    skippedSituations: state.skippedSituations,
   });
   const summary = applyEligiblePoolUpdate(state, eligiblePool, reason);
   state.startPhase = startPhaseFor(pathEvaluation, state.orderSettings, state.activeSituation ? state.activeSituation.situationId : null);
@@ -1301,6 +1308,55 @@ async function prepareChosenSituation(state, clients, options = {}) {
   return state;
 }
 
+// Knop OVERSLAAN: de scène die klaarstaat niet spelen. Hij komt deze run niet meer terug en de
+// volgende in de keten wordt klaargezet. Kan zo vaak als nodig, zolang er geen scène speelt.
+async function skipPreparedSituation(state, clients, options = {}) {
+  if (!state || !state.showRunId || state.status !== "running") throw new Error("runtime_no_show_run");
+  normalizeRuntimeDerivedState(state);
+  if (state.activeSituation) {
+    const err = new Error("runtime_skip_requires_no_active_situation");
+    err.statusCode = 409;
+    throw err;
+  }
+  const skipped = state.preparedNext;
+  if (!skipped || !skipped.situationId) {
+    const err = new Error("runtime_nothing_prepared");
+    err.statusCode = 409;
+    throw err;
+  }
+  const wanted = String(options.situationId || "").trim();
+  if (wanted && wanted !== skipped.situationId) {
+    // De knop hoort bij een andere scène dan er nu klaarstaat (twee keer snel gedrukt).
+    const err = new Error("runtime_skip_stale");
+    err.statusCode = 409;
+    throw err;
+  }
+  const before = {
+    skippedSituations: state.skippedSituations.slice(),
+    preparedNext: state.preparedNext,
+    resolvedPreparedNext: state.resolvedPreparedNext,
+  };
+  const skippedAt = new Date().toISOString();
+  state.skippedSituations.push({ situationId: skipped.situationId, title: skipped.title || null, at: skippedAt });
+  await computeAndSetPreparedNext(state, clients, "operator_skipped");
+  if (!state.preparedNext) {
+    state.skippedSituations = before.skippedSituations;
+    state.preparedNext = before.preparedNext;
+    state.resolvedPreparedNext = before.resolvedPreparedNext;
+    const err = new Error("runtime_skip_nothing_left");
+    err.statusCode = 409;
+    throw err;
+  }
+  appendRunLog(state, {
+    type: "prepared_next_skipped",
+    at: skippedAt,
+    situationId: skipped.situationId,
+    nextSituationId: state.preparedNext.situationId,
+  });
+  if (!options.skipSave) await saveRunState(state);
+  return state;
+}
+
 async function previousSituation(state, clients, options = {}) {
   if (!state || !state.showRunId || state.status === "idle") throw new Error("runtime_no_show_run");
   normalizeRuntimeDerivedState(state);
@@ -1421,6 +1477,7 @@ module.exports = {
   receiveScores,
   refreshEligiblePool,
   setTestRun,
+  skipPreparedSituation,
   resetRun,
   restoreAlgorithmScoringContext,
   situationObservedEvent,

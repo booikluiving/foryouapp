@@ -307,6 +307,8 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       return vraag("audience", "/audience/admin/start-stemming/start", { method: "POST", body: {} });
     },
     chat: () => cue("/v0/show-control/cues/scene-to-chat", { name: "Proef scene naar chat" }, 90000),
+    // OVERSLAAN zoals de deck: de klaargezette scène vervalt, de volgende wordt meteen geschreven.
+    overslaan: () => cue("/v0/show-control/cues/overslaan", {}, 10000),
     // READY zoals de deck: de teleprompter op ready; show control sluit dan ook het stemmen en zet
     // Up next op het hoofdscherm op klaar.
     async ready() {
