@@ -27,6 +27,7 @@ const CONFIG = {
   showMuziekUitPath: env("FY_DECK_SHOWMUZIEK_UIT", path.join(HOME, "Library", "Application Support", "ForYouApp", "deck-showmuziek-uit")),
   // stand van de knop OPNAME: show control schrijft dit bestand zolang er een opname loopt
   opnamePath: env("FY_DECK_OPNAME", path.join(HOME, "Library", "Application Support", "ForYouApp", "registratie.json")),
+  scenePlekkenPath: env("FY_DECK_SCENE_PLEKKEN", path.join(HOME, "Library", "Caches", "ForYouApp", "deck-scene-plekken.json")),
   logPath: env("FY_DECK_LOG", path.join(HOME, "Library", "Logs", "ForYou", "deck.log")),
 };
 
@@ -40,12 +41,50 @@ function allButtons(deck) {
   return out;
 }
 
+// Knoppen van deze scène (omgeving, extra's, personage). Ze hebben geen vaste plek:
+// deck-status zet wat er is van links aangeschoven op de plekken sc1..sc6 (actie scenePlek).
+function sceneKnoppen(deck) {
+  return (deck.scene || []).map((knop) => ({ ...knop, pagina: "show" }));
+}
+
+// Waar de scèneknoppen nu staan: { sc1: "omg1", sc2: "extrashot", ... }. deck-status schrijft, deck-actie leest.
+function leesScenePlekken() {
+  try { return JSON.parse(fs.readFileSync(CONFIG.scenePlekkenPath, "utf8")) || {}; } catch (_err) { return {}; }
+}
+function schrijfScenePlekken(plekken) {
+  try {
+    fs.mkdirSync(path.dirname(CONFIG.scenePlekkenPath), { recursive: true });
+    const tmp = `${CONFIG.scenePlekkenPath}.${process.pid}`;
+    fs.writeFileSync(tmp, JSON.stringify(plekken));
+    fs.renameSync(tmp, CONFIG.scenePlekkenPath);
+  } catch (_err) {}
+}
+
+// Ontwerpsysteem: de staat die de scripts zetten (fy_<key>_s) → de stand die je ziet.
+// De soort bepaalt de strook, de stand het vlak. Kleuren staan alleen in deck.json → ontwerp.
+const STAAT_NAAR_STAND = {
+  leeg: "leeg", uit: "uit", onbekend: "onbekend",
+  klaar: "kan", camera: "kan", knop: "kan", blauw: "kan", magenta: "kan", ok: "kan",
+  volgende: "volgende",
+  aan: "aan", gelukt: "aan",
+  actief: "loopt", bezig: "loopt",
+  mute: "muted",
+  warn: "half",
+  fout: "fout", mislukt: "fout",
+};
+const ALLE_STATEN = Object.keys(STAAT_NAAR_STAND);
+
+function standVan(staat) {
+  return STAAT_NAAR_STAND[staat] || "kan";
+}
+
 const varTekst = (key) => `fy_${key}_t`;
 const varStaat = (key) => `fy_${key}_s`;
 const varMaat = (key) => `fy_${key}_m`;
 
 // Lettergrootte voor een knop waarvan de langste regel `tekens` tekens heeft.
-const fontSize = (tekens) => Math.floor(64 / (0.8 * Math.max(tekens, 3)));
+// Zo groot mogelijk, maar onder de strook passen twee regels: hooguit 18.
+const fontSize = (tekens) => Math.min(18, Math.floor(64 / (0.68 * Math.max(tekens, 4))));
 const MAAT_MIN = 6;
 const MAAT_MAX = 12;
 
@@ -212,7 +251,12 @@ function showVolgorde(rt, tp, stem) {
 }
 
 module.exports = {
+  ALLE_STATEN,
   CONFIG,
+  leesScenePlekken,
+  sceneKnoppen,
+  schrijfScenePlekken,
+  standVan,
   DIR,
   allButtons,
   clearHold,

@@ -8,7 +8,7 @@
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const { DIR, MAAT_MAX, MAAT_MIN, allButtons, fontSize, loadDeck, varMaat, varStaat, varTekst } = require("./lib");
+const { ALLE_STATEN, DIR, MAAT_MAX, MAAT_MIN, allButtons, fontSize, loadDeck, standVan, varMaat, varStaat, varTekst } = require("./lib");
 const { CUES } = require("./deck-actie");
 
 const COMPANION_NODE = "/Applications/Companion.app/Contents/Resources/node-runtimes/node22/bin/node";
@@ -30,86 +30,117 @@ function args() {
   return out;
 }
 
+// Controle van deck.json tegen het ontwerpsysteem (deck.json → ontwerp). Zie ONTWERP.md.
 function validate(deck) {
   const errors = [];
+  const o = deck.ontwerp || {};
+  const soorten = o.soorten || {};
+  const standen = o.standen || {};
+  const label = o.label || { regels: 2, tekens: 8 };
+  const hex = /^#[0-9a-f]{6}$/i;
+  // geen soortkleur mag op een standkleur lijken: groen, rood en oranje zijn standen
+  const standKleuren = Object.values(standen).flatMap((s) => [s.vlak, s.vlak2]).filter(Boolean).map((k) => k.toLowerCase());
+  for (const [id, soort] of Object.entries(soorten)) {
+    if (!hex.test(soort.kleur || "")) errors.push(`soort ${id}: kleur ontbreekt`);
+    if (id !== "nav" && standKleuren.includes(String(soort.kleur).toLowerCase())) errors.push(`soort ${id}: kleur ${soort.kleur} is al een standkleur`);
+    for (const st of soort.standen || []) if (!standen[st]) errors.push(`soort ${id}: stand ${st} bestaat niet`);
+  }
+  for (const [id, st] of Object.entries(standen)) if (!hex.test(st.vlak || "") || !hex.test(st.tekst || "")) errors.push(`stand ${id}: vlak en tekst moeten een kleur zijn`);
+
   const pageIds = new Set(deck.paginas.map((p) => p.id));
   const keys = new Set();
+  const bekijk = (knop, where) => {
+    if (!/^[a-z0-9_]+$/.test(knop.key || "")) errors.push(`${where}: key alleen a-z, 0-9, _`);
+    if (keys.has(knop.key)) errors.push(`${where}: key dubbel`);
+    keys.add(knop.key);
+    if (!soorten[knop.soort]) errors.push(`${where}: soort ${knop.soort || "(geen)"} onbekend; kies uit ${Object.keys(soorten).join(", ")}`);
+    for (const veld of ["kleur", "rol", "onderdeel", "pictogram"]) if (veld in knop) errors.push(`${where}: veld ${veld} hoort niet in een knop; kleur komt uit de soort en de stand`);
+    const regels = String(knop.label || "").split("\n");
+    if (regels.length > label.regels) errors.push(`${where}: label heeft ${regels.length} regels (hooguit ${label.regels})`);
+    for (const r of regels) if (r.length > label.tekens) errors.push(`${where}: labelregel "${r}" is ${r.length} tekens (hooguit ${label.tekens})`);
+    const actie = knop.actie || {};
+    if (actie.pagina && !pageIds.has(actie.pagina)) errors.push(`${where}: pagina ${actie.pagina} bestaat niet`);
+    if (knop.soort === "nav" && !actie.pagina) errors.push(`${where}: nav zonder pagina`);
+    if (actie.link && knop.soort !== "web") errors.push(`${where}: een link is soort web`);
+    if (knop.soort === "web" && !actie.link) errors.push(`${where}: soort web zonder link`);
+    if (actie.cue && !CUES[actie.cue]) errors.push(`${where}: cue ${actie.cue} onbekend`);
+    if (actie.autofocus && !["alle", "cam1", "cam2", "cam3"].includes(actie.autofocus)) errors.push(`${where}: autofocus ${actie.autofocus} onbekend (alle, cam1, cam2 of cam3)`);
+    if (actie.stem && actie.stem !== "start") errors.push(`${where}: stem ${actie.stem} onbekend (start)`);
+    if (actie.extra && !["shot", "geluid"].includes(actie.extra)) errors.push(`${where}: extra ${actie.extra} onbekend (shot of geluid)`);
+    if (actie.personage && actie.personage !== "nummer") errors.push(`${where}: personage ${actie.personage} onbekend (nummer)`);
+  };
   for (const page of deck.paginas) {
     const spots = new Set();
+    const rijen = (o.rijen || {})[page.id];
+    if (!rijen) errors.push(`pagina ${page.id}: geen rijen in ontwerp.rijen`);
     for (const knop of page.knoppen) {
       const where = `${page.id}/${knop.key}`;
-      if (!/^[a-z0-9_]+$/.test(knop.key || "")) errors.push(`${where}: key alleen a-z, 0-9, _`);
-      if (keys.has(knop.key)) errors.push(`${where}: key dubbel`);
-      keys.add(knop.key);
+      bekijk(knop, where);
       const [r, c] = knop.plek || [];
       if (!(r >= 0 && r < deck.deck.rijen && c >= 0 && c < deck.deck.kolommen)) errors.push(`${where}: plek buiten het deck`);
       if (spots.has(`${r},${c}`)) errors.push(`${where}: plek ${r},${c} al bezet`);
       spots.add(`${r},${c}`);
-      const actie = knop.actie || {};
-      if (actie.pagina && !pageIds.has(actie.pagina)) errors.push(`${where}: pagina ${actie.pagina} bestaat niet`);
-      if (actie.cue && !CUES[actie.cue]) errors.push(`${where}: cue ${actie.cue} onbekend`);
-      if (actie.autofocus && !["alle", "cam1", "cam2", "cam3"].includes(actie.autofocus)) errors.push(`${where}: autofocus ${actie.autofocus} onbekend (alle, cam1, cam2 of cam3)`);
-      if (actie.stem && actie.stem !== "start") errors.push(`${where}: stem ${actie.stem} onbekend (start)`);
-      if (actie.extra && !["shot", "geluid"].includes(actie.extra)) errors.push(`${where}: extra ${actie.extra} onbekend (shot of geluid)`);
-      if (actie.personage && actie.personage !== "nummer") errors.push(`${where}: personage ${actie.personage} onbekend (nummer)`);
-      if (!["actie", "schakelaar", "link", "lampje", "nav", "gevaar"].includes(knop.rol)) errors.push(`${where}: rol ${knop.rol} onbekend`);
-      if (!deck.onderdelen[knop.onderdeel]) errors.push(`${where}: onderdeel ${knop.onderdeel} onbekend`);
-      if (!fs.existsSync(path.join(DIR, "iconen", `${knop.pictogram}.svg`))) errors.push(`${where}: pictogram ${knop.pictogram} ontbreekt in iconen/`);
+      if (rijen && rijen[r] && !rijen[r].includes(knop.soort)) errors.push(`${where}: soort ${knop.soort} mag niet in rij ${r + 1} van ${page.id} (wel: ${rijen[r].join(", ")})`);
+      if (knop.soort === "nav" && r !== deck.deck.rijen - 1) errors.push(`${where}: navigatie alleen in de onderste rij`);
+      if (knop.actie && knop.actie.scenePlek && knop.soort !== "scene") errors.push(`${where}: scèneplek is soort scene`);
     }
+  }
+  for (const knop of deck.scene || []) {
+    bekijk(knop, `scene/${knop.key}`);
+    if (knop.soort !== "scene") errors.push(`scene/${knop.key}: knoppen van de scène zijn soort scene`);
+    if (knop.plek) errors.push(`scene/${knop.key}: knoppen van de scène hebben geen vaste plek`);
   }
   if (errors.length) throw new Error(`deck.json klopt niet:\n  ${errors.join("\n  ")}`);
 }
 
 const opt = (value) => ({ isExpression: false, value });
 
-// staat (zoals deck-status.js die zet) → toon van het plaatje
-const TOON = {
-  uit: "off", klaar: "idle", camera: "idle", blauw: "idle", magenta: "idle", knop: "idle",
-  actief: "live", aan: "on", bezig: "busy", gelukt: "done", warn: "warn",
-  fout: "alert", mute: "alert", mislukt: "alert",
-};
+const kleurGetal = (hex) => Number.parseInt(String(hex).slice(1), 16);
 
-function toonVan(knop, staat) {
-  if (staat === "ok") return knop.rol === "lampje" ? "on" : "idle";
-  return TOON[staat] || "idle";
+function tekstKleur(deck, stand) {
+  return kleurGetal(deck.ontwerp.standen[stand].tekst);
 }
 
-const ALLE_STATEN = ["uit", "klaar", "camera", "blauw", "magenta", "knop", "actief", "aan", "bezig", "gelukt", "warn", "fout", "mute", "mislukt", "ok"];
-
-function tekstKleur(knop, toon) {
-  if (toon === "off") return 0x8d96a0;
-  if (knop.rol === "lampje") return 0xe8edf2;
-  if (["warn", "busy", "done"].includes(toon)) return 0x1d1200;
-  if (knop.onderdeel === "licht" && toon !== "alert") return 0x231c00;
-  return 0xffffff;
-}
-
-const vrijeTekst = (knop) => !!(knop.actie && (knop.actie.extra || knop.actie.personage || Number.isInteger(knop.actie.omgeving)));
+const vrijeTekst = (knop) => !!(knop.actie && (knop.actie.scenePlek || knop.actie.extra || knop.actie.personage || Number.isInteger(knop.actie.omgeving)));
 
 function buttonControl(deck, knop, pageNumbers, scriptsDir, plaatjes) {
-  const nav = !!(knop.actie && knop.actie.pagina) && !knop.status;
+  const nav = knop.soort === "nav";
   const img = (plaatjes && plaatjes[knop.key]) || {};
-  const baseToon = nav ? "idle" : "off";
+  // beginstand: nav altijd "kan", scèneplekken "leeg", de rest "uit" tot deck-status iets zegt
+  const baseStand = nav ? "kan" : knop.actie && knop.actie.scenePlek ? "leeg" : img.uit ? "uit" : "kan";
   const feedbacks = [];
   if (!nav) {
-    const perToon = {};
+    const perStand = {};
     for (const staat of ALLE_STATEN) {
-      const toon = toonVan(knop, staat);
-      if (toon === baseToon || !img[toon]) continue;
-      (perToon[toon] = perToon[toon] || []).push(staat);
+      const stand = standVan(staat);
+      if (stand === baseStand || !img[stand]) continue;
+      (perStand[stand] = perStand[stand] || []).push(staat);
     }
-    const tonen = Object.entries(perToon);
-    for (const [toon, staten] of tonen) {
+    for (const [stand, staten] of Object.entries(perStand)) {
+      const wanneer = staten.map((st) => `$(custom:${varStaat(knop.key)}) == '${st}'`).join(" || ");
       feedbacks.push({
-        id: `fb_${knop.key}_${toon}`,
+        id: `fb_${knop.key}_${stand}`,
         type: "feedback",
         definitionId: "check_expression",
         connectionId: "internal",
-        options: { expression: opt(staten.map((st) => `$(custom:${varStaat(knop.key)}) == '${st}'`).join(" || ")) },
+        options: { expression: opt(wanneer) },
         isInverted: opt(false),
-        style: { png64: img[toon], color: tekstKleur(knop, toon) },
+        style: { png64: img[stand], color: tekstKleur(deck, stand) },
         children: {},
       });
+      // fout knippert: elke andere seconde het donkere plaatje
+      if (deck.ontwerp.standen[stand].knippert && img[`${stand}_knip`]) {
+        feedbacks.push({
+          id: `fb_${knop.key}_${stand}_knip`,
+          type: "feedback",
+          definitionId: "check_expression",
+          connectionId: "internal",
+          options: { expression: opt(`(${wanneer}) && $(internal:time_s) % 2 == 1`) },
+          isInverted: opt(false),
+          style: { png64: img[`${stand}_knip`], color: kleurGetal(deck.ontwerp.standen[stand].vlak) },
+          children: {},
+        });
+      }
     }
     // knoppen met vrije tekst: deck-status zet fy_<key>_m, daarmee de lettergrootte
     if (vrijeTekst(knop)) {
@@ -156,7 +187,7 @@ function buttonControl(deck, knop, pageNumbers, scriptsDir, plaatjes) {
 
   // omgevingsknoppen melden ook het loslaten: een knop die "houden" is (haperen) gaat dan weer uit
   const up = [];
-  if (knop.actie && Number.isInteger(knop.actie.omgeving)) {
+  if (knop.actie && (knop.actie.scenePlek || Number.isInteger(knop.actie.omgeving))) {
     up.push({
       id: `act_${knop.key}_los`,
       type: "action",
@@ -176,10 +207,8 @@ function buttonControl(deck, knop, pageNumbers, scriptsDir, plaatjes) {
   const lines = String(knop.label).split("\n");
   let tekens = Math.max(...lines.map((l) => l.length));
   if (!nav) {
-    let min = 4; // flitsteksten: OK, FAIL, ...
-    if (knop.rol === "schakelaar") min = knop.onderdeel === "geluid" ? 6 : 5; // UNMUTE / START, RESET
+    let min = 5; // flitsteksten: FAIL, MUTED, LOOPT, ...
     if (knop.status || (knop.actie && knop.actie.td)) min = 7; // 10 FOUT / AL OPEN
-    if (knop.rol === "lampje") min = Math.max(min, 4); // DOWN
     if (vrijeTekst(knop)) min = MAAT_MIN;
     tekens = Math.max(tekens, min);
   }
@@ -190,10 +219,10 @@ function buttonControl(deck, knop, pageNumbers, scriptsDir, plaatjes) {
       text: nav ? knop.label : `$(custom:${varTekst(knop.key)})`,
       textExpression: false,
       size,
-      png64: img[baseToon] || null,
+      png64: img[baseStand] || null,
       alignment: "center:center",
       pngalignment: "center:center",
-      color: tekstKleur(knop, baseToon),
+      color: tekstKleur(deck, baseStand),
       bgcolor: 0,
       show_topbar: false,
     },
@@ -256,9 +285,9 @@ function buildSql(deck, opts) {
       const controlId = `bank:fy_${knop.key}`;
       (controls[r] = controls[r] || {})[c] = controlId;
       sql.push(`INSERT INTO controls (id, value) VALUES (${q(controlId)}, ${j(buttonControl(deck, knop, pageNumbers, opts.scriptsDir, opts.plaatjesData))});`);
-      if (knop.actie && knop.actie.pagina && !knop.status) continue;
+      if (knop.soort === "nav") continue;
       sql.push(`INSERT INTO custom_variables (id, value) VALUES (${q(varTekst(knop.key))}, ${j({ description: `For_You ${knop.key} tekst`, defaultValue: knop.label, persistCurrentValue: false, sortOrder: sortOrder++ })});`);
-      sql.push(`INSERT INTO custom_variables (id, value) VALUES (${q(varStaat(knop.key))}, ${j({ description: `For_You ${knop.key} staat`, defaultValue: "uit", persistCurrentValue: false, sortOrder: sortOrder++ })});`);
+      sql.push(`INSERT INTO custom_variables (id, value) VALUES (${q(varStaat(knop.key))}, ${j({ description: `For_You ${knop.key} staat`, defaultValue: knop.actie && knop.actie.scenePlek ? "leeg" : "uit", persistCurrentValue: false, sortOrder: sortOrder++ })});`);
       if (vrijeTekst(knop)) sql.push(`INSERT INTO custom_variables (id, value) VALUES (${q(varMaat(knop.key))}, ${j({ description: `For_You ${knop.key} lettergrootte`, defaultValue: String(MAAT_MIN), persistCurrentValue: false, sortOrder: sortOrder++ })});`);
     }
     sql.push(`INSERT INTO pages (id, value) VALUES (${q(String(index + 1))}, ${j({ id: pageIds[index], name: page.naam, controls })});`);

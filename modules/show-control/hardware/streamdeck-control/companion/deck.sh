@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Stream Deck XL van For_You: bouwen, testen, toepassen, terugdraaien.
 #
-#   deck.sh check                 deck.json controleren
+#   deck.sh check                 deck.json controleren tegen het ontwerpsysteem (ONTWERP.md)
 #   deck.sh test start|stop|status|druk <key>
 #                                 test-Companion op 127.0.0.1:18008 met een kopie van de echte config,
 #                                 virtuele deck: http://127.0.0.1:18008/emulator/streamdeck-xl
@@ -90,7 +90,7 @@ test_start() {
     SELECT 'surface-module aan' FROM instances WHERE json_extract(value,'\$.moduleInstanceType')='surface' AND json_extract(value,'\$.enabled');")"
   [[ -z "$bad" ]] || die "test-db raakt de echte deck: $bad"
 
-  local env_vars=(FY_DECK_COMPANION_URL="$TEST_URL" FY_DECK_DROOG=1 FY_DECK_HOLD_DIR="$TEST/hold" FY_DECK_LOG="$TEST/deck.log")
+  local env_vars=(FY_DECK_COMPANION_URL="$TEST_URL" FY_DECK_DROOG=1 FY_DECK_HOLD_DIR="$TEST/hold" FY_DECK_LOG="$TEST/deck.log" FY_DECK_SCENE_PLEKKEN="$TEST/scene-plekken.json")
   (cd "$RES" && env $env_vars nohup "$NODE" --import "$SRC/test/companion-shim.mjs" "$RES/main.js" \
       --config-dir "$TEST/config" --admin-address 127.0.0.1 --admin-port $TEST_PORT \
       --machine-id foryou-deck-test --log-level info --no-notifications </dev/null >"$TEST/companion.log" 2>&1) &
@@ -177,9 +177,7 @@ toepassen() {
   pgrep -x "Stream Deck" >/dev/null && echo aan >"$bk/elgato-app" || echo uit >"$bk/elgato-app"
   say "3/7 scripts installeren in $INSTALL"
   mkdir -p "$INSTALL/test"
-  mkdir -p "$INSTALL/iconen"
   cp -p "$SRC"/{deck.json,lib.js,bouw.js,render.js,plaatjes.json,deck-actie.js,deck-status.js,browser-tabs.sh,stack.sh,deck.sh} "$INSTALL/"
-  cp -p "$SRC"/iconen/* "$INSTALL/iconen/"
   cp -p "$SRC/test/companion-shim.mjs" "$INSTALL/test/"
   (cd "$SRC" && git rev-parse --short HEAD 2>/dev/null || echo onbekend) >"$INSTALL/VERSIE"
   say "4/7 Companion-indeling bouwen"
@@ -238,7 +236,7 @@ live_status() {
 }
 
 case "${1:-}" in
-  check) "$NODE" "$SRC/bouw.js" --check ;;
+  check) "$NODE" "$SRC/bouw.js" --check && "$NODE" "$SRC/test/ontwerp-test.js" ;;
   test)
     case "${2:-}" in
       start) test_start ;;

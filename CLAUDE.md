@@ -14,3 +14,7 @@ Wat er bewust nog staat, en alleen op ja van Booi verandert omdat het opgeslagen
 - Een tijdelijke doorverwijzing in `modules/audience/server/app.js` voor twee podiumpagina's, tot `show/td-qhub-test/apply_publiek_adres_patch.py` in TouchDesigner is gedraaid.
 
 Niet van ons en dus ongemoeid: de teller in TouchDesigner-bestandsnamen (`v1.14.toe`) en `/control/api/v1` van de Blackmagic-camera's.
+
+## Stream Deck
+
+Elke knop volgt het ontwerpsysteem in `modules/show-control/hardware/streamdeck-control/companion/ONTWERP.md`: een vaste soort per knop, kleuren alleen uit `deck.json` → `ontwerp`. `deck.sh check` moet slagen. Op het echte deck alleen na een ja van Booi.

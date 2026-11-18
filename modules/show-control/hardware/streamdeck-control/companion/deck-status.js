@@ -20,7 +20,10 @@ const {
   log,
   maatVan,
   pasLabel,
+  sceneKnoppen,
+  schrijfScenePlekken,
   setVar,
+  standVan,
   showVolgorde,
   varMaat,
   varStaat,
@@ -116,9 +119,10 @@ function compute(deck, g) {
   for (const [key, url] of Object.entries(HARDWARE)) portOk[Number(new URL(url).port)] = g.hw[key].ok;
 
   const problems = [];
-  for (const page of deck.paginas) {
+  const scene = sceneKnoppen(deck);
+  for (const page of [...deck.paginas, { id: "scene", knoppen: scene }]) {
     for (const knop of page.knoppen) {
-      if (knop.actie && knop.actie.pagina && !knop.status) continue;
+      if (knop.soort === "nav" || (knop.actie && knop.actie.scenePlek)) continue;
       const label = knop.label;
       const k = knop.key;
       const cue = knop.actie && knop.actie.cue;
@@ -129,7 +133,7 @@ function compute(deck, g) {
         // START RUN (inloop) → CONTENT WARNING (als er een tekst is) → START SHOW (de eerste scène wordt gekozen) → RESET RUN.
         const wachtOpShow = activeRun && !activeSit && !(rt.playedSituations || []).length && !!(g.stem && g.stem.ok && g.stem.body && g.stem.body.showGestart === false);
         t = !activeRun ? "START\nRUN" : wachtOpShow ? (g.stem.body.waarschuwingNodig ? "CONTENT\nWARNING" : "START\nSHOW") : "RESET\nRUN";
-        s = showRuns && volgorde.run.mag ? (activeRun && !wachtOpShow ? "actief" : "klaar") : "uit";
+        s = showRuns && volgorde.run.mag ? "klaar" : "uit";
       }
       else if (cue === "toggle-situation") { t = activeSit ? "STOP\nSCENE" : "START\nSCENE"; s = showRuns && activeRun && volgorde.sit.mag ? (activeSit ? "actief" : "klaar") : "uit"; }
       else if (cue === "scene-chat") { s = showRuns && volgorde.chat.mag ? "klaar" : "uit"; }
@@ -146,31 +150,31 @@ function compute(deck, g) {
         const muted = sq5[target];
         if (sq5[`${target}Mixed`]) { t = `${first(label)}\nMIX`; s = "warn"; }
         else if (muted === true) { t = `${first(label)}\nMUTED`; s = "mute"; }
-        else if (muted === false) { t = `${first(label)}\nON`; s = "aan"; }
-        else { t = `${first(label)}\n--`; s = "uit"; }
+        else if (muted === false) { t = `${first(label)}\nON`; s = "klaar"; }
+        else { t = `${first(label)}\n?`; s = "onbekend"; }
       }
       else if (knop.actie && knop.actie.extra) {
         // tekst uit de catalogus (per omgeving); "Shot " mag weg als dat groter uitvalt
         const extra = extras && extras[knop.actie.extra];
         const regels = extra && extra.label ? pasLabel(extra.label, knop.actie.extra === "shot" ? "shot" : "") : [];
-        if (!extras) { t = `${first(label)}\n--`; s = "uit"; }
+        if (!extras) { t = ""; s = "leeg"; }
         else if (extra && extra.klaar) { t = (regels.length ? regels : [first(label)]).join("\n"); s = extra.aan ? "actief" : "klaar"; }
         else {
           const naam = extra && extra.label ? pasLabel(String(extra.label).replace(/^shot\s+/i, ""))[0] : "";
-          t = `${naam || first(label)}\nLEEG`; s = "uit";
+          t = ""; s = "leeg"; void naam;
         }
       }
       else if (knop.actie && knop.actie.personage) {
         // nummer van een personage in de scène (Marit): leeg en donker als er geen is,
         // donker met de naam zolang de scène nog niet speelt, live zolang het nummer speelt
         const pk = g.showStatus.ok ? g.showStatus.body.personageKnop || null : null;
-        if (!pk || !pk.label) { t = ""; s = "uit"; }
+        if (!pk || !pk.label) { t = ""; s = "leeg"; }
         else { t = pasLabel(pk.label).join("\n"); s = pk.staat || "uit"; }
       }
       else if (knop.actie && Number.isInteger(knop.actie.omgeving)) {
         // leeg en donker als deze omgeving hier niets heeft
         const omg = omgKnoppen[knop.actie.omgeving];
-        if (!omg) { t = ""; s = "uit"; }
+        if (!omg) { t = ""; s = "leeg"; }
         else {
           t = pasLabel(omg.label).concat(omg.teller ? [omg.teller] : []).join("\n");
           s = omg.staat || "klaar";
@@ -179,13 +183,13 @@ function compute(deck, g) {
       else if (knop.actie && knop.actie.link) {
         const ok = !!portOk[Number(new URL(knop.actie.link).port)];
         t = ok ? label : `${first(label)}\nDOWN`;
-        s = ok ? (k === "l_show" && warnings.length ? "warn" : knop.kleur || "ok") : "fout";
+        s = ok ? "ok" : "fout";
       }
       else if (knop.actie && knop.actie.stack === "toggle") {
         const n = Object.values(g.core).filter(Boolean).length;
         const all = n === Object.keys(CORE).length;
         t = all ? "STACK\nAAN" : n ? "STACK\nDEELS" : "STACK\nUIT";
-        s = all ? knop.kleur || "ok" : n ? "warn" : "fout";
+        s = all ? "ok" : n ? "warn" : "fout";
       }
       else if (knop.actie && knop.actie.stack === "restart") { s = "klaar"; }
       else if (knop.actie && knop.actie.osc) { s = g.ports[knop.actie.osc.poort || 8008] ? "klaar" : "uit"; }
@@ -196,26 +200,26 @@ function compute(deck, g) {
       }
       else if (knop.actie && knop.actie.autocam) {
         const stand = g.teleprompter.ok && g.teleprompter.body ? g.teleprompter.body.autoCameraSwitch : null;
-        if (!stand) { t = `${first(label)}\n--`; s = "uit"; }
+        if (!stand) { t = `${first(label)}\n?`; s = "onbekend"; }
         else { t = `${first(label)}\n${stand.enabled ? "AAN" : "UIT"}`; s = stand.enabled ? "aan" : "klaar"; }
       }
       else if (knop.actie && knop.actie.simulatie) {
         const stand = g.sim && g.sim.ok && g.sim.body ? g.sim.body : null;
         const aan = stand && (knop.actie.simulatie === "personages" ? stand.personages : stand.bots > 0);
-        if (!stand) { t = `${first(label)}\n--`; s = "uit"; }
+        if (!stand) { t = `${first(label)}\n?`; s = "onbekend"; }
         else { t = `${label}\n${aan ? "AAN" : "UIT"}`; s = aan ? "aan" : "klaar"; }
       }
       else if (knop.actie && knop.actie.opname) {
         const loopt = fs.existsSync(CONFIG.opnamePath);
         t = loopt ? `${first(label)}\nLOOPT` : label;
-        s = !portOk[3025] ? "uit" : loopt ? "fout" : "klaar";
+        s = !portOk[3025] ? "uit" : loopt ? "actief" : "klaar";
       }
       else if (knop.actie && knop.actie.showmuziek) {
         const uit = fs.existsSync(CONFIG.showMuziekUitPath);
-        if (!g.ports[8008]) { t = `${first(label)}\n--`; s = "uit"; }
-        else { t = uit ? `${first(label)}\nMUTED` : label; s = uit ? "mute" : "aan"; }
+        if (!g.ports[8008]) { t = `${first(label)}\n?`; s = "onbekend"; }
+        else { t = uit ? `${first(label)}\nMUTED` : label; s = uit ? "mute" : "klaar"; }
       }
-      else if (knop.actie && knop.actie.td) { t = g.tdText; s = knop.kleur || (tdOsc ? "ok" : "klaar"); }
+      else if (knop.actie && knop.actie.td) { t = g.tdText; s = tdOsc ? "ok" : "klaar"; }
       else if (k === "tdosc" || k === "tdack") {
         const ok = k === "tdosc" ? tdOsc : tdAck;
         t = `${label}\n${ok ? "OK" : "DOWN"}`;
@@ -224,14 +228,14 @@ function compute(deck, g) {
       }
       else if (k in CORE) {
         const ok = g.core[k];
-        t = ok ? label : `${label}\nDOWN`;
+        t = `${label}\n${ok ? "OK" : "DOWN"}`;
         s = ok ? "ok" : "fout";
         if (!ok) problems.push(label);
       }
       else if (k in HARDWARE) {
         const r = g.hw[k];
         s = r.ok ? "ok" : "fout";
-        t = r.ok ? label : `${label}\nDOWN`;
+        t = `${label}\n${r.ok ? "OK" : "DOWN"}`;
         if (r.ok && k === "d_camera" && r.body && r.body.cameras) {
           const cams = Object.values(r.body.cameras);
           const online = cams.filter((c) => c.online).length;
@@ -240,7 +244,36 @@ function compute(deck, g) {
         }
         if (!r.ok) problems.push(label);
       }
-      out[k] = knop.actie && (knop.actie.extra || knop.actie.personage || Number.isInteger(knop.actie.omgeving)) ? { t, s, m: maatVan(t) } : { t, s };
+      out[k] = knop.actie && (knop.actie.extra || knop.actie.personage || Number.isInteger(knop.actie.omgeving)) ? { t, s, m: maatVan(t || "-") } : { t, s };
+    }
+  }
+
+  // Volgende stap: van de knoppen van het verloop die nu mogen krijgt de laatste in de volgorde
+  // groen (STEM → SCENE CHAT → READY → START SCENE; zonder run START RUN). Hooguit één per pagina.
+  const volgendeReeks = activeRun ? ["stem", "scenechat", "ready", "sit"] : ["run"];
+  const kandidaten = volgendeReeks.filter((k) => out[k] && out[k].s === "klaar");
+  if (kandidaten.length) out[kandidaten[kandidaten.length - 1]].s = "volgende";
+
+  // Knoppen van deze scène van links aangeschoven op sc1..sc6; wat er niet is blijft leeg.
+  const plekken = deck.paginas.flatMap((p) => p.knoppen).filter((k) => k.actie && k.actie.scenePlek)
+    .sort((a, b) => a.actie.scenePlek - b.actie.scenePlek);
+  const aanwezig = scene.filter((k) => out[k.key] && out[k.key].s !== "leeg" && out[k.key].t);
+  const kaart = {};
+  plekken.forEach((plek, i) => {
+    const bron = aanwezig[i];
+    if (bron) { out[plek.key] = { ...out[bron.key], m: out[bron.key].m || maatVan(out[bron.key].t) }; kaart[plek.key] = bron.key; }
+    else out[plek.key] = { t: "", s: "leeg", m: maatVan("-") };
+  });
+  for (const k of scene) delete out[k.key];
+  Object.defineProperty(out, "plekken", { value: kaart, enumerable: false });
+
+  // Alleen standen die bij de soort horen (ontwerp in deck.json); anders "kan" en melden.
+  const soortVan = Object.fromEntries(deck.paginas.flatMap((p) => p.knoppen).map((k) => [k.key, k.soort]));
+  for (const [k, v] of Object.entries(out)) {
+    const soort = deck.ontwerp.soorten[soortVan[k]];
+    if (soort && !soort.standen.includes(standVan(v.s)) && !(v.s === "leeg" && k.startsWith("sc"))) {
+      log({ dienst: "deck-status", knop: k, staat: v.s, fout: `stand ${standVan(v.s)} hoort niet bij soort ${soortVan[k]}` });
+      v.s = "klaar";
     }
   }
   if (out.overzicht) {
@@ -255,6 +288,7 @@ async function loop() {
   const deck = loadDeck();
   const written = new Map(); // varnaam -> waarde zoals laatst naar Companion gestuurd
   const held = new Set();
+  let laatsteKaart = "";
   let lastResync = Date.now();
   let companionUp = false;
   log({ dienst: "deck-status", start: true, companion: CONFIG.companionUrl, knoppen: allButtons(deck).length });
@@ -263,6 +297,8 @@ async function loop() {
     const started = Date.now();
     try {
       const want = compute(deck, await gather());
+      const kaart = JSON.stringify(want.plekken || {});
+      if (kaart !== laatsteKaart) { schrijfScenePlekken(want.plekken || {}); laatsteKaart = kaart; }
       if (Date.now() - lastResync > RESYNC_MS) { written.clear(); lastResync = Date.now(); }
       let failed = 0;
       for (const [key, { t, s, m }] of Object.entries(want)) {
@@ -295,7 +331,8 @@ async function loop() {
 async function once() {
   const deck = loadDeck();
   const want = compute(deck, await gather());
-  for (const [key, { t, s }] of Object.entries(want)) console.log(`${key.padEnd(22)} ${s.padEnd(8)} ${t.replace(/\n/g, " | ")}`);
+  for (const [key, { t, s }] of Object.entries(want)) console.log(`${key.padEnd(22)} ${s.padEnd(9)} ${standVan(s).padEnd(9)} ${t.replace(/\n/g, " | ")}`);
+  console.log("scène:", JSON.stringify(want.plekken));
 }
 
 if (require.main === module) {

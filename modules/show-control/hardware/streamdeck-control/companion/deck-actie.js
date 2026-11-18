@@ -11,6 +11,8 @@ const {
   CONFIG,
   DIR,
   allButtons,
+  leesScenePlekken,
+  sceneKnoppen,
   clearHold,
   fetchJson,
   hold,
@@ -543,7 +545,16 @@ async function doOmgevingLos(knop) {
 }
 
 async function perform(key, fase) {
-  const knop = allButtons(loadDeck()).find((k) => k.key === key);
+  const deck = loadDeck();
+  let knop = allButtons(deck).find((k) => k.key === key);
+  // scèneplek (sc1..sc6): deck-status heeft er een scèneknop op gezet; doe wat die knop doet,
+  // maar laat de flits op deze plek zien
+  if (knop && knop.actie && knop.actie.scenePlek) {
+    const bron = leesScenePlekken()[key];
+    const echt = bron && sceneKnoppen(deck).find((k) => k.key === bron);
+    if (!echt) return { ok: true, leeg: "geen scèneknop op deze plek" };
+    knop = { ...echt, key };
+  }
   if (!knop || !knop.actie) throw new Error(`geen knop met actie: ${key}`);
   const actie = knop.actie;
   if (fase === "los") return Number.isInteger(actie.omgeving) ? await doOmgevingLos(knop) : { ok: true, los: "niets" };
