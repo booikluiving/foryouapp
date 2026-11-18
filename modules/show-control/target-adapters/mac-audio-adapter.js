@@ -18,10 +18,11 @@ function player(options = {}) {
 // Het extra geluid van de omgeving (de wisselknop) speelt via speel-fade als die gebouwd is:
 // zelfde aanroep als afplay, maar bij uitzetten zakt het geluid in anderhalve seconde weg in
 // plaats van hard te stoppen. Bouwen: swiftc -O speel-fade.swift -o speel-fade (in tools/speel-fade).
-// Stappen, fases en de intro blijven via afplay lopen.
+// Het sfeergeluid van een fase dat over de omgeving heen klinkt (spoor "fase") loopt er ook via.
+// Stappen, fasegeluiden bij het ingaan en de intro blijven via afplay lopen.
 const FADE_PLAYER = path.resolve(__dirname, "../tools/speel-fade/speel-fade");
 function playerVoor(naam, options = {}) {
-  if (naam !== "lied" || options.macAudioPlayer || process.env.SHOW_CONTROL_AUDIO_PLAYER) return player(options);
+  if ((naam !== "lied" && naam !== "fase") || options.macAudioPlayer || process.env.SHOW_CONTROL_AUDIO_PLAYER) return player(options);
   const fade = String(process.env.SHOW_CONTROL_FADE_PLAYER || FADE_PLAYER);
   try {
     fs.accessSync(fade, fs.constants.X_OK);
@@ -36,10 +37,16 @@ function audioDisabled(options = {}) {
   return value === "off" || value === "0" || value === "uit";
 }
 
-// Drie sporen: "lied" is het extra geluid van de omgeving (wisselknop, mag lang duren),
+// Vier sporen: "lied" is het extra geluid van de omgeving (wisselknop, mag lang duren),
 // "effect" zijn de korte geluiden van stappen (omvallen, fases), "intro" is het startgeluid van
-// de scène. De sporen kappen elkaar niet af.
-const sporen = { lied: { child: null, file: "" }, effect: { child: null, file: "" }, intro: { child: null, file: "" } };
+// de scène, "fase" is het sfeergeluid van een fase dat over het sfeergeluid van de omgeving heen
+// klinkt (in een lus tot de fase wisselt of de scène stopt). De sporen kappen elkaar niet af.
+const sporen = {
+  lied: { child: null, file: "" },
+  effect: { child: null, file: "" },
+  intro: { child: null, file: "" },
+  fase: { child: null, file: "" },
+};
 
 // Dempen: zolang een lied met dempSfeer speelt staat het sfeergeluid in TouchDesigner op nul.
 // Hier staat waar het daarna naar terug moet.
@@ -85,6 +92,7 @@ function stopCurrent() {
   stopSpoor("lied");
   stopSpoor("effect");
   stopSpoor("intro");
+  stopSpoor("fase");
 }
 
 function isPlaying(naam, filePath) {
@@ -96,6 +104,11 @@ async function sendMacAudioCommand(action, context = {}) {
   const options = context.adapterOptions || {};
   const payload = action.payload || {};
   if (action.command === "audio.extra.stop") {
+    // Eén spoor (de fase wisselt naar een fase zonder eigen geluid eroverheen).
+    if (payload.spoor && Object.prototype.hasOwnProperty.call(sporen, String(payload.spoor))) {
+      stopSpoor(String(payload.spoor));
+      return { stage: "applied", state: "ok", message: `spoor ${payload.spoor} gestopt` };
+    }
     // Ook aan het einde van de scène (cue-library/scene-einde.js): alle sporen uit, ook een lus.
     stopCurrent();
     return { stage: "applied", state: "ok", message: "extra geluid gestopt" };
@@ -110,7 +123,11 @@ async function sendMacAudioCommand(action, context = {}) {
   if (audioDisabled(options)) {
     return { stage: "applied", state: "warning", warning: true, message: "extra geluid staat uit (SHOW_CONTROL_EXTRA_AUDIO=off)" };
   }
-  const naam = payload.wissel ? "lied" : payload.spoor === "intro" ? "intro" : "effect";
+  const naam = payload.wissel ? "lied" : payload.spoor === "intro" ? "intro" : payload.spoor === "fase" ? "fase" : "effect";
+  // De fase staat al aan met dit geluid: laten lopen, niet opnieuw beginnen.
+  if (naam === "fase" && isPlaying("fase", filePath)) {
+    return { stage: "applied", state: "ok", message: `${filePath.split("/").pop()} speelt al`, data: { route: "mac-audio", spoor: naam } };
+  }
   // Wisselknop: speelt dit geluid nog, dan zet een druk het uit; de druk daarna begint weer vooraan.
   if (payload.wissel && isPlaying("lied", filePath)) {
     stopSpoor("lied");
@@ -121,9 +138,13 @@ async function sendMacAudioCommand(action, context = {}) {
   // Binnen een spoor: nog eens drukken = opnieuw beginnen, niet over elkaar heen.
   stopSpoor(naam);
   const spoor = sporen[naam];
-  const lus = payload.lus === true && naam === "lied";
+  const lus = payload.lus === true && (naam === "lied" || naam === "fase");
+  const speler = playerVoor(naam, options);
+  // speel-fade kan zelf zonder naad herhalen (--lus); met afplay begint het bestand opnieuw
+  // zodra het afloopt (hieronder), met een klein gaatje.
+  const naadloos = lus && naam === "fase" && speler !== player(options);
   const start = () => {
-    const child = spawn(playerVoor(naam, options), ["-v", String(volume), filePath], { stdio: "ignore", detached: false });
+    const child = spawn(speler, ["-v", String(volume), ...(naadloos ? ["--lus"] : []), filePath], { stdio: "ignore", detached: false });
     child.on("error", () => {});
     child.on("exit", (code) => {
       if (spoor.child !== child) return;

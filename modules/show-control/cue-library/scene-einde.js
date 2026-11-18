@@ -45,7 +45,8 @@ function sceneEindeActions(input = {}) {
   resetBordState();
   laatsteEindeOp = Number(input.now ?? Date.now());
   return [
-    // Alle sporen: het extra geluid (ook in een lus), de geluiden van stappen en fases, de intro.
+    // Alle sporen: het extra geluid (ook in een lus), de geluiden van stappen en fases, de intro,
+    // en het sfeergeluid van een fase dat over de omgeving heen klinkt.
     { targetId: "mac-audio", command: "audio.extra.stop", ackMode: "fire-and-forget", timeoutMs: 900, payload: { ...common } },
     // Stappen (omvallen, clips): terug naar de gewone voorgrond.
     tdUit("td.effect.omvallen", { ...common, filePath: "", uit: true, druk: 0, duur: 0 }),
