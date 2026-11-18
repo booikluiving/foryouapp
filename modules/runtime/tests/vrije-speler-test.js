@@ -34,8 +34,8 @@ assert.equal(keuze.candidate.situationId, "situation:2");
 assert.equal(keuze.vrijeSpeler.algoritmeKeuze, "situation:1");
 assert.deepEqual(keuze.vrijeSpeler.vrijePlekken, [3]);
 
-// Verschil te groot (meer dan een kwart van nummer 1 tot nummer 5): het algoritme wint.
-keuze = kies([item("situation:1", 10), item("situation:2", 8), item("situation:3", 7), item("situation:3", 6), item("situation:3", 6)], [3]);
+// Verschil te groot (meer dan de helft van nummer 1 tot nummer 5): het algoritme wint.
+keuze = kies([item("situation:1", 10), item("situation:2", 7), item("situation:3", 6.5), item("situation:3", 6), item("situation:3", 5)], [3]);
 assert.equal(keuze.candidate.situationId, "situation:1");
 assert.equal(keuze.vrijeSpeler, null);
 

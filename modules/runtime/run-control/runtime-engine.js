@@ -97,9 +97,9 @@ function defaultOrderSettings() {
 // Vrije speler: een heel lichte voorkeur voor een scène waarin de speler meedoet die nu vrij is
 // (in de spelende scène niet in beeld), zodat die zich al kan klaarmaken. Het algoritme blijft de baas:
 // alleen nummer 2 of 3 van de lijst komt in aanmerking, en alleen als die bijna even hoog scoort als
-// nummer 1 (binnen een kwart van het verschil tussen nummer 1 en nummer 5). Uit te zetten per run.
+// nummer 1 (binnen de helft van het verschil tussen nummer 1 en nummer 5). Uit te zetten per run.
 const VRIJE_SPELER_KANDIDATEN = 3;
-const VRIJE_SPELER_MARGE = 0.25;
+const VRIJE_SPELER_MARGE = 0.5;
 const SPELER_PLEKKEN = [1, 2, 3];
 
 function normalizeStartSceneCount(value, fallback = DEFAULT_START_SCENE_COUNT) {
