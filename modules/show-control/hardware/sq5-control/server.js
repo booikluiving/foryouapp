@@ -27,9 +27,9 @@ const state = {
   oscListenAddress: DEFAULT_OSC_LISTEN_ADDRESS,
   defaultDestination: "lr",
   channels: {
-    brent: { key: "brent", label: "Brent", input: clampInt(process.env.SHOW_CONTROL_SQ5_BRENT_INPUT || 1, 1, 48) },
+    brent: { key: "brent", label: "Brent", input: clampInt(process.env.SHOW_CONTROL_SQ5_BRENT_INPUT || 3, 1, 48) },
     megan: { key: "megan", label: "Megan", input: clampInt(process.env.SHOW_CONTROL_SQ5_MEGAN_INPUT || 2, 1, 48) },
-    booi: { key: "booi", label: "Booi", input: clampInt(process.env.SHOW_CONTROL_SQ5_BOOI_INPUT || 3, 1, 48) },
+    booi: { key: "booi", label: "Booi", input: clampInt(process.env.SHOW_CONTROL_SQ5_BOOI_INPUT || 1, 1, 48) },
   },
 };
 
