@@ -16,6 +16,7 @@ Bewaart NIET. Weghalen: op('/project1/fy_voorhoofd').destroy()
 """
 
 import glob
+import time
 import os
 
 MAP = "/Users/for_you/ForYou/voorhoofd"
@@ -70,7 +71,7 @@ def maak_voorhoofd():
     if oud is not None and oud.OPType != "webrenderTOP":
         oud.destroy()
     kaart = _maak(c, webrenderTOP, "kaart", 0, -200)
-    kaart.par.url = VAK_URL
+    kaart.par.url = VAK_URL + "&t=%d" % int(time.time())
     kaart.par.active = True
     kaart.par.transparent = True
     kaart.par.audio = "off"

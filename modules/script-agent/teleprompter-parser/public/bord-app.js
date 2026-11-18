@@ -27,6 +27,14 @@
     const v = event.data && event.data.voorhoofd;
     if (v && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.maat)) voorhoofd = { ...v, t: Date.now() };
   });
+  if (params.get("debug") === "1") {
+    const d = document.createElement("div");
+    d.style.cssText = "position:fixed;left:10px;bottom:10px;font:bold 40px monospace;color:#0f0;background:#000;z-index:9";
+    document.body.appendChild(d);
+    window.setInterval(() => {
+      d.textContent = voorhoofd ? `vh ${voorhoofd.x.toFixed(2)} ${voorhoofd.y.toFixed(2)} ${voorhoofd.maat.toFixed(2)} ${Date.now() - voorhoofd.t}ms ${nieuw.className}` : `geen vh ${nieuw.className}`;
+    }, 100);
+  }
   [["bx", "--bx"], ["by", "--by"], ["rx", "--rx"], ["ry", "--ry"]].forEach(([naam, eigenschap]) => {
     const waarde = Number(params.get(naam));
     if (params.has(naam) && Number.isFinite(waarde)) vel.style.setProperty(eigenschap, `${waarde}px`);
@@ -65,22 +73,38 @@
     return String(naam || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   }
 
+  // Plaatjes vooraf laden: een kaart toont meteen het plaatje (geen zwart vak met alleen de naam).
+  const geladen = new Map();
+  function laad(naam) {
+    if (!geladen.has(naam)) {
+      const img = new Image();
+      img.src = `/script-agent/teleprompter-parser/bord-plaatje/${slug(naam)}`;
+      geladen.set(naam, img);
+    }
+    return geladen.get(naam);
+  }
+
   function kaart(naam) {
     const el = document.createElement("div");
     el.className = "kaart";
-    const tekst = document.createElement("span");
-    tekst.textContent = naam;
-    el.appendChild(tekst);
-    const img = new Image();
-    img.alt = "";
-    img.onload = () => {
-      tekst.remove();
-      el.insertBefore(img, el.firstChild);
+    const bron = laad(naam);
+    const vul = () => {
+      el.textContent = "";
+      const img = new Image();
+      img.alt = "";
+      img.src = bron.src;
+      el.appendChild(img);
       const label = document.createElement("small");
       label.textContent = naam;
       el.appendChild(label);
     };
-    img.src = `/script-agent/teleprompter-parser/bord-plaatje/${slug(naam)}`;
+    if (bron.complete && bron.naturalWidth) vul();
+    else {
+      const tekst = document.createElement("span");
+      tekst.textContent = naam;
+      el.appendChild(tekst);
+      bron.addEventListener("load", vul, { once: true });
+    }
     return el;
   }
 
@@ -267,6 +291,7 @@
     if (nieuweSleutel !== sleutel) {
       sleutel = nieuweSleutel;
       namen = tp.bord.namen.slice();
+      namen.forEach(laad);
       stappen = (tp.bord.begin || []).map((stap) => ({ ...stap, cue: 0 }));
       (tp.lines || []).forEach((line, i) => {
         (line.bord || []).forEach((stap) => stappen.push({ ...stap, cue: i + 1 }));
