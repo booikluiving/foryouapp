@@ -108,6 +108,20 @@ def maak_voorhoofd():
 maak_voorhoofd()
 
 
+POMP_TEKST = """def onFrameStart(frame):
+    op('volger').cook(force=True)
+    # Plek van het voorhoofd naar het bord op het zaalscherm (vliegt vandaar naar zijn plek).
+    if frame % 3 == 0:
+        w = op('waarden')
+        z = op('/project1/audience_tussen_web')
+        if z is not None and z.par.active.eval():
+            js = "var f=document.getElementById('bord');if(f&&f.contentWindow)f.contentWindow.postMessage({voorhoofd:{x:%.4f,y:%.4f,maat:%.4f,hoek:%.2f,volgt:%.2f}},'*');" % (
+                w['x'].eval(), w['y'].eval(), w['maat'].eval(), w['hoek'].eval(), w['volgt'].eval())
+            z.executeJavaScript(js)
+    return
+"""
+
+
 def _pomp():
     # De volger moet elk beeld rekenen, ook als niemand naar fy_voorhoofd kijkt.
     c = op("/project1/fy_voorhoofd")
@@ -115,7 +129,7 @@ def _pomp():
     if p is None:
         p = c.create(executeDAT, "pomp")
     p.nodeX, p.nodeY = 300, 200
-    p.text = "def onFrameStart(frame):\n    op('volger').cook(force=True)\n    return\n"
+    p.text = POMP_TEKST
     p.par.framestart = True
     p.par.active = True
 

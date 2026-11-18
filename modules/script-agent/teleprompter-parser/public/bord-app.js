@@ -8,6 +8,8 @@
   const PLEKKEN = 5;
   const VLIEG_MS = 430;
   const ROL_MS = 90;
+  const VOORHOOFD_VLIEG_MS = 800; // van het voorhoofd naar de plek op het bord
+  const NA_LANDEN_MS = 1000;      // na het landen even stil, dan pas weer rouleren
   const START_ROL_MS = 2500; // na BORD AAN eerst even rouleren, ook als het eerste plaatje al vaststaat
   const params = new URLSearchParams(window.location.search);
   const vel = document.getElementById("vel");
@@ -16,7 +18,15 @@
   if (params.get("proef") === "1") document.body.classList.add("proef");
   const vakLos = params.get("vak") === "los";   // alleen het rouleervak, zonder geluid (voorhoofd in TD)
   if (vakLos) document.body.classList.add("vaklos");
-  if (params.get("vak") === "weg") document.body.classList.add("vakweg");
+  const vakWeg = params.get("vak") === "weg";
+  if (vakWeg) document.body.classList.add("vakweg");
+
+  // TD stuurt de plek van het voorhoofd van camera 1 (x, y 0..1 vanaf linksonder, maat × breedte, hoek in graden).
+  let voorhoofd = null;
+  window.addEventListener("message", (event) => {
+    const v = event.data && event.data.voorhoofd;
+    if (v && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.maat)) voorhoofd = { ...v, t: Date.now() };
+  });
   [["bx", "--bx"], ["by", "--by"], ["rx", "--rx"], ["ry", "--ry"]].forEach(([naam, eigenschap]) => {
     const waarde = Number(params.get(naam));
     if (params.has(naam) && Number.isFinite(waarde)) vel.style.setProperty(eigenschap, `${waarde}px`);
@@ -100,7 +110,8 @@
 
   function terugNaarStart() {
     nieuw.classList.add("vast");
-    ["left", "top", "width", "height"].forEach((k) => nieuw.style.removeProperty(k));
+    nieuw.classList.remove("vliegt");
+    ["left", "top", "width", "height", "transform"].forEach((k) => nieuw.style.removeProperty(k));
     void nieuw.offsetWidth;
     nieuw.classList.remove("vast");
   }
@@ -149,12 +160,46 @@
     if (open !== stap.naam) toon(stap.naam);
     open = null;
     if (vakLos) {
+      stopRol();
+      nieuw.classList.add("weg");
       window.setTimeout(() => {
         plekken[stap.plek - 1] = stap.naam;
         tekenBord();
-        nieuw.classList.add("weg");
         klaar();
-      }, VLIEG_MS);
+      }, VOORHOOFD_VLIEG_MS + NA_LANDEN_MS);
+      return;
+    }
+    if (vakWeg) {
+      // Vliegen vanaf het voorhoofd; zonder recente plek van TD landt het meteen.
+      const vers = voorhoofd && Date.now() - voorhoofd.t < 1500;
+      const doelVak = vak.getBoundingClientRect();
+      const vs = vel.getBoundingClientRect();
+      const f = 1080 / vs.width;
+      if (vers) {
+        const breedte = voorhoofd.maat * 1080;
+        nieuw.classList.add("vliegt", "vast");
+        nieuw.style.left = `${voorhoofd.x * 1080 - breedte / 2}px`;
+        nieuw.style.top = `${(1 - voorhoofd.y) * 1920 - breedte / 2}px`;
+        nieuw.style.width = `${breedte}px`;
+        nieuw.style.height = `${breedte}px`;
+        nieuw.style.transform = `rotate(${-(voorhoofd.hoek || 0)}deg)`;
+        void nieuw.offsetWidth;
+        nieuw.classList.remove("vast");
+        nieuw.style.left = `${(doelVak.left - vs.left) * f}px`;
+        nieuw.style.top = `${(doelVak.top - vs.top) * f}px`;
+        nieuw.style.width = `${doelVak.width * f}px`;
+        nieuw.style.height = `${doelVak.height * f}px`;
+        nieuw.style.transform = "rotate(0deg)";
+      }
+      window.setTimeout(() => {
+        plekken[stap.plek - 1] = stap.naam;
+        tekenBord();
+        leg();
+        nieuw.classList.add("weg");
+        nieuw.classList.remove("vliegt");
+        nieuw.style.removeProperty("transform");
+        window.setTimeout(klaar, NA_LANDEN_MS);
+      }, vers ? VOORHOOFD_VLIEG_MS : 0);
       return;
     }
     const bord = bordEl.getBoundingClientRect();
