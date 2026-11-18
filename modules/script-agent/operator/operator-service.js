@@ -239,7 +239,7 @@ function buildManualPromptText({ situation, environment, characters, extra }) {
     "Prompt:",
     displayDescription(situation),
   ];
-  const bordRegie = bordRegieVoor(environment ? displayTitle(environment) : "");
+  const bordRegie = bordRegieVoor(situation);
   if (bordRegie) lines.push("", bordRegie);
   const regie = normalizeText(extra || "", 2000);
   if (regie) lines.push("", "Regie vooraf:", regie);

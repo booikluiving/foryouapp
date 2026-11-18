@@ -4,6 +4,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { createTelepromptStore } = require("../runtime/teleprompt-store");
+const { isBlindRanking, plaatjeSlug } = require("../../../../../shared/blind-ranking/blind-ranking");
 
 const DEFAULT_CAPTION_STYLE_PATH = path.join(__dirname, "..", "..", "..", "db", "teleprompter-caption-style.json");
 
@@ -473,9 +474,49 @@ function mountTeleprompterParser(app, options = {}) {
   // Plaatjes voor het bord (blind ranking). Een plaatje is een PNG-laag die in de beeldcatalogus bij een
   // omgeving is geüpload, met als bestandsnaam de naam van het plaatje in kleine letters (eva-braun.jpg).
   // Daarnaast kan het los in ~/ForYou/bord-plaatjes staan. Zonder bestand toont het bord alleen de naam.
+  // Eerst: het plaatje dat in de situatie (schakelaar Blind ranking, vijf plaatjes) bij deze naam is
+  // geüpload; de situatie die nu klaarstaat of speelt gaat voor.
+  function situatiePlaatje(naam, mediaRoot) {
+    let db = null;
+    try {
+      const { DatabaseSync } = require("node:sqlite");
+      const dbPath = String(process.env.CATALOG_DB_PATH || path.join(mediaRoot, "..", "db", "catalog.sqlite"));
+      if (!fs.existsSync(dbPath)) return null;
+      db = new DatabaseSync(dbPath, { readOnly: true });
+      const prepared = store.getPreparedScene ? store.getPreparedScene() : null;
+      const huidige = prepared && prepared.sceneId ? Number(prepared.sceneId) : 0;
+      const kandidaten = [];
+      for (const row of db.prepare("SELECT record_json FROM situations").all()) {
+        let situatie = null;
+        try { situatie = JSON.parse(row.record_json); } catch (_err) { continue; }
+        if (!isBlindRanking(situatie)) continue;
+        const plaatje = (situatie.blindRanking.plaatjes || []).find((item) => item && item.assetId && plaatjeSlug(item.naam) === naam);
+        if (!plaatje) continue;
+        const nummer = Number(situatie.legacyId || String(situatie.id || "").split(":").pop());
+        kandidaten.push({ assetId: plaatje.assetId, voorrang: nummer === huidige ? 0 : 1, tijd: String(situatie.updatedAt || "") });
+      }
+      kandidaten.sort((a, b) => a.voorrang - b.voorrang || b.tijd.localeCompare(a.tijd));
+      for (const kandidaat of kandidaten) {
+        const asset = db.prepare("SELECT record_json FROM media_assets WHERE id = ? LIMIT 1").get(kandidaat.assetId);
+        const record = asset ? JSON.parse(asset.record_json) : null;
+        const pad = record && record.relativePath ? path.join(mediaRoot, record.relativePath) : "";
+        if (pad && fs.existsSync(pad)) return pad;
+      }
+    } catch (_err) {
+      return null;
+    } finally {
+      if (db) {
+        try { db.close(); } catch (_err) {}
+      }
+    }
+    return null;
+  }
+
   function bordPlaatje(naam) {
     const extensies = [".jpg", ".jpeg", ".png", ".webp"];
     const mediaRoot = String(process.env.CATALOG_MEDIA_ROOT || path.join(__dirname, "..", "..", "..", "..", "catalog", "media"));
+    const uitSituatie = situatiePlaatje(naam, mediaRoot);
+    if (uitSituatie) return uitSituatie;
     const omgevingen = path.join(mediaRoot, "environments");
     const patroon = new RegExp(`^${naam}-[0-9a-f]{8,}\\.(jpe?g|png|webp)$`);
     let beste = null;

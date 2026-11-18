@@ -15,6 +15,7 @@ const {
   normalizeLightingPreset,
 } = require("../../../shared/lighting/environment-lighting-v0");
 const { normalizeEnvironmentExtras } = require("../../../shared/environment-extras/environment-extras-v0");
+const { normalizeBlindRanking } = require("../../../shared/blind-ranking/blind-ranking");
 
 const STORE_SCHEMA_VERSION = "catalog.write-store.v0";
 const COMPOSITION_SCHEMA_VERSION = "catalog.environment-composition.v0";
@@ -768,6 +769,7 @@ function normalizeSituationRecord(record, base = null) {
     legacyLabelIds: Array.isArray(record.legacyLabelIds) ? record.legacyLabelIds : base && Array.isArray(base.legacyLabelIds) ? base.legacyLabelIds : [],
     legacySituationIds: Array.isArray(record.legacySituationIds) ? record.legacySituationIds : base && Array.isArray(base.legacySituationIds) ? base.legacySituationIds : [],
     contextSituationId: record.contextSituationId || (base ? base.contextSituationId || null : null),
+    blindRanking: normalizeBlindRanking(record.blindRanking || (base && base.blindRanking) || null),
     legacyContextSceneId: record.legacyContextSceneId || (base ? base.legacyContextSceneId || null : null),
     externalId: base ? base.externalId || record.externalId || null : record.externalId || null,
     active,
@@ -992,6 +994,9 @@ async function upsertSituation(body, readModel, options = {}) {
     environmentMode: environmentId ? "selected" : "random",
     environmentId: environmentId || null,
     legacyEnvironmentId: environmentId ? legacyNumberFor(environment, environmentId, "environment") : null,
+    blindRanking: normalizeBlindRanking(hasField(body, "blindRanking")
+      ? body.blindRanking
+      : (existing && existing.blindRanking) || (base && base.blindRanking) || null),
     active,
     status: editedStatus(existing, active),
     createdAt: existing ? existing.createdAt : base ? base.createdAt || at : at,

@@ -213,6 +213,19 @@ async function main() {
   ]);
   assert.deepEqual(after.labelIds, ["label:2", "label:3"], "labels survive character changes too");
 
+  // 3b. Blind ranking: the switch and five pictures are stored; a save without the field keeps them.
+  const bord = { aan: true, plaatjes: [{ naam: "Mussolini", assetId: "media-asset:x" }, { naam: " Eva  Braun ", assetId: "" }] };
+  await upsertSituation(uiSituationBody(after, { blindRanking: bord }), await readModel(), OPTIONS);
+  after = await storeRecord("situations", "situation:2");
+  assert.equal(after.blindRanking.aan, true);
+  assert.equal(after.blindRanking.plaatjes.length, 5, "always five places");
+  assert.deepEqual(after.blindRanking.plaatjes[1], { naam: "Eva Braun", assetId: "" });
+  await upsertSituation({ id: "situation:2", title: after.title, environmentId: after.environmentId, characterIds: after.characterIds }, await readModel(), OPTIONS);
+  after = await storeRecord("situations", "situation:2");
+  assert.equal(after.blindRanking.aan, true, "a save without blindRanking keeps it");
+  const modelBord = (await readModel()).situations.find((item) => item.id === "situation:2");
+  assert.equal(modelBord.blindRanking.plaatjes[0].naam, "Mussolini", "the read model shows blindRanking");
+
   // 4. A random environment and random-character slots survive a save from the form.
   const random = await storeRecord("situations", "situation:11");
   await upsertSituation(uiSituationBody(random, { title: "Willekeurige omgeving (bewerkt)" }), await readModel(), OPTIONS);
@@ -303,6 +316,7 @@ async function main() {
     ok: true,
     checks: [
       "situation save keeps legacyId, labels, sortOrder, context and empty slots",
+      "blind ranking switch and pictures survive saves",
       "missing description is kept",
       "character changes keep open slots until they are needed",
       "random environment and random-character slots survive a save",

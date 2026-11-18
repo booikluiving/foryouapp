@@ -2,6 +2,7 @@
 
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
+const { BORD_PLAATJE_TAG } = require("../../../shared/blind-ranking/blind-ranking");
 const {
   mergeLightingPresets,
   resolveEnvironmentLighting,
@@ -350,7 +351,11 @@ function fxAssetsForEnvironment(catalog, environmentId) {
   if (outputs.length) return outputs;
   const composed = fxAssetsFromComposition(catalog, environmentId);
   if (composed.length) return composed;
-  return assetsForEnvironment(catalog, environmentId).filter(isFxAsset).filter((asset) => !isTdOutputAsset(asset));
+  // Plaatjes voor het bord van een blind ranking horen niet in beeld (die toont het bord zelf).
+  return assetsForEnvironment(catalog, environmentId)
+    .filter(isFxAsset)
+    .filter((asset) => !isTdOutputAsset(asset))
+    .filter((asset) => !(Array.isArray(asset.tags) && asset.tags.includes(BORD_PLAATJE_TAG)));
 }
 
 // Een fase kan bij een situatie horen (fase.situationId). Speelt die situatie, dan is het beeld

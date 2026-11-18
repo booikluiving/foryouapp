@@ -66,7 +66,7 @@ function promptTextFor({ resolved, situation, catalog = {} }) {
     "Prompt:",
     resolved.promptText || (situation && situation.promptText) || "",
   ];
-  const bordRegie = bordRegieVoor(resolved.environment && resolved.environment.name);
+  const bordRegie = bordRegieVoor(situation || resolved);
   if (bordRegie) lines.push("", bordRegie);
   return lines.join("\n").trim();
 }

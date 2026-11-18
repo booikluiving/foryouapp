@@ -3,18 +3,20 @@
 // Bord 1 t/m 5 (blind ranking): de knop PLAATJE. Elke druk zet het volgende plaatje in beeld op
 // het zaalscherm; een plaatje dat getoond is blijft staan. Het bord zelf (welke plaatjes, welke
 // plek) staat in het script en leeft bij de teleprompter van de script-agent: de knop stuurt
-// alleen "volgende". De knop is er bij een omgeving met "blind ranking" in de naam en doet het
-// zodra de scène speelt.
+// alleen "volgende". De knop is er bij een situatie met de schakelaar Blind ranking aan
+// (catalogus, veld `blindRanking`) en doet het zodra de scène speelt.
 
+const path = require("node:path");
+const { DatabaseSync } = require("node:sqlite");
 const {
   SHOW_CONTROL_CUE_SCHEMA_VERSION,
   createShowControlId,
 } = require("../../../shared/contracts/show-control-v0");
+const { isBlindRanking } = require("../../../shared/blind-ranking/blind-ranking");
 const { currentEnvironmentRef } = require("./environment-extras");
-const { readFromCatalog } = require("./environment-fases");
 
-const BORD_OMGEVING_RE = /blind\s*ranking/i;
 const MAX_PLAATJES = 5;
+const DEFAULT_CATALOG_DB_PATH = path.resolve(__dirname, "../../catalog/db/catalog.sqlite");
 
 // Per scène: hoeveel plaatjes er getoond zijn (voor de teller op de knop).
 const state = { sleutel: "", getoond: 0 };
@@ -30,15 +32,25 @@ function sleutelVoor(ref, runtimeState = {}) {
   return `${ref.environmentId}|${ref.bron}|${scene}`;
 }
 
-function omgevingsnaam(ref, options) {
+function situationIdVan(ref) {
   const resolved = ref.resolved || {};
-  const naam = resolved.environment && resolved.environment.name || resolved.environmentName || "";
-  if (naam) return String(naam);
+  return String(resolved.situationId || (resolved.situation && resolved.situation.id) || "").trim();
+}
+
+function leesSituatie(situationId, options = {}) {
+  if (!situationId) return null;
+  if (options.catalog) return (options.catalog.situations || []).find((item) => item.id === situationId) || null;
+  let db = null;
   try {
-    const read = readFromCatalog(ref.environmentId, options);
-    return String(read && read.environment && read.environment.name || "");
+    db = new DatabaseSync(String(options.catalogDbPath || process.env.CATALOG_DB_PATH || DEFAULT_CATALOG_DB_PATH), { readOnly: true });
+    const row = db.prepare("SELECT record_json FROM situations WHERE id = ? LIMIT 1").get(situationId);
+    return row ? JSON.parse(row.record_json) : null;
   } catch (_err) {
-    return "";
+    return null;
+  } finally {
+    if (db) {
+      try { db.close(); } catch (_err) {}
+    }
   }
 }
 
@@ -46,7 +58,7 @@ function environmentBordStatus(runtimeState, options = {}) {
   const ref = currentEnvironmentRef(runtimeState);
   const base = { ok: true, environmentId: ref.environmentId, bron: ref.bron, klaar: false, speelt: false, reden: "", getoond: 0, totaal: MAX_PLAATJES };
   if (!ref.environmentId) return { ...base, reden: "geen_omgeving" };
-  if (!BORD_OMGEVING_RE.test(omgevingsnaam(ref, options))) return { ...base, reden: "geen_bord" };
+  if (!isBlindRanking(leesSituatie(situationIdVan(ref), options))) return { ...base, reden: "geen_bord" };
   const sleutel = sleutelVoor(ref, runtimeState);
   return {
     ...base,
