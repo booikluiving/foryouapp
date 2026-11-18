@@ -34,7 +34,7 @@ REGISTRATIE_TAFELMIX = None       # bijvoorbeeld (31, 32) als Main LR op USB 31/
 _REG_SPELERS = 'chan1'
 # De groep komt zacht binnen (pieken rond -35 dB bij gewoon praten, gemeten 18 nov) en is zonder
 # versterking naast de muziek niet te horen.
-REGISTRATIE_SPELERS_DB = 24
+REGISTRATIE_SPELERS_DB = 36
 _REG_MUZIEK = 'null11'             # ingang van audiodevout2
 
 _REG_STUUR = '''
