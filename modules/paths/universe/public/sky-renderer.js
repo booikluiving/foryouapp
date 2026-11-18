@@ -3471,6 +3471,49 @@
       return !!options.podium && state.view === "network";
     }
 
+    // De kaart speelt mee met de muziek van de loadingfase. De muziekmotor meldt elke zestiende
+    // wat er klinkt; het lichtspel (poort 4240) geeft dat door met de instellingen van de bedienpagina.
+    // Kick: de kaart en de sterren pompen. Hat: de lijnen lichten op. Klap: een kring om een paar
+    // vrije sterren. Crash: een golf vanuit het midden. Alles wit, alles keer de sterkte.
+    const muziek = { aan: false, klinkt: false, sterkte: 0.6, zoom: true, lijnen: true, kringen: true, golf: true,
+      kick: 0, hat: 0, golfStart: 0, ringen: [] };
+    function podiumMuziek(bericht) {
+      if (!bericht || typeof bericht !== "object") return;
+      if (bericht.t === "scherm" && bericht.inst) {
+        const w = bericht.inst;
+        muziek.aan = !!w.aan;
+        muziek.sterkte = clamp(Number(w.sterkte) || 0, 0, 1.5);
+        muziek.zoom = w.zoom !== false; muziek.lijnen = w.lijnen !== false;
+        muziek.kringen = w.kringen !== false; muziek.golf = w.golf !== false;
+      } else if (bericht.t === "stand") {
+        muziek.klinkt = !!bericht.aan && !bericht.gedempt;
+      } else if (bericht.t === "tel" && muziek.aan && muziek.klinkt) {
+        const nu = Date.now();
+        const ev = Number(bericht.ev) || 0;
+        if (ev & 1) muziek.kick = nu;
+        if (ev & 12) muziek.hat = nu;
+        if ((ev & 512) || (ev & 4096)) muziek.golfStart = nu;
+        if ((ev & 2) && muziek.kringen && state.model) {
+          const vrij = ((state.model.networkMap || {}).nodes || []).filter((node) => isSceneReleased(Number(node.sceneId)));
+          for (let i = 0; i < 2 && vrij.length; i += 1) {
+            muziek.ringen.push({ sceneId: Number(vrij[Math.floor(Math.random() * vrij.length)].sceneId), start: nu });
+          }
+          if (muziek.ringen.length > 12) muziek.ringen.splice(0, muziek.ringen.length - 12);
+        }
+      }
+    }
+    // De stand van de muziek op dit moment: 0 tot 1 per soort, al keer de sterkte.
+    function podiumMuziekNu(nu) {
+      if (!muziek.aan || !muziek.klinkt || regie.stil) return null;
+      const s = muziek.sterkte;
+      return {
+        s,
+        kick: muziek.kick ? Math.exp(-(nu - muziek.kick) / 150) * s : 0,
+        hat: muziek.lijnen && muziek.hat ? Math.exp(-(nu - muziek.hat) / 70) * s : 0,
+        golf: muziek.golf && muziek.golfStart && nu - muziek.golfStart < 2600 ? (nu - muziek.golfStart) / 1000 : -1,
+      };
+    }
+
     function podiumUit() {
       if (podium.lus) window.cancelAnimationFrame(podium.lus);
       podium.lus = 0;
@@ -3639,7 +3682,8 @@
       if (!ctx || !model) return;
       const networkMap = model.networkMap || { nodes: [], edges: [] };
       const beeld = podiumBeeld();
-      const k = beeld.k;
+      const mz = podiumMuziekNu(nu);
+      const k = beeld.k * (mz && muziek.zoom ? 1 + 0.016 * mz.kick : 1);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, podium.breedte, podium.hoogte);
       ctx.setTransform(k, 0, 0, k, beeld.sx - beeld.mx * k, beeld.sy - beeld.my * k);
@@ -3698,7 +3742,7 @@
           ctx.setLineDash(padLijn && regie.pad.laatste === stap ? [9 * dun, 8 * dun] : []);
           ctx.lineWidth = (padLijn ? 2.6 : Math.min(0.85 + Math.max(Number(edge.pathCount || edge.count || 1), 1) * 0.34, 3.2)) * dun;
           ctx.strokeStyle = kleur;
-          ctx.globalAlpha = padLijn ? 1 : alpha * fade;
+          ctx.globalAlpha = padLijn ? 1 : Math.min(1, alpha * (mz ? 1 + 1.1 * mz.hat : 1)) * fade;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
           ctx.bezierCurveTo(bocht.c1.x, bocht.c1.y, bocht.c2.x, bocht.c2.y, b.x, b.y);
@@ -3779,6 +3823,18 @@
         const popDeel = pop ? Math.min(1, (nu - pop) / REGIE_POP_MS) : 1;
         if (popDeel < 1) straal *= 1 + 1.6 * Math.pow(1 - popDeel, 3);
         straal *= dun;
+        // Muziek: vrije sterren pompen op de kick, de golf van een crash tilt elke ster even op.
+        let muziekGloed = 0;
+        if (mz) {
+          let duw = mz.kick * (vrij ? 0.45 : 0.15);
+          if (mz.golf >= 0) {
+            const afstand = Math.hypot(punt.x - beeld.mx, punt.y - beeld.my);
+            const front = (afstand - mz.golf * 620) / 110;
+            duw += Math.exp(-front * front) * 1.1 * mz.s * (1 - mz.golf / 2.6);
+          }
+          straal *= 1 + duw;
+          muziekGloed = duw;
+        }
 
         let vulling = "#ffffff";
         let rand = "rgba(255,255,255,0.42)";
@@ -3825,9 +3881,10 @@
           ctx.arc(punt.x, punt.y, bol, 0, Math.PI * 2);
           ctx.fill();
         } else {
+          if (muziekGloed > 0.05 && vrij && gloedMaat < 6) gloedMaat = 6;
           if (gloedMaat > 0) {
-            const maat = (straal + gloedMaat * 1.6) * 2;
-            ctx.globalAlpha = alpha * gloedSterkte;
+            const maat = (straal + gloedMaat * (1.6 + muziekGloed * 2.4)) * 2;
+            ctx.globalAlpha = Math.min(1, alpha * gloedSterkte * (1 + muziekGloed));
             ctx.drawImage(podiumGloed(gloedKleur), punt.x - maat / 2, punt.y - maat / 2, maat, maat);
           }
           ctx.globalAlpha = alpha;
@@ -3909,6 +3966,23 @@
         } else if (state.tweaks.labels) {
           etiketten.push({ regels: [node.title], x: punt.x, y: punt.y - straal - 9, grootte: 11, kleur: "rgba(255,255,255,0.66)", alpha: vrij ? 1 : 0.3 });
         }
+      }
+
+      // Muziek: op de klap een kring die uitdijt om een paar vrije sterren.
+      if (mz && muziek.ringen.length) {
+        muziek.ringen = muziek.ringen.filter((ring) => nu - ring.start < 520);
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.1 * dun;
+        for (const ring of muziek.ringen) {
+          const punt = pos.get(ring.sceneId);
+          if (!punt) continue;
+          const deel = (nu - ring.start) / 520;
+          ctx.globalAlpha = (1 - deel) * 0.7 * Math.min(1, mz.s) * fade;
+          ctx.beginPath();
+          ctx.arc(punt.x, punt.y, (7 + deel * 30) * dun, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
       }
 
       // Het hele pad: een gestippelde kring om de gekozen scène.
@@ -4565,6 +4639,7 @@
     wireMotionControls();
 
     return {
+      muziek: podiumMuziek,
       setModel,
       setTweak,
       setView,

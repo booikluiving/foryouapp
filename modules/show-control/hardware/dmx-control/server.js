@@ -379,6 +379,7 @@ function stopEffect(state, herstel = false) {
   const effect = state.effect;
   if (!effect) return;
   clearInterval(effect.timer);
+  if (effect.sluit) effect.sluit();
   if (herstel) effect.basis.copy(state.channels);
   state.effect = null;
   addActivity(state, { type: "effect-stop", naam: effect.naam, herstel });
@@ -405,6 +406,85 @@ function startKiezen(state, opties = {}, source = "http") {
   stap();
   if (!state.active) startContinuous(state, source);
   addActivity(state, { type: "effect-start", naam: "kiezen", source, piek, bodem, periodeMs });
+}
+
+// Lichtspel op de muziek van de loadingfase: de accentlampen pulsen op de kick. De muziekmotor
+// meldt elke zestiende wat er klinkt (lichtspel, poort 4240); de instellingen (bodem, piek, verval,
+// kleur per versie) komen over dezelfde stroom, zodat schuiven op de bedienpagina meteen werkt.
+// De voorlampen blijven staan zoals ze stonden. Elke andere lichtstand stopt het spel.
+const MUZIEK = Object.freeze({ bron: "http://127.0.0.1:4240/stroom", bodem: 8, piek: 30, vervalMs: 220, plafond: 120 });
+
+function startMuziek(state, opties = {}, source = "http") {
+  if (state.effect && state.effect.naam === "muziek") return;
+  stopEffect(state, true);
+  const bron = String(opties.bron || process.env.SHOW_CONTROL_DMX_MUZIEK_BRON || MUZIEK.bron);
+  const accent = LAMPEN.filter((lamp) => lamp.modus === "hsi");
+  const inst = { bodem: MUZIEK.bodem, piek: MUZIEK.piek, vervalMs: MUZIEK.vervalMs, wijze: "samen", vertragingMs: 0, tint: 0, verzadiging: 0 };
+  const slagen = accent.map(() => 0);
+  let beurt = 0;
+  let dicht = false;
+  let verzoek = null;
+  let opnieuw = null;
+
+  const neem = (bericht) => {
+    if (bericht.t === "licht" && bericht.inst && typeof bericht.inst === "object") {
+      const w = bericht.inst;
+      inst.piek = clampInt(w.piek, 0, MUZIEK.plafond, inst.piek);
+      inst.bodem = Math.min(inst.piek, clampInt(w.bodem, 0, MUZIEK.plafond, inst.bodem));
+      inst.vervalMs = clampInt(w.vervalMs, 40, 4000, inst.vervalMs);
+      inst.vertragingMs = clampInt(w.vertragingMs, 0, 500, inst.vertragingMs);
+      inst.wijze = w.wijze === "rond" ? "rond" : "samen";
+      inst.tint = clampInt(w.tint, 0, 360, inst.tint);
+      inst.verzadiging = clampInt(w.verzadiging, 0, 255, inst.verzadiging);
+    } else if (bericht.t === "tel" && (Number(bericht.ev) & 1)) {
+      const op = Date.now() + inst.vertragingMs;
+      if (inst.wijze === "rond") { slagen[beurt % slagen.length] = op; beurt += 1; }
+      else slagen.fill(op);
+    }
+  };
+
+  const luister = () => {
+    if (dicht) return;
+    const straks = () => { if (!dicht) { clearTimeout(opnieuw); opnieuw = setTimeout(luister, 1500); if (opnieuw.unref) opnieuw.unref(); } };
+    verzoek = http.get(bron, (res) => {
+      let rest = "";
+      res.setEncoding("utf8");
+      res.on("data", (deel) => {
+        rest += deel;
+        let einde;
+        while ((einde = rest.indexOf("\n\n")) >= 0) {
+          const blok = rest.slice(0, einde); rest = rest.slice(einde + 2);
+          if (!blok.startsWith("data: ")) continue;
+          try { neem(JSON.parse(blok.slice(6))); } catch (_error) { /* onleesbaar bericht: overslaan */ }
+        }
+      });
+      res.on("end", straks);
+    });
+    verzoek.on("error", straks);
+  };
+
+  const stap = () => {
+    const nu = Date.now();
+    accent.forEach((lamp, index) => {
+      const sinds = nu - slagen[index];
+      const puls = slagen[index] && sinds >= 0 ? Math.exp(-sinds / inst.vervalMs) : 0;
+      const kanaal = lamp.address - 1;
+      state.channels[kanaal] = Math.round(inst.bodem + (inst.piek - inst.bodem) * puls);
+      state.channels[kanaal + 1] = Math.round((inst.tint / 360) * 255);
+      state.channels[kanaal + 2] = inst.verzadiging;
+    });
+  };
+
+  state.effect = {
+    naam: "muziek", basis: Buffer.from(state.channels), timer: setInterval(stap, 25), bron,
+    get piek() { return inst.piek; }, get bodem() { return inst.bodem; }, periodeMs: 0,
+    sluit: () => { dicht = true; clearTimeout(opnieuw); if (verzoek) verzoek.destroy(); },
+  };
+  if (typeof state.effect.timer.unref === "function") state.effect.timer.unref();
+  luister();
+  stap();
+  if (!state.active) startContinuous(state, source);
+  addActivity(state, { type: "effect-start", naam: "muziek", source, bron });
 }
 
 // De stemming op de volgende scène staat bij de publieksserver. Gaat hij open, dan begint het
@@ -550,11 +630,13 @@ function createDmxApp(options = {}) {
         return;
       }
 
+      // { "naam": "muziek" } start het lichtspel op de muziek (accentlampen op de kick),
       // { "naam": "kiezen", "piek": 18, "bodem": 6, "periodeMs": 14000 } start het lichtspel,
       // { "naam": null } stopt het en zet de stand van daarvoor terug.
       if (req.method === "POST" && url.pathname === "/api/effect") {
         const body = await readJson(req);
         if (body.naam === "kiezen") startKiezen(state, body, "http");
+        else if (body.naam === "muziek") startMuziek(state, body, "http");
         else stopEffect(state, true);
         sendJson(res, 200, { ok: true, state: publicState(state) });
         return;
