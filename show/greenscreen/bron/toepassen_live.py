@@ -41,7 +41,7 @@ for _n in (1, 2, 3):
     _g.par.reinitnet.pulse()
     _ui = op('/project1/Camera%d/greenscreen_ui' % _n)
     if _ui is not None:
-        _ui.par.parscope = "Modus Keyvast Herkalibreer Actief Keyonder Keyboven Tint Despill Dichten Randlinks Randrechts Randboven Randonder"
+        _ui.par.parscope = "Modus Keyvast Wandleren Actief Keyonder Keyboven Tint Despill Dichten Randlinks Randrechts Randboven Randonder"
 
 
 def _terug(waarden=_waarden):

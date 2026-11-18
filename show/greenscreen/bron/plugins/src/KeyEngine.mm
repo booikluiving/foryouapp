@@ -40,6 +40,7 @@ public:
 	void reset() override
 	{
 		myCells.clear();
+		myGeleerd = false;
 		if (myRvm) myRvm->reset();
 		if (myVision) myVision->reset();
 	}
@@ -195,7 +196,7 @@ protected:
 	void calibrate(const uint8_t* in, int w, int h, size_t rowBytes, const EngineParams& p)
 	{
 		// vast: niets meer bijstellen, behalve direct na een Reset (dan is myCells leeg en meet hij één keer volledig)
-		if (p.lock && !myCells.empty() && myGW == (w + myCell - 1) / myCell && myGH == (h + myCell - 1) / myCell)
+		if (p.lock && myGeleerd && myGW == (w + myCell - 1) / myCell && myGH == (h + myCell - 1) / myCell)
 			return;
 		const int gw = (w + myCell - 1) / myCell, gh = (h + myCell - 1) / myCell;
 		if (gw != myGW || gh != myGH)
@@ -203,6 +204,7 @@ protected:
 			myGW = gw;
 			myGH = gh;
 			myCells.clear();
+			myGeleerd = false;
 		}
 		// 1. dominante blauwtint via chromaticiteit-histogram op een grof raster
 		const int HB = 48;
@@ -268,6 +270,75 @@ protected:
 					lvl[cyi * gw + cxi] = tmp[tmp.size() * 3 / 4];
 				}
 			}
+		// Is de wand al geleerd, dan volgt de key alleen nog het licht: per vak de verhouding tussen wat er nu gemeten
+		// wordt en het geleerde wandniveau. De vakken met de hoogste verhouding zijn wand; daar gaat een glad vlak
+		// doorheen en het hele raster schuift met dat vlak mee. De vorm van de wand zelf (plooien, schaduwrand)
+		// verandert alleen bij "Wand leren". Zo wordt blauwe kleding nooit bijgeleerd, ook niet als het licht wisselt
+		// terwijl de speler ervoor staat. (Gemeten: een blauw jack in scènelicht is 67-75% van de wand met dezelfde tint,
+		// even licht als een schaduw op de wand; alleen de plek onderscheidt ze.)
+		if (myGeleerd && !myCells.empty())
+		{
+			const float k = (float)p.adapt;
+			if (best >= 0)
+			{
+				myPr = myPr * (1 - k) + pr * k;
+				myPg = myPg * (1 - k) + pg * k;
+			}
+			std::vector<float> verh(lvl.size(), -1.f), hoog;
+			for (size_t i = 0; i < lvl.size(); ++i)
+				if (lvl[i] >= 0 && myCells[i] > 1e-3f) { verh[i] = lvl[i] / myCells[i]; hoog.push_back(verh[i]); }
+			if ((int)hoog.size() < std::max(24, gw * gh / 20)) return;  // te weinig wand in beeld: niets bijstellen
+			size_t i80 = std::min(hoog.size() - 1, hoog.size() * 8 / 10);
+			std::nth_element(hoog.begin(), hoog.begin() + i80, hoog.end());
+			const double g = hoog[i80];
+			double A[6][7] = {};
+			int n = 0;
+			for (int y = 0; y < gh; ++y)
+				for (int x = 0; x < gw; ++x)
+				{
+					float v = verh[y * gw + x];
+					if (v < 0.9 * g) continue;
+					double u = (x + 0.5) / gw - 0.5, w2 = (y + 0.5) / gh - 0.5;
+					double f[6] = {1, u, w2, u * u, u * w2, w2 * w2};
+					for (int i = 0; i < 6; ++i)
+					{
+						for (int j = 0; j < 6; ++j) A[i][j] += f[i] * f[j];
+						A[i][6] += f[i] * v;
+					}
+					n++;
+				}
+			double c[6] = {g, 0, 0, 0, 0, 0};
+			if (n >= 60)
+			{
+				bool ok = true;
+				for (int i = 0; i < 6 && ok; ++i)
+				{
+					int piv = i;
+					for (int r = i + 1; r < 6; ++r) if (std::fabs(A[r][i]) > std::fabs(A[piv][i])) piv = r;
+					if (std::fabs(A[piv][i]) < 1e-9) { ok = false; break; }
+					for (int j = 0; j < 7; ++j) std::swap(A[i][j], A[piv][j]);
+					for (int r = 0; r < 6; ++r)
+					{
+						if (r == i) continue;
+						double m = A[r][i] / A[i][i];
+						for (int j = i; j < 7; ++j) A[r][j] -= m * A[i][j];
+					}
+				}
+				if (ok) for (int i = 0; i < 6; ++i) c[i] = A[i][6] / A[i][i];
+			}
+			for (int y = 0; y < gh; ++y)
+				for (int x = 0; x < gw; ++x)
+				{
+					double u = (x + 0.5) / gw - 0.5, w2 = (y + 0.5) / gh - 0.5;
+					double vlak = c[0] + c[1] * u + c[2] * w2 + c[3] * u * u + c[4] * u * w2 + c[5] * w2 * w2;
+					vlak = std::max(0.8 * g, std::min(1.25 * g, vlak));
+					float& cel = myCells[y * gw + x];
+					cel = std::max(0.02f, std::min(1.f, cel * (1 - k) + cel * (float)vlak * k));
+				}
+			return;
+		}
+
+		// Wand leren (start, knop): het hele raster in één keer.
 		// Alleen de wand telt als wand. De wand is het lichtste blauw met deze tint in beeld en verloopt geleidelijk;
 		// blauwe kleding heeft dezelfde tint maar is minder blauw (gemeten: belichte plooien van een blauw jack 55-65%
 		// van de wand) en begint met een scherpe rand.
@@ -336,11 +407,6 @@ protected:
 		const std::vector<float> gemeten = lvl;  // -1 = hier is nu geen wand te zien
 		int nGeldig = 0;
 		for (float v : gemeten) if (v >= 0) nGeldig++;
-		// te weinig wand in beeld (donker, camera afgedekt): niets bijstellen
-		if (nGeldig < std::max(4, gw * gh / 20))
-		{
-			if (!myCells.empty()) return;
-		}
 		// vakken zonder papier aanvullen vanuit de buren
 		for (int pass = 0; pass < gw + gh; ++pass)
 		{
@@ -366,27 +432,15 @@ protected:
 		}
 		for (float& v : lvl) if (v < 0) v = 0.3f;
 
-		// 3. dempen in de tijd
-		const float k = myCells.empty() ? 1.f : (float)p.adapt;
-		if (best >= 0)
-		{
-			if (myCells.empty()) { myPr = pr; myPg = pg; }
-			myPr = myPr * (1 - k) + pr * k;
-			myPg = myPg * (1 - k) + pg * k;
-		}
-		if (myCells.empty())
-		{
-			// eerste meting (start, Key op licht, na een lichtwissel): het hele raster in één keer
-			myCells = lvl;
-			return;
-		}
-		// Meebewegen met het licht: elk vak schuift naar de nieuwe meting. Waar nu geen wand te zien is
-		// (speler, afgekeurde donkerblauwe kleding) is dat de waarde die uit de buren is aangevuld.
-		for (size_t i = 0; i < lvl.size(); ++i)
-			myCells[i] = myCells[i] * (1 - k) + lvl[i] * k;
+		// 3. vastleggen. Met te weinig wand in beeld (donker, camera afgedekt) geldt de wand nog niet als geleerd:
+		//    het volgende beeld probeert het opnieuw.
+		if (best >= 0) { myPr = pr; myPg = pg; }
+		myCells = lvl;
+		myGeleerd = nGeldig >= std::max(24, gw * gh / 5);
 	}
 
 	int myGW = 0, myGH = 0;
+	bool myGeleerd = false;  // de wand is geleerd; daarna volgt de key alleen nog het licht
 	std::vector<float> myCells;
 	float myPr = 0.15f, myPg = 0.25f;
 	std::vector<uint8_t> myKey, myTmp;

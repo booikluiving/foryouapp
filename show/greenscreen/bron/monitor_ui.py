@@ -7,7 +7,7 @@
 W, H = 1920, 1080
 MARGE = 16
 KOLOM = 384
-KEY_PARS = "Herkalibreer Actief Keyonder Keyboven Tint Despill Dichten"
+KEY_PARS = "Wandleren Actief Keyonder Keyboven Tint Despill Dichten"
 INGANG = 48  # hoogte van de regel met de DeckLink-ingang
 KADER = 6  # dikte van het rode kader om de actieve camera
 KOP = 30  # lettergrootte van PERFORMER 1-3
@@ -224,16 +224,25 @@ def werk_bij():
         b.par.x, b.par.y = MARGE + 600, H - MARGE - 50
         for naam in ('label', 'text', 'buttonlabel'):
             if hasattr(b.par, naam):
-                setattr(b.par, naam, 'KEY OP LICHT')
+                setattr(b.par, naam, 'WAND LEREN (LEGE SET)')
         pe = m.create(panelexecuteDAT, 'key_op_licht_actie')
         pe.par.panels = b.name
         pe.par.offtoon = True
         pe.text = ("def onOffToOn(panelValue):\n"
                    "    for n in (1, 2, 3):\n"
                    "        g = op('/project1/Camera%d/greenscreen' % n)\n"
-                   "        if g is not None and hasattr(g.par, 'Herkalibreer'):\n"
-                   "            g.par.Herkalibreer.pulse()\n"
+                   "        if g is not None and hasattr(g.par, 'Wandleren'):\n"
+                   "            g.par.Wandleren.pulse()\n"
                    "    return\n")
+    # de knop leert de wand opnieuw (was: opnieuw meten bij dit licht); een bestaande knop krijgt de nieuwe actie en tekst
+    for pe in m.ops('key_op_licht_actie*'):
+        if 'Herkalibreer' in pe.text:
+            pe.text = pe.text.replace('Herkalibreer', 'Wandleren')
+    for b in m.ops('key_op_licht*'):
+        if b.isPanel:
+            for naam in ('label', 'text', 'buttonlabel'):
+                if hasattr(b.par, naam) and str(getattr(b.par, naam).eval()) == 'KEY OP LICHT':
+                    setattr(b.par, naam, 'WAND LEREN (LEGE SET)')
     # naast KEY OP LICHT: het venster van het zaalscherm openen of sluiten (zelfde actie als /project1/ZAALSCHERM_VENSTER)
     k = (m.ops('key_op_licht*') or [None])[0]
     if not m.ops('zaalscherm_knop*') and k is not None and k.isPanel:
