@@ -105,7 +105,13 @@ function createScriptAgentApp(options = {}) {
     }),
   });
   app.locals.operatorService = operatorService;
-  const sceneTest = options.sceneTest || createSceneTest({ env: options.env || process.env, fetchImpl: options.fetchImpl });
+  const sceneTest = options.sceneTest || createSceneTest({
+    env: options.env || process.env,
+    fetchImpl: options.fetchImpl,
+    // Random scènes testen: staat er een nieuwe scène klaar, dan wordt het script meteen geschreven
+    // (in een testrun schrijft verder niets vanzelf).
+    onPrepared: () => operatorService.sceneToChat({ force: true, sourceId: "scene-test-random" }),
+  });
   app.locals.teleprompterParser = teleprompterParser;
   app.locals.stopOperatorDraftSync = null;
   if (options.operatorAutoDraftSync !== false) {
@@ -202,6 +208,10 @@ function createScriptAgentApp(options = {}) {
 
   app.post("/v0/script-agent/operator/scene-test", asyncRoute(async (req, res) => {
     res.json({ ok: true, ...(await sceneTest.setEnabled(!!(req.body && req.body.enabled === true))) });
+  }));
+
+  app.post("/v0/script-agent/operator/scene-test/random", asyncRoute(async (req, res) => {
+    res.json({ ok: true, ...(await sceneTest.setRandom(!!(req.body && req.body.enabled === true))) });
   }));
 
   app.post("/v0/script-agent/operator/scene-test/start", asyncRoute(async (req, res) => {

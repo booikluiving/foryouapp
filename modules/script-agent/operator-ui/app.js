@@ -33,6 +33,7 @@ const els = {
   operatorMsg: $("#operatorMsg"),
   sceneTestToggle: $("#sceneTestToggle"),
   sceneTestStart: $("#sceneTestStart"),
+  sceneTestRandom: $("#sceneTestRandom"),
   sceneTestMsg: $("#sceneTestMsg"),
   syncMsg: $("#syncMsg"),
   chatLog: $("#chatLog"),
@@ -428,13 +429,20 @@ function characterLabel(characterId, fallback = "") {
   return character ? character.naam : fallback || String(characterId || "");
 }
 
-function applyDraftInfo(info = {}) {
+// De lijsten volgen de scène die klaarstaat, maar alleen als er een andere scène klaar komt te
+// staan. De stand komt elke paar seconden opnieuw binnen; zonder deze grens sprong een keuze die
+// je net gemaakt had terug naar de scène die al klaarstond.
+let toegepasteDraft = "";
+function applyDraftInfo(info = {}, opnieuw = false) {
   if (!info || typeof info !== "object") return;
   if (!Array.isArray(catalogIndex.situaties) || !catalogIndex.situaties.length) {
     pendingDraftInfo = info;
     return;
   }
   currentDraftInfo = info;
+  const sleutel = String(info.promptInputId || `${info.situationId || ""}|${info.environmentId || ""}`);
+  if (!opnieuw && sleutel === toegepasteDraft) return;
+  toegepasteDraft = sleutel;
   const situationId = String(info.situationId || "");
   if (selectHasValue(els.situation, situationId)) {
     els.situation.value = situationId;
@@ -651,9 +659,9 @@ function populateDropdowns() {
   if (pendingDraftInfo) {
     const info = pendingDraftInfo;
     pendingDraftInfo = null;
-    applyDraftInfo(info);
+    applyDraftInfo(info, true);
   } else if (currentDraftInfo) {
-    applyDraftInfo(currentDraftInfo);
+    applyDraftInfo(currentDraftInfo, true);
   }
   updateEnvironmentPreview();
 }
@@ -782,9 +790,15 @@ function renderSceneTest(message, error = false) {
   els.sceneTestToggle.disabled = !running;
   els.sceneTestToggle.closest(".scene-test").classList.toggle("on", enabled);
   els.sceneTestStart.hidden = !enabled;
+  const random = sceneTestState.random || {};
+  els.sceneTestRandom.checked = !!random.enabled;
+  els.sceneTestRandom.disabled = !running;
+  els.sceneTestRandom.closest(".scene-test").classList.toggle("on", !!random.enabled);
   els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
   const standaard = !running
     ? "Kan alleen als er een run loopt."
+    : random.enabled
+      ? `Random. ${activeSituation ? `Nu: ${activeSituation.title}. ` : ""}${random.error || (random.next ? `Klaar: ${random.next.title}. Start en stop met de deck.` : "Scène kiezen...")}`
     : enabled
       ? `Testrun. ${activeSituation ? `Nu: ${activeSituation.title}. ` : ""}Kies een situatie, een omgeving of allebei en druk op Start scène.`
       : "";
@@ -851,6 +865,25 @@ async function toggleSceneTest() {
     }
   } catch (err) {
     renderSceneTest(err.message || "Scènes testen zetten lukte niet.", true);
+  }
+}
+
+// Random scènes testen: de dienst zet steeds een willekeurige scène klaar, nooit een startscène.
+async function toggleSceneTestRandom() {
+  const enabled = els.sceneTestRandom.checked;
+  if (enabled && !sceneTestState.markedAt
+    && !confirm("Random scènes testen maakt van de lopende run een testrun, tot de reset. Doorgaan?")) {
+    renderSceneTest();
+    return;
+  }
+  try {
+    sceneTestState = await api("/v0/script-agent/operator/scene-test/random", {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    });
+    renderSceneTest();
+  } catch (err) {
+    renderSceneTest(err.message || "Random scènes testen zetten lukte niet.", true);
   }
 }
 
@@ -1087,6 +1120,7 @@ document.querySelectorAll("[data-opmerking]").forEach((knop) => {
 document.getElementById("opmerkingWis").addEventListener("click", () => withUiError(() => stuurOpmerking({ wis: true })));
 setInterval(() => api("/v0/script-agent/operator/opmerking").then(toonOpmerkingen).catch(() => {}), 3000);
 els.sceneTestToggle.addEventListener("change", () => toggleSceneTest());
+els.sceneTestRandom.addEventListener("change", () => toggleSceneTestRandom());
 els.sceneTestStart.addEventListener("click", () => startTestScene());
 els.situation.addEventListener("change", () => {
   els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
@@ -1133,9 +1167,12 @@ function matchSituationToEnvironment() {
 function matchEnvironmentToSituation() {
   if (!sceneTestState.enabled) return;
   const current = (catalogIndex.situaties || []).find((item) => String(item.id) === String(els.situation.value || ""));
-  const environmentId = current ? String(current.environmentId || "") : "";
-  if (!environmentId || String(els.environment.value || "") === environmentId) return;
-  if (!selectHasValue(els.environment, environmentId)) return;
+  if (!current) return;
+  // Heeft de situatie geen eigen omgeving (of staat die niet in de lijst), dan gaat de omgeving
+  // leeg: zo blijft de omgeving van de vorige scène er niet onder staan.
+  const eigen = String(current.environmentId || "");
+  const environmentId = eigen && selectHasValue(els.environment, eigen) ? eigen : "";
+  if (String(els.environment.value || "") === environmentId) return;
   els.environment.value = environmentId;
   updateEnvironmentPreview();
   renderSceneTest();
