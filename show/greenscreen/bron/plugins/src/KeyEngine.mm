@@ -268,6 +268,76 @@ protected:
 					lvl[cyi * gw + cxi] = tmp[tmp.size() * 3 / 4];
 				}
 			}
+		// Alleen de wand telt als wand. De wand is het lichtste blauw met deze tint in beeld en verloopt geleidelijk;
+		// donkerblauwe kleding heeft dezelfde tint maar is veel minder blauw en begint met een scherpe rand.
+		// Stap 1: vakken onder 0,6 x het 90e percentiel vallen af. Stap 2: door de rest een glad vlak (tweedegraads)
+		// leggen en alles afkeuren wat onder 0,75 x dat vlak zit; twee keer. Afgekeurde vakken gelden als
+		// "geen papier" en worden hieronder vanuit de buren aangevuld.
+		{
+			std::vector<float> geldig;
+			for (float v : lvl) if (v >= 0) geldig.push_back(v);
+			if (!geldig.empty())
+			{
+				size_t i90 = std::min(geldig.size() - 1, geldig.size() * 9 / 10);
+				std::nth_element(geldig.begin(), geldig.begin() + i90, geldig.end());
+				const float grens = 0.6f * geldig[i90];
+				for (float& v : lvl) if (v >= 0 && v < grens) v = -1.f;
+			}
+			for (int ronde = 0; ronde < 2; ++ronde)
+			{
+				double A[6][7] = {};
+				int n = 0;
+				for (int y = 0; y < gh; ++y)
+					for (int x = 0; x < gw; ++x)
+					{
+						float v = lvl[y * gw + x];
+						if (v < 0) continue;
+						double u = (x + 0.5) / gw - 0.5, w2 = (y + 0.5) / gh - 0.5;
+						double f[6] = {1, u, w2, u * u, u * w2, w2 * w2};
+						for (int i = 0; i < 6; ++i)
+						{
+							for (int j = 0; j < 6; ++j) A[i][j] += f[i] * f[j];
+							A[i][6] += f[i] * v;
+						}
+						n++;
+					}
+				if (n < 24) break;
+				bool ok = true;
+				for (int i = 0; i < 6 && ok; ++i)
+				{
+					int piv = i;
+					for (int r = i + 1; r < 6; ++r) if (std::fabs(A[r][i]) > std::fabs(A[piv][i])) piv = r;
+					if (std::fabs(A[piv][i]) < 1e-9) { ok = false; break; }
+					for (int j = 0; j < 7; ++j) std::swap(A[i][j], A[piv][j]);
+					for (int r = 0; r < 6; ++r)
+					{
+						if (r == i) continue;
+						double m = A[r][i] / A[i][i];
+						for (int j = i; j < 7; ++j) A[r][j] -= m * A[i][j];
+					}
+				}
+				if (!ok) break;
+				double c[6];
+				for (int i = 0; i < 6; ++i) c[i] = A[i][6] / A[i][i];
+				for (int y = 0; y < gh; ++y)
+					for (int x = 0; x < gw; ++x)
+					{
+						float& v = lvl[y * gw + x];
+						if (v < 0) continue;
+						double u = (x + 0.5) / gw - 0.5, w2 = (y + 0.5) / gh - 0.5;
+						double vlak = c[0] + c[1] * u + c[2] * w2 + c[3] * u * u + c[4] * u * w2 + c[5] * w2 * w2;
+						if (v < 0.75 * vlak) v = -1.f;
+					}
+			}
+		}
+		const std::vector<float> gemeten = lvl;  // -1 = hier is nu geen wand te zien
+		int nGeldig = 0;
+		for (float v : gemeten) if (v >= 0) nGeldig++;
+		// te weinig wand in beeld (donker, camera afgedekt): niets bijstellen
+		if (nGeldig < std::max(4, gw * gh / 20))
+		{
+			if (!myCells.empty()) return;
+		}
 		// vakken zonder papier aanvullen vanuit de buren
 		for (int pass = 0; pass < gw + gh; ++pass)
 		{
@@ -301,10 +371,29 @@ protected:
 			myPr = myPr * (1 - k) + pr * k;
 			myPg = myPg * (1 - k) + pg * k;
 		}
-		if (myCells.empty()) myCells = lvl;
-		for (size_t i = 0; i < lvl.size(); ++i)
+		if (myCells.empty())
 		{
-			myCells[i] = myCells[i] * (1 - k) + lvl[i] * k;
+			// eerste meting (start, Key op licht, na een lichtwissel): het hele raster in één keer
+			myCells = lvl;
+			return;
+		}
+		// Meebewegen met het licht zonder kleding aan te leren:
+		// - het licht als geheel: één factor voor het hele raster, uit de vakken waar de wand het best te zien is;
+		// - de vorm per vak volgt alleen waar het vak zich als wand gedraagt (binnen 15% van die factor).
+		//   Een vak waar iets donkerblauws voor hangt wijkt veel meer af en houdt zijn wandniveau.
+		std::vector<float> verh;
+		for (size_t i = 0; i < gemeten.size(); ++i)
+			if (gemeten[i] >= 0 && myCells[i] > 1e-3f) verh.push_back(gemeten[i] / myCells[i]);
+		if (verh.empty()) return;
+		size_t i80 = std::min(verh.size() - 1, verh.size() * 8 / 10);
+		std::nth_element(verh.begin(), verh.begin() + i80, verh.end());
+		const float factor = std::max(0.25f, std::min(4.f, verh[i80]));
+		for (size_t i = 0; i < myCells.size(); ++i)
+		{
+			float doel = myCells[i] * factor;
+			if (gemeten[i] >= 0 && std::fabs(gemeten[i] / std::max(myCells[i], 1e-3f) - factor) < 0.15f * factor)
+				doel = gemeten[i];
+			myCells[i] = myCells[i] * (1 - k) + doel * k;
 		}
 	}
 
@@ -345,9 +434,9 @@ public:
 
 #ifdef CALIB_PLUGIN
 Engine* createEngine() { return new CalibEngine(); }
-const char* engineOpType() { return "Fykeycalib"; }
-const char* engineOpLabel() { return "FY Key Calib"; }
-const char* engineOpIcon() { return "FKC"; }
+const char* engineOpType() { return "Fykeywand"; }
+const char* engineOpLabel() { return "FY Key Wand"; }
+const char* engineOpIcon() { return "FKW"; }
 #else
 Engine* createEngine() { return new KeyEngine(); }
 const char* engineOpType() { return "Fykeymatte"; }

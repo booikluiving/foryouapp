@@ -7,11 +7,10 @@
 W, H = 1920, 1080
 MARGE = 16
 KOLOM = 384
-KEY_PARS = "Herkalibreer Actief Keyonder Keyboven Despill Dichten"
+KEY_PARS = "Herkalibreer Actief Keyonder Keyboven Tint Despill Dichten"
 INGANG = 48  # hoogte van de regel met de DeckLink-ingang
 KADER = 6  # dikte van het rode kader om de actieve camera
 KOP = 30  # lettergrootte van PERFORMER 1-3
-BRON = "/Users/for_you/ForYou/main/.claude/worktrees/greenscreen-53d2eb/greenscreen-lab/td/monitor_ui.py"
 STATUS_EXPR = "'TD %d fps' % round(1 / max(absTime.stepSeconds, 1e-3))"
 FASE_EXPR = ("'FASE   ' + {0: 'INLOOP', 1: 'LOADING', 2: 'SCÈNE'}.get(int(op('/project1/phase_value')['phase'].eval()), '?') "
              "if op('/project1/phase_value') else 'FASE   ?'")
@@ -266,7 +265,8 @@ def ververs():
     werk_bij()
     b = op('/project1/monitor_bouwer')
     if b is not None:
-        b.text = open(BRON).read()
+        import os
+        b.text = open(os.path.join(project.folder, 'greenscreen', 'bron', 'monitor_ui.py')).read()
 
 
 def _veilig():
