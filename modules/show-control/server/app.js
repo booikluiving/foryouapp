@@ -52,6 +52,7 @@ const {
 const { buildEnvironmentFaseCue, environmentFasesStatus, publicFasesStatus } = require("../cue-library/environment-fases");
 const { sceneEindeTick } = require("../cue-library/scene-einde");
 const { buildEnvironmentKnopCue, environmentKnoppenStatus } = require("../cue-library/environment-knoppen");
+const { buildPersonageKnopCue, personageKnopStatus, publicPersonageKnopStatus } = require("../cue-library/personage-knop");
 const {
   registratieStatus,
   registratieTick,
@@ -484,6 +485,16 @@ function createShowControlApp(options = {}) {
       return null;
     }
   }
+  // Knop van een personage in de scène (het nummer van Marit).
+  const personageCache = { value: null };
+  const personageOptions = { ...(options.personageKnop || {}), environmentExtras: options.environmentExtras || {} };
+  function personageVoor(runtimeState) {
+    try {
+      return publicPersonageKnopStatus(personageKnopStatus(runtimeState || {}, personageOptions));
+    } catch (_err) {
+      return null;
+    }
+  }
   const EXTRAS_CACHE_MS = Number(options.environmentExtrasCacheMs ?? 1000);
   async function cachedExtrasStatus(req) {
     if (extrasCache.value && Date.now() - extrasCache.at < EXTRAS_CACHE_MS) return extrasCache.value;
@@ -506,6 +517,7 @@ function createShowControlApp(options = {}) {
             omvallenCache.value = null;
           }
           knoppenCache.value = knoppenVoor(runtimeState);
+          personageCache.value = personageVoor(runtimeState);
           return publicExtrasStatus(environmentExtrasStatus(runtimeState || {}, options.environmentExtras || {}));
         })
         .then((value) => {
@@ -663,6 +675,33 @@ function createShowControlApp(options = {}) {
     knoppenCache.value = value;
     omvallenCache.value = publicOmvallenStatus(environmentOmvallenStatus(runtimeState || {}, options.environmentOmvallen || {}));
     res.status(201).json({ ok: true, cueId: cue.cueId, name: cue.name, knoppen: value });
+  }));
+
+  // Knop van een personage: het nummer dat bij een personage in de scène hoort, aan/uit.
+  app.get("/v0/show-control/personage-knop/current", asyncRoute(async (req, res) => {
+    const runtimeState = await runtimeStateQuick(req, clients);
+    const value = personageVoor(runtimeState);
+    personageCache.value = value;
+    res.json(value || { ok: false, klaar: false, staat: "uit" });
+  }));
+
+  app.post("/v0/show-control/cues/personage-knop", asyncRoute(async (req, res) => {
+    const runtimeState = await runtimeStateQuick(req, clients, 1500);
+    let cue;
+    try {
+      cue = buildPersonageKnopCue(runtimeState || {}, req.body || {}, personageOptions);
+    } catch (err) {
+      if (err && err.statusCode === 409) {
+        res.status(409).json({ ok: false, error: err.code, knop: err.knop || null });
+        return;
+      }
+      throw err;
+    }
+    await executeCue(cue, executeOptions);
+    saveCue(cue).catch(() => {});
+    const value = personageVoor(runtimeState);
+    personageCache.value = value;
+    res.status(201).json({ ok: true, cueId: cue.cueId, name: cue.name, knop: value });
   }));
 
   app.post("/v0/show-control/media-assets/refresh", asyncRoute(async (req, res) => {
@@ -848,6 +887,7 @@ function createShowControlApp(options = {}) {
       environmentExtras,
       environmentOmvallen: omvallenCache.value,
       environmentKnoppen: knoppenCache.value,
+      personageKnop: personageCache.value,
     });
   }));
 
