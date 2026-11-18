@@ -427,7 +427,10 @@ function startMuziek(state, opties = {}, source = "http") {
   stopEffect(state, true);
   const bron = String(opties.bron || process.env.SHOW_CONTROL_DMX_MUZIEK_BRON || MUZIEK.bron);
   const ronde = MUZIEK_RONDE.map((nummer) => LAMPEN[nummer - 1]).filter(Boolean);
-  const inst = { bodem: MUZIEK.bodem, piek: MUZIEK.piek, vervalMs: MUZIEK.vervalMs, vertragingMs: 0, voor: MUZIEK_VOOR };
+  const inst = { bodem: MUZIEK.bodem, piek: MUZIEK.piek, vervalMs: MUZIEK.vervalMs, vertragingMs: 0, voor: MUZIEK_VOOR, voorKlaar: 40, klaar: false };
+  // Tekst klaar: voorlampen naar voorKlaar en geen puls meer, met een overgang van ruim een seconde.
+  let klaarMix = 0;
+  let vorigeStap = Date.now();
   const slagen = ronde.map(() => 0);
   const basis = Buffer.from(state.channels);
   let beurt = 0;
@@ -443,6 +446,8 @@ function startMuziek(state, opties = {}, source = "http") {
       inst.vervalMs = clampInt(w.vervalMs, 40, 4000, inst.vervalMs);
       inst.vertragingMs = clampInt(w.vertragingMs, 0, 500, inst.vertragingMs);
       inst.voor = clampInt(w.voor, MUZIEK_VOOR_MIN, MUZIEK.plafond, inst.voor);
+      inst.voorKlaar = clampInt(w.voorKlaar, MUZIEK_VOOR_MIN, MUZIEK.plafond, inst.voorKlaar);
+      inst.klaar = w.klaar === true;
     } else if (bericht.t === "tel" && (Number(bericht.ev) & 1)) {
       slagen[beurt % slagen.length] = Date.now() + inst.vertragingMs;
       beurt += 1;
@@ -471,13 +476,16 @@ function startMuziek(state, opties = {}, source = "http") {
 
   const stap = () => {
     const nu = Date.now();
+    klaarMix = Math.max(0, Math.min(1, klaarMix + ((nu - vorigeStap) / 1200) * (inst.klaar ? 1 : -1)));
+    vorigeStap = nu;
+    const voorNu = Math.max(inst.voor, MUZIEK_VOOR_MIN) + (Math.max(inst.voorKlaar, MUZIEK_VOOR_MIN) - Math.max(inst.voor, MUZIEK_VOOR_MIN)) * klaarMix;
     ronde.forEach((lamp, index) => {
       const sinds = nu - slagen[index];
-      const puls = slagen[index] && sinds >= 0 ? Math.exp(-sinds / inst.vervalMs) : 0;
+      const puls = (slagen[index] && sinds >= 0 ? Math.exp(-sinds / inst.vervalMs) : 0) * (1 - klaarMix);
       const kanaal = lamp.address - 1;
       state.channels[kanaal] = lamp.modus === "hsi"
         ? Math.round(inst.bodem + (inst.piek - inst.bodem) * puls)
-        : Math.min(255, Math.round(Math.max(inst.voor, MUZIEK_VOOR_MIN) + (inst.piek - inst.bodem) * MUZIEK_VOOR_PULS * puls));
+        : Math.min(255, Math.round(voorNu + (inst.piek - inst.bodem) * MUZIEK_VOOR_PULS * puls));
       state.channels[kanaal + 1] = lamp.modus === "hsi" ? 0 : MUZIEK_WIT;
       state.channels[kanaal + 2] = lamp.modus === "hsi" ? 0 : 128;
     });
