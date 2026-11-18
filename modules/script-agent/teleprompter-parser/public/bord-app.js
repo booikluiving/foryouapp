@@ -29,6 +29,18 @@
   let rol = null;
   let rolIndex = 0;
   let doel = 0;
+  let stil = false;        // zetStand springt zonder geluid
+
+  // Geluid: kaarten schudden zolang het vak rouleert, een kaart neerleggen als het stilstaat of landt.
+  const schudden = new Audio("/script-agent/teleprompter-parser/geluid/schudden.wav");
+  schudden.loop = true;
+  schudden.volume = 0.5;
+  function leg() {
+    if (stil) return;
+    const klap = new Audio("/script-agent/teleprompter-parser/geluid/leg.wav");
+    klap.volume = 0.9;
+    klap.play().catch(() => {});
+  }
 
   function schaal() {
     const s = Math.min(window.innerWidth / 1080, window.innerHeight / 1920);
@@ -79,6 +91,7 @@
   function stopRol() {
     if (rol) window.clearInterval(rol);
     rol = null;
+    schudden.pause();
   }
 
   function terugNaarStart() {
@@ -110,7 +123,10 @@
       kaarten.forEach((el, i) => { el.style.visibility = i === rolIndex ? "visible" : "hidden"; });
     };
     tik();
-    if (kaarten.length > 1) rol = window.setInterval(tik, ROL_MS);
+    if (kaarten.length > 1) {
+      rol = window.setInterval(tik, ROL_MS);
+      if (!stil) schudden.play().catch(() => {});
+    }
   }
 
   function toon(naam) {
@@ -120,6 +136,7 @@
     nieuw.textContent = "";
     nieuw.appendChild(kaart(naam));
     nieuw.classList.remove("weg");
+    leg();
   }
 
   function vlieg(stap, klaar) {
@@ -138,6 +155,7 @@
     window.setTimeout(() => {
       plekken[stap.plek - 1] = stap.naam;
       tekenBord();
+      leg();
       nieuw.classList.add("weg");
       klaar();
     }, VLIEG_MS);
@@ -154,7 +172,10 @@
     });
     gedaan = n;
     tekenBord();
+    stil = true;
     if (open) toon(open); else rouleer();
+    stil = false;
+    if (rol && vel.classList.contains("aan")) schudden.play().catch(() => {});
   }
 
   function speel() {
