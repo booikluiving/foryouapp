@@ -565,6 +565,11 @@ function mountTeleprompterParser(app, options = {}) {
         && !show.activeSituationId;
       if (!canStartPrepared) {
         clearAutoCameraReactionTimers();
+        // Tussen de scènes is de klikker de READY-knop van de speler die hem heeft (terug = toch niet).
+        if (delta !== 0 && body.source !== "spelers_ready" && show && show.active !== false && !show.activeSituationId) {
+          const publiek = String(process.env.SCRIPT_AGENT_AUDIENCE_URL || "http://127.0.0.1:3026").replace(/\/+$/, "");
+          fetch(`${publiek}/audience/ready/klikker`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ready: delta > 0 }), signal: AbortSignal.timeout(3000) }).catch(() => {});
+        }
         res.json({
           ...currentPayload("cue_locked"),
           cueLocked: true,

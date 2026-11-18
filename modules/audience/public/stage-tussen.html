@@ -248,7 +248,11 @@
       /* De naam van het personage staat onder het venster. */
       .spelerrij .namen { display: none; }
       #stage.upnextfase .spelerrij .namen { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; font-size: 40px; font-weight: 500; line-height: 1.05; text-align: center; hyphens: auto; overflow-wrap: break-word; }
-      #stage.upnextfase.klaar .spelerrij .speler { border: 8px solid #37d67a; }
+      #stage.upnextfase.klaar .spelerrij .speler, #stage.upnextfase .spelerrij .speler.spelerklaar { border: 8px solid #37d67a; }
+      /* Alle spelers ready: groot 3, 2, 1 over het universum, dan begint de scène. */
+      #aftel { position: absolute; left: 0; right: 0; top: 520px; z-index: 7; text-align: center; font-weight: 700; font-size: 620px; line-height: 1; letter-spacing: -0.04em; color: #37d67a; text-shadow: 0 0 60px rgba(7, 8, 11, 0.9); font-variant-numeric: tabular-nums; pointer-events: none; }
+      #aftel:empty { display: none; }
+      #aftel.tik { animation: stemTik 380ms var(--curve); }
       #stage.upnextfase #p-chat { left: 70px; top: 1380px !important; height: 380px !important; width: 640px; font-size: 40px !important; z-index: 5; text-shadow: 0 0 4px #000, 0 2px 12px rgba(0, 0, 0, 0.95); }
       #stage.upnextfase .chatregel { color: #fff; }
       #stage.upnextfase .chatregel b { font-weight: 500; }
@@ -412,6 +416,7 @@
         </div>
       </div>
       <div class="p uit" id="p-upnext"><div class="kop" id="upKop">Up next</div></div>
+      <div id="aftel"></div>
       <div class="p uit" id="p-voet"><span data-adres></span></div>
       <div id="deelnemers" class="leeg"><b>0</b><span>deelnemers</span></div>
       <div class="p uit" id="p-rapport">
@@ -686,6 +691,11 @@
         // De laatste seconden van het stemmen: een lange, harde piep, de laatste drie hoger.
         aftel(over = 0) {
           toon({ hoogte: over <= 3 ? 1568 : 1175, duur: 0.22, sterkte: 0.8 });
+        },
+        // Een speler drukt op READY: twee tonen omhoog (weer uit: omlaag).
+        ready(aan = true) {
+          toon({ hoogte: aan ? 660 : 880, naar: aan ? 990 : 550, duur: 0.12, sterkte: 0.5 });
+          toon({ hoogte: aan ? 990 : 550, duur: 0.18, sterkte: 0.35, wanneer: 0.11 });
         },
         relais() {
           klik({ hoogte: 900, scherpte: 2, duur: 0.022, sterkte: 0.3, dof: 90 });
@@ -1164,12 +1174,46 @@
             if (naam) naam.textContent = wie ? wie.personage : "";
           });
         }
+        if (data.spelersReady) zetSpelersReady(data.spelersReady);
         tekenKaart();
         const was = stage.classList.contains("klaar");
         stage.classList.toggle("klaar", !!data.ready);
         if (data.ready && !was && faseNu === "upnext") geluid.slot();
       }
       setInterval(() => { if (faseNu === "upnext") haalUpNext(); }, 2000);
+
+      // Ready per speler: het kader van wie klaar is wordt groen. Zijn ze er allemaal (en is de tekst
+      // er), dan telt het scherm af en begint de scène vanzelf.
+      let spelersReady = null, aftelVorige = 0;
+      function zetSpelersReady(sr) {
+        if (!sr || (spelersReady && Number(sr.nu || 0) < Number(spelersReady.nu || 0))) return;
+        spelersReady = { ...sr, verschil: Number(sr.nu || Date.now()) - Date.now() };
+        const plekken = new Set(sr.plekken || []);
+        for (const rij of document.querySelectorAll(".spelerrij")) {
+          [1, 2, 3].forEach((plek) => {
+            const venster = rij.querySelector(`.speler:nth-child(${plek})`);
+            if (venster) venster.classList.toggle("spelerklaar", plekken.has(plek));
+          });
+        }
+        tekenAftel();
+      }
+      function tekenAftel() {
+        const tot = spelersReady && spelersReady.aftellenTot ? spelersReady.aftellenTot - spelersReady.verschil : 0;
+        const rest = tot ? Math.ceil((tot - Date.now()) / 1000) : 0;
+        const node = el("aftel");
+        const tekst = rest > 0 ? String(rest) : "";
+        if (node.textContent !== tekst) {
+          node.textContent = tekst;
+          if (rest > 0 && rest !== aftelVorige) {
+            geluid.aftel(rest);
+            node.classList.remove("tik");
+            void node.offsetWidth;
+            node.classList.add("tik");
+          }
+        }
+        aftelVorige = rest;
+      }
+      setInterval(tekenAftel, 100);
 
       function zetFase(direct) {
         const fase = bepaalFase();
@@ -1919,6 +1963,8 @@
         else if (msg.type === "beoordeling_dicht") stemNu(null);
         else if (msg.type === "beoordeling_stem") stemVoortgang(msg, true);
         else if (msg.type === "up_next_ready") haalUpNext();
+        else if (msg.type === "spelers_ready") zetSpelersReady(msg);
+        else if (msg.type === "speler_ready") geluid.ready(msg.ready);
         else if (msg.type === "start_stemming") stemStart(msg.poll);
         else if (msg.type === "poll_update" && Number(msg.pollId) === stem.pollId && stem.actief) { stem.counts = (msg.counts || []).slice(); tekenStemmen(); geluid.stem(); }
         else if (msg.type === "start_stemming_uitslag") stemUitslag(msg);
