@@ -4,7 +4,7 @@
   // Bord 1 t/m 5 (blind ranking). De operator zet het bord aan met de knop (payload.bord.aan);
   // tot dan is er niets te zien. Daarna volgt het de tekst van de teleprompter: de bordstappen
   // hangen aan de regels (line.bord) en gaan af zodra de speler die regel bereikt. Tussen twee
-  // plaatjes rouleert het vak door alles wat nog niet op het bord staat.
+  // plaatjes rouleert het vak door alle plaatjes, ook die al op het bord staan.
   const PLEKKEN = 5;
   const VLIEG_MS = 430;
   const ROL_MS = 90;
@@ -101,10 +101,11 @@
     nieuw.classList.remove("vast");
   }
 
-  // Elk plaatje dat nog over is staat klaar in het vak; rouleren is alleen wisselen welke bovenop ligt.
+  // Het vak rouleert altijd door alle plaatjes, ook die al op het bord staan; zo verraadt het niet
+  // welk plaatje nog komt. Pas als het bord vol is, gaat het vak weg.
   function rouleer() {
     stopRol();
-    const rest = over();
+    const rest = over().length ? namen : [];
     if (!rest.length || open) {
       if (!open) nieuw.classList.add("weg");
       return;
