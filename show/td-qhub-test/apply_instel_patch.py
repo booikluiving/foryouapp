@@ -247,7 +247,7 @@ def apply_instel_patch():
         tekst = _get_or_create(root, textTOP, "instel_tekst_%d" % nummer, x + 600, y + dy - 150)
         _set_par(tekst, "outputresolution", "custom")
         _set_par(tekst, "resolutionw", 1080)
-        _set_par(tekst, "resolutionh", 120)
+        _set_par(tekst, "resolutionh", 230)  # de teleprompter snijdt bovenaan ± 60 pixels af
         _expr(tekst.par.text, "('KEY' if op('/project1/instel')['key%d'] else 'RAUW') + '  ·  hand omhoog = wissel'" % nummer)
         _set_par(tekst, "fontsizex", 34)
         _set_par(tekst, "alignx", "center")
