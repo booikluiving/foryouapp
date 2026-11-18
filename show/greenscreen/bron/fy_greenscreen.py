@@ -1,8 +1,9 @@
 # Bouwt de For_You-greenscreencomponent (FY Greenscreen) in TouchDesigner.
 # Eén Base COMP: in1 = camerabeeld (staand, elke resolutie), out1 = voorvermenigvuldigd RGBA.
 # Modus: Key (alleen GPU-key, standaard), Combi (GPU-key + RVM), RVM (alleen AI).
-# De key beweegt doorlopend mee met het licht; "Key op licht" (Herkalibreer) meet het blauw in één keer helemaal opnieuw.
-# Alleen de wand wordt geleerd: donkerblauwe kleding telt niet mee (zie plugins/src/KeyEngine.mm).
+# De wand wordt één keer geleerd (bij de start en met "Wand leren"); daarna volgt de key alleen nog het licht.
+# Blauwe kleding wordt zo niet bijgeleerd, ook niet bij een lichtwissel (zie plugins/src/KeyEngine.mm).
+# "Key op licht" (Herkalibreer) bestaat nog voor de lichtdienst, maar doet niets meer: het licht wordt vanzelf gevolgd.
 # Wat de operator instelt staat per camera in <project>/greenscreen/instellingen/<Camera>.json en komt na een herstart terug.
 # Wordt in het lab gebouwd en als .tox opgeslagen; het show-TD laadt die .tox per camera.
 import os
@@ -25,6 +26,7 @@ def build(parent, name, assets, shaders_dir, x=0, y=0):
     p.val = "key"
     p = pg.appendToggle("Keyvast", label="Key vastzetten")[0]  # uit = de key beweegt doorlopend mee met het licht
     pg.appendPulse("Herkalibreer", label="Key op licht")
+    pg.appendPulse("Wandleren", label="Wand leren (lege set)")
     p = pg.appendToggle("Actief", label="Actief")[0]
     p.default = True
     p.val = True
@@ -183,7 +185,8 @@ def onFrameStart(frame):
     knop = node(parameterexecuteDAT, "knoppen", 650, -330)
     knop.text = '''
 def onPulse(par):
-    if par.name == 'Herkalibreer':
+    # Herkalibreer (lichtdienst na een lichtwissel) doet niets: de key volgt het licht zelf, zonder de wand opnieuw te leren
+    if par.name == 'Wandleren':
         k = op('kalibratie')
         if getattr(k.par, 'Reset', None) is not None:
             k.par.Reset.pulse()
@@ -193,7 +196,7 @@ def onValueChange(par, prev):
     op('zorg').store('vuil', True)
 '''
     knop.par.op.expr = "me.parent()"
-    knop.par.pars = "Herkalibreer Modus Keyvast Actief Keyonder Keyboven Tint Despill Dichten Randlinks Randrechts Randboven Randonder"
+    knop.par.pars = "Herkalibreer Wandleren Modus Keyvast Actief Keyonder Keyboven Tint Despill Dichten Randlinks Randrechts Randboven Randonder"
     knop.par.onpulse = True
     knop.par.valuechange = True
     return c
