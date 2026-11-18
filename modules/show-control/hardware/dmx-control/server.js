@@ -420,6 +420,7 @@ const MUZIEK_WIT = 116;   // kleurtemperatuur van de voorlampen: neutraal wit
 // het te donker. Ze branden zacht (voor, instelbaar, nooit onder het minimum) en de puls komt erbovenop.
 const MUZIEK_VOOR = 20;
 const MUZIEK_VOOR_MIN = 10;
+const MUZIEK_VOOR_PULS = 0.35;   // de voorlampen pulsen maar een deel mee; de accentlampen gaan tot de piek
 
 function startMuziek(state, opties = {}, source = "http") {
   if (state.effect && state.effect.naam === "muziek") return;
@@ -476,7 +477,7 @@ function startMuziek(state, opties = {}, source = "http") {
       const kanaal = lamp.address - 1;
       state.channels[kanaal] = lamp.modus === "hsi"
         ? Math.round(inst.bodem + (inst.piek - inst.bodem) * puls)
-        : Math.min(255, Math.round(Math.max(inst.voor, MUZIEK_VOOR_MIN) + (inst.piek - inst.bodem) * puls));
+        : Math.min(255, Math.round(Math.max(inst.voor, MUZIEK_VOOR_MIN) + (inst.piek - inst.bodem) * MUZIEK_VOOR_PULS * puls));
       state.channels[kanaal + 1] = lamp.modus === "hsi" ? 0 : MUZIEK_WIT;
       state.channels[kanaal + 2] = lamp.modus === "hsi" ? 0 : 128;
     });
