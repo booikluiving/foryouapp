@@ -71,7 +71,8 @@ function sanitizePreparedEnvironment(input = {}, base = null) {
   const imageUrl = cleanPreparedText(source.imageUrl || source.image || fallback.imageUrl || "", 500);
   const id = Math.max(0, Number.parseInt(String(source.id || fallback.id || 0), 10) || 0);
   if (!name && !description && !imageUrl && !id) return null;
-  return { id, name, description, imageUrl };
+  const imageKind = String(source.imageKind || (source.imageUrl || source.image ? "" : fallback.imageKind) || "") === "video" && imageUrl ? "video" : "";
+  return { id, name, description, imageUrl, ...(imageKind ? { imageKind } : {}) };
 }
 
 function sanitizePreparedScene(input = {}, base = null) {

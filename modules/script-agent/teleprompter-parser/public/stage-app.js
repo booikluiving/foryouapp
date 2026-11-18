@@ -191,6 +191,8 @@
     return name ? `Omgeving ${name}` : "Omgeving";
   }
 
+  let prepVideo = null;
+
   function appendPrepEnvironment() {
     const environment = preparedScene && preparedScene.environment ? preparedScene.environment : null;
     if (!environment || (!environment.name && !environment.imageUrl)) return;
@@ -198,7 +200,26 @@
     const wrapper = document.createElement("section");
     wrapper.className = "stage-prep-environment";
 
-    if (environment.imageUrl) {
+    if (environment.imageUrl && environment.imageKind === "video") {
+      // Achtergrond is een video (Achtbaan, Linksvoor): stil afspelen, een <img> blijft leeg.
+      // De kaart wordt bij elke wijziging opnieuw opgebouwd; hetzelfde element hergebruiken zodat de
+      // video niet steeds opnieuw laadt en vooraan begint.
+      if (!prepVideo || prepVideo.dataset.src !== environment.imageUrl) {
+        prepVideo = document.createElement("video");
+        prepVideo.className = "stage-prep-environment-image";
+        prepVideo.dataset.src = environment.imageUrl;
+        prepVideo.src = environment.imageUrl;
+        prepVideo.muted = true;
+        prepVideo.loop = true;
+        prepVideo.autoplay = true;
+        prepVideo.playsInline = true;
+        prepVideo.preload = "auto";
+      }
+      prepVideo.setAttribute("aria-label", environmentImageAlt(environment));
+      wrapper.appendChild(prepVideo);
+      const afspelen = prepVideo.play();
+      if (afspelen && typeof afspelen.catch === "function") afspelen.catch(() => {});
+    } else if (environment.imageUrl) {
       const image = document.createElement("img");
       image.className = "stage-prep-environment-image";
       image.src = environment.imageUrl;

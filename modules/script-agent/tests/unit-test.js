@@ -281,6 +281,18 @@ async function main() {
     performerSlots: [{ characterId: "character:1", legacyCharacterId: 1, characterName: "Ada", slotIndex: 1, performerName: "Performer A" }],
   });
   assert.equal(preparedFromPayload.environment.imageUrl, "http://catalog.test/v0/catalog/media-assets/file/bg");
+  assert.equal(preparedFromPayload.environment.imageKind, undefined);
+  // Een video als achtergrond (Achtbaan): de teleprompter moet weten dat het een video is.
+  const preparedVideo = bridge.preparedSceneFromPayload({
+    situation: { situationId: "situation:93", legacySituationId: 93, title: "Achtbaan" },
+    environment: { id: "environment:33", legacyId: 33, name: "Achtbaan" },
+    backgroundAsset: { url: "/v0/catalog/media-assets/file/rit", filename: "achtbaan-stoeltjes.mp4" },
+    performerSlots: [],
+  });
+  assert.equal(preparedVideo.environment.imageKind, "video");
+  const videoStore = createTelepromptStore();
+  videoStore.prepareScene({ sceneId: 93, title: "Achtbaan", environment: preparedVideo.environment, characters: [] });
+  assert.equal(videoStore.getPreparedScene().environment.imageKind, "video");
   assert.equal(preparedFromPayload.characters[0].slot, 1);
   assert.equal(preparedFromPayload.characters[0].performerName, "Performer A");
 

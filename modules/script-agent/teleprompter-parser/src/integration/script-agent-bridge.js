@@ -110,6 +110,25 @@ function imageUrlFromPayload(payload = {}, env = process.env) {
   return relativeCatalogUrlToAbsolute(candidates.find((item) => String(item || "").trim()) || "", env);
 }
 
+// Video of beeld: een omgeving kan een video als achtergrond hebben (Achtbaan, Linksvoor). De url zelf
+// heeft geen extensie, dus de soort komt uit het asset (mime of bestandsnaam).
+function isVideoAsset(asset) {
+  if (!asset || typeof asset !== "object") return false;
+  const mime = String(asset.mimeType || asset.mime || asset.contentType || "").toLowerCase();
+  const name = String(asset.filename || asset.name || asset.filePath || "");
+  return mime.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(name);
+}
+
+function imageKindFromPayload(payload = {}) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const environment = source.environment && typeof source.environment === "object" ? source.environment : {};
+  if (String(environment.imageKind || "") === "video") return "video";
+  if (environment.imageUrl || environment.image || environment.url || source.imageUrl) return "";
+  const assets = source.assets && typeof source.assets === "object" ? source.assets : {};
+  const asset = (source.backgroundAsset && source.backgroundAsset.url) ? source.backgroundAsset : assets.background;
+  return isVideoAsset(asset) ? "video" : "";
+}
+
 function normalizeEnvironment(payload = {}, env = process.env) {
   const environment = payload && payload.environment && typeof payload.environment === "object" ? payload.environment : payload;
   if (!environment || typeof environment !== "object") return null;
@@ -118,7 +137,8 @@ function normalizeEnvironment(payload = {}, env = process.env) {
   const description = String(environment.description || "").trim();
   const imageUrl = imageUrlFromPayload({ ...payload, environment }, env);
   if (!id && !name && !description && !imageUrl) return null;
-  return { id, name, description, imageUrl };
+  const imageKind = imageUrl ? imageKindFromPayload({ ...payload, environment }) : "";
+  return { id, name, description, imageUrl, ...(imageKind === "video" ? { imageKind } : {}) };
 }
 
 function characterName(character = {}) {
