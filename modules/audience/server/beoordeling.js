@@ -110,10 +110,6 @@ function createBeoordeling(service) {
   const fotos = new Map();
   let lopend = null;
   let timer = null;
-  // Na het sluiten: de uitslag gaat naar het algoritme en de runtime kiest de volgende scène opnieuw.
-  // Het zaalscherm wacht hierop voor het universum kiest en het schrijven begint.
-  // { id, status: "kiest" | "gekozen" | "blijft", situationId, titel, veranderd, reden }
-  let volgende = null;
   // Alle labels uit de catalogus van de run, voor de vragen per label in Admin.
   let labelLijst = [];
 
@@ -226,7 +222,6 @@ function createBeoordeling(service) {
       instellingen,
       lopend: lopend ? { ...publiek(), deelnemers: lopend.antwoorden.size, tellingen: tellingen() } : null,
       laatste: uitslagen[uitslagen.length - 1] || null,
-      volgende,
       labels: labelLijst,
     };
   }
@@ -255,15 +250,31 @@ function createBeoordeling(service) {
     uitslagen.push(uitslag);
     while (uitslagen.length > MAX_UITSLAGEN) uitslagen.shift();
     store.setSetting(UITSLAGEN_KEY, uitslagen);
-    // Na de klok, als iedereen klaar is of de operator sluit: eerst de uitslag naar het algoritme, dan opnieuw kiezen.
-    // Bij een nieuwe scène of een reset niet: dan is er niets meer te kiezen.
-    const kiezen = ["klok", "iedereen", "operator"].includes(reden) && !!uitslag.showRunId;
-    volgende = kiezen ? { id: uitslag.id, status: "kiest", situationId: null, titel: null, veranderd: false, reden: null } : null;
-    service.emit("broadcast", { type: "beoordeling_dicht", id: uitslag.id, volgende });
+    // De uitslag gaat naar het algoritme. De volgende scène ligt al vast (de keuze loopt één scène
+    // vooruit): het oordeel telt mee voor de keuze daarna.
+    service.emit("broadcast", { type: "beoordeling_dicht", id: uitslag.id });
     service.emit("admin-state-changed");
-    const verstuurd = Promise.all([stuurOordeel(uitslag), stuurLabelVoorkeur(uitslag), stuurPersonageVoorkeur(uitslag)]);
-    if (kiezen) verstuurd.then(() => kiesVolgende(uitslag));
+    Promise.all([stuurOordeel(uitslag), stuurLabelVoorkeur(uitslag), stuurPersonageVoorkeur(uitslag)])
+      .then(() => stuurScoresNaarRuntime(uitslag));
     return uitslag;
+  }
+
+  // De nieuwste scores (met het oordeel erin) naar de runtime, zodat de keuze bij de start van de
+  // volgende scène ermee rekent. De scène die al klaarstaat blijft staan.
+  async function stuurScoresNaarRuntime(uitslag) {
+    if (!uitslag.showRunId || typeof fetch !== "function") return;
+    try {
+      const res = await fetch(`${ALGORITME_URL}/v0/algorithm/scoring-contexts/${encodeURIComponent(uitslag.showRunId)}/scores`, {
+        signal: AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined,
+      });
+      if (!res.ok) throw new Error(`algoritme ${res.status}`);
+      const scoreFeed = await res.json();
+      await post(`${RUNTIME_URL}/v0/runtime/runs/${encodeURIComponent(uitslag.showRunId)}/scores`, { ...scoreFeed, source: "publiek_oordeel" });
+      uitslag.scoresNaarRuntime = "ok";
+    } catch (err) {
+      uitslag.scoresNaarRuntime = `niet bereikt (${err.message})`;
+    }
+    store.setSetting(UITSLAGEN_KEY, uitslagen);
   }
 
   // Een POST naar een andere dienst; geeft het antwoord (of gooit een fout).
@@ -277,32 +288,6 @@ function createBeoordeling(service) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(`fout ${res.status}`);
     return data;
-  }
-
-  // De runtime kiest de volgende scène opnieuw, met het oordeel erin. Daarna krijgt het zaalscherm een
-  // seintje (volgende_gekozen); lukt het niet, dan blijft de scène staan die al gekozen was.
-  async function kiesVolgende(uitslag) {
-    let uitkomst = null;
-    try {
-      if (typeof fetch === "function") {
-        uitkomst = await post(`${RUNTIME_URL}/v0/runtime/runs/${encodeURIComponent(uitslag.showRunId)}/kies-opnieuw`, { situationRunId: uitslag.id }, 8000);
-      }
-    } catch (err) {
-      uitkomst = { gekozen: false, reden: `niet bereikt (${err.message})` };
-    }
-    if (!volgende || volgende.id !== uitslag.id) return;
-    volgende = {
-      id: uitslag.id,
-      status: uitkomst && uitkomst.gekozen ? "gekozen" : "blijft",
-      situationId: (uitkomst && uitkomst.situationId) || null,
-      titel: (uitkomst && uitkomst.title) || null,
-      veranderd: !!(uitkomst && uitkomst.gekozen && uitkomst.vorige !== uitkomst.situationId),
-      reden: (uitkomst && uitkomst.reden) || null,
-    };
-    uitslag.volgende = volgende;
-    store.setSetting(UITSLAGEN_KEY, uitslagen);
-    service.emit("broadcast", { type: "volgende_gekozen", ...volgende });
-    service.emit("admin-state-changed");
   }
 
   // Het oordeel over de scène (de thermometer): van onder (-1) tot boven (+1), gelijk verdeeld over de
@@ -399,7 +384,6 @@ function createBeoordeling(service) {
   // De scène is afgelopen: de vragen gaan open, de klok loopt.
   function start() {
     sluit("nieuwe_scene");
-    volgende = null;
     if (!instellingen.aan || !scene || !service.getActiveSession()) return null;
     if (uitslagen.some((uitslag) => uitslag.id === scene.situationRunId)) return null;
     const vragen = vragenVoor(scene);
@@ -471,12 +455,11 @@ function createBeoordeling(service) {
     timer = null;
     if (lopend) service.emit("broadcast", { type: "beoordeling_dicht", id: lopend.id });
     lopend = null;
-    volgende = null;
     scene = null;
     fotos.clear();
   }
 
-  return { onthoudScene, zetFoto, start, sluit, klokOpnieuw, antwoord, publiek, stand, zetInstellingen, reset, uitslagen: () => uitslagen.slice(), volgende: () => volgende };
+  return { onthoudScene, zetFoto, start, sluit, klokOpnieuw, antwoord, publiek, stand, zetInstellingen, reset, uitslagen: () => uitslagen.slice() };
 }
 
 module.exports = { createBeoordeling, normalizeInstellingen };

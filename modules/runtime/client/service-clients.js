@@ -69,12 +69,6 @@ async function observeSituation(event) {
   });
 }
 
-// De nieuwste scores van het algoritme voor deze run (na het oordeel van het publiek).
-async function fetchAlgorithmScoreFeed(showRunId) {
-  if (!showRunId) throw new Error("runtime_missing_show_run_id_for_score_feed");
-  return fetchJson(`${algorithmBaseUrl()}/v0/algorithm/scoring-contexts/${encodeURIComponent(showRunId)}/scores`);
-}
-
 async function fetchAudienceAlgorithmInput({ showRunId, situationRunId }) {
   if (!showRunId) throw new Error("runtime_missing_show_run_id_for_audience_input");
   if (!situationRunId) throw new Error("runtime_missing_situation_run_id_for_audience_input");
@@ -86,7 +80,6 @@ async function fetchAudienceAlgorithmInput({ showRunId, situationRunId }) {
 }
 
 module.exports = {
-  fetchAlgorithmScoreFeed,
   DEFAULT_ALGORITHM_BASE_URL,
   DEFAULT_AUDIENCE_BASE_URL,
   DEFAULT_CATALOG_BASE_URL,
