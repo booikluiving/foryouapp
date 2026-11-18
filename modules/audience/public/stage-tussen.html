@@ -65,6 +65,25 @@
       #deelnemers b { color: #fff; font-weight: 700; display: inline-block; }
       #deelnemers b.tik { animation: stemGetalTik 400ms var(--curve); }
       body.scene #deelnemers, #stage.rapportfase #deelnemers, #deelnemers.leeg { opacity: 0; }
+      /* Tussen de scènes: de emoji van het publiek stijgen rechtsonder op, boven de deelnemers. Klein,
+         in de marge; ze krimpen weg in plaats van te vervagen. */
+      #tussenEmoji { position: absolute; right: 0; bottom: 0; width: 240px; height: 900px; pointer-events: none; z-index: 7; }
+      #stage.rapportfase #tussenEmoji { display: none; }
+      #tussenEmoji span {
+        position: absolute;
+        bottom: 62px;
+        line-height: 1;
+        font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+        transform: translate(-50%, 0) scale(0);
+        animation: tussenStijg var(--duur, 3000ms) cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+        will-change: transform;
+      }
+      @keyframes tussenStijg {
+        0% { transform: translate(-50%, 0) scale(0); }
+        10% { transform: translate(-50%, -30px) scale(1); }
+        78% { transform: translate(calc(-50% + var(--drift, 0px) * 0.8), calc(var(--hoogte, -600px) * 0.86)) scale(1); }
+        100% { transform: translate(calc(-50% + var(--drift, 0px)), var(--hoogte, -600px)) scale(0); }
+      }
       .chatregel.join { color: rgba(255, 255, 255, 0.38); font-style: italic; }
       body.scene #ondertitel, body.scene #bord { visibility: visible; }
       /* Het universum vult het beeld; de kaart zelf staat in de strook tussen de tekst boven en de chat onder. */
@@ -415,6 +434,7 @@
       <div class="p uit" id="p-upnext"><div class="kop" id="upKop">Up next</div></div>
       <div class="p uit" id="p-voet"><span data-adres></span></div>
       <div id="deelnemers" class="leeg"><b>0</b><span>deelnemers</span></div>
+      <div id="tussenEmoji"></div>
       <div class="p uit" id="p-rapport">
         <div class="inhoud">
           <div class="rp" id="rp0">
@@ -1924,6 +1944,30 @@
         if (ronde.start && ronde.start !== was) { berichten = []; tekenChat(); }
       }
 
+      // ── Emoji tussen de scènes ────────────────────────────────────────────────────────────────
+      // Wat het publiek tussen de scènes indrukt, stijgt rechtsonder op (tijdens de scène doet de
+      // emoji-laag over het camerabeeld dat). Zelfde schakelaar en schaal als die laag (Admin).
+      const TUSSEN_EMOJI_MAX = 40;
+      function tussenEmoji(emoji, aantal) {
+        if (!emoji || inScene || document.hidden || settings.showEmojis === false) return;
+        const laag = el("tussenEmoji");
+        const n = Math.max(1, Math.min(6, Number(aantal) || 1));
+        const maat = Math.round(Math.max(36, Math.min(96, 60 * getal(settings.emojiScale, 1))));
+        for (let i = 0; i < n; i += 1) {
+          if (laag.childElementCount >= TUSSEN_EMOJI_MAX) laag.firstElementChild.remove();
+          const node = maak("span", "", emoji);
+          const hoogte = 460 + Math.random() * 240;
+          node.style.left = Math.round(150 + (Math.random() * 2 - 1) * 34) + "px";
+          node.style.fontSize = maat + "px";
+          node.style.setProperty("--drift", Math.round(Math.random() * 70 - 35) + "px");
+          node.style.setProperty("--hoogte", -Math.round(hoogte) + "px");
+          node.style.setProperty("--duur", Math.round(1500 + hoogte * 2.6) + "ms");
+          node.style.animationDelay = i * 90 + "ms";
+          node.addEventListener("animationend", () => node.remove());
+          laag.appendChild(node);
+        }
+      }
+
       const bron = new EventSource("/audience/stage/stroom");
       bron.onmessage = (ev) => {
         let msg;
@@ -1943,7 +1987,11 @@
         } else if (msg.type === "stage_settings") toepassen(msg.stage && msg.stage.settings);
         else if (msg.type === "reacties") reacties = msg.reacties || [];
         else if (msg.type === "fase") nieuweRonde(msg.ronde);
-        else if (msg.type === "reaction_update" && msg.ronde) ronde.emoji = msg.ronde;
+        else if (msg.type === "reaction_update") {
+          if (msg.ronde) ronde.emoji = msg.ronde;
+          if (msg.fase !== "scene") tussenEmoji(msg.emoji);
+        }
+        else if (msg.type === "stage_reaction") tussenEmoji(msg.emoji, msg.burst);
         else if (msg.type === "comment") regel(msg);
         else if (msg.type === "comment_likes") {
           const m = berichten.find((b) => b.id === Number(msg.id));
