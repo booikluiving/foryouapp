@@ -179,6 +179,15 @@ async function handleRequest(req, res) {
     return;
   }
 
+  const autofocusMatch = url.pathname.match(/^\/api\/camera\/([^/]+)\/autofocus$/);
+  if (req.method === "POST" && autofocusMatch) {
+    const camera = normalizeCameraId(autofocusMatch[1]);
+    const body = await readJson(req);
+    const result = await enqueueAutofocus(camera, body.position, "http");
+    sendJson(res, result.ok ? 200 : 502, result);
+    return;
+  }
+
   const contrastMatch = url.pathname.match(/^\/api\/camera\/([^/]+)\/contrast$/);
   if (req.method === "POST" && contrastMatch) {
     const camera = normalizeCameraId(contrastMatch[1]);
@@ -253,6 +262,42 @@ async function enqueueCameraCommand(cameraId, endpoint, rawValue, source) {
     .then(() => sendCameraCommand(camera, endpoint, rawValue, source));
   commandQueues.set(cameraId, next);
   return next;
+}
+
+// Eenmalige autofocus van de camera zelf. position = { x, y } (0..1) is het punt waarop hij scherpstelt; zonder = midden.
+async function enqueueAutofocus(cameraId, position, source) {
+  const camera = getCamera(cameraId);
+  const previous = commandQueues.get(cameraId) || Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(() => sendAutofocus(camera, position, source));
+  commandQueues.set(cameraId, next);
+  return next;
+}
+
+async function sendAutofocus(camera, position, source) {
+  const endpoint = "/lens/focus/doAutoFocus";
+  const body = {};
+  if (position && Number.isFinite(Number(position.x)) && Number.isFinite(Number(position.y))) {
+    const clamp = (n) => Math.min(1, Math.max(0, Number(n)));
+    body.position = { x: clamp(position.x), y: clamp(position.y) };
+  }
+  camera.lastCommand = { endpoint, value: body, source, status: "pending", at: new Date().toISOString() };
+  try {
+    const response = await cameraRequest(camera, "PUT", endpoint, body);
+    if (response.status >= 200 && response.status < 300) {
+      camera.online = true;
+      camera.restOk = true;
+      camera.lastError = "";
+      camera.lastCommand = { endpoint, value: body, source, status: "ok", at: new Date().toISOString() };
+      logActivity(camera.id, `${source} ${endpoint}`);
+      broadcastState();
+      return { ok: true, camera: camera.id, endpoint, status: response.status };
+    }
+    return commandFailure(camera, endpoint, `Camera returned HTTP ${response.status}`);
+  } catch (error) {
+    return commandFailure(camera, endpoint, error.message || String(error));
+  }
 }
 
 async function sendCameraCommand(camera, endpoint, rawValue, source) {
@@ -442,6 +487,11 @@ function startOsc() {
 async function handleOscMessage(message) {
   const address = String(message.address || "");
   const args = Array.isArray(message.args) ? message.args.map((arg) => arg.value) : [];
+  const autofocus = address.match(/^\/camera\/(cam[123])\/autofocus$/);
+  if (autofocus) {
+    await enqueueAutofocus(autofocus[1], null, "osc");
+    return;
+  }
   const control = address.match(/^\/camera\/(cam[123])\/(focus|iris|zoom)$/);
   if (control) {
     await enqueueCameraCommand(control[1], `/lens/${control[2]}`, { normalised: args[0] }, "osc");

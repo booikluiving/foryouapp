@@ -154,7 +154,7 @@
   }
 
   // Een trendscène (omgeving Trend) heeft geen tekst in beeld: de emoji-laag zegt wat er gebeurt.
-  // Alleen "Einde" blijft; de regels staan nog wel op de teleprompter.
+  // Alleen het lege einde blijft; de regels staan nog wel op de teleprompter.
   const ZONDER_TEKST_OMGEVING_RE = /^\s*trend\s*$/i;
 
   function sceneZonderTekst() {
@@ -167,7 +167,8 @@
     // De scène begint met de eerste regel; de titel stond al op het zaalscherm tijdens het schrijven.
     if (index <= 0) return null;
     if (!lines.length) return null;
-    if (index >= lines.length + 1) return { type: "end", text: "Einde" };
+    // Na de laatste regel blijft het beeld leeg: ruimte voor de laatste reacties van de spelers.
+    if (index >= lines.length + 1) return null;
     if (sceneZonderTekst()) return null;
     const line = lines[index - 1];
     if (!line || !line.text) return null;

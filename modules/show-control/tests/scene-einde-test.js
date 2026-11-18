@@ -108,7 +108,7 @@ async function main() {
   await play({ filePath: intro, spoor: "intro" });
 
   // 2. STOP: de runtime-adapter geeft de acties van het scène-einde mee, vóór het klaarzetten.
-  const stop = await sendRuntimeCommand({ command: "runtime.stopSituation", payload: { showRunId: "show-run-test" } }, context);
+  const stop = await sendRuntimeCommand({ command: "runtime.stopSituation", payload: { showRunId: "show-run-test", autoMics: false } }, context);
   const acties = stop.generatedActions;
   assert.equal(acties[0].command, "audio.extra.stop", "eerst het geluid");
   assert.deepEqual(acties[0].payload.alleen, undefined, "alle sporen, niet alleen de intro");
@@ -130,13 +130,13 @@ async function main() {
 
   // 4. RESET RUN doet hetzelfde.
   await play({ filePath: stap });
-  const reset = await sendRuntimeCommand({ command: "runtime.resetRun", payload: { showRunId: "show-run-test" } }, context);
+  const reset = await sendRuntimeCommand({ command: "runtime.resetRun", payload: { showRunId: "show-run-test", autoMics: false } }, context);
   assert.equal(reset.generatedActions[0].command, "audio.extra.stop");
   assert.deepEqual(tdUitSoorten(reset.generatedActions), VERWACHT_TD);
   await voerUit(reset.generatedActions);
 
   // 5. Starten ruimt niets op: wat tussen twee scènes is aangezet hoort bij de scène die komt.
-  const start = await sendRuntimeCommand({ command: "runtime.startSituation", payload: { showRunId: "show-run-test", autoStartGeluid: false } }, context);
+  const start = await sendRuntimeCommand({ command: "runtime.startSituation", payload: { showRunId: "show-run-test", autoStartGeluid: false, autoMics: false } }, context);
   assert.ok(!start.generatedActions.some((action) => action.command === "audio.extra.stop"));
 
   // 6. Vangnet: de scène eindigt buiten show-control om.

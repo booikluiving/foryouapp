@@ -54,6 +54,67 @@ func tekstvelden() -> [(Int, String)] {
 func claudeVooraan() -> Bool { NSWorkspace.shared.frontmostApplication?.bundleIdentifier == claudeID }
 
 let args = CommandLine.arguments
+// Onderzoek "⌘D komt niet aan": legt vast welk element de toetsfocus heeft op het moment van de druk.
+// Alleen rol, naam van het element en de keten erboven; nooit de inhoud van een tekstvak.
+if args.count > 1, args[1] == "focus" {
+  let label = args.count > 2 ? args[2] : "?"
+  func kort(_ s: String?) -> String? { s.flatMap { $0.isEmpty ? nil : String($0.prefix(50)) } }
+  func omschrijf(_ e: AXUIElement, metNaam: Bool) -> String {
+    var d = (attr(e, "AXRole") as? String) ?? "?"
+    if let s = attr(e, "AXSubrole") as? String, !s.isEmpty { d += "/\(s)" }
+    if let i = kort(attr(e, "AXDOMIdentifier") as? String) { d += "#\(i)" }
+    if let c = attr(e, "AXDOMClassList") as? [String], !c.isEmpty { d += "." + c.prefix(3).joined(separator: ".") }
+    if metNaam, let n = kort(attr(e, "AXDescription") as? String) ?? kort(attr(e, "AXTitle") as? String) { d += " \"\(n)\"" }
+    if let u = attr(e, "AXURL") { d += " <\(String("\(u)".prefix(60)))>" }
+    return d
+  }
+  guard let f = attr(ax, kAXFocusedUIElementAttribute as String) else {
+    log("focus [\(label)]: geen element met focus\(claudeVooraan() ? "" : " (Claude niet vooraan)")"); exit(0)
+  }
+  var e = f as! AXUIElement
+  var regel = omschrijf(e, metNaam: true)
+  if let n = (attr(e, "AXValue") as? String)?.count ?? (attr(e, "AXNumberOfCharacters") as? Int) { regel += " lengte \(n)" }
+  var keten: [String] = []
+  for _ in 0..<12 {
+    guard let p = attr(e, "AXParent") else { break }
+    e = p as! AXUIElement
+    let rol = (attr(e, "AXRole") as? String) ?? "?"
+    // Alleen de schakels die iets zeggen: webgebieden, benoemde groepen, vensters
+    if rol == "AXWebArea" || rol == "AXWindow" || attr(e, "AXDOMIdentifier") as? String != nil
+        || kort(attr(e, "AXDescription") as? String) != nil { keten.append(omschrijf(e, metNaam: true)) }
+    if rol == "AXWindow" { break }
+  }
+  log("focus [\(label)]: \(regel) ← \(keten.joined(separator: " ← "))\(claudeVooraan() ? "" : " (Claude niet vooraan)")")
+  // Staat de focus in een paneel (artefact, browser), dan komt ⌘D niet bij Claude aan (gemeten 12 nov).
+  // Zet de focus dan eerst in het tekstvak. Staat hij al in de chat (tekstvak of berichtenlijst), dan niets doen.
+  func isPrompt(_ x: AXUIElement) -> Bool {
+    (attr(x, "AXRole") as? String) == "AXTextArea" && ((attr(x, "AXDOMClassList") as? [String])?.contains("ProseMirror") ?? false)
+  }
+  // label "zet" = altijd zetten (om te testen zonder paneel)
+  let inChat = label != "zet" && (isPrompt(f as! AXUIElement) || regel.contains("\"Chat messages\""))
+  if !inChat, claudeVooraan() {
+    let t0 = Date(); var teller = 0; var prompt: AXUIElement?
+    func zoek(_ x: AXUIElement, _ diepte: Int) {
+      if prompt != nil { return }
+      teller += 1; if teller > 6000 || diepte > 70 { return }
+      if isPrompt(x) { prompt = x; return }
+      // Niet de panelen in: daar staat het tekstvak niet, en ze kunnen groot zijn
+      if (attr(x, "AXDOMIdentifier") as? String) == "frame-slot" { return }
+      for k in (attr(x, "AXChildren") as? [AXUIElement]) ?? [] { zoek(k, diepte + 1) }
+    }
+    let venster = attr(ax, kAXFocusedWindowAttribute as String).map { [$0 as! AXUIElement] } ?? (attr(ax, "AXWindows") as? [AXUIElement]) ?? []
+    for w in venster { zoek(w, 0) }
+    if let p = prompt {
+      let r = AXUIElementSetAttributeValue(p, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+      usleep(60_000)
+      let nu = attr(ax, kAXFocusedUIElementAttribute as String).map { isPrompt($0 as! AXUIElement) } ?? false
+      log(String(format: "focus [\(label)]: naar het tekstvak gezet (%@, %d elementen, %.2f s, code %d)", nu ? "gelukt" : "NIET gelukt", teller, Date().timeIntervalSince(t0), r.rawValue))
+    } else {
+      log(String(format: "focus [\(label)]: tekstvak niet gevonden (%d elementen, %.2f s)", teller, Date().timeIntervalSince(t0)))
+    }
+  }
+  exit(0)
+}
 if args.count > 1, args[1] == "kijk" {
   let duur = args.count > 2 ? Double(args[2]) ?? 60 : 60
   log("kijk: start, \(Int(duur)) s")

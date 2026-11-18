@@ -1,5 +1,6 @@
 "use strict";
 
+const fs = require("node:fs");
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 const { BORD_PLAATJE_TAG } = require("../../../shared/blind-ranking/blind-ranking");
@@ -387,6 +388,25 @@ function existingFxAssets(resolved = {}) {
   return [];
 }
 
+const STILTE_PATH = path.resolve(__dirname, "../../../show/muziek/stilte.wav");
+
+function stilteSoundscape(environmentId) {
+  if (!environmentId || !fs.existsSync(STILTE_PATH)) return null;
+  return {
+    id: "stilte",
+    assetId: "stilte",
+    environmentId,
+    type: "soundscape",
+    role: "soundscape",
+    status: "present",
+    name: "Stilte",
+    filename: "stilte.wav",
+    filePath: STILTE_PATH,
+    url: "",
+    volume: 0,
+  };
+}
+
 function resolvedEnvironmentAssets(runtimeState, resolved, options = {}) {
   const environmentId = environmentIdFromResolved(resolved);
   const { catalog, resolution } = catalogWithLiveEnvironmentAssets(runtimeState, environmentId, options);
@@ -410,6 +430,9 @@ function resolvedEnvironmentAssets(runtimeState, resolved, options = {}) {
     { environmentId, role: "soundscape" }
   );
   if (soundscape) soundscape.volume = soundscapeVolumeFor(catalog, environmentId);
+  // Geen sfeergeluid bij deze omgeving: stilte meesturen, anders blijft in TouchDesigner het
+  // sfeergeluid van de vorige omgeving doorspelen.
+  const sfeer = soundscape || stilteSoundscape(environmentId);
   const catalogOutputFx = tdOutputAssetsForEnvironment(catalog, environmentId);
   const existingFx = existingFxAssets(resolved);
   const fxSource = preferCatalogAssets
@@ -429,11 +452,11 @@ function resolvedEnvironmentAssets(runtimeState, resolved, options = {}) {
     assets: {
       ...cloneJson(existingAssets),
       ...(background ? { background } : {}),
-      ...(soundscape ? { soundscape } : {}),
+      ...(sfeer ? { soundscape: sfeer } : {}),
       fx,
     },
     background,
-    soundscape,
+    soundscape: sfeer,
     fx,
     lighting,
   };

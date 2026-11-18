@@ -198,7 +198,8 @@ function createShowControlApp(options = {}) {
     adapters: options.adapters || {},
     adapterOptions: showControlAdapterOptions(options),
   };
-  app.use(express.json({ limit: "1mb" }));
+  // De run-stand die de teleprompter en Scènes testen meesturen is ruim 1 MB (de catalogus zit erin).
+  app.use(express.json({ limit: "16mb" }));
 
   app.get("/", (_req, res) => {
     res.redirect("/show-control/");

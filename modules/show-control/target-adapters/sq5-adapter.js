@@ -37,6 +37,8 @@ function requestForSq5Action(action) {
     body: { softKey: payload.softKey || payload.key, action: payload.action || "tap" },
   };
 
+  if (command === "sq5.spelers") return { method: "POST", path: `/api/spelers/${payload.stand === "open" ? "open" : "dicht"}`, body: {} };
+
   if (command.startsWith("sq5.input.")) {
     const actionName = command.slice("sq5.input.".length);
     return {

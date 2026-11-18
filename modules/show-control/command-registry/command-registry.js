@@ -353,6 +353,13 @@ const DEFINITIONS = Object.freeze([
     request: { method: "POST", path: "/api/input/:channel/nudge" },
   }),
   command({
+    name: "sq5.spelers",
+    title: "SQ5 spelers open of dicht",
+    targetId: "sq5",
+    adapter: "sq5",
+    request: { method: "POST", path: "/api/spelers/:stand" },
+  }),
+  command({
     name: "sq5.output.mute",
     title: "SQ5 output mute",
     targetId: "sq5",
