@@ -1279,6 +1279,10 @@ async function loadPubliek() {
   try { publiek.naam.value = localStorage.getItem(STORAGE_PUBLIEK_NAAM_KEY) || ""; } catch (_err) { /* opslag niet beschikbaar */ }
   const info = await api("/v0/script-agent/operator/publiek");
   publiek.kijk.src = `${location.protocol}//${location.hostname}:${info.port}${info.kijkPath}`;
+  // Hetzelfde kijkvenster op ware grootte in een eigen venster.
+  document.getElementById("telefoonOpen").addEventListener("click", () => {
+    window.open(publiek.kijk.src, "foryou_telefoon", "width=390,height=844");
+  });
 }
 
 async function submitPubliekChat() {
