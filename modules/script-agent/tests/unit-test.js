@@ -122,6 +122,21 @@ function fakeDeepSeekFetch(expectedApiKey) {
   };
 }
 
+const fakeOpenRouter = { calls: 0, lastBody: null };
+async function fakeOpenRouterFetch(url, options = {}) {
+  assert.equal(url, "https://openrouter.ai/api/v1/chat/completions");
+  assert.equal(options.headers.authorization, "Bearer sk-test-openrouter");
+  const body = JSON.parse(options.body);
+  fakeOpenRouter.calls += 1;
+  fakeOpenRouter.lastBody = body;
+  const chunks = [
+    `data: ${JSON.stringify({ choices: [{ delta: { content: "Ada: Hydrogen regel\\n" } }] })}\n\n`,
+    `data: ${JSON.stringify({ choices: [{ delta: { content: "Ben: Tegenregel" }, finish_reason: "stop" }], usage: { prompt_tokens: 30, completion_tokens: 12, cost: 0.001 } })}\n\n`,
+    "data: [DONE]\n\n",
+  ];
+  return { ok: true, body: Readable.from(chunks.map((chunk) => Buffer.from(chunk))), text: async () => "" };
+}
+
 async function main() {
   await fs.rm(TMP_DB_DIR, { recursive: true, force: true });
 
@@ -340,7 +355,9 @@ async function main() {
       fetchCatalogSnapshot: async () => ({ ok: true, catalog: cloneJson(runtimeState.showRunSnapshot.catalog) }),
     },
     env: {},
-    fetchImpl: fakeDeepSeekFetch("sk-test-deepseek"),
+    fetchImpl: (url, options) => (String(url).includes("openrouter.ai")
+      ? fakeOpenRouterFetch(url, options)
+      : fakeDeepSeekFetch("sk-test-deepseek")(url, options)),
     log: (line) => generationLog.push(JSON.parse(line)),
   });
   assert.equal((await operatorService.secretsStatus()).deepseek.configured, false);
@@ -448,6 +465,29 @@ async function main() {
   });
   assert.equal(fakeDeepSeek.lastBody.max_tokens, 512);
   await operatorService.saveSettings({ reasoningEffort: "low" });
+
+  // Knop Hydrogen: een model met "/" in de instellingen schrijft via OpenRouter, met kort nadenken.
+  assert.equal((await operatorService.secretsStatus()).openrouter.configured, false);
+  const secretsFile = path.join(TMP_DB_DIR, "operator-secrets.json");
+  const secretsNu = JSON.parse(await fs.readFile(secretsFile, "utf8"));
+  await fs.writeFile(secretsFile, JSON.stringify({ ...secretsNu, OPENROUTER_API_KEY: "sk-test-openrouter" }));
+  assert.equal((await operatorService.secretsStatus()).openrouter.configured, true);
+  await operatorService.saveSettings({ reasoningEffort: "off" });
+  const hydrogen = await operatorService.saveSettings({ model: "google/gemini-4-hydrogen" });
+  assert.equal(hydrogen.reasoningEffort, "low");
+  const viaOpenRouter = await operatorService.streamChat({
+    sessionId: "hydrogen_session",
+    message: operatorDraft.text,
+    promptInput: operatorDraft.promptInput,
+  });
+  assert.equal(viaOpenRouter.provider, "openrouter");
+  assert.equal(fakeOpenRouter.lastBody.model, "google/gemini-4-hydrogen");
+  assert.deepEqual(fakeOpenRouter.lastBody.reasoning, { effort: "low" });
+  assert.equal(generationLog.at(-1).provider, "openrouter");
+  const terug = await operatorService.saveSettings({ model: "deepseek-chat" });
+  assert.equal(terug.reasoningEffort, "off");
+  await operatorService.saveSettings({ reasoningEffort: "low" });
+  await fs.writeFile(secretsFile, JSON.stringify(secretsNu));
 
   const sceneChatEvents = [];
   const sceneChat = await operatorService.sceneToChat({ sourceId: "unit-scene-chat" }, (event) => sceneChatEvents.push(event));

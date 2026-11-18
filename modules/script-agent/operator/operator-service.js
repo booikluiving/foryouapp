@@ -680,7 +680,8 @@ function createOperatorService(options = {}) {
     if (nextModel && nextModel !== current.model) {
       const byModel = { ...current.reasoningByModel, [current.model]: current.reasoningEffort };
       if (!Object.prototype.hasOwnProperty.call(next, "reasoningEffort")) {
-        next.reasoningEffort = byModel[nextModel] ?? current.reasoningEffort;
+        // OpenRouter-modellen als Gemini Hydrogen kunnen niet zonder nadenken: dan "low".
+        next.reasoningEffort = byModel[nextModel] ?? (nextModel.includes("/") ? "low" : current.reasoningEffort);
       }
       next.reasoningByModel = byModel;
     } else {
@@ -1204,8 +1205,7 @@ function createOperatorService(options = {}) {
     };
   }
 
-  // OpenRouter: een model met een "/" in de naam (bijvoorbeeld google/gemini-4-hydrogen). Alleen
-  // gebruikt als een aanroep zelf om zo'n model vraagt; de show vraagt daar niet om.
+  // OpenRouter: een model met een "/" in de naam (bijvoorbeeld google/gemini-4-hydrogen).
   async function streamOpenRouterText({ apiKey, model, settings, effort, history, userText, onText }) {
     const startedAt = Date.now();
     const timing = { firstReasoningMs: null, firstTextMs: null, totalMs: null };
@@ -1319,7 +1319,8 @@ function createOperatorService(options = {}) {
     const deepSeekKey = deepSeekApiKeyFrom(secrets);
     const anthropicKey = anthropicApiKeyFrom(secrets);
     const openRouterKey = openRouterApiKeyFrom(secrets);
-    const wantsOpenRouter = Boolean(override) && settings.model.includes("/");
+    // Een model met "/" in de naam gaat naar OpenRouter (Hydrogen in de modelkeuze, of een keuze op de website).
+    const wantsOpenRouter = settings.model.includes("/");
     const wantsClaude = !wantsOpenRouter && isClaudeModel(settings.model);
     if (wantsOpenRouter && !openRouterKey) throw new Error("openrouter_api_key_missing");
     if (!wantsOpenRouter && !wantsClaude && !deepSeekKey) throw new Error("deepseek_api_key_missing");
