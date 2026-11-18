@@ -27,7 +27,7 @@ BRON = "/project1/voorhoofd_volgbron"
 CAMERAS = {1: "comp1", 2: "comp5", 3: "comp6"}
 NEP = "/Users/for_you/ForYou/voorhoofd/test/nepcamera.mp4"
 NEP_AAN = "op('/project1/fy_voorhoofd').fetch('nep', 0)"
-ACTIEF = "(0 if %s else int(min(2, max(0, op('/project1/Camera_Switch')['camera']))))" % NEP_AAN
+ACTIEF = "int(min(2, max(0, op('/project1/Camera_Switch')['camera'])))"
 VAK_URL = "http://127.0.0.1:3027/script-agent/teleprompter-parser/bord.html?vak=los"
 
 
@@ -54,19 +54,20 @@ def _soort(ouder, soort, naam, x, y):
 
 
 def bronnen():
-    # Welke camera de volger bekijkt: de camera op het hoofdscherm, of de nepcamera in de test.
+    # Per camera N: voorhoofd_bron_N = speler_zicht_N, of in de test de nepcamera op de camera die op het
+    # hoofdscherm staat. voorhoofd_volgbron = de bron van de camera op het hoofdscherm (Camera_Switch).
     root = op("/project1")
     z1 = op("/project1/speler_zicht_1")
     nep = _maak(root, moviefileinTOP, "voorhoofd_nepcamera_1", z1.nodeX, z1.nodeY - 400)
     nep.par.file = NEP
-    b1 = _soort(root, switchTOP, "voorhoofd_bron_1", z1.nodeX + 130, z1.nodeY - 400)
-    b1.inputConnectors[0].connect(z1)
-    b1.inputConnectors[1].connect(nep)
-    b1.par.index.expr = "1 if %s else 0" % NEP_AAN
-    vb = _soort(root, switchTOP, "voorhoofd_volgbron", z1.nodeX + 260, z1.nodeY - 400)
-    vb.inputConnectors[0].connect(b1)
-    vb.inputConnectors[1].connect(op("/project1/speler_zicht_2"))
-    vb.inputConnectors[2].connect(op("/project1/speler_zicht_3"))
+    vb = _soort(root, switchTOP, "voorhoofd_volgbron", z1.nodeX + 400, z1.nodeY - 400)
+    for n in (1, 2, 3):
+        z = op("/project1/speler_zicht_%d" % n)
+        b = _soort(root, switchTOP, "voorhoofd_bron_%d" % n, z.nodeX + 130, z.nodeY - 400)
+        b.inputConnectors[0].connect(z)
+        b.inputConnectors[1].connect(nep)
+        b.par.index.expr = "1 if (%s and %s == %d) else 0" % (NEP_AAN, ACTIEF, n - 1)
+        vb.inputConnectors[n - 1].connect(b)
     vb.par.index.expr = ACTIEF
 
 
@@ -174,7 +175,7 @@ def aansluiten():
     sel.par.top = "/project1/fy_voorhoofd/geplaatst"
     for n, comp_naam in CAMERAS.items():
         zicht = op("/project1/speler_zicht_%d" % n)
-        achter = op("/project1/voorhoofd_bron_1") if n == 1 else zicht
+        achter = op("/project1/voorhoofd_bron_%d" % n)
         comp = op("/project1/" + comp_naam)
         kaart = _soort(root, levelTOP, "voorhoofd_kaart_%d" % n, zicht.nodeX + 130, zicht.nodeY - 260)
         kaart.inputConnectors[0].connect(sel)

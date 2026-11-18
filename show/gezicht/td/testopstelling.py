@@ -2,10 +2,10 @@
 For_You: het kaartje op het voorhoofd testen zonder dat er iemand voor de camera staat.
 
     exec(open('/Users/for_you/ForYou/voorhoofd/testopstelling.py').read())
-    test(True)    # nepcamera (video met gezichten) als camera 1, volger kijkt daarnaar, opname van het hoofdscherm
+    test(True)    # nepcamera (video met gezichten) op de camera die op het hoofdscherm staat, opname van het hoofdscherm
     test(False)   # terug naar de echte camera's, opname stopt
 
-Werkt met wat maak_voorhoofd.py neerzet (voorhoofd_bron_1 / voorhoofd_volgbron volgen fy_voorhoofd.fetch('nep')).
+Werkt met wat maak_voorhoofd.py neerzet (voorhoofd_bron_N / voorhoofd_volgbron volgen fy_voorhoofd.fetch('nep')).
 Opname: fy_voorhoofd/opname (Movie File Out van extra_shot_switch, alleen beeld) naar
 ~/ForYou/voorhoofd/test/opname.mov. Alleen voor deze test, niet de run-registratie; weggooien na bekijken.
 """
@@ -33,7 +33,7 @@ def test(aan):
         nep.par.play = True
         c.store("nep", 1)
         uit.par.record = True
-        print("test aan: nepcamera als camera 1, opname loopt")
+        print("test aan: nepcamera op de actieve camera, opname loopt")
     else:
         uit.par.record = False
         c.store("nep", 0)
