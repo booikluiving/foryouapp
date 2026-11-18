@@ -342,10 +342,10 @@ async function main() {
     castResolved.performerSlots.map((slot) => [slot.slotIndex, slot.performerId, slot.characterId]),
     [
       [1, "performer:1", "character:bobby"],
-      [1, null, "character:flex"],
       [2, "performer:2", "character:adolf"],
+      [3, null, "character:flex"],
     ],
-    "resolved performer slots should reflect catalog performer choices without redistributing roles"
+    "a character without a fixed performer should take the slot that is still open"
   );
   const conflictResolved = materializePreparedNext({
     catalog: {

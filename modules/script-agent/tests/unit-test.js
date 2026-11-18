@@ -172,10 +172,10 @@ async function main() {
     flexiblePromptInput.performerSlots.map((slot) => [slot.slotIndex, slot.performerId, slot.characterId]),
     [
       [1, "performer:1", "character:bobby"],
-      [1, null, "character:flex"],
       [2, "performer:2", "character:adolf"],
+      [3, null, "character:flex"],
     ],
-    "Script Agent fallback should reflect catalog performer choices without redistributing roles"
+    "Script Agent fallback should give a character without a fixed performer the slot that is still open"
   );
 
   const previousCatalogUrl = process.env.SCRIPT_AGENT_CATALOG_URL;
