@@ -34,6 +34,7 @@ const {
   saveRunState,
 } = require("../run-control/state-store");
 const { loadExpress } = require("./express-loader");
+const { pasVoorrangToe } = require("../run-control/voorrang");
 
 const express = loadExpress();
 const LIVE_SCORE_SAVE_DEBOUNCE_MS = 500;
@@ -48,7 +49,11 @@ function runtimeClients() {
     fetchAudienceAlgorithmInput,
     fetchCatalogSnapshot,
     fetchPathsSnapshot,
-    evaluatePaths,
+    // Testrun: scènes uit db/voorrang.json eerst (zie run-control/voorrang.js).
+    evaluatePaths: async (playedSituationIds, ...rest) => pasVoorrangToe(
+      await evaluatePaths(playedSituationIds, ...rest),
+      playedSituationIds,
+    ),
     initializeAlgorithmScoringContext,
     observeSituation,
   };
