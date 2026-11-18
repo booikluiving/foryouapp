@@ -3474,10 +3474,14 @@
 
     // De kaart speelt mee met de muziek van de loadingfase. De muziekmotor meldt elke zestiende
     // wat er klinkt; het lichtspel (poort 4240) geeft dat door met de instellingen van de bedienpagina.
-    // Kick: de kaart en de sterren pompen. Hat: de lijnen lichten op. Klap: een kring om een paar
-    // vrije sterren. Crash: een golf vanuit het midden. Alles wit, alles keer de sterkte.
+    // Kick: de kaart pompt en een groep sterren licht op; elke kick een andere groep, zodat het
+    // over de kaart loopt. Scènes die nog kunnen komen slaan het hardst aan, gespeelde zacht, dichte
+    // nauwelijks. Hat: de lijnen lichten op en een paar sterren fonkelen. Klap: een kring om een paar
+    // vrije sterren. Crash: een golf vanuit het midden. Ingezoomd pompt de ster in beeld mee.
+    // Alles wit, alles keer de sterkte.
+    const MUZIEK_GROEPEN = 4;
     const muziek = { aan: false, klinkt: false, sterkte: 0.6, zoom: true, lijnen: true, kringen: true, golf: true,
-      kick: 0, hat: 0, golfStart: 0, ringen: [] };
+      kick: 0, hat: 0, golfStart: 0, ringen: [], beurt: 0, laatste: 0, vonken: new Map() };
     function podiumMuziek(bericht) {
       if (!bericht || typeof bericht !== "object") return;
       if (bericht.t === "scherm" && bericht.inst) {
@@ -3491,8 +3495,14 @@
       } else if (bericht.t === "tel" && muziek.aan && muziek.klinkt) {
         const nu = Date.now();
         const ev = Number(bericht.ev) || 0;
-        if (ev & 1) muziek.kick = nu;
-        if (ev & 12) muziek.hat = nu;
+        muziek.laatste = nu;
+        if (ev & 1) { muziek.kick = nu; muziek.beurt += 1; }
+        if (ev & 12) {
+          muziek.hat = nu;
+          const nodes = state.model ? ((state.model.networkMap || {}).nodes || []) : [];
+          for (let i = 0; i < 3 && nodes.length; i += 1) muziek.vonken.set(Number(nodes[Math.floor(Math.random() * nodes.length)].sceneId), nu);
+          if (muziek.vonken.size > 40) muziek.vonken.forEach((t, id) => { if (nu - t > 300) muziek.vonken.delete(id); });
+        }
         if ((ev & 512) || (ev & 4096)) muziek.golfStart = nu;
         if ((ev & 2) && muziek.kringen && state.model) {
           const vrij = ((state.model.networkMap || {}).nodes || []).filter((node) => isSceneReleased(Number(node.sceneId)));
@@ -3505,10 +3515,13 @@
     }
     // De stand van de muziek op dit moment: 0 tot 1 per soort, al keer de sterkte.
     function podiumMuziekNu(nu) {
-      if (!muziek.aan || !muziek.klinkt || regie.stil) return null;
+      if (!muziek.aan || !muziek.klinkt) return null;
       const s = muziek.sterkte;
       return {
         s,
+        // Welke groep sterren deze kick krijgt; om de acht kicks worden de groepen opnieuw verdeeld.
+        groep: (muziek.beurt - 1) % MUZIEK_GROEPEN,
+        schud: Math.floor((muziek.beurt - 1) / (MUZIEK_GROEPEN * 2)),
         kick: muziek.kick ? Math.exp(-(nu - muziek.kick) / 150) * s : 0,
         hat: muziek.lijnen && muziek.hat ? Math.exp(-(nu - muziek.hat) / 70) * s : 0,
         golf: muziek.golf && muziek.golfStart && nu - muziek.golfStart < 2600 ? (nu - muziek.golfStart) / 1000 : -1,
@@ -3684,7 +3697,7 @@
       const networkMap = model.networkMap || { nodes: [], edges: [] };
       const beeld = podiumBeeld();
       const mz = podiumMuziekNu(nu);
-      const k = beeld.k * (mz && muziek.zoom ? 1 + 0.016 * mz.kick : 1);
+      const k = beeld.k * (mz && muziek.zoom ? 1 + (regie.stil ? 0.008 : 0.016) * mz.kick : 1);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, podium.breedte, podium.hoogte);
       ctx.setTransform(k, 0, 0, k, beeld.sx - beeld.mx * k, beeld.sy - beeld.my * k);
@@ -3824,10 +3837,16 @@
         const popDeel = pop ? Math.min(1, (nu - pop) / REGIE_POP_MS) : 1;
         if (popDeel < 1) straal *= 1 + 1.6 * Math.pow(1 - popDeel, 3);
         straal *= dun;
-        // Muziek: vrije sterren pompen op de kick, de golf van een crash tilt elke ster even op.
+        // Muziek: de groep van deze kick pompt (scènes die nog kunnen komen het hardst), een paar
+        // sterren fonkelen op de hat, de golf van een crash tilt elke ster even op.
         let muziekGloed = 0;
         if (mz) {
-          let duw = mz.kick * (vrij ? 0.45 : 0.15);
+          const mijnGroep = Math.floor(stableUnit(`muziek:${mz.schud}:${sceneId}`) * MUZIEK_GROEPEN);
+          const gewicht = status === "available" || status === "next" ? 1 : status === "current" ? 0.8
+            : status === "played" ? 0.4 : !vrij || status === "locked" || status === "blocked" ? 0.12 : 0.7;
+          let duw = mz.kick * gewicht * (mijnGroep === mz.groep ? 0.9 : 0.1);
+          const vonk = muziek.vonken.get(sceneId);
+          if (vonk && nu - vonk < 300) duw += Math.exp(-(nu - vonk) / 90) * 0.5 * mz.s * Math.max(gewicht, 0.3);
           if (mz.golf >= 0) {
             const afstand = Math.hypot(punt.x - beeld.mx, punt.y - beeld.my);
             const front = (afstand - mz.golf * 620) / 110;
@@ -3870,7 +3889,7 @@
 
         if (isFocus && !regie.pad) {
           // De ster waar de camera in gaat is een zachte lichtbol, geen platte schijf.
-          const bol = straal * 1.7;
+          const bol = straal * 1.7 * (mz ? 1 + 0.12 * mz.kick : 1);
           const verloop = ctx.createRadialGradient(punt.x, punt.y, 0, punt.x, punt.y, bol);
           verloop.addColorStop(0, "#ffffff");
           verloop.addColorStop(0.12, "rgba(255,255,255,0.95)");
@@ -4032,7 +4051,8 @@
       // Staat de kaart stil en verandert er niets, dan wordt er ook niets getekend.
       const verborgen = podium.doek && podium.doek.style.visibility === "hidden";
       const knippert = !!(regie.gekozen && regie.gekozenSinds && klok - regie.gekozenSinds < REGIE_KNIPPER_MS + 100);
-      if (!verborgen && (!regie.stil || podium.vuil || podium.tweens.length || pops || knippert)) {
+      const muziekLoopt = muziek.aan && muziek.klinkt && klok - muziek.laatste < 1000;
+      if (!verborgen && (!regie.stil || podium.vuil || podium.tweens.length || pops || knippert || muziekLoopt)) {
         podiumTeken(klok);
         podium.vuil = false;
       }
