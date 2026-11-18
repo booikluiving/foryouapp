@@ -15,14 +15,13 @@
   .wissel { background: none; border: 0; color: var(--wit-2); font: inherit; font-size: 16px; text-decoration: underline; }
   .rij { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .rij div { border: 3px solid var(--wit-3); padding: 10px 4px; text-align: center; font-size: 18px; font-weight: 700; color: var(--wit-2); }
-  .rij div.aan { border-color: var(--groen); color: #fff; background: rgba(55,214,122,.18); }
+  .rij div.aan { border-color: var(--groen); color: #fff; }
   .rij div.niet { opacity: .3; }
   #knop { flex: 1; border: 6px solid #fff; background: transparent; color: #fff; font: inherit; font-size: min(26vw, 160px); font-weight: 700; letter-spacing: -.04em; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; touch-action: manipulation; }
   #knop small { font-size: 18px; font-weight: 400; letter-spacing: 0; color: var(--wit-2); }
-  #knop.aan { background: var(--groen); border-color: var(--groen); color: var(--nacht); }
-  #knop.aan small { color: rgba(7,8,11,.7); }
+  #knop.aan { border-color: var(--groen); border-width: 14px; }
   #knop.dicht { border-color: var(--wit-3); color: var(--wit-3); }
-  #knop.tel { background: var(--groen); border-color: var(--groen); color: var(--nacht); font-size: min(60vw, 360px); }
+  #knop.tel { border-color: var(--groen); border-width: 14px; font-size: min(60vw, 360px); }
   .kies { flex: 1; display: grid; gap: 16px; align-content: center; }
   .kies p { font-size: 22px; color: var(--wit-2); }
   .kies button { border: 4px solid #fff; background: none; color: #fff; font: inherit; font-size: 40px; font-weight: 700; padding: 28px 0; }
