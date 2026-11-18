@@ -357,8 +357,9 @@ textarea:focus {
 }
 
 .operator-chat-log {
-  min-height: 500px;
-  max-height: calc(100vh - 250px);
+  /* Bovenste helft van het (verticale) scherm; daaronder staat de regie. De chat scrollt zelf. */
+  min-height: 360px;
+  max-height: max(360px, calc(55vh - 250px));
   overflow: auto;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
