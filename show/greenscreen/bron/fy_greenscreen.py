@@ -77,7 +77,7 @@ def build(parent, name, assets, shaders_dir, x=0, y=0):
                  resolutionw="=1080 if me.inputs[0].height >= me.inputs[0].width else 1920",
                  resolutionh="=1920 if me.inputs[0].height >= me.inputs[0].width else 1080")
     klein = node(resolutionTOP, "kalibratiebeeld", -450, 300, [bron8], outputresolution="quarter", format="rgba8fixed")
-    calib = node(cplusplusTOP, "kalibratie", -300, 300, [klein], plugin=os.path.join(plug, "FYKeyWand.plugin"))
+    calib = node(cplusplusTOP, "kalibratie", -300, 300, [klein], plugin=os.path.join(plug, "FYWandKey.plugin"))
     rvm = node(cplusplusTOP, "rvm", -300, 150, [bron8], plugin=os.path.join(plug, "FYRvmMatte.plugin"))
     ga = glsl("key_alfa", "gk_alpha.glsl", [inp, calib], -100, 0,
               [("uKey", ["=" + P + "Keyonder", "=" + P + "Keyboven", "=" + P + "Tint", 0])])

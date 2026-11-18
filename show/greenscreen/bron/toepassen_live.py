@@ -11,9 +11,9 @@ _TD = globals().get('FY_KEY_BRON') or os.path.join(project.folder, 'greenscreen'
 _ASSETS = os.path.join(project.folder, 'greenscreen')
 _TOX = os.path.join(_ASSETS, 'fy_greenscreen.tox')
 _HOUD = "Modus Keyvast Actief Keyonder Keyboven Tint Despill Dichten Randlinks Randrechts Randboven Randonder".split()
-_PLUGIN = os.path.join(_ASSETS, 'plugins', 'FYKeyWand.plugin')
+_PLUGIN = os.path.join(_ASSETS, 'plugins', 'FYWandKey.plugin')
 if not os.path.exists(_PLUGIN):
-    raise RuntimeError('FYKeyWand.plugin ontbreekt in ' + os.path.dirname(_PLUGIN) + ' (bouwen: greenscreen/bron/plugins/build.sh)')
+    raise RuntimeError('FYWandKey.plugin ontbreekt in ' + os.path.dirname(_PLUGIN) + ' (bouwen: greenscreen/bron/plugins/build.sh)')
 
 exec(open(os.path.join(_TD, 'fy_greenscreen.py')).read(), globals())
 _MONITOR = open(os.path.join(_TD, 'monitor_ui.py')).read()

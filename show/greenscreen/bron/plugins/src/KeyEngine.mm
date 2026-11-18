@@ -377,24 +377,10 @@ protected:
 			myCells = lvl;
 			return;
 		}
-		// Meebewegen met het licht zonder kleding aan te leren:
-		// - het licht als geheel: één factor voor het hele raster, uit de vakken waar de wand het best te zien is;
-		// - de vorm per vak volgt alleen waar het vak zich als wand gedraagt (binnen 15% van die factor).
-		//   Een vak waar iets donkerblauws voor hangt wijkt veel meer af en houdt zijn wandniveau.
-		std::vector<float> verh;
-		for (size_t i = 0; i < gemeten.size(); ++i)
-			if (gemeten[i] >= 0 && myCells[i] > 1e-3f) verh.push_back(gemeten[i] / myCells[i]);
-		if (verh.empty()) return;
-		size_t i80 = std::min(verh.size() - 1, verh.size() * 8 / 10);
-		std::nth_element(verh.begin(), verh.begin() + i80, verh.end());
-		const float factor = std::max(0.25f, std::min(4.f, verh[i80]));
-		for (size_t i = 0; i < myCells.size(); ++i)
-		{
-			float doel = myCells[i] * factor;
-			if (gemeten[i] >= 0 && std::fabs(gemeten[i] / std::max(myCells[i], 1e-3f) - factor) < 0.15f * factor)
-				doel = gemeten[i];
-			myCells[i] = myCells[i] * (1 - k) + doel * k;
-		}
+		// Meebewegen met het licht: elk vak schuift naar de nieuwe meting. Waar nu geen wand te zien is
+		// (speler, afgekeurde donkerblauwe kleding) is dat de waarde die uit de buren is aangevuld.
+		for (size_t i = 0; i < lvl.size(); ++i)
+			myCells[i] = myCells[i] * (1 - k) + lvl[i] * k;
 	}
 
 	int myGW = 0, myGH = 0;
