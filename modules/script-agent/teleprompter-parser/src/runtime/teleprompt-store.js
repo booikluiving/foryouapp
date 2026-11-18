@@ -346,7 +346,11 @@ function createTelepromptStore(options = {}) {
   }
 
   function ingest(input = {}) {
-    const parsed = enrichTelepromptLinesWithPreparedSlots(parseTeleprompt(input), preparedScene);
+    // De personages van de klaargezette scène: daarmee zet de parser een ingekorte naam voluit.
+    const characterNames = Array.isArray(input.characterNames)
+      ? input.characterNames
+      : (preparedScene && preparedScene.characters || []).map((character) => character.name);
+    const parsed = enrichTelepromptLinesWithPreparedSlots(parseTeleprompt({ ...input, characterNames }), preparedScene);
     const sceneId = Math.max(0, Number.parseInt(String(input.sceneId || input.scene_id || 0), 10) || 0);
     version += 1;
     current = {

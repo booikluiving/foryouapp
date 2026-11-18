@@ -3,6 +3,7 @@
 const {
   SCRIPT_AGENT_PARSER_OUTPUT_SCHEMA_VERSION,
 } = require("../../../shared/contracts/script-agent-v0");
+const { resolveSpeakerName } = require("./speaker-names");
 
 function normalizeName(value) {
   return String(value || "")
@@ -40,6 +41,7 @@ function slotForCharacter(promptInput, characterId) {
 function parseScriptText({ promptInput, scriptText, parsedAtDate = new Date() }) {
   if (!promptInput || typeof promptInput !== "object") throw new Error("script_agent_missing_prompt_input");
   const map = roleMap(promptInput);
+  const characterNames = (promptInput.characters || []).map((character) => character.name);
   const issues = [];
   const lines = String(scriptText || "")
     .split(/\r?\n/)
@@ -60,7 +62,7 @@ function parseScriptText({ promptInput, scriptText, parsedAtDate = new Date() })
       }
       const role = match[1].trim();
       const text = match[2].trim();
-      const known = map.get(normalizeName(role));
+      const known = map.get(normalizeName(role)) || map.get(normalizeName(resolveSpeakerName(role, characterNames)));
       if (!known) {
         issues.push({
           severity: "error",

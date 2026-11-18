@@ -4,6 +4,7 @@ const CHARACTER_COLORS = ["#4cc9f0", "#f72585", "#ffd166", "#80ed99", "#bdb2ff",
 const STAGE_PREFIX_RE = /^(regie|actie|stage|scene|scène|richting|aanwijzing)\s*:\s*/i;
 const DIALOGUE_RE = /^([^:\n]{1,64})\s*:\s*(.+)$/;
 const { leesBordregel, maakBord } = require("./bord");
+const { resolveSpeakerName } = require("../../../text-parser/speaker-names");
 
 function cleanText(value) {
   return String(value || "")
@@ -98,8 +99,10 @@ function isBracketedStageDirection(line) {
   );
 }
 
-function getCharacter(charactersByLabel, characters, label) {
-  const normalized = normalizeSpeaker(label);
+// Met de personagelijst van de scène erbij krijgt een ingekorte naam de volledige naam.
+function getCharacter(charactersByLabel, characters, label, characterNames) {
+  const written = normalizeSpeaker(label);
+  const normalized = resolveSpeakerName(written, characterNames) || written;
   const key = normalized.toLowerCase();
   if (charactersByLabel.has(key)) return charactersByLabel.get(key);
   const character = {
@@ -120,6 +123,7 @@ function parseTeleprompt(input = {}) {
   const sourceText = removeTitleLines(rawText, inferredTitle);
   const characters = [];
   const charactersByLabel = new Map();
+  const characterNames = Array.isArray(input.characterNames) ? input.characterNames : [];
   const lines = [];
   const bord = maakBord();
   let wachtend = [];
@@ -159,7 +163,7 @@ function parseTeleprompt(input = {}) {
       }
       const dialogue = withoutBullet.match(DIALOGUE_RE);
       if (dialogue && !STAGE_PREFIX_RE.test(withoutBullet)) {
-        const character = getCharacter(charactersByLabel, characters, dialogue[1]);
+        const character = getCharacter(charactersByLabel, characters, dialogue[1], characterNames);
         splitDialogueText(dialogue[2]).forEach((text) => {
           pushLine({
             id: `line_${lines.length + 1}`,

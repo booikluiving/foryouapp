@@ -228,6 +228,19 @@ async function main() {
   assert.equal(situatieTitel.title, "Mark moet kinderziekenhuis opblazen na verlies monopoly");
   assert.deepEqual(situatieTitel.lines.map((line) => line.text), ["Hallo Ben.", "Ze wachten."]);
 
+  // Een ingekorte naam krijgt de volledige naam uit de personagelijst; bij twijfel blijft hij staan.
+  const voluit = parseTeleprompt({
+    rawText: "Marit: Hoi.\nMonster: Boe.\nTreinconducteur: Kaartjes.\nEscape room Marit: Een aanwijzing!\nVrouw: Wie?\nPiet: Ik.",
+    characterNames: ["Escape room Marit", "Monster onder het bed", "Trein conducteur", "Vrouw 1", "Vrouw 2"],
+    source: "unit",
+  });
+  assert.deepEqual(
+    voluit.lines.map((line) => line.speakerLabel),
+    ["Escape room Marit", "Monster onder het bed", "Trein conducteur", "Escape room Marit", "Vrouw", "Piet"]
+  );
+  assert.equal(voluit.characters.length, 5);
+  assert.equal(voluit.lines[0].speakerId, voluit.lines[3].speakerId);
+
   const legacyStore = createTelepromptStore();
   legacyStore.prepareScene({
     sceneId: 1,

@@ -141,7 +141,7 @@
     // Een kopregel (#) die nog in het script staat, toont ook de titel van de situatie.
     const titel = line.type !== "dialogue" && /^\s*#+\s*(.+)$/.exec(line.text);
     if (titel) return { type: "title", text: situationTitle() || titel[1].trim() };
-    // Dialoog op het hoofdscherm altijd als "Naam: tekst".
+    // Dialoog op het hoofdscherm altijd met de naam: "Naam:" en de zin op de regel eronder.
     if (line.type === "dialogue") return { type: "dialogue", speaker: String(line.speakerLabel || "").trim(), text: line.text };
     return { type: "direction", text: line.text };
   }
@@ -195,7 +195,9 @@
       if (activeCaption.type === "dialogue" && activeCaption.speaker) {
         const naam = document.createElement("span");
         naam.className = "caption-speaker";
-        naam.textContent = `${activeCaption.speaker}: `;
+        // De naam staat op een eigen regel, de zin eronder: zo lees je de naam niet steeds mee.
+        naam.style.display = "block";
+        naam.textContent = `${activeCaption.speaker}:`;
         card.appendChild(naam);
       }
       appendFormattedText(card, activeCaption.text);
