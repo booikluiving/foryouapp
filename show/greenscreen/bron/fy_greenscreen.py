@@ -31,7 +31,7 @@ def build(parent, name, assets, shaders_dir, x=0, y=0):
     p.default = True
     p.val = True
     kp = c.appendCustomPage("Key")
-    for n, l, d, mx in (("Keyonder", "Key onder (voorgrond)", 0.65, 1), ("Keyboven", "Key boven (papier)", 0.90, 1),
+    for n, l, d, mx in (("Keyonder", "Key onder (voorgrond)", 0.25, 1), ("Keyboven", "Key boven (papier)", 0.70, 1),
                         ("Tint", "Tint (smal = alleen wandblauw)", 0.06, 0.15),
                         ("Despill", "Despill", 0.8, 1), ("Dichten", "Gaatjes dichten (straal px)", 2, 6),
                         ("Randlinks", "Rand links", 0, 0.5), ("Randrechts", "Rand rechts", 0, 0.5),
