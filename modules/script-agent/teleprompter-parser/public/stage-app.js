@@ -39,6 +39,27 @@
     document.body.classList.add("performer-stage-body");
     root.classList.add("is-performer-stage");
     root.dataset.stageSlot = String(stageSlotIndex);
+    volgSpelerReady();
+  }
+
+  // Ready per speler: drukt deze speler op READY (telefoon of klikker), dan krijgt zijn teleprompter
+  // een groen kader. De stand komt van de publieksdienst (?publiek= voor een ander adres).
+  function volgSpelerReady() {
+    const stijl = document.createElement("style");
+    stijl.textContent = "body.speler-ready::after { content: ''; position: fixed; inset: 0; border: 28px solid #37d67a; pointer-events: none; z-index: 2147483647; }";
+    document.head.appendChild(stijl);
+    const adres = params.get("publiek") || `${window.location.protocol}//${window.location.hostname}:3026`;
+    const kijk = async () => {
+      try {
+        const stand = await fetch(`${adres}/audience/ready/stand`, { cache: "no-store" }).then((res) => res.json());
+        const aan = !!(stand && stand.klaar && Array.isArray(stand.plekken) && stand.plekken.includes(Number(stageSlotIndex)));
+        document.body.classList.toggle("speler-ready", aan);
+      } catch (_err) {
+        document.body.classList.remove("speler-ready");
+      }
+    };
+    kijk();
+    window.setInterval(kijk, 700);
   }
 
   function updateStageScale() {

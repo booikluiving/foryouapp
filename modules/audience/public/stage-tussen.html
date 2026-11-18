@@ -248,11 +248,8 @@
       /* De naam van het personage staat onder het venster. */
       .spelerrij .namen { display: none; }
       #stage.upnextfase .spelerrij .namen { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; font-size: 40px; font-weight: 500; line-height: 1.05; text-align: center; hyphens: auto; overflow-wrap: break-word; }
+      .spelerrij .speler.spelerklaar { border: 6px solid #37d67a; }
       #stage.upnextfase .spelerrij .speler.spelerklaar { border: 8px solid #37d67a; }
-      /* Alle spelers ready: groot 3, 2, 1 over het universum, dan begint de scène. */
-      #aftel { position: absolute; left: 0; right: 0; top: 520px; z-index: 7; text-align: center; font-weight: 700; font-size: 620px; line-height: 1; letter-spacing: -0.04em; color: #fff; text-shadow: 0 0 60px rgba(7, 8, 11, 0.9); font-variant-numeric: tabular-nums; pointer-events: none; }
-      #aftel:empty { display: none; }
-      #aftel.tik { animation: stemTik 380ms var(--curve); }
       #stage.upnextfase #p-chat { left: 70px; top: 1380px !important; height: 380px !important; width: 640px; font-size: 40px !important; z-index: 5; text-shadow: 0 0 4px #000, 0 2px 12px rgba(0, 0, 0, 0.95); }
       #stage.upnextfase .chatregel { color: #fff; }
       #stage.upnextfase .chatregel b { font-weight: 500; }
@@ -416,7 +413,6 @@
         </div>
       </div>
       <div class="p uit" id="p-upnext"><div class="kop" id="upKop">Up next</div></div>
-      <div id="aftel"></div>
       <div class="p uit" id="p-voet"><span data-adres></span></div>
       <div id="deelnemers" class="leeg"><b>0</b><span>deelnemers</span></div>
       <div class="p uit" id="p-rapport">
@@ -1204,19 +1200,13 @@
         }
         tekenAftel();
       }
+      // Aftellen zonder beeld: drie tonen als bij de start van een race (laag, laag, hoog) en dan de scène.
       function tekenAftel() {
         const tot = spelersReady && spelersReady.aftellenTot ? spelersReady.aftellenTot - spelersReady.verschil : 0;
         const rest = tot ? Math.ceil((tot - Date.now()) / 1000) : 0;
-        const node = el("aftel");
-        const tekst = rest > 0 ? String(rest) : "";
-        if (node.textContent !== tekst) {
-          node.textContent = tekst;
-          if (rest > 0 && rest !== aftelVorige) {
-            geluid.aftel(rest);
-            node.classList.remove("tik");
-            void node.offsetWidth;
-            node.classList.add("tik");
-          }
+        if (rest > 0 && rest !== aftelVorige && rest <= 3) {
+          if (rest > 1) geluid.aftel(9);
+          else geluid.aftel(1);
         }
         aftelVorige = rest;
       }

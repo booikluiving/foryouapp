@@ -119,6 +119,8 @@ function createAudienceApp(options = {}) {
   });
   app.get("/audience/ready/stand", asyncRoute(async (_req, res) => {
     res.set("Cache-Control", "no-store");
+    // De teleprompters (andere poort) lezen mee voor hun groene kader.
+    res.set("Access-Control-Allow-Origin", "*");
     res.json({ ok: true, ...(await spelersReady.haal()) });
   }));
   app.post("/audience/ready/speler", asyncRoute(async (req, res) => {

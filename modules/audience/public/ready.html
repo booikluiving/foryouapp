@@ -83,9 +83,9 @@
     const aan = plekken.has(plek);
     const tot = stand && stand.aftellenTot ? stand.aftellenTot - verschil : 0;
     const rest = tot ? Math.ceil((tot - Date.now()) / 1000) : 0;
-    knop.className = rest > 0 ? "tel" : !klaar ? "dicht" : aan ? "aan" : "";
-    knop.firstChild.textContent = rest > 0 ? String(rest) : !klaar ? "WACHT" : "READY";
-    knop.querySelector("small").textContent = rest > 0 ? "" : !klaar ? "nog geen scène" : aan ? "tik nog eens = toch niet" : stand.geschreven ? "tik als je klaar bent" : "tekst wordt geschreven";
+    knop.className = !klaar ? "dicht" : aan || rest > 0 ? "aan" : "";
+    knop.firstChild.textContent = !klaar ? "WACHT" : "READY";
+    knop.querySelector("small").textContent = rest > 0 ? "de scène begint" : !klaar ? "nog geen scène" : aan ? "tik nog eens = toch niet" : stand.geschreven ? "tik als je klaar bent" : "tekst wordt geschreven";
   }
   el("knop").addEventListener("click", async () => {
     if (!stand || !stand.klaar || (stand.aftellenTot && stand.aftellenTot - verschil > Date.now())) return;
@@ -112,7 +112,8 @@
     teken();
     const tot = stand && stand.aftellenTot ? stand.aftellenTot - verschil : 0;
     const rest = tot ? Math.ceil((tot - Date.now()) / 1000) : 0;
-    if (rest > 0 && rest !== vorige) toon(rest === 1 ? 660 : 520, 120, 0.2);
+    // Drie tonen als bij de start van een race: laag, laag, hoog.
+    if (rest > 0 && rest !== vorige && rest <= 3) toon(rest === 1 ? 1568 : 1175, rest === 1 ? 400 : 200, 0.25);
     vorige = rest;
   }, 100);
   setInterval(haal, 600);
