@@ -18,3 +18,11 @@ Niet van ons en dus ongemoeid: de teller in TouchDesigner-bestandsnamen (`v1.14.
 ## Stream Deck
 
 Elke knop volgt het ontwerpsysteem in `modules/show-control/hardware/streamdeck-control/companion/ONTWERP.md`: een vaste soort per knop, kleuren alleen uit `deck.json` → `ontwerp`. `deck.sh check` moet slagen. Op het echte deck alleen na een ja van Booi.
+
+## TouchDesigner: één TD, de nieuwste versie
+
+De waakhond `scripts/td-waakhond.sh` (LaunchAgent `nl.foryou.td-waakhond`) houdt precies één TouchDesigner open: de show-TD met het showbestand. Een leeg project, een tweede show-TD of een ander bestand gaat dicht.
+
+- Welke versie geldt staat in `~/ForYou/td-versie.txt`. Werk altijd op die versie. Na het bewaren van een nieuwe versie staat hij er vanzelf in.
+- Een andere TD (bijvoorbeeld de Greenscreen Lab) vraagt eerst toestemming: `scripts/td-waakhond.sh toestemming greenscreen 60 greenscreen-lab`. Klaar: `scripts/td-waakhond.sh klaar greenscreen`, dan gaat hij dicht. Een verlopen toestemming sluit hem ook.
+- Logboek: `~/Library/Logs/ForYou/td-waakhond.log`. Test: `scripts/td-waakhond-test.sh`.
