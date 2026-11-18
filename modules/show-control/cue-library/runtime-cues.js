@@ -241,6 +241,8 @@ function buildStartRunCue({ name, autoPrepareNext = true, createdAtDate = new Da
     actions: [
       action(cueId, 0, "runtime", "runtime.startRun", "acknowledged-async", {
         autoPrepareNext,
+        // Zonder klaarzetten kiest de runtime ook nog niets (inloop); dat gebeurt bij START SHOW.
+        klaarzetten: autoPrepareNext,
       }, { timeoutMs: 4000 }),
       // Zonder klaarzetten is het de inloop: de teleprompters in de instelstand.
       ...(autoPrepareNext ? [] : [instelAction(cueId, 1, true)]),

@@ -26,7 +26,10 @@ Wat het doet, in /project1:
   speler (0 = de stand zelf, 1-3 = key van die speler) en waarde (0/1). Stand aan zet de keys op rauw.
 - Bewaart NIET. Bewaren doet wie TouchDesigner beheert, na het nakijken (op ja van Booi).
 
-Terugdraaien: select_camN_0.par.top.expr terug naar wat in INSTEL_OUD_LINKS staat; switch6/7/8:
+- het linkervlak van de teleprompters (multiMix met Layersource0 = tel_left_N): Scale0 0,6 -> 0,5625,
+  zodat het hele camerabeeld te zien is (zoals op het hoofdscherm).
+
+Terugdraaien: Scale0x/Scale0y van die multiMix terug op 0,6; select_camN_0.par.top.expr terug naar wat in INSTEL_OUD_LINKS staat; switch6/7/8:
 index constant 1 en ingang 0 weer aan select_inloop. De instel_*-operators mogen blijven staan.
 Nogmaals draaien kan: wat er al staat, wordt hergebruikt; de routercode wordt vervangen.
 """
@@ -259,6 +262,18 @@ def apply_instel_patch():
     for switch in rechts:
         switch.inputConnectors[0].connect(universum)
         _expr(switch.par.index, INSTEL_RECHTS_EXPR)
+
+    # 5. Het linkervlak van elke teleprompter (multiMix, laag 0 = tel_left_N) toont het hele staande
+    # camerabeeld, net als het hoofdscherm. Schaal 0,6 maakte het 1152 hoog op 1080: boven en onder
+    # viel 6% weg (Booi: "net iets meer ingezoomd"). 1080/1920 = 0,5625 past precies.
+    for mix in root.findChildren(type=COMP, depth=1):
+        bron = getattr(mix.par, "Layersource0", None)
+        if bron is None or not str(bron.eval() or "").startswith("/project1/tel_left_"):
+            continue
+        for naam in ("Scale0x", "Scale0y"):
+            par = getattr(mix.par, naam, None)
+            if par is not None:
+                par.val = 0.5625
 
     print("For_You instelbeeld: klaar, NIET bewaard")
     return True

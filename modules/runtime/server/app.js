@@ -17,6 +17,7 @@ const {
   normalizeRuntimeDerivedState,
   prepareChosenSituation,
   skipPreparedSituation,
+  prepareNextNow,
   previousSituation,
   receiveScores,
   refreshEligiblePool,
@@ -354,7 +355,7 @@ function createRuntimeApp(options = {}) {
   });
 
   app.post("/v0/runtime/runs/start", asyncRoute(async (req, res) => {
-    const state = await startRun({ clients, orderSettings: req.body && req.body.orderSettings });
+    const state = await startRun({ clients, orderSettings: req.body && req.body.orderSettings, klaarzetten: !(req.body && req.body.klaarzetten === false) });
     cacheState(state);
     res.status(201).json(state);
   }));
@@ -396,6 +397,23 @@ function createRuntimeApp(options = {}) {
     } catch (err) {
       if (err && (err.statusCode === 404 || err.statusCode === 409)) {
         res.status(err.statusCode).json({ ok: false, error: err.message });
+        return;
+      }
+      throw err;
+    }
+    await persistRunState(next);
+    res.json(next);
+  }));
+
+  // START SHOW: de eerste scène kiezen (na START RUN zonder klaarzetten: de inloop).
+  app.post("/v0/runtime/runs/:showRunId/prepare-next", asyncRoute(async (req, res) => {
+    const state = await readRunStateCached(req.params.showRunId);
+    let next;
+    try {
+      next = await prepareNextNow(state, clients, { ...(req.body || {}), skipSave: true });
+    } catch (err) {
+      if (err && err.statusCode === 409) {
+        res.status(409).json({ ok: false, error: err.message });
         return;
       }
       throw err;

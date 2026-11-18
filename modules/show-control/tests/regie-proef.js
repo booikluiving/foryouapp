@@ -79,10 +79,11 @@ const runtime = http.createServer(async (req, res) => {
   logboek.push(`runtime ${req.method} ${pad.replace(/show-run-[^/]+/, ":run")}`);
   if (pad === "/v0/runtime/runs/current") return stuur(res, rt.showRunId ? rt : { status: "idle" });
   if (pad === "/v0/runtime/runs/start") {
-    Object.assign(rt, { showRunId: `show-run-proef-${Date.now()}`, status: "running", playedSituations: [], testRun: null, activeSituation: null });
-    zetKlaar("situation:1");
+    Object.assign(rt, { showRunId: `show-run-proef-${Date.now()}`, status: "running", playedSituations: [], testRun: null, activeSituation: null, preparedNext: null, resolvedPreparedNext: null });
+    if (body.klaarzetten !== false) zetKlaar("situation:1");
     return stuur(res, rt);
   }
+  if (pad.endsWith("/prepare-next")) { if (!rt.preparedNext) zetKlaar("situation:1"); return stuur(res, rt); }
   if (pad.endsWith("/test-run")) { rt.testRun = { enabled: body.enabled === true }; return stuur(res, rt); }
   if (pad.endsWith("/prepare-situation")) { zetKlaar(body.situationId); return stuur(res, rt); }
   if (pad.endsWith("/start-situation")) {
@@ -171,6 +172,7 @@ async function main() {
   let inst = await (await fetch(`http://127.0.0.1:${SC}/v0/show-control/instel`)).json();
   assert.equal(inst.aan, true, "instelstand aan na START RUN");
   assert.ok(!logboek.some((regel) => regel.includes("environment.prepare")), "START RUN zet niets klaar in TouchDesigner");
+  assert.equal(rt.preparedNext, null, "de runtime kiest in de inloop nog niets");
   toon();
 
   stap("Hand omhoog (speler 2): key aan, nog een keer: weer rauw");

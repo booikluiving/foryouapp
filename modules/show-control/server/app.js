@@ -466,8 +466,19 @@ function createShowControlApp(options = {}) {
     if (antwoord.ok) {
       await regie.slot(async () => {
         const huidig = await clients.fetchCurrentRuntimeState();
-        const state = huidig && huidig.ok ? huidig.state : null;
+        let state = huidig && huidig.ok ? huidig.state : null;
         const startfase = !!(state && state.startPhase && state.startPhase.active);
+        // De runtime kiest nu pas de eerste scène (START RUN liet het open: de inloop).
+        if (state && state.status === "running" && !state.preparedNext && !state.activeSituation && !startfase) {
+          const runtimeBasis = String(process.env.SHOW_CONTROL_RUNTIME_URL || "http://127.0.0.1:3024").replace(/\/+$/, "");
+          const gekozen = await fetch(`${runtimeBasis}/v0/runtime/runs/${encodeURIComponent(state.showRunId)}/prepare-next`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ reason: "start_show" }),
+            signal: AbortSignal.timeout(8000),
+          }).catch(() => null);
+          if (gekozen && gekozen.ok) state = await gekozen.json().catch(() => state);
+        }
         if (state && state.status === "running" && state.resolvedPreparedNext && !state.activeSituation && !startfase) {
           const cue = buildPrepareCue(state);
           await executeCue(cue, { ...executeOptions, runtimeState: state });

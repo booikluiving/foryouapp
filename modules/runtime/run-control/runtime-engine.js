@@ -855,7 +855,9 @@ async function restoreAlgorithmScoringContext(state, clients, options = {}) {
   });
 }
 
-async function startRun({ clients, orderSettings } = {}) {
+// klaarzetten false = de inloop: de paden worden wel uitgerekend (universum, stemming), maar er staat
+// nog geen scène klaar. Die komt bij START SHOW (prepareNextNow).
+async function startRun({ clients, orderSettings, klaarzetten = true } = {}) {
   const createdAtDate = new Date();
   const showRunId = createShowRunId(createdAtDate);
   const catalog = await clients.fetchCatalogSnapshot();
@@ -892,7 +894,28 @@ async function startRun({ clients, orderSettings } = {}) {
   if (orderSettings && typeof orderSettings === "object") await saveOrderSettings(savedOrderSettingsFrom(state.orderSettings));
   await initializeAlgorithmScoringContext(state, clients);
   await computeAndSetPreparedNext(state, clients, "start_run");
+  if (!klaarzetten) {
+    state.preparedNext = null;
+    state.resolvedPreparedNext = null;
+    appendRunLog(state, { type: "prepared_next_held", at: new Date().toISOString(), reason: "inloop" });
+  }
   await saveRunState(state);
+  return state;
+}
+
+// START SHOW: nu pas de eerste scène kiezen (na een start zonder klaarzetten). Speelt er iets of
+// staat er al iets klaar, dan verandert er niets.
+async function prepareNextNow(state, clients, options = {}) {
+  normalizeRuntimeDerivedState(state);
+  if (state.status !== "running") {
+    const err = new Error("runtime_no_running_show_run");
+    err.statusCode = 409;
+    throw err;
+  }
+  if (!state.activeSituation && !state.preparedNext) {
+    await computeAndSetPreparedNext(state, clients, options.reason || "start_show");
+  }
+  if (!options.skipSave) await saveRunState(state);
   return state;
 }
 
@@ -1563,6 +1586,7 @@ module.exports = {
   kiesKandidaat,
   vrijePlekkenVoor,
   computeAndSetPreparedNext,
+  prepareNextNow,
   createIdleRuntimeState,
   createShowRunSnapshot,
   defaultOrderSettings,
