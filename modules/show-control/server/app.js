@@ -30,6 +30,7 @@ const {
   buildCompoundCue,
   buildEnvironmentMediaRefreshCue,
   buildGoCue,
+  buildInstelCue,
   buildPhaseCue,
   buildPrepareCue,
   buildSceneToChatCue,
@@ -68,9 +69,26 @@ const { loadExpress } = require("./express-loader");
 const { createRegie } = require("../regie/regie");
 const { createBewaker } = require("../regie/bewaker");
 
-// Elke cue die show control bewaart, gaat langs de bewaker (welke fase TouchDesigner bevestigde).
+// Elke cue die show control bewaart, gaat langs de bewaker (welke fase TouchDesigner bevestigde)
+// en langs de instelstand (inloop: teleprompters met eigen camera en universum).
 let bewakerZag = null;
+const instel = { aan: false, keys: { 1: false, 2: false, 3: false }, sinds: null };
+function instelZag(cue) {
+  for (const action of (cue && cue.actions) || []) {
+    if (action.command !== "td.instel") continue;
+    const speler = Number(action.payload && action.payload.speler) || 0;
+    const waarde = !!(action.payload && action.payload.waarde);
+    if (speler === 0) {
+      instel.aan = waarde;
+      instel.sinds = new Date().toISOString();
+      if (waarde) instel.keys = { 1: false, 2: false, 3: false };
+    } else if (speler >= 1 && speler <= 3) {
+      instel.keys[speler] = waarde;
+    }
+  }
+}
 async function saveCue(cue) {
+  try { instelZag(cue); } catch (_err) { /* nooit het bewaren hinderen */ }
   if (bewakerZag) {
     try { bewakerZag(cue); } catch (_err) { /* de bewaker mag het bewaren nooit hinderen */ }
   }
@@ -442,7 +460,42 @@ function createShowControlApp(options = {}) {
     const publiek = String(process.env.SHOW_CONTROL_AUDIENCE_URL || "http://127.0.0.1:3026").replace(/\/+$/, "");
     const antwoord = await fetch(`${publiek}/audience/admin/show/start`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: AbortSignal.timeout(3000) });
     const body = await antwoord.json().catch(() => ({}));
-    res.status(antwoord.ok ? 201 : 409).json({ ok: antwoord.ok, ...body });
+    // De show begint: de eerste scène klaarzetten (TouchDesigner, teleprompter, operator); de
+    // teleprompters gaan daarmee uit de instelstand.
+    let klaargezet = null;
+    if (antwoord.ok) {
+      await regie.slot(async () => {
+        const huidig = await clients.fetchCurrentRuntimeState();
+        const state = huidig && huidig.ok ? huidig.state : null;
+        const startfase = !!(state && state.startPhase && state.startPhase.active);
+        if (state && state.status === "running" && state.resolvedPreparedNext && !state.activeSituation && !startfase) {
+          const cue = buildPrepareCue(state);
+          await executeCue(cue, { ...executeOptions, runtimeState: state });
+          await saveCue(cue);
+          klaargezet = state.preparedNext ? state.preparedNext.situationId : null;
+        }
+      }).catch(() => {});
+    }
+    res.status(antwoord.ok ? 201 : 409).json({ ok: antwoord.ok, ...body, klaargezet });
+  }));
+
+  // Instelstand (inloop): stand opvragen, en per speler de key aan/uit (hand omhoog).
+  app.get("/v0/show-control/instel", (_req, res) => {
+    res.json({ ok: true, ...instel });
+  });
+  app.post("/v0/show-control/instel/key", asyncRoute(async (req, res) => {
+    const body = req.body || {};
+    const speler = Number(body.plek || body.speler);
+    if (!(speler >= 1 && speler <= 3)) throw httpError(400, "show_control_instel_speler");
+    if (!instel.aan) {
+      res.status(409).json({ ok: false, error: "geen_instelstand", ...instel });
+      return;
+    }
+    const aan = body.key === "wissel" || body.key === undefined ? !instel.keys[speler] : body.key === true;
+    const cue = buildInstelCue({ name: `Instel: key speler ${speler} ${aan ? "aan" : "uit"}${body.bron ? ` (${body.bron})` : ""}`, speler, aan });
+    await executeCue(cue, executeOptions);
+    await saveCue(cue);
+    res.status(201).json({ ok: true, ...instel });
   }));
 
   // CONTENT WARNING: de stap tussen START RUN en START SHOW; de tekst van het team komt in beeld.
@@ -515,9 +568,11 @@ function createShowControlApp(options = {}) {
   }));
 
   app.post("/v0/show-control/cues/start-run", asyncRoute(async (req, res) => {
+    // START RUN is de inloop: er staat nog niets klaar (teleprompters in de instelstand). De eerste
+    // scène komt bij START SHOW. Alleen met klaarzetten: true meteen klaarzetten.
     const cue = buildStartRunCue({
       name: req.body ? req.body.name : null,
-      autoPrepareNext: !(req.body && req.body.autoPrepareNext === false),
+      autoPrepareNext: !!(req.body && req.body.klaarzetten === true),
     });
     await regie.slot(async () => { await executeCue(cue, executeOptions); await saveCue(cue); });
     res.status(201).json({ ok: true, cue });

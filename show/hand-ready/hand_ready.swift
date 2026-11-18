@@ -3,6 +3,8 @@
 // een hand omhoog (onderarm rechtop) een seconde vast, dan meldt dit programma die speler
 // als ready bij de publieksdienst (POST /audience/ready/speler). Hand omlaag zet ready niet terug.
 // Alleen tussen de scènes, als er een scène klaarstaat (GET /audience/ready/stand → klaar).
+// In de inloop (instelstand, stand → instel) zet een hand omhoog de key van die speler aan of uit:
+// de publieksdienst stuurt het door naar show control. Hand weer omlaag, dan kan het opnieuw.
 //
 // Bouwen:  swiftc -O hand_ready.swift -o hand_ready
 // Gebruik: hand_ready [--map ~/ForYou/spelerbeeld] [--server http://127.0.0.1:3026] [--vast 2.0] [--droog] [--eenmaal pad.jpg]
@@ -105,7 +107,8 @@ while true {
         stand = haal("/audience/ready/stand") ?? [:]
         standOm = Date()
     }
-    let klaar = (stand["klaar"] as? Bool) ?? false
+    let instel = (stand["instel"] as? Bool) ?? false
+    let klaar = ((stand["klaar"] as? Bool) ?? false) || instel
     let ready = Set(((stand["plekken"] as? [Any]) ?? []).compactMap { ($0 as? NSNumber)?.intValue })
     guard klaar, let (pad, wanneer) = strook(), Date().timeIntervalSince(wanneer) < 3, wanneer != laatsteBeeld else {
         if !klaar { sinds.removeAll(); gemeld.removeAll() }
@@ -120,8 +123,8 @@ while true {
             if sinds[plek] == nil { sinds[plek] = nu; log("plek \(plek): hand omhoog") }
             if gemeld[plek] != true, nu.timeIntervalSince(sinds[plek]!) >= vastSeconden {
                 gemeld[plek] = true
-                if ready.contains(plek) { log("plek \(plek): al ready"); continue }
-                log("plek \(plek): \(vastSeconden) s vastgehouden → ready")
+                if !instel && ready.contains(plek) { log("plek \(plek): al ready"); continue }
+                log("plek \(plek): \(vastSeconden) s vastgehouden → \(instel ? "key aan/uit" : "ready")")
                 if !droog { _ = haal("/audience/ready/speler", methode: "POST", body: ["plek": plek, "ready": true, "bron": "hand"]) }
                 standOm = .distantPast
             }

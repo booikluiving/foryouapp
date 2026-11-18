@@ -104,6 +104,29 @@ function buildPhaseCue({ phase, phaseName, name, createdAtDate = new Date() } = 
   });
 }
 
+// Instelstand van de teleprompters (inloop): links de eigen camera (rauw of key), rechts het
+// universum. Aan bij START RUN en RESET RUN, uit zodra er een scène klaarstaat (START SHOW, regie).
+function instelAction(cueId, actionIndex, aan, speler = 0) {
+  return action(cueId, actionIndex, "touchdesigner", "td.instel", "fire-and-forget", {
+    speler,
+    waarde: aan ? 1 : 0,
+    cueIntent: speler ? "instel_key" : (aan ? "instel_aan" : "instel_uit"),
+  }, { timeoutMs: 900 });
+}
+
+function buildInstelCue({ name, speler = 0, aan, createdAtDate = new Date() } = {}) {
+  const cueId = createShowControlId("show-cue", createdAtDate);
+  return makeCue({
+    cueType: "compound",
+    name: name || (speler ? `Instel: key speler ${speler} ${aan ? "aan" : "uit"}` : `Instel: ${aan ? "aan" : "uit"}`),
+    runtimeState: null,
+    runtimeSelection: null,
+    actions: [instelAction(cueId, 0, aan, speler)],
+    createdAtDate,
+    cueId,
+  });
+}
+
 function buildPrepareCue(runtimeState, options = {}) {
   if (!runtimeState || typeof runtimeState !== "object") throw new Error("show_control_missing_runtime_state");
   if (!runtimeState.resolvedPreparedNext) throw new Error("show_control_missing_runtime_resolved_output");
@@ -127,6 +150,8 @@ function buildPrepareCue(runtimeState, options = {}) {
       ...payload,
       cueIntent: "prepare_environment",
     }, { simulate: options.simulateTargetTimeout ? "timeout" : null }),
+    // Er staat een scène klaar: de teleprompters uit de instelstand (inloop), naar de scène.
+    instelAction(cueId, 3, false),
   ];
   return makeCue({
     cueType: "prepare",
@@ -217,6 +242,8 @@ function buildStartRunCue({ name, autoPrepareNext = true, createdAtDate = new Da
       action(cueId, 0, "runtime", "runtime.startRun", "acknowledged-async", {
         autoPrepareNext,
       }, { timeoutMs: 4000 }),
+      // Zonder klaarzetten is het de inloop: de teleprompters in de instelstand.
+      ...(autoPrepareNext ? [] : [instelAction(cueId, 1, true)]),
     ],
     createdAtDate,
     cueId,
@@ -386,6 +413,7 @@ module.exports = {
   buildCompoundCue,
   buildEnvironmentMediaRefreshCue,
   buildGoCue,
+  buildInstelCue,
   buildPhaseCue,
   buildPrepareCue,
   buildSceneToChatCue,

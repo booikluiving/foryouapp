@@ -132,7 +132,10 @@ async function main() {
   await play({ filePath: stap });
   const reset = await sendRuntimeCommand({ command: "runtime.resetRun", payload: { showRunId: "show-run-test", autoMics: false } }, context);
   assert.equal(reset.generatedActions[0].command, "audio.extra.stop");
-  assert.deepEqual(tdUitSoorten(reset.generatedActions), VERWACHT_TD);
+  assert.deepEqual(tdUitSoorten(reset.generatedActions.filter((action) => action.command !== "td.instel")), VERWACHT_TD);
+  // Terug bij het begin: de teleprompters in de instelstand (inloop).
+  const instel = reset.generatedActions.find((action) => action.command === "td.instel");
+  assert.ok(instel && instel.payload.speler === 0 && instel.payload.waarde === 1, "RESET RUN zet de instelstand aan");
   await voerUit(reset.generatedActions);
 
   // 5. Starten ruimt niets op: wat tussen twee scènes is aangezet hoort bij de scène die komt.

@@ -135,14 +135,45 @@ location.replace(${JSON.stringify(KIJK_PATH)});
   app.get("/audience/ready", (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "ready.html"));
   });
+  // Instelstand (inloop, show control): de teleprompters tonen de eigen camera; een hand omhoog zet
+  // dan de key aan of uit in plaats van READY.
+  const showControlBasis = String(process.env.AUDIENCE_SHOW_CONTROL_URL || "http://127.0.0.1:3025").replace(/\/+$/, "");
+  const instelCache = { om: 0, waarde: null };
+  async function instelNu() {
+    if (Date.now() - instelCache.om < 1000) return instelCache.waarde;
+    instelCache.om = Date.now();
+    try {
+      const antwoord = await fetch(`${showControlBasis}/v0/show-control/instel`, { signal: AbortSignal.timeout(800) });
+      instelCache.waarde = antwoord.ok ? await antwoord.json() : null;
+    } catch (_err) {
+      instelCache.waarde = null;
+    }
+    return instelCache.waarde;
+  }
   app.get("/audience/ready/stand", asyncRoute(async (_req, res) => {
     res.set("Cache-Control", "no-store");
     // De teleprompters (andere poort) lezen mee voor hun groene kader.
     res.set("Access-Control-Allow-Origin", "*");
-    res.json({ ok: true, ...(await spelersReady.haal()) });
+    const inst = await instelNu();
+    res.json({ ok: true, ...(await spelersReady.haal()), instel: !!(inst && inst.aan), instelKeys: inst ? inst.keys : null });
   }));
   app.post("/audience/ready/speler", asyncRoute(async (req, res) => {
     const body = req.body || {};
+    if (body.bron === "hand") {
+      const inst = await instelNu();
+      if (inst && inst.aan) {
+        instelCache.om = 0;
+        const antwoord = await fetch(`${showControlBasis}/v0/show-control/instel/key`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ plek: body.plek, key: "wissel", bron: "hand" }),
+          signal: AbortSignal.timeout(3000),
+        }).catch(() => null);
+        const uit = antwoord ? await antwoord.json().catch(() => ({})) : { ok: false, error: "show_control_onbereikbaar" };
+        res.status(antwoord && antwoord.ok ? 200 : 502).json({ ...uit, instel: true });
+        return;
+      }
+    }
     res.json(await spelersReady.zet(body.plek, body.ready !== false));
   }));
   // De klikker (via de teleprompter) tussen de scènes: de speler met de klikker is ready.

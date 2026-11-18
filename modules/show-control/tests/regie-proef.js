@@ -114,6 +114,7 @@ const scriptAgent = http.createServer(async (req, res) => {
   }
   if (pad === "/v0/script-agent/operator/status") return stuur(res, { stage: { sessionId: rt.showRunId } });
   if (pad.startsWith("/v0/script-agent/operator/session/")) return stuur(res, { ok: true });
+  if (pad === "/audience/admin/show/start") return stuur(res, { ok: true, showGestart: true });
   const sit = body.situation && body.situation.situationId
     || body.runtimeOutput && body.runtimeOutput.resolvedPreparedNext && body.runtimeOutput.resolvedPreparedNext.situationId
     || rt.preparedNext && rt.preparedNext.situationId || "";
@@ -164,8 +165,35 @@ async function main() {
   const stap = (naam) => { console.log(`\n== ${naam}`); logboek.length = 0; };
   const toon = () => console.log(logboek.map((regel) => `   ${regel}`).join("\n"));
 
+  stap("Inloop: START RUN van de deck zet niets klaar, teleprompters in de instelstand");
+  let r = await post("/v0/show-control/cues/start-run", { name: "Stream Deck start run", autoPrepareNext: true });
+  assert.equal(r.status, 201);
+  let inst = await (await fetch(`http://127.0.0.1:${SC}/v0/show-control/instel`)).json();
+  assert.equal(inst.aan, true, "instelstand aan na START RUN");
+  assert.ok(!logboek.some((regel) => regel.includes("environment.prepare")), "START RUN zet niets klaar in TouchDesigner");
+  toon();
+
+  stap("Hand omhoog (speler 2): key aan, nog een keer: weer rauw");
+  r = await post("/v0/show-control/instel/key", { plek: 2, key: "wissel", bron: "hand" });
+  assert.equal(r.json.keys["2"], true);
+  r = await post("/v0/show-control/instel/key", { plek: 2, key: "wissel", bron: "hand" });
+  assert.equal(r.json.keys["2"], false);
+  toon();
+
+  stap("START SHOW: eerste scène klaar, instelstand uit");
+  r = await post("/v0/show-control/cues/start-show", {});
+  console.log(`   ${r.status} klaargezet: ${r.json.klaargezet}`);
+  inst = await (await fetch(`http://127.0.0.1:${SC}/v0/show-control/instel`)).json();
+  assert.equal(inst.aan, false, "instelstand uit na START SHOW");
+  toon();
+
+  stap("RESET RUN van de deck: instelstand weer aan");
+  r = await post("/v0/show-control/cues", { name: "Stream Deck reset run", actions: [{ command: "runtime.resetRun", ackMode: "acknowledged-async", payload: { showRunId: rt.showRunId }, timeoutMs: 5000 }] });
+  inst = await (await fetch(`http://127.0.0.1:${SC}/v0/show-control/instel`)).json();
+  assert.equal(inst.aan, true, "instelstand aan na RESET RUN");
+
   stap("Test overnemen door escape-room (geen run: start run, testrun)");
-  let r = await post("/v0/show-control/regie/overnemen", { stand: "test" }, "escape-room");
+  r = await post("/v0/show-control/regie/overnemen", { stand: "test" }, "escape-room");
   assert.equal(r.status, 200); toon();
 
   stap("Operator probeert te starten: bezet");

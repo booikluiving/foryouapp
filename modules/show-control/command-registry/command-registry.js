@@ -221,6 +221,15 @@ const DEFINITIONS = Object.freeze([
     description: "Speelt de clip van een stap van het effect omvallen over de voorgrond (payload: filePath, uit). De clips komen uit modules/catalog/tools/omvallen-clips.js.",
   }),
   command({
+    name: "td.instel",
+    title: "TD instelbeeld teleprompters",
+    targetId: "touchdesigner",
+    adapter: "touchdesigner",
+    ackMode: "fire-and-forget",
+    transport: "osc-control-port",
+    description: "Instelbeeld op de teleprompters in de inloop (payload: speler 0 = instelstand aan/uit, 1-3 = key van die speler aan/uit; waarde 0/1). Links de eigen camera rauw of met key, rechts het universum.",
+  }),
+  command({
     name: "td.effect.haper",
     title: "TD haperen",
     targetId: "touchdesigner",

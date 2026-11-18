@@ -355,6 +355,8 @@ async function sendRuntimeCommand(action, context = {}) {
       generatedActions: [
         ...(micsVanzelf(action.payload) ? [generatedMicsAction(action, true)] : []),
         ...sceneEindeActions({ generatedBy: action.command }),
+        // Terug bij het begin: de teleprompters in de instelstand (inloop).
+        { command: "td.instel", targetId: "touchdesigner", ackMode: "fire-and-forget", timeoutMs: 900, payload: { speler: 0, waarde: 1, cueIntent: "instel_aan", generatedBy: action.command } },
       ],
     };
   }
