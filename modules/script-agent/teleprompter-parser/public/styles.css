@@ -698,6 +698,77 @@ label {
   font-weight: 900;
 }
 
+/* Regelbalk onderin (tijdens de scène): wie wanneer spreekt. */
+.stage-regelbalk {
+  position: absolute;
+  left: 96px;
+  right: 300px;
+  bottom: 46px;
+  height: 22px;
+  pointer-events: none;
+}
+
+.stage-regelbalk-vak {
+  position: absolute;
+  bottom: 0;
+  height: 8px;
+  border-radius: 2px;
+  opacity: 0.38;
+}
+
+.stage-regelbalk-vak.is-eigen {
+  height: 22px;
+  opacity: 1;
+}
+
+.stage-regelbalk-vak.is-geweest {
+  opacity: 0.14;
+}
+
+.stage-regelbalk-nu {
+  position: absolute;
+  bottom: -6px;
+  width: 3px;
+  height: 34px;
+  border-radius: 2px;
+  background: #ffffff;
+  transition: left 0.25s ease;
+}
+
+/* Rechtsonder, klein: je personage in de scène hierna. */
+.stage-hierna {
+  position: absolute;
+  right: 40px;
+  bottom: 30px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.06em;
+  text-align: right;
+  pointer-events: none;
+}
+
+.stage-hierna b {
+  display: block;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* In de browser staan rechtsonder de knoppen; in TouchDesigner niet. */
+body:not(.stage-td-render-mode) .stage-hierna {
+  bottom: 100px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-regelbalk-nu {
+    transition: none;
+  }
+}
+
 .stage-td-render-mode .stage-root {
   --stage-scale: 1 !important;
 }

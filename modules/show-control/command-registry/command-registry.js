@@ -554,6 +554,16 @@ const DEFINITIONS = Object.freeze([
     request: { method: "POST", path: "/v0/script-agent/teleprompter-parser/prepare" },
   }),
   command({
+    name: "teleprompter.hierna",
+    title: "Teleprompter: scène hierna",
+    targetId: "teleprompter",
+    adapter: "teleprompter",
+    ackMode: "fire-and-forget",
+    transport: "http-script-agent",
+    request: { method: "POST", path: "/v0/script-agent/teleprompter-parser/hierna" },
+    description: "Bij de start van een scène: de scène die daarna komt, zodat elke speler rechtsonder zijn volgende personage ziet.",
+  }),
+  command({
     name: "teleprompter.ready",
     title: "Teleprompter ready",
     targetId: "teleprompter",

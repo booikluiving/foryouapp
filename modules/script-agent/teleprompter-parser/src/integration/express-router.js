@@ -299,6 +299,7 @@ function mountTeleprompterParser(app, options = {}) {
       captionStyle: store.getCaptionStyle(),
       autoCameraSwitch: store.getAutoCameraSwitch(),
       preparedScene: store.getPreparedScene(),
+      hierna: store.getHierna(),
       bord: store.getBord(),
     };
   }
@@ -888,6 +889,15 @@ function mountTeleprompterParser(app, options = {}) {
       captionStyle: store.getCaptionStyle(),
       autoCameraSwitch: store.getAutoCameraSwitch(),
     });
+  });
+
+  // De scène hierna (gekozen bij de start van de huidige). Zonder scène ({}) of null: niets hierna.
+  app.post(`${adminPrefix}/hierna`, requireAdmin, (req, res) => {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const leeg = body.leeg === true || !(body.situation || body.performerSlots || body.characterSlots || body.characters || body.sceneId);
+    const result = store.setHierna(leeg ? null : normalizePrepareInput(body));
+    broadcast("hierna");
+    res.json({ ok: true, hierna: result.hierna });
   });
 
   // Het universum op het zaalscherm heeft de volgende scène gekozen ({ wacht: false }): de teleprompter

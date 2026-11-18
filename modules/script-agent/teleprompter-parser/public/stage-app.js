@@ -158,6 +158,85 @@
     return preparedCharacters().find((character) => Number(character && character.slot || 0) === stageSlotIndex) || null;
   }
 
+  // Regelbalk onderin: elk vakje is een regel, zo breed als de zin lang is, in de kleur van wie hem
+  // zegt. Eigen regels hoog, die van de anderen laag, wat geweest is donker, wit streepje = nu.
+  let hierna = null;
+  const balk = document.createElement("div");
+  balk.className = "stage-regelbalk";
+  balk.hidden = true;
+  root.appendChild(balk);
+  const hiernaVak = document.createElement("div");
+  hiernaVak.className = "stage-hierna";
+  hiernaVak.hidden = true;
+  root.appendChild(hiernaVak);
+
+  function naamSleutel(text) {
+    return String(text || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  function eigenPersonageSleutel() {
+    const character = preparedCharacterForStageSlot();
+    return character && character.name ? naamSleutel(character.name) : "";
+  }
+
+  function isEigenRegel(line, eigen) {
+    if (!eigen || !line || line.type !== "dialogue") return false;
+    const character = characterFor(line);
+    return naamSleutel(line.speakerLabel) === eigen || naamSleutel(character && character.label) === eigen;
+  }
+
+  function renderRegelbalk(zichtbaar) {
+    if (!zichtbaar || !canUseTelepromptLines()) {
+      balk.hidden = true;
+      return;
+    }
+    const lines = teleprompt.lines;
+    const gewichten = lines.map((line) => (line && line.type === "dialogue" ? String(line.text || "").length + 12 : 6));
+    const totaal = gewichten.reduce((som, gewicht) => som + gewicht, 0) || 1;
+    const eigen = eigenPersonageSleutel();
+    const nu = currentIndex - 1; // kaart 1 = regel 0; de eindkaart staat voorbij de laatste regel
+    while (balk.firstChild) balk.removeChild(balk.firstChild);
+    let links = 0;
+    let nuLinks = currentIndex >= deckLength() - 1 ? 1 : 0;
+    lines.forEach((line, index) => {
+      const breedte = gewichten[index] / totaal;
+      if (index === nu) nuLinks = links;
+      if (line && line.type === "dialogue") {
+        const character = characterFor(line);
+        const vak = document.createElement("span");
+        vak.className = `stage-regelbalk-vak${isEigenRegel(line, eigen) ? " is-eigen" : ""}${index < nu ? " is-geweest" : ""}`;
+        vak.style.left = `calc(${(links * 100).toFixed(3)}% + 1px)`;
+        vak.style.width = `calc(${(breedte * 100).toFixed(3)}% - 2px)`;
+        vak.style.background = character && character.color ? character.color : "#ffffff";
+        balk.appendChild(vak);
+      }
+      links += breedte;
+    });
+    const streep = document.createElement("span");
+    streep.className = "stage-regelbalk-nu";
+    streep.style.left = `calc(${(nuLinks * 100).toFixed(3)}% - 1px)`;
+    balk.appendChild(streep);
+    balk.hidden = false;
+  }
+
+  // Rechtsonder, klein: het personage van deze speler in de scène hierna (of "vrij").
+  function renderHierna(zichtbaar) {
+    const huidige = preparedSceneId();
+    const volgende = hierna && Number(hierna.sceneId || 0);
+    if (!zichtbaar || !isPerformerStage || !hierna || (volgende && huidige && volgende === huidige)) {
+      hiernaVak.hidden = true;
+      return;
+    }
+    const characters = Array.isArray(hierna.characters) ? hierna.characters : [];
+    const character = characters.find((item) => Number(item && item.slot || 0) === stageSlotIndex) || null;
+    while (hiernaVak.firstChild) hiernaVak.removeChild(hiernaVak.firstChild);
+    hiernaVak.appendChild(document.createTextNode("hierna"));
+    const naam = document.createElement("b");
+    naam.textContent = character && character.name ? character.name : "vrij";
+    hiernaVak.appendChild(naam);
+    hiernaVak.hidden = false;
+  }
+
   function performerLabel(character) {
     const explicit = String(character && character.performerName || "").trim();
     return explicit || `Performer ${stageSlotIndex}`;
@@ -460,6 +539,16 @@
   }
 
   function render() {
+    renderKaart();
+    // Alleen tijdens de scène zelf: niet op de kaart VOLGENDE SCENE / READY en niet zonder show.
+    const inScene = !showIsInactive()
+      && !(preparedScene && preparedScene.status === "prepared")
+      && canUseTelepromptLines();
+    renderRegelbalk(inScene);
+    renderHierna(inScene);
+  }
+
+  function renderKaart() {
     if (showIsInactive()) {
       renderNoShow();
       return;
@@ -498,6 +587,7 @@
     const nextCue = payload && payload.cue;
     showState = payload && payload.show ? payload.show : null;
     preparedScene = payload && payload.preparedScene ? payload.preparedScene : null;
+    hierna = payload && payload.hierna ? payload.hierna : null;
     const nextVersion = Number(nextTeleprompt && nextTeleprompt.version || 0);
     if (nextVersion !== currentVersion) {
       currentVersion = nextVersion;

@@ -87,6 +87,25 @@ function generatedTeleprompterPrepareAction(action, runtimeState, context = {}) 
   };
 }
 
+// De scène die na de huidige komt (de runtime kiest hem bij de start). Geen volgende: leeg.
+function generatedTeleprompterHiernaAction(action, runtimeState, context = {}) {
+  const payload = canGeneratePrepare(runtimeState)
+    ? resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext", "", runtimePayloadOptions(context))
+    : { leeg: true };
+  if (canGeneratePrepare(runtimeState)) payload.performerSlots = performerSlotsFromRuntimeState(runtimeState, "resolvedPreparedNext");
+  return {
+    command: "teleprompter.hierna",
+    targetId: "teleprompter",
+    ackMode: "fire-and-forget",
+    timeoutMs: Math.min(Number(action.timeoutMs || 1500), 900),
+    payload: {
+      ...payload,
+      cueIntent: "next_scene_hint",
+      generatedBy: action.command,
+    },
+  };
+}
+
 function generatedOperatorPrepareDraftAction(action, runtimeState, context = {}) {
   const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext", "", runtimePayloadOptions(context));
   return {
@@ -385,6 +404,8 @@ async function sendRuntimeCommand(action, context = {}) {
     }
     if (command === "runtime.startSituation" && payload.autoRevealTeleprompter !== false && canGenerateGo(result.body)) {
       generatedActions.push(generatedTeleprompterRevealAction(action, result.body, context));
+      // De scène hierna ligt nu vast: elke speler ziet rechtsonder zijn volgende personage.
+      generatedActions.push(generatedTeleprompterHiernaAction(action, result.body, context));
     }
     // De spelers zijn alleen tijdens de scène te horen, en alleen wie in de scène meespeelt.
     if (micsVanzelf(payload) && (command === "runtime.stopSituation" || canGenerateGo(result.body))) {

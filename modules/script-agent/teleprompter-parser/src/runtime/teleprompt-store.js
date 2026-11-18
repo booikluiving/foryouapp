@@ -431,9 +431,29 @@ function createTelepromptStore(options = {}) {
     };
   }
 
+  // De scène die hierna komt. De runtime kiest hem bij de start van de huidige scène; tijdens de
+  // scène staat rechtsonder per speler klein het personage dat hij daarin speelt.
+  let hierna = null;
+  let hiernaVersion = 0;
+
+  function getHierna() {
+    return hierna
+      ? { ...hierna, characters: hierna.characters.map((character) => ({ ...character })), version: hiernaVersion }
+      : null;
+  }
+
+  function setHierna(input) {
+    const scene = input && typeof input === "object" ? sanitizePreparedScene(input) : null;
+    hierna = scene && (scene.sceneId || scene.characters.length) ? scene : null;
+    hiernaVersion += 1;
+    return { hierna: getHierna(), changed: true };
+  }
+
   return {
     ingest,
     getCurrent,
+    getHierna,
+    setHierna,
     setKeuzeWacht,
     getCue,
     setCueIndex,
