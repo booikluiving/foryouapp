@@ -1667,16 +1667,17 @@ function createOperatorService(options = {}) {
       }
       if (overgeslagen && opmerking.laatsteScene === overgeslagen) opmerking.laatsteScene = opmerking.sceneDaarvoor;
     }
-    if (body.schrijven === false) {
-      const done = await zonderSchrijven(nextDraft.promptInput, sessionId, sourceId, emit);
-      return { sessionId, draft: nextDraft, opmerking: null, done };
-    }
-    // Een trendscène (omgeving Trend) is puur beeld: geen taalmodel, een vast script met de emoji.
+    // Een trendscène (omgeving Trend) is puur beeld: geen taalmodel, een vast script met de emoji,
+    // ook bij inladen zonder schrijven (anders komt een oud script met tekst terug).
     // Een opmerking van de operator blijft liggen voor de volgende gewone scène.
     if (nextDraft.promptInput && isTrendOmgeving(nextDraft.promptInput.environment)) {
       // Loopt er nog een tekst (OVERSLAAN), dan stopt die: de trendscène komt ervoor in de plaats.
       generatieTeller += 1;
       const done = await trendZonderChat(nextDraft.promptInput, sessionId, sourceId, emit);
+      return { sessionId, draft: nextDraft, opmerking: null, done };
+    }
+    if (body.schrijven === false) {
+      const done = await zonderSchrijven(nextDraft.promptInput, sessionId, sourceId, emit);
       return { sessionId, draft: nextDraft, opmerking: null, done };
     }
     const operatorOpmerking = overslaan

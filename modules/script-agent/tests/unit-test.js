@@ -550,6 +550,8 @@ async function main() {
     assert.deepEqual(trendEvents.slice(-2), ["operator_stage_delta", "operator_stage_state"], "zaalscherm: eerst bezig, dan klaar");
     assert.equal(trendService.snapshotStage().streaming, false);
     assert.equal(trendService.opmerkingStand().bewaard, "bewaar mij", "de opmerking blijft voor de volgende gewone scène");
+    const zonderSchrijvenTrend = await trendService.sceneToChat({ sourceId: "regie-zonder-schrijven", schrijven: false });
+    assert.equal(zonderSchrijvenTrend.done.provider, "trend", "ook inladen zonder schrijven geeft het vaste script, geen oud script");
 
     const deck = 8 + 2;
     const trendScene = { status: "playing", environment: { name: "Trend" } };
