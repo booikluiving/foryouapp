@@ -896,11 +896,11 @@ function mountTeleprompterParser(app, options = {}) {
     res.json({ ok: true, preparedScene: result.preparedScene });
   });
 
-  // Bord (blind ranking): de knop van de operator. { actie: "volgende" } zet het volgende plaatje
-  // in beeld, { actie: "begin" } haalt alles weer weg.
+  // Bord (blind ranking): de knop van de operator. { actie: "aan" } zet het bord in beeld (daarna
+  // volgt het vanzelf het script), { actie: "begin" } haalt het weer weg.
   app.post(`${adminPrefix}/bord`, requireAdmin, (req, res) => {
     const body = req.body && typeof req.body === "object" ? req.body : {};
-    const result = store.setBord(String(body.actie || "volgende") === "volgende" ? "volgende" : "begin");
+    const result = store.setBord(String(body.actie || "aan") === "begin" ? "begin" : "aan");
     if (result.changed) broadcast("bord");
     res.json({ ok: true, bord: result.bord, changed: result.changed });
   });

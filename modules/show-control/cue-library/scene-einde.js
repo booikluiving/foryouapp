@@ -59,7 +59,7 @@ function sceneEindeActions(input = {}) {
     tdUit("td.samen.shot", { ...common, uit: true }),
     // Eén beeld met de spelers erin: weg, terug naar de gewone camera's.
     tdUit("td.samen.beeld", beeldUitPayload(common)),
-    // Bord (blind ranking): de plaatjes die de operator heeft getoond weer weg.
+    // Bord (blind ranking): weer uit.
     bordAction("begin", { ...common }),
   ];
 }

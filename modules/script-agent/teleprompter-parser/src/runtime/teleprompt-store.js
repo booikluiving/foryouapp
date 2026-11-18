@@ -188,24 +188,20 @@ function createTelepromptStore(options = {}) {
   // zaalscherm de keuze meldt. Vangnet: na KEUZE_WACHT_MAX_MS toont de teleprompter hem toch.
   const KEUZE_WACHT_MAX_MS = 12000;
   let keuzeWachtSinds = 0;
-  // Bord (blind ranking): hoeveel plaatjes de operator met de knop in beeld heeft gezet.
-  let bordGetoond = 0;
+  // Bord (blind ranking): staat uit tot de operator het met de knop aanzet. Daarna volgt het
+  // vanzelf de regels van het script.
+  let bordAan = false;
   let bordVersion = 0;
 
-  function bordTotaal() {
-    const namen = current && current.bord && Array.isArray(current.bord.namen) ? current.bord.namen : [];
-    return namen.length;
-  }
-
   function getBord() {
-    return { getoond: Math.min(bordGetoond, bordTotaal()), totaal: bordTotaal(), version: bordVersion };
+    return { aan: bordAan, version: bordVersion };
   }
 
-  // actie "volgende": het volgende plaatje in beeld; "begin": alles weer weg.
+  // actie "aan": het bord in beeld; "begin": weer weg.
   function setBord(actie) {
-    const voor = bordGetoond;
-    bordGetoond = actie === "volgende" ? Math.min(bordGetoond + 1, bordTotaal()) : 0;
-    const changed = bordGetoond !== voor;
+    const voor = bordAan;
+    bordAan = actie === "aan";
+    const changed = bordAan !== voor;
     if (changed) bordVersion += 1;
     return { bord: getBord(), changed };
   }

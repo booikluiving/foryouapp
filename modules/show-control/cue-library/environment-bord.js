@@ -1,10 +1,10 @@
 "use strict";
 
-// Bord 1 t/m 5 (blind ranking): de knop PLAATJE. Elke druk zet het volgende plaatje in beeld op
-// het zaalscherm; een plaatje dat getoond is blijft staan. Het bord zelf (welke plaatjes, welke
-// plek) staat in het script en leeft bij de teleprompter van de script-agent: de knop stuurt
-// alleen "volgende". De knop is er bij een situatie met de schakelaar Blind ranking aan
-// (catalogus, veld `blindRanking`) en doet het zodra de scène speelt.
+// Bord 1 t/m 5 (blind ranking): de knop BORD AAN. Eén druk aan het begin van de scène zet het
+// bord met de rouleerde plaatjes in beeld; daarna loopt het vanzelf mee met de dialoog (de regels
+// [PLAATJE] en [PLEK] in het script, bij de teleprompter van de script-agent). De knop is er bij
+// een situatie met de schakelaar Blind ranking aan (catalogus, veld `blindRanking`) en doet het
+// zodra de scène speelt.
 
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
@@ -15,15 +15,14 @@ const {
 const { isBlindRanking } = require("../../../shared/blind-ranking/blind-ranking");
 const { currentEnvironmentRef } = require("./environment-extras");
 
-const MAX_PLAATJES = 5;
 const DEFAULT_CATALOG_DB_PATH = path.resolve(__dirname, "../../catalog/db/catalog.sqlite");
 
-// Per scène: hoeveel plaatjes er getoond zijn (voor de teller op de knop).
-const state = { sleutel: "", getoond: 0 };
+// Per scène: staat het bord aan.
+const state = { sleutel: "", aan: false };
 
 function resetBordState() {
   state.sleutel = "";
-  state.getoond = 0;
+  state.aan = false;
 }
 
 function sleutelVoor(ref, runtimeState = {}) {
@@ -56,7 +55,7 @@ function leesSituatie(situationId, options = {}) {
 
 function environmentBordStatus(runtimeState, options = {}) {
   const ref = currentEnvironmentRef(runtimeState);
-  const base = { ok: true, environmentId: ref.environmentId, bron: ref.bron, klaar: false, speelt: false, reden: "", getoond: 0, totaal: MAX_PLAATJES };
+  const base = { ok: true, environmentId: ref.environmentId, bron: ref.bron, klaar: false, speelt: false, reden: "", aan: false };
   if (!ref.environmentId) return { ...base, reden: "geen_omgeving" };
   if (!isBlindRanking(leesSituatie(situationIdVan(ref), options))) return { ...base, reden: "geen_bord" };
   const sleutel = sleutelVoor(ref, runtimeState);
@@ -64,12 +63,12 @@ function environmentBordStatus(runtimeState, options = {}) {
     ...base,
     klaar: true,
     speelt: ref.bron === "actief",
-    getoond: state.sleutel === sleutel ? state.getoond : 0,
+    aan: state.sleutel === sleutel && state.aan,
     sleutel,
   };
 }
 
-// actie "volgende" (standaard): het volgende plaatje in beeld; "begin": alles weer weg.
+// actie "aan" (standaard): het bord in beeld; "begin": weer weg.
 function bordAction(actie, extra = {}) {
   return {
     targetId: "teleprompter",
@@ -82,15 +81,15 @@ function bordAction(actie, extra = {}) {
 
 function buildEnvironmentBordCue(runtimeState, input = {}, options = {}) {
   const status = environmentBordStatus(runtimeState, options);
-  const actie = String(input.actie || "volgende") === "begin" ? "begin" : "volgende";
-  if (!status.klaar || (actie === "volgende" && !status.speelt)) {
+  const actie = String(input.actie || "aan") === "begin" ? "begin" : "aan";
+  if (!status.klaar || (actie === "aan" && !status.speelt)) {
     const err = new Error(status.reden || "scene_speelt_niet");
     err.statusCode = 409;
     err.code = status.reden || "scene_speelt_niet";
     throw err;
   }
   state.sleutel = status.sleutel;
-  state.getoond = actie === "begin" ? 0 : Math.min(status.getoond + 1, MAX_PLAATJES);
+  state.aan = actie === "aan";
   const createdAtDate = options.createdAtDate || new Date();
   const cueId = createShowControlId("show-cue", createdAtDate);
   const payloadId = `${cueId}:payload:01`;
@@ -99,7 +98,7 @@ function buildEnvironmentBordCue(runtimeState, input = {}, options = {}) {
     cueId,
     cueType: "pulse",
     cueIntent: "environment-bord",
-    name: input.name || (actie === "begin" ? "Bord: leeg" : `Bord: plaatje ${state.getoond}`),
+    name: input.name || (actie === "begin" ? "Bord: weg" : "Bord: aan"),
     createdAt: createdAtDate.toISOString(),
     source: { type: "show-control-v0", readOnly: false },
     runtimeRef: runtimeState ? {
@@ -123,7 +122,6 @@ function buildEnvironmentBordCue(runtimeState, input = {}, options = {}) {
 }
 
 module.exports = {
-  MAX_PLAATJES,
   bordAction,
   buildEnvironmentBordCue,
   environmentBordStatus,

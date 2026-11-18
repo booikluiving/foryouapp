@@ -573,13 +573,13 @@ const DEFINITIONS = Object.freeze([
   }),
   command({
     name: "teleprompter.bord",
-    title: "Bord: volgend plaatje of leeg",
+    title: "Bord: aan of weg",
     targetId: "teleprompter",
     adapter: "teleprompter",
     ackMode: "fire-and-forget",
     transport: "http-script-agent",
     request: { method: "POST", path: "/v0/script-agent/teleprompter-parser/bord" },
-    description: "Blind ranking: actie volgende zet het volgende plaatje in beeld, actie begin haalt alles weg.",
+    description: "Blind ranking: actie aan zet het bord in beeld (het volgt daarna het script), actie begin haalt het weg.",
   }),
   command({
     name: "script-agent.operator.prepareDraft",
