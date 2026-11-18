@@ -1003,6 +1003,19 @@ function createOperatorService(options = {}) {
     if (!runtimeResult || !runtimeResult.ok) {
       throw new Error(`script_agent_runtime_unavailable:${runtimeResult && runtimeResult.error || "unknown"}`);
     }
+    // Inloop (of na een reset): er staat nog niets klaar. Dan ook geen concept van een eerdere scène.
+    const runtimeNu = runtimeResult.state || {};
+    if (!runtimeNu.resolvedPreparedNext && !runtimeNu.activeSituation && !(draft && draft.source && draft.source.type === "manual-catalog-selection")) {
+      if (draft || stageState.draftInfo) {
+        draft = null;
+        stageState.draftInfo = null;
+        if (!stageState.streaming && !isInteractiveDraftSource(stageState.draftSourceId)) stageState.draft = "";
+        stageState.revision += 1;
+        stageState.updatedAt = nowIso();
+        emitStage("draft_leeg_inloop");
+      }
+      return null;
+    }
     const promptInput = buildPromptInput(await withCatalogForDescriptions(runtimeResult.state));
     if (draft && draft.contentHash === promptInput.contentHash && !options.force) {
       const hasVisiblePreparedDraft = !!stageState.draft && !isInteractiveDraftSource(stageState.draftSourceId);
@@ -1639,6 +1652,7 @@ function createOperatorService(options = {}) {
       force: body.force !== false,
       sourceId,
     });
+    if (!nextDraft) throw new Error("script_agent_niets_klaar: er staat nog geen scène klaar (inloop)");
     const sessionId = normalizeSessionId(body.sessionId || nextDraft.showRunId || stageState.sessionId);
     // Na OVERSLAAN: de overgeslagen scène telde niet. De opmerking over de scène daarvoor gaat mee
     // naar de nieuwe, en een al afgemaakte tekst van de overgeslagen scène gaat uit de geschiedenis.

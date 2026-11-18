@@ -430,6 +430,19 @@ function characterLabel(characterId, fallback = "") {
 // staan. De stand komt elke paar seconden opnieuw binnen; zonder deze grens sprong een keuze die
 // je net gemaakt had terug naar de scène die al klaarstond.
 let toegepasteDraft = "";
+// Inloop: er staat nog niets klaar. Situatie, personages en omgeving leeg (geen scène van eerder).
+function leegDraftInfo() {
+  if (!currentDraftInfo || manualSelectionDirty) return;
+  currentDraftInfo = null;
+  toegepasteDraft = "";
+  els.situation.value = "";
+  els.environment.value = "";
+  selectedCharacters.clear();
+  renderCharacterChips();
+  updateSituationSelection({ preserveManualCharacters: false });
+  updateEnvironmentPreview();
+}
+
 function applyDraftInfo(info = {}, opnieuw = false) {
   if (!info || typeof info !== "object") return;
   if (!Array.isArray(catalogIndex.situaties) || !catalogIndex.situaties.length) {
@@ -480,6 +493,7 @@ function applyStageState(stage = {}, remoteSourceId = "") {
   }
   if (stage.style) applyStageStyle(stage.style);
   if (stage.draftInfo) applyDraftInfo(stage.draftInfo);
+  else if (stage.draftInfo === null) leegDraftInfo();
   applyDraft(stage.draft || "", remoteSourceId || stage.draftSourceId || "");
   setStreaming(!!stage.streaming);
   if (Array.isArray(stage.messages)) renderMessages(stage.messages);
