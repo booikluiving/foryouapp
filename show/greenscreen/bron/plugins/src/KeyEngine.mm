@@ -269,65 +269,68 @@ protected:
 				}
 			}
 		// Alleen de wand telt als wand. De wand is het lichtste blauw met deze tint in beeld en verloopt geleidelijk;
-		// donkerblauwe kleding heeft dezelfde tint maar is veel minder blauw en begint met een scherpe rand.
-		// Stap 1: vakken onder 0,6 x het 90e percentiel vallen af. Stap 2: door de rest een glad vlak (tweedegraads)
-		// leggen en alles afkeuren wat onder 0,75 x dat vlak zit; twee keer. Afgekeurde vakken gelden als
-		// "geen papier" en worden hieronder vanuit de buren aangevuld.
+		// blauwe kleding heeft dezelfde tint maar is minder blauw (gemeten: belichte plooien van een blauw jack 55-65%
+		// van de wand) en begint met een scherpe rand.
+		// Groeien vanaf het lichtste deel: de vakken boven 0,8 x het 90e percentiel zijn zeker wand. Daar gaat een glad
+		// vlak (tweedegraads) doorheen; alles boven 0,8 x dat vlak hoort er ook bij (een hoek die geleidelijk donkerder
+		// wordt), opnieuw passen, drie keer. Wat overblijft geldt als "geen papier" en wordt uit de buren aangevuld.
 		{
+			const float kWand = 0.8f;
 			std::vector<float> geldig;
 			for (float v : lvl) if (v >= 0) geldig.push_back(v);
-			if (!geldig.empty())
+			if ((int)geldig.size() >= 24)
 			{
 				size_t i90 = std::min(geldig.size() - 1, geldig.size() * 9 / 10);
 				std::nth_element(geldig.begin(), geldig.begin() + i90, geldig.end());
-				const float grens = 0.6f * geldig[i90];
-				for (float& v : lvl) if (v >= 0 && v < grens) v = -1.f;
-			}
-			for (int ronde = 0; ronde < 2; ++ronde)
-			{
-				double A[6][7] = {};
-				int n = 0;
-				for (int y = 0; y < gh; ++y)
-					for (int x = 0; x < gw; ++x)
-					{
-						float v = lvl[y * gw + x];
-						if (v < 0) continue;
-						double u = (x + 0.5) / gw - 0.5, w2 = (y + 0.5) / gh - 0.5;
-						double f[6] = {1, u, w2, u * u, u * w2, w2 * w2};
-						for (int i = 0; i < 6; ++i)
-						{
-							for (int j = 0; j < 6; ++j) A[i][j] += f[i] * f[j];
-							A[i][6] += f[i] * v;
-						}
-						n++;
-					}
-				if (n < 24) break;
-				bool ok = true;
-				for (int i = 0; i < 6 && ok; ++i)
+				const float p90 = geldig[i90];
+				std::vector<char> wand(lvl.size(), 0);
+				for (size_t i = 0; i < lvl.size(); ++i) wand[i] = lvl[i] >= kWand * p90;
+				for (int ronde = 0; ronde < 3; ++ronde)
 				{
-					int piv = i;
-					for (int r = i + 1; r < 6; ++r) if (std::fabs(A[r][i]) > std::fabs(A[piv][i])) piv = r;
-					if (std::fabs(A[piv][i]) < 1e-9) { ok = false; break; }
-					for (int j = 0; j < 7; ++j) std::swap(A[i][j], A[piv][j]);
-					for (int r = 0; r < 6; ++r)
+					double A[6][7] = {};
+					int n = 0;
+					for (int y = 0; y < gh; ++y)
+						for (int x = 0; x < gw; ++x)
+						{
+							if (!wand[y * gw + x]) continue;
+							double u = (x + 0.5) / gw - 0.5, w2 = (y + 0.5) / gh - 0.5;
+							double f[6] = {1, u, w2, u * u, u * w2, w2 * w2};
+							for (int i = 0; i < 6; ++i)
+							{
+								for (int j = 0; j < 6; ++j) A[i][j] += f[i] * f[j];
+								A[i][6] += f[i] * lvl[y * gw + x];
+							}
+							n++;
+						}
+					if (n < 24) break;
+					bool ok = true;
+					for (int i = 0; i < 6 && ok; ++i)
 					{
-						if (r == i) continue;
-						double m = A[r][i] / A[i][i];
-						for (int j = i; j < 7; ++j) A[r][j] -= m * A[i][j];
+						int piv = i;
+						for (int r = i + 1; r < 6; ++r) if (std::fabs(A[r][i]) > std::fabs(A[piv][i])) piv = r;
+						if (std::fabs(A[piv][i]) < 1e-9) { ok = false; break; }
+						for (int j = 0; j < 7; ++j) std::swap(A[i][j], A[piv][j]);
+						for (int r = 0; r < 6; ++r)
+						{
+							if (r == i) continue;
+							double m = A[r][i] / A[i][i];
+							for (int j = i; j < 7; ++j) A[r][j] -= m * A[i][j];
+						}
 					}
+					if (!ok) break;
+					double c[6];
+					for (int i = 0; i < 6; ++i) c[i] = A[i][6] / A[i][i];
+					for (int y = 0; y < gh; ++y)
+						for (int x = 0; x < gw; ++x)
+						{
+							double u = (x + 0.5) / gw - 0.5, w2 = (y + 0.5) / gh - 0.5;
+							double vlak = c[0] + c[1] * u + c[2] * w2 + c[3] * u * u + c[4] * u * w2 + c[5] * w2 * w2;
+							// het vlak mag buiten de gemeten wand niet wegzakken: nooit lager dan de helft van het lichtste deel
+							vlak = std::max(vlak, 0.5 * (double)p90);
+							wand[y * gw + x] = lvl[y * gw + x] >= kWand * vlak;
+						}
 				}
-				if (!ok) break;
-				double c[6];
-				for (int i = 0; i < 6; ++i) c[i] = A[i][6] / A[i][i];
-				for (int y = 0; y < gh; ++y)
-					for (int x = 0; x < gw; ++x)
-					{
-						float& v = lvl[y * gw + x];
-						if (v < 0) continue;
-						double u = (x + 0.5) / gw - 0.5, w2 = (y + 0.5) / gh - 0.5;
-						double vlak = c[0] + c[1] * u + c[2] * w2 + c[3] * u * u + c[4] * u * w2 + c[5] * w2 * w2;
-						if (v < 0.75 * vlak) v = -1.f;
-					}
+				for (size_t i = 0; i < lvl.size(); ++i) if (!wand[i]) lvl[i] = -1.f;
 			}
 		}
 		const std::vector<float> gemeten = lvl;  // -1 = hier is nu geen wand te zien
