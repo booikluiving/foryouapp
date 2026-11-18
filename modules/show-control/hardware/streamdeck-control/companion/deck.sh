@@ -79,6 +79,8 @@ test_start() {
   mkdir -p "$TEST/config/v4.3" "$TEST/hold"
   # kopie van de echte database (alleen lezen), zonder de echte deck of netwerkdiensten
   sqlite3 "file:$LIVE_CFG/v4.3/db.sqlite?mode=ro" ".backup '$TEST/config/v4.3/db.sqlite'"
+  "$NODE" "$SRC/bouw.js" --check
+  "$NODE" "$SRC/test/ontwerp-test.js" || die "knoppen volgen het ontwerpsysteem niet (ONTWERP.md)"
   "$NODE" "$SRC/render.js"
   "$NODE" "$SRC/bouw.js" --config-dir "$TEST/config" --surface emulator --scripts-dir "$SRC"
   sqlite3 "$TEST/config/v4.3/db.sqlite" "UPDATE main SET value=json_set(value,'\$.osc_enabled',json('false'),'\$.detailed_data_collection',json('false')) WHERE id='userconfig';"
@@ -161,6 +163,7 @@ status_agent_restart() {
 toepassen() {
   [[ "${1:-}" == "--ja" ]] || die "alleen met --ja (na akkoord van Booi)"
   "$NODE" "$SRC/bouw.js" --check
+  "$NODE" "$SRC/test/ontwerp-test.js" || die "knoppen volgen het ontwerpsysteem niet (ONTWERP.md)"
   "$NODE" "$SRC/render.js"
   test_running && test_stop
   local ts; ts="$(date +%Y%m%d-%H%M%S)"

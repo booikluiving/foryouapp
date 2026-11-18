@@ -49,3 +49,9 @@ Groen, rood en amber zijn standen, nooit een soortkleur.
 5. Plek: `ontwerp.rijen` zegt per pagina en rij welke soorten er mogen. Navigatie alleen in de onderste rij.
 6. Knoppen van een scène (omgeving, extra's, personage) staan in `scene` zonder plek; deck-status zet wat er is van links aangeschoven op `sc1`..`sc6`.
 7. `deck.sh check`, dan `deck.sh test start`. Op het echte deck alleen met `deck.sh toepassen --ja` na een ja van Booi.
+
+## Afgedwongen
+
+- `deck.sh check`, `deck.sh test start` en `deck.sh toepassen` stoppen als de controle of `test/ontwerp-test.js` faalt.
+- Een commit die iets in deze map wijzigt, wordt geweigerd als de controle faalt (git-hook pre-commit op de show-Mac).
+- Bouw geen knoppen meer in de oude werkmap `streamdeck-revamp-08b4c1`: daar geldt dit systeem niet, en een toepassen vanuit die map zet het oude deck terug.
