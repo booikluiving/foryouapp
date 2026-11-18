@@ -444,8 +444,8 @@ async function main() {
   assert.equal(state.orderSettings.randomizeEqualScores, true, "een deel van de instellingen wijzigen laat de rest staan");
   assert.deepEqual(
     await require("../run-control/state-store").readSavedOrderSettings(),
-    { startSceneCount: 2 },
-    "alleen het aantal startscènes blijft bewaard voor de volgende run"
+    { startSceneCount: 2, randomizeEqualScores: true, vrijeSpeler: true },
+    "de volgorde-instellingen blijven bewaard voor de volgende run"
   );
   await updateOrderSettings(state, clients, { startSceneCount: 3 });
 
