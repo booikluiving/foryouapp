@@ -416,6 +416,9 @@ const MUZIEK = Object.freeze({ bron: "http://127.0.0.1:4240/stroom", bodem: 8, p
 // Elke kick gaat naar de volgende lamp, zodat het licht rondgaat. Volgorde in lampnummers.
 const MUZIEK_RONDE = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9]);
 const MUZIEK_WIT = 116;   // kleurtemperatuur van de voorlampen: neutraal wit
+// De voorlampen (CCT) gaan nooit omlaag: zonder licht op de spelers raakt de key van slag.
+// Ze houden de stand van daarvoor (minstens dit) en de puls komt erbovenop.
+const MUZIEK_VOOR_MIN = 40;
 
 function startMuziek(state, opties = {}, source = "http") {
   if (state.effect && state.effect.naam === "muziek") return;
@@ -424,6 +427,8 @@ function startMuziek(state, opties = {}, source = "http") {
   const ronde = MUZIEK_RONDE.map((nummer) => LAMPEN[nummer - 1]).filter(Boolean);
   const inst = { bodem: MUZIEK.bodem, piek: MUZIEK.piek, vervalMs: MUZIEK.vervalMs, vertragingMs: 0 };
   const slagen = ronde.map(() => 0);
+  const basis = Buffer.from(state.channels);
+  const voorVloer = (lamp) => Math.max(basis[lamp.address - 1], MUZIEK_VOOR_MIN);
   let beurt = 0;
   let dicht = false;
   let verzoek = null;
@@ -468,14 +473,16 @@ function startMuziek(state, opties = {}, source = "http") {
       const sinds = nu - slagen[index];
       const puls = slagen[index] && sinds >= 0 ? Math.exp(-sinds / inst.vervalMs) : 0;
       const kanaal = lamp.address - 1;
-      state.channels[kanaal] = Math.round(inst.bodem + (inst.piek - inst.bodem) * puls);
+      state.channels[kanaal] = lamp.modus === "hsi"
+        ? Math.round(inst.bodem + (inst.piek - inst.bodem) * puls)
+        : Math.min(255, Math.round(voorVloer(lamp) + (inst.piek - inst.bodem) * puls));
       state.channels[kanaal + 1] = lamp.modus === "hsi" ? 0 : MUZIEK_WIT;
       state.channels[kanaal + 2] = lamp.modus === "hsi" ? 0 : 128;
     });
   };
 
   state.effect = {
-    naam: "muziek", basis: Buffer.from(state.channels), timer: setInterval(stap, 25), bron,
+    naam: "muziek", basis, timer: setInterval(stap, 25), bron,
     get piek() { return inst.piek; }, get bodem() { return inst.bodem; }, periodeMs: 0,
     sluit: () => { dicht = true; clearTimeout(opnieuw); if (verzoek) verzoek.destroy(); },
   };
