@@ -216,11 +216,27 @@ function compactRuntimeView(state = {}) {
   };
 }
 
+// Zonder run vraagt o.a. de deckstatus elke seconde de stand op. De voorvertoning (hele catalogus +
+// alle paden doorrekenen) wordt daarom kort bewaard in plaats van elke keer opnieuw gemaakt.
+const IDLE_PREVIEW_MS = 5000;
+const idlePreviewCache = new WeakMap();
+
+async function idlePreviewFor(clients) {
+  const cached = idlePreviewCache.get(clients);
+  if (cached && Date.now() - cached.at < IDLE_PREVIEW_MS) return cached.value;
+  const value = (async () => ({
+    catalog: await clients.fetchCatalogSnapshot(),
+    pathEvaluation: await clients.evaluatePaths([]),
+  }))();
+  idlePreviewCache.set(clients, { at: Date.now(), value });
+  value.catch(() => idlePreviewCache.delete(clients));
+  return value;
+}
+
 async function withIdlePreview(state, clients) {
   if (!state || state.showRunSnapshot) return state;
   try {
-    const catalog = await clients.fetchCatalogSnapshot();
-    const pathEvaluation = await clients.evaluatePaths([]);
+    const { catalog, pathEvaluation } = await idlePreviewFor(clients);
     return {
       ...state,
       catalogPreview: catalog,
