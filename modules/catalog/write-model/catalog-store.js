@@ -1177,6 +1177,9 @@ function normalizeCompositionFases(fases) {
       ...(String(fase.overlayAssetId || "").trim() ? { overlayAssetId: String(fase.overlayAssetId).trim() } : {}),
       // sfeerAssetId = het sfeergeluid van deze fase (leeg = het sfeergeluid van de omgeving).
       ...(String(fase.sfeerAssetId || "").trim() ? { sfeerAssetId: String(fase.sfeerAssetId).trim() } : {}),
+      // sfeerOver = het sfeergeluid van deze fase klinkt over het sfeergeluid van de omgeving heen
+      // in plaats van het te vervangen (de hartmonitor over het geroezemoes van het ziekenhuis).
+      ...(fase.sfeerOver === true && String(fase.sfeerAssetId || "").trim() ? { sfeerOver: true } : {}),
       // geluidAssetId = het eigen geluid bij het ingaan van deze fase (leeg = het extra geluid van de omgeving).
       ...(String(fase.geluidAssetId || "").trim() ? { geluidAssetId: String(fase.geluidAssetId).trim() } : {}),
     };

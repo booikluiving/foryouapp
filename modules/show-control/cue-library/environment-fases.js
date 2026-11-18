@@ -121,6 +121,8 @@ function environmentFasesStatus(runtimeState, options = {}) {
       filePath,
       // Eigen sfeergeluid van deze fase (bijvoorbeeld na de aanrijding: tikken en vogels).
       sfeerPath: sfeerPathVoor(fase, assets, options),
+      // Over het sfeergeluid van de omgeving heen in plaats van ervoor in de plaats.
+      sfeerOver: fase.sfeerOver === true,
       // Eigen geluid bij het ingaan (bijvoorbeeld de bom). Het zet het extra geluid van de omgeving uit.
       geluidPath: geluidPathVoor(fase, assets, options),
     };
@@ -222,13 +224,32 @@ function buildEnvironmentFaseCue(runtimeState, input = {}, options = {}) {
       ...(fase.geluidPath ? { stopLied: true } : {}),
     }));
   }
+  // Sfeergeluid van de fase over dat van de omgeving heen: het speelt in een lus op de Mac, op een
+  // eigen spoor. Een fase zonder zo'n geluid (ook BEGIN) zet dat spoor uit. Alleen bij omgevingen
+  // die het gebruiken; bij scène-einde gaat het spoor uit met de rest (scene-einde.js).
+  const over = fase.sfeerOver && !!fase.sfeerPath;
+  if (over) {
+    actions.push(cueAction(cueId, actions.length, "mac-audio", "audio.extra.play", {
+      ...common,
+      soort: "geluid",
+      label: fase.naam,
+      filePath: fase.sfeerPath,
+      volume: 1,
+      spoor: "fase",
+      lus: true,
+    }));
+  } else if (status.fases.some((item) => item.sfeerOver)) {
+    actions.push(cueAction(cueId, actions.length, "mac-audio", "audio.extra.stop", { ...common, spoor: "fase" }));
+  }
   actions.push(cueAction(cueId, actions.length, "touchdesigner", "td.effect.fase", {
     ...common,
     filePath: fase.filePath,
     uit: !fase.filePath,
     schok: fase.schok,
     schokNa: fase.schok ? fase.schokNa : 0,
-    sfeerPath: fase.sfeerPath || "",
+    // Klinkt het sfeergeluid van de fase eroverheen, dan blijft in TouchDesigner het sfeergeluid
+    // van de omgeving staan.
+    sfeerPath: over ? "" : (fase.sfeerPath || ""),
   }));
   state.sleutel = status.sleutel;
   state.index = index;

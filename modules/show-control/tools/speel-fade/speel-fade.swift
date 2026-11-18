@@ -1,15 +1,17 @@
 import Foundation
 import AVFoundation
 
-// Speelt een geluidsbestand af, met dezelfde aanroep als afplay:  speel-fade [-v volume] <bestand>
+// Speelt een geluidsbestand af, met dezelfde aanroep als afplay:  speel-fade [-v volume] [--lus] <bestand>
+// --lus: het bestand herhaalt zonder naad tot het programma wordt gestopt.
 // Verschil: bij SIGTERM (zo zet show control een geluid uit) zakt het geluid in FADE seconden weg
 // en stopt het programma dan pas. FADE komt uit de omgeving (SPEEL_FADE_SEC, standaard 1.5).
 var volume: Float = 1
 var pad = ""
+var lus = false
 var args = Array(CommandLine.arguments.dropFirst())
 while !args.isEmpty {
   let a = args.removeFirst()
-  if a == "-v", !args.isEmpty { volume = Float(args.removeFirst()) ?? 1 } else { pad = a }
+  if a == "-v", !args.isEmpty { volume = Float(args.removeFirst()) ?? 1 } else if a == "--lus" { lus = true } else { pad = a }
 }
 let fade = Double(ProcessInfo.processInfo.environment["SPEEL_FADE_SEC"] ?? "") ?? 1.5
 guard !pad.isEmpty, let speler = try? AVAudioPlayer(contentsOf: URL(fileURLWithPath: pad)) else {
@@ -17,6 +19,7 @@ guard !pad.isEmpty, let speler = try? AVAudioPlayer(contentsOf: URL(fileURLWithP
   exit(1)
 }
 speler.volume = max(0, min(1, volume))
+if lus { speler.numberOfLoops = -1 }
 speler.prepareToPlay()
 speler.play()
 
