@@ -67,8 +67,19 @@ function sq5Toggle(label, kind, target) {
   };
 }
 
+// Handmatige camera: eerst melden bij de autocam (die pauzeert dan 30 s en weet welke camera live staat),
+// dan de camera zelf via show control. Is de teleprompter onbereikbaar, dan gaat de camera toch.
 function tdCamera(camera) {
-  return async () => ({
+  return async () => {
+    if (!CONFIG.droog) {
+      await fetchJson(`${CONFIG.scriptAgentUrl}/v0/script-agent/teleprompter-parser/auto-camera/handmatig`, { method: "POST", body: { camera: Number(camera) }, timeoutMs: 800 }).catch(() => null);
+    }
+    return tdCameraCue(camera);
+  };
+}
+
+function tdCameraCue(camera) {
+  return ({
     request: cueActions(`Stream Deck CAM ${camera} TD camera trigger`, [{
       command: "td.camera.set",
       ackMode: "acknowledged-async",
@@ -330,6 +341,17 @@ async function doAutocam(knop) {
   if (!stand) {
     await flash(knop.key, `${label}\n--`, "uit");
     return { ok: true, overgeslagen: "stand_onbekend" };
+  }
+  // Op pauze (iemand nam met CAM 1/2/3 over): één druk en de autocam neemt meteen weer over.
+  if (stand.enabled && stand.pauze) {
+    if (CONFIG.droog) {
+      await flash(knop.key, `${label}\nAAN`, "gelukt");
+      return { ok: true, droog: true, post: `${basis}/auto-camera/pauze-weg` };
+    }
+    const weg = await fetchJson(`${basis}/auto-camera/pauze-weg`, { method: "POST", body: {}, timeoutMs: 2500 });
+    const ok = weg.ok && weg.body && weg.body.ok !== false;
+    await flash(knop.key, ok ? `${label}\nAAN` : `${label}\nFAIL`, ok ? "gelukt" : "mislukt");
+    return { ok, pauzeWeg: true, status: weg.status };
   }
   const enabled = !stand.enabled;
   const tekst = `${label}\n${enabled ? "AAN" : "UIT"}`;
