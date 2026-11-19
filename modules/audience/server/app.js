@@ -372,7 +372,34 @@ setInterval(kijk, 2000);
       hartjes: rij.hearts,
       gekozen: gekozen.has(rij.id) ? Math.round(gekozen.get(rij.id) * 100) : null,
     }));
-    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", plekken, labels, sceneLabels, favoriet, toppersonages, personages, ready, spelersReady: spelersReady.publiek(), speelt: !!view.activeSituation });
+    // Kaartjes in het universum: de personages van deze scène in kleur, en tot vijf personages uit andere
+    // vrije scènes in grijs (bij hun ster). Alleen personages met een foto. Grijs: tot twaalf kandidaten,
+    // het universum tekent de eerste vijf waarvan de ster in beeld staat.
+    const kaartFoto = (characterId) => {
+      const foto = characterId ? service.beoordeling.personagekaart(view.showRunId, characterId) : null;
+      return foto ? `/audience/stage/personagekaart/${encodeURIComponent(characterId)}?run=${encodeURIComponent(view.showRunId)}&v=${foto.at}` : null;
+    };
+    const nummer = (id) => Number(/(\d+)$/.exec(String(id || ""))?.[1]) || 0;
+    const kleurIds = new Set(plekken.map((rij) => rij.characterId));
+    const kleur = plekken.slice().sort((a, b) => a.plek - b.plek).map((rij) => ({ id: rij.characterId, naam: rij.personage, foto: kaartFoto(rij.characterId) })).filter((rij) => rij.foto);
+    const situaties = new Map((catalog.situations || []).map((situatie) => [situatie.id, situatie]));
+    const grijs = [];
+    const gezien = new Set(kleurIds);
+    for (const item of Array.isArray(view.eligiblePool) ? view.eligiblePool : []) {
+      if (grijs.length >= 12) break;
+      if (!item || item.situationId === klaar.situationId) continue;
+      const situatie = situaties.get(item.situationId);
+      for (const characterId of (situatie && situatie.characterIds) || []) {
+        if (grijs.length >= 12 || gezien.has(characterId)) continue;
+        const foto = kaartFoto(characterId);
+        if (!foto) continue;
+        gezien.add(characterId);
+        grijs.push({ id: characterId, sceneId: nummer(item.legacySituationId || item.situationId), foto });
+        break; // één personage per ster
+      }
+    }
+    const kaartjes = { sceneId: nummer(klaar.legacySituationId || klaar.situationId), kleur, grijs };
+    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", plekken, labels, sceneLabels, favoriet, toppersonages, personages, kaartjes, ready, spelersReady: spelersReady.publiek(), speelt: !!view.activeSituation });
   }));
 
   // De vragen na de scène: de stand (wat er openstaat, de tellingen, de laatste uitslag).
@@ -410,6 +437,16 @@ setInterval(kijk, 2000);
   // het speelde. Zonder snapshot 204.
   app.get("/audience/stage/personagefoto/:characterId", (req, res) => {
     const foto = service.beoordeling.personagefoto(String(req.query.run || ""), req.params.characterId);
+    if (!foto) { res.set("Cache-Control", "no-store"); return res.status(204).end(); }
+    res.set("Cache-Control", req.query.v ? "public, max-age=3600" : "no-store");
+    res.type("image/jpeg").send(foto.jpeg);
+  });
+
+  // De foto voor een kaartje in het universum (gekozen uit het archief, of de snapshot). Het universum
+  // draait op een andere poort en tekent de foto op een canvas: daarom mag elke herkomst hem lezen.
+  app.get("/audience/stage/personagekaart/:characterId", (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    const foto = service.beoordeling.personagekaart(String(req.query.run || ""), req.params.characterId);
     if (!foto) { res.set("Cache-Control", "no-store"); return res.status(204).end(); }
     res.set("Cache-Control", req.query.v ? "public, max-age=3600" : "no-store");
     res.type("image/jpeg").send(foto.jpeg);
