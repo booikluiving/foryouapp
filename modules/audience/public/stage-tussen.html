@@ -347,7 +347,13 @@
          geschaald), dun gezet. */
       #promptTekst { padding: 14px 20px 18px; font-family: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 25.5px; line-height: 1.34; letter-spacing: 0; white-space: pre-wrap; word-break: break-word; color: #fff; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
       #promptTekst .promptlabel { display: block; font-weight: 700; font-size: 1.45em; line-height: 1.1; margin-bottom: 0.35em; }
-      #promptTekst .cursor { display: inline-block; width: 0.6em; height: 1.1em; margin-right: -0.6em; vertical-align: -0.18em; background: #fff; }
+      /* De cursor knippert zoals in het schrijfvenster (blok, 1,05 s). */
+      #promptTekst .cursor { display: inline-block; width: 0.58em; height: 0.95em; margin-left: 0.08em; margin-right: -0.66em; vertical-align: -0.15em; background: #fff; animation: promptKnipper 1.05s steps(1, end) infinite; }
+      @keyframes promptKnipper { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+      /* Startscènes (geen stemronde ervoor): de titel blijft bovenaan staan; de kop en het venster staan
+         eronder, waar daarna het venster met de tekst komt. */
+      #stage.promptboven #p-prompt { left: 60px; top: 360px; width: 640px; --wx: -720px; }
+      #stage.promptboven #p-prompt .label { height: 80px; padding-bottom: 14px; font-size: 48px; }
       #p-schrijf .label, #p-prompt .label { height: var(--schrijf-kop, 100px); box-sizing: border-box; padding-bottom: 22px; display: flex; align-items: flex-end; font-weight: 700; font-size: 62px; line-height: 1; letter-spacing: -0.03em; }
       #schrijfKop, #promptKop { min-width: 0; width: 100%; text-wrap: balance; }
       #schrijfKop.titel, #promptKop { line-height: 0.98; letter-spacing: -0.035em; }
@@ -866,6 +872,8 @@
         scene: ["chat", "voet"],
         rapport: ["rapport"],
         // De scène is voorbij: stemmen, en eronder wordt de volgende scène geschreven.
+        // Startscènes: vóór het venster met de tekst eerst kort de prompt (zie startPromptBegin).
+        prompt: ["titel", "prompt", "chat", "voet", "spelers"],
         // Vóór de klok staat even de prompt van de gekozen scène in beeld (zie PROMPT).
         stem: ["stem", "schrijf", "stemspelers", "prompt"],
         // Na het stemmen: de scène die komt.
@@ -885,7 +893,8 @@
         // De tekst is tijdens het stemmen geschreven: dan is het Up next. Anders (startfase, eerste
         // scène) zoals het was: titel en tekst.
         if (u.volgende && tekstTijdensStemmen && kaart.tot > Date.now()) return "kaart";
-        if (u.volgende) return tekstTijdensStemmen ? "upnext" : "tekst";
+        if (u.volgende && tekstTijdensStemmen) return "upnext";
+        if (u.volgende) return !u.speelt && startPromptVan(u.sceneId) ? "prompt" : "tekst";
         if (gekozen) return "gekozen";
         // De scène begint: titel en tekst blijven staan tot het vel ermee uit beeld is.
         if (u.speelt) return faseSinds && !laagWeg ? "tekst" : "scene";
@@ -1099,7 +1108,7 @@
       // keer helemaal, met het universum erachter. Daarna komt de klok. aan: false = zoals vroeger,
       // meteen de klok. Hoe lang hij staat: basis + leesMs per letter, tussen min en max (ms).
       // marge = zoveel tijd moet er voor de klok nog over zijn, anders wordt het korter of slaat het over.
-      const PROMPT = { aan: true, leesMs: 14, basis: 2500, min: 4000, max: 11000, marge: 6000, groot: 25.5, klein: 20, hoogte: 318, kop: "Prompting next scene..." };
+      const PROMPT = { aan: true, leesMs: 7, basis: 1250, min: 2000, max: 5500, marge: 6000, groot: 25.5, klein: 20, hoogte: 318, kop: "Prompting next scene..." };
       const promptInBeeld = () => !!stemFase.prompt && stemFase.gekozen && Date.now() >= stemFase.promptVan && Date.now() < stemFase.klokVanaf && stemFase.tot > Date.now();
       // De prompt van de scène die het universum koos komt binnen (via Up next): de klok schuift op.
       function promptBinnen(data) {
@@ -1116,18 +1125,19 @@
         stemFase.promptVan = stemFase.klokVanaf;
         stemFase.klokVanaf += duur;
         stemFase.grootTot = Math.max(stemFase.opent + GROOT_MS, stemFase.klokVanaf + NA_KEUZE_MS);
-        vulPrompt();
+        stage.classList.remove("promptboven");
+        vulPrompt(tekst);
         planSchrijven();
       }
       // Kop en tekst in het venster zetten (het vlak is dan nog uit beeld).
-      function vulPrompt() {
+      function vulPrompt(tekst) {
         // Boven het venster eerst "Prompting next scene..."; de titel komt pas met het schrijfvenster.
         const kop = el("promptKop");
         kop.textContent = PROMPT.kop;
         kop.style.removeProperty("font-size");
         const vak = el("promptTekst");
         vak.textContent = "";
-        vak.append(maak("span", "promptlabel", "PROMPT:"), maak("span", "", stemFase.prompt), maak("span", "cursor"));
+        vak.append(maak("span", "promptlabel", "PROMPT:"), maak("span", "", tekst), maak("span", "cursor"));
         let px = PROMPT.groot;
         vak.style.fontSize = px + "px";
         while (px > PROMPT.klein && vak.offsetHeight > PROMPT.hoogte) {
@@ -1143,6 +1153,37 @@
         stemFase.promptAan = aan;
         zetFase();
         if (aan && !inScene) geluid.typ(true);
+      }
+      // Startscènes (geen stemronde ervoor): komt het venster met de tekst voor een nieuwe scène, dan
+      // staat eerst kort de prompt in beeld, op de plek van dat venster. Het schrijven begint al.
+      // Net na het laden van de pagina niet (de tekst kan er dan al staan).
+      const startPrompt = { scene: "", wachtTot: 0, tot: 0 };
+      const startPromptVan = (sceneId) => startPrompt.scene === String(sceneId) && (startPrompt.wachtTot > Date.now() || startPrompt.tot > Date.now());
+      function startPromptBegin(sceneId) {
+        startPrompt.scene = String(sceneId);
+        startPrompt.tot = 0;
+        startPrompt.wachtTot = 0;
+        if (!PROMPT.aan || performance.now() < 5000) return;
+        // Even wachten op de prompt (Up next); komt hij niet, dan gewoon het venster met de tekst.
+        startPrompt.wachtTot = Date.now() + 1500;
+        setTimeout(() => zetFase(), 1550);
+        fetch(`/audience/stage/up-next?ts=${Date.now()}`, { cache: "no-store" })
+          .then((res) => res.json())
+          .then((data) => {
+            if (startPrompt.scene !== String(sceneId) || startPrompt.wachtTot <= Date.now()) return;
+            startPrompt.wachtTot = 0;
+            if (data && data.klaar && data.prompt && sceneNummer(data.situationId) === sceneNummer(sceneId)) {
+              const tekst = String(data.prompt).trim();
+              const duur = Math.min(PROMPT.max, Math.max(PROMPT.min, tekst.length * PROMPT.leesMs + PROMPT.basis));
+              stage.classList.add("promptboven");
+              vulPrompt(tekst);
+              startPrompt.tot = Date.now() + duur;
+              setTimeout(() => zetFase(), duur + 20);
+              if (!inScene) geluid.typ(true);
+            }
+            zetFase();
+          })
+          .catch(() => { startPrompt.wachtTot = 0; zetFase(); });
       }
       let tekstGemeld = "", wachtUniversum = false, tekstTijdensStemmen = false;
       el("stemLoop").style.strokeDasharray = String(CIRKEL);
@@ -1512,10 +1553,15 @@
       setInterval(tekenAftel, 100);
 
       function zetFase(direct) {
-        const fase = bepaalFase();
+        let fase = bepaalFase();
+        // Een nieuwe startscène komt in beeld: eerst de prompt.
+        if (fase === "tekst" && universum && universum.volgende && !universum.speelt && startPrompt.scene !== String(universum.sceneId || "")) {
+          startPromptBegin(universum.sceneId || "");
+          fase = bepaalFase();
+        }
         const wil = new Set(FASE_VLAKKEN[fase]);
         // Net begonnen en de eerste scène staat klaar: de QR-code in het midden, voor wie later komt.
-        if (fase === "tekst" && universum && universum.volgende && !universum.gespeeld) wil.add("qrmidden");
+        if ((fase === "tekst" || fase === "prompt") && universum && universum.volgende && !universum.gespeeld) wil.add("qrmidden");
         if (!joinUrl) { wil.delete("meedoen"); wil.delete("stemqr"); wil.delete("voet"); wil.delete("qrmidden"); }
         if (!cameraAan()) wil.delete("camera");
         volgCamera(wil.has("camera"));
@@ -1523,7 +1569,7 @@
         // De ranking komt pas als het stemmen voorbij is en er iets te tonen valt.
         if (!ranking.length || stemFase.tot > Date.now()) wil.delete("ranking");
         if (!stemFase.schrijf) wil.delete("schrijf");
-        if (!promptInBeeld()) wil.delete("prompt");
+        if (!promptInBeeld() && !(fase === "prompt" && startPrompt.tot > Date.now())) wil.delete("prompt");
         // De tekst is al tijdens het stemmen geschreven: na de keuze komt het venster niet terug.
         if (tekstTijdensStemmen) wil.delete("tekst");
         stage.classList.toggle("stemfase", fase === "stem");
@@ -1534,11 +1580,11 @@
         // Het scherm 'Doe mee': er is nog geen scène gekozen, dus geen personages bij de spelers.
         if (fase === "inloop" && upNext) wisUpNext();
         volgSpelers(wil.has("spelers") || wil.has("stemspelers"));
-        if (fase === "gekozen" || fase === "tekst" || fase === "upnext") vulTitel(fase);
+        if (fase === "gekozen" || fase === "prompt" || fase === "tekst" || fase === "upnext") vulTitel(fase);
         if (fase === "stem") vulSchrijfKop();
         // Het venster met de tekst komt in beeld: de scène die klaarstaat gaat vanzelf naar de chat
         // van de script-agent (één keer per scène; show control houdt dat bij).
-        if (fase === "tekst" && universum && universum.volgende && tekstGemeld !== String(universum.sceneId || "x")) {
+        if ((fase === "tekst" || fase === "prompt") && universum && universum.volgende && tekstGemeld !== String(universum.sceneId || "x")) {
           tekstGemeld = String(universum.sceneId || "x");
           fetch("/audience/stage/tekst-in-beeld", { method: "POST" }).catch(() => {});
         }
@@ -1558,7 +1604,7 @@
         const kiezerNu = fase === "stem";
         // Zolang er in deze run nog niets gespeeld is (inloop, stemmen op de startscène, de keuze en
         // de eerste scène die klaarstaat) houdt het universum de grote strook van de inloop.
-        const inloopNu = fase === "inloop" || (!(universum && universum.gespeeld) && ["stemmen", "kiezen", "gekozen", "tekst"].includes(fase));
+        const inloopNu = fase === "inloop" || (!(universum && universum.gespeeld) && ["stemmen", "kiezen", "gekozen", "prompt", "tekst"].includes(fase));
         if ((fase === "upnext") !== zichtUpnext || kiezerNu !== zichtKiezer || inloopNu !== zichtInloop) { zichtUpnext = fase === "upnext"; zichtKiezer = kiezerNu; zichtInloop = inloopNu; meldZicht(); }
         // Staat het vel niet in beeld, dan hoeft er niets te schuiven.
         const stil = !!direct || laagWeg;
