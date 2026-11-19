@@ -556,6 +556,9 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, 2));
   const audienceAggregateFetches = [];
   const audienceObservedEvents = [];
+  // De uitslag hoort bij de scène die speelt. Welke dat is, hangt af van de volgorde in de runtime
+  // (sinds de vrije-spelervoorkeur niet meer altijd situation:1); een andere scène wordt terecht genegeerd.
+  let audienceStopActiveSituationId = null;
   const audienceStopClients = {
     ...clients,
     fetchAudienceAlgorithmInput: async (payload) => {
@@ -564,7 +567,7 @@ async function main() {
         ok: true,
         showRunId: payload.showRunId,
         situationRunId: payload.situationRunId,
-        situationId: "situation:1",
+        situationId: audienceStopActiveSituationId,
         audience: { activeClients: 2, linkedSignalCount: 4 },
         chatAppSignals: { heartCount: 3, boredCount: 1, rawMessages: ["ja"] },
         rawChat: [{ text: "ja", isBot: false }],
@@ -584,6 +587,7 @@ async function main() {
   };
   const audienceStopState = await startRun({ clients: audienceStopClients });
   await startSituation(audienceStopState, audienceStopClients);
+  audienceStopActiveSituationId = audienceStopState.activeSituation.situationId;
   const audienceStopPreparedBefore = JSON.stringify({
     preparedNext: audienceStopState.preparedNext,
     resolvedPreparedNext: audienceStopState.resolvedPreparedNext,
