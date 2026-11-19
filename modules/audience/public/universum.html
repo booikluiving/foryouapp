@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07080b">
+<title>For_You</title>
+<style>
+  :root {
+    --bg: #07080b;
+    --paneel: #0e1015;
+    --a: #fff;
+    --b: rgba(255, 255, 255, 0.66);
+    --c: rgba(255, 255, 255, 0.22);
+    --d: rgba(255, 255, 255, 0.07);
+    --slot: rgba(255, 255, 255, 0.2);
+    --nu: #ffe27a;
+    --mis: #ff8a7a;
+    --font: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  html { height: 100%; background: var(--bg); }
+  body {
+    margin: 0 auto; max-width: 560px; height: 100dvh; min-height: 100%;
+    display: flex; flex-direction: column; overflow: hidden;
+    background: var(--bg); color: var(--a); font-family: var(--font);
+    -webkit-text-size-adjust: 100%;
+  }
+  .kop {
+    display: flex; align-items: center; gap: 10px;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px));
+    border-bottom: 1px solid var(--d);
+  }
+  .merk { font-weight: 700; font-size: 16px; }
+  .live { margin-left: auto; display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--b); }
+  .stip { width: 8px; height: 8px; border-radius: 50%; background: var(--b); }
+  .live.aan .stip { background: #9be3a8; }
+  .live.weg .stip { background: var(--mis); }
+  .nubalk {
+    padding: 9px max(16px, env(safe-area-inset-right, 0px)) 9px max(16px, env(safe-area-inset-left, 0px));
+    font-size: 13px; color: var(--b); border-bottom: 1px solid var(--d);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 16px;
+  }
+  .nubalk b { color: var(--a); font-weight: 500; }
+  .blad { flex: 1; position: relative; overflow: hidden; }
+  svg { width: 100%; height: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .lijn { stroke: var(--d); stroke-width: 1.2; fill: none; }
+  .lijn.gelopen { stroke: var(--a); stroke-width: 2; }
+  .lijn.open { stroke: var(--c); }
+  .licht { fill: none; stroke-width: 3; stroke-linecap: round; opacity: 0.9; }
+  .ster { transform-box: fill-box; transform-origin: center; }
+  .ster.slot { fill: var(--slot); }
+  .ster.vrij { fill: var(--bg); stroke: var(--a); stroke-width: 1.6; }
+  .ster.gespeeld { fill: var(--a); }
+  .ster.klaar { fill: var(--bg); stroke: var(--nu); stroke-width: 2; }
+  .ster.nu { fill: var(--nu); }
+  .ster.gekozen { stroke: var(--a); stroke-width: 3; }
+  .ster.vers { animation: plop 1.2s ease-out 1; }
+  .ring { fill: none; stroke: var(--nu); stroke-width: 1.5; animation: puls 2s ease-out infinite; }
+  @keyframes puls { from { r: 10; opacity: .9; } to { r: 28; opacity: 0; } }
+  @keyframes plop { 0% { transform: scale(2.4); } 100% { transform: scale(1); } }
+  .naam { fill: var(--b); font-size: 11px; font-family: var(--font); pointer-events: none; }
+  @media (prefers-reduced-motion: reduce) { .ring, .ster.vers { animation: none; } .sheet { transition: none; } }
+  .zoom {
+    position: absolute; display: flex; flex-direction: column; gap: 6px;
+    right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .zoom button {
+    width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--c);
+    background: var(--bg); color: var(--a); font-size: 18px; cursor: pointer;
+  }
+  .legenda {
+    position: absolute; display: grid; gap: 4px; font-size: 11px; color: var(--b);
+    left: max(12px, env(safe-area-inset-left, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .legenda span { display: flex; align-items: center; gap: 6px; }
+  .legenda i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; box-sizing: border-box; }
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; max-height: 70%; overflow-y: auto;
+    background: var(--paneel); border-top: 1px solid var(--c); border-radius: 18px 18px 0 0;
+    padding: 14px max(18px, env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px));
+    transform: translateY(105%); transition: transform .22s ease-out;
+  }
+  .sheet.open { transform: none; }
+  .greep { width: 36px; height: 4px; border-radius: 2px; background: var(--c); margin: 0 auto 12px; }
+  .sluit { position: absolute; right: 12px; top: 8px; background: none; border: 0; color: var(--b); font-size: 24px; cursor: pointer; padding: 4px 8px; }
+  .chip { display: inline-block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; border: 1px solid var(--c); border-radius: 20px; padding: 3px 9px; color: var(--b); }
+  .chip.nu { color: var(--nu); border-color: var(--nu); }
+  .chip.gespeeld { color: var(--bg); background: var(--a); border-color: var(--a); }
+  .chip.klaar { color: var(--nu); border-color: var(--nu); }
+  h2 { font-size: 20px; font-weight: 500; margin: 10px 0 12px; line-height: 1.2; text-wrap: balance; }
+  dl { margin: 0; }
+  .rij { display: grid; grid-template-columns: 78px 1fr; gap: 8px; font-size: 14px; padding: 7px 0; border-top: 1px solid var(--d); }
+  .rij dt { color: var(--b); }
+  .rij dd { margin: 0; min-width: 0; }
+  .melding { position: absolute; inset: 0; background: rgba(7, 8, 11, .9); display: flex; flex-direction: column; justify-content: center; padding: 28px; gap: 12px; }
+  .melding h3 { margin: 0; font-size: 22px; font-weight: 500; }
+  .melding p { margin: 0; color: var(--b); font-size: 14px; line-height: 1.5; }
+  .wacht { position: absolute; inset: 0; display: grid; place-items: center; color: var(--b); font-size: 14px; }
+  button:focus-visible { outline: 1px solid var(--a); outline-offset: 2px; }
+</style>
+</head>
+<body>
+  <div class="kop"><span class="merk">For_You</span><span class="live" id="live"><i class="stip"></i><span id="liveTekst">verbinden…</span></span></div>
+  <div class="nubalk" id="nubalk"></div>
+  <div class="blad">
+    <svg id="kaart" viewBox="-400 -400 800 800" aria-label="Universum van For_You">
+      <g id="cam"><g id="lijnen"></g><g id="licht"></g><g id="sterren"></g><g id="namen"></g></g>
+    </svg>
+    <div class="wacht" id="wacht">Universum laden…</div>
+    <div class="legenda" aria-hidden="true">
+      <span><i style="background:var(--a)"></i>gespeeld</span>
+      <span><i style="border:1.5px solid var(--a)"></i>vrij</span>
+      <span><i style="background:var(--nu)"></i>speelt nu</span>
+      <span><i style="border:2px solid var(--nu)"></i>straks</span>
+      <span><i style="background:var(--slot)"></i>op slot</span>
+    </div>
+    <div class="zoom">
+      <button type="button" id="zIn" aria-label="Inzoomen">+</button>
+      <button type="button" id="zUit" aria-label="Uitzoomen">−</button>
+      <button type="button" id="zMid" aria-label="Naar wat nu speelt">◎</button>
+    </div>
+    <div class="sheet" id="sheet" role="dialog" aria-labelledby="sTitel">
+      <div class="greep"></div>
+      <button type="button" class="sluit" id="sluit" aria-label="Sluiten">×</button>
+      <div id="sInhoud"></div>
+    </div>
+    <div class="melding" id="melding" hidden></div>
+  </div>
+  <script src="/audience/socket.io/socket.io.js"></script>
+  <script>
+  (function () {
+    "use strict";
+    // Universum op de telefoon. De kaart (alleen nummers, posities en lijnen) wordt één keer
+    // opgehaald; de stand komt als bericht "universum" over de verbinding van de publieksdienst
+    // (in hello en bij elke verandering). Er draait geen animatielus: alleen bij een nieuwe stand
+    // worden klassen gewisseld.
+    var $ = function (id) { return document.getElementById(id); };
+    var NS = "http://www.w3.org/2000/svg";
+    var kaart = null, stand = null, gekozen = 0, wachtendeStand = null;
+    var S = new Map(), elSter = new Map(), elLijn = [], padenVan = new Map();
+    var ring = null, looplijn = null;
+    var cam = { x: 0, y: 0, s: 1 }, basis = { x: 0, y: 0, w: 800, h: 800 };
+
+    function opslaan(sleutel, waarde) { try { localStorage.setItem(sleutel, waarde); } catch (e) {} }
+    function lezen(sleutel) { try { return localStorage.getItem(sleutel); } catch (e) { return null; } }
+
+    /* ---------- kaart ---------- */
+    function laadKaart(versie) {
+      if (kaart && (!versie || kaart.versie === versie)) return;
+      if (versie) {
+        var bewaard = lezen("fy-universum-kaart");
+        if (bewaard) {
+          try { var k = JSON.parse(bewaard); if (k && k.versie === versie) { zetKaart(k); return; } } catch (e) {}
+        }
+      }
+      fetch("/audience/universum/kaart" + (versie ? "?v=" + encodeURIComponent(versie) : ""), { credentials: "same-origin" })
+        .then(function (r) { if (r.status === 503) throw new Error("later"); if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+        .then(function (k) { if (!k || !k.ok) throw new Error("leeg"); opslaan("fy-universum-kaart", JSON.stringify(k)); zetKaart(k); })
+        .catch(function () { setTimeout(function () { laadKaart(stand && stand.kaart); }, 3000); });
+    }
+
+    function zetKaart(k) {
+      kaart = k; S = new Map(); padenVan = new Map(); elSter = new Map(); elLijn = [];
+      ["lijnen", "licht", "sterren", "namen"].forEach(function (id) { $(id).textContent = ""; });
+      var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      k.s.forEach(function (r) {
+        S.set(r[0], { id: r[0], x: r[1], y: r[2] });
+        minX = Math.min(minX, r[1]); maxX = Math.max(maxX, r[1]); minY = Math.min(minY, r[2]); maxY = Math.max(maxY, r[2]);
+      });
+      var marge = 40;
+      basis = { x: minX - marge, y: minY - marge, w: maxX - minX + 2 * marge, h: maxY - minY + 2 * marge };
+      $("kaart").setAttribute("viewBox", basis.x + " " + basis.y + " " + basis.w + " " + basis.h);
+      cam = { x: basis.x + basis.w / 2, y: basis.y + basis.h / 2, s: 1 };
+      k.l.forEach(function (e) {
+        var A = S.get(e[0]), B = S.get(e[1]); if (!A || !B) return;
+        var l = document.createElementNS(NS, "line");
+        l.setAttribute("x1", A.x); l.setAttribute("y1", A.y); l.setAttribute("x2", B.x); l.setAttribute("y2", B.y);
+        l.setAttribute("class", "lijn"); $("lijnen").appendChild(l); elLijn.push({ a: e[0], b: e[1], l: l });
+      });
+      looplijn = document.createElementNS(NS, "polyline"); looplijn.setAttribute("class", "lijn gelopen"); $("lijnen").appendChild(looplijn);
+      k.s.forEach(function (r) {
+        var c = document.createElementNS(NS, "circle");
+        c.setAttribute("cx", r[1]); c.setAttribute("cy", r[2]); c.setAttribute("r", 4); c.setAttribute("class", "ster slot");
+        $("sterren").appendChild(c); elSter.set(r[0], c);
+      });
+      ring = document.createElementNS(NS, "circle"); ring.setAttribute("class", "ring"); ring.setAttribute("r", 10); ring.style.display = "none";
+      $("sterren").appendChild(ring);
+      (k.p || []).forEach(function (p) { p.s.forEach(function (id) { if (!padenVan.has(id)) padenVan.set(id, []); padenVan.get(id).push(p); }); });
+      zetCam();
+      $("wacht").hidden = true;
+      if (wachtendeStand) { var w = wachtendeStand; wachtendeStand = null; ontvang(w); }
+      else if (stand) teken(null);
+    }
+
+    /* ---------- stand ---------- */
+    function staat(id) {
+      if (!stand) return "slot";
+      if (id === stand.nu) return "nu";
+      if (stand.gespeeld.indexOf(id) >= 0) return "gespeeld";
+      if (id === stand.klaar) return "klaar";
+      if (stand.vrij.indexOf(id) >= 0) return "vrij";
+      return "slot";
+    }
+    function info(id) { return (stand && stand.kaartjes && stand.kaartjes[id]) || null; }
+
+    function ontvang(m) {
+      if (!m || m.type !== "universum") return;
+      if (stand && m.bron === stand.bron && m.run === stand.run && m.v <= stand.v) return; // oud of dubbel
+      if (!kaart || (m.kaart && kaart.versie !== m.kaart)) {
+        wachtendeStand = m; laadKaart(m.kaart); if (!kaart) return;
+        if (kaart.versie !== m.kaart) return;
+      }
+      var nieuweRun = !stand || m.run !== stand.run;
+      var vorigOpen = null;
+      if (stand && !nieuweRun) vorigOpen = new Set(stand.vrij.concat(stand.gespeeld));
+      stand = m;
+      if (nieuweRun) gekozen = 0;
+      teken(vorigOpen);
+      // Eerste stand of nieuwe run: beginnen bij wat er speelt of het laatst gespeeld is.
+      if (nieuweRun) naarNu(1.4);
+    }
+
+    function teken(vorigOpen) {
+      if (!kaart || !stand) return;
+      elSter.forEach(function (c, id) {
+        var st = staat(id);
+        c.setAttribute("r", st === "slot" ? 4 : (st === "gespeeld" || st === "nu") ? 8 : 6.5);
+        var k = "ster " + st;
+        if (id === gekozen) k += " gekozen";
+        if (vorigOpen && st === "vrij" && !vorigOpen.has(id)) k += " vers";
+        c.setAttribute("class", k);
+      });
+      var g = new Set(stand.gespeeld), open = new Set(stand.vrij);
+      if (stand.nu) open.add(stand.nu); if (stand.klaar) open.add(stand.klaar);
+      elLijn.forEach(function (x) {
+        var naarOpen = (g.has(x.a) && open.has(x.b)) || (g.has(x.b) && open.has(x.a));
+        x.l.setAttribute("class", "lijn" + (naarOpen ? " open" : ""));
+      });
+      var reeks = stand.gespeeld.slice(); if (stand.nu) reeks.push(stand.nu);
+      looplijn.setAttribute("points", reeks.filter(function (id) { return S.has(id); }).map(function (id) { return S.get(id).x + "," + S.get(id).y; }).join(" "));
+      if (stand.nu && S.has(stand.nu)) { ring.setAttribute("cx", S.get(stand.nu).x); ring.setAttribute("cy", S.get(stand.nu).y); ring.style.display = ""; }
+      else ring.style.display = "none";
+      var nm = $("namen"); nm.textContent = "";
+      reeks.forEach(function (id) {
+        var s = S.get(id), i = info(id); if (!s || !i) return;
+        var t = document.createElementNS(NS, "text");
+        t.setAttribute("x", s.x + 11); t.setAttribute("y", s.y + 4); t.setAttribute("class", "naam");
+        t.textContent = kort(i.t, 24); nm.appendChild(t);
+      });
+      zetNubalk();
+      tekenLicht();
+      if (gekozen) toonDetail(gekozen);
+    }
+
+    function kort(t, n) { t = String(t || ""); return t.length > n ? t.slice(0, n - 1) + "…" : t; }
+
+    function zetNubalk() {
+      var b = $("nubalk"); b.textContent = "";
+      if (stand.nu && info(stand.nu)) {
+        b.append("Speelt nu: "); var x = document.createElement("b"); x.textContent = info(stand.nu).t; b.append(x); return;
+      }
+      var tekst = stand.gespeeld.length + " gespeeld · " + stand.vrij.length + " vrij";
+      if (stand.klaar && info(stand.klaar)) tekst += " · straks: " + info(stand.klaar).t;
+      b.textContent = tekst;
+    }
+
+    /* ---------- paden oplichten ---------- */
+    function kleur(c) {
+      var m = /^#([0-9a-f]{6})$/i.exec(c || ""); if (!m) return "#ffffff";
+      var v = parseInt(m[1], 16); var l = ((v >> 16) & 255) * .3 + ((v >> 8) & 255) * .59 + (v & 255) * .11;
+      return l < 70 ? "#ffffff" : c;
+    }
+    function tekenLicht() {
+      var laag = $("licht"); laag.textContent = "";
+      if (!gekozen) return;
+      (padenVan.get(gekozen) || []).forEach(function (p) {
+        var kl = kleur(p.c);
+        p.e.forEach(function (e) {
+          var A = S.get(e[0]), B = S.get(e[1]); if (!A || !B) return;
+          var l = document.createElementNS(NS, "line");
+          l.setAttribute("x1", A.x); l.setAttribute("y1", A.y); l.setAttribute("x2", B.x); l.setAttribute("y2", B.y);
+          l.setAttribute("class", "licht"); l.setAttribute("stroke", kl); laag.appendChild(l);
+        });
+      });
+    }
+
+    /* ---------- detail ---------- */
+    var LABEL = { nu: "Speelt nu", gespeeld: "Gespeeld", klaar: "Straks", vrij: "Vrijgespeeld", slot: "Op slot" };
+    function kies(id) {
+      gekozen = id; teken(null);
+      var s = S.get(id); if (s) { cam.s = Math.max(cam.s, 1.5); cam.x = s.x; cam.y = s.y + basis.h * 0.12 / cam.s; zetCam(); }
+    }
+    function sluit() { gekozen = 0; $("sheet").classList.remove("open"); teken(null); }
+    function toonDetail(id) {
+      var st = staat(id), it = info(id), h = $("sInhoud"); h.textContent = "";
+      var chip = document.createElement("span"); chip.className = "chip " + st;
+      chip.textContent = st === "gespeeld" ? "Gespeeld · scène " + (stand.gespeeld.indexOf(id) + 1) : LABEL[st];
+      h.append(chip);
+      if (st !== "slot" && it) {
+        var t = document.createElement("h2"); t.id = "sTitel"; t.textContent = it.t; h.append(t);
+        var dl = document.createElement("dl");
+        var rij = function (k, v) {
+          var r = document.createElement("div"); r.className = "rij";
+          var a = document.createElement("dt"); a.textContent = k; var b = document.createElement("dd"); b.textContent = v;
+          r.append(a, b); dl.append(r);
+        };
+        if (it.w && it.w.length) rij(st === "gespeeld" ? "Speelden" : "Wie", it.w.map(function (n) { return n || "vrije plek"; }).join(", "));
+        if (it.o) rij("Waar", it.o);
+        h.append(dl);
+      } else {
+        var leeg = document.createElement("h2"); leeg.id = "sTitel"; leeg.textContent = "Op slot"; leeg.hidden = true; h.append(leeg);
+      }
+      $("sheet").classList.add("open");
+    }
+    $("sluit").onclick = sluit;
+
+    /* ---------- camera ---------- */
+    function zetCam() {
+      var cx = basis.x + basis.w / 2, cy = basis.y + basis.h / 2;
+      $("cam").setAttribute("transform", "translate(" + (cx - cam.x * cam.s) + " " + (cy - cam.y * cam.s) + ") scale(" + cam.s + ")");
+    }
+    var svg = $("kaart"), punten = new Map(), greep = null, afstand = 0;
+    function wereldPunt(e) {
+      var r = svg.getBoundingClientRect();
+      var k = Math.max(basis.w / r.width, basis.h / r.height);
+      return { x: (e.clientX - r.left - r.width / 2) * k, y: (e.clientY - r.top - r.height / 2) * k };
+    }
+    svg.addEventListener("pointerdown", function (e) {
+      try { svg.setPointerCapture(e.pointerId); } catch (x) {}
+      punten.set(e.pointerId, wereldPunt(e)); afstand = 0;
+      greep = { x: cam.x, y: cam.y, s: cam.s, p: wereldPunt(e), d: 0 };
+    });
+    svg.addEventListener("pointermove", function (e) {
+      if (!punten.has(e.pointerId) || !greep) return;
+      punten.set(e.pointerId, wereldPunt(e));
+      var ps = Array.from(punten.values());
+      if (ps.length === 2) {
+        var d = Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y);
+        if (!greep.d) greep.d = d;
+        cam.s = Math.max(0.8, Math.min(5, greep.s * d / greep.d)); afstand = 99; zetCam(); return;
+      }
+      var dx = ps[0].x - greep.p.x, dy = ps[0].y - greep.p.y;
+      afstand = Math.max(afstand, Math.hypot(dx, dy));
+      cam.x = greep.x - dx / cam.s; cam.y = greep.y - dy / cam.s; zetCam();
+    });
+    svg.addEventListener("pointerup", function (e) {
+      var p = punten.get(e.pointerId); punten.delete(e.pointerId);
+      if (punten.size) return;
+      if (afstand < 8 && p && kaart) {
+        var wx = p.x / cam.s + cam.x, wy = p.y / cam.s + cam.y, best = 0, bd = Infinity;
+        S.forEach(function (s) { var d = Math.hypot(s.x - wx, s.y - wy); if (d < bd) { bd = d; best = s.id; } });
+        if (bd * cam.s < 28) kies(best); else if (gekozen) sluit();
+      }
+      greep = null;
+    });
+    svg.addEventListener("pointercancel", function (e) { punten.delete(e.pointerId); });
+    svg.addEventListener("wheel", function (e) { e.preventDefault(); cam.s = Math.max(0.8, Math.min(5, cam.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); zetCam(); }, { passive: false });
+    $("zIn").onclick = function () { cam.s = Math.min(5, cam.s * 1.4); zetCam(); };
+    $("zUit").onclick = function () { cam.s = Math.max(0.8, cam.s / 1.4); zetCam(); };
+    function naarNu(schaal) {
+      var id = stand && (stand.nu || stand.gespeeld[stand.gespeeld.length - 1]);
+      if (id && S.has(id)) { cam.s = schaal; cam.x = S.get(id).x; cam.y = S.get(id).y; }
+      else { cam.s = 1; cam.x = basis.x + basis.w / 2; cam.y = basis.y + basis.h / 2; }
+      zetCam();
+    }
+    $("zMid").onclick = function () { naarNu(1.8); };
+
+    /* ---------- verbinding (zelfde publieksdienst als de chat) ---------- */
+    var socket = null, wachttijd = 600, gestopt = false, herTimer = null;
+    function live(stat, tekst) { $("live").className = "live " + stat; $("liveTekst").textContent = tekst; svg.style.opacity = stat === "weg" ? ".55" : ""; }
+    function melding(titel, tekst) {
+      var m = $("melding"); m.textContent = "";
+      var h = document.createElement("h3"); h.textContent = titel;
+      var p = document.createElement("p"); p.textContent = tekst;
+      var b = document.createElement("button"); b.type = "button"; b.className = "zoom"; b.style.cssText = "position:static;align-self:flex-start;background:none;border:1px solid var(--c);color:var(--a);border-radius:20px;padding:8px 14px;font:inherit;font-size:13px;cursor:pointer";
+      b.textContent = "Kaart bekijken"; b.onclick = function () { m.hidden = true; };
+      m.append(h, p, b); m.hidden = false;
+    }
+    function verbind() {
+      if (gestopt || !window.io) return;
+      clearTimeout(herTimer);
+      live("", "verbinden…");
+      socket = window.io({ path: "/audience/socket.io", transports: ["polling"], upgrade: false, reconnection: false, forceNew: true, withCredentials: true });
+      socket.on("connect", function () { wachttijd = 600; live("aan", "live"); });
+      socket.on("ws_message", function (tekst) {
+        var m; try { m = JSON.parse(tekst); } catch (e) { return; }
+        if (m.type === "hello" && m.universum) ontvang(m.universum);
+        else if (m.type === "universum") ontvang(m);
+        else if (m.type === "error" && /session_/.test(String(m.code || ""))) {
+          // De sessie is dicht of vraagt een nieuwe QR: stoppen, kaart blijft staan.
+          gestopt = true;
+        }
+      });
+      socket.on("ws_close", function (x) {
+        var code = Number(x && x.code || 0);
+        if (code === 4008 || code === 4009 || code === 4010 || code === 4011) {
+          gestopt = true; live("weg", code === 4011 || code === 4009 ? "afgelopen" : "gesloten");
+          melding(code === 4011 || code === 4009 ? "De voorstelling is afgelopen" : "Deze sessie is gesloten",
+            code === 4011 || code === 4009 ? "Het universum van vanavond blijft hier staan." : "Scan de QR-code in de zaal om opnieuw mee te doen.");
+        }
+      });
+      socket.on("disconnect", function () { opnieuw(); });
+      socket.on("connect_error", function () { opnieuw(); });
+    }
+    function opnieuw() {
+      try { socket && socket.removeAllListeners(); socket && socket.close(); } catch (e) {}
+      socket = null;
+      if (gestopt) return;
+      live("weg", "herverbinden…");
+      if (document.visibilityState !== "visible") return; // verder als de telefoon weer aan is
+      clearTimeout(herTimer);
+      herTimer = setTimeout(verbind, wachttijd);
+      wachttijd = Math.min(15000, Math.round(wachttijd * 1.6 + 120));
+    }
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible" && !socket && !gestopt) { wachttijd = 600; verbind(); }
+    });
+
+    laadKaart(null);
+    verbind();
+  })();
+  </script>
+</body>
+</html>

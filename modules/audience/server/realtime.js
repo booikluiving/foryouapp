@@ -188,6 +188,7 @@ function attachAudienceRealtime(server, service, options = {}) {
       beoordeling: service.beoordeling.publiek(),
       waarschuwing: service.waarschuwing ? service.waarschuwing.publiek() : null,
       ranking: service.getRanking(),
+      universum: service.universum ? service.universum.publiek() : null,
     });
   }
 

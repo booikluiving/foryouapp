@@ -123,6 +123,7 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       AUDIENCE_READY_ZONDER_TEKST: "1",
       AUDIENCE_ALGORITHM_URL: url("algorithm"),
       AUDIENCE_CATALOG_URL: lezen,
+      AUDIENCE_PATHS_URL: url("paths"),
       AUDIENCE_PUBLIC_JOIN_URL: `${adres}/proefshow/telefoon`,
       SCRIPT_AGENT_PORT: String(poort["script-agent"]),
       SCRIPT_AGENT_DB_DIR: path.join(dataDir, "script-agent"),
@@ -348,6 +349,23 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       }
       return cue("/v0/show-control/cues/stop-situation", { name: "Proef stop: stemronde", showRunId: rt.showRunId });
     },
+    // Universum-proef: een scène spelen of stoppen; staat er niets klaar, dan eerst klaarzetten.
+    async scenePlus() {
+      let rt = await runNu();
+      if (!rt || !rt.showRunId || rt.status === "idle") return { ok: false, status: 409, body: { error: "geen_run" } };
+      if (!rt.activeSituation && !rt.preparedNext) {
+        await vraag("runtime", `/v0/runtime/runs/${encodeURIComponent(rt.showRunId)}/prepare-next`, { method: "POST", body: {} });
+        rt = await runNu();
+      }
+      return KNOPPEN.scene();
+    },
+    // Universum-proef: de sessie van het publiek stoppen (telefoons krijgen 4011) of weer starten.
+    async sessie() {
+      const stand = await vraag("audience", "/audience/admin/state", { timeoutMs: 1500 });
+      const loopt = stand.ok && stand.body && stand.body.sessionJoin && stand.body.sessionJoin.joinUrl;
+      if (loopt) return vraag("audience", "/audience/admin/sessions/stop", { method: "POST", body: {} });
+      return vraag("audience", "/audience/admin/sessions/start", { method: "POST", body: { name: "For_You" }, timeoutMs: 3000 });
+    },
     bots: () => vraag("audience", "/audience/admin/simulation/schakel", { method: "POST", body: { wat: "bots" } }),
     personages: () => vraag("audience", "/audience/admin/simulation/schakel", { method: "POST", body: { wat: "personages" } }),
   };
@@ -389,7 +407,7 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
   }
 
   // De telefoon in de werkplaats: meedoen met de lopende sessie, net als na het scannen van de QR-code.
-  async function telefoon(req, res) {
+  async function telefoon(req, res, doel = "/audience/public") {
     let token = new URL(req.url, "http://x").searchParams.get("t") || "";
     if (!token) {
       const publiek = await vraag("audience", "/audience/admin/state", { timeoutMs: 2000 });
@@ -411,7 +429,7 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       res.end(await antwoord.text());
       return;
     }
-    res.writeHead(302, { location: "/audience/public", "cache-control": "no-store", ...(koekjes.length ? { "set-cookie": koekjes } : {}) });
+    res.writeHead(302, { location: doel, "cache-control": "no-store", ...(koekjes.length ? { "set-cookie": koekjes } : {}) });
     res.end();
   }
 
@@ -462,6 +480,8 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       return;
     }
     if (pathname === "/proefshow/" || pathname === "/proefshow/index.html") return eigenBestand(res, "index.html");
+    // Universum op de telefoon, los van het zaalscherm (dat houdt zelf al de meeste verbindingen bezet).
+    if (pathname === "/proefshow/universum-proef") return eigenBestand(res, "universum-proef.html");
     if (pathname === "/proefshow/api/stand") return json(res, 200, await stand());
     // Het universum van de proef staat onder /proefshow/universe/, zodat het niet botst met het
     // universum van de website. De pagina zelf verwijst naar /universe/…: dat wordt hier omgezet.
@@ -483,6 +503,8 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       return undefined;
     }
     if (pathname === "/proefshow/telefoon") return telefoon(req, res);
+    // Het universum op de telefoon: zelfde toegang als de telefoon, eigen pagina.
+    if (pathname === "/proefshow/universum") return telefoon(req, res, "/audience/universum");
     if (pathname === "/proefshow/api/knop" && req.method === "POST") {
       const body = await leesBody(req);
       const knop = KNOPPEN[String(body.knop || "")];
