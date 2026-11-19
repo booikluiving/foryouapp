@@ -4080,10 +4080,25 @@
     const regieEase = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
     const regieUit = (t) => 1 - Math.pow(1 - t, 3);
 
+    // Vangnet: tijdens een scène schuift het zaalscherm het universum uit beeld en geeft de browser het
+    // geen frames meer. Een overgang is dan na zijn tijd toch klaar, zodat de regie de run blijft volgen
+    // en na de scène niets hoeft in te halen.
+    const REGIE_VANGNET_MS = 250;
+
     function regieTween(doel, sleutel, naar, ms, ease) {
       const gen = regie.gen;
       return new Promise((resolve) => {
-        podium.tweens.push({ doel, sleutel, van: doel[sleutel], naar, start: Date.now(), ms, ease: ease || regieEase, klaar: resolve, gen });
+        const tween = { doel, sleutel, van: doel[sleutel], naar, start: Date.now(), ms, ease: ease || regieEase, klaar: null, gen };
+        const vangnet = window.setTimeout(() => {
+          const plek = podium.tweens.indexOf(tween);
+          if (plek < 0) return;
+          podium.tweens.splice(plek, 1);
+          doel[sleutel] = naar;
+          podium.vuil = true;
+          tween.klaar();
+        }, ms + REGIE_VANGNET_MS);
+        tween.klaar = () => { window.clearTimeout(vangnet); resolve(); };
+        podium.tweens.push(tween);
       });
     }
 
@@ -4290,7 +4305,14 @@
       const gen = regie.gen;
       regieCameraAf();
       return new Promise((resolve) => {
-        regie.cameraKlaar = resolve;
+        let vangnet = 0;
+        regie.cameraKlaar = () => { window.clearTimeout(vangnet); resolve(); };
+        vangnet = window.setTimeout(() => {
+          if (gen !== regie.gen) return;
+          regie.cam = { mix: naar.mix, lz: naar.lz, rot: naar.rot };
+          regieCameraToepassen();
+          regieCameraAf();
+        }, ms + REGIE_VANGNET_MS);
         const tick = (now) => {
           if (gen !== regie.gen) { regieCameraAf(); return; }
           const t = clamp((now - start) / ms, 0, 1);
