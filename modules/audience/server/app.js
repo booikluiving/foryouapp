@@ -358,7 +358,14 @@ setInterval(kijk, 2000);
     // De lange lijst voor de tussenkaart: personages op gemiddelde score van hun scènes, met hoe vaak ze
     // speelden, de hartjes en hoe vaak ze bij de personagevraag gekozen werden.
     const gekozen = new Map((report && Array.isArray(report.favorieten) ? report.favorieten : []).map((rij) => [rij.characterId, rij.aandeel]));
+    const fotoVan = (characterId) => {
+      const foto = characterId ? service.beoordeling.personagefoto(view.showRunId, characterId) : null;
+      return foto ? `/audience/stage/personagefoto/${encodeURIComponent(characterId)}?run=${encodeURIComponent(view.showRunId)}&v=${foto.at}` : null;
+    };
     const personages = (report && Array.isArray(report.characters) ? report.characters : []).slice(0, 10).map((rij) => ({
+      id: rij.id || null,
+      // Snapshot van de speler als dit personage (uit de scène), als die er is.
+      foto: fotoVan(rij.id),
       naam: rij.name,
       score: rij.averageScore,
       scenes: rij.scenes,
@@ -396,8 +403,16 @@ setInterval(kijk, 2000);
   // Een foto van een speler uit de scène die speelt of net gespeeld is: JPEG, ?plek=1..3 (de plek van de
   // speler in de ring), eventueel ?situationRunId=. Blijft alleen in het geheugen.
   app.post("/audience/beoordeling/foto", express.raw({ type: "image/jpeg", limit: "200kb" }), (req, res) => {
-    const result = service.beoordeling.zetFoto({ situationRunId: req.query.situationRunId, plek: req.query.plek, jpeg: req.body });
+    const result = service.beoordeling.zetFoto({ situationRunId: req.query.situationRunId, plek: req.query.plek, jpeg: req.body, punten: req.query.punten });
     res.status(result.ok ? 200 : 400).json(result);
+  });
+  // De snapshot van een personage in deze run: de speler als dat personage, uit de laatste scène waarin
+  // het speelde. Zonder snapshot 204.
+  app.get("/audience/stage/personagefoto/:characterId", (req, res) => {
+    const foto = service.beoordeling.personagefoto(String(req.query.run || ""), req.params.characterId);
+    if (!foto) { res.set("Cache-Control", "no-store"); return res.status(204).end(); }
+    res.set("Cache-Control", req.query.v ? "public, max-age=3600" : "no-store");
+    res.type("image/jpeg").send(foto.jpeg);
   });
 
   // Hoeveel deelnemers er in deze sessie meedoen (telefoons met een naam, geen bots).

@@ -6,6 +6,8 @@
 // scène (te veel, precies goed, mag meer; of zelf iets typen bij Anders). De antwoorden worden per scène
 // bewaard; het antwoord op de labelvraag gaat naar het algoritme als voorkeur voor dat label.
 
+const { createPersonagefoto } = require("./personagefoto");
+
 const INSTELLINGEN_KEY = "beoordeling_instellingen";
 const UITSLAGEN_KEY = "beoordeling_uitslagen";
 const MAX_FOTO_BYTES = 150 * 1024;
@@ -108,6 +110,8 @@ function createBeoordeling(service) {
   let scene = null;
   // Foto's van de spelers per scène, op de plek van de speler (1, 2, 3). Alleen in het geheugen.
   const fotos = new Map();
+  // Dezelfde foto per personage, voor de hele run (toppersonages op het zaalscherm).
+  const personagefoto = createPersonagefoto();
   let lopend = null;
   let timer = null;
   // Alle labels uit de catalogus van de run, voor de vragen per label in Admin.
@@ -145,7 +149,7 @@ function createBeoordeling(service) {
   }
 
   // Een foto van een speler uit de scène (JPEG), aangeleverd door wie de camera's heeft.
-  function zetFoto({ situationRunId, plek, jpeg }) {
+  function zetFoto({ situationRunId, plek, jpeg, punten }) {
     const id = String(situationRunId || (scene && scene.situationRunId) || "");
     const nummer = Number(plek);
     if (!id || !Number.isInteger(nummer) || nummer < 1 || nummer > 6) return { ok: false, error: "plek_of_scene_ontbreekt" };
@@ -155,7 +159,10 @@ function createBeoordeling(service) {
       while (fotos.size > 4) fotos.delete(fotos.keys().next().value);
     }
     fotos.get(id).set(nummer, `data:image/jpeg;base64,${jpeg.toString("base64")}`);
-    return { ok: true, situationRunId: id, plek: nummer };
+    // Wie op die plek speelde in deze scène krijgt het beeld als snapshot van het personage.
+    const personage = scene && scene.situationRunId === id ? scene.personages.find((rij) => rij.plek === nummer) : null;
+    const snapshot = personage ? personagefoto.zet({ showRunId: scene.showRunId, characterId: personage.id, jpeg, punten: punten == null || punten === "" ? undefined : Number(punten) }) : null;
+    return { ok: true, situationRunId: id, plek: nummer, personage: snapshot && snapshot.ok ? personage.id : null };
   }
 
   // Volgorde: de scène (thermometer), het personage (kaarten), dan het label (meter).
@@ -457,9 +464,10 @@ function createBeoordeling(service) {
     lopend = null;
     scene = null;
     fotos.clear();
+    personagefoto.reset();
   }
 
-  return { onthoudScene, zetFoto, start, sluit, klokOpnieuw, antwoord, publiek, stand, zetInstellingen, reset, uitslagen: () => uitslagen.slice() };
+  return { onthoudScene, zetFoto, personagefoto: (showRunId, characterId) => personagefoto.van(showRunId, characterId), start, sluit, klokOpnieuw, antwoord, publiek, stand, zetInstellingen, reset, uitslagen: () => uitslagen.slice() };
 }
 
 module.exports = { createBeoordeling, normalizeInstellingen };
