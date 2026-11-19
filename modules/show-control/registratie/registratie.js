@@ -9,7 +9,13 @@
 // Niets start vanzelf. Een opname stopt alleen vanzelf als de schijf volloopt.
 // Opdrachten gaan via de opdrachtenmap van TouchDesigner (~/ForYou/td-opdrachten), geen netwerk.
 // De bestanden blijven op deze Mac, in ~/ForYou/gedocumenteerde-shows/.
+//
+// Gelijk lopen van beeld en geluid. TouchDesigner schrijft het geluid op één vaste samplerate
+// (zie de patch); het beeld volgt de klok. Wat overblijft is een vaste verschuiving tussen de
+// camera's en de microfoons. Die zet de stop recht in het bestand zelf (GELUID_MS, zonder opnieuw
+// te coderen) en de stop meet elke opname na: beeld, geluid en klok moeten even lang zijn.
 
+const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -17,6 +23,12 @@ const path = require("node:path");
 const STUUR = "op('/project1/fy_registratie').op('stuur').module";
 const MIN_VRIJ_START_GB = 8;
 const MIN_VRIJ_DOOR_GB = 3;
+// Zoveel milliseconden komt het geluid in het bestand later dan TouchDesigner het schreef
+// (negatief = eerder). Gemeten met een klap in beeld en geluid; 0 = niets verschuiven.
+const GELUID_MS = 0;
+// Meer verschil dan dit tussen beeld, geluid en klok is geen vaste verschuiving meer maar
+// wegdrijven (samplerate) of weggevallen beelden: dat meldt de stop, rechtzetten kan dan niet blind.
+const MAX_VERSCHIL_S = 0.5;
 
 function instellingen(options = {}) {
   const env = process.env;
@@ -26,7 +38,15 @@ function instellingen(options = {}) {
     standPad: options.standPad || env.SHOW_CONTROL_REGISTRATIE_STAND
       || path.join(os.homedir(), "Library", "Application Support", "ForYouApp", "registratie.json"),
     wachtMs: Number(options.wachtMs ?? 5000),
+    geluidMs: Number(options.geluidMs ?? env.SHOW_CONTROL_REGISTRATIE_GELUID_MS ?? GELUID_MS) || 0,
+    ffmpeg: options.ffmpeg || env.SHOW_CONTROL_FFMPEG || programma("ffmpeg"),
+    ffprobe: options.ffprobe || env.SHOW_CONTROL_FFPROBE || programma("ffprobe"),
+    nazorg: options.nazorg !== false,
   };
+}
+
+function programma(naam) {
+  return ["/opt/homebrew/bin", "/usr/local/bin"].map((d) => path.join(d, naam)).find((p) => fs.existsSync(p)) || naam;
 }
 
 function leesStand(inst) {
@@ -116,13 +136,109 @@ async function startRegistratie(runtimeState, options = {}) {
   return { ok: true, opname: true, ...stand, td: antwoord.td };
 }
 
+function draai(cmd, args) {
+  return new Promise((klaar) => {
+    execFile(cmd, args, { maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+      klaar({ ok: !err, uit: String(stdout || ""), fout: err ? String(stderr || err.message).trim().split("\n").pop() : "" });
+    });
+  });
+}
+
+// Lengte van beeld en geluid in het bestand, in seconden.
+async function meetBestand(inst, pad) {
+  const r = await draai(inst.ffprobe, ["-v", "error", "-show_entries", "stream=codec_type,start_time,duration,sample_rate", "-of", "json", pad]);
+  if (!r.ok) return null;
+  const streams = JSON.parse(r.uit).streams || [];
+  const van = (soort) => streams.find((s) => s.codec_type === soort);
+  const beeld = van("video");
+  const geluid = van("audio");
+  if (!beeld || !geluid) return null;
+  return {
+    beeldS: Number(beeld.duration),
+    geluidS: Number(geluid.duration),
+    beeldStartS: Number(beeld.start_time) || 0,
+    geluidStartS: Number(geluid.start_time) || 0,
+    rate: Number(geluid.sample_rate),
+  };
+}
+
+// TouchDesigner sluit het bestand kort na de stop: wacht tot het leesbaar is en niet meer groeit.
+async function wachtOpBestand(inst, pad, maxMs = 30000) {
+  const tot = Date.now() + maxMs;
+  let vorige = -1;
+  while (Date.now() < tot) {
+    const grootte = fs.existsSync(pad) ? fs.statSync(pad).size : -1;
+    if (grootte > 0 && grootte === vorige) {
+      const meting = await meetBestand(inst, pad);
+      if (meting) return meting;
+    }
+    vorige = grootte;
+    await new Promise((klaar) => setTimeout(klaar, 500));
+  }
+  return null;
+}
+
+// Na de stop: meet de opname na en zet de vaste verschuiving recht in het bestand zelf.
+// Beeld en geluid worden gekopieerd, niet opnieuw gecodeerd; alleen het begin van het geluid
+// (of, bij een negatieve waarde, van het beeld) schuift op. Het bestand houdt zijn naam.
+async function gelijkzetten(pad, { gestartOp, gestoptOp } = {}, options = {}) {
+  const inst = instellingen(options);
+  const meting = await wachtOpBestand(inst, pad, options.maxWachtMs);
+  if (!meting) return { ok: false, pad, fout: "opname niet leesbaar (ffprobe)" };
+  const klokS = gestartOp && gestoptOp ? (new Date(gestoptOp) - new Date(gestartOp)) / 1000 : null;
+  const controle = {
+    ...meting,
+    klokS,
+    beeldGeluidS: Number((meting.geluidS - meting.beeldS).toFixed(3)),
+    beeldKlokS: klokS === null ? null : Number((meting.beeldS - klokS).toFixed(3)),
+  };
+  // De klok begint te lopen na het antwoord van TouchDesigner: tot een seconde speling is gewoon.
+  const meldingen = [];
+  if (Math.abs(controle.beeldGeluidS) > MAX_VERSCHIL_S) meldingen.push(`geluid is ${controle.beeldGeluidS} s langer dan het beeld`);
+  if (klokS !== null && Math.abs(controle.beeldKlokS) > MAX_VERSCHIL_S + 1) meldingen.push(`beeld is ${controle.beeldKlokS} s langer dan de klok`);
+  const uit = { ok: true, pad, controle, gelijk: meldingen.length === 0, meldingen, verschovenMs: 0 };
+  const ms = Math.round(inst.geluidMs);
+  if (!ms) return uit;
+  const vrij = vrijGb(path.dirname(pad));
+  const nodig = fs.statSync(pad).size / 1e9 + 1;
+  if (vrij !== null && vrij < nodig) {
+    return { ...uit, ok: false, fout: `te weinig schijfruimte om gelijk te zetten (${vrij.toFixed(1)} GB vrij, ${nodig.toFixed(1)} nodig)` };
+  }
+  const tijdelijk = path.join(path.dirname(pad), `.${path.basename(pad, ".mov")}.gelijk.mov`);
+  const s = String(Math.abs(ms) / 1000);
+  // Eerste ingang = beeld, tweede = geluid; -itsoffset schuift de ingang die erna komt later.
+  const ingangen = ms > 0 ? ["-i", pad, "-itsoffset", s, "-i", pad] : ["-itsoffset", s, "-i", pad, "-i", pad];
+  const r = await draai("/usr/bin/nice", ["-n", "15", inst.ffmpeg, "-v", "error", "-y", ...ingangen,
+    "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-map_metadata", "0", tijdelijk]);
+  if (!r.ok || !fs.existsSync(tijdelijk) || fs.statSync(tijdelijk).size < fs.statSync(pad).size * 0.9) {
+    fs.rmSync(tijdelijk, { force: true });
+    return { ...uit, ok: false, fout: `gelijkzetten mislukt: ${r.fout || "bestand te klein"}` };
+  }
+  fs.renameSync(tijdelijk, pad);
+  return { ...uit, verschovenMs: ms };
+}
+
+let laatsteNazorg = null;
+
 async function stopRegistratie(options = {}) {
   const inst = instellingen(options);
   const loopt = leesStand(inst);
   const antwoord = await tdOpdracht(inst, `${STUUR}.stop()`);
+  const gestoptOp = new Date().toISOString();
   if (antwoord.ok || !loopt) schrijfStand(inst, null);
   if (!antwoord.ok) return { ok: false, opname: Boolean(loopt), fout: antwoord.fout };
-  return { ok: true, opname: false, pad: antwoord.td.pad, bytes: antwoord.td.bytes, td: antwoord.td };
+  const uit = { ok: true, opname: false, pad: antwoord.td.pad, bytes: antwoord.td.bytes, td: antwoord.td };
+  if (!loopt || !inst.nazorg) return uit;
+  // Het nameten en rechtzetten loopt door na het antwoord: de knop hoeft er niet op te wachten.
+  laatsteNazorg = { pad: loopt.pad, bezig: true };
+  const nazorg = gelijkzetten(loopt.pad, { gestartOp: loopt.gestartOp, gestoptOp }, options)
+    .catch((err) => ({ ok: false, pad: loopt.pad, fout: err.message }))
+    .then((n) => {
+      laatsteNazorg = n;
+      console.log(`[registratie] ${path.basename(n.pad)}: ${n.ok ? "nagemeten" : n.fout}${n.verschovenMs ? `, geluid ${n.verschovenMs} ms verschoven` : ""}${n.meldingen && n.meldingen.length ? `; LET OP ${n.meldingen.join("; ")}` : ""}`);
+      return n;
+    });
+  return options.wachtOpNazorg ? { ...uit, nazorg: await nazorg } : uit;
 }
 
 async function registratieStatus(options = {}) {
@@ -134,6 +250,7 @@ async function registratieStatus(options = {}) {
     opname: antwoord.ok ? antwoord.td.opname : Boolean(loopt),
     vrijGb: vrijGb(fs.existsSync(inst.doelDir) ? inst.doelDir : os.homedir()),
     ...(loopt || {}),
+    ...(laatsteNazorg ? { nazorg: laatsteNazorg } : {}),
     ...(antwoord.ok ? { td: antwoord.td } : { fout: antwoord.fout }),
   };
 }
@@ -155,6 +272,7 @@ async function registratieTick(options = {}) {
 }
 
 module.exports = {
+  gelijkzetten,
   naamVoor,
   registratieStatus,
   registratieTick,
