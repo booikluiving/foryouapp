@@ -6,7 +6,7 @@ const { DEFAULT_CATALOG_BASE_URL } = require("../../../client/catalog-client");
 const { DEFAULT_RUNTIME_BASE_URL } = require("../../../client/runtime-client");
 const { scriptAgentDbDir } = require("../../../script-output/state-store");
 const { mountTeleprompterParser } = require("./express-router");
-const { sendTouchDesignerCameraPulse } = require("./touchdesigner-osc");
+const { stuurAutocamCamera } = require("./autocam-camera");
 
 const DEFAULT_SHOW_CONTROL_BASE_URL = "http://127.0.0.1:3025";
 
@@ -322,7 +322,8 @@ function createTeleprompterParserBridge(options = {}) {
       getShowState: () => showStateFromRuntime(runtimeState, runtimeAvailable),
       getAutoCameraScene: () => parser && parser.getPreparedScene ? parser.getPreparedScene() : null,
       normalizePrepareInput,
-      onAutoCameraSwitch: (event = {}) => sendTouchDesignerCameraPulse(event.slot, {
+      autoCameraPath: path.join(scriptAgentDbDir(), "teleprompter-autocam.json"),
+      onAutoCameraSwitch: (event = {}) => stuurAutocamCamera(event.slot, {
         env,
         source: event.source || "teleprompter_auto_camera",
       }),
