@@ -415,6 +415,7 @@
       fade: 1,
       cam: { mix: 0, lz: 0, rot: 0 },
       frame: 0,
+      cameraKlaar: null,
       binnen: null,
       volTimer: 0,
       stil: false,
@@ -4287,10 +4288,11 @@
       const van = Object.assign({}, regie.cam);
       const start = performance.now();
       const gen = regie.gen;
-      window.cancelAnimationFrame(regie.frame);
+      regieCameraAf();
       return new Promise((resolve) => {
+        regie.cameraKlaar = resolve;
         const tick = (now) => {
-          if (gen !== regie.gen) { resolve(); return; }
+          if (gen !== regie.gen) { regieCameraAf(); return; }
           const t = clamp((now - start) / ms, 0, 1);
           const e = regieEase(t);
           regie.cam = {
@@ -4300,10 +4302,20 @@
           };
           regieCameraToepassen();
           if (t < 1) regie.frame = window.requestAnimationFrame(tick);
-          else resolve();
+          else regieCameraAf();
         };
         regie.frame = window.requestAnimationFrame(tick);
       });
+    }
+    // Stopt een lopende camerabeweging en rondt hem af, zodat wie erop wacht verder kan. Zonder dit
+    // bleef de regie na een sprong of stop midden in een beweging voor altijd bezig: het universum
+    // stond dan stil en volgde de run niet meer.
+    function regieCameraAf() {
+      window.cancelAnimationFrame(regie.frame);
+      regie.frame = 0;
+      const klaar = regie.cameraKlaar;
+      regie.cameraKlaar = null;
+      if (klaar) klaar();
     }
 
     function regieTitelRegels(title) {
@@ -4361,7 +4373,7 @@
 
     function regieWis() {
       regie.gen += 1;
-      window.cancelAnimationFrame(regie.frame);
+      regieCameraAf();
       podium.tweens.splice(0).forEach((tween) => tween.klaar());
       regie.pops.clear();
       regie.gekozen = 0;
