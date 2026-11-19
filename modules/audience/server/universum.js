@@ -9,6 +9,8 @@
 //   Geen deltas: de stand is klein, en zo maakt een gemist bericht nooit iets uit.
 // - Spoilers worden hier gefilterd: van scènes op slot verlaat niets de show-Mac.
 
+const { buildRuntimeOverlay } = require("../../paths/universe/build-runtime-overlay");
+
 const KAART_VERVERS_MS = 60 * 1000;
 const KAART_TIMEOUT_MS = 8000;
 
@@ -31,48 +33,64 @@ function omgevingVan(resolved) {
   return naam ? String(naam).replace(/_/g, " ").trim() : null;
 }
 
-function vrijeIds(view, gespeeld) {
-  const items = view && view.pathEvaluation && Array.isArray(view.pathEvaluation.items) ? view.pathEvaluation.items : [];
-  const ids = items.filter((item) => item && item.status === "available").map(idVan).filter((id) => id && !gespeeld.includes(id));
-  return Array.from(new Set(ids)).sort((a, b) => a - b);
-}
-
-// Runtime-view → stand. Puur, zodat het te testen is.
-function standUitView(view) {
-  const leeg = { run: "", gespeeld: [], nu: 0, klaar: 0, vrij: [], echt: {} };
-  if (!view) return leeg;
-  // Geen run (inloop, na RESET RUN): niets gespeeld, maar de startscènes zijn wel vrij, net als op
-  // het zaalscherm.
-  if (!view.showRunId || ["idle", "reset"].includes(String(view.status || ""))) {
-    return { ...leeg, vrij: vrijeIds(view, []) };
-  }
+// Wat het zaalscherm wil laten zien, met precies dezelfde regels (build-runtime-overlay.js uit de
+// padendienst, die ook de stand van het zaalscherm maakt): gespeeld in volgorde, wat speelt, wat
+// klaarstaat (niet vóór START SHOW of tijdens de startfase, behalve de winnaar) en wat vrij is.
+// Puur, zodat het te testen is.
+function doelUitView(view, stemming) {
+  if (!view || !view.pathEvaluation || !Array.isArray(view.pathEvaluation.items)) return null;
+  let overlay = null;
+  try { overlay = buildRuntimeOverlay(view, stemming || null); } catch (_err) { overlay = null; }
+  if (!overlay) return null;
+  const run = view.showRunId && !["idle", "reset"].includes(String(view.status || "")) ? String(view.showRunId) : "";
+  const gespeeld = (overlay.playedSceneIds || []).map(Number).filter(Boolean);
+  const nu = overlay.currentScene ? Number(overlay.currentScene.sceneId) || 0 : 0;
+  let klaar = overlay.preparedNextScenes && overlay.preparedNextScenes[0] ? Number(overlay.preparedNextScenes[0].sceneId) || 0 : 0;
+  if (klaar === nu) klaar = 0;
+  const rel = new Set(gespeeld);
+  for (const item of overlay.availableScenes || []) if (Number(item.sceneId)) rel.add(Number(item.sceneId));
+  if (nu) rel.add(nu);
+  if (klaar) rel.add(klaar);
+  // Wie er echt speelde (ook op een vrije plek) en waar.
   const echt = {};
   const runs = Array.isArray(view.situationRuns) ? view.situationRuns : [];
-  const perRun = new Map(runs.map((run) => [String(run.situationRunId || ""), run]));
-  const gespeeld = [];
-  for (const item of Array.isArray(view.playedSituations) ? view.playedSituations : []) {
-    const id = idVan(item);
-    if (!id || gespeeld.includes(id)) continue;
-    gespeeld.push(id);
-    const run = perRun.get(String(item.situationRunId || "")) || runs.find((r) => idVan(r) === id);
-    if (run && run.resolved) echt[id] = { w: namenVan(run.resolved), o: omgevingVan(run.resolved) };
+  for (const sr of runs) {
+    const id = idVan(sr);
+    if (id && gespeeld.includes(id) && sr.resolved) echt[id] = { w: namenVan(sr.resolved), o: omgevingVan(sr.resolved) };
   }
-  const actief = view.activeSituation || null;
-  const nu = idVan(actief);
-  if (nu) echt[nu] = { w: namenVan(actief.resolved), o: omgevingVan(actief.resolved) };
-  // Klaargezet: NIET tonen. De runtime zet de volgende scène al klaar bij de start van de scène; het
-  // zaalscherm onthult hem pas als de kiezer na het stemmen landt, en de keuze kan nog wisselen.
-  // Op de telefoon blijft hij een gewone vrije scène tot hij speelt.
-  const klaar = 0;
-  const vrij = vrijeIds(view, gespeeld).filter((id) => id !== nu);
-  return { run: String(view.showRunId), gespeeld, nu, klaar: klaar === nu ? 0 : klaar, vrij, echt };
+  if (nu && view.activeSituation) echt[nu] = { w: namenVan(view.activeSituation.resolved), o: omgevingVan(view.activeSituation.resolved) };
+  if (klaar && view.resolvedPreparedNext && idVan(view.resolvedPreparedNext) === klaar) {
+    echt[klaar] = { w: namenVan(view.resolvedPreparedNext), o: omgevingVan(view.resolvedPreparedNext) };
+  }
+  // Stemming op de startscène: stemmen per scène, koplopers, winnaar (het zaalscherm laat ze oplichten).
+  let stem = null;
+  if (overlay.stem && Array.isArray(overlay.stem.stemmen)) {
+    stem = {
+      a: !!overlay.stem.actief,
+      s: Object.fromEntries(overlay.stem.stemmen.map((keuze) => [Number(keuze.sceneId), Number(keuze.votes || 0)])),
+      k: (overlay.stem.koplopers || []).map(Number),
+      w: Number(overlay.stem.winnaar || 0),
+    };
+  }
+  return { run, gespeeld, nu, klaar, rel, echt, stem };
 }
+
+// Hoe lang na een scène het universum hooguit wacht op het zaalscherm (zoals NA_SCENE_MAX daar).
+const VANGNET_MS = 60 * 1000;
 
 function createUniversum({ fetchKaart, log = () => {} } = {}) {
   let kaart = null; // volledige kaart uit de padendienst
   let kaartBezig = null;
   let kaartAt = 0;
-  let stand = standUitView(null);
+  const LEEG = { run: "", gespeeld: [], nu: 0, klaar: 0, vrij: [], echt: {}, stem: null };
+  let stand = LEEG;
+  let doel = null; // wat het zaalscherm uiteindelijk wil tonen
+  // Wat de telefoon al mag tonen. Net als het zaalscherm: nieuwe scènes komen pas vrij na het stemmen,
+  // de volgende scène pas als de kiezer op het zaalscherm geland is ("keuze getoond").
+  let getoond = { run: null, rel: new Set(), gespeeld: [] };
+  let vrijgegeven = false;
+  let keuze = 0;
+  let wachtSinds = 0;
   let handtekening = "";
   let versie = 0;
   let publiekCache = null;
@@ -118,9 +136,42 @@ function createUniversum({ fetchKaart, log = () => {} } = {}) {
     }
   }
 
-  // Geeft true als de telefoons een nieuwe stand moeten krijgen.
-  function volg(view) {
-    const nieuw = standUitView(view);
+  function bereken(nu = Date.now()) {
+    if (!doel) return LEEG;
+    let g = getoond;
+    const nieuweRun = g.run !== doel.run || g.gespeeld.some((id) => !doel.gespeeld.includes(id));
+    if (nieuweRun) {
+      // Nieuwe run, reset of eerste blik: meteen de hele stand, zoals het zaalscherm dan springt.
+      getoond = { run: doel.run, rel: new Set(doel.rel), gespeeld: doel.gespeeld.slice() };
+      g = getoond;
+      keuze = doel.klaar;
+      vrijgegeven = false;
+      wachtSinds = 0;
+    } else if (doel.nu) {
+      // Er speelt een scène: wat nu vrijkomt bewaart het zaalscherm voor na de scène.
+      for (const id of doel.gespeeld) g.rel.add(id);
+      g.rel.add(doel.nu);
+      keuze = 0;
+      vrijgegeven = false;
+      wachtSinds = 0;
+    } else {
+      const pasGespeeld = doel.gespeeld.length > g.gespeeld.length;
+      if (pasGespeeld) { wachtSinds = nu; vrijgegeven = false; keuze = 0; }
+      for (const id of doel.gespeeld) g.rel.add(id);
+      // Vóór de eerste scène zijn de startscènes meteen vrij; daarna na het stemmen (of het vangnet).
+      const inloop = !doel.gespeeld.length;
+      if (inloop || vrijgegeven || (wachtSinds && nu - wachtSinds > VANGNET_MS)) {
+        for (const id of doel.rel) g.rel.add(id);
+      }
+    }
+    g.gespeeld = doel.gespeeld.slice();
+    const klaar = !doel.nu && keuze && keuze === doel.klaar ? keuze : 0;
+    if (klaar) g.rel.add(klaar);
+    const vrij = [...g.rel].filter((id) => id !== doel.nu && id !== klaar && !doel.gespeeld.includes(id)).sort((a, b) => a - b);
+    return { run: doel.run, gespeeld: doel.gespeeld, nu: doel.nu, klaar, vrij, echt: doel.echt, stem: doel.stem };
+  }
+
+  function zet(nieuw) {
     const sleutel = JSON.stringify(nieuw);
     if (sleutel === handtekening) return false;
     handtekening = sleutel;
@@ -128,6 +179,23 @@ function createUniversum({ fetchKaart, log = () => {} } = {}) {
     versie += 1;
     publiekCache = null;
     return true;
+  }
+
+  // Elke blik op de runtime (± elke seconde). Geeft true als de telefoons een nieuwe stand moeten krijgen.
+  function volg(view, stemming) {
+    doel = doelUitView(view, stemming);
+    return zet(bereken());
+  }
+  // Het stemmen na de scène is voorbij: het zaalscherm laat de nieuwe scènes vrijkomen.
+  function vrijgave() {
+    vrijgegeven = true;
+    return zet(bereken());
+  }
+  // De kiezer op het zaalscherm is geland op de scène die klaarstaat.
+  function keuzeGetoond() {
+    vrijgegeven = true;
+    keuze = doel ? doel.klaar : 0;
+    return zet(bereken());
   }
 
   // Wat het publiek ziet. Gespeeld, speelt nu, straks en vrij: titel, personages, omgeving.
@@ -143,8 +211,9 @@ function createUniversum({ fetchKaart, log = () => {} } = {}) {
       const scene = scenes.get(id);
       if (!scene) continue;
       const echt = stand.echt[id] || {};
-      // Omgeving is de verrassing: alleen bij wat gespeeld is of nu speelt.
-      const gezien = id === stand.nu || stand.gespeeld.includes(id);
+      // Omgeving is de verrassing: alleen bij wat gespeeld is, nu speelt, of gekozen is (het zaalscherm
+      // toont het vakje van de omgeving zodra de kiezer landt).
+      const gezien = id === stand.nu || id === stand.klaar || stand.gespeeld.includes(id);
       kaartjes[id] = {
         t: scene.t,
         w: echt.w || scene.w,
@@ -161,6 +230,7 @@ function createUniversum({ fetchKaart, log = () => {} } = {}) {
       nu: stand.nu || 0,
       klaar: stand.klaar || 0,
       vrij: stand.vrij,
+      stem: stand.stem,
       kaartjes,
     };
     return publiekCache;
@@ -173,14 +243,14 @@ function createUniversum({ fetchKaart, log = () => {} } = {}) {
     skeletCache = {
       ok: true,
       versie: kaart.versie,
-      s: kaart.scenes.map((scene) => [scene.id, scene.x, scene.y]),
+      s: kaart.scenes.map((scene) => (scene.r ? [scene.id, scene.x, scene.y, scene.r] : [scene.id, scene.x, scene.y])),
       l: kaart.lijnen,
       p: (kaart.paden || []).map((pad) => ({ c: pad.c, s: pad.s, e: pad.e })),
     };
     return skeletCache;
   }
 
-  return { laadKaart, volg, publiek, skelet, stand: () => stand };
+  return { laadKaart, volg, vrijgave, keuzeGetoond, publiek, skelet, stand: () => stand };
 }
 
 // De kaart verandert alleen als de paden veranderen: met ?v=<versie> mag de telefoon hem bewaren.
@@ -196,4 +266,4 @@ function stuurKaart(universum, req, res) {
   res.json(skelet);
 }
 
-module.exports = { createUniversum, standUitView, stuurKaart };
+module.exports = { createUniversum, doelUitView, stuurKaart };

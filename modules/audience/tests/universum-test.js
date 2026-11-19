@@ -4,7 +4,7 @@
 // Draait zonder diensten: npm run audience:universum-test
 
 const assert = require("node:assert/strict");
-const { createUniversum, standUitView } = require("../server/universum");
+const { createUniversum, doelUitView } = require("../server/universum");
 
 const KAART = {
   ok: true,
@@ -41,43 +41,61 @@ function view(over = {}) {
 }
 
 async function main() {
-  // Stand uit de view
-  const stand = standUitView(view());
-  assert.deepEqual(stand.gespeeld, [1]);
-  assert.equal(stand.klaar, 0, "klaargezet blijft verborgen (het zaalscherm onthult hem pas na het stemmen)");
-  assert.deepEqual(stand.vrij, [2, 4]);
-  assert.deepEqual(stand.echt[1], { w: ["Peter", "Yaël"], o: "Grimmige slaapkamer" }, "wie er echt speelde, ook op een vrije plek");
-  assert.deepEqual(standUitView({ showRunId: "x", status: "idle" }).gespeeld, [], "geen run = niets gespeeld");
-  assert.deepEqual(standUitView({ status: "idle", showRunId: null, pathEvaluation: { items: [{ situationId: "situation:4", status: "available" }, { situationId: "situation:2", status: "available" }, { situationId: "situation:9", status: "locked" }] } }).vrij, [2, 4], "geen run: startscènes wel vrij");
-  assert.equal(standUitView(view({ startPhase: { active: true }, playedSituations: [], situationRuns: [] })).klaar, 0, "startfase: niets klaargezet tonen");
+  // Doel zoals het zaalscherm (build-runtime-overlay): gespeeld, nu, klaar, vrij
+  const d = doelUitView(view());
+  assert.deepEqual(d.gespeeld, [1]);
+  assert.equal(d.klaar, 4);
+  assert.deepEqual([...d.rel].sort(), [1, 2, 4]);
+  assert.deepEqual(d.echt[1], { w: ["Peter", "Yaël"], o: "Grimmige slaapkamer" }, "wie er echt speelde, ook op een vrije plek");
+  assert.equal(doelUitView({ status: "idle", showRunId: null, pathEvaluation: { items: [{ situationId: "situation:4", status: "available" }, { situationId: "situation:2", status: "available" }] } }).rel.size, 2, "geen run: startscènes vrij");
+  assert.equal(doelUitView(view({ startPhase: { active: true }, playedSituations: [], situationRuns: [], pathEvaluation: { items: [{ situationId: "situation:4", status: "available" }] } })).klaar, 0, "startfase: niets klaargezet tonen");
 
-  // Publiek: alleen open scènes, op slot nooit
+  // Stappen zoals het zaalscherm
   const u = createUniversum({ fetchKaart: async () => KAART });
   await u.laadKaart(true);
+  // Eerste blik midden in een run: meteen de hele stand (springen), klaar ook.
   assert.equal(u.volg(view()), true, "eerste stand is nieuw");
   assert.equal(u.volg(view()), false, "zelfde stand = geen bericht");
-  const p = u.publiek();
-  assert.equal(p.type, "universum");
+  let p = u.publiek();
+  assert.equal(p.klaar, 4);
   assert.ok(!p.kaartjes[3], "op slot: geen kaartje");
   assert.ok(!JSON.stringify(p).includes("Geheim"), "titel van een slotscène verlaat de Mac niet");
-  assert.deepEqual(p.kaartjes[1].w, ["Peter", "Yaël"]);
   assert.deepEqual(p.kaartjes[2], { t: "Tweede", w: ["Lisa"], o: null }, "vrij: titel en personages, geen omgeving");
-  assert.equal(p.kaartjes[1].o, "Grimmige slaapkamer", "gespeeld: omgeving wel");
-  assert.ok(!JSON.stringify(p).includes("Trein") && !JSON.stringify(p).includes("Emma"), "klaargezet: niets van de ingevulde scène verlaat de Mac");
+  assert.equal(p.kaartjes[4].o, "Trein", "gekozen: omgeving zoals het vakje op het zaalscherm");
+
+  // Scène 4 speelt: niets klaar, wat nu vrijkomt wacht.
+  const speelt = { activeSituation: { situationId: "situation:4", resolved: { characters: [{ name: "Emma" }, { name: "Mark" }] } }, preparedNext: { situationId: "situation:3", reason: "after_start_situation" },
+    resolvedPreparedNext: { situationId: "situation:3", characters: [{ name: "Adolf" }] } };
+  assert.equal(u.volg(view(speelt)), true);
+  p = u.publiek();
+  assert.equal(p.nu, 4);
+  assert.equal(p.klaar, 0, "tijdens de scène: de volgende scène niet tonen");
+  assert.ok(!JSON.stringify(p).includes("Adolf"), "klaargezet tijdens de scène verlaat de Mac niet");
+
+  // Scène gestopt: 4 gespeeld, 3 komt vrij volgens de runtime, maar pas na het stemmen in beeld.
+  const gestopt = { playedSituations: [{ situationRunId: "r1", situationId: "situation:1" }, { situationRunId: "r2", situationId: "situation:4" }],
+    preparedNext: { situationId: "situation:3", reason: "after_stop_situation" }, resolvedPreparedNext: { situationId: "situation:3", characters: [{ name: "Adolf" }], environment: { name: "Tennis" } },
+    pathEvaluation: { items: [{ situationId: "situation:1", status: "played" }, { situationId: "situation:4", status: "played" }, { situationId: "situation:2", status: "available" }, { situationId: "situation:3", status: "available" }] } };
+  u.volg(view(gestopt));
+  p = u.publiek();
+  assert.deepEqual(p.gespeeld, [1, 4]);
+  assert.ok(!p.vrij.includes(3) && p.klaar === 0, "na de scène: nieuw vrij en klaar wachten op het zaalscherm");
+  assert.equal(u.vrijgave(), true, "stemmen dicht: nieuwe scènes komen vrij");
+  p = u.publiek();
+  assert.ok(p.vrij.includes(3) && p.klaar === 0, "vrij, maar nog niet gekozen");
+  assert.equal(u.keuzeGetoond(), true, "kiezer geland");
+  p = u.publiek();
+  assert.equal(p.klaar, 3);
+  assert.equal(p.kaartjes[3].o, "Tennis");
+  // Overslaan: andere scène klaar → weer verborgen tot de volgende keuze.
+  u.volg(view({ ...gestopt, preparedNext: { situationId: "situation:2", reason: "skip" }, resolvedPreparedNext: { situationId: "situation:2", characters: [] } }));
+  assert.equal(u.publiek().klaar, 0, "andere klaargezette scène: eerst weer de kiezer");
 
   // Kaart voor de telefoon: geen woorden
   const skelet = u.skelet();
   const tekst = JSON.stringify(skelet);
   for (const woord of ["Eerste", "Geheim", "Peter", "Keuken", "Adolf"]) assert.ok(!tekst.includes(woord), `kaart bevat geen ${woord}`);
   assert.deepEqual(skelet.s[2], [3, 20, 0]);
-
-  // Scène start → nieuwe versie, nu gezet
-  const v1 = p.v;
-  assert.equal(u.volg(view({ activeSituation: { situationId: "situation:4", resolved: { characters: [{ name: "Emma" }, { name: "Mark" }] } }, preparedNext: null })), true);
-  const p2 = u.publiek();
-  assert.ok(p2.v > v1);
-  assert.equal(p2.nu, 4);
-  assert.ok(!p2.vrij.includes(4), "wat speelt is niet meer vrij");
 
   // Padendienst weg: vorige kaart blijft
   const weg = createUniversum({ fetchKaart: async () => { throw new Error("weg"); } });
