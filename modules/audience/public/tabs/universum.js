@@ -211,7 +211,7 @@
       this.wachtEl.hidden = true;
       this.stil(true);
       if (this.wachtend) { var w = this.wachtend; this.wachtend = null; this.ontvang(w); }
-      else if (this.stand) { this.teken(); this.regieCam(0); }
+      else if (this.stand) { this.teken(); this.regieSleutel = this.pad().join(","); this.regieCam(0); }
       else this.zetCam();
     },
 
@@ -253,9 +253,15 @@
       this.stand = m;
       var vloeiend = !nieuweRun && this.zichtbaar();
       if (!vloeiend) this.stil(true);
-      // Eén vloeiende overgang: sterren en lijnen faden naar hun nieuwe stand, de camera schuift mee.
+      // Eén vloeiende overgang: sterren en lijnen faden naar hun nieuwe stand. De camera gaat alleen mee
+      // als de stand van de zaal verandert (hele universum ↔ pad, of een ander pad); een stem of een
+      // ander klein bericht laat de camera staan waar de kijker hem neerzette.
       this.teken();
-      this.regieCam(vloeiend ? OVERGANG_MS : 0);
+      var regie = this.pad().join(",");
+      if (nieuweRun || regie !== this.regieSleutel) {
+        this.regieSleutel = regie;
+        this.regieCam(vloeiend ? OVERGANG_MS : 0);
+      }
     },
 
     /* ---------- tekenen ---------- */
@@ -476,7 +482,8 @@
     },
 
     koppelGebaren: function () {
-      var self = this, svg = this.svg, punten = new Map(), greep = null, afstand = 0, maatTimer = 0;
+      var self = this, svg = this.svg, punten = new Map(), greep = null, afstand = 0, meer = false, maatTimer = 0;
+      // Schermpunt → afstand tot het midden van het blad, in kaarteenheden bij zoom 1.
       function punt(e) {
         var r = svg.getBoundingClientRect(), b = self.basis;
         var k = Math.max(b.w / r.width, b.h / r.height);
@@ -484,36 +491,63 @@
       }
       // Tijdens slepen en knijpen alleen de camera; de maten even later.
       function verschoven() {
+        if (self.lus) { cancelAnimationFrame(self.lus); self.lus = 0; }
         self.zetCam(false);
         self.titel.hidden = true;
         clearTimeout(maatTimer);
         maatTimer = setTimeout(function () { self.schaal(); }, 120);
       }
+      // Zoom naar s, met het kaartpunt onder schermpunt m op dezelfde plek.
+      function zoomRond(m, s, van) {
+        var wx = van.x + m.x / van.s, wy = van.y + m.y / van.s;
+        self.cam = { x: wx - m.x / s, y: wy - m.y / s, s: s };
+      }
+      // Bij elke vinger erbij of eraf begint het gebaar opnieuw vanaf waar de camera nu staat:
+      // zo springt het beeld nooit terug.
+      function anker() {
+        var ps = Array.from(punten.values());
+        if (!ps.length) { greep = null; return; }
+        var c = { x: self.cam.x, y: self.cam.y, s: self.cam.s };
+        if (ps.length === 1) greep = { c: c, p: ps[0] };
+        else greep = { c: c, m: { x: (ps[0].x + ps[1].x) / 2, y: (ps[0].y + ps[1].y) / 2 }, d: Math.max(1, Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y)) };
+      }
       svg.addEventListener("pointerdown", function (e) {
         try { svg.setPointerCapture(e.pointerId); } catch (x) {}
-        punten.set(e.pointerId, punt(e)); afstand = 0;
-        greep = { x: self.cam.x, y: self.cam.y, s: self.cam.s, p: punt(e), d: 0 };
+        if (!punten.size) { afstand = 0; meer = false; }
+        punten.set(e.pointerId, punt(e));
+        if (punten.size > 1) meer = true;
+        if (self.lus) { cancelAnimationFrame(self.lus); self.lus = 0; }
+        anker();
       });
       svg.addEventListener("pointermove", function (e) {
         if (!punten.has(e.pointerId) || !greep) return;
         punten.set(e.pointerId, punt(e));
         var ps = Array.from(punten.values());
-        if (ps.length === 2) {
-          var d = Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y);
-          if (!greep.d) greep.d = d;
-          self.cam.s = Math.max(0.8, Math.min(8, greep.s * d / greep.d)); afstand = 99; verschoven(); return;
+        if (ps.length >= 2 && greep.m) {
+          var m = { x: (ps[0].x + ps[1].x) / 2, y: (ps[0].y + ps[1].y) / 2 };
+          var d = Math.max(1, Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y));
+          var s = Math.max(0.8, Math.min(8, greep.c.s * d / greep.d));
+          // Het kaartpunt dat onder het midden van de vingers lag, blijft onder het midden van de vingers.
+          var wx = greep.c.x + greep.m.x / greep.c.s, wy = greep.c.y + greep.m.y / greep.c.s;
+          self.cam = { x: wx - m.x / s, y: wy - m.y / s, s: s };
+          afstand = 99;
+          verschoven();
+          return;
         }
-        var dx = ps[0].x - greep.p.x, dy = ps[0].y - greep.p.y;
-        afstand = Math.max(afstand, Math.hypot(dx, dy));
-        self.cam.x = greep.x - dx / self.cam.s; self.cam.y = greep.y - dy / self.cam.s; verschoven();
+        if (greep.p) {
+          var dx = ps[0].x - greep.p.x, dy = ps[0].y - greep.p.y;
+          afstand = Math.max(afstand, Math.hypot(dx, dy));
+          self.cam = { x: greep.c.x - dx / greep.c.s, y: greep.c.y - dy / greep.c.s, s: greep.c.s };
+          verschoven();
+        }
       });
       var los = function (e) {
         var p = punten.get(e.pointerId);
         punten.delete(e.pointerId);
-        if (punten.size) return;
-        if (e.type === "pointerup" && afstand < 8 && p && self.kaart) {
+        if (punten.size) { anker(); return; }
+        if (e.type === "pointerup" && !meer && afstand < 8 && p && self.kaart) {
           var wx = p.x / self.cam.s + self.cam.x, wy = p.y / self.cam.s + self.cam.y, best = 0, bd = Infinity;
-          self.S.forEach(function (s) { if (!self.open(s.id)) return; var d = Math.hypot(s.x - wx, s.y - wy); if (d < bd) { bd = d; best = s.id; } });
+          self.S.forEach(function (st) { if (!self.open(st.id)) return; var d = Math.hypot(st.x - wx, st.y - wy); if (d < bd) { bd = d; best = st.id; } });
           if (best && bd * self.cam.s < 28) self.kiesSter(best);
           else if (self.gekozen) self.sluit();
         }
@@ -523,7 +557,8 @@
       svg.addEventListener("pointercancel", los);
       svg.addEventListener("wheel", function (e) {
         e.preventDefault();
-        self.cam.s = Math.max(0.8, Math.min(8, self.cam.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+        var van = { x: self.cam.x, y: self.cam.y, s: self.cam.s };
+        zoomRond(punt(e), Math.max(0.8, Math.min(8, van.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15))), van);
         verschoven();
       }, { passive: false });
       window.addEventListener("resize", function () { if (self.kaart) self.schaal(); });
