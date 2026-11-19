@@ -96,12 +96,12 @@
     while (card.firstChild) card.removeChild(card.firstChild);
   }
 
-  // Een aanwijzing (*gromt zacht*) staat in de ondertitel zelf, tussen haken en cursief, op de plek
-  // waar hij in de zin staat: "[gromt zacht] Ik meen het." De gesproken tekst blijft recht.
+  // Een aanwijzing (*gromt zacht*) staat in de ondertitel zelf, tussen sterretjes en cursief, op de plek
+  // waar hij in de zin staat: "*gromt zacht* Ik meen het." De gesproken tekst blijft recht.
   function addDirection(target, text) {
     const direction = document.createElement("span");
     direction.className = "caption-inline-direction";
-    direction.textContent = `[${text}]`;
+    direction.textContent = `*${text}*`;
     target.appendChild(direction);
   }
 
@@ -165,7 +165,7 @@
       const vorige = vorigeSpreker(lines, index - 1);
       return { type: "dialogue", speaker: speaker && speaker !== vorige ? speaker : "", text: line.text };
     }
-    // Een regel die alleen een aanwijzing is: tussen haken en cursief op de plek van de ondertitel.
+    // Een regel die alleen een aanwijzing is: tussen sterretjes en cursief op de plek van de ondertitel.
     const aanwijzing = String(line.text).replace(/^\*+|\*+$/g, "").trim();
     return aanwijzing ? { type: "direction", text: aanwijzing } : null;
   }
