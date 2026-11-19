@@ -117,6 +117,17 @@ function fileExists(filePath, options = {}) {
 //   { "label": "SAMEN", "cameras": [2, 3], "achtergrond": "…jpg", "voorgrond": "…png",
 //     "schaal": 0.6, "omhoog": 0.08 }
 // Bestaat dat bestand, dan toont de knop van het extra shot dit shot (aan/uit).
+//
+// Een derde speler achter de twee voorste (Achtbaan: de rij stoelen erachter):
+//   "achter": { "camera": 3, "x": 0, "omhoog": 0, "schaal": 0.44, "masker": "…png" }
+// x en omhoog zijn een deel van het scherm vanaf het midden (rechts en omhoog positief). Zonder
+// "camera" is het de camera die niet vooraan staat. Het masker is een plaatje dat dekt waar iets
+// vóór deze speler staat (de rugleuningen van de voorste stoelen); de voorste spelers staan er
+// altijd voor.
+//
+// Een andere indeling voor één situatie (wie vooraan zit):
+//   "situaties": { "situation:93": { "cameras": [2, 3] } }
+// Daarin mogen ook schaal, omhoog en achter staan; "achter": false laat de derde speler weg.
 function samenDir(environmentId, options = {}) {
   const nummer = String(environmentId || "").split(":").pop();
   return path.join(mediaRoot(options), "environments", `environment_${nummer}`, "samen");
@@ -133,7 +144,11 @@ function readSamen(environmentId, options = {}) {
     return null;
   }
   if (!manifest || typeof manifest !== "object") return null;
-  const cameras = (Array.isArray(manifest.cameras) ? manifest.cameras : [2, 3])
+  const perSituatie = manifest.situaties && typeof manifest.situaties === "object" ? manifest.situaties[String(options.situationId || "")] : null;
+  const eigen = perSituatie && typeof perSituatie === "object" ? perSituatie : {};
+  const kies = (naam) => (eigen[naam] !== undefined ? eigen[naam] : manifest[naam]);
+  const camerasRaw = kies("cameras");
+  const cameras = (Array.isArray(camerasRaw) ? camerasRaw : [2, 3])
     .map((value) => Math.round(Number(value)))
     .filter((value) => value >= 1 && value <= 3)
     .slice(0, 2);
@@ -143,13 +158,31 @@ function readSamen(environmentId, options = {}) {
     const number = Number(value);
     return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
   };
+  // De derde speler: wat de situatie zegt gaat over wat de omgeving zegt, per veld.
+  let achter = null;
+  const basis = manifest.achter && typeof manifest.achter === "object" ? manifest.achter : null;
+  const wens = eigen.achter === undefined ? basis
+    : eigen.achter && typeof eigen.achter === "object" ? { ...(basis || {}), ...eigen.achter } : null;
+  if (wens) {
+    const over = [1, 2, 3].find((camera) => !cameras.includes(camera));
+    const gevraagd = Math.round(Number(wens.camera));
+    achter = {
+      // Een camera die al vooraan staat kan niet ook achteraan: dan de camera die over is.
+      camera: [1, 2, 3].includes(gevraagd) && !cameras.includes(gevraagd) ? gevraagd : over,
+      x: getal(wens.x, -0.5, 0.5, 0),
+      omhoog: getal(wens.omhoog, -0.5, 0.5, 0),
+      schaal: getal(wens.schaal, 0.1, 1, 0.4),
+      masker: bestand(wens.masker),
+    };
+  }
   return {
     label: String(manifest.label || "SAMEN").slice(0, 24),
     cameras,
     achtergrond: bestand(manifest.achtergrond),
     voorgrond: bestand(manifest.voorgrond),
-    schaal: getal(manifest.schaal, 0.2, 1, 0.6),
-    omhoog: getal(manifest.omhoog, -0.5, 0.5, 0),
+    schaal: getal(kies("schaal"), 0.2, 1, 0.6),
+    omhoog: getal(kies("omhoog"), -0.5, 0.5, 0),
+    achter,
   };
 }
 
@@ -158,13 +191,16 @@ function resolveSamen(samen, options = {}) {
     label: samen.label,
     omschrijving: "",
     bron: "samen",
-    actie: `Toont camera ${samen.cameras[0]} en ${samen.cameras[1]} naast elkaar tot je opnieuw drukt.`,
+    actie: samen.achter
+      ? `Toont camera ${samen.cameras[0]} en ${samen.cameras[1]} naast elkaar en camera ${samen.achter.camera} erachter tot je opnieuw drukt.`
+      : `Toont camera ${samen.cameras[0]} en ${samen.cameras[1]} naast elkaar tot je opnieuw drukt.`,
     klaar: false,
     reden: "",
     filePath: "",
   };
   if (!fileExists(samen.achtergrond, options)) return { ...base, reden: "bestand_ontbreekt" };
   if (samen.voorgrond && !fileExists(samen.voorgrond, options)) return { ...base, reden: "bestand_ontbreekt" };
+  if (samen.achter && samen.achter.masker && !fileExists(samen.achter.masker, options)) return { ...base, reden: "bestand_ontbreekt" };
   return { ...base, klaar: true, filePath: samen.achtergrond, samen, duur: 0 };
 }
 
@@ -210,7 +246,8 @@ function environmentExtrasStatus(runtimeState, options = {}) {
   const record = read.environment || {};
   const extras = normalizeEnvironmentExtras(record.extras);
   const resolvedName = ref.resolved && ref.resolved.environment ? ref.resolved.environment.name : "";
-  const samen = readSamen(ref.environmentId, options);
+  const situationId = ref.resolved && ref.resolved.situationId ? String(ref.resolved.situationId) : "";
+  const samen = readSamen(ref.environmentId, { ...options, situationId });
   // Eén beeld met de spelers erin (environment-beeld.js): de shotknop toont dan het overzicht.
   const overzicht = beeldLabel(ref.environmentId, options);
   const result = {
@@ -329,6 +366,7 @@ function buildEnvironmentExtraCue(runtimeState, input = {}, options = {}) {
       voorgrond: extra.samen.voorgrond,
       schaal: extra.samen.schaal,
       omhoog: extra.samen.omhoog,
+      achter: extra.samen.achter || null,
       uit,
     }));
   } else if (extra.camera) {
@@ -427,5 +465,6 @@ module.exports = {
   environmentExtrasStatus,
   publicExtrasStatus,
   resetHoldState,
+  readSamen,
   samenStaatAan,
 };

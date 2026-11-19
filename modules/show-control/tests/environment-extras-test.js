@@ -13,7 +13,7 @@ process.env.SHOW_CONTROL_DB_DIR = path.join(tmp, "db");
 process.env.SHOW_CONTROL_ADAPTER_MODE = "test";
 
 const { createShowControlApp } = require("../server/app");
-const { buildEnvironmentExtraCue, buildSfeerVolumeCue, environmentExtrasStatus, publicExtrasStatus, resetHoldState, samenStaatAan } = require("../cue-library/environment-extras");
+const { buildEnvironmentExtraCue, buildSfeerVolumeCue, environmentExtrasStatus, publicExtrasStatus, readSamen, resetHoldState, samenStaatAan } = require("../cue-library/environment-extras");
 const { oscArgsForAction, sendTouchDesignerCommand, shotUitArgsFor } = require("../target-adapters/touchdesigner-adapter");
 
 const catalog = {
@@ -198,6 +198,72 @@ async function testCameraWintVanShot() {
   resetHoldState();
 }
 
+// Derde speler achter de twee voorste, met een eigen plek; per situatie een andere indeling.
+function testSamenAchter() {
+  resetHoldState();
+  const manifest = {
+    label: "SAMEN", cameras: [1, 2], achtergrond: "rit.mp4", schaal: 0.6, omhoog: -0.2,
+    achter: { x: 0.05, omhoog: 0.1, schaal: 0.44, masker: "stoelen.png" },
+    situaties: {
+      "situation:93": { cameras: [2, 3] },
+      "situation:94": { cameras: [3, 1], omhoog: -0.1, achter: { camera: 3, schaal: 0.3 } },
+      "situation:95": { achter: false },
+    },
+  };
+  const lees = (inhoud) => ({
+    catalogMediaRoot: "/media",
+    readFile: (file) => {
+      if (file === "/media/environments/environment_33/samen/samen.json") return JSON.stringify(inhoud);
+      throw new Error("ENOENT");
+    },
+  });
+  const dir = "/media/environments/environment_33/samen/";
+  // Zonder situatie: de camera die over is zit achteraan.
+  assert.deepEqual(readSamen("environment:33", lees(manifest)), {
+    label: "SAMEN", cameras: [1, 2], achtergrond: `${dir}rit.mp4`, voorgrond: "", schaal: 0.6, omhoog: -0.2,
+    achter: { camera: 3, x: 0.05, omhoog: 0.1, schaal: 0.44, masker: `${dir}stoelen.png` },
+  });
+  // Situatie met een eigen indeling: 2 en 3 vooraan, 1 achteraan op dezelfde plek.
+  const s93 = readSamen("environment:33", { ...lees(manifest), situationId: "situation:93" });
+  assert.deepEqual(s93.cameras, [2, 3]);
+  assert.deepEqual(s93.achter, { camera: 1, x: 0.05, omhoog: 0.1, schaal: 0.44, masker: `${dir}stoelen.png` });
+  // Eigen velden gaan per veld over die van de omgeving; een camera die al vooraan staat wordt de camera die over is.
+  const s94 = readSamen("environment:33", { ...lees(manifest), situationId: "situation:94" });
+  assert.deepEqual(s94.cameras, [3, 1]);
+  assert.equal(s94.omhoog, -0.1);
+  assert.deepEqual(s94.achter, { camera: 2, x: 0.05, omhoog: 0.1, schaal: 0.3, masker: `${dir}stoelen.png` });
+  // "achter": false laat de derde speler weg; een onbekende situatie krijgt de indeling van de omgeving.
+  assert.equal(readSamen("environment:33", { ...lees(manifest), situationId: "situation:95" }).achter, null);
+  assert.equal(readSamen("environment:33", { ...lees(manifest), situationId: "situation:1" }).achter.camera, 3);
+  // Zonder "achter" (Lingo): precies twee camera's, zoals altijd.
+  const lingo = readSamen("environment:33", lees({ cameras: [3, 2], achtergrond: "bg.jpg", voorgrond: "desk.png", schaal: 0.6, omhoog: 0.077 }));
+  assert.equal(lingo.achter, null);
+  // Waarden buiten het scherm worden begrensd.
+  assert.deepEqual(
+    readSamen("environment:33", lees({ ...manifest, achter: { x: 9, omhoog: -9, schaal: 0 } })).achter,
+    { camera: 3, x: 0.5, omhoog: -0.5, schaal: 0.1, masker: "" },
+  );
+
+  // De knop: de situatie die speelt bepaalt de indeling; de derde speler gaat mee in de OSC-args.
+  const options = { ...extrasOptions, ...lees(manifest) };
+  const runtime = { showRunId: "run-1", activeSituation: { situationRunId: "s1", resolved: { environmentId: "environment:33", situationId: "situation:93" } } };
+  const status = environmentExtrasStatus(runtime, options);
+  assert.equal(status.shot.bron, "samen");
+  assert.equal(status.shot.klaar, true);
+  const aan = buildEnvironmentExtraCue(runtime, { soort: "shot" }, options).actions[0];
+  assert.deepEqual(oscArgsForAction({ ...aan, cueId: "c", payloadId: "p" }), [
+    "c", "td.samen.shot", "p", "0", "2", "3", `${dir}rit.mp4`, "", "0.6", "-0.2",
+    "1", "0.05", "0.1", "0.44", `${dir}stoelen.png`,
+  ]);
+  const uit = buildEnvironmentExtraCue(runtime, { soort: "shot" }, options).actions[0];
+  assert.equal(uit.payload.uit, true);
+  assert.equal(oscArgsForAction({ ...uit, cueId: "c", payloadId: "p" }).length, 10);
+  // Ontbreekt het masker, dan is de knop niet klaar.
+  const zonder = { ...options, fileExists: (file) => !file.endsWith("stoelen.png") };
+  assert.equal(environmentExtrasStatus(runtime, zonder).shot.reden, "bestand_ontbreekt");
+  resetHoldState();
+}
+
 // Gezamenlijk shot: samen/samen.json bij de media maakt van de shotknop een aan/uit voor twee camera's.
 async function testSamen() {
   resetHoldState();
@@ -283,6 +349,7 @@ function testZaal() {
   testZaal();
   await testCameraWintVanShot();
   await testSamen();
+  testSamenAchter();
   await testRoutes();
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log("environment-extras: ok");
