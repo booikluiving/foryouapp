@@ -1752,7 +1752,10 @@ function createOperatorService(options = {}) {
   async function voorbeeldStand() {
     const settings = await readSettings();
     const lijst = await voorbeelden.actief();
-    const sessie = sessions.get(normalizeSessionId(stageState.sessionId));
+    // De run van nu volgens de runtime; zonder runtime de sessie van het scriptvenster.
+    const runtime = await fetchRuntimeForOperator();
+    const runId = runtime && runtime.showRunId && runtime.status !== "idle" ? runtime.showRunId : stageState.sessionId;
+    const sessie = sessions.get(normalizeSessionId(runId));
     return {
       ok: true,
       kalibreren: settings.kalibreren,
@@ -1787,6 +1790,7 @@ function createOperatorService(options = {}) {
         updatedAt: draft.updatedAt,
       } : null,
       stage: snapshotStage(),
+      kalibratie: await voorbeeldStand().then(({ kalibreren, voorbeelden: lijst, inDezeRun }) => ({ kalibreren, voorbeelden: lijst.length, inDezeRun })).catch(() => null),
       secrets: await secretsStatus(),
       latestScriptOutput: latestScriptOutput ? {
         scriptId: latestScriptOutput.scriptId,

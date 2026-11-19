@@ -32,6 +32,7 @@ const els = {
   refreshRuntimeDraft: $("#refreshRuntimeDraft"),
   overslaan: $("#overslaan"),
   operatorMsg: $("#operatorMsg"),
+  kalibratieMsg: $("#kalibratieMsg"),
   syncMsg: $("#syncMsg"),
   chatLog: $("#chatLog"),
   chatForm: $("#chatForm"),
@@ -602,6 +603,8 @@ function renderSecretStatus(status = {}) {
   }
 }
 
+let statusFout = "";
+
 async function loadStatus() {
   loadSceneTest().catch(() => {
     sceneTestState = { running: false, enabled: false, activeSituation: null };
@@ -614,6 +617,20 @@ async function loadStatus() {
   els.statSessions.textContent = Number(status.activeSessions || 0).toLocaleString();
   renderSecretStatus(status.secrets || {});
   if (status.stage) applyStageState(status.stage);
+  renderKalibratie(status.kalibratie);
+  // Een melding van een mislukte vorige ronde (bv. tijdens een herstart) is nu voorbij.
+  if (statusFout && els.operatorMsg.textContent === statusFout) setMsg("");
+  statusFout = "";
+}
+
+// Kalibreren: de voorbeeldscènes die een run vooraf in het gesprek krijgt (niet zichtbaar in de chat).
+function renderKalibratie(k) {
+  let text = "";
+  if (k && !k.kalibreren) text = "Kalibratie: uit.";
+  else if (k && !k.voorbeelden) text = "Kalibratie: geen voorbeeldscènes.";
+  else if (k && k.inDezeRun) text = `Kalibratie: ${k.inDezeRun} voorbeeldscènes in deze run.`;
+  else if (k) text = `Kalibratie: ${k.voorbeelden} voorbeeldscènes, gaan mee bij de eerste scène.`;
+  els.kalibratieMsg.textContent = text;
 }
 
 async function loadStageStyle() {
@@ -1247,7 +1264,10 @@ async function boot() {
   await loadCatalog().catch((err) => setMsg(err.message || "catalog niet geladen", true));
   await loadSession().catch((err) => setMeta(`Fout: ${err.message || "sessie niet geladen"}`, true));
   if (statusTimer) clearInterval(statusTimer);
-  statusTimer = setInterval(() => withUiError(loadStatus), 5000);
+  statusTimer = setInterval(() => loadStatus().catch((err) => {
+    statusFout = err && err.message ? err.message : "status niet geladen";
+    setMsg(statusFout, true);
+  }), 5000);
 }
 
 withUiError(boot);
