@@ -564,6 +564,10 @@ class AudienceService extends EventEmitter {
       fetchKaart: options.clients ? options.clients.fetchTelefoonKaart : fetchTelefoonKaart,
       log: (regel) => console.log(regel),
     });
+    // Stemmen na de scène dicht: op het zaalscherm komen dan de nieuwe scènes vrij.
+    this.on("broadcast", (bericht) => {
+      if (bericht && bericht.type === "beoordeling_dicht") setImmediate(() => this.universumStap("vrij"));
+    });
     // Personagestab op de telefoon: wie in deze run al gespeeld is (personages.js).
     this.personages = createPersonages({ service: this, fotoVan: (run, id) => this.beoordeling.personagekaart(run, id) });
     this.pollAutoCloseTimer = null;
@@ -773,7 +777,7 @@ class AudienceService extends EventEmitter {
   // fase en de chat nooit raken.
   volgUniversum(state) {
     try {
-      if (this.universum.volg(state)) this.emit("broadcast", this.universum.publiek());
+      if (this.universum.volg(state, this.startStemmingStand())) this.emit("broadcast", this.universum.publiek());
       this.universum.laadKaart().then((uitkomst) => {
         if (uitkomst && uitkomst.anders) this.emit("broadcast", this.universum.publiek());
       }).catch(() => {});
@@ -2088,6 +2092,34 @@ class AudienceService extends EventEmitter {
 
   getStartStemming() {
     return this.startStemming ? { ...this.startStemming } : null;
+  }
+
+  // Stand van de stemming op de startscène zoals het zaalscherm en het universum hem lezen
+  // (/audience/stage/start-stemming, zonder de content warning).
+  startStemmingStand() {
+    const stemming = this.getStartStemming();
+    const poll = this.getActivePollSnapshot();
+    const actief = !!(stemming && poll && poll.start);
+    const counts = actief ? poll.counts : stemming && stemming.uitslag ? stemming.uitslag.counts : [];
+    return {
+      actief,
+      showRunId: stemming ? stemming.showRunId : null,
+      totalVotes: actief ? poll.totalVotes : stemming && stemming.uitslag ? stemming.uitslag.totalVotes : 0,
+      keuzes: stemming ? (stemming.keuzes || []).map((keuze, index) => ({ ...keuze, votes: Number(counts[index] || 0) })) : [],
+      uitslag: stemming ? stemming.uitslag || null : null,
+      showGestart: this.isShowGestart(),
+    };
+  }
+
+  // Universum op de telefoon: het zaalscherm laat na het stemmen de nieuwe scènes vrijkomen, en de
+  // kiezer landt op de volgende scène ("keuze getoond"). De telefoon volgt die stappen.
+  universumStap(stap) {
+    try {
+      const anders = stap === "keuze" ? this.universum.keuzeGetoond() : this.universum.vrijgave();
+      if (anders) this.emit("broadcast", this.universum.publiek());
+    } catch (err) {
+      console.warn(`universum: ${err && err.message || err}`);
+    }
   }
 
   bewaarStartStemming(next) {

@@ -60,13 +60,14 @@ function laadRekenaar() {
     ...RENDERER_FUNCTIES.map((naam) => knip(renderer, naam)),
     "globalThis.__layout = networkLayout;",
     "globalThis.__bocht = networkEdgeCurve;",
+    "globalThis.__straal = networkNodeRadius;",
   ].join("\n\n");
   const context = vm.createContext({ window: {}, Math, Map, Set, Number, String, Array, Object, Boolean, Infinity, JSON });
   vm.runInContext(layout, context, { timeout: 2000 });
   context.window.ForUniverseLayout = context.window.ForUniverseLayout || {};
   vm.runInContext(adapter, context, { timeout: 2000 });
   vm.runInContext(code, context, { timeout: 2000 });
-  rekenaar = { buildSkyModel: context.window.ForUniverseData.buildSkyModel, layout: context.__layout, bocht: context.__bocht, context };
+  rekenaar = { buildSkyModel: context.window.ForUniverseData.buildSkyModel, layout: context.__layout, bocht: context.__bocht, straal: context.__straal, context };
   return rekenaar;
 }
 
@@ -83,7 +84,7 @@ function ringIndeling(graph) {
 // graph = universe-state.graph → Map sceneId → {x, y}, rond (0,0).
 function telefoonIndeling(graph) {
   try {
-    const { buildSkyModel, layout, bocht } = laadRekenaar();
+    const { buildSkyModel, layout, bocht, straal } = laadRekenaar();
     const model = buildSkyModel(graph, null);
     const uitkomst = layout(model.networkMap || { nodes: [], edges: [] });
     const pos = new Map();
@@ -106,7 +107,18 @@ function telefoonIndeling(graph) {
         // Zonder bocht: rechte lijn.
       }
     }
-    return { pos, bochten, bron: "zaalscherm" };
+    // Maat van elke ster en dikte van elke lijn, zoals het zaalscherm ze tekent.
+    const stralen = new Map();
+    for (const node of (model.networkMap && model.networkMap.nodes) || []) {
+      try { const r = Number(straal(node)); if (Number.isFinite(r)) stralen.set(Number(node.sceneId), r); } catch (_err) { /* standaardmaat */ }
+    }
+    const dikten = new Map();
+    for (const edge of (model.networkMap && model.networkMap.edges) || []) {
+      if (!edge || edge.isLoop) continue;
+      const breed = Math.min(0.85 + Math.max(Number(edge.pathCount || edge.count || 1), 1) * 0.34, 3.2);
+      dikten.set(`${Number(edge.fromSceneId)}-${Number(edge.toSceneId)}`, [Math.round(breed * 100) / 100, edge.isMultiPath ? 1 : 0]);
+    }
+    return { pos, bochten, stralen, dikten, bron: "zaalscherm" };
   } catch (err) {
     rekenaar = null;
     const terug = ringIndeling(graph);

@@ -46,7 +46,7 @@ function naamVan(lijst) {
   return new Map((Array.isArray(lijst) ? lijst : []).map((item) => [Number(item.id), String(item.name || "").replace(/_/g, " ").trim()]));
 }
 
-function bouwKaartInhoud(graph, catalog, posities, bochten = {}) {
+function bouwKaartInhoud(graph, catalog, posities, bochten = {}, stralen = {}, dikten = {}) {
   const personages = naamVan(catalog.characters);
   const omgevingen = naamVan(catalog.environments);
   const sceneInfo = new Map((catalog.scenes || []).map((scene) => [Number(scene.id), scene]));
@@ -64,6 +64,7 @@ function bouwKaartInhoud(graph, catalog, posities, bochten = {}) {
       id,
       x: Math.round(punt[0] - midX),
       y: Math.round(punt[1] - midY),
+      r: Number(stralen[id]) ? Math.round(Number(stralen[id]) * 10) / 10 : 0,
       t: String(info.title || node.title || "").trim(),
       w: plekken.map((karakter) => (Number(karakter) ? personages.get(Number(karakter)) || null : null)),
       o: omgevingen.get(Number(info.environmentId)) || null,
@@ -74,9 +75,11 @@ function bouwKaartInhoud(graph, catalog, posities, bochten = {}) {
     .map((edge) => {
       const a = Number(edge.fromSceneId), b = Number(edge.toSceneId);
       // [van, naar] of met bocht [van, naar, c1x, c1y, c2x, c2y], in dezelfde ruimte als de sterren.
+      // [van, naar, c1x, c1y, c2x, c2y, dikte, meer paden]; zonder bocht staan er nulls (rechte lijn).
       const bocht = bochten[`${a}-${b}`];
-      if (!bocht) return [a, b];
-      return [a, b, Math.round(bocht[0] - midX), Math.round(bocht[1] - midY), Math.round(bocht[2] - midX), Math.round(bocht[3] - midY)];
+      const [dikte, meer] = dikten[`${a}-${b}`] || [1.19, 0];
+      const steun = bocht ? [Math.round(bocht[0] - midX), Math.round(bocht[1] - midY), Math.round(bocht[2] - midX), Math.round(bocht[3] - midY)] : [null, null, null, null];
+      return [a, b, ...steun, dikte, meer];
     });
   const paden = (graph.paths || [])
     .filter((pad) => pad && pad.isActive && !pad.archivedAt)
@@ -98,7 +101,7 @@ async function buildTelefoonKaart(options = {}) {
   const graph = universe.graph;
   const catalog = (editorState && editorState.catalog) || {};
   const handtekening = crypto.createHash("sha1")
-    .update(JSON.stringify(["bochten-1", graph.networkMap, graph.paths.map((pad) => [pad.pathId, pad.name, pad.color, pad.isActive, pad.nodes.map((n) => n.sceneId), pad.edges.map((e) => [e.fromSceneId, e.toSceneId])]),
+    .update(JSON.stringify(["bochten-2", graph.networkMap, graph.paths.map((pad) => [pad.pathId, pad.name, pad.color, pad.isActive, pad.nodes.map((n) => n.sceneId), pad.edges.map((e) => [e.fromSceneId, e.toSceneId])]),
       (catalog.scenes || []).map((s) => [s.id, s.title, s.characterSlots, s.characterCount, s.environmentId]),
       (catalog.characters || []).map((c) => [c.id, c.name]), (catalog.environments || []).map((e) => [e.id, e.name])]))
     .digest("hex").slice(0, 12);
@@ -112,7 +115,7 @@ async function buildTelefoonKaart(options = {}) {
       schema: SCHEMA,
       versie: handtekening,
       indeling: (uitkomst && uitkomst.bron) || "geen",
-      ...bouwKaartInhoud(graph, catalog, posities, (uitkomst && uitkomst.bochten) || {}),
+      ...bouwKaartInhoud(graph, catalog, posities, (uitkomst && uitkomst.bochten) || {}, (uitkomst && uitkomst.stralen) || {}, (uitkomst && uitkomst.dikten) || {}),
     };
     // Zonder indeling geen cache: de volgende vraag probeert het opnieuw.
     if (uitkomst) {

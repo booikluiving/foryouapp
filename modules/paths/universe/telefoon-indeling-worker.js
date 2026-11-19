@@ -10,4 +10,6 @@ const posities = {};
 for (const [sceneId, punt] of uitkomst.pos) posities[sceneId] = [punt.x, punt.y];
 const bochten = {};
 for (const [sleutel, punten] of uitkomst.bochten || []) bochten[sleutel] = punten;
-parentPort.postMessage({ bron: uitkomst.bron, fout: uitkomst.fout || null, posities, bochten });
+const stralen = Object.fromEntries(uitkomst.stralen || []);
+const dikten = Object.fromEntries(uitkomst.dikten || []);
+parentPort.postMessage({ bron: uitkomst.bron, fout: uitkomst.fout || null, posities, bochten, stralen, dikten });
