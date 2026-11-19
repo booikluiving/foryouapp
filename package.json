@@ -33,6 +33,7 @@
     "audience:waarschuwing-test": "node modules/audience/tests/waarschuwing-test.js",
     "audience:stage-rapport-test": "node modules/audience/tests/stage-rapport-test.js",
     "audience:camera-test": "node modules/audience/tests/publiekscamera-test.js",
+    "audience:personagefoto-test": "node modules/audience/tests/personagefoto-test.js",
     "script-agent:start": "node modules/script-agent/server/server.js",
     "script-agent:smoke": "node modules/script-agent/tests/smoke-test.js",
     "script-agent:test": "node modules/script-agent/tests/unit-test.js",

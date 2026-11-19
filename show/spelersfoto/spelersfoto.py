@@ -105,8 +105,9 @@ def uitsnede(bestand: Path, breedte: int, hoogte: int, gezicht: dict) -> bytes:
     return b""
 
 
-def stuur(server: str, plek: int, jpeg: bytes) -> dict:
-    verzoek = urllib.request.Request(f"{server}/audience/beoordeling/foto?plek={plek}", data=jpeg,
+def stuur(server: str, plek: int, jpeg: bytes, punten: float) -> dict:
+    # Het cijfer gaat mee: onder 0,2 staat er niemand in beeld en wordt het geen snapshot van het personage.
+    verzoek = urllib.request.Request(f"{server}/audience/beoordeling/foto?plek={plek}&punten={punten:.2f}", data=jpeg,
                                      headers={"content-type": "image/jpeg"}, method="POST")
     with urllib.request.urlopen(verzoek, timeout=5) as antwoord:
         return json.loads(antwoord.read().decode("utf-8"))
@@ -172,7 +173,7 @@ def main() -> None:
                 Path(a.bewaar).expanduser().mkdir(parents=True, exist_ok=True)
                 (Path(a.bewaar).expanduser() / f"plek{plek}.jpg").write_bytes(jpeg)
             try:
-                antwoord = stuur(a.server, plek, jpeg)
+                antwoord = stuur(a.server, plek, jpeg, punten)
                 print(f"plek {plek} {bestand.name}: {punten:.1f} → verstuurd ({len(jpeg) // 1024} kB) {antwoord.get('error', '')}", flush=True)
             except Exception as fout:
                 print(f"plek {plek} {bestand.name}: {punten:.1f}, versturen mislukt ({fout})", flush=True)

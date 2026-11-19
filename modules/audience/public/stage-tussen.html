@@ -393,6 +393,18 @@
       .rp-rijen .tussenkop.aan { visibility: visible; }
       .staaf.persoon b { font-size: 52px; }
       .staaf.persoon span small { display: block; font-size: 24px; color: var(--wit-3); padding-top: 2px; }
+      /* Toppersonages met snapshot: de eerste drie als staande vensters naast elkaar, de rest als lijst.
+         Plek en grootte van het beeld staan hier: aantal vensters, hoogte, ruimte ertussen en eromheen. */
+      .toprij { --top-aantal: 3; --top-hoogte: 400px; --top-tussen: 24px; --top-boven: 20px; --top-onder: 30px; --top-uitsnede: center 25%;
+        display: grid; grid-template-columns: repeat(var(--top-aantal), 1fr); gap: var(--top-tussen); padding: var(--top-boven) 0 var(--top-onder); }
+      .toprij .top { min-width: 0; color: var(--wit-2); visibility: hidden; }
+      .toprij .top.aan { visibility: visible; }
+      .toprij .top.nu { color: #fff; }
+      .toprij .top .beeld { height: var(--top-hoogte); border: 2px solid var(--wit-3); box-sizing: border-box; overflow: hidden; }
+      .toprij .top.met .beeld { border-color: #fff; }
+      .toprij .top .beeld img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: var(--top-uitsnede); }
+      .toprij .top .naam { font-size: 34px; font-weight: 700; line-height: 1.05; padding-top: 12px; overflow-wrap: anywhere; }
+      .toprij .top b { display: block; font-size: 64px; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
       /* Uitsneden van lachende gezichten uit de publiekscamera. */
       #rpCamUitleg { color: #fff; line-height: 1.25; }
       #rpCamUitleg:empty, #rpCamKop:empty { display: none; }
@@ -1241,7 +1253,26 @@
           na(t, () => {
             kop.classList.add("aan");
             geluid.relais();
+            // Heeft een van de eerste drie een snapshot uit de scène, dan staan die drie als vensters
+            // naast elkaar; zonder snapshot blijft het de lijst.
+            const vensters = personages.slice(0, 3).some((rij) => rij.foto) ? Math.min(3, personages.length) : 0;
+            const toprij = vensters ? maak("div", "toprij") : null;
+            if (toprij) el("rpLabels").append(toprij);
             personages.forEach((rij, index) => {
+              if (index < vensters) {
+                const top = maak("div", "top" + (index === 0 ? " nu" : "") + (rij.foto ? " met" : ""));
+                const beeld = maak("div", "beeld");
+                if (rij.foto) { const img = maak("img"); img.alt = ""; img.src = rij.foto; beeld.append(img); }
+                const getal = maak("b", "", "");
+                top.append(beeld, maak("div", "naam", `${index + 1}. ${rij.naam}`), getal);
+                toprij.append(top);
+                rpTimers.push(setTimeout(() => {
+                  top.classList.add("aan");
+                  geluid.relais();
+                  rpTelOp(getal, rij.score || 0, 600, teken);
+                }, 350 + index * 260));
+                return;
+              }
               const staaf = maak("div", "staaf persoon" + (index === 0 ? " nu" : ""));
               const spoor = maak("div", "spoor");
               const vulling = maak("i");
