@@ -46,6 +46,7 @@ const rt = {
 };
 const logboek = [];
 let teleprompterKwijt = false;
+const schakelaars = { aftellen: true, stemronde: true };
 
 function zetKlaar(situationId) {
   const s = catalogus.situations.find((item) => item.id === situationId) || catalogus.situations[1];
@@ -116,6 +117,11 @@ const scriptAgent = http.createServer(async (req, res) => {
   if (pad === "/v0/script-agent/operator/status") return stuur(res, { stage: { sessionId: rt.showRunId } });
   if (pad.startsWith("/v0/script-agent/operator/session/")) return stuur(res, { ok: true });
   if (pad === "/audience/admin/show/start") return stuur(res, { ok: true, showGestart: true });
+  if (pad === "/audience/admin/schakelaars") {
+    if (typeof body.aftellen === "boolean") schakelaars.aftellen = body.aftellen;
+    if (typeof body.stemronde === "boolean") schakelaars.stemronde = body.stemronde;
+    return stuur(res, { ok: true, ...schakelaars });
+  }
   const sit = body.situation && body.situation.situationId
     || body.runtimeOutput && body.runtimeOutput.resolvedPreparedNext && body.runtimeOutput.resolvedPreparedNext.situationId
     || rt.preparedNext && rt.preparedNext.situationId || "";
@@ -202,9 +208,19 @@ async function main() {
   r = await post("/v0/show-control/cues/start-situation", { name: "Operator start" }, "operator");
   assert.equal(r.status, 423); console.log(`   ${r.json.message}`);
 
-  stap("Escape-room laadt situation:2 en start (zonder schrijven)");
+  stap("Escape-room laadt situation:2 en start (zonder schrijven); zaalscherm uit de inloop");
   r = await post("/v0/show-control/regie/laad", { situationId: "situation:2", start: true }, "escape-room");
-  assert.equal(r.status, 200); assert.equal(r.json.run.speelt.situationId, "situation:2"); toon();
+  assert.equal(r.status, 200); assert.equal(r.json.run.speelt.situationId, "situation:2");
+  assert.ok(logboek.some((regel) => regel.includes("/audience/admin/show/start")), "inladen = START SHOW voor het zaalscherm");
+  toon();
+
+  stap("Schakelaars: aftellen uit, stemronde uit (alleen de eigenaar)");
+  r = await post("/v0/show-control/regie/schakelaars", { aftellen: false }, "operator");
+  assert.equal(r.status, 423, "een ander niet");
+  r = await post("/v0/show-control/regie/schakelaars", { aftellen: false, stemronde: false }, "escape-room");
+  assert.deepEqual(r.json.schakelaars, { aftellen: false, stemronde: false });
+  r = await post("/v0/show-control/regie/schakelaars", { aftellen: true, stemronde: true }, "escape-room");
+  assert.deepEqual(r.json.schakelaars, { aftellen: true, stemronde: true });
 
   stap("Deck in de zaal stopt de scène (mag altijd); stop antwoordt, daarna klaarzetten");
   const t0 = Date.now();
@@ -212,6 +228,11 @@ async function main() {
   console.log(`   antwoord na ${Date.now() - t0} ms, status ${r.status}`);
   assert.equal(r.status, 201);
   await new Promise((res) => setTimeout(res, 800)); toon();
+
+  stap("Zaalscherm vraagt na de scène om de tekst: in test is die er al (geen taalmodel)");
+  r = await post("/v0/show-control/cues/scene-to-chat-vanzelf", {});
+  assert.equal(r.json.reden, "tekst_is_er");
+  console.log(`   ${r.json.reden}`);
 
   stap("Vrijgeven: stop, stand show, run blijft");
   r = await post("/v0/show-control/regie/vrijgeven", {}, "escape-room");

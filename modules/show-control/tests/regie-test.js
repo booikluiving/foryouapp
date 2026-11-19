@@ -27,6 +27,7 @@ function nepWereld() {
     showRunSnapshot: { catalog: { situations: [1, 2, 3, 4].map((n) => ({ id: `situation:${n}`, title: `Scène ${n}` })) } },
   };
   const log = [];
+  const publiek = { showGestart: 0, aftellen: true, stemronde: true };
   const json = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
   async function fetchImpl(url, opts = {}) {
     const pad = url.replace(/^https?:\/\/[^/]+/, "");
@@ -41,6 +42,12 @@ function nepWereld() {
     }
     if (pad.includes("/script-agent/operator/status")) return json({ stage: { sessionId: "sessie-1" } });
     if (pad.includes("/script-agent/operator/session/")) return json({ ok: true });
+    if (pad === "/audience/admin/show/start") { publiek.showGestart += 1; return json({ ok: true }); }
+    if (pad === "/audience/admin/schakelaars") {
+      if (typeof body.aftellen === "boolean") publiek.aftellen = body.aftellen;
+      if (typeof body.stemronde === "boolean") publiek.stemronde = body.stemronde;
+      return json({ ok: true, aftellen: publiek.aftellen, stemronde: publiek.stemronde });
+    }
     return json({ error: "onbekend" }, 404);
   }
   const cues = [];
@@ -71,7 +78,7 @@ function nepWereld() {
     async executeUitgesteld() {},
     async saveCue() {},
   };
-  return { runtime, log, cues, fetchImpl, nepCues };
+  return { runtime, log, cues, fetchImpl, nepCues, publiek };
 }
 
 function maakRegie(wereld, extra = {}) {
@@ -133,6 +140,7 @@ async function testLaden() {
   await regie.laad({ wie: "x", situationId: "situation:2" });
   assert.deepEqual(wereld.cues.map((c) => c.soort), ["prepare", "chat"], "klaarzetten en bewaard script");
   assert.equal(wereld.cues[1].schrijven, false, "standaard zonder schrijven");
+  assert.equal(wereld.publiek.showGestart, 1, "inladen = START SHOW voor het zaalscherm (uit de inloop)");
   assert.equal(wereld.runtime.activeSituation, null, "inladen start niet");
   wereld.cues.length = 0;
   await regie.laad({ wie: "x", situationId: "situation:3", start: true });
@@ -205,6 +213,20 @@ async function testStopAntwoordtVoorKlaarzetten() {
   console.log("ok: stop antwoordt voor het klaarzetten");
 }
 
+async function testSchakelaars() {
+  const wereld = nepWereld();
+  const { regie } = maakRegie(wereld);
+  let o = await regie.overzicht();
+  assert.deepEqual(o.schakelaars, { aftellen: true, stemronde: true }, "overzicht toont de schakelaars");
+  o = await regie.zetSchakelaars({ wie: "iemand", aftellen: false });
+  assert.deepEqual(o.schakelaars, { aftellen: false, stemronde: true }, "in de show mag iedereen");
+  await regie.overnemen({ wie: "a", stand: "test" });
+  await assert.rejects(regie.zetSchakelaars({ wie: "b", stemronde: false }), (err) => err.statusCode === 423, "een ander niet als iemand de regie heeft");
+  o = await regie.zetSchakelaars({ wie: "a", stemronde: false });
+  assert.deepEqual(o.schakelaars, { aftellen: false, stemronde: false }, "de eigenaar wel");
+  console.log("ok: schakelaars");
+}
+
 // Het slot laat zijn grens-timer los (unref); deze timer houdt de test in leven.
 const houd = setInterval(() => {}, 1000);
 
@@ -214,6 +236,7 @@ const houd = setInterval(() => {}, 1000);
   await testLaden();
   await testRandomEnVrijgeven();
   await testStopAntwoordtVoorKlaarzetten();
+  await testSchakelaars();
   console.log("regie-test: alles ok");
   clearInterval(houd);
 })().catch((err) => {

@@ -1606,7 +1606,7 @@ function createOperatorService(options = {}) {
   // Scène inladen zonder schrijven (regie, teststand): geen taalmodel. Het laatst bewaarde script van
   // deze situatie gaat naar de teleprompter; is er geen, dan een leeg script, zodat de teleprompter
   // bij deze scène hoort en niet de tekst van de vorige toont.
-  async function zonderSchrijven(promptInput, sessionId, sourceId, emit = () => {}) {
+  async function zonderSchrijven(promptInput, sessionId, sourceId, emit = () => {}, promptText = "") {
     const situationId = promptInput && promptInput.situation ? String(promptInput.situation.situationId || "") : "";
     let bewaard = null;
     try {
@@ -1619,6 +1619,12 @@ function createOperatorService(options = {}) {
     }
     const scriptText = bewaard ? String(bewaard.scriptText) : "";
     generatieTeller += 1;
+    // Het zaalscherm toont het laatste antwoord: het bewaarde script komt erin als antwoord, net als
+    // een geschreven script (eerst als "bezig", dan klaar, zodat de laadbalk vol staat).
+    const assistantId = `assistant_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const assistantMessage = { id: assistantId, role: "assistant", content: scriptText, streaming: false, provider: "bewaard", model: bewaard ? bewaard.scriptId : "geen", at: nowIso() };
+    const prompt = normalizeText(promptText, 12000);
+    const userMessage = prompt ? { id: `user_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, role: "user", content: prompt, at: nowIso() } : null;
     stageState.sessionId = sessionId;
     stageState.draft = "";
     stageState.draftSourceId = normalizeSourceId(sourceId || "regie-zonder-schrijven");
@@ -1626,12 +1632,16 @@ function createOperatorService(options = {}) {
     stageState.streaming = false;
     stageState.active = null;
     stageState.revision += 1;
+    stageState.messages.push(...(userMessage ? [userMessage] : []), assistantMessage);
+    stageState.messages = stageState.messages.slice(-MAX_STAGE_MESSAGES);
     stageState.updatedAt = nowIso();
+    emitter.emit("stage", { type: "operator_stage_delta", assistantId, text: scriptText, fullText: scriptText, updatedAt: stageState.updatedAt });
     const scriptOutput = createScriptOutput({ promptInput, scriptText });
     if (onScriptOutput) await onScriptOutput({ promptInput, scriptOutput, source: "regie" });
     log(JSON.stringify({ at: nowIso(), event: "script_agent_zonder_schrijven", situationId, bewaard: bewaard ? bewaard.scriptId : null }));
     const done = {
       type: "done",
+      assistantId,
       text: scriptText,
       promptInputId: promptInput.promptInputId,
       scriptOutput,
@@ -1668,7 +1678,7 @@ function createOperatorService(options = {}) {
       if (overgeslagen && opmerking.laatsteScene === overgeslagen) opmerking.laatsteScene = opmerking.sceneDaarvoor;
     }
     if (body.schrijven === false) {
-      const done = await zonderSchrijven(nextDraft.promptInput, sessionId, sourceId, emit);
+      const done = await zonderSchrijven(nextDraft.promptInput, sessionId, sourceId, emit, nextDraft.text);
       return { sessionId, draft: nextDraft, opmerking: null, done };
     }
     // Een trendscène (omgeving Trend) is puur beeld: geen taalmodel, een vast script met de emoji.

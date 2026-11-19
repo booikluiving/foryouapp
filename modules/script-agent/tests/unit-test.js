@@ -520,6 +520,28 @@ async function main() {
   const zonderOpmerking = await operatorService.sceneToChat({ sourceId: "unit-scene-chat" });
   assert.equal(zonderOpmerking.opmerking, null);
 
+  // Inladen zonder schrijven (regie, test en random): het bewaarde script staat op het zaalscherm als
+  // antwoord, met de prompt erboven, net als een geschreven script; het taalmodel doet niets.
+  {
+    const vraagVoor = fakeDeepSeek.lastBody;
+    const events = [];
+    const luister = (event) => events.push(event.type);
+    operatorService.emitter.on("stage", luister);
+    const geladen = await operatorService.sceneToChat({ sourceId: "unit-regie", schrijven: false });
+    operatorService.emitter.off("stage", luister);
+    assert.equal(geladen.done.provider, "bewaard");
+    assert.equal(geladen.done.bewaard, true, "deze situatie heeft al een geschreven script");
+    assert.ok(geladen.done.text.includes("Ada: Live regel"));
+    const stage = operatorService.snapshotStage();
+    assert.equal(stage.messages.at(-1).role, "assistant");
+    assert.equal(stage.messages.at(-1).content, geladen.done.text, "het zaalscherm toont het bewaarde script");
+    assert.equal(stage.messages.at(-2).role, "user", "met de prompt erboven");
+    assert.ok(stage.messages.at(-2).content.includes("Begin rustig"), "de prompt van de scène");
+    assert.equal(stage.streaming, false);
+    assert.deepEqual(events.slice(-2), ["operator_stage_delta", "operator_stage_state"], "zaalscherm: eerst bezig, dan klaar (laadbalk vol)");
+    assert.equal(fakeDeepSeek.lastBody, vraagVoor, "geen taalmodel");
+  }
+
   // Trendscène (omgeving Trend): geen taalmodel, een vast script met één regel per emoji, en de druk
   // na de laatste emoji eindigt de scène (geen kaart "Einde").
   {
