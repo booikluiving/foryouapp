@@ -44,7 +44,7 @@ async function main() {
   // Stand uit de view
   const stand = standUitView(view());
   assert.deepEqual(stand.gespeeld, [1]);
-  assert.equal(stand.klaar, 4);
+  assert.equal(stand.klaar, 0, "klaargezet blijft verborgen (het zaalscherm onthult hem pas na het stemmen)");
   assert.deepEqual(stand.vrij, [2, 4]);
   assert.deepEqual(stand.echt[1], { w: ["Peter", "Yaël"], o: "Grimmige slaapkamer" }, "wie er echt speelde, ook op een vrije plek");
   assert.deepEqual(standUitView({ showRunId: "x", status: "idle" }).gespeeld, [], "geen run = niets gespeeld");
@@ -61,8 +61,9 @@ async function main() {
   assert.ok(!p.kaartjes[3], "op slot: geen kaartje");
   assert.ok(!JSON.stringify(p).includes("Geheim"), "titel van een slotscène verlaat de Mac niet");
   assert.deepEqual(p.kaartjes[1].w, ["Peter", "Yaël"]);
-  assert.deepEqual(p.kaartjes[2], { t: "Tweede", w: ["Lisa"], o: "Supermarkt" }, "vrij: titel, personages, omgeving");
-  assert.deepEqual(p.kaartjes[4].w, ["Emma", "Mark"], "klaargezet: ingevulde vrije plek");
+  assert.deepEqual(p.kaartjes[2], { t: "Tweede", w: ["Lisa"], o: null }, "vrij: titel en personages, geen omgeving");
+  assert.equal(p.kaartjes[1].o, "Grimmige slaapkamer", "gespeeld: omgeving wel");
+  assert.ok(!JSON.stringify(p).includes("Trein") && !JSON.stringify(p).includes("Emma"), "klaargezet: niets van de ingevulde scène verlaat de Mac");
 
   // Kaart voor de telefoon: geen woorden
   const skelet = u.skelet();

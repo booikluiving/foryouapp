@@ -100,7 +100,7 @@
       var leg = maak("div", "uv-leg");
       leg.setAttribute("aria-hidden", "true");
       [["background:var(--a)", "gespeeld"], ["border:1.5px solid var(--a)", "vrij"], ["background:#ffe27a", "speelt nu"],
-        ["border:2px solid #ffe27a", "straks"], ["background:rgba(255,255,255,.2)", "op slot"]].forEach(function (r) {
+        ["background:rgba(255,255,255,.2)", "op slot"]].forEach(function (r) {
         var s = maak("span"); var i = maak("i"); i.setAttribute("style", r[0]); s.append(i, r[1]); leg.append(s);
       });
       var zoom = maak("div", "uv-zoom");
