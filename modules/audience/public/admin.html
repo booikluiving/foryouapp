@@ -426,6 +426,13 @@
         </section>
 
         <section class="card">
+          <h2>Telefoon</h2>
+          <label class="row"><input id="tabUniversum" type="checkbox" /> <span>Tab for_youniverse</span></label>
+          <label class="row"><input id="tabPersonages" type="checkbox" /> <span>Tab Personages</span></label>
+          <div class="muted">Uit = de telefoons tonen alleen de chat. Werkt meteen, zonder herladen.</div>
+        </section>
+
+        <section class="card">
           <h2>Top Chatters</h2>
           <div id="emojiLeaderboardMeta" class="muted">Nog geen puntenactiviteit.</div>
           <div class="row">
@@ -1558,6 +1565,7 @@
         if (data.sessionJoin && data.sessionJoin.joinUrl) drawQr(data.sessionJoin.joinUrl);
         renderWifiQr(data.wifiQr);
         renderReacties(data.reacties, data.fase);
+        renderTelefoonTabs(data.telefoonTabs);
         renderTussen(data);
         renderSettings(data);
         renderLeaderboard(data);
@@ -1576,6 +1584,18 @@
         } catch (err) {
           setActionMessage("Admin state fout: " + err.message, true);
         }
+      }
+      function renderTelefoonTabs(tabs) {
+        if (!tabs) return;
+        const u = document.getElementById("tabUniversum");
+        const p = document.getElementById("tabPersonages");
+        if (u && document.activeElement !== u) u.checked = tabs.universum === true;
+        if (p && document.activeElement !== p) p.checked = tabs.personages === true;
+      }
+      for (const [id, naam] of [["tabUniversum", "universum"], ["tabPersonages", "personages"]]) {
+        document.getElementById(id).addEventListener("change", (e) => {
+          runAction("/audience/admin/tabs", { [naam]: e.target.checked }).catch(() => {});
+        });
       }
       async function runAction(path, body) {
         try {

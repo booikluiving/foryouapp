@@ -8,6 +8,7 @@ const { evaluatePaths } = require("../evaluation/evaluate-paths");
 const { buildPathsSnapshot } = require("../read-model/build-snapshot");
 const { createPathsSnapshot } = require("../snapshots/snapshot-store");
 const { buildPathsUniverseState } = require("../universe/build-universe-state");
+const { buildTelefoonKaart } = require("../universe/telefoon-kaart");
 const { validatePathsSnapshot } = require("../validation/validate-paths");
 const {
   archivePath,
@@ -109,6 +110,11 @@ function createPathsApp(options = {}) {
 
   app.get("/v0/paths/universe-state", asyncRoute(async (_req, res) => {
     res.json(await buildPathsUniverseState(options));
+  }));
+
+  // Kaart voor de publiekstelefoon: alleen voor de publieksdienst, die filtert wat het publiek ziet.
+  app.get("/v0/paths/telefoon-kaart", loopbackOnly, asyncRoute(async (_req, res) => {
+    res.json(await buildTelefoonKaart(options));
   }));
 
   app.get("/v0/paths/validation", asyncRoute(async (_req, res) => {

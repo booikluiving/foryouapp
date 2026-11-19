@@ -21,6 +21,8 @@ const {
   sendAudienceSignalsToAlgorithm,
   sendScoreFeedToRuntime,
 } = require("../client/runtime-client");
+const { fetchTelefoonKaart } = require("../client/paths-client");
+const { stuurKaart } = require("./universum");
 const {
   appendAudienceSession,
   appendAudienceSignal,
@@ -37,6 +39,8 @@ const { loadExpress } = require("./express-loader");
 const express = loadExpress();
 const { createWaarschuwing } = require("./waarschuwing");
 const { createSpelersReady } = require("./spelers-ready");
+const { serveerTabs } = require("./telefoon-tabs");
+const { personagefotoRoute } = require("./personages");
 const { KIJK_PATH, isKijkvenster } = require("./kijkvenster");
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
 
@@ -54,6 +58,7 @@ function audienceClients() {
   return {
     fetchCurrentRuntimeState,
     fetchRuntimeView,
+    fetchTelefoonKaart,
     prepareChosenSituation,
     restoreRuntimeAlgorithmContext,
     sendAudienceSignalsToAlgorithm,
@@ -80,6 +85,7 @@ function createAudienceApp(options = {}) {
   service.waarschuwing = waarschuwing;
   app.use(express.json({ limit: "512kb" }));
   app.use("/audience/vendor", express.static(path.join(PUBLIC_DIR, "vendor"), { fallthrough: false }));
+  app.use("/audience/public/tabs", serveerTabs(express, PUBLIC_DIR));
 
   app.get("/health", (_req, res) => {
     res.json(service.health());
@@ -435,6 +441,9 @@ setInterval(kijk, 2000);
   });
   // De snapshot van een personage in deze run: de speler als dat personage, uit de laatste scène waarin
   // het speelde. Zonder snapshot 204.
+  // Personagestab op de telefoon in de zaal (LAN): dezelfde verkleinde foto als op de publieke poort.
+  app.get("/audience/public/personagefoto/:characterId", personagefotoRoute(service));
+
   app.get("/audience/stage/personagefoto/:characterId", (req, res) => {
     const foto = service.beoordeling.personagefoto(String(req.query.run || ""), req.params.characterId);
     if (!foto) { res.set("Cache-Control", "no-store"); return res.status(204).end(); }
@@ -654,6 +663,28 @@ setInterval(kijk, 2000);
     res.json(await service.adminState(req));
   }));
 
+  // Universum op de telefoon (universum.js): eigen pagina en de kaart zonder namen.
+  app.get("/audience/universum", (_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, "universum.html"));
+  });
+
+  app.get("/audience/universum/tab.js", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.type("application/javascript").sendFile(path.join(PUBLIC_DIR, "tabs", "universum.js"));
+  });
+
+  app.get("/audience/universum/kaart", (req, res) => {
+    const ip = req.socket && req.socket.remoteAddress;
+    const access = isKijkvenster(req) && service.getActiveSession()
+      ? { ok: true }
+      : service.ensureSessionAccessForRequest(req, ip);
+    if (!access.ok) {
+      res.status(access.reason === "session_inactive" ? 410 : 403).json({ ok: false, error: access.reason });
+      return;
+    }
+    stuurKaart(service.universum, req, res);
+  });
+
   app.get("/audience/public/history", (req, res) => {
     const ip = req.socket && req.socket.remoteAddress;
     const access = isKijkvenster(req) && service.getActiveSession()
@@ -760,6 +791,11 @@ setInterval(kijk, 2000);
   app.post("/audience/admin/stage/herlaad", (_req, res) => {
     service.emit("broadcast", { type: "stage_herlaad" });
     res.json({ ok: true });
+  });
+
+  // Noodknop: tabs naast de chat op de publiekstelefoon aan of uit, zonder herladen.
+  app.post("/audience/admin/tabs", (req, res) => {
+    res.json({ ok: true, tabs: service.saveTelefoonTabs(req.body || {}) });
   });
 
   app.post("/audience/admin/reacties", (req, res) => {

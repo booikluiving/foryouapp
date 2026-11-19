@@ -29,6 +29,9 @@ const {
 } = require("../simulation/chat-simulator");
 const { createWordFilter } = require("./word-filter");
 const { createBeoordeling } = require("./beoordeling");
+const { createUniversum } = require("./universum");
+const { fetchTelefoonKaart } = require("../client/paths-client");
+const { createPersonages } = require("./personages");
 
 const SERVICE_VERSION = "audience.0";
 const ACCESS_COOKIE = "fy_audience_access";
@@ -47,6 +50,9 @@ const REACTIES_STANDAARD = Object.freeze([
 const FASE_POLL_MS = 1000;
 // Vraag die na de scène op de telefoon verschijnt (met een paar trillingen); instelbaar in Admin.
 const NA_SCENE_VRAAG_KEY = "na_scene_vraag";
+// Tabs op de publiekstelefoon naast de chat; elk apart aan/uit in Admin (noodknop, standaard uit).
+const TELEFOON_TABS_KEY = "telefoon_tabs";
+const TELEFOON_TABS = Object.freeze(["universum", "personages"]);
 // Stemmen op de startscène: welke stemming het is, bij welke run, en de uitslag.
 const START_STEMMING_KEY = "start_stemming";
 const START_STEMMING_INSTELLINGEN_KEY = "start_stemming_instellingen";
@@ -69,6 +75,12 @@ const CHAT_RUN_KEY = "chat_show_run";
 const SHOW_GESTART_KEY = "show_gestart_run";
 const NA_SCENE_VRAAG_STANDAARD = "En?";
 
+function normalizeTelefoonTabs(raw) {
+  const bron = raw && typeof raw === "object" ? raw : {};
+  const tabs = {};
+  for (const naam of TELEFOON_TABS) tabs[naam] = bron[naam] === true;
+  return tabs;
+}
 function normalizeNaSceneVraag(raw) {
   if (raw === null || raw === undefined) return NA_SCENE_VRAAG_STANDAARD;
   return String(raw).replace(/\s+/g, " ").trim().slice(0, 80);
@@ -524,6 +536,7 @@ class AudienceService extends EventEmitter {
     this.wifiQrSettings = normalizeWifiQrSettings(this.store.getSetting(WIFI_QR_SETTINGS_KEY, {}));
     this.reacties = normalizeReacties(this.store.getSetting(REACTIES_KEY, null));
     this.naSceneVraag = normalizeNaSceneVraag(this.store.getSetting(NA_SCENE_VRAAG_KEY, null));
+    this.telefoonTabs = normalizeTelefoonTabs(this.store.getSetting(TELEFOON_TABS_KEY, null));
     this.startStemming = this.store.getSetting(START_STEMMING_KEY, null);
     this.startStemmingInstellingen = normalizeStartStemmingInstellingen(this.store.getSetting(START_STEMMING_INSTELLINGEN_KEY, null));
     // Fase van de voorstelling, uit de runtime: "scene" (situatie loopt) of "tussen".
@@ -546,6 +559,13 @@ class AudienceService extends EventEmitter {
     this.showGestartRun = this.store.getSetting(SHOW_GESTART_KEY, null) || null;
     // De vragen na elke scène (beoordeling.js).
     this.beoordeling = createBeoordeling(this);
+    // Het universum op de telefoon (universum.js). Zonder padendienst (tests) blijft de kaart leeg.
+    this.universum = createUniversum({
+      fetchKaart: options.clients ? options.clients.fetchTelefoonKaart : fetchTelefoonKaart,
+      log: (regel) => console.log(regel),
+    });
+    // Personagestab op de telefoon: wie in deze run al gespeeld is (personages.js).
+    this.personages = createPersonages({ service: this, fotoVan: (run, id) => this.beoordeling.personagefoto(run, id) });
     this.pollAutoCloseTimer = null;
     this.internalSimulatorKey = crypto.randomBytes(16).toString("hex");
     this.liveScoreDispatchWork = Promise.resolve();
@@ -642,6 +662,24 @@ class AudienceService extends EventEmitter {
     return this.naSceneVraag;
   }
 
+  getTelefoonTabs() {
+    return { ...this.telefoonTabs };
+  }
+
+  // Alleen wat meegegeven wordt verandert; de telefoons krijgen de nieuwe stand meteen, zonder herladen.
+  saveTelefoonTabs(wijziging) {
+    const bron = wijziging && typeof wijziging === "object" ? wijziging : {};
+    const volgende = { ...this.telefoonTabs };
+    for (const naam of TELEFOON_TABS) {
+      if (typeof bron[naam] === "boolean") volgende[naam] = bron[naam];
+    }
+    this.telefoonTabs = normalizeTelefoonTabs(volgende);
+    this.store.setSetting(TELEFOON_TABS_KEY, this.telefoonTabs);
+    this.emit("broadcast", { type: "tabs", tabs: this.getTelefoonTabs() });
+    this.emit("admin-state-changed");
+    return this.getTelefoonTabs();
+  }
+
   saveReacties(lijst, vraag) {
     this.reacties = normalizeReacties(lijst);
     this.store.setSetting(REACTIES_KEY, this.reacties);
@@ -720,12 +758,28 @@ class AudienceService extends EventEmitter {
     // Runtime onbereikbaar: laatste stand houden.
     if (!result || !result.ok || !result.state) return this.getFase();
     this.volgRun(result.state);
+    this.volgUniversum(result.state);
     this.onthoudScene(result.state);
     this.beoordeling.onthoudScene(result.state);
+    this.personages.volg(result.state);
     const active = result.state.activeSituation;
     return this.setFase(active
       ? { fase: "scene", titel: active.title, situationRunId: active.situationRunId || active.situationId || "actief" }
       : { fase: "tussen" });
+  }
+
+  // Universum op de telefoon: één bericht met de hele stand als er iets verandert (scène start of
+  // stopt, nieuwe scènes vrij, iets klaargezet, nieuwe run, nieuwe kaart). Fouten hier mogen de
+  // fase en de chat nooit raken.
+  volgUniversum(state) {
+    try {
+      if (this.universum.volg(state)) this.emit("broadcast", this.universum.publiek());
+      this.universum.laadKaart().then((uitkomst) => {
+        if (uitkomst && uitkomst.anders) this.emit("broadcast", this.universum.publiek());
+      }).catch(() => {});
+    } catch (err) {
+      console.warn(`universum: ${err && err.message || err}`);
+    }
   }
 
   // Wat het publiek het laatst zag (of nu ziet): titel, verloop, omgeving en wie erin speelden.
@@ -2424,6 +2478,7 @@ class AudienceService extends EventEmitter {
       fase: this.getFase(),
       reacties: this.getReacties(),
       naSceneVraag: this.naSceneVraag,
+      telefoonTabs: this.getTelefoonTabs(),
       ronde: this.getRonde(),
       activePoll: this.pollSnapshot(activePoll),
       startStemming: this.getStartStemming(),

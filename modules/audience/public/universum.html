@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07080b">
+<title>For_You</title>
+<style>
+  /* Losse proefpagina voor de tab for_youniverse: dezelfde code (tabs/universum.js), zonder de chat. */
+  :root { --bg: #07080b; --a: #fff; --b: rgba(255, 255, 255, 0.66); --c: rgba(255, 255, 255, 0.22); --d: rgba(255, 255, 255, 0.07); --font: "Helvetica Neue", Helvetica, Arial, sans-serif; color-scheme: dark; }
+  [hidden] { display: none !important; }
+  html { height: 100%; background: var(--bg); }
+  body { margin: 0 auto; max-width: 560px; height: 100dvh; min-height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); color: var(--a); font-family: var(--font); }
+  .kop { display: flex; align-items: center; gap: 10px; padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 10px; border-bottom: 1px solid var(--d); }
+  .merk { font-weight: 700; font-size: 16px; }
+  .live { margin-left: auto; display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--b); }
+  .stip { width: 8px; height: 8px; border-radius: 50%; background: var(--b); }
+  .live.aan .stip { background: #9be3a8; }
+  .live.weg .stip { background: #ff8a7a; }
+  #vlak { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+</style>
+</head>
+<body>
+  <div class="kop"><span class="merk">For_You</span><span class="live" id="live"><i class="stip"></i><span id="liveTekst">verbinden…</span></span></div>
+  <section id="vlak" aria-label="for_youniverse"></section>
+  <script>
+    // Kleine schil met dezelfde afspraken als de tabs in index.html (tabs/LEESMIJ.md).
+    (function () {
+      var tab = null, wachtend = [];
+      window.ForYouTabs = {
+        registreer: function (naam, def) {
+          if (naam !== "universum" || tab) return;
+          tab = def;
+          try { tab.start(document.getElementById("vlak"), { zichtbaar: function () { return true; }, laatste: function () { return null; }, naarTab: function () {} }); } catch (e) { console.error(e); }
+          wachtend.forEach(function (m) { try { tab.bericht(m); } catch (e) {} });
+          wachtend = [];
+        },
+        bericht: function (m) {
+          if (tab) { try { tab.bericht(m); } catch (e) {} } else wachtend.push(m);
+        },
+      };
+      document.addEventListener("visibilitychange", function () {
+        if (!tab) return;
+        try { if (document.visibilityState === "visible") tab.toon(); else tab.verberg(); } catch (e) {}
+      });
+    })();
+  </script>
+  <script src="/audience/universum/tab.js"></script>
+  <script src="/audience/socket.io/socket.io.js"></script>
+  <script>
+  (function () {
+    "use strict";
+    var socket = null, wachttijd = 600, gestopt = false, herTimer = null;
+    function live(stat, tekst) { document.getElementById("live").className = "live " + stat; document.getElementById("liveTekst").textContent = tekst; }
+    function verbind() {
+      if (gestopt || !window.io) return;
+      clearTimeout(herTimer);
+      live("", "verbinden…");
+      socket = window.io({ path: "/audience/socket.io", transports: ["polling"], upgrade: false, reconnection: false, forceNew: true, withCredentials: true });
+      socket.on("connect", function () { wachttijd = 600; live("aan", "live"); });
+      socket.on("ws_message", function (tekst) {
+        var m; try { m = JSON.parse(tekst); } catch (e) { return; }
+        if (["hello", "universum", "session_closed", "session_reset", "chat_reset"].indexOf(m.type) >= 0) window.ForYouTabs.bericht(m);
+      });
+      socket.on("ws_close", function (x) {
+        var code = Number(x && x.code || 0);
+        if (code >= 4008 && code <= 4011) {
+          gestopt = true;
+          live("weg", code === 4011 || code === 4009 ? "afgelopen" : "gesloten");
+          window.ForYouTabs.bericht({ type: "session_closed" });
+        }
+      });
+      socket.on("disconnect", opnieuw);
+      socket.on("connect_error", opnieuw);
+    }
+    function opnieuw() {
+      try { if (socket) { socket.removeAllListeners(); socket.close(); } } catch (e) {}
+      socket = null;
+      if (gestopt) return;
+      live("weg", "herverbinden…");
+      if (document.visibilityState !== "visible") return;
+      clearTimeout(herTimer);
+      herTimer = setTimeout(verbind, wachttijd);
+      wachttijd = Math.min(15000, Math.round(wachttijd * 1.6 + 120));
+    }
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible" && !socket && !gestopt) { wachttijd = 600; verbind(); }
+    });
+    verbind();
+  })();
+  </script>
+</body>
+</html>
