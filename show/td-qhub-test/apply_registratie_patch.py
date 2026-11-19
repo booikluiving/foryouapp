@@ -36,6 +36,11 @@ _REG_SPELERS = 'chan1'
 # versterking naast de muziek niet te horen.
 REGISTRATIE_SPELERS_DB = 36
 _REG_MUZIEK = 'null11'             # ingang van audiodevout2
+# Vaste samplerate van de opname. De muziek volgt de rate van het sfeergeluid (27 soundscapes zijn
+# 48 kHz); met Sample Rate Match 'max' werd de hele mix dan 48 kHz terwijl het bestand 44,1 kHz is,
+# en liep het geluid in die scènes 8,8 % trager dan het beeld (gemeten 19 nov). Daarom: de SQ op
+# deze rate en elke optelling met Sample Rate Match 'first' (de spelers), muziek wordt omgerekend.
+REGISTRATIE_RATE = 44100
 
 _REG_STUUR = '''
 import os, json, time
@@ -105,7 +110,7 @@ else:
     if _sq_naam:
         _sq.par.device = _sq_naam[0]
     _sq.par.format = 'multichannel'
-    _sq.par.rate = _p.op(_REG_MUZIEK).rate if _p.op(_REG_MUZIEK) is not None else 48000
+    _sq.par.rate = REGISTRATIE_RATE
 
     def _kies(naam, kanaal, bron=None):
         _s = _b.create(selectCHOP, naam)
@@ -135,12 +140,14 @@ else:
         for _zijde, _kanaal, _uit in (('links', 'chan1', 'chan1'), ('rechts', 'chan2', 'chan2')):
             _m = _b.create(mathCHOP, _zijde + '_som')
             _m.par.chopop = 'add'
+            _m.par.srselect = 'first'
             _m.inputConnectors[0].connect(_sp)
             if _p.op(_REG_MUZIEK) is not None:
                 _m.inputConnectors[1].connect(_kies('muziek_' + _zijde, _kanaal, '../' + _REG_MUZIEK))
             _zij.append(_naam(_m, _zijde, _uit))
         _l, _r = _zij
     _g = _b.create(mergeCHOP, 'geluid')
+    _g.par.srselect = 'first'
     _g.inputConnectors[0].connect(_l)
     _g.inputConnectors[1].connect(_r)
 
