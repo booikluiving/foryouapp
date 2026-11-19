@@ -9,10 +9,11 @@ const { isTrendOmgeving } = require("../../../../../shared/trend/trend");
 
 const DEFAULT_CAPTION_STYLE_PATH = path.join(__dirname, "..", "..", "..", "db", "teleprompter-caption-style.json");
 
-const AUTO_CAMERA_ADDRESSES = Object.freeze({
-  1: "/osc/osc25",
-  2: "/osc/osc26",
-  3: "/osc/osc27",
+const DEFAULT_AUTO_CAMERA_PATH = path.join(__dirname, "..", "..", "..", "db", "teleprompter-autocam.json");
+const AUTO_CAMERA_IDS = Object.freeze({
+  1: "camera:1",
+  2: "camera:2",
+  3: "camera:3",
 });
 const REACTION_SHOT_DELAY_MIN_MS = 5000;
 const REACTION_SHOT_DELAY_MAX_MS = 7000;
@@ -159,6 +160,27 @@ function readCaptionStyleFile(filePath) {
   }
 }
 
+// Autocam aan/uit (en reactieshots) blijft bewaard: een herstart van de dienst zet hem niet meer uit.
+function readAutoCameraFile(filePath) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    if (!parsed || typeof parsed !== "object") return null;
+    return { enabled: parsed.enabled === true, reactionShotsEnabled: parsed.reactionShotsEnabled === true };
+  } catch {
+    return null;
+  }
+}
+
+function writeAutoCameraFile(filePath, autoCameraSwitch) {
+  const stand = autoCameraSwitch && typeof autoCameraSwitch === "object" ? autoCameraSwitch : {};
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify({
+    enabled: stand.enabled === true,
+    reactionShotsEnabled: stand.reactionShotsEnabled === true,
+    updatedAt: new Date().toISOString(),
+  }, null, 2));
+}
+
 function writeCaptionStyleFile(filePath, captionStyle) {
   const safeStyle = captionStyle && typeof captionStyle === "object" ? captionStyle : {};
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -209,12 +231,12 @@ function buildAutoCameraReactionShotPlan({ show, teleprompt, cue, preparedScene,
     action: "schedule",
     reason: "reaction_timer",
     slot: reactionSlot,
-    address: AUTO_CAMERA_ADDRESSES[reactionSlot],
+    cameraId: AUTO_CAMERA_IDS[reactionSlot],
     cameraLabel: String(reactionCharacter.name || ""),
     speakerLabel: String(line.speakerLabel || ""),
     speakingSlot: speakerSlot,
     returnSlot: speakerSlot,
-    returnAddress: AUTO_CAMERA_ADDRESSES[speakerSlot],
+    returnCameraId: AUTO_CAMERA_IDS[speakerSlot],
     returnCameraLabel: String(speakerCharacter.name || line.speakerLabel || ""),
     cueIndex: Number(cue && cue.index || 0),
     cueVersion: Number(cue && cue.version || 0),
@@ -261,7 +283,7 @@ function resolveAutoCameraSwitch({ show, teleprompt, cue, preparedScene, fallbac
     action: "switch",
     reason: String(switchReason || "dialogue_speaker"),
     slot,
-    address: AUTO_CAMERA_ADDRESSES[slot],
+    cameraId: AUTO_CAMERA_IDS[slot],
     speakerLabel: String(line.speakerLabel || ""),
     cameraLabel: String(line.speakerLabel || ""),
     cueIndex,
@@ -282,6 +304,9 @@ function mountTeleprompterParser(app, options = {}) {
   const normalizePrepareInput = typeof options.normalizePrepareInput === "function" ? options.normalizePrepareInput : (input) => input;
   const captionStylePath = String(options.captionStylePath || process.env.FORYOU_TELEPROMPTER_CAPTION_STYLE_PATH || DEFAULT_CAPTION_STYLE_PATH);
   const store = createTelepromptStore({ captionStyle: readCaptionStyleFile(captionStylePath) });
+  const autoCameraPath = String(options.autoCameraPath || process.env.FORYOU_TELEPROMPTER_AUTO_CAMERA_PATH || DEFAULT_AUTO_CAMERA_PATH);
+  const bewaardeAutocam = readAutoCameraFile(autoCameraPath);
+  if (bewaardeAutocam) store.setAutoCameraSwitch(bewaardeAutocam);
   const publicDir = path.join(__dirname, "..", "..", "public");
   const publicPrefix = String(options.publicPrefix || "/teleprompter-parser").replace(/\/+$/, "");
   const apiPrefix = String(options.apiPrefix || "/api/teleprompter-parser").replace(/\/+$/, "");
@@ -441,7 +466,7 @@ function mountTeleprompterParser(app, options = {}) {
         action: "switch",
         reason: "reaction_shot",
         slot: plan.slot,
-        address: plan.address,
+        cameraId: plan.cameraId,
         speakerLabel: plan.speakerLabel,
         cameraLabel: plan.cameraLabel,
         speakingSlot: plan.speakingSlot,
@@ -458,7 +483,7 @@ function mountTeleprompterParser(app, options = {}) {
           action: "switch",
           reason: "reaction_return",
           slot: plan.returnSlot,
-          address: plan.returnAddress,
+          cameraId: plan.returnCameraId,
           speakerLabel: plan.speakerLabel,
           cameraLabel: plan.returnCameraLabel,
           reactionSlot: plan.slot,
@@ -892,6 +917,13 @@ function mountTeleprompterParser(app, options = {}) {
           ? switchInput.reactionEnabled
           : store.getAutoCameraSwitch().reactionShotsEnabled,
     });
+    if (result.changed) {
+      try {
+        writeAutoCameraFile(autoCameraPath, result.autoCameraSwitch);
+      } catch (err) {
+        console.warn(`Autocam: stand niet bewaard: ${err && err.message ? err.message : err}`);
+      }
+    }
     let autoCameraReactionPlan = null;
     if (!result.autoCameraSwitch.enabled || !result.autoCameraSwitch.reactionShotsEnabled) {
       clearAutoCameraReactionTimers();
