@@ -405,7 +405,7 @@ setInterval(kijk, 2000);
       }
     }
     const kaartjes = { sceneId: nummer(klaar.legacySituationId || klaar.situationId), kleur, grijs };
-    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", plekken, labels, sceneLabels, favoriet, toppersonages, personages, kaartjes, ready, spelersReady: spelersReady.publiek(), speelt: !!view.activeSituation });
+    res.json({ ok: true, klaar: true, situationId: klaar.situationId, titel: klaar.title || "", prompt: klaar.promptText || "", plekken, labels, sceneLabels, favoriet, toppersonages, personages, kaartjes, ready, spelersReady: spelersReady.publiek(), speelt: !!view.activeSituation });
   }));
 
   // De vragen na de scène: de stand (wat er openstaat, de tellingen, de laatste uitslag).
