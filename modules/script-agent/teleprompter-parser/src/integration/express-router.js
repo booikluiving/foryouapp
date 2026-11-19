@@ -288,6 +288,60 @@ function mountTeleprompterParser(app, options = {}) {
   const adminPrefix = String(options.adminPrefix || "/admin/teleprompter-parser").replace(/\/+$/, "");
   const eventClients = new Set();
 
+  // Versie van de ondertitelpagina: de jongste wijzigingsdatum van haar drie bestanden. Staat in het adres
+  // van de css en js (dus geen oude versie uit de cache) en in elke payload: ziet de pagina een andere
+  // versie dan die van haarzelf, dan herlaadt ze zichzelf buiten een scène.
+  const ONDERTITEL_BESTANDEN = ["live-captions.html", "live-captions-app.js", "styles.css"];
+  let ondertitelVersie = "";
+  let ondertitelVersieAt = 0;
+  function ondertitelPaginaVersie() {
+    const nu = Date.now();
+    if (ondertitelVersie && nu - ondertitelVersieAt < 2000) return ondertitelVersie;
+    ondertitelVersieAt = nu;
+    let jongste = 0;
+    ONDERTITEL_BESTANDEN.forEach((naam) => {
+      try {
+        jongste = Math.max(jongste, fs.statSync(path.join(publicDir, naam)).mtimeMs);
+      } catch {}
+    });
+    ondertitelVersie = jongste ? String(Math.round(jongste)) : "0";
+    return ondertitelVersie;
+  }
+
+  // Vertraging van de ondertitel: klik (klikker-sidecar) → tekstparser → in beeld op de ondertitelpagina.
+  // Per cue-versie één regel in ~/Library/Logs/ForYou/ondertitel-vertraging.log (JSON per regel).
+  const VERTRAGING_LOG = options.vertragingLogPath || path.join(os.homedir(), "Library", "Logs", "ForYou", "ondertitel-vertraging.log");
+  const cueMetingen = new Map();
+  const vertragingen = [];
+  function meetCue(cue, klikAt) {
+    const klik = Number(klikAt);
+    cueMetingen.set(Number(cue.version), {
+      index: Number(cue.index || 0),
+      klikAt: Number.isFinite(klik) && klik > 0 ? klik : null,
+      parserAt: Date.now(),
+    });
+    while (cueMetingen.size > 50) cueMetingen.delete(cueMetingen.keys().next().value);
+  }
+  function cueGetoond(version, getoondAt) {
+    const meting = cueMetingen.get(Number(version));
+    const getoond = Number(getoondAt);
+    if (!meting || !Number.isFinite(getoond)) return null;
+    cueMetingen.delete(Number(version));
+    const regel = {
+      at: new Date().toISOString(),
+      cue: meting.index,
+      klikNaarParserMs: meting.klikAt ? meting.parserAt - meting.klikAt : null,
+      parserNaarBeeldMs: Math.round(getoond - meting.parserAt),
+      totaalMs: meting.klikAt ? Math.round(getoond - meting.klikAt) : null,
+    };
+    vertragingen.push(regel);
+    if (vertragingen.length > 200) vertragingen.shift();
+    fs.mkdir(path.dirname(VERTRAGING_LOG), { recursive: true }, () => {
+      fs.appendFile(VERTRAGING_LOG, `${JSON.stringify(regel)}\n`, () => {});
+    });
+    return regel;
+  }
+
   function currentPayload(reason = "current") {
     const show = getShowState();
     return {
@@ -301,6 +355,7 @@ function mountTeleprompterParser(app, options = {}) {
       preparedScene: store.getPreparedScene(),
       hierna: store.getHierna(),
       bord: store.getBord(),
+      ondertitelVersie: ondertitelPaginaVersie(),
     };
   }
 
@@ -472,7 +527,24 @@ function mountTeleprompterParser(app, options = {}) {
   });
 
   app.get(`${publicPrefix}/live-captions`, (_req, res) => {
-    res.sendFile(path.join(publicDir, "live-captions.html"));
+    const versie = ondertitelPaginaVersie();
+    fs.readFile(path.join(publicDir, "live-captions.html"), "utf8", (err, html) => {
+      if (err) {
+        res.status(500).send("live-captions.html ontbreekt");
+        return;
+      }
+      res.set("Cache-Control", "no-cache");
+      res.type("html").send(html.replace(/(styles\.css|live-captions-app\.js)\?v=[^"]*/g, `$1?v=${versie}`));
+    });
+  });
+
+  app.post(`${apiPrefix}/ondertitel-getoond`, (req, res) => {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    res.json({ ok: true, meting: cueGetoond(body.version, body.getoondAt) });
+  });
+
+  app.get(`${apiPrefix}/ondertitel-vertraging`, (_req, res) => {
+    res.json({ ok: true, log: VERTRAGING_LOG, metingen: vertragingen.slice(-50) });
   });
 
   // Plaatjes voor het bord (blind ranking). Een plaatje is een PNG-laag die in de beeldcatalogus bij een
@@ -673,6 +745,7 @@ function mountTeleprompterParser(app, options = {}) {
     }
 
     const result = store.setCueIndex(requestedIndex);
+    if (result.changed) meetCue(result.cue, body.klikAt);
     const autoCameraSwitchResult = result.changed ? maybeAutoCameraSwitch(show, result.cue, "cue") : null;
     const autoCameraReactionPlan = result.changed ? scheduleAutoCameraReactionShot(show, result.cue, "cue") : null;
     if (result.changed) broadcast("cue");

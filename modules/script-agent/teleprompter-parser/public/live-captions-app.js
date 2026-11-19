@@ -96,50 +96,24 @@
     while (card.firstChild) card.removeChild(card.firstChild);
   }
 
-  // Een aanwijzing (*gromt zacht*) hoort bij wat de speler doet, niet bij wat hij zegt: die staat los
-  // in het midden van het beeld. Wat gezegd wordt blijft op de plek van de ondertitel.
-  const action = document.createElement("section");
-  action.className = "caption-action";
-  action.hidden = true;
-  root.appendChild(action);
-
-  function splitActions(input) {
-    const actions = [];
-    const spoken = String(input || "")
-      .replace(/\*([^*\n]+)\*/g, (_match, inner) => {
-        const text = inner.trim();
-        if (text) actions.push(text);
-        return " ";
-      })
-      .replace(/\s+/g, " ")
-      .replace(/\s+([.,!?;:])/g, "$1")
-      .trim();
-    // Alleen leestekens over: er wordt niets gezegd.
-    return { actions, spoken: /[\p{L}\p{N}]/u.test(spoken) ? spoken : "" };
-  }
-
-  function showActions(actions) {
-    while (action.firstChild) action.removeChild(action.firstChild);
-    action.hidden = !actions.length;
-    actions.forEach((text) => {
-      const regel = document.createElement("span");
-      regel.className = "caption-action-line";
-      regel.textContent = text;
-      action.appendChild(regel);
-    });
+  // Een aanwijzing (*gromt zacht*) staat in de ondertitel zelf, tussen haken en cursief, op de plek
+  // waar hij in de zin staat: "[gromt zacht] Ik meen het." De gesproken tekst blijft recht.
+  function addDirection(target, text) {
+    const direction = document.createElement("span");
+    direction.className = "caption-inline-direction";
+    direction.textContent = `[${text}]`;
+    target.appendChild(direction);
   }
 
   function appendFormattedText(target, input) {
-    const text = String(input || "");
+    const text = String(input || "").replace(/\s+/g, " ").trim();
     const pattern = /\*([^*\n]+)\*/g;
     let cursor = 0;
     let match;
     while ((match = pattern.exec(text))) {
       if (match.index > cursor) target.appendChild(document.createTextNode(text.slice(cursor, match.index)));
-      const direction = document.createElement("span");
-      direction.className = "caption-inline-direction";
-      direction.textContent = match[1].trim();
-      target.appendChild(direction);
+      const inner = match[1].trim();
+      if (inner) addDirection(target, inner);
       cursor = match.index + match[0].length;
     }
     if (cursor < text.length) target.appendChild(document.createTextNode(text.slice(cursor)));
@@ -162,6 +136,14 @@
     return ZONDER_TEKST_OMGEVING_RE.test(String(omgeving && omgeving.name || ""));
   }
 
+  function vorigeSpreker(lines, lineIndex) {
+    for (let i = lineIndex - 1; i >= 0; i -= 1) {
+      const line = lines[i];
+      if (line && line.type === "dialogue" && line.text) return String(line.speakerLabel || "").trim();
+    }
+    return "";
+  }
+
   function captionForIndex(index) {
     const lines = teleprompt && Array.isArray(teleprompt.lines) ? teleprompt.lines : [];
     // De scène begint met de eerste regel; de titel stond al op het zaalscherm tijdens het schrijven.
@@ -176,12 +158,16 @@
     const titel = line.type !== "dialogue" && /^\s*#+\s*(.+)$/.exec(line.text);
     if (titel) return { type: "title", text: situationTitle() || titel[1].trim() };
     // Dialoog op het hoofdscherm altijd met de naam: "Naam:" en de zin op de regel eronder.
+    // De naam staat er alleen als er iemand anders begint te praten dan bij de vorige dialoogregel:
+    // elke zin is een eigen klik, dus anders staat dezelfde naam er een paar keer achter elkaar.
     if (line.type === "dialogue") {
-      const { actions, spoken } = splitActions(line.text);
-      return { type: "dialogue", speaker: String(line.speakerLabel || "").trim(), text: spoken, actions };
+      const speaker = String(line.speakerLabel || "").trim();
+      const vorige = vorigeSpreker(lines, index - 1);
+      return { type: "dialogue", speaker: speaker && speaker !== vorige ? speaker : "", text: line.text };
     }
-    // Een regel die alleen een aanwijzing is, staat ook in het midden.
-    return { type: "direction", text: "", actions: [String(line.text).replace(/^\*+|\*+$/g, "").trim()].filter(Boolean) };
+    // Een regel die alleen een aanwijzing is: tussen haken en cursief op de plek van de ondertitel.
+    const aanwijzing = String(line.text).replace(/^\*+|\*+$/g, "").trim();
+    return aanwijzing ? { type: "direction", text: aanwijzing } : null;
   }
 
   function atEndCard() {
@@ -210,7 +196,6 @@
     clearCard();
     root.dataset.cueIndex = String(cue.index || 0);
     root.dataset.captionText = activeCaption ? activeCaption.text : "";
-    root.dataset.captionAction = activeCaption && activeCaption.actions ? activeCaption.actions.join(" / ") : "";
     root.dataset.live = captionsAreLive() ? "1" : "0";
     if (debugEnabled && debug) {
       const title = teleprompt && teleprompt.title ? teleprompt.title : "geen scene";
@@ -218,8 +203,7 @@
       const status = captionsAreLive() ? "live" : "verborgen";
       debug.textContent = `Live captions ${status} | cue ${cue.index || 0}/${Math.max(deckLength() - 1, 0)} | ${title}`;
     }
-    showActions(activeCaption && activeCaption.actions ? activeCaption.actions : []);
-    if (!activeCaption || (!activeCaption.text && activeCaption.actions)) {
+    if (!activeCaption || !activeCaption.text) {
       card.hidden = true;
       card.className = "caption-card";
       return;
@@ -231,6 +215,8 @@
       blok.className = "caption-title-text";
       blok.textContent = activeCaption.text;
       card.appendChild(blok);
+    } else if (activeCaption.type === "direction") {
+      addDirection(card, activeCaption.text);
     } else {
       if (activeCaption.type === "dialogue" && activeCaption.speaker) {
         const naam = document.createElement("span");
@@ -243,6 +229,23 @@
       appendFormattedText(card, activeCaption.text);
     }
     fitCaption();
+    meldGetoond();
+  }
+
+  // Vertragingsmeting: zodra een nieuwe cue echt in beeld staat (na twee frames), meldt de pagina dat
+  // aan de tekstparser. Die zet klik → tekstparser → beeld in het logboek.
+  let gemeldeVersie = -1;
+  function meldGetoond() {
+    const versie = Number(cue && cue.version);
+    if (!captionsAreLive() || !Number.isFinite(versie) || versie === gemeldeVersie) return;
+    gemeldeVersie = versie;
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      fetch("/v0/script-agent/teleprompter-parser/ondertitel-getoond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: versie, getoondAt: Date.now() }),
+      }).catch(() => {});
+    }));
   }
 
   function applyCurrentPayload(payload) {
@@ -254,9 +257,21 @@
     // Met een bord (blind ranking) staat het plaatje midden in beeld: de ondertitel gaat eronder.
     const stijl = payload.captionStyle || DEFAULT_CAPTION_STYLE;
     applyCaptionStyle(teleprompt && teleprompt.bord ? { ...stijl, verticalPosition: 84 } : stijl);
-    // Het plaatje van het bord staat in het midden: de aanwijzing gaat er dan onder.
-    root.style.setProperty("--caption-action-top", teleprompt && teleprompt.bord ? "72%" : "50%");
     render();
+    herlaadBijNieuweVersie(payload.ondertitelVersie);
+  }
+
+  // Is de pagina op de show-Mac aangepast, dan herlaadt ze zichzelf, maar nooit midden in een scène.
+  const eigenVersie = (() => {
+    const script = document.querySelector('script[src*="live-captions-app.js"]');
+    const match = script && /[?&]v=([^&]+)/.exec(script.getAttribute("src") || "");
+    return match ? match[1] : "";
+  })();
+  let herlaadGepland = false;
+  function herlaadBijNieuweVersie(versie) {
+    if (herlaadGepland || !versie || !eigenVersie || versie === eigenVersie || captionsAreLive()) return;
+    herlaadGepland = true;
+    window.setTimeout(() => window.location.reload(), 1000);
   }
 
   async function triggerEndSceneFromEndCard() {

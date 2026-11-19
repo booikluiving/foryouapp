@@ -174,6 +174,8 @@ async function handleTrigger(state, options, rawTrigger = {}, receivedAtMs = Dat
   if (rawTrigger.direction && !payload.direction) payload.direction = String(rawTrigger.direction);
   if (key && !payload.key) payload.key = key;
   if (!payload.source) payload.source = rawTrigger.source || "perfect-cue";
+  // Tijdstip van de klik, voor de vertragingsmeting van de ondertitel (tekstparser schrijft het logboek).
+  if (!payload.klikAt) payload.klikAt = receivedAtMs;
   const trigger = {
     ...mapping,
     ...rawTrigger,
