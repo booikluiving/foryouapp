@@ -8,4 +8,6 @@ const { telefoonIndeling } = require("./telefoon-indeling");
 const uitkomst = telefoonIndeling(workerData.graph);
 const posities = {};
 for (const [sceneId, punt] of uitkomst.pos) posities[sceneId] = [punt.x, punt.y];
-parentPort.postMessage({ bron: uitkomst.bron, fout: uitkomst.fout || null, posities });
+const bochten = {};
+for (const [sleutel, punten] of uitkomst.bochten || []) bochten[sleutel] = punten;
+parentPort.postMessage({ bron: uitkomst.bron, fout: uitkomst.fout || null, posities, bochten });

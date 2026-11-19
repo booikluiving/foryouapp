@@ -12,36 +12,34 @@
     ".uv-balk b{color:var(--a);font-weight:500}",
     ".uv-blad{position:relative;flex:1 1 auto;min-height:0;overflow:hidden}",
     ".uv svg{width:100%;height:100%;display:block;touch-action:none;user-select:none;-webkit-user-select:none}",
-    ".uv .lijn{stroke:var(--d);stroke-width:1.2;fill:none}",
-    ".uv .lijn.gelopen{stroke:var(--a);stroke-width:2}",
-    ".uv .lijn.open{stroke:var(--c)}",
-    ".uv .licht{fill:none;stroke-width:3;stroke-linecap:round;opacity:.9}",
+    ".uv .lijn{stroke:#fff;stroke-opacity:.09;stroke-width:1;fill:none;stroke-linecap:round}",
+    ".uv .lijn.open{stroke-opacity:.5}",
+    ".uv .lijn.nu{stroke-opacity:1;stroke-width:1.4}",
+    ".uv .licht{fill:none;stroke:#fff;stroke-width:2.6;stroke-linecap:round}",
     ".uv .ster{transform-box:fill-box;transform-origin:center}",
-    ".uv .ster.slot{fill:rgba(255,255,255,.2)}",
-    ".uv .ster.vrij{fill:var(--bg);stroke:var(--a);stroke-width:1.6}",
-    ".uv .ster.gespeeld{fill:var(--a)}",
-    ".uv .ster.klaar{fill:var(--bg);stroke:#ffe27a;stroke-width:2}",
-    ".uv .ster.nu{fill:#ffe27a}",
-    ".uv .ster.gekozen{stroke:var(--a);stroke-width:3}",
+    ".uv .ster.slot{fill:rgba(255,255,255,.16)}",
+    ".uv .ster.vrij{fill:#fff;filter:url(#uv-gloed)}",
+    ".uv .ster.gespeeld{fill:var(--bg);stroke:#fff;stroke-width:1.6}",
+    ".uv .ster.nu{fill:#fff;filter:url(#uv-gloed)}",
+    ".uv .ster.gekozen{stroke:#fff;stroke-width:3}",
     ".uv .ster.vers{animation:uvPlop 1.2s ease-out 1}",
-    ".uv .ring{fill:none;stroke:#ffe27a;stroke-width:1.5;animation:uvPuls 2s ease-out infinite}",
+    ".uv .ring{fill:none;stroke:#fff;stroke-width:1.5;animation:uvPuls 2s ease-out infinite}",
     ".uv.uit .ring,.uv.uit .ster{animation-play-state:paused}",
     "@keyframes uvPuls{from{r:10;opacity:.9}to{r:28;opacity:0}}",
     "@keyframes uvPlop{0%{transform:scale(2.4)}100%{transform:scale(1)}}",
     ".uv .naam{fill:var(--b);font-size:11px;font-family:var(--font);pointer-events:none}",
     "@media (prefers-reduced-motion:reduce){.uv .ring,.uv .ster.vers{animation:none}.uv-sheet{transition:none}}",
     ".uv-zoom{position:absolute;right:12px;bottom:12px;display:flex;flex-direction:column;gap:6px}",
-    ".uv-zoom button{width:40px;height:40px;border-radius:50%;border:1px solid var(--c);background:var(--bg);color:var(--a);font-size:18px;cursor:pointer;padding:0}",
+    ".uv-zoom button{width:40px;height:40px;border:1px solid var(--c);background:var(--bg);color:var(--a);font-size:18px;cursor:pointer;padding:0}",
     ".uv-leg{position:absolute;left:12px;bottom:12px;display:grid;gap:4px;font-size:11px;color:var(--b);pointer-events:none}",
     ".uv-leg span{display:flex;align-items:center;gap:6px}",
     ".uv-leg i{width:9px;height:9px;border-radius:50%;display:inline-block;box-sizing:border-box}",
-    ".uv-sheet{position:absolute;left:0;right:0;bottom:0;max-height:70%;overflow-y:auto;background:#0e1015;border-top:1px solid var(--c);border-radius:18px 18px 0 0;padding:14px 18px 20px;transform:translateY(105%);transition:transform .22s ease-out}",
+    ".uv-sheet{position:absolute;left:0;right:0;bottom:0;max-height:70%;overflow-y:auto;background:var(--bg);border-top:1px solid var(--a);padding:14px 18px 20px;transform:translateY(105%);transition:transform .22s ease-out}",
     ".uv-sheet.open{transform:none}",
-    ".uv-greep{width:36px;height:4px;border-radius:2px;background:var(--c);margin:0 auto 12px}",
+    ".uv-greep{width:36px;height:2px;background:var(--c);margin:0 auto 12px}",
     ".uv-sluit{position:absolute;right:12px;top:8px;background:none;border:0;color:var(--b);font-size:24px;cursor:pointer;padding:4px 8px}",
-    ".uv-chip{display:inline-block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--c);border-radius:20px;padding:3px 9px;color:var(--b)}",
-    ".uv-chip.nu,.uv-chip.klaar{color:#ffe27a;border-color:#ffe27a}",
-    ".uv-chip.gespeeld{color:var(--bg);background:var(--a);border-color:var(--a)}",
+    ".uv-chip{display:inline-block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--b)}",
+    ".uv-chip.nu{color:var(--a)}",
     ".uv-sheet h2{font-size:20px;font-weight:500;margin:10px 0 12px;line-height:1.2;text-wrap:balance}",
     ".uv-sheet dl{margin:0}",
     ".uv-rij{display:grid;grid-template-columns:78px 1fr;gap:8px;font-size:14px;padding:7px 0;border-top:1px solid var(--d)}",
@@ -92,6 +90,13 @@
       this.balk = maak("div", "uv-balk");
       var blad = maak("div", "uv-blad");
       this.svg = svgEl("svg", { viewBox: "-400 -400 800 800", "aria-label": "for_youniverse" });
+      var defs = svgEl("defs", {});
+      var gloed = svgEl("filter", { id: "uv-gloed", x: "-150%", y: "-150%", width: "400%", height: "400%" });
+      gloed.appendChild(svgEl("feGaussianBlur", { stdDeviation: "2.2", result: "w" }));
+      var mg = svgEl("feMerge", {});
+      mg.appendChild(svgEl("feMergeNode", { "in": "w" })); mg.appendChild(svgEl("feMergeNode", { "in": "SourceGraphic" }));
+      gloed.appendChild(mg); defs.appendChild(gloed);
+      this.svg.appendChild(defs);
       this.cam_g = svgEl("g", {});
       this.lLijnen = svgEl("g", {}); this.lLicht = svgEl("g", {}); this.lSterren = svgEl("g", {}); this.lNamen = svgEl("g", {});
       this.cam_g.append(this.lLijnen, this.lLicht, this.lSterren, this.lNamen);
@@ -99,8 +104,8 @@
       this.wacht = maak("div", "uv-wacht", "Universum laden…");
       var leg = maak("div", "uv-leg");
       leg.setAttribute("aria-hidden", "true");
-      [["background:var(--a)", "gespeeld"], ["border:1.5px solid var(--a)", "vrij"], ["background:#ffe27a", "speelt nu"],
-        ["background:rgba(255,255,255,.2)", "op slot"]].forEach(function (r) {
+      [["border:1.5px solid #fff", "gespeeld"], ["background:#fff;box-shadow:0 0 6px #fff", "vrij"],
+        ["background:rgba(255,255,255,.16)", "op slot"]].forEach(function (r) {
         var s = maak("span"); var i = maak("i"); i.setAttribute("style", r[0]); s.append(i, r[1]); leg.append(s);
       });
       var zoom = maak("div", "uv-zoom");
@@ -170,15 +175,19 @@
       this.basis = { x: minX - 40, y: minY - 40, w: maxX - minX + 80, h: maxY - minY + 80 };
       this.svg.setAttribute("viewBox", this.basis.x + " " + this.basis.y + " " + this.basis.w + " " + this.basis.h);
       this.cam = { x: this.basis.x + this.basis.w / 2, y: this.basis.y + this.basis.h / 2, s: 1 };
+      this.baan = new Map();
       k.l.forEach(function (e) {
         var A = self.S.get(e[0]), B = self.S.get(e[1]);
         if (!A || !B) return;
-        var l = svgEl("line", { x1: A.x, y1: A.y, x2: B.x, y2: B.y, "class": "lijn" });
+        // Met steunpunten: dezelfde bocht als op het zaalscherm; anders recht.
+        var d = e.length >= 6
+          ? "M" + A.x + " " + A.y + "C" + e[2] + " " + e[3] + " " + e[4] + " " + e[5] + " " + B.x + " " + B.y
+          : "M" + A.x + " " + A.y + "L" + B.x + " " + B.y;
+        self.baan.set(e[0] + "-" + e[1], d);
+        var l = svgEl("path", { d: d, "class": "lijn" });
         self.lLijnen.appendChild(l);
         self.elLijn.push({ a: e[0], b: e[1], l: l });
       });
-      this.looplijn = svgEl("polyline", { "class": "lijn gelopen" });
-      this.lLijnen.appendChild(this.looplijn);
       k.s.forEach(function (r) {
         var c = svgEl("circle", { cx: r[1], cy: r[2], r: 4, "class": "ster slot" });
         self.lSterren.appendChild(c);
@@ -230,7 +239,7 @@
       if (!this.kaart || !st) return;
       this.elSter.forEach(function (c, id) {
         var z = self.staat(id);
-        c.setAttribute("r", z === "slot" ? 4 : (z === "gespeeld" || z === "nu") ? 8 : 6.5);
+        c.setAttribute("r", z === "slot" ? 3.5 : z === "nu" ? 8 : z === "gespeeld" ? 6 : 5);
         var k = "ster " + z;
         if (id === self.gekozen) k += " gekozen";
         if (vorigOpen && z === "vrij" && !vorigOpen.has(id)) k += " vers";
@@ -239,14 +248,15 @@
       var g = new Set(st.gespeeld), open = new Set(st.vrij);
       if (st.nu) open.add(st.nu);
       if (st.klaar) open.add(st.klaar);
+      // Zoals het zaalscherm: helder aan wat speelt, half aan wat gespeeld of vrij is, verder heel flauw.
       this.elLijn.forEach(function (x) {
-        var naarOpen = (g.has(x.a) && open.has(x.b)) || (g.has(x.b) && open.has(x.a));
-        x.l.setAttribute("class", "lijn" + (naarOpen ? " open" : ""));
+        var k = "lijn";
+        if (st.nu && (x.a === st.nu || x.b === st.nu)) k += " nu";
+        else if (g.has(x.a) || g.has(x.b) || open.has(x.a) || open.has(x.b)) k += " open";
+        x.l.setAttribute("class", k);
       });
       var reeks = st.gespeeld.slice();
       if (st.nu) reeks.push(st.nu);
-      this.looplijn.setAttribute("points", reeks.filter(function (id) { return self.S.has(id); })
-        .map(function (id) { return self.S.get(id).x + "," + self.S.get(id).y; }).join(" "));
       if (st.nu && this.S.has(st.nu)) {
         this.ring.setAttribute("cx", this.S.get(st.nu).x); this.ring.setAttribute("cy", this.S.get(st.nu).y); this.ring.style.display = "";
       } else this.ring.style.display = "none";
@@ -292,11 +302,10 @@
       this.lLicht.textContent = "";
       if (!this.gekozen) return;
       (this.padenVan.get(this.gekozen) || []).forEach(function (p) {
-        var kl = kleur(p.c);
         (p.e || []).forEach(function (e) {
-          var A = self.S.get(e[0]), B = self.S.get(e[1]);
-          if (!A || !B) return;
-          self.lLicht.appendChild(svgEl("line", { x1: A.x, y1: A.y, x2: B.x, y2: B.y, "class": "licht", stroke: kl }));
+          var d = self.baan.get(e[0] + "-" + e[1]);
+          if (!d) { var A = self.S.get(e[0]), B = self.S.get(e[1]); if (!A || !B) return; d = "M" + A.x + " " + A.y + "L" + B.x + " " + B.y; }
+          self.lLicht.appendChild(svgEl("path", { d: d, "class": "licht" }));
         });
       });
     },

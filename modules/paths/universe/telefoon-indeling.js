@@ -15,6 +15,7 @@ const PUBLIC = path.join(__dirname, "public");
 
 const MODULE_FUNCTIES = [
   "networkPolarForPoint", "shortestAngleDiff", "networkRingPoint", "bboxForPoints", "clamp", "stableHash", "stableUnit",
+  "networkEdgeCurve",
 ];
 const RENDERER_FUNCTIES = [
   "networkNodeRadius", "networkNodePathSet", "sharedSetCount", "parseNetworkDirection", "sortedNetworkRoots",
@@ -58,13 +59,14 @@ function laadRekenaar() {
     ...MODULE_FUNCTIES.map((naam) => knip(renderer, naam)),
     ...RENDERER_FUNCTIES.map((naam) => knip(renderer, naam)),
     "globalThis.__layout = networkLayout;",
+    "globalThis.__bocht = networkEdgeCurve;",
   ].join("\n\n");
   const context = vm.createContext({ window: {}, Math, Map, Set, Number, String, Array, Object, Boolean, Infinity, JSON });
   vm.runInContext(layout, context, { timeout: 2000 });
   context.window.ForUniverseLayout = context.window.ForUniverseLayout || {};
   vm.runInContext(adapter, context, { timeout: 2000 });
   vm.runInContext(code, context, { timeout: 2000 });
-  rekenaar = { buildSkyModel: context.window.ForUniverseData.buildSkyModel, layout: context.__layout, context };
+  rekenaar = { buildSkyModel: context.window.ForUniverseData.buildSkyModel, layout: context.__layout, bocht: context.__bocht, context };
   return rekenaar;
 }
 
@@ -81,7 +83,7 @@ function ringIndeling(graph) {
 // graph = universe-state.graph → Map sceneId → {x, y}, rond (0,0).
 function telefoonIndeling(graph) {
   try {
-    const { buildSkyModel, layout } = laadRekenaar();
+    const { buildSkyModel, layout, bocht } = laadRekenaar();
     const model = buildSkyModel(graph, null);
     const uitkomst = layout(model.networkMap || { nodes: [], edges: [] });
     const pos = new Map();
@@ -90,7 +92,21 @@ function telefoonIndeling(graph) {
       pos.set(Number(sceneId), punt);
     }
     if (!pos.size) throw new Error("lege_indeling");
-    return { pos, bron: "zaalscherm" };
+    // De banen zoals het zaalscherm ze tekent: per lijn twee steunpunten van een bocht.
+    const bochten = new Map();
+    for (const edge of (model.networkMap && model.networkMap.edges) || []) {
+      if (!edge || edge.isLoop) continue;
+      const a = pos.get(Number(edge.fromSceneId));
+      const b = pos.get(Number(edge.toSceneId));
+      if (!a || !b) continue;
+      try {
+        const { c1, c2 } = bocht(a, b, edge);
+        if ([c1.x, c1.y, c2.x, c2.y].every(Number.isFinite)) bochten.set(`${Number(edge.fromSceneId)}-${Number(edge.toSceneId)}`, [c1.x, c1.y, c2.x, c2.y]);
+      } catch (_err) {
+        // Zonder bocht: rechte lijn.
+      }
+    }
+    return { pos, bochten, bron: "zaalscherm" };
   } catch (err) {
     rekenaar = null;
     const terug = ringIndeling(graph);

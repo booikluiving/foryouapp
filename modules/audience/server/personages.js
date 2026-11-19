@@ -48,6 +48,21 @@ function createPersonages({ service, fotoVan, fetchImpl = globalThis.fetch, sips
   const catalogus = { beschrijving: new Map(), geladen: 0, bezig: false, laatstePoging: 0 };
   const klein = new Map(); // sleutel run|id|at → Promise<Buffer>
 
+  // Foto zoals op het kaartje van Up next (gekozen archieffoto, snapshot van deze run, nieuwste uit het
+  // archief). Dat leest een map; per personage hoogstens om de 5 s, want dit loopt bij elke poll.
+  const fotoGeheugen = new Map();
+  function fotoVoor(run, id) {
+    if (typeof fotoVan !== "function") return null;
+    const sleutel = `${run || ""}|${id}`;
+    const bekend = fotoGeheugen.get(sleutel);
+    if (bekend && Date.now() - bekend.t < 5000) return bekend.foto;
+    let foto = null;
+    try { foto = fotoVan(run, id); } catch (_err) { foto = null; }
+    if (fotoGeheugen.size > 300) fotoGeheugen.clear();
+    fotoGeheugen.set(sleutel, { t: Date.now(), foto });
+    return foto;
+  }
+
   function laadCatalogus() {
     const nu = Date.now();
     if (catalogus.bezig || typeof fetchImpl !== "function") return;
@@ -73,10 +88,14 @@ function createPersonages({ service, fotoVan, fetchImpl = globalThis.fetch, sips
       .finally(() => { clearTimeout(klok); catalogus.bezig = false; });
   }
 
-  // De personages die in deze run kunnen verschijnen: in een actieve situatie van de catalogus van de run.
+  // De personages die in deze run kunnen verschijnen: in een actieve situatie, en (via een vrije plek
+  // zoals {personage1}, die uit de hele catalogus kiest) elk personage van de catalogus.
   function kandidaten(catalog) {
     const situaties = Array.isArray(catalog.situations) ? catalog.situations : [];
     const ids = new Set();
+    for (const c of Array.isArray(catalog.characters) ? catalog.characters : []) {
+      if (c && ID_PATROON.test(String(c.id || "")) && c.active !== false && !c.archivedAt) ids.add(String(c.id));
+    }
     for (const s of situaties) {
       if (!s || s.active === false || s.archivedAt) continue;
       for (const id of Array.isArray(s.characterIds) ? s.characterIds : []) if (id) ids.add(String(id));
@@ -141,7 +160,7 @@ function createPersonages({ service, fotoVan, fetchImpl = globalThis.fetch, sips
       run,
       totaal: plekVoor.plekken.size,
       vrij: [...vrij.values()].map((rij) => {
-        const foto = run && typeof fotoVan === "function" ? fotoVan(run, rij.id) : null;
+        const foto = fotoVoor(run, rij.id);
         return {
           id: rij.id,
           plek: plekVoor.plekken.get(rij.id),
@@ -180,9 +199,9 @@ function createPersonages({ service, fotoVan, fetchImpl = globalThis.fetch, sips
   // Verkleinde foto (JPEG). Alleen voor een personage dat in de huidige stand vrij is.
   function kleineFoto(characterId) {
     const id = String(characterId || "");
-    if (!ID_PATROON.test(id) || !stand.run) return Promise.resolve(null);
+    if (!ID_PATROON.test(id)) return Promise.resolve(null);
     if (!stand.vrij.some((v) => v.id === id)) return Promise.resolve(null);
-    const foto = typeof fotoVan === "function" ? fotoVan(stand.run, id) : null;
+    const foto = fotoVoor(stand.run, id);
     if (!foto || !Buffer.isBuffer(foto.jpeg)) return Promise.resolve(null);
     const sleutel = `${stand.run}|${id}|${foto.at}`;
     if (!klein.has(sleutel)) {

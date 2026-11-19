@@ -79,6 +79,7 @@ const laatsteStand = (tel) => tel.msgs.filter((m) => m.type === "personages").po
         AUDIENCE_PUBLIC_JOIN_URL: "https://www.foryouniverse.nl/live",
         AUDIENCE_DB_DIR: dbDir,
         AUDIENCE_PERSONAGEFOTO_DIR: fotoDir,
+        AUDIENCE_PERSONAGEARCHIEF_DIR: path.join(fotoDir, "archief"),
         AUDIENCE_RUNTIME_URL: `http://127.0.0.1:${RUNTIME}`,
         AUDIENCE_CATALOG_URL: `http://127.0.0.1:${CATALOGUS}`,
         AUDIENCE_ALGORITHM_URL: "http://127.0.0.1:9",
@@ -115,7 +116,7 @@ const laatsteStand = (tel) => tel.msgs.filter((m) => m.type === "personages").po
     fs.writeFileSync(path.join(fotoDir, RUN.replace(/[^a-zA-Z0-9_-]/g, "_"), "character_15.jpg"), JPEG);
     assert.ok(await wachtOp(() => { const s = laatsteStand(tel); return s && s.run === RUN && s.vrij.length === 2 && s.vrij.some((v) => v.beschrijving); }));
     let s = laatsteStand(tel);
-    assert.equal(s.totaal, 4, "alleen personages uit actieve situaties");
+    assert.equal(s.totaal, catalog.characters.length, "alle personages van de catalogus: een vrije plek kan elk personage invullen");
     const bobbie = s.vrij.find((v) => v.id === "character:15");
     const lisa = s.vrij.find((v) => v.id === "character:29");
     assert.deepEqual(bobbie.speler, ["Booi"]);

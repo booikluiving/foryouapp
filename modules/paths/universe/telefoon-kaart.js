@@ -46,7 +46,7 @@ function naamVan(lijst) {
   return new Map((Array.isArray(lijst) ? lijst : []).map((item) => [Number(item.id), String(item.name || "").replace(/_/g, " ").trim()]));
 }
 
-function bouwKaartInhoud(graph, catalog, posities) {
+function bouwKaartInhoud(graph, catalog, posities, bochten = {}) {
   const personages = naamVan(catalog.characters);
   const omgevingen = naamVan(catalog.environments);
   const sceneInfo = new Map((catalog.scenes || []).map((scene) => [Number(scene.id), scene]));
@@ -71,7 +71,13 @@ function bouwKaartInhoud(graph, catalog, posities) {
   });
   const lijnen = ((graph.networkMap && graph.networkMap.edges) || [])
     .filter((edge) => edge && !edge.isLoop)
-    .map((edge) => [Number(edge.fromSceneId), Number(edge.toSceneId)]);
+    .map((edge) => {
+      const a = Number(edge.fromSceneId), b = Number(edge.toSceneId);
+      // [van, naar] of met bocht [van, naar, c1x, c1y, c2x, c2y], in dezelfde ruimte als de sterren.
+      const bocht = bochten[`${a}-${b}`];
+      if (!bocht) return [a, b];
+      return [a, b, Math.round(bocht[0] - midX), Math.round(bocht[1] - midY), Math.round(bocht[2] - midX), Math.round(bocht[3] - midY)];
+    });
   const paden = (graph.paths || [])
     .filter((pad) => pad && pad.isActive && !pad.archivedAt)
     .map((pad) => ({
@@ -92,7 +98,7 @@ async function buildTelefoonKaart(options = {}) {
   const graph = universe.graph;
   const catalog = (editorState && editorState.catalog) || {};
   const handtekening = crypto.createHash("sha1")
-    .update(JSON.stringify([graph.networkMap, graph.paths.map((pad) => [pad.pathId, pad.name, pad.color, pad.isActive, pad.nodes.map((n) => n.sceneId), pad.edges.map((e) => [e.fromSceneId, e.toSceneId])]),
+    .update(JSON.stringify(["bochten-1", graph.networkMap, graph.paths.map((pad) => [pad.pathId, pad.name, pad.color, pad.isActive, pad.nodes.map((n) => n.sceneId), pad.edges.map((e) => [e.fromSceneId, e.toSceneId])]),
       (catalog.scenes || []).map((s) => [s.id, s.title, s.characterSlots, s.characterCount, s.environmentId]),
       (catalog.characters || []).map((c) => [c.id, c.name]), (catalog.environments || []).map((e) => [e.id, e.name])]))
     .digest("hex").slice(0, 12);
@@ -106,7 +112,7 @@ async function buildTelefoonKaart(options = {}) {
       schema: SCHEMA,
       versie: handtekening,
       indeling: (uitkomst && uitkomst.bron) || "geen",
-      ...bouwKaartInhoud(graph, catalog, posities),
+      ...bouwKaartInhoud(graph, catalog, posities, (uitkomst && uitkomst.bochten) || {}),
     };
     // Zonder indeling geen cache: de volgende vraag probeert het opnieuw.
     if (uitkomst) {
