@@ -644,6 +644,7 @@
           <label class="rememberRow"><input id="stageShowChat" type="checkbox" />Chat</label>
           <label class="rememberRow"><input id="stageShowEmojis" type="checkbox" />Emoji</label>
           <label class="rememberRow"><input id="stageShowLeaderboard" type="checkbox" />Top Chatters</label>
+          <label class="rememberRow"><input data-tussen="upnextKaartjes" type="checkbox" />Personages in Up next</label>
           <select id="stageBackground">
             <option value="transparent">Transparant</option>
             <option value="black">Zwart</option>
@@ -1524,7 +1525,7 @@
           const key = veld.dataset.tussen;
           clearTimeout(tussenTimers[key]);
           tussenTimers[key] = setTimeout(() => {
-            const waarde = veld.type === "range" ? Number(veld.value) : veld.value;
+            const waarde = veld.type === "range" ? Number(veld.value) : veld.type === "checkbox" ? veld.checked : veld.value;
             post("/audience/admin/stage/settings", { [key]: waarde }).catch((err) => setActionMessage("Opslaan mislukt: " + err.message, true));
           }, 150);
         });
@@ -1535,6 +1536,7 @@
           if (document.activeElement === veld) continue;
           const v = settings[veld.dataset.tussen];
           if (v === undefined) continue;
+          if (veld.type === "checkbox") { veld.checked = !!v; continue; }
           veld.value = v;
           tussenWaardeTonen(veld);
         }

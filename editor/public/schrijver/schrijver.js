@@ -130,7 +130,42 @@ function toonGesprek(messages) {
   $("gesprek").scrollTop = $("gesprek").scrollHeight;
 }
 
+// Een bewaarde scène als voorbeeldscène: de situatie staat al gekozen als de opdracht hem noemt.
+function voorbeeldKeuze(item) {
+  const situaties = (state.catalogus && state.catalogus.situaties) || [];
+  const genoemd = (String(item.vraag || "").match(/^Situatie:\s*(.+)$/m) || [])[1];
+  const gevonden = genoemd ? situaties.find((s) => s.naam.trim().toLowerCase() === genoemd.trim().toLowerCase()) : null;
+  const keuze = el("select", { "aria-label": "Situatie van het voorbeeld" },
+    el("option", { value: "" }, "Kies de situatie…"),
+    situaties.map((s) => el("option", { value: s.id }, s.naam)));
+  if (gevonden) keuze.value = gevonden.id;
+  const knop = el("button", { type: "button", class: "licht" }, "Maak voorbeeldscène");
+  const stand = () => {
+    const huidig = state.voorbeelden.find((v) => v.situationId === keuze.value);
+    const ditIsHet = huidig && huidig.tekst === item.tekst;
+    knop.disabled = !keuze.value || ditIsHet;
+    knop.textContent = ditIsHet ? "Voorbeeldscène" : "Maak voorbeeldscène";
+  };
+  keuze.addEventListener("change", stand);
+  knop.addEventListener("click", async () => {
+    const situatie = situaties.find((s) => s.id === keuze.value);
+    const huidig = state.voorbeelden.find((v) => v.situationId === keuze.value);
+    if (!confirm(huidig ? `Deze scène wordt de voorbeeldscène van "${situatie.naam}" in plaats van die van ${naam(huidig.by)}.` : `Deze scène wordt de voorbeeldscène van "${situatie.naam}".`)) return;
+    knop.disabled = true;
+    try {
+      toonVoorbeelden((await api("/voorbeelden", { method: "POST", body: { bewaardId: item.id, situationId: keuze.value } })).voorbeelden);
+    } catch (err) {
+      meld(err.message, "fout");
+    }
+    stand();
+  });
+  stand();
+  item.voorbeeldStand = stand;
+  return el("div", { class: "knoppen" }, keuze, knop);
+}
+
 function toonBewaard(list) {
+  state.bewaard = list;
   $("bewaard-leeg").hidden = list.length > 0;
   $("bewaard").replaceChildren(...list.map((item) => {
     const weg = el("button", { type: "button", class: "licht" }, "Haal weg");
@@ -153,6 +188,7 @@ function toonBewaard(list) {
     return el("li", {}, el("details", {},
       el("summary", {}, item.titel, el("span", { class: "zacht" }, `${naam(item.by)} · ${when(item.at)}`)),
       el("pre", {}, item.tekst),
+      voorbeeldKeuze(item),
       el("details", {}, el("summary", {}, "Waarmee geschreven"),
         el("pre", {}, `${item.model || ""}\n\nHOOFDPROMPT\n${item.systemPrompt}\n\nOPDRACHT PER SCÈNE\n${item.promptTemplate}${item.vraag ? `\n\nVERSTUURD\n${item.vraag}` : ""}`)),
       el("div", { class: "knoppen" }, gebruik, weg)));
@@ -162,6 +198,7 @@ function toonBewaard(list) {
 // Per situatie de best gelukte scène. De show begint elke run met deze scènes.
 function toonVoorbeelden(list) {
   state.voorbeelden = list;
+  for (const item of state.bewaard || []) if (item.voorbeeldStand) item.voorbeeldStand();
   $("voorbeelden-leeg").hidden = list.length > 0;
   $("voorbeelden").replaceChildren(...list.map((item) => {
     const weg = el("button", { type: "button", class: "licht" }, "Haal weg");
@@ -417,8 +454,8 @@ async function ververs() {
     let kept;
     let vb;
     [state.stand, state.catalogus, kept, state.proeven, vb] = await Promise.all([api(""), api("/catalogus"), api("/bewaard"), api("/proeven").catch(() => state.proeven), api("/voorbeelden")]);
-    toonBewaard(kept.bewaard);
     toonVoorbeelden(vb.voorbeelden);
+    toonBewaard(kept.bewaard);
     vulModellen();
     toonProeven();
     vulPrompts();

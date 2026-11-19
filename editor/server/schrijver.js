@@ -274,15 +274,18 @@ function createSchrijver({ dir, catalogUrl, env = process.env, fetchImpl } = {})
   }
 
   async function maakVoorbeeld(email, body = {}) {
-    const tekst = clean(body.tekst);
+    // Een bewaarde scène: tekst en opdracht zoals hij bewaard is.
+    const bewaarde = body.bewaardId ? readKept().find((item) => item.id === String(body.bewaardId)) : null;
+    if (body.bewaardId && !bewaarde) throw new SchrijverFout(404, "onbekend", "Deze bewaarde scène is er niet (meer).");
+    const tekst = clean(bewaarde ? bewaarde.tekst : body.tekst);
     if (!tekst) throw new SchrijverFout(400, "leeg", "Er is geen scène om als voorbeeld te nemen.");
-    const klaar = lastKlaar.get(sessionId(email));
+    const klaar = bewaarde ? null : lastKlaar.get(sessionId(email));
     const situationId = String(body.situationId || (klaar && klaar.situationId) || "");
     if (!situationId) throw new SchrijverFout(409, "geen_situatie", "Van welke situatie is deze scène? Zet hem opnieuw klaar en schrijf hem nog eens.");
     const situatie = (await catalogus()).situaties.find((item) => item.id === situationId);
     if (!situatie) throw new SchrijverFout(400, "situatie", "Deze situatie staat niet (meer) in de catalogus.");
     // De opdracht waarmee de show de scène klaarzet; een vervolgvraag in de chat is geen opdracht.
-    const vraag = klaar && klaar.situationId === situationId ? klaar.tekst : clean(body.vraag);
+    const vraag = klaar && klaar.situationId === situationId ? klaar.tekst : clean(bewaarde ? bewaarde.vraag : body.vraag);
     zetVoorbeeld({ situationId, titel: situatie.naam, vraag, tekst, by: email, at: new Date().toISOString() });
     return voorbeelden(email);
   }
