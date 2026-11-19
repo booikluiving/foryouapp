@@ -33,11 +33,11 @@ assert.deepEqual(b.personagefoto("run:a", "character:15").jpeg, jpeg(1));
 assert.equal(b.zetFoto({ plek: 2, jpeg: jpeg(2) }).personage, null, "op plek 2 speelt niemand");
 assert.equal(b.personagefoto("run:a", "character:28"), null, "zonder snapshot niets");
 
-// Niemand in beeld: wel de foto bij de vraag op de telefoon, geen snapshot van het personage.
-const leeg = b.zetFoto({ plek: 3, jpeg: jpeg(3), punten: "0.00" });
-assert.equal(leeg.ok, true);
-assert.equal(leeg.personage, null);
-assert.equal(b.personagefoto("run:a", "character:28"), null);
+// Niemand in beeld: telt alleen zolang het personage nog geen snapshot heeft.
+assert.equal(b.zetFoto({ plek: 3, jpeg: jpeg(3), punten: "0.00" }).personage, "character:28", "nog niets: dan de omgeving");
+assert.deepEqual(b.personagefoto("run:a", "character:28").jpeg, jpeg(3));
+assert.equal(b.zetFoto({ plek: 1, jpeg: jpeg(9), punten: "0.00" }).personage, null, "een leeg beeld vervangt geen snapshot");
+assert.deepEqual(b.personagefoto("run:a", "character:15").jpeg, jpeg(1));
 
 // Een latere scène met hetzelfde personage op een andere plek: de nieuwste wint.
 b.onthoudScene(state("run:a", "sr:2", [slot("p2", "character:15", "Bobbie")]));
