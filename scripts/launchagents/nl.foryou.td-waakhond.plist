@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>nl.foryou.td-waakhond</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/for_you/ForYou/main</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/for_you/ForYou/main/scripts/td-waakhond.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/for_you/Library/Logs/ForYou/nl.foryou.td-waakhond.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/for_you/Library/Logs/ForYou/nl.foryou.td-waakhond.err.log</string>
+</dict>
+</plist>

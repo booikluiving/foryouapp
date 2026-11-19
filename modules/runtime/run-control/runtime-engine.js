@@ -90,8 +90,17 @@ function defaultOrderSettings() {
   return {
     randomizeEqualScores: false,
     startSceneCount: DEFAULT_START_SCENE_COUNT,
+    vrijeSpeler: true,
   };
 }
+
+// Vrije speler: een heel lichte voorkeur voor een scène waarin de speler meedoet die nu vrij is
+// (in de spelende scène niet in beeld), zodat die zich al kan klaarmaken. Het algoritme blijft de baas:
+// alleen nummer 2 of 3 van de lijst komt in aanmerking, en alleen als die bijna even hoog scoort als
+// nummer 1 (binnen de helft van het verschil tussen nummer 1 en nummer 5). Uit te zetten per run.
+const VRIJE_SPELER_KANDIDATEN = 3;
+const VRIJE_SPELER_MARGE = 0.5;
+const SPELER_PLEKKEN = [1, 2, 3];
 
 function normalizeStartSceneCount(value, fallback = DEFAULT_START_SCENE_COUNT) {
   const number = Number(value);
@@ -150,6 +159,7 @@ function normalizeRuntimeDerivedState(state = {}) {
   state.finalizationStatus = state.finalizationStatus && typeof state.finalizationStatus === "object"
     ? state.finalizationStatus
     : { status: "idle", updatedAt: null };
+  state.skippedSituations = Array.isArray(state.skippedSituations) ? state.skippedSituations : [];
   state.lastAppliedScoreFeedRevision = state.lastAppliedScoreFeedRevision && typeof state.lastAppliedScoreFeedRevision === "object"
     ? state.lastAppliedScoreFeedRevision
     : null;
@@ -190,6 +200,17 @@ function normalizeOrderSettings(input = {}, base = defaultOrderSettings()) {
       ? !!source.randomizeEqualScores
       : !!(base && base.randomizeEqualScores),
     startSceneCount: normalizeStartSceneCount(source.startSceneCount, baseCount),
+    vrijeSpeler: Object.prototype.hasOwnProperty.call(source, "vrijeSpeler")
+      ? !!source.vrijeSpeler
+      : !(base && base.vrijeSpeler === false),
+  };
+}
+
+function savedOrderSettingsFrom(orderSettings) {
+  return {
+    startSceneCount: orderSettings.startSceneCount,
+    randomizeEqualScores: !!orderSettings.randomizeEqualScores,
+    vrijeSpeler: orderSettings.vrijeSpeler !== false,
   };
 }
 
@@ -397,15 +418,19 @@ function buildEligiblePool({
   scoreFeed,
   orderSettings,
   rankingTieBreaks,
+  skippedSituations = [],
 }) {
   const situationMap = catalogSituationMap(catalog);
   const scoreBySituation = scoreMapFromFeed(scoreFeed);
   const playedSet = new Set((playedSituations || []).map((item) => item.situationId));
+  // Overgeslagen scènes (knop OVERSLAAN) komen deze run niet meer terug.
+  const skippedSet = new Set((skippedSituations || []).map((item) => item && item.situationId).filter(Boolean));
   const activeSituationId = activeSituation ? activeSituation.situationId : null;
   const available = (pathEvaluation.items || [])
     .filter((item) => item.status === "available")
     .filter((item) => situationMap.has(item.situationId))
     .filter((item) => !playedSet.has(item.situationId))
+    .filter((item) => !skippedSet.has(item.situationId))
     .filter((item) => item.situationId !== activeSituationId)
     .map((item) => ({
       situationId: item.situationId,
@@ -533,26 +558,108 @@ function applyEligiblePoolUpdate(state, eligiblePool, reason) {
   return state.lastRankChangeSummary;
 }
 
-function choosePreparedNext({ catalog, eligiblePool, reason = "runtime_order" }) {
-  if (!eligiblePool || eligiblePool.length === 0) return null;
-  const candidate = eligiblePool[0];
-  const seed = crypto.createHash("sha256")
-    .update(`${candidate.situationId}:${Date.now()}:${Math.random()}`)
+// Per eerdere scène van deze run de plekken die in beeld waren (oudste eerst), zodat de
+// loting van vrije personages de speler voor laat gaan die het langst niets had.
+function recentSlotIndexesFor(state) {
+  return ((state && state.situationRuns) || [])
+    .map((run) => ((run && run.resolved && run.resolved.performerSlots) || [])
+      .map((slot) => Number(slot.slotIndex))
+      .filter((slotIndex) => Number.isFinite(slotIndex)))
+    .filter((slotIndexes) => slotIndexes.length);
+}
+
+// Personages van de laatste scène van de run (de spelende of de vorige): een invulscène
+// trekt die liever niet meteen opnieuw.
+function recentCharacterIdsFor(state) {
+  const runs = (state && state.situationRuns) || [];
+  const last = runs.length ? runs[runs.length - 1] : null;
+  return ((last && last.resolved && last.resolved.characterIds) || []).slice();
+}
+
+function nieuweSeed(situationId) {
+  return crypto.createHash("sha256")
+    .update(`${situationId}:${Date.now()}:${Math.random()}`)
     .digest("hex")
     .slice(0, 16);
+}
+
+function bezettePlekken(resolved) {
+  return new Set(((resolved && resolved.performerSlots) || [])
+    .filter((slot) => slot && slot.characterId)
+    .map((slot) => Number(slot.slotIndex))
+    .filter((slotIndex) => Number.isFinite(slotIndex)));
+}
+
+// Kiest uit de lijst van het algoritme. Normaal nummer 1. Met de vrije-spelervoorkeur mag nummer 2 of 3
+// het worden als daarin een speler meedoet die nu vrij is, nummer 1 dat niet heeft, en het scoreverschil
+// heel klein is (zie VRIJE_SPELER_MARGE). De lijst zelf blijft in de volgorde van het algoritme.
+function kiesKandidaat({ catalog, eligiblePool, recentSlotIndexes, recentCharacterIds, vrijePlekken }) {
+  const maak = (candidate) => {
+    const seed = nieuweSeed(candidate.situationId);
+    return {
+      candidate,
+      seed,
+      resolved: materializePreparedNext({ catalog, preparedNext: candidate, seed, recentSlotIndexes, recentCharacterIds }),
+    };
+  };
+  const eerste = maak(eligiblePool[0]);
+  if (!vrijePlekken || !vrijePlekken.length || eligiblePool.length < 2) return { ...eerste, vrijeSpeler: null };
+  const brengtVrijeSpeler = (keuze) => {
+    const plekken = bezettePlekken(keuze.resolved);
+    return vrijePlekken.filter((plek) => plekken.has(plek));
+  };
+  if (brengtVrijeSpeler(eerste).length) return { ...eerste, vrijeSpeler: null };
+  const scores = eligiblePool.map((item) => (Number.isFinite(item.scoreValue) ? item.scoreValue : null));
+  if (scores[0] == null) return { ...eerste, vrijeSpeler: null };
+  const vijfde = scores[Math.min(4, scores.length - 1)];
+  const spreiding = vijfde == null ? 0 : Math.max(0, scores[0] - vijfde);
+  const ondergrens = scores[0] - spreiding * VRIJE_SPELER_MARGE;
+  for (let index = 1; index < Math.min(VRIJE_SPELER_KANDIDATEN, eligiblePool.length); index += 1) {
+    if (scores[index] == null || scores[index] < ondergrens) break;
+    const keuze = maak(eligiblePool[index]);
+    const komtErbij = brengtVrijeSpeler(keuze);
+    if (komtErbij.length) {
+      return {
+        ...keuze,
+        vrijeSpeler: {
+          algoritmeKeuze: eligiblePool[0].situationId,
+          algoritmeScore: scores[0],
+          gekozen: eligiblePool[index].situationId,
+          gekozenScore: scores[index],
+          plaats: index + 1,
+          vrijePlekken: komtErbij,
+          ondergrens: Math.round(ondergrens * 10000) / 10000,
+        },
+      };
+    }
+  }
+  return { ...eerste, vrijeSpeler: null };
+}
+
+function choosePreparedNext({ catalog, eligiblePool, reason = "runtime_order", recentSlotIndexes = [], recentCharacterIds = [], vrijePlekken = [] }) {
+  if (!eligiblePool || eligiblePool.length === 0) return null;
+  const keuze = kiesKandidaat({ catalog, eligiblePool, recentSlotIndexes, recentCharacterIds, vrijePlekken });
+  const candidate = keuze.candidate;
   return {
     situationId: candidate.situationId,
     legacySituationId: candidate.legacySituationId,
     title: candidate.title,
     chosenAt: new Date().toISOString(),
-    reason,
-    seed,
-    resolvedPreparedNext: materializePreparedNext({
-      catalog,
-      preparedNext: candidate,
-      seed,
-    }),
+    reason: keuze.vrijeSpeler ? "vrije_speler" : reason,
+    seed: keuze.seed,
+    vrijeSpeler: keuze.vrijeSpeler,
+    resolvedPreparedNext: keuze.resolved,
   };
+}
+
+// Plekken die in de spelende scène niet in beeld zijn. Alleen tijdens een scène, buiten de startfase,
+// en als de voorkeur aan staat.
+function vrijePlekkenVoor(state) {
+  if (!state || !state.activeSituation || !state.orderSettings || state.orderSettings.vrijeSpeler === false) return [];
+  if (state.startPhase && state.startPhase.active) return [];
+  const bezet = bezettePlekken(state.activeSituation.resolved);
+  if (!bezet.size) return [];
+  return SPELER_PLEKKEN.filter((plek) => !bezet.has(plek));
 }
 
 async function computeAndSetPreparedNext(state, clients, reason = "runtime_order") {
@@ -572,6 +679,7 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
     scoreFeed: state.lastScoreFeed,
     orderSettings: state.orderSettings,
     rankingTieBreaks: state.rankingTieBreaks,
+    skippedSituations: state.skippedSituations,
   });
   applyEligiblePoolUpdate(state, eligiblePool, reason);
   state.startPhase = startPhaseFor(pathEvaluation, state.orderSettings, state.activeSituation ? state.activeSituation.situationId : null);
@@ -579,6 +687,9 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
     catalog: state.showRunSnapshot.catalog,
     eligiblePool,
     reason,
+    recentSlotIndexes: recentSlotIndexesFor(state),
+    recentCharacterIds: recentCharacterIdsFor(state),
+    vrijePlekken: vrijePlekkenVoor(state),
   });
   state.pathEvaluation = pathEvaluation;
   state.eligiblePool = eligiblePool;
@@ -589,6 +700,7 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
     chosenAt: prepared.chosenAt,
     reason: prepared.reason,
     seed: prepared.seed,
+    ...(prepared.vrijeSpeler ? { vrijeSpeler: prepared.vrijeSpeler } : {}),
   } : null;
   state.resolvedPreparedNext = prepared ? prepared.resolvedPreparedNext : null;
   state.updatedAt = new Date().toISOString();
@@ -599,6 +711,8 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
     situationId: prepared ? prepared.situationId : null,
     eligibleCount: eligiblePool.length,
     rankingRevision: state.rankingRevision,
+    // Vrije speler: welke scène het algoritme bovenaan had en waarom een andere gekozen is.
+    ...(prepared && prepared.vrijeSpeler ? { vrijeSpeler: prepared.vrijeSpeler } : {}),
   });
   return state;
 }
@@ -621,6 +735,7 @@ async function refreshEligiblePool(state, clients, reason = "runtime_refresh") {
     scoreFeed: state.lastScoreFeed,
     orderSettings: state.orderSettings,
     rankingTieBreaks: state.rankingTieBreaks,
+    skippedSituations: state.skippedSituations,
   });
   const summary = applyEligiblePoolUpdate(state, eligiblePool, reason);
   state.startPhase = startPhaseFor(pathEvaluation, state.orderSettings, state.activeSituation ? state.activeSituation.situationId : null);
@@ -740,7 +855,9 @@ async function restoreAlgorithmScoringContext(state, clients, options = {}) {
   });
 }
 
-async function startRun({ clients, orderSettings } = {}) {
+// klaarzetten false = de inloop: de paden worden wel uitgerekend (universum, stemming), maar er staat
+// nog geen scène klaar. Die komt bij START SHOW (prepareNextNow).
+async function startRun({ clients, orderSettings, klaarzetten = true } = {}) {
   const createdAtDate = new Date();
   const showRunId = createShowRunId(createdAtDate);
   const catalog = await clients.fetchCatalogSnapshot();
@@ -766,6 +883,7 @@ async function startRun({ clients, orderSettings } = {}) {
     orderSettings: normalizeOrderSettings(orderSettings, {
       startSceneCount: normalizeStartSceneCount((await readSavedOrderSettings() || {}).startSceneCount),
       randomizeEqualScores: !!(await readSavedOrderSettings() || {}).randomizeEqualScores,
+      vrijeSpeler: (await readSavedOrderSettings() || {}).vrijeSpeler !== false,
     }),
     runLog: [{
       type: "show_run_started",
@@ -773,10 +891,31 @@ async function startRun({ clients, orderSettings } = {}) {
       showRunId,
     }],
   });
-  if (orderSettings && typeof orderSettings === "object") await saveOrderSettings({ startSceneCount: state.orderSettings.startSceneCount, randomizeEqualScores: !!state.orderSettings.randomizeEqualScores });
+  if (orderSettings && typeof orderSettings === "object") await saveOrderSettings(savedOrderSettingsFrom(state.orderSettings));
   await initializeAlgorithmScoringContext(state, clients);
   await computeAndSetPreparedNext(state, clients, "start_run");
+  if (!klaarzetten) {
+    state.preparedNext = null;
+    state.resolvedPreparedNext = null;
+    appendRunLog(state, { type: "prepared_next_held", at: new Date().toISOString(), reason: "inloop" });
+  }
   await saveRunState(state);
+  return state;
+}
+
+// START SHOW: nu pas de eerste scène kiezen (na een start zonder klaarzetten). Speelt er iets of
+// staat er al iets klaar, dan verandert er niets.
+async function prepareNextNow(state, clients, options = {}) {
+  normalizeRuntimeDerivedState(state);
+  if (state.status !== "running") {
+    const err = new Error("runtime_no_running_show_run");
+    err.statusCode = 409;
+    throw err;
+  }
+  if (!state.activeSituation && !state.preparedNext) {
+    await computeAndSetPreparedNext(state, clients, options.reason || "start_show");
+  }
+  if (!options.skipSave) await saveRunState(state);
   return state;
 }
 
@@ -1175,7 +1314,7 @@ async function updateOrderSettings(state, clients, patch = {}) {
   normalizeRuntimeDerivedState(state);
   const beforeRandomize = !!state.orderSettings.randomizeEqualScores;
   state.orderSettings = normalizeOrderSettings(patch, state.orderSettings);
-  await saveOrderSettings({ startSceneCount: state.orderSettings.startSceneCount, randomizeEqualScores: !!state.orderSettings.randomizeEqualScores });
+  await saveOrderSettings(savedOrderSettingsFrom(state.orderSettings));
   if (beforeRandomize !== !!state.orderSettings.randomizeEqualScores) {
     bumpRankingTieEpoch(state, "order_settings_updated");
   }
@@ -1185,6 +1324,7 @@ async function updateOrderSettings(state, clients, patch = {}) {
     at: state.updatedAt,
     randomizeEqualScores: !!state.orderSettings.randomizeEqualScores,
     startSceneCount: state.orderSettings.startSceneCount,
+    vrijeSpeler: state.orderSettings.vrijeSpeler !== false,
     preparedNextFrozen: !!state.preparedNext,
   });
   await refreshEligiblePool(state, clients, "order_settings_updated");
@@ -1275,7 +1415,7 @@ async function prepareChosenSituation(state, clients, options = {}) {
     .digest("hex")
     .slice(0, 16);
   const candidate = { situationId: situation.id, legacySituationId: situation.legacyId, title: situation.title };
-  state.resolvedPreparedNext = materializePreparedNext({ catalog, preparedNext: candidate, seed, environmentId: wantedEnvironmentId });
+  state.resolvedPreparedNext = materializePreparedNext({ catalog, preparedNext: candidate, seed, environmentId: wantedEnvironmentId, recentSlotIndexes: recentSlotIndexesFor(state), recentCharacterIds: recentCharacterIdsFor(state) });
   state.preparedNext = { ...candidate, chosenAt, reason: "operator_chosen", seed, ...(options.testRun === true ? { testKeuze: true } : {}) };
   state.updatedAt = chosenAt;
   appendRunLog(state, {
@@ -1284,6 +1424,55 @@ async function prepareChosenSituation(state, clients, options = {}) {
     reason: options.willekeurig === true || options.random === true ? "operator_random" : "operator_chosen",
     situationId: situation.id,
     ...(wantedEnvironmentId ? { environmentId: wantedEnvironmentId } : {}),
+  });
+  if (!options.skipSave) await saveRunState(state);
+  return state;
+}
+
+// Knop OVERSLAAN: de scène die klaarstaat niet spelen. Hij komt deze run niet meer terug en de
+// volgende in de keten wordt klaargezet. Kan zo vaak als nodig, zolang er geen scène speelt.
+async function skipPreparedSituation(state, clients, options = {}) {
+  if (!state || !state.showRunId || state.status !== "running") throw new Error("runtime_no_show_run");
+  normalizeRuntimeDerivedState(state);
+  if (state.activeSituation) {
+    const err = new Error("runtime_skip_requires_no_active_situation");
+    err.statusCode = 409;
+    throw err;
+  }
+  const skipped = state.preparedNext;
+  if (!skipped || !skipped.situationId) {
+    const err = new Error("runtime_nothing_prepared");
+    err.statusCode = 409;
+    throw err;
+  }
+  const wanted = String(options.situationId || "").trim();
+  if (wanted && wanted !== skipped.situationId) {
+    // De knop hoort bij een andere scène dan er nu klaarstaat (twee keer snel gedrukt).
+    const err = new Error("runtime_skip_stale");
+    err.statusCode = 409;
+    throw err;
+  }
+  const before = {
+    skippedSituations: state.skippedSituations.slice(),
+    preparedNext: state.preparedNext,
+    resolvedPreparedNext: state.resolvedPreparedNext,
+  };
+  const skippedAt = new Date().toISOString();
+  state.skippedSituations.push({ situationId: skipped.situationId, title: skipped.title || null, at: skippedAt });
+  await computeAndSetPreparedNext(state, clients, "operator_skipped");
+  if (!state.preparedNext) {
+    state.skippedSituations = before.skippedSituations;
+    state.preparedNext = before.preparedNext;
+    state.resolvedPreparedNext = before.resolvedPreparedNext;
+    const err = new Error("runtime_skip_nothing_left");
+    err.statusCode = 409;
+    throw err;
+  }
+  appendRunLog(state, {
+    type: "prepared_next_skipped",
+    at: skippedAt,
+    situationId: skipped.situationId,
+    nextSituationId: state.preparedNext.situationId,
   });
   if (!options.skipSave) await saveRunState(state);
   return state;
@@ -1394,7 +1583,10 @@ async function resetRun(state) {
 module.exports = {
   assertNoAlgorithmRuntimeOwnershipFields,
   buildEligiblePool,
+  kiesKandidaat,
+  vrijePlekkenVoor,
   computeAndSetPreparedNext,
+  prepareNextNow,
   createIdleRuntimeState,
   createShowRunSnapshot,
   defaultOrderSettings,
@@ -1409,6 +1601,7 @@ module.exports = {
   receiveScores,
   refreshEligiblePool,
   setTestRun,
+  skipPreparedSituation,
   resetRun,
   restoreAlgorithmScoringContext,
   situationObservedEvent,

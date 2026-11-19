@@ -110,6 +110,25 @@ function imageUrlFromPayload(payload = {}, env = process.env) {
   return relativeCatalogUrlToAbsolute(candidates.find((item) => String(item || "").trim()) || "", env);
 }
 
+// Video of beeld: een omgeving kan een video als achtergrond hebben (Achtbaan, Linksvoor). De url zelf
+// heeft geen extensie, dus de soort komt uit het asset (mime of bestandsnaam).
+function isVideoAsset(asset) {
+  if (!asset || typeof asset !== "object") return false;
+  const mime = String(asset.mimeType || asset.mime || asset.contentType || "").toLowerCase();
+  const name = String(asset.filename || asset.name || asset.filePath || "");
+  return mime.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(name);
+}
+
+function imageKindFromPayload(payload = {}) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const environment = source.environment && typeof source.environment === "object" ? source.environment : {};
+  if (String(environment.imageKind || "") === "video") return "video";
+  if (environment.imageUrl || environment.image || environment.url || source.imageUrl) return "";
+  const assets = source.assets && typeof source.assets === "object" ? source.assets : {};
+  const asset = (source.backgroundAsset && source.backgroundAsset.url) ? source.backgroundAsset : assets.background;
+  return isVideoAsset(asset) ? "video" : "";
+}
+
 function normalizeEnvironment(payload = {}, env = process.env) {
   const environment = payload && payload.environment && typeof payload.environment === "object" ? payload.environment : payload;
   if (!environment || typeof environment !== "object") return null;
@@ -118,7 +137,8 @@ function normalizeEnvironment(payload = {}, env = process.env) {
   const description = String(environment.description || "").trim();
   const imageUrl = imageUrlFromPayload({ ...payload, environment }, env);
   if (!id && !name && !description && !imageUrl) return null;
-  return { id, name, description, imageUrl };
+  const imageKind = imageUrl ? imageKindFromPayload({ ...payload, environment }) : "";
+  return { id, name, description, imageUrl, ...(imageKind === "video" ? { imageKind } : {}) };
 }
 
 function characterName(character = {}) {
@@ -333,35 +353,28 @@ function createTeleprompterParserBridge(options = {}) {
     return teleprompt;
   }
 
-  async function endSceneFromStage() {
+  // Stoppen en starten vanaf de teleprompter (klikker) gaan alleen via show control: dat is de ene
+  // weg die ook TouchDesigner, licht, microfoons en het klaarzetten doet. Lukt het niet, dan stopt of
+  // start de scène niet en krijgt de klikker een fout; nooit meer rechtstreeks via de runtime.
+  async function viaShowControl(route, name) {
     await refreshRuntimeState();
     const showRunId = runtimeState && runtimeState.showRunId ? runtimeState.showRunId : null;
     if (!showRunId) throw new Error("script_agent_teleprompter_no_show_run");
-    try {
-      const cue = await postJson(joinUrl(showControlBaseUrl(env), "/v0/show-control/cues/stop-situation"), {
-        name: "Teleprompter end scene",
-        showRunId,
-        runtimeState,
-      }, 5000);
-      await refreshRuntimeState();
-      return { mode: "show-control", cue };
-    } catch (err) {
-      const result = await postJson(joinUrl(runtimeBaseUrl(env), `/v0/runtime/runs/${encodeURIComponent(showRunId)}/stop-situation`), {
-        autoPrepareNext: true,
-      }, 4000);
-      await refreshRuntimeState();
-      return {
-        mode: "runtime-fallback",
-        runtime: result,
-        warning: err && err.message ? String(err.message) : "show_control_unavailable",
-      };
-    }
+    const cue = await postJson(joinUrl(showControlBaseUrl(env), route), {
+      name,
+      showRunId,
+      runtimeState,
+    }, 10000);
+    await refreshRuntimeState();
+    return { mode: "show-control", cue };
+  }
+
+  async function endSceneFromStage() {
+    return viaShowControl("/v0/show-control/cues/stop-situation", "Teleprompter end scene");
   }
 
   async function startSceneFromStage() {
     await refreshRuntimeState();
-    const showRunId = runtimeState && runtimeState.showRunId ? runtimeState.showRunId : null;
-    if (!showRunId) throw new Error("script_agent_teleprompter_no_show_run");
     if (activeSituationId(runtimeState)) {
       return {
         mode: "skipped",
@@ -369,27 +382,7 @@ function createTeleprompterParserBridge(options = {}) {
         activeSituationId: activeSituationId(runtimeState),
       };
     }
-    try {
-      const cue = await postJson(joinUrl(showControlBaseUrl(env), "/v0/show-control/cues/start-situation"), {
-        name: "Teleprompter ready start scene",
-        showRunId,
-        runtimeState,
-      }, 5000);
-      await refreshRuntimeState();
-      return { mode: "show-control", cue };
-    } catch (err) {
-      const result = await postJson(joinUrl(runtimeBaseUrl(env), `/v0/runtime/runs/${encodeURIComponent(showRunId)}/start-situation`), {
-        autoGoEnvironment: true,
-        autoRevealTeleprompter: true,
-      }, 4000);
-      if (parser && typeof parser.reveal === "function") parser.reveal();
-      await refreshRuntimeState();
-      return {
-        mode: "runtime-fallback",
-        runtime: result,
-        warning: err && err.message ? String(err.message) : "show_control_unavailable",
-      };
-    }
+    return viaShowControl("/v0/show-control/cues/start-situation", "Teleprompter ready start scene");
   }
 
   return {

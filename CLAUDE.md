@@ -14,3 +14,31 @@ Wat er bewust nog staat, en alleen op ja van Booi verandert omdat het opgeslagen
 - Een tijdelijke doorverwijzing in `modules/audience/server/app.js` voor twee podiumpagina's, tot `show/td-qhub-test/apply_publiek_adres_patch.py` in TouchDesigner is gedraaid.
 
 Niet van ons en dus ongemoeid: de teller in TouchDesigner-bestandsnamen (`v1.14.toe`) en `/control/api/v1` van de Blackmagic-camera's.
+
+## Stream Deck
+
+Elke knop volgt het ontwerpsysteem in `modules/show-control/hardware/streamdeck-control/companion/ONTWERP.md`: een vaste soort per knop, kleuren alleen uit `deck.json` → `ontwerp`. `deck.sh check` moet slagen. Op het echte deck alleen na een ja van Booi.
+
+## TouchDesigner: één TD, de nieuwste versie
+
+De waakhond `scripts/td-waakhond.sh` (LaunchAgent `nl.foryou.td-waakhond`) houdt precies één TouchDesigner open: de show-TD met het showbestand. Een leeg project, een tweede show-TD of een ander bestand gaat dicht.
+
+- Welke versie geldt staat in `~/ForYou/td-versie.txt`. Werk altijd op die versie. Na het bewaren van een nieuwe versie staat hij er vanzelf in.
+- Een lab (een tweede TD, zoals de Greenscreen Lab) open je met `scripts/td-lab.sh start NAAM bestand.toe [minuten]` en sluit je met `scripts/td-lab.sh stop NAAM`; `scripts/td-lab.sh lijst` toont wat toestemming heeft. Zonder toestemming sluit de waakhond hem na een minuut, een verlopen toestemming sluit hem ook. De Greenscreen Lab (`start-lab.command` / `stop-lab.command`) doet dit zelf.
+- Logboek: `~/Library/Logs/ForYou/td-waakhond.log`. Test: `scripts/td-waakhond-test.sh`.
+
+## Regie: één weg voor run en scènes
+
+Starten, stoppen, klaarzetten, overslaan en reset van de run gaan alleen via show control (:3025). Nooit rechtstreeks naar de runtime (:3024) en nooit een eigen omweg. Show control doet ze één voor één en zet ook TouchDesigner, licht, microfoons en teleprompter.
+
+- Stand staat op de regiepagina `http://<show-mac>:3025/regie/` en in `GET /v0/show-control/regie`: `show` (pad en publiek kiezen), `test` of `random` (één eigenaar).
+- Een scène testen of bekijken: eerst de regie overnemen, met je eigen naam (bijvoorbeeld de naam van je sessie). Stuur bij elke vraag de kop `x-foryou-wie: <naam>` mee.
+  - `POST /v0/show-control/regie/overnemen {"stand":"test"}`
+  - `POST /v0/show-control/regie/laad {"situationId":"situation:96","start":true}` (het laatst bewaarde script; `"schrijven":true` laat het taalmodel schrijven)
+  - `POST /v0/show-control/regie/schrijf`: nieuw script voor de scène die klaarstaat
+  - `POST /v0/show-control/regie/stop`, `/start`, `/random`
+  - Klaar: `POST /v0/show-control/regie/vrijgeven`. De scène stopt en de stand wordt show; de run blijft (een testrun). Een voorstelling begint met RESET RUN + START RUN.
+- Heeft iemand anders de regie, dan krijg je 423 met de naam. Wacht, of vraag Booi. Neem nooit over met `forceer` zonder ja van Booi.
+- De knoppen in de zaal (Stream Deck, klikker, ready van de spelers) werken altijd.
+- Bewaker (in show control): kijkt om de paar seconden of TouchDesigner (fase) en de teleprompter (klaargezette scène) de runtime volgen en herstelt het; ziet een herstart van TouchDesigner aan de pid in `~/Library/Application Support/ForYouApp/td-show.json` (schrijft de TD-waakhond). Wat hij vond staat op de regiepagina onder Controle en in `GET /v0/show-control/regie` → `controle`.
+- Proef zonder show: `node modules/show-control/tests/regie-proef.js` (pagina op :4325/regie/). Tests: `regie-test.js`, `bewaker-test.js` in `modules/show-control/tests`.

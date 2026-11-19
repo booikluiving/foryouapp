@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>For_You regie</title>
+<style>
+  /* Huisstijl For_You: wit op nacht, geen accentkleur, geen ronde hoeken, dunne witte lijnen. */
+  :root { --bg:#07080b; --fg:#fff; --fg2:rgba(255,255,255,.66); --fg3:rgba(255,255,255,.3); --lijn:rgba(255,255,255,.16); --let:#e0b040; --fout:#ff6b5e; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  header { padding:14px 20px; border-bottom:1px solid var(--lijn); display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+  h1 { font-size:18px; margin:0 12px 0 0; }
+  .stand { font-weight:700; padding:3px 10px; border:1px solid var(--fg); letter-spacing:.06em; }
+  .stand.test, .stand.random { color:var(--let); border-color:var(--let); }
+  main { display:grid; grid-template-columns:minmax(0,1fr); max-width:1100px; }
+  section { padding:14px 20px; border-bottom:1px solid var(--lijn); }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--fg2); margin:0 0 10px; font-weight:400; }
+  button { background:transparent; color:var(--fg); border:1px solid var(--fg3); padding:8px 13px; font:inherit; cursor:pointer; border-radius:0; }
+  button:hover:not(:disabled) { border-color:var(--fg); }
+  button:disabled { opacity:.3; cursor:default; }
+  button.hoofd { background:var(--fg); color:var(--bg); border-color:var(--fg); font-weight:700; }
+  .rij { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  input[type=text], input[type=search] { background:transparent; color:var(--fg); border:1px solid var(--fg3); padding:8px 10px; font:inherit; border-radius:0; }
+  .nu { display:grid; gap:4px; margin-bottom:10px; font-size:17px; }
+  .nu b { font-weight:700; }
+  .zacht { color:var(--fg2); }
+  #melding { min-height:1.4em; margin-top:8px; }
+  #melding.fout { color:var(--fout); }
+  .lijst { display:grid; align-content:start; max-height:60vh; overflow:auto; border-top:1px solid var(--lijn); }
+  .scene { display:flex; gap:8px; align-items:center; padding:7px 4px; border-bottom:1px solid var(--lijn); }
+  .scene .naam { flex:1; min-width:0; }
+  .scene .omg { color:var(--fg2); font-size:13px; }
+  .scene.klaar { box-shadow:inset 3px 0 0 var(--let); }
+  .scene.speelt { box-shadow:inset 3px 0 0 var(--fg); background:rgba(255,255,255,.06); }
+  label.schakel { display:flex; gap:6px; align-items:center; }
+  #controleKop.fout { color:var(--fout); font-weight:700; }
+  #controleLijst div { padding:3px 0; }
+  .uitleg { color:var(--fg3); font-size:13px; margin:8px 0 0; }
+  .testrun { color:var(--let); }
+
+  /* Ingebed onderaan de operatorpagina: links bediening, rechts de scènes. */
+  body.ingebed header h1 { display:none; }
+  body.ingebed header { padding:10px 20px; }
+  body.ingebed main { max-width:none; grid-template-columns:minmax(320px,1fr) minmax(360px,1.3fr); height:calc(100vh - 47px); }
+  body.ingebed .links { overflow:auto; border-right:1px solid var(--lijn); }
+  body.ingebed .scenes { display:flex; flex-direction:column; min-height:0; border-bottom:0; }
+  body.ingebed .scenes .lijst { flex:1; max-height:none; }
+  body.ingebed .uitleg { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>For_You regie</h1>
+  <span id="stand" class="stand">…</span>
+  <span id="eigenaar" class="zacht"></span>
+  <span id="testrun" class="testrun" hidden>Testrun: RESET RUN voor de voorstelling</span>
+</header>
+<main>
+  <div class="links">
+  <section>
+    <h2>Wie bedient</h2>
+    <div class="rij">
+      <input id="wie" type="text" placeholder="Je naam" aria-label="Je naam">
+      <button id="neemTest">Test overnemen</button>
+      <button id="neemRandom">Random overnemen</button>
+      <button id="vrij">Vrijgeven</button>
+    </div>
+    <p class="uitleg">Test en random: alleen jij bedient tot je vrijgeeft. Vrijgeven stopt de scène; de run blijft staan. Een voorstelling begin je met RESET RUN en START RUN.</p>
+  </section>
+  <section>
+    <h2>Nu</h2>
+    <div class="nu">
+      <div>Speelt: <b id="speelt">–</b></div>
+      <div>Klaar: <b id="klaar">–</b> <span id="omgeving" class="zacht"></span></div>
+    </div>
+    <div class="rij">
+      <button id="start" class="hoofd">Start</button>
+      <button id="stop">Stop</button>
+      <button id="schrijf">Schrijf nieuw script</button>
+      <button id="volgende">Random volgende</button>
+    </div>
+    <div id="melding"></div>
+  </section>
+  <section>
+    <h2>Controle</h2>
+    <div id="controleKop"></div>
+    <div id="controleLijst" class="zacht"></div>
+  </section>
+  </div>
+  <section class="scenes">
+    <h2>Scènes</h2>
+    <div class="rij" style="margin-bottom:8px">
+      <input id="zoek" type="search" placeholder="Zoek op titel of omgeving" style="flex:1">
+    </div>
+    <div id="lijst" class="lijst"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+if (new URLSearchParams(location.search).get("ingebed") === "1") document.body.classList.add("ingebed");
+let overzicht = null;
+let situaties = [];
+let bezig = false;
+
+function wie() {
+  return $("wie").value.trim();
+}
+// Zonder naam bleven de knoppen grijs; standaard bedient "operator" (aanpassen mag).
+try { $("wie").value = localStorage.getItem("regie-wie") || "operator"; } catch (_e) { $("wie").value = "operator"; }
+$("wie").addEventListener("input", () => { try { localStorage.setItem("regie-wie", wie()); } catch (_e) {} teken(); });
+
+async function api(pad, body) {
+  const antwoord = await fetch(`/v0/show-control/regie${pad}`, body === undefined ? {} : {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-foryou-wie": wie() },
+    body: JSON.stringify({ wie: wie(), ...body }),
+  });
+  const json = await antwoord.json().catch(() => ({}));
+  if (!antwoord.ok) {
+    const err = new Error(json.message || json.error || `Fout ${antwoord.status}`);
+    err.code = json.error;
+    throw err;
+  }
+  return json;
+}
+
+function melding(tekst, fout = false) {
+  $("melding").textContent = tekst || "";
+  $("melding").className = fout ? "fout" : "";
+}
+
+function tijd(iso) {
+  const d = new Date(iso || "");
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+}
+
+function mijn() {
+  return !!(overzicht && overzicht.eigenaar && !overzicht.verlopen && overzicht.eigenaar.wie === wie());
+}
+
+function teken() {
+  const o = overzicht || {};
+  const stand = o.stand || "?";
+  $("stand").textContent = stand.toUpperCase();
+  $("stand").className = `stand ${stand}`;
+  $("eigenaar").textContent = o.eigenaar && !o.verlopen ? `${o.eigenaar.wie}, tot ${tijd(o.eigenaar.tot)}` : (stand === "show" ? "voorstelling: pad en publiek kiezen" : "vrij");
+  const run = o.run || {};
+  $("speelt").textContent = run.speelt ? run.speelt.title || run.speelt.situationId : "–";
+  $("klaar").textContent = run.klaar ? run.klaar.title || run.klaar.situationId : "–";
+  $("omgeving").textContent = o.run && o.run.omgevingKlaar ? `in ${o.run.omgevingKlaar}` : "";
+  $("testrun").hidden = !(stand === "show" && run.testRun);
+  const ik = mijn();
+  const naam = !!wie();
+  $("neemTest").disabled = bezig || !naam || (ik && stand === "test");
+  $("neemRandom").disabled = bezig || !naam || (ik && stand === "random");
+  $("vrij").disabled = bezig || !ik;
+  $("schrijf").disabled = bezig || !ik || !!run.speelt || !run.klaar;
+  $("start").disabled = bezig || !ik || !!run.speelt || !run.klaar;
+  $("stop").disabled = bezig || !ik || !run.speelt;
+  $("volgende").disabled = bezig || !ik;
+  tekenControle(o.controle);
+  for (const knop of document.querySelectorAll(".scene button")) knop.disabled = bezig || !ik;
+  for (const rij of document.querySelectorAll(".scene")) {
+    rij.classList.toggle("klaar", !!(run.klaar && rij.dataset.id === run.klaar.situationId));
+    rij.classList.toggle("speelt", !!(run.speelt && rij.dataset.id === run.speelt.situationId));
+  }
+}
+
+// Wat de bewaker van show control zag: TouchDesigner en teleprompter volgen de runtime.
+function tekenControle(c) {
+  const kop = $("controleKop");
+  const lijst = $("controleLijst");
+  if (!c) { kop.textContent = "Geen bewaker."; kop.className = ""; lijst.textContent = ""; return; }
+  const td = c.td || {};
+  const recent = (c.meldingen || []).filter((m) => Date.now() - Date.parse(m.at) < 10 * 60000);
+  if (td.reageert === false) {
+    kop.textContent = "TouchDesigner antwoordt niet.";
+    kop.className = "fout";
+  } else if (recent.length) {
+    kop.textContent = `Hersteld: ${recent[0].tekst}${recent[0].herstel ? ` → ${recent[0].herstel}` : ""}`;
+    kop.className = "fout";
+  } else {
+    kop.textContent = `Alles klopt${c.fase !== null && c.fase !== undefined ? ` (TouchDesigner fase ${c.fase})` : ""}.`;
+    kop.className = "goed";
+  }
+  lijst.textContent = "";
+  for (const m of (c.meldingen || []).slice(0, 6)) {
+    const rij = document.createElement("div");
+    rij.textContent = `${tijd(m.at)}  ${m.tekst}${m.herstel ? ` → ${m.herstel}` : ""}${m.keer > 1 ? ` (${m.keer}×)` : ""}`;
+    lijst.appendChild(rij);
+  }
+}
+
+function tekenLijst() {
+  const zoek = $("zoek").value.trim().toLowerCase();
+  const lijst = $("lijst");
+  lijst.textContent = "";
+  for (const s of situaties) {
+    if (zoek && !`${s.titel} ${s.omgeving}`.toLowerCase().includes(zoek)) continue;
+    const rij = document.createElement("div");
+    rij.className = "scene";
+    rij.dataset.id = s.id;
+    const naam = document.createElement("div");
+    naam.className = "naam";
+    naam.textContent = s.titel;
+    const omg = document.createElement("div");
+    omg.className = "omg";
+    omg.textContent = s.omgeving;
+    naam.appendChild(omg);
+    const laad = document.createElement("button");
+    laad.textContent = "Inladen";
+    laad.addEventListener("click", () => doe(`Inladen: ${s.titel}…`, () => api("/laad", { situationId: s.id })));
+    const speel = document.createElement("button");
+    speel.textContent = "Inladen + start";
+    speel.addEventListener("click", () => doe(`Inladen en starten: ${s.titel}…`, () => api("/laad", { situationId: s.id, start: true })));
+    rij.append(naam, laad, speel);
+    lijst.appendChild(rij);
+  }
+  teken();
+}
+
+async function doe(tekst, fn) {
+  if (bezig) return;
+  bezig = true;
+  melding(tekst);
+  teken();
+  try {
+    overzicht = await fn();
+    melding("");
+  } catch (err) {
+    melding(err.message, true);
+  } finally {
+    bezig = false;
+    teken();
+  }
+}
+
+async function neem(stand) {
+  try {
+    overzicht = await api("/overnemen", { stand });
+  } catch (err) {
+    if (err.code === "regie_bezet" && confirm(`${err.message}\n\nToch overnemen?`)) {
+      overzicht = await api("/overnemen", { stand, forceer: true });
+    } else {
+      throw err;
+    }
+  }
+  return overzicht;
+}
+
+$("neemTest").addEventListener("click", () => doe("Regie overnemen (test)…", () => neem("test")));
+$("neemRandom").addEventListener("click", () => doe("Regie overnemen (random)…", () => neem("random")));
+$("vrij").addEventListener("click", () => doe("Vrijgeven…", () => api("/vrijgeven", {})));
+$("schrijf").addEventListener("click", () => doe("Script schrijven…", async () => {
+  const o = await api("/schrijf", {});
+  setTimeout(() => melding("Het script wordt geschreven: zie de operator-chat. READY kan zodra het er is."), 0);
+  return o;
+}));
+$("start").addEventListener("click", () => doe("Starten…", () => api("/start", {})));
+$("stop").addEventListener("click", () => doe("Stoppen…", () => api("/stop", {})));
+$("volgende").addEventListener("click", () => doe("Random scène inladen…", () => api("/random", {})));
+$("zoek").addEventListener("input", tekenLijst);
+
+async function ververs() {
+  if (!bezig) {
+    try { overzicht = await api(""); } catch (_e) { /* volgende keer */ }
+    teken();
+  }
+}
+
+async function laadCatalogus() {
+  try {
+    const c = await api("/catalogus");
+    situaties = (c.situaties || []).sort((a, b) => a.titel.localeCompare(b.titel, "nl"));
+    tekenLijst();
+  } catch (err) {
+    melding(`Catalogus: ${err.message}`, true);
+  }
+}
+
+ververs();
+laadCatalogus();
+setInterval(ververs, 1500);
+</script>
+</body>
+</html>

@@ -41,21 +41,28 @@
           <input id="randomizeEqualScoresToggle" type="checkbox">
           <span>Random bij gelijke score</span>
         </label>
+        <label class="runtime-option" title="Heel lichte voorkeur: bij bijna gelijke score gaat een scène met de speler die nu vrij is voor.">
+          <input id="vrijeSpelerToggle" type="checkbox" checked>
+          <span>Voorkeur vrije speler</span>
+        </label>
         <label class="runtime-option">
           <input id="startSceneCountInput" type="number" min="0" max="20" step="1" value="3" style="width:3.5em">
           <span>Startscènes eerst</span>
           <span id="startSceneCountStatus"></span>
         </label>
-        <div class="fy-actions runtime-actions live-actions">
+        <!-- Starten, stoppen, klaarzetten en reset gaan alleen via show control (de regie): die zet ook
+             TouchDesigner, licht en microfoons. Deze pagina kijkt alleen. -->
+        <div class="fy-actions runtime-actions live-actions" hidden>
           <button id="situationToggleBtn" class="fy-button fy-button-dark" type="button">Start situatie</button>
           <button id="previousSituationBtn" class="fy-button" type="button">Vorige situatie</button>
           <button id="runToggleBtn" class="fy-button fy-button-primary" type="button">Start run</button>
         </div>
-        <div class="fy-actions runtime-actions kies-actions">
+        <div class="fy-actions runtime-actions kies-actions" hidden>
           <select id="kiesSituatieSelect" aria-label="Situatie om klaar te zetten"></select>
           <button id="kiesSituatieBtn" class="fy-button" type="button">Zet klaar</button>
           <button id="willekeurigeSituatieBtn" class="fy-button" type="button">Willekeurig</button>
         </div>
+        <p class="message">Starten, stoppen en scènes kiezen: <a href="#" onclick="location.href=location.protocol+'//'+location.hostname+':3025/regie/';return false;">regie</a> of de Stream Deck.</p>
         <div id="message" class="message" role="status"></div>
       </section>
 
@@ -76,6 +83,6 @@
       </section>
     </main>
 
-    <script src="/runtime/app.js?v=runtime-ui-9"></script>
+    <script src="/runtime/app.js?v=runtime-ui-10-vrije-speler"></script>
   </body>
 </html>

@@ -182,6 +182,19 @@
     startRuntimePolling();
   }
 
+  // De muziek van de loadingfase: het lichtspel (poort 4240) meldt elke zestiende wat er klinkt.
+  // Draait het lichtspel niet, dan beweegt de kaart zoals altijd.
+  function luisterMuziek() {
+    const poort = Number(new URLSearchParams(window.location.search).get("lichtPoort")) || 4240;
+    let bron;
+    try { bron = new EventSource(`${window.location.protocol}//${window.location.hostname}:${poort}/stroom`); } catch (_err) { return; }
+    bron.onmessage = (event) => {
+      if (!state.renderer || !state.renderer.muziek) return;
+      try { state.renderer.muziek(JSON.parse(event.data)); } catch (_err) {}
+    };
+  }
+  luisterMuziek();
+
   if (window.parent !== window) document.body.classList.add("ingebed");
 
   loadStage().catch((err) => {

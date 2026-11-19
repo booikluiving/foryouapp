@@ -17,13 +17,16 @@
         <a href="/script-agent/operator/stage" target="_blank" rel="noreferrer">Stage output</a>
         <a href="http://127.0.0.1:3024/runtime" target="_blank" rel="noreferrer">Runtime</a>
         <a href="http://127.0.0.1:3026/audience/admin" target="_blank" rel="noreferrer">Audience</a>
+        <a href="http://127.0.0.1:4210" target="_blank" rel="noreferrer">Beat</a>
+        <a id="regieLos" href="#" target="_blank" rel="noreferrer">Regie</a>
+        <a id="instellingenKnop" href="#">Instellingen</a>
       </nav>
     </header>
 
     <main class="operator-shell">
       <section class="panel operator-left">
         <div class="section-head compact">
-          <h2>Regie</h2>
+          <h2>Script</h2>
           <button id="reloadCatalog" type="button">Herlaad</button>
         </div>
 
@@ -53,6 +56,7 @@
         <div class="button-row">
           <button id="sceneToChat" class="primary" type="button">Scene naar chat</button>
           <button id="refreshRuntimeDraft" type="button">Runtime draft</button>
+          <button id="overslaan" type="button" title="De scène die klaarstaat niet spelen: de volgende wordt meteen geschreven">Overslaan</button>
         </div>
         <div class="opmerkingen">
           <span class="meta-line">Opmerking voor de volgende scène</span>
@@ -70,14 +74,6 @@
           </div>
           <p id="opmerkingStand" class="meta-line"></p>
         </div>
-        <div class="scene-test">
-          <label class="scene-test-toggle">
-            <input id="sceneTestToggle" type="checkbox">
-            <span>Scènes testen</span>
-          </label>
-          <button id="sceneTestStart" type="button" hidden>Start scène</button>
-        </div>
-        <p id="sceneTestMsg" class="meta-line"></p>
         <p id="syncMsg" class="meta-line"></p>
         <p id="operatorMsg" class="meta-line"></p>
       </section>
@@ -86,6 +82,11 @@
         <div class="section-head compact">
           <h2>Live chat</h2>
           <div class="button-row">
+            <span id="modelKeuze" class="model-keuze" role="group" aria-label="Model dat schrijft">
+              <button type="button" data-model="deepseek-flash">Flash</button>
+              <button type="button" data-model="deepseek-v4-pro">Pro</button>
+              <button type="button" data-model="google/gemini-4-hydrogen" disabled title="OpenRouter-sleutel ontbreekt">Hydrogen</button>
+            </span>
             <button id="undoTurn" type="button">Undo</button>
             <button id="clearChat" type="button">Wis chat</button>
             <button id="resetSession" class="danger" type="button">Reset sessie</button>
@@ -100,6 +101,25 @@
       </section>
 
       <aside class="panel operator-right">
+        <section class="side-section">
+          <div class="section-head compact">
+            <h2>Publiek</h2>
+            <button id="telefoonOpen" type="button">Open</button>
+          </div>
+          <div class="telefoon-venster">
+            <iframe id="telefoonKijk" title="Telefoon van het publiek" tabindex="-1" scrolling="no"></iframe>
+          </div>
+          <form id="publiekChatForm" class="publiek-chat">
+            <label>Naam in de chat
+              <input id="publiekChatNaam" maxlength="24" autocomplete="off">
+            </label>
+            <div class="operator-form">
+              <input id="publiekChatInput" maxlength="140" autocomplete="off" placeholder="Zeg iets in de publiekschat">
+              <button type="submit">Stuur</button>
+            </div>
+            <p id="publiekChatMsg" class="meta-line"></p>
+          </form>
+        </section>
         <section class="side-section">
           <h2>Stats</h2>
           <div class="operator-stats">
@@ -137,7 +157,13 @@
         </section>
       </aside>
 
-      <section class="panel system-settings">
+      <!-- Regie (show control): stand, wie bedient, wat speelt en klaarstaat, scènes inladen. Eén weg,
+           dezelfde pagina als :3025/regie/. -->
+      <section class="panel operator-regie">
+        <iframe id="regieVenster" title="Regie"></iframe>
+      </section>
+
+      <section class="panel system-settings" hidden>
         <div class="section-head compact">
           <div>
             <h2>Systeeminstellingen</h2>

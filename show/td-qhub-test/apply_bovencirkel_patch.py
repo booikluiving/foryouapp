@@ -5,11 +5,15 @@
 # van de NDI-camera boven de ring (PTVL-ZCAM), uitgesneden op de ring, rond gemaskeerd en in zwart-wit.
 # Het getal en de cirkellijn van de pagina blijven erboven. Tijdens de scène (fase 2) staat de laag uit,
 # omdat de pagina dan doorzichtig is; na de scène komt de laag pas terug als het vel van de pagina weer dicht is.
+# Na de klok, in Up next, toont de pagina het bovenaanzicht op een tweede plek (uDoel2) tot alle spelers ready
+# zijn. De laag kijkt in de pagina (tweede ingang) op welke van de twee plekken het gat open is en tekent
+# de ring daar; de plekken mogen elkaar dus overlappen.
 #
 # Keten: fy_boven_ndi (NDI In) → fy_boven_cirkel (GLSL, 1080×1920) → fy_boven_onder = over(fy_boven_cirkel, bord_keuze)
 #        → hoofd_een (tweede ingang, was bord_keuze).
 # Bijstellen: op fy_boven_cirkel, uCentrum (midden van de ring in het camerabeeld, pixels van linksboven),
-# uStraal (straal van de ring, x en y apart: de lens rekt iets uit), uDoel (midden en straal op de pagina).
+# uStraal (straal van de ring, x en y apart: de lens rekt iets uit), uDoel (midden en straal op de pagina),
+# uDoel2 (plek in Up next: dezelfde getallen als --upboven-x/-y/-r in stage-tussen.html, straal + 2).
 # Terugdraaien: zet BOVENCIRKEL_TERUG = True en voer opnieuw uit.
 
 BOVENCIRKEL_TERUG = globals().get('BOVENCIRKEL_TERUG', False)
@@ -23,11 +27,26 @@ PIXEL = '''// For_You: bovenaanzicht van de ring, rond gemaskeerd op de plek van
 uniform vec2 uCentrum;   // midden van de ring in het camerabeeld (pixels, van linksboven)
 uniform vec2 uStraal;    // straal van de ring in het camerabeeld (pixels, x en y)
 uniform vec3 uDoel;      // midden (x, y van linksboven) en straal op de pagina van 1080x1920
+uniform vec3 uDoel2;     // tweede plek op de pagina (Up next)
 uniform float uZicht;    // 0 tijdens de scène
 out vec4 fragColor;
+// Hoe open is het gat van de pagina op deze plek: gemeten op acht punten die niet in de andere plek liggen.
+float open(vec3 doel, vec3 ander) {
+    float o = 0.0;
+    for (int i = 0; i < 8; i++) {
+        float h = 6.2831853 * (float(i) + 0.5) / 8.0;
+        vec2 pt = doel.xy + 0.8 * doel.z * vec2(cos(h), sin(h));
+        if (distance(pt, ander.xy) < ander.z) continue;
+        o = max(o, 1.0 - texture(sTD2DInputs[1], vec2(pt.x / 1080.0, 1.0 - pt.y / 1920.0)).a);
+    }
+    return o;
+}
 void main() {
     vec2 pagina = vec2(vUV.s * 1080.0, (1.0 - vUV.t) * 1920.0);
     vec2 p = (pagina - uDoel.xy) / uDoel.z;          // -1..1 binnen de cirkel
+    vec2 p2 = (pagina - uDoel2.xy) / max(uDoel2.z, 1.0);
+    if (min(length(p), length(p2)) > 1.0) { fragColor = vec4(0.0); return; }
+    if (open(uDoel2, uDoel) > open(uDoel, uDoel2) + 0.02) p = p2;
     float d = length(p);
     float a = (1.0 - smoothstep(0.985, 1.0, d)) * uZicht;
     vec2 res = uTD2DInfos[0].res.zw;
@@ -64,6 +83,7 @@ else:
 
     gl = ouder.op('fy_boven_cirkel') or ouder.create(glslTOP, 'fy_boven_cirkel')
     gl.inputConnectors[0].connect(ndi)
+    gl.inputConnectors[1].connect(ouder.op('audience_tussen_web'))
     gl.par.pixeldat = dat
     gl.par.outputresolution = 'custom'
     gl.par.resolutionw, gl.par.resolutionh = 1080, 1920
@@ -74,6 +94,8 @@ else:
     gl.par.vec2name = 'uDoel'
     gl.par.vec2valuex, gl.par.vec2valuey, gl.par.vec2valuez = 540, 590, 228
     gl.par.vec3name = 'uZicht'
+    gl.par.vec4name = 'uDoel2'
+    gl.par.vec4valuex, gl.par.vec4valuey, gl.par.vec4valuez = 540, 790, 273
     # Zicht: 0 tijdens de scène. Na de scène blijft de laag nog 0,8 s uit (het vel van de pagina schuift dan
     # nog terug) en vloeit daarna in 0,2 s in; bij het begin van de scène meteen weg.
     fase = ouder.op('fy_boven_fase') or ouder.create(constantCHOP, 'fy_boven_fase')

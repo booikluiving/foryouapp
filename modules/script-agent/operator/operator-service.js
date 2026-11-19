@@ -14,6 +14,7 @@ const {
 const { assignPerformerSlots } = require("../../../shared/casting/performer-slots");
 const { buildPromptInput, hashContent } = require("../prompt-builder/prompt-builder");
 const { bordRegieVoor } = require("../prompt-builder/bord-prompt");
+const { isTrendOmgeving, trendScript } = require("../../../shared/trend/trend");
 const { createScriptOutput } = require("../script-output/script-service");
 const {
   appendPromptInput,
@@ -21,6 +22,7 @@ const {
   assertPathUnderApp,
   readLatestScriptOutput,
   readPromptInput,
+  readScriptOutputs,
   scriptAgentDbDir,
 } = require("../script-output/state-store");
 
@@ -62,12 +64,21 @@ Werk snel en direct met de operator.
 
 Schrijf alleen scene-tekst wanneer de operator daarom vraagt of wanneer er een voorbereide scene-prompt wordt gestuurd.
 Gebruik de opgegeven situatie, personages en omgeving als harde context.
-Begin een scene met "# Titel" en schrijf dialoog als "Personage: zin.".
+Begin direct met dialoog, zonder titel of kopregel. Schrijf dialoog als "Personage: zin.".
 Gebruik de personagenamen precies zoals ze in de lijst staan.
 Geen regieaanwijzingen, alleen dialoog.
 Maximaal 2500 tekens per scene.
 Geen uitleg vooraf, geen nabrander.
 `.trim();
+
+// De titel staat al op het zaalscherm terwijl het script geschreven wordt. Een bewaarde prompt met de
+// oude regel ("# Titel" bovenaan) krijgt bij het inlezen de nieuwe regel; de rest blijft zoals hij is.
+const OLD_TITLE_RULE = 'Begin een scene met "# Titel" en schrijf dialoog als "Personage: zin.".';
+const TITLE_RULE = 'Begin direct met dialoog, zonder titel of kopregel. Schrijf dialoog als "Personage: zin.".';
+
+function withoutTitleRule(prompt) {
+  return String(prompt || "").split(OLD_TITLE_RULE).join(TITLE_RULE);
+}
 
 const DEFAULT_PROMPT_TEMPLATE = `
 Schrijf een speelbare scene voor de volgende klaargezette situatie.
@@ -230,7 +241,7 @@ function buildManualPromptText({ situation, environment, characters, extra }) {
     "Prompt:",
     displayDescription(situation),
   ];
-  const bordRegie = bordRegieVoor(environment ? displayTitle(environment) : "");
+  const bordRegie = bordRegieVoor(situation);
   if (bordRegie) lines.push("", bordRegie);
   const regie = normalizeText(extra || "", 2000);
   if (regie) lines.push("", "Regie vooraf:", regie);
@@ -259,9 +270,23 @@ function buildManualPromptInput({ catalog = {}, runtimeState = null, body = {}, 
   const showRunId = runtimeState && runtimeState.showRunId
     ? normalizeSessionId(runtimeState.showRunId)
     : normalizeSessionId(body.sessionId || "show_default");
-  const performerSlots = performerSlotsForManual(characters, catalog.performers || []);
+  // Invulscène: de runtime heeft de willekeurige plek al ingevuld en een speler geloot.
+  // Zelfde scène en dezelfde personages: neem die invulling en plekken over.
+  const resolved = runtimeState && runtimeState.resolvedPreparedNext;
+  const ingevuld = resolved && normalizeId(resolved.situationId) === normalizeId(situation.id) && Array.isArray(resolved.ingevuld)
+    ? resolved.ingevuld
+    : [];
+  const resolvedIds = uniqueIds((resolved && resolved.characters || []).map((item) => item.id));
+  const sameCast = ingevuld.length && resolvedIds.length === characterIds.length
+    && characterIds.every((id) => resolvedIds.includes(id));
+  const performerSlots = sameCast && Array.isArray(resolved.performerSlots) && resolved.performerSlots.length
+    ? JSON.parse(JSON.stringify(resolved.performerSlots))
+    : performerSlotsForManual(characters, catalog.performers || []);
+  const promptSituation = ingevuld.length
+    ? { ...situation, promptText: ingevuld.reduce((out, entry) => out.split(`{${entry.placeholder}}`).join(entry.name), displayDescription(situation)) }
+    : situation;
   const promptText = buildManualPromptText({
-    situation,
+    situation: promptSituation,
     environment,
     characters,
     extra: body.extra,
@@ -366,6 +391,7 @@ function defaultOperatorSettings() {
     maxTokens: 4096,
     temperature: 0.8,
     reasoningEffort: "low",
+    firstSceneLengthFactor: DEFAULT_FIRST_SCENE_LENGTH_FACTOR,
     fallbackModel: DEFAULT_FALLBACK_MODEL,
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     promptTemplate: DEFAULT_PROMPT_TEMPLATE,
@@ -388,8 +414,10 @@ function normalizeOperatorSettings(input = {}, base = defaultOperatorSettings())
     maxTokens: Math.max(256, Math.min(16000, Number(source.maxTokens || base.maxTokens || 4096) || 4096)),
     temperature: Math.max(0, Math.min(2, Number(source.temperature ?? base.temperature ?? 0.8) || 0.8)),
     reasoningEffort: normalizeReasoningEffort(source.reasoningEffort ?? base.reasoningEffort),
+    reasoningByModel: normalizeReasoningByModel(source.reasoningByModel ?? base.reasoningByModel),
+    firstSceneLengthFactor: normalizeFirstSceneLengthFactor(source.firstSceneLengthFactor ?? base.firstSceneLengthFactor),
     fallbackModel: normalizeText(source.fallbackModel || base.fallbackModel || DEFAULT_FALLBACK_MODEL, 120) || DEFAULT_FALLBACK_MODEL,
-    systemPrompt: normalizeText(source.systemPrompt || base.systemPrompt || DEFAULT_SYSTEM_PROMPT, 12000),
+    systemPrompt: withoutTitleRule(normalizeText(source.systemPrompt || base.systemPrompt || DEFAULT_SYSTEM_PROMPT, 12000)),
     promptTemplate: normalizeText(source.promptTemplate || base.promptTemplate || DEFAULT_PROMPT_TEMPLATE, 12000),
     stageStyle: normalizeStageStyle(source.stageStyle || base.stageStyle || {}),
     updatedAt: source.updatedAt || base.updatedAt || nowIso(),
@@ -400,6 +428,33 @@ function normalizeOperatorSettings(input = {}, base = defaultOperatorSettings())
 function normalizeReasoningEffort(value) {
   const effort = String(value ?? "low").trim().toLowerCase();
   return ["off", "low", "high", "max"].includes(effort) ? effort : "low";
+}
+
+// De eerste scène van een run heeft nog geen eerdere scène als maat en loopt daardoor uit.
+// De aantallen in de lengteregel ("16 tot 20 regels") gaan voor die scène met deze factor omlaag.
+const DEFAULT_FIRST_SCENE_LENGTH_FACTOR = 0.7;
+
+function normalizeFirstSceneLengthFactor(value) {
+  const factor = Number(value);
+  if (!Number.isFinite(factor) || factor <= 0) return DEFAULT_FIRST_SCENE_LENGTH_FACTOR;
+  return Math.max(0.3, Math.min(1, factor));
+}
+
+function shortenLengthRule(text, factor) {
+  if (!(factor < 1)) return text;
+  const scale = (n) => String(Math.max(1, Math.round(Number(n) * factor)));
+  return String(text || "").replace(/(\d+) tot (\d+) regels/g, (_all, a, b) => `${scale(a)} tot ${scale(b)} regels`);
+}
+
+// Nadenken per model: bij wisselen van model komt de stand terug die dat model het laatst had.
+function normalizeReasoningByModel(input) {
+  const out = {};
+  if (!input || typeof input !== "object") return out;
+  for (const [key, value] of Object.entries(input).slice(0, 40)) {
+    const model = normalizeText(key, 120);
+    if (model) out[model] = normalizeReasoningEffort(value);
+  }
+  return out;
 }
 
 function reasoningRequestFields(effort) {
@@ -622,7 +677,19 @@ function createOperatorService(options = {}) {
 
   async function saveSettings(patch = {}) {
     const current = await readSettings();
-    settingsCache = normalizeOperatorSettings({ ...current, ...patch, updatedAt: nowIso() }, current);
+    const next = { ...(patch && typeof patch === "object" ? patch : {}) };
+    const nextModel = normalizeText(next.model || "", 120);
+    if (nextModel && nextModel !== current.model) {
+      const byModel = { ...current.reasoningByModel, [current.model]: current.reasoningEffort };
+      if (!Object.prototype.hasOwnProperty.call(next, "reasoningEffort")) {
+        // OpenRouter-modellen als Gemini Hydrogen kunnen niet zonder nadenken: dan "low".
+        next.reasoningEffort = byModel[nextModel] ?? (nextModel.includes("/") ? "low" : current.reasoningEffort);
+      }
+      next.reasoningByModel = byModel;
+    } else {
+      delete next.reasoningByModel;
+    }
+    settingsCache = normalizeOperatorSettings({ ...current, ...next, updatedAt: nowIso() }, current);
     await writeJsonObject(operatorSettingsFilePath(), settingsCache, 0o644);
     stageState.style = normalizeStageStyle(settingsCache.stageStyle);
     stageState.model = settingsCache.model;
@@ -750,7 +817,8 @@ function createOperatorService(options = {}) {
   function updateStageControl(message = {}) {
     const previousSessionId = stageState.sessionId;
     stageState.sessionId = normalizeSessionId(message.sessionId || message.sessie_id || stageState.sessionId);
-    if (message.model) stageState.model = normalizeText(message.model, 120) || stageState.model;
+    // Het model komt uit de instellingen, niet uit wat een pagina toevallig in zijn veld heeft staan.
+    if (settingsCache) stageState.model = settingsCache.model;
     stageState.provider = "deepseek";
     stageState.updatedAt = nowIso();
     if (previousSessionId !== stageState.sessionId && !stageState.streaming) {
@@ -790,7 +858,11 @@ function createOperatorService(options = {}) {
   // en met Enter bevestigt, gaat niet als bericht naar het model maar wordt bewaard en meegegeven
   // met de volgende scène. Wie nog typt als het venster afloopt krijgt even uitstel; wat er dan
   // staat telt ook.
-  const opmerking = { bewaard: "", klaar: null, timer: null, hardEind: 0, laatsteScene: "" };
+  const opmerking = { bewaard: "", klaar: null, timer: null, hardEind: 0, laatsteScene: "", sceneDaarvoor: "", laatstGenomen: "" };
+  // Elke nieuwe tekst krijgt een nummer. Begint er een nieuwe terwijl de vorige nog loopt (knop
+  // OVERSLAAN), dan stopt de vorige en komt er niets meer van in beeld of op de teleprompter.
+  let generatieTeller = 0;
+  const VERVANGEN = "script_vervangen";
   // Een opmerking erbij: meerdere opmerkingen staan achter elkaar; dezelfde komt er niet twee keer in.
   // Ze staat ook als regel in de operator-chat, zodat te zien is dat ze is aangekomen.
   function bewaarOpmerking(tekst) {
@@ -931,6 +1003,19 @@ function createOperatorService(options = {}) {
     if (!runtimeResult || !runtimeResult.ok) {
       throw new Error(`script_agent_runtime_unavailable:${runtimeResult && runtimeResult.error || "unknown"}`);
     }
+    // Inloop (of na een reset): er staat nog niets klaar. Dan ook geen concept van een eerdere scène.
+    const runtimeNu = runtimeResult.state || {};
+    if (!runtimeNu.resolvedPreparedNext && !runtimeNu.activeSituation && !(draft && draft.source && draft.source.type === "manual-catalog-selection")) {
+      if (draft || stageState.draftInfo) {
+        draft = null;
+        stageState.draftInfo = null;
+        if (!stageState.streaming && !isInteractiveDraftSource(stageState.draftSourceId)) stageState.draft = "";
+        stageState.revision += 1;
+        stageState.updatedAt = nowIso();
+        emitStage("draft_leeg_inloop");
+      }
+      return null;
+    }
     const promptInput = buildPromptInput(await withCatalogForDescriptions(runtimeResult.state));
     if (draft && draft.contentHash === promptInput.contentHash && !options.force) {
       const hasVisiblePreparedDraft = !!stageState.draft && !isInteractiveDraftSource(stageState.draftSourceId);
@@ -1069,6 +1154,9 @@ function createOperatorService(options = {}) {
     stageState.messages = [];
     opmerking.bewaard = "";
     opmerking.laatsteScene = "";
+    opmerking.sceneDaarvoor = "";
+    opmerking.laatstGenomen = "";
+    session.laatsteBeurt = null;
     stageState.updatedAt = nowIso();
     emitStage("clear_session");
     return sessionInfo(sessionId);
@@ -1139,8 +1227,7 @@ function createOperatorService(options = {}) {
     };
   }
 
-  // OpenRouter: een model met een "/" in de naam (bijvoorbeeld google/gemini-4-hydrogen). Alleen
-  // gebruikt als een aanroep zelf om zo'n model vraagt; de show vraagt daar niet om.
+  // OpenRouter: een model met een "/" in de naam (bijvoorbeeld google/gemini-4-hydrogen).
   async function streamOpenRouterText({ apiKey, model, settings, effort, history, userText, onText }) {
     const startedAt = Date.now();
     const timing = { firstReasoningMs: null, firstTextMs: null, totalMs: null };
@@ -1254,7 +1341,8 @@ function createOperatorService(options = {}) {
     const deepSeekKey = deepSeekApiKeyFrom(secrets);
     const anthropicKey = anthropicApiKeyFrom(secrets);
     const openRouterKey = openRouterApiKeyFrom(secrets);
-    const wantsOpenRouter = Boolean(override) && settings.model.includes("/");
+    // Een model met "/" in de naam gaat naar OpenRouter (Hydrogen in de modelkeuze, of een keuze op de website).
+    const wantsOpenRouter = settings.model.includes("/");
     const wantsClaude = !wantsOpenRouter && isClaudeModel(settings.model);
     if (wantsOpenRouter && !openRouterKey) throw new Error("openrouter_api_key_missing");
     if (!wantsOpenRouter && !wantsClaude && !deepSeekKey) throw new Error("deepseek_api_key_missing");
@@ -1271,9 +1359,12 @@ function createOperatorService(options = {}) {
       : await currentDraft({ refreshRuntime: !draft });
     const promptInput = body.promptInput || (activeDraft && activeDraft.promptInput)
       || (activeDraft && activeDraft.promptInputId ? await readPromptInput(activeDraft.promptInputId) : null);
-    const userText = normalizeText(body.message, 12000)
+    const rawUserText = normalizeText(body.message, 12000)
       || normalizeText(stageState.draft, 12000)
       || normalizeText(activeDraft && activeDraft.text, 12000);
+    const userText = session.messages.length === 0
+      ? shortenLengthRule(rawUserText, settings.firstSceneLengthFactor)
+      : rawUserText;
     if (!userText) throw new Error("script_agent_operator_message_required");
     if (!promptInput) throw new Error("script_agent_operator_prompt_input_missing");
 
@@ -1323,7 +1414,17 @@ function createOperatorService(options = {}) {
       content: normalizeText(message.content, 12000),
     }));
     let fullText = "";
+    const generatie = ++generatieTeller;
+    const vervangen = () => generatie !== generatieTeller;
+    const vervangenAntwoord = () => {
+      log(JSON.stringify({ at: nowIso(), event: "script_agent_generation_replaced", situationId: promptInput.situation && promptInput.situation.situationId, sessionId }));
+      assistantMessage.streaming = false;
+      assistantMessage.error = "vervangen";
+      emit({ type: "error", assistantId, error: "vervangen door een nieuwe scène" });
+      return { type: "replaced", assistantId };
+    };
     const publish = (delta, replace = false) => {
+      if (vervangen()) throw new Error(VERVANGEN);
       fullText = replace ? delta : fullText + delta;
       assistantMessage.content = fullText;
       stageState.updatedAt = nowIso();
@@ -1382,6 +1483,7 @@ function createOperatorService(options = {}) {
         } catch (err) {
           claudeError = err;
         }
+        if (vervangen()) throw new Error(VERVANGEN);
         const refused = result && result.stopReason === "refusal";
         if ((claudeError || refused) && deepSeekKey) {
           if (result) recordUsage(session, result.priced, "claude");
@@ -1405,6 +1507,7 @@ function createOperatorService(options = {}) {
         throw new Error(`script_afgekapt: tokenlimiet bereikt na ${fullText.length} tekens tekst (maxTokens ${settings.maxTokens})`);
       }
     } catch (err) {
+      if (vervangen()) return vervangenAntwoord();
       const message = err && err.message ? String(err.message) : `${provider}_stream_error`;
       logGeneration({ error: normalizeText(message, 300) });
       assistantMessage.streaming = false;
@@ -1422,11 +1525,16 @@ function createOperatorService(options = {}) {
       throw err;
     }
 
+    if (vervangen()) {
+      recordUsage(session, result.priced, provider);
+      return vervangenAntwoord();
+    }
     logGeneration();
     const priced = result.priced;
     recordUsage(session, priced, provider);
     session.messages.push({ role: "user", content: userText, at: userMessage.at });
     session.messages.push({ role: "assistant", content: fullText, at: nowIso() });
+    session.laatsteBeurt = { situationId: promptInput.situation && promptInput.situation.situationId, berichten: session.messages.length };
     assistantMessage.streaming = false;
     const bucket = session.providerUsage[provider];
     assistantMessage.meta = {
@@ -1446,6 +1554,7 @@ function createOperatorService(options = {}) {
     };
     const scriptOutput = createScriptOutput({ promptInput, scriptText: fullText });
     await appendScriptOutput(scriptOutput);
+    if (vervangen()) return vervangenAntwoord();
     if (onScriptOutput) await onScriptOutput({ promptInput, scriptOutput, source: "operator_chat" });
     stageState.streaming = false;
     stageState.active = null;
@@ -1463,6 +1572,78 @@ function createOperatorService(options = {}) {
     return done;
   }
 
+  // Trendscène: het script staat vast (één regel per emoji) en gaat zonder taalmodel naar de
+  // teleprompter. Op het zaalscherm staat in het tekstvenster alleen de rij emoji, en de laadbalk vol.
+  async function trendZonderChat(promptInput, sessionId, sourceId, emit = () => {}) {
+    const { emoji, scriptText } = trendScript(promptInput);
+    if (!emoji.length) throw new Error("trend_zonder_emoji: zet de emoji in de situatietekst");
+    const rij = emoji.join(" ");
+    const assistantId = `assistant_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const assistantMessage = { id: assistantId, role: "assistant", content: rij, streaming: false, provider: "trend", model: "vast", at: nowIso() };
+    stageState.sessionId = sessionId;
+    stageState.draft = "";
+    stageState.draftSourceId = normalizeSourceId(sourceId || "submit");
+    stageState.draftInfo = draftInfoFromPromptInput(promptInput, promptInput.source && promptInput.source.type || "trend");
+    stageState.revision += 1;
+    stageState.messages.push(assistantMessage);
+    stageState.messages = stageState.messages.slice(-MAX_STAGE_MESSAGES);
+    stageState.updatedAt = nowIso();
+    // Eerst als "bezig", dan klaar: zo zet het zaalscherm de laadbalk op vol.
+    emitter.emit("stage", { type: "operator_stage_delta", assistantId, text: rij, fullText: rij, updatedAt: stageState.updatedAt });
+    const scriptOutput = createScriptOutput({ promptInput, scriptText });
+    await appendScriptOutput(scriptOutput);
+    if (onScriptOutput) await onScriptOutput({ promptInput, scriptOutput, source: "trend" });
+    stageState.streaming = false;
+    stageState.active = null;
+    stageState.updatedAt = nowIso();
+    log(JSON.stringify({ at: nowIso(), event: "script_agent_trend", situationId: promptInput.situation && promptInput.situation.situationId, emoji: emoji.length }));
+    const done = { type: "done", assistantId, text: rij, promptInputId: promptInput.promptInputId, scriptOutput, provider: "trend", model: "vast" };
+    emit(done);
+    emitStage("chat_done");
+    return done;
+  }
+
+  // Scène inladen zonder schrijven (regie, teststand): geen taalmodel. Het laatst bewaarde script van
+  // deze situatie gaat naar de teleprompter; is er geen, dan een leeg script, zodat de teleprompter
+  // bij deze scène hoort en niet de tekst van de vorige toont.
+  async function zonderSchrijven(promptInput, sessionId, sourceId, emit = () => {}) {
+    const situationId = promptInput && promptInput.situation ? String(promptInput.situation.situationId || "") : "";
+    let bewaard = null;
+    try {
+      bewaard = (await readScriptOutputs())
+        .filter((item) => item && item.scriptText && item.situationId === situationId)
+        .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+        .at(-1) || null;
+    } catch (_err) {
+      bewaard = null;
+    }
+    const scriptText = bewaard ? String(bewaard.scriptText) : "";
+    generatieTeller += 1;
+    stageState.sessionId = sessionId;
+    stageState.draft = "";
+    stageState.draftSourceId = normalizeSourceId(sourceId || "regie-zonder-schrijven");
+    stageState.draftInfo = draftInfoFromPromptInput(promptInput, "regie");
+    stageState.streaming = false;
+    stageState.active = null;
+    stageState.revision += 1;
+    stageState.updatedAt = nowIso();
+    const scriptOutput = createScriptOutput({ promptInput, scriptText });
+    if (onScriptOutput) await onScriptOutput({ promptInput, scriptOutput, source: "regie" });
+    log(JSON.stringify({ at: nowIso(), event: "script_agent_zonder_schrijven", situationId, bewaard: bewaard ? bewaard.scriptId : null }));
+    const done = {
+      type: "done",
+      text: scriptText,
+      promptInputId: promptInput.promptInputId,
+      scriptOutput,
+      provider: "bewaard",
+      model: bewaard ? bewaard.scriptId : "geen",
+      bewaard: !!bewaard,
+    };
+    emit(done);
+    emitStage("chat_done");
+    return done;
+  }
+
   async function sceneToChat(body = {}, emit = () => {}) {
     const sourceId = normalizeSourceId(body.sourceId || "show-control-scene-chat");
     // Staat het venster voor een opmerking nog open, dan telt wat er nu staat.
@@ -1471,11 +1652,41 @@ function createOperatorService(options = {}) {
       force: body.force !== false,
       sourceId,
     });
+    if (!nextDraft) throw new Error("script_agent_niets_klaar: er staat nog geen scène klaar (inloop)");
     const sessionId = normalizeSessionId(body.sessionId || nextDraft.showRunId || stageState.sessionId);
-    const operatorOpmerking = neemOpmerking();
+    // Na OVERSLAAN: de overgeslagen scène telde niet. De opmerking over de scène daarvoor gaat mee
+    // naar de nieuwe, en een al afgemaakte tekst van de overgeslagen scène gaat uit de geschiedenis.
+    const overslaan = body.overslaan === true;
+    const overgeslagen = normalizeText(body.overgeslagenSituationId, 200);
+    if (overslaan) {
+      const session = getSession(sessionId);
+      const beurt = session.laatsteBeurt;
+      if (beurt && overgeslagen && beurt.situationId === overgeslagen && beurt.berichten === session.messages.length) {
+        session.messages = session.messages.slice(0, -2);
+        session.laatsteBeurt = null;
+      }
+      if (overgeslagen && opmerking.laatsteScene === overgeslagen) opmerking.laatsteScene = opmerking.sceneDaarvoor;
+    }
+    if (body.schrijven === false) {
+      const done = await zonderSchrijven(nextDraft.promptInput, sessionId, sourceId, emit);
+      return { sessionId, draft: nextDraft, opmerking: null, done };
+    }
+    // Een trendscène (omgeving Trend) is puur beeld: geen taalmodel, een vast script met de emoji.
+    // Een opmerking van de operator blijft liggen voor de volgende gewone scène.
+    if (nextDraft.promptInput && isTrendOmgeving(nextDraft.promptInput.environment)) {
+      // Loopt er nog een tekst (OVERSLAAN), dan stopt die: de trendscène komt ervoor in de plaats.
+      generatieTeller += 1;
+      const done = await trendZonderChat(nextDraft.promptInput, sessionId, sourceId, emit);
+      return { sessionId, draft: nextDraft, opmerking: null, done };
+    }
+    const operatorOpmerking = overslaan
+      ? [...new Set([opmerking.laatstGenomen, neemOpmerking()].filter(Boolean))].join("\n")
+      : neemOpmerking();
+    opmerking.laatstGenomen = operatorOpmerking || "";
     // Dezelfde scène nog een keer: dan gaat de opmerking over de vorige versie en moet er een
     // nieuwe versie komen. Anders is het een les uit de vorige scène voor deze.
     const zelfdeScene = !!nextDraft.situationId && nextDraft.situationId === opmerking.laatsteScene;
+    opmerking.sceneDaarvoor = opmerking.laatsteScene;
     opmerking.laatsteScene = nextDraft.situationId || "";
     const bijsturing = !operatorOpmerking ? ""
       : zelfdeScene

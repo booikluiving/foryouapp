@@ -105,7 +105,11 @@ function createScriptAgentApp(options = {}) {
     }),
   });
   app.locals.operatorService = operatorService;
-  const sceneTest = options.sceneTest || createSceneTest({ env: options.env || process.env, fetchImpl: options.fetchImpl });
+  // Scènes testen loopt via de regie van show control (stand test/random, script schrijven of bewaard).
+  const sceneTest = options.sceneTest || createSceneTest({
+    env: options.env || process.env,
+    fetchImpl: options.fetchImpl,
+  });
   app.locals.teleprompterParser = teleprompterParser;
   app.locals.stopOperatorDraftSync = null;
   if (options.operatorAutoDraftSync !== false) {
@@ -196,12 +200,46 @@ function createScriptAgentApp(options = {}) {
   }));
 
   // Scènes testen: alleen in een testrun elke situatie starten, los van de paden.
+  // Knop OVERSLAAN op de operatorpagina: show control zet de volgende scène klaar en laat die schrijven.
+  app.post("/v0/script-agent/operator/overslaan", asyncRoute(async (_req, res) => {
+    const env = options.env || process.env;
+    const basis = String(env.SCRIPT_AGENT_SHOW_CONTROL_URL || env.SHOW_CONTROL_URL || "http://127.0.0.1:3025").replace(/\/+$/, "");
+    let antwoord;
+    try {
+      antwoord = await (options.fetchImpl || fetch)(`${basis}/v0/show-control/cues/overslaan`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+        signal: AbortSignal.timeout(10000),
+      });
+    } catch (_err) {
+      throw httpError(502, "Show control is niet bereikbaar.");
+    }
+    const body = await antwoord.json().catch(() => ({}));
+    if (!antwoord.ok) {
+      const meldingen = {
+        niets_meer_vrij: "Er is geen andere scène meer vrij.",
+        scene_speelt: "Er speelt een scène: eerst stoppen.",
+        niets_klaar: "Er staat geen scène klaar.",
+        geen_run: "Er loopt geen run.",
+        overslaan_bezig: "Overslaan loopt al.",
+        al_overgeslagen: "Die scène is al overgeslagen.",
+      };
+      throw httpError(409, meldingen[body.error] || body.error || "Overslaan lukte niet.");
+    }
+    res.json(body);
+  }));
+
   app.get("/v0/script-agent/operator/scene-test", asyncRoute(async (_req, res) => {
     res.json({ ok: true, ...(await sceneTest.status()), sync: readSyncStatus() });
   }));
 
   app.post("/v0/script-agent/operator/scene-test", asyncRoute(async (req, res) => {
     res.json({ ok: true, ...(await sceneTest.setEnabled(!!(req.body && req.body.enabled === true))) });
+  }));
+
+  app.post("/v0/script-agent/operator/scene-test/random", asyncRoute(async (req, res) => {
+    res.json({ ok: true, ...(await sceneTest.setRandom(!!(req.body && req.body.enabled === true))) });
   }));
 
   app.post("/v0/script-agent/operator/scene-test/start", asyncRoute(async (req, res) => {
@@ -294,6 +332,35 @@ function createScriptAgentApp(options = {}) {
     else operatorService.voegOpmerkingToe(req.body ? req.body.tekst : "");
     res.json({ ok: true, ...operatorService.opmerkingStand() });
   });
+
+  // Publiek op de operatorpagina: waar het kijkvenster (de telefoonpagina) staat, en een bericht van
+  // de operator in de publiekschat. De publieksdienst doet het werk; dit geeft het alleen door.
+  const publiekUrl = String((options.env || process.env).SCRIPT_AGENT_AUDIENCE_URL || "http://127.0.0.1:3026").replace(/\/+$/, "");
+  app.get("/v0/script-agent/operator/publiek", (_req, res) => {
+    let port = 3026;
+    try { port = Number(new URL(publiekUrl).port) || 3026; } catch (_err) { /* standaardpoort */ }
+    res.json({ ok: true, port, kijkPath: "/audience/kijk/start" });
+  });
+  app.post("/v0/script-agent/operator/publiek/chat", asyncRoute(async (req, res) => {
+    const fetchImpl = options.fetchImpl || fetch;
+    let antwoord;
+    try {
+      antwoord = await fetchImpl(`${publiekUrl}/audience/admin/chat/zeg`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: req.body && req.body.name, text: req.body && req.body.text }),
+        signal: AbortSignal.timeout(3000),
+      });
+    } catch (_err) {
+      throw httpError(502, "De publieksdienst is niet bereikbaar.");
+    }
+    const body = await antwoord.json().catch(() => ({}));
+    if (!antwoord.ok) {
+      const meldingen = { session_inactive: "Er is geen publiekssessie." };
+      throw httpError(antwoord.status, body.message || meldingen[body.error] || body.error || "Bericht niet geplaatst.");
+    }
+    res.json({ ok: true });
+  }));
 
   app.post("/v0/script-agent/operator/scene-to-chat", asyncRoute(async (req, res) => {
     const events = [];

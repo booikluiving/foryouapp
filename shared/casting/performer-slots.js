@@ -70,6 +70,8 @@ function normalizeCharacter(character = {}, index = 0) {
     legacyId: character.legacyId || character.legacyCharacterId || null,
     name: displayName(character, id),
     performerIds: uniqueIds(character.performerIds),
+    // Vaste plek uit de situatie: een vrij personage gaat dan niet door de loting.
+    vastePlek: normalizeSlotIndex(character.vastePlek),
     index,
   };
 }
@@ -108,7 +110,54 @@ function canAssignDistinctPerformers(characters, performers) {
   return search(0, new Set());
 }
 
-function performerSlotsForCharacters({ characters = [], performers = [] } = {}) {
+// Loting met een vaste uitkomst per seed: dezelfde seed geeft dezelfde verdeling.
+function seededRandom(seed) {
+  let state = 0x811c9dc5;
+  for (const char of String(seed)) {
+    state ^= char.codePointAt(0);
+    state = Math.imul(state, 0x01000193) >>> 0;
+  }
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Hoeveel scènes geleden stond deze plek voor het laatst in beeld (0 = de vorige scène).
+// recentSlotIndexes: per eerdere scène de bezette plekken, oudste eerst.
+function scenesSinceOnStage(slotIndex, recentSlotIndexes) {
+  for (let index = recentSlotIndexes.length - 1; index >= 0; index -= 1) {
+    if (asArray(recentSlotIndexes[index]).map(Number).includes(slotIndex)) {
+      return recentSlotIndexes.length - 1 - index;
+    }
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+// Welke plekken krijgen een vrij personage (een personage zonder vaste speler)?
+// Zonder seed: de laagste vrije plekken, op volgorde. Met seed: wie het langst niet in
+// beeld was gaat voor, bij gelijke stand beslist het lot.
+function slotsForFreeCharacters({ count, openSlots, seed, recentSlotIndexes }) {
+  if (count <= 0) return [];
+  let order = [...openSlots];
+  if (seed != null && seed !== "" && order.length > count) {
+    const random = seededRandom(seed);
+    order = order
+      .map((slotIndex) => ({
+        slotIndex,
+        waited: scenesSinceOnStage(slotIndex, recentSlotIndexes),
+        lot: random(),
+      }))
+      .sort((a, b) => (a.waited === b.waited ? a.lot - b.lot : b.waited - a.waited))
+      .map((item) => item.slotIndex);
+  }
+  return order.slice(0, count).sort((a, b) => a - b);
+}
+
+function performerSlotsForCharacters({ characters = [], performers = [], seed = null, recentSlotIndexes = [] } = {}) {
   const normalizedCharacters = (Array.isArray(characters) ? characters : [])
     .map(normalizeCharacter)
     .filter((character) => character.id || character.name);
@@ -117,27 +166,68 @@ function performerSlotsForCharacters({ characters = [], performers = [] } = {}) 
     .map((performer) => [normalizeId(performer.id || performer.performerId), performer]));
   const seen = new Set();
   const slots = [];
+  const freeCharacters = [];
 
+  function addSlot(slotIndex, performerId, performer, character) {
+    const key = `${slotIndex}:${performerId || "unassigned"}:${character.id}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    slots.push({
+      slotIndex,
+      performerId,
+      performerName: performer ? displayName(performer, performerId) : null,
+      characterId: character.id,
+      legacyCharacterId: character.legacyId || null,
+      characterName: character.name,
+    });
+  }
+
+  // Eerst de vaste koppelingen: die bepalen welke plekken bezet zijn.
   for (const character of normalizedCharacters) {
-    const performerIds = character.performerIds.length ? character.performerIds : [null];
-    for (const performerId of performerIds) {
-      const performer = performerId ? performersById.get(performerId) : null;
+    if (!character.performerIds.length) {
+      freeCharacters.push(character);
+      continue;
+    }
+    for (const performerId of character.performerIds) {
+      const performer = performersById.get(performerId) || null;
       const slotIndex = performer && normalizeSlotIndex(performer.performerSlot ?? performer.slotIndex) != null
         ? normalizeSlotIndex(performer.performerSlot ?? performer.slotIndex)
-        : slots.length + 1;
-      const key = `${slotIndex}:${performerId || "unassigned"}:${character.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      slots.push({
-        slotIndex,
-        performerId,
-        performerName: performer ? displayName(performer, performerId) : null,
-        characterId: character.id,
-        legacyCharacterId: character.legacyId || null,
-        characterName: character.name,
-      });
+        : normalizedCharacters.indexOf(character) + 1;
+      addSlot(slotIndex, performerId, performer, character);
     }
   }
+
+  // Dan de vrije personages: over de plekken die in deze scène nog niemand hebben.
+  const takenSlots = new Set(slots.map((slot) => slot.slotIndex));
+  const performerSlotIndexes = activeSlottedPerformers(performers).map((performer) => performer.slotIndex);
+  const knownSlots = performerSlotIndexes.length
+    ? performerSlotIndexes
+    : Array.from({ length: MAX_PERFORMER_SLOT }, (_, index) => index + 1);
+  const openSlots = [...new Set(knownSlots)].filter((slotIndex) => !takenSlots.has(slotIndex)).sort((a, b) => a - b);
+  // Personages met een vaste plek (het meubel staat in dat vak) krijgen die plek als hij vrij is.
+  const geloot = [];
+  const vastGezet = new Set();
+  for (const character of freeCharacters) {
+    const plek = character.vastePlek;
+    if (plek != null && openSlots.includes(plek) && !vastGezet.has(plek)) {
+      vastGezet.add(plek);
+      addSlot(plek, null, null, character);
+    } else {
+      geloot.push(character);
+    }
+  }
+  const restSlots = openSlots.filter((slotIndex) => !vastGezet.has(slotIndex));
+  const chosenSlots = slotsForFreeCharacters({
+    count: Math.min(geloot.length, restSlots.length),
+    openSlots: restSlots,
+    seed,
+    recentSlotIndexes: Array.isArray(recentSlotIndexes) ? recentSlotIndexes : [],
+  });
+  geloot.forEach((character, index) => {
+    // Meer vrije personages dan vrije plekken: de rest sluit achteraan aan.
+    const slotIndex = index < chosenSlots.length ? chosenSlots[index] : slots.length + 1;
+    addSlot(slotIndex, null, null, character);
+  });
 
   return slots.sort((a, b) => {
     if (Number(a.slotIndex || 0) !== Number(b.slotIndex || 0)) {
@@ -161,8 +251,8 @@ function castWarningsForCharacters(characters = [], performers = []) {
   }];
 }
 
-function assignPerformerSlots({ characters = [], performers = [] } = {}) {
-  const performerSlots = performerSlotsForCharacters({ characters, performers });
+function assignPerformerSlots({ characters = [], performers = [], seed = null, recentSlotIndexes = [] } = {}) {
+  const performerSlots = performerSlotsForCharacters({ characters, performers, seed, recentSlotIndexes });
   const issues = castWarningsForCharacters(characters, performers);
   return {
     ok: issues.length === 0,
@@ -186,4 +276,5 @@ module.exports = {
   canAssignCast,
   castWarningsForCharacters,
   performerSlotsForCharacters,
+  seededRandom,
 };

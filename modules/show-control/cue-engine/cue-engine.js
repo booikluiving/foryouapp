@@ -375,6 +375,12 @@ async function executeAction(cue, action, context, options) {
     await maybeWaitForAck(cue, action, result, options);
     if (result && Array.isArray(result.generatedActions) && result.generatedActions.length) {
       for (const rawGenerated of result.generatedActions) {
+        // Na het antwoord (stop: het klaarzetten van de volgende scène): de route antwoordt eerst,
+        // daarna draait executeUitgesteld deze acties. Zo wacht een stop nooit op het klaarzetten.
+        if (options.uitstellen === true && rawGenerated && rawGenerated.naAntwoord === true) {
+          uitgesteldVan(cue).push({ rawGenerated, sourceAction: action });
+          continue;
+        }
         const generatedAction = normalizeGeneratedAction(rawGenerated, cue, action);
         await executeAction(cue, generatedAction, context, options);
       }
@@ -421,6 +427,41 @@ async function executeStep(cue, step, context, options) {
   });
 }
 
+// Acties die pas na het antwoord van de route draaien (zie executeAction). Niet in de opgeslagen cue.
+function uitgesteldVan(cue) {
+  if (!Object.prototype.hasOwnProperty.call(cue, "_uitgesteld")) {
+    Object.defineProperty(cue, "_uitgesteld", { value: [], enumerable: false, writable: true });
+  }
+  return cue._uitgesteld;
+}
+
+function rondCueAf(cue, nonBlocking) {
+  const failed = cue.actions.some((action) => action.status && action.status.state === "failed");
+  const warnings = cue.status.warnings.length > 0;
+  cue.status.stage = failed ? "failed" : nonBlocking ? "sent" : warnings ? "warning" : "ready";
+  cue.status.state = failed ? "failed" : nonBlocking ? "sent" : warnings ? "warning" : "ok";
+  cue.status.completedAt = nowIso();
+  cue.status.updatedAt = cue.status.completedAt;
+}
+
+async function executeUitgesteld(cue, options = {}) {
+  const lijst = cue && cue._uitgesteld ? cue._uitgesteld.splice(0) : [];
+  if (!lijst.length) return cue;
+  const context = cue._context || {
+    adapters: createAdapters(options.adapters || {}),
+    adapterOptions: options.adapterOptions || {},
+    runtimeState: options.runtimeState || null,
+    lastRuntimeState: null,
+  };
+  const nonBlocking = cue.status && cue.status.nonBlocking === true;
+  for (const { rawGenerated, sourceAction } of lijst) {
+    const generatedAction = normalizeGeneratedAction(rawGenerated, cue, sourceAction);
+    await executeAction(cue, generatedAction, context, { ...options, uitstellen: false, nonBlocking });
+  }
+  rondCueAf(cue, nonBlocking);
+  return cue;
+}
+
 async function executeCue(cue, options = {}) {
   const steps = normalizeCue(cue);
   const nonBlocking = cue.cueType === "go" || options.nonBlocking === true;
@@ -437,16 +478,13 @@ async function executeCue(cue, options = {}) {
     lastRuntimeState: null,
   };
 
+  if (options.uitstellen === true) Object.defineProperty(cue, "_context", { value: context, enumerable: false, writable: true });
+
   for (const step of steps) {
     await executeStep(cue, step, context, { ...options, nonBlocking });
   }
 
-  const failed = cue.actions.some((action) => action.status && action.status.state === "failed");
-  const warnings = cue.status.warnings.length > 0;
-  cue.status.stage = failed ? "failed" : nonBlocking ? "sent" : warnings ? "warning" : "ready";
-  cue.status.state = failed ? "failed" : nonBlocking ? "sent" : warnings ? "warning" : "ok";
-  cue.status.completedAt = nowIso();
-  cue.status.updatedAt = cue.status.completedAt;
+  rondCueAf(cue, nonBlocking);
   return cue;
 }
 
@@ -486,5 +524,6 @@ function applyAck(cue, ackPayload, ackedAtDate = new Date()) {
 module.exports = {
   applyAck,
   executeCue,
+  executeUitgesteld,
   normalizeCue,
 };

@@ -20,6 +20,7 @@ const els = {
   reloadCatalog: $("#reloadCatalog"),
   sessionId: $("#sessionId"),
   model: $("#model"),
+  modelKeuze: $("#modelKeuze"),
   situation: $("#situation"),
   situationPreview: $("#situationPreview"),
   character: $("#character"),
@@ -29,10 +30,8 @@ const els = {
   starterExtra: $("#starterExtra"),
   sceneToChat: $("#sceneToChat"),
   refreshRuntimeDraft: $("#refreshRuntimeDraft"),
+  overslaan: $("#overslaan"),
   operatorMsg: $("#operatorMsg"),
-  sceneTestToggle: $("#sceneTestToggle"),
-  sceneTestStart: $("#sceneTestStart"),
-  sceneTestMsg: $("#sceneTestMsg"),
   syncMsg: $("#syncMsg"),
   chatLog: $("#chatLog"),
   chatForm: $("#chatForm"),
@@ -202,11 +201,34 @@ function applyStageStyle(style = {}) {
 }
 
 function applyOperatorSettings(settings = {}) {
-  els.model.value = settings.model || els.model.value || "deepseek-chat";
+  toonModel(settings.model || els.model.value || "deepseek-chat");
   els.systemPrompt.value = settings.systemPrompt || "";
   els.promptTemplate.value = settings.promptTemplate || "";
   els.temperature.value = String(settings.temperature ?? 0.8);
   els.maxTokens.value = String(settings.maxTokens || 4096);
+}
+
+// Het model dat nu schrijft: zichtbaar in de keuze boven de chat en in de statusregel.
+let statusDraftLabel = "";
+function toonModel(model) {
+  const actief = String(model || "").trim();
+  if (!actief) return;
+  if (document.activeElement !== els.model) els.model.value = actief;
+  for (const knop of els.modelKeuze.querySelectorAll("button")) {
+    const aan = knop.dataset.model === actief;
+    knop.classList.toggle("active", aan);
+    knop.setAttribute("aria-pressed", aan ? "true" : "false");
+  }
+  els.operatorStatusText.textContent = [actief.includes("/") ? "OpenRouter" : "DeepSeek", actief, statusDraftLabel].filter(Boolean).join(" | ");
+}
+
+async function kiesModel(model) {
+  const body = await api("/v0/script-agent/operator/settings", {
+    method: "PATCH",
+    body: JSON.stringify({ model }),
+  });
+  toonModel(body.settings.model);
+  sendStageControl();
 }
 
 function settingsFromControls() {
@@ -404,13 +426,33 @@ function characterLabel(characterId, fallback = "") {
   return character ? character.naam : fallback || String(characterId || "");
 }
 
-function applyDraftInfo(info = {}) {
+// De lijsten volgen de scène die klaarstaat, maar alleen als er een andere scène klaar komt te
+// staan. De stand komt elke paar seconden opnieuw binnen; zonder deze grens sprong een keuze die
+// je net gemaakt had terug naar de scène die al klaarstond.
+let toegepasteDraft = "";
+// Inloop: er staat nog niets klaar. Situatie, personages en omgeving leeg (geen scène van eerder).
+function leegDraftInfo() {
+  if (!currentDraftInfo || manualSelectionDirty) return;
+  currentDraftInfo = null;
+  toegepasteDraft = "";
+  els.situation.value = "";
+  els.environment.value = "";
+  selectedCharacters.clear();
+  renderCharacterChips();
+  updateSituationSelection({ preserveManualCharacters: false });
+  updateEnvironmentPreview();
+}
+
+function applyDraftInfo(info = {}, opnieuw = false) {
   if (!info || typeof info !== "object") return;
   if (!Array.isArray(catalogIndex.situaties) || !catalogIndex.situaties.length) {
     pendingDraftInfo = info;
     return;
   }
   currentDraftInfo = info;
+  const sleutel = String(info.promptInputId || `${info.situationId || ""}|${info.environmentId || ""}`);
+  if (!opnieuw && sleutel === toegepasteDraft) return;
+  toegepasteDraft = sleutel;
   const situationId = String(info.situationId || "");
   if (selectHasValue(els.situation, situationId)) {
     els.situation.value = situationId;
@@ -444,13 +486,14 @@ function applyDraftInfo(info = {}) {
 
 function applyStageState(stage = {}, remoteSourceId = "") {
   if (Number.isFinite(Number(stage.revision))) stageRevision = Number(stage.revision);
-  if (stage.model && document.activeElement !== els.model) els.model.value = stage.model;
+  if (stage.model) toonModel(stage.model);
   if (stage.sessionId && document.activeElement !== els.sessionId) {
     els.sessionId.value = stage.sessionId;
     try { localStorage.setItem(STORAGE_SESSION_KEY, currentSessionId()); } catch {}
   }
   if (stage.style) applyStageStyle(stage.style);
   if (stage.draftInfo) applyDraftInfo(stage.draftInfo);
+  else if (stage.draftInfo === null) leegDraftInfo();
   applyDraft(stage.draft || "", remoteSourceId || stage.draftSourceId || "");
   setStreaming(!!stage.streaming);
   if (Array.isArray(stage.messages)) renderMessages(stage.messages);
@@ -545,6 +588,13 @@ function connectStage() {
 function renderSecretStatus(status = {}) {
   const secret = status.deepseek || status.secrets && status.secrets.deepseek || {};
   els.secretStatus.textContent = secret.configured ? `DeepSeek key ingesteld (${secret.source || "env"})` : "DeepSeek key ontbreekt";
+  // Modellen via OpenRouter (Hydrogen) blijven donker zonder OpenRouter-sleutel.
+  const openrouter = status.openrouter || status.secrets && status.secrets.openrouter;
+  if (!openrouter) return;
+  for (const knop of els.modelKeuze.querySelectorAll('button[data-model*="/"]')) {
+    knop.disabled = !openrouter.configured;
+    knop.title = openrouter.configured ? "" : "OpenRouter-sleutel ontbreekt";
+  }
 }
 
 async function loadStatus() {
@@ -554,12 +604,8 @@ async function loadStatus() {
     renderSync(null);
   });
   const status = await api("/v0/script-agent/operator/status");
-  els.operatorStatusText.textContent = [
-    "DeepSeek",
-    status.model || els.model.value || "deepseek-chat",
-    status.draft ? `draft ${status.draft.situationTitle || status.draft.situationId}` : "geen draft",
-  ].join(" | ");
-  els.model.value = status.model || els.model.value || "deepseek-chat";
+  statusDraftLabel = status.draft ? `draft ${status.draft.situationTitle || status.draft.situationId}` : "geen draft";
+  toonModel(status.model || els.model.value || "deepseek-chat");
   els.statSessions.textContent = Number(status.activeSessions || 0).toLocaleString();
   renderSecretStatus(status.secrets || {});
   if (status.stage) applyStageState(status.stage);
@@ -590,7 +636,7 @@ async function saveModel() {
     method: "PATCH",
     body: JSON.stringify({ model: els.model.value || "deepseek-chat" }),
   });
-  els.model.value = body.settings.model || els.model.value;
+  toonModel(body.settings.model || els.model.value);
   sendStageControl();
 }
 
@@ -631,9 +677,9 @@ function populateDropdowns() {
   if (pendingDraftInfo) {
     const info = pendingDraftInfo;
     pendingDraftInfo = null;
-    applyDraftInfo(info);
+    applyDraftInfo(info, true);
   } else if (currentDraftInfo) {
-    applyDraftInfo(currentDraftInfo);
+    applyDraftInfo(currentDraftInfo, true);
   }
   updateEnvironmentPreview();
 }
@@ -744,6 +790,17 @@ async function sceneToChat() {
   setMsg(`Scene verstuurd: ${body.draft && body.draft.situationTitle || "runtime draft"}`);
 }
 
+// OVERSLAAN: de klaargezette scène vervalt voor deze run; de volgende wordt meteen geschreven.
+async function overslaan() {
+  els.overslaan.disabled = true;
+  try {
+    const body = await api("/v0/script-agent/operator/overslaan", { method: "POST", body: "{}" });
+    setMsg(`Overgeslagen: ${body.overgeslagen && body.overgeslagen.title || "scène"}. Nu: ${body.klaar && body.klaar.title || "volgende scène"}.`);
+  } finally {
+    els.overslaan.disabled = false;
+  }
+}
+
 async function refreshRuntimeDraft() {
   const body = await api("/v0/script-agent/operator/draft/from-runtime", {
     method: "POST",
@@ -756,21 +813,8 @@ async function refreshRuntimeDraft() {
 // maakt de lopende run een testrun (tot de reset).
 let sceneTestState = { running: false, enabled: false, activeSituation: null };
 
-function renderSceneTest(message, error = false) {
-  const { running, enabled, activeSituation } = sceneTestState;
-  els.sceneTestToggle.checked = enabled;
-  els.sceneTestToggle.disabled = !running;
-  els.sceneTestToggle.closest(".scene-test").classList.toggle("on", enabled);
-  els.sceneTestStart.hidden = !enabled;
-  els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
-  const standaard = !running
-    ? "Kan alleen als er een run loopt."
-    : enabled
-      ? `Testrun. ${activeSituation ? `Nu: ${activeSituation.title}. ` : ""}Kies een situatie, een omgeving of allebei en druk op Start scène.`
-      : "";
-  els.sceneTestMsg.textContent = message || standaard;
-  els.sceneTestMsg.style.color = error ? "var(--bad)" : "";
-}
+// Scènes testen staat in de regie (onderaan de pagina); hier blijft alleen de stand bijgehouden.
+function renderSceneTest() {}
 
 function klokTijd(iso) {
   const date = new Date(iso || "");
@@ -808,78 +852,6 @@ async function loadSceneTest() {
   sceneTestState = body;
   renderSceneTest();
   renderSync(body.sync);
-}
-
-async function toggleSceneTest() {
-  const enabled = els.sceneTestToggle.checked;
-  if (enabled && !sceneTestState.markedAt
-    && !confirm("Scènes testen maakt van de lopende run een testrun, tot de reset. Doorgaan?")) {
-    renderSceneTest();
-    return;
-  }
-  try {
-    sceneTestState = await api("/v0/script-agent/operator/scene-test", {
-      method: "POST",
-      body: JSON.stringify({ enabled }),
-    });
-    renderSceneTest();
-    // Bij het aanzetten: lijsten van nu, en situatie en omgeving bij elkaar.
-    if (sceneTestState.enabled) {
-      await verversLijsten();
-      testKeuzeGelijk();
-      els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
-    }
-  } catch (err) {
-    renderSceneTest(err.message || "Scènes testen zetten lukte niet.", true);
-  }
-}
-
-// Het script op de teleprompter hoort bij de scène die start. Staat er nog het script van een
-// andere scène (in een testrun schrijft niets vanzelf), dan wordt het eerst geschreven. Zonder dit
-// speelde de nieuwe omgeving met de tekst en de titel van de vorige scène.
-async function schrijfTestScript() {
-  const nummer = (waarde) => Number((String(waarde || "").match(/(\d+)$/) || [])[1] || 0);
-  const wil = nummer(els.situation.value);
-  if (!wil) return true;
-  const bron = async () => {
-    const tele = await api("/v0/script-agent/teleprompter-parser/current").catch(() => null);
-    return tele && tele.teleprompt && tele.teleprompt.source ? tele.teleprompt.source : {};
-  };
-  const eerst = await bron();
-  if (nummer(eerst.sceneId) === wil) return true;
-  renderSceneTest("Script schrijven voor deze scène...");
-  manualSelectionDirty = true;
-  await sceneToChat();
-  const tot = Date.now() + 120000;
-  while (Date.now() < tot) {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    const nu = await bron();
-    if (nummer(nu.sceneId) === wil && nu.generatedAt !== eerst.generatedAt) return true;
-  }
-  return false;
-}
-
-async function startTestScene() {
-  if (!els.situation.value && !els.environment.value) return;
-  els.sceneTestStart.disabled = true;
-  try {
-    if (!(await schrijfTestScript())) {
-      renderSceneTest("Het script voor deze scène kwam niet. De scène is niet gestart; probeer het opnieuw.", true);
-      return;
-    }
-    renderSceneTest("Scène starten...");
-    const body = await api("/v0/script-agent/operator/scene-test/start", {
-      method: "POST",
-      body: JSON.stringify({ situationId: els.situation.value, environmentId: els.environment.value }),
-    });
-    sceneTestState = body.status || sceneTestState;
-    manualSelectionDirty = false;
-    renderSceneTest(`Gestart: ${body.title || "scène"}${body.environment ? ` in ${body.environment}` : ""}.`);
-  } catch (err) {
-    renderSceneTest(err.message || "Scène starten lukte niet.", true);
-  } finally {
-    els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
-  }
 }
 
 function parseSseBuffer(buffer, onEvent) {
@@ -1030,6 +1002,10 @@ els.sessionId.addEventListener("change", () => {
   withUiError(loadSession);
 });
 els.model.addEventListener("change", () => withUiError(saveModel));
+els.modelKeuze.addEventListener("click", (event) => {
+  const knop = event.target.closest("button[data-model]");
+  if (knop && !knop.disabled) withUiError(() => kiesModel(knop.dataset.model));
+});
 els.savedScenesList.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-script-id]");
   if (!button) return;
@@ -1062,10 +1038,7 @@ document.querySelectorAll("[data-opmerking]").forEach((knop) => {
 });
 document.getElementById("opmerkingWis").addEventListener("click", () => withUiError(() => stuurOpmerking({ wis: true })));
 setInterval(() => api("/v0/script-agent/operator/opmerking").then(toonOpmerkingen).catch(() => {}), 3000);
-els.sceneTestToggle.addEventListener("change", () => toggleSceneTest());
-els.sceneTestStart.addEventListener("click", () => startTestScene());
 els.situation.addEventListener("change", () => {
-  els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
   manualSelectionDirty = true;
   laatstGekozen = "situatie";
   updateSituationSelection({ preserveManualCharacters: false });
@@ -1109,20 +1082,18 @@ function matchSituationToEnvironment() {
 function matchEnvironmentToSituation() {
   if (!sceneTestState.enabled) return;
   const current = (catalogIndex.situaties || []).find((item) => String(item.id) === String(els.situation.value || ""));
-  const environmentId = current ? String(current.environmentId || "") : "";
-  if (!environmentId || String(els.environment.value || "") === environmentId) return;
-  if (!selectHasValue(els.environment, environmentId)) return;
+  if (!current) return;
+  // Heeft de situatie geen eigen omgeving (of staat die niet in de lijst), dan gaat de omgeving
+  // leeg: zo blijft de omgeving van de vorige scène er niet onder staan.
+  const eigen = String(current.environmentId || "");
+  const environmentId = eigen && selectHasValue(els.environment, eigen) ? eigen : "";
+  if (String(els.environment.value || "") === environmentId) return;
   els.environment.value = environmentId;
   updateEnvironmentPreview();
   renderSceneTest();
 }
 
-// Wat het laatst met de hand gekozen is, wint als de testmodus pas daarna aangaat.
 let laatstGekozen = "situatie";
-function testKeuzeGelijk() {
-  if (laatstGekozen === "omgeving") matchSituationToEnvironment();
-  else matchEnvironmentToSituation();
-}
 
 // Situaties en omgevingen die tijdens de run in de catalogus zijn gezet, komen in de lijsten
 // zonder de pagina te herladen. Wat gekozen is blijft staan.
@@ -1156,7 +1127,6 @@ setInterval(() => { if (sceneTestState.enabled) verversLijsten(); }, 10000);
 els.environment.addEventListener("change", () => {
   laatstGekozen = "omgeving";
   matchSituationToEnvironment();
-  els.sceneTestStart.disabled = !els.situation.value && !els.environment.value;
   manualSelectionDirty = true;
   updateEnvironmentPreview();
   sendManualDraftPreview();
@@ -1167,6 +1137,7 @@ els.starterExtra.addEventListener("input", () => {
 });
 els.sceneToChat.addEventListener("click", () => withUiError(sceneToChat));
 els.refreshRuntimeDraft.addEventListener("click", () => withUiError(refreshRuntimeDraft));
+els.overslaan.addEventListener("click", () => withUiError(overslaan));
 els.chatForm.addEventListener("submit", (event) => {
   event.preventDefault();
   withUiError(submitChat);
@@ -1199,10 +1170,63 @@ els.saveStageStyle.addEventListener("click", () => withUiError(saveStageStyle));
 els.secretForm.addEventListener("submit", (event) => withUiError(() => saveSecret(event)));
 els.clearSecret.addEventListener("click", () => withUiError(clearSecret));
 
+// Publiek: het kijkvenster met de telefoonpagina en het invoerveld voor de publiekschat.
+const STORAGE_PUBLIEK_NAAM_KEY = "script_agent_operator_publiek_naam";
+const publiek = {
+  kijk: $("#telefoonKijk"),
+  form: $("#publiekChatForm"),
+  naam: $("#publiekChatNaam"),
+  input: $("#publiekChatInput"),
+  msg: $("#publiekChatMsg"),
+};
+
+function setPubliekMsg(text, isError = false) {
+  publiek.msg.textContent = text || "";
+  publiek.msg.style.color = isError ? "var(--bad)" : "";
+}
+
+async function loadPubliek() {
+  try { publiek.naam.value = localStorage.getItem(STORAGE_PUBLIEK_NAAM_KEY) || ""; } catch (_err) { /* opslag niet beschikbaar */ }
+  const info = await api("/v0/script-agent/operator/publiek");
+  publiek.kijk.src = `${location.protocol}//${location.hostname}:${info.port}${info.kijkPath}`;
+  // Hetzelfde kijkvenster op ware grootte in een eigen venster.
+  document.getElementById("telefoonOpen").addEventListener("click", () => {
+    window.open(publiek.kijk.src, "foryou_telefoon", "width=390,height=844");
+  });
+}
+
+async function submitPubliekChat() {
+  const name = publiek.naam.value.trim();
+  const text = publiek.input.value.trim();
+  if (!text) return;
+  if (!name) {
+    setPubliekMsg("Vul eerst een naam in.", true);
+    publiek.naam.focus();
+    return;
+  }
+  try {
+    await api("/v0/script-agent/operator/publiek/chat", { method: "POST", body: JSON.stringify({ name, text }) });
+  } catch (err) {
+    setPubliekMsg(err.message || "Bericht niet geplaatst.", true);
+    return;
+  }
+  publiek.input.value = "";
+  setPubliekMsg("");
+}
+
+publiek.naam.addEventListener("change", () => {
+  try { localStorage.setItem(STORAGE_PUBLIEK_NAAM_KEY, publiek.naam.value.trim()); } catch (_err) { /* opslag niet beschikbaar */ }
+});
+publiek.form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitPubliekChat();
+});
+
 async function boot() {
   emptyChat();
   applyStageStyle({ font: "jetbrains", cursor: "block", fontSize: 30 });
   connectStage();
+  loadPubliek().catch((err) => setPubliekMsg(err.message || "publiek niet geladen", true));
   await Promise.all([
     loadStageStyle().catch((err) => setMsg(err.message || "stage style niet geladen", true)),
     loadSettings().catch((err) => {
@@ -1221,3 +1245,34 @@ async function boot() {
 }
 
 withUiError(boot);
+
+// Regie onderaan de pagina: de regiepagina van show control (:3025/regie/), ingebed. Vult het scherm
+// tot onderaan; de systeeminstellingen staan achter de knop Instellingen.
+(function regieOnderaan() {
+  // ?regiepoort=4325: de losse proef van de regie (modules/show-control/tests/regie-proef.js).
+  const poort = new URLSearchParams(location.search).get("regiepoort") || "3025";
+  const regieUrl = `${location.protocol}//${location.hostname}:${poort}/regie/`;
+  const venster = document.getElementById("regieVenster");
+  const los = document.getElementById("regieLos");
+  if (los) los.href = regieUrl;
+  if (venster) {
+    venster.src = `${regieUrl}?ingebed=1`;
+    const hoogte = () => {
+      const boven = venster.getBoundingClientRect().top + window.scrollY;
+      venster.style.height = `${Math.max(640, window.innerHeight - Math.min(boven, window.innerHeight * 0.55))}px`;
+    };
+    hoogte();
+    setTimeout(hoogte, 1500);
+    window.addEventListener("resize", hoogte);
+  }
+  const knop = document.getElementById("instellingenKnop");
+  const instellingen = document.querySelector(".system-settings");
+  if (knop && instellingen) {
+    knop.addEventListener("click", (event) => {
+      event.preventDefault();
+      instellingen.hidden = !instellingen.hidden;
+      knop.textContent = instellingen.hidden ? "Instellingen" : "Instellingen sluiten";
+      if (!instellingen.hidden) instellingen.scrollIntoView({ behavior: "smooth" });
+    });
+  }
+})();

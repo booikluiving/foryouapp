@@ -1,5 +1,9 @@
 "use strict";
 
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
 const { beeldStartAction, beeldVoorbeeldAction } = require("../cue-library/environment-beeld");
 const { fetchJson, joinUrl } = require("./http-json");
 const {
@@ -83,6 +87,25 @@ function generatedTeleprompterPrepareAction(action, runtimeState, context = {}) 
   };
 }
 
+// De scène die na de huidige komt (de runtime kiest hem bij de start). Geen volgende: leeg.
+function generatedTeleprompterHiernaAction(action, runtimeState, context = {}) {
+  const payload = canGeneratePrepare(runtimeState)
+    ? resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext", "", runtimePayloadOptions(context))
+    : { leeg: true };
+  if (canGeneratePrepare(runtimeState)) payload.performerSlots = performerSlotsFromRuntimeState(runtimeState, "resolvedPreparedNext");
+  return {
+    command: "teleprompter.hierna",
+    targetId: "teleprompter",
+    ackMode: "fire-and-forget",
+    timeoutMs: Math.min(Number(action.timeoutMs || 1500), 900),
+    payload: {
+      ...payload,
+      cueIntent: "next_scene_hint",
+      generatedBy: action.command,
+    },
+  };
+}
+
 function generatedOperatorPrepareDraftAction(action, runtimeState, context = {}) {
   const payload = resolvedPayloadFromRuntimeState(runtimeState, "resolvedPreparedNext", "", runtimePayloadOptions(context));
   return {
@@ -112,6 +135,49 @@ function generatedGoAction(action, runtimeState, context = {}) {
     payload: {
       ...payload,
       cueIntent: "go_environment",
+      generatedBy: action.command,
+    },
+  };
+}
+
+// De microfoons van de spelers: open tijdens de scène, dicht bij inloop en loading. Het gaat per
+// kanaal, zodat de mute op de tafel te zien is; wie met de hand dicht stond blijft dicht.
+// Met de knop MICS OPEN op de deck (zenders testen, inregelen) blijven de kanalen met rust.
+const MICS_OPEN_PATH = process.env.FY_MICS_OPEN
+  || path.join(os.homedir(), "Library", "Application Support", "ForYouApp", "mics-altijd-open");
+
+function micsVanzelf(payload = {}) {
+  if (payload.autoMics === false) return false;
+  try { return !fs.existsSync(MICS_OPEN_PATH); } catch (_err) { return true; }
+}
+
+// Vaste plekken in de ring en het kanaal op de SQ-5 (zelfde indeling als spelers-ready.js).
+const KANAAL_PER_PLEK = Object.freeze({ 1: "booi", 2: "megan", 3: "brent" });
+
+// Wie speelt mee in de scène die nu begint: alleen hun kanalen gaan open.
+// Niet uit te lezen: geen lijst, dan gaan alle spelers open (liever te veel dan iemand die je niet hoort).
+function meespelendeKanalen(runtimeState) {
+  try {
+    const kanalen = performerSlotsFromRuntimeState(runtimeState, "activeSituation")
+      .filter((slot) => slot && slot.characterId)
+      .map((slot) => KANAAL_PER_PLEK[Number(slot.slotIndex)])
+      .filter(Boolean);
+    return kanalen.length ? [...new Set(kanalen)] : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+function generatedMicsAction(action, gedempt, spelers = null) {
+  return {
+    command: "sq5.spelers",
+    targetId: "sq5",
+    ackMode: "fire-and-forget",
+    timeoutMs: 1500,
+    payload: {
+      stand: gedempt ? "dicht" : "open",
+      ...(!gedempt && spelers ? { spelers } : {}),
+      cueIntent: gedempt ? "mics_dicht" : "mics_open",
       generatedBy: action.command,
     },
   };
@@ -284,8 +350,14 @@ async function sendRuntimeCommand(action, context = {}) {
       state: "ok",
       message: `runtime resetRun called: ${showRunId || "current"}`,
       data: runtimeResultData(`POST ${route}`, result.body),
+      // Terug naar de inloop: de spelers zijn niet te horen.
       // De run is terug bij af: alles wat de scène had aangezet gaat uit.
-      generatedActions: sceneEindeActions({ generatedBy: action.command }),
+      generatedActions: [
+        ...(micsVanzelf(action.payload) ? [generatedMicsAction(action, true)] : []),
+        ...sceneEindeActions({ generatedBy: action.command }),
+        // Terug bij het begin: de teleprompters in de instelstand (inloop).
+        { command: "td.instel", targetId: "touchdesigner", ackMode: "fire-and-forget", timeoutMs: 900, payload: { speler: 0, waarde: 1, cueIntent: "instel_aan", generatedBy: action.command } },
+      ],
     };
   }
 
@@ -334,6 +406,13 @@ async function sendRuntimeCommand(action, context = {}) {
     }
     if (command === "runtime.startSituation" && payload.autoRevealTeleprompter !== false && canGenerateGo(result.body)) {
       generatedActions.push(generatedTeleprompterRevealAction(action, result.body, context));
+      // De scène hierna ligt nu vast: elke speler ziet rechtsonder zijn volgende personage.
+      generatedActions.push(generatedTeleprompterHiernaAction(action, result.body, context));
+    }
+    // De spelers zijn alleen tijdens de scène te horen, en alleen wie in de scène meespeelt.
+    if (micsVanzelf(payload) && (command === "runtime.stopSituation" || canGenerateGo(result.body))) {
+      const stop = command === "runtime.stopSituation";
+      generatedActions.push(generatedMicsAction(action, stop, stop ? null : meespelendeKanalen(result.body)));
     }
     // Startgeluid van de omgeving (de intro) begint vanzelf met de scène.
     if (command === "runtime.startSituation" && payload.autoStartGeluid !== false && canGenerateGo(result.body)) {
@@ -355,11 +434,15 @@ async function sendRuntimeCommand(action, context = {}) {
     }
     if (command === "runtime.stopSituation" && payload.autoPrepareNext !== false && canGeneratePrepare(result.body)) {
       // Even wachten: het opruimen in TouchDesigner is klaar voordat de volgende scène klaargezet wordt.
-      generatedActions.push({ ...generatedTeleprompterPrepareAction(action, result.body, context), delayMs: WACHT_VOOR_KLAARZETTEN_MS });
-      generatedActions.push(generatedOperatorPrepareDraftAction(action, result.body, context));
-      generatedActions.push(generatedPrepareAction(action, result.body, context));
-      const voorbeeld = generatedBeeldVoorbeeldAction(result.body, context);
-      if (voorbeeld) generatedActions.push(voorbeeld);
+      // Het klaarzetten draait na het antwoord van de stop (naAntwoord): de stop zelf is dan snel
+      // (scène uit, loading, opruimen) en wacht niet op TouchDesigner die de volgende omgeving laadt.
+      const klaarzetten = [
+        { ...generatedTeleprompterPrepareAction(action, result.body, context), delayMs: WACHT_VOOR_KLAARZETTEN_MS },
+        generatedOperatorPrepareDraftAction(action, result.body, context),
+        generatedPrepareAction(action, result.body, context),
+        generatedBeeldVoorbeeldAction(result.body, context),
+      ].filter(Boolean);
+      generatedActions.push(...klaarzetten.map((item) => ({ ...item, naAntwoord: true })));
     }
     return {
       stage: "applied",

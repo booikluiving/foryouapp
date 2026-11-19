@@ -16,6 +16,8 @@ const {
   finalizePendingSituation,
   normalizeRuntimeDerivedState,
   prepareChosenSituation,
+  skipPreparedSituation,
+  prepareNextNow,
   previousSituation,
   receiveScores,
   refreshEligiblePool,
@@ -34,6 +36,7 @@ const {
   saveRunState,
 } = require("../run-control/state-store");
 const { loadExpress } = require("./express-loader");
+const { pasVoorrangToe } = require("../run-control/voorrang");
 
 const express = loadExpress();
 const LIVE_SCORE_SAVE_DEBOUNCE_MS = 500;
@@ -48,7 +51,11 @@ function runtimeClients() {
     fetchAudienceAlgorithmInput,
     fetchCatalogSnapshot,
     fetchPathsSnapshot,
-    evaluatePaths,
+    // Testrun: scènes uit db/voorrang.json eerst (zie run-control/voorrang.js).
+    evaluatePaths: async (playedSituationIds, ...rest) => pasVoorrangToe(
+      await evaluatePaths(playedSituationIds, ...rest),
+      playedSituationIds,
+    ),
     initializeAlgorithmScoringContext,
     observeSituation,
   };
@@ -211,11 +218,27 @@ function compactRuntimeView(state = {}) {
   };
 }
 
+// Zonder run vraagt o.a. de deckstatus elke seconde de stand op. De voorvertoning (hele catalogus +
+// alle paden doorrekenen) wordt daarom kort bewaard in plaats van elke keer opnieuw gemaakt.
+const IDLE_PREVIEW_MS = 5000;
+const idlePreviewCache = new WeakMap();
+
+async function idlePreviewFor(clients) {
+  const cached = idlePreviewCache.get(clients);
+  if (cached && Date.now() - cached.at < IDLE_PREVIEW_MS) return cached.value;
+  const value = (async () => ({
+    catalog: await clients.fetchCatalogSnapshot(),
+    pathEvaluation: await clients.evaluatePaths([]),
+  }))();
+  idlePreviewCache.set(clients, { at: Date.now(), value });
+  value.catch(() => idlePreviewCache.delete(clients));
+  return value;
+}
+
 async function withIdlePreview(state, clients) {
   if (!state || state.showRunSnapshot) return state;
   try {
-    const catalog = await clients.fetchCatalogSnapshot();
-    const pathEvaluation = await clients.evaluatePaths([]);
+    const { catalog, pathEvaluation } = await idlePreviewFor(clients);
     return {
       ...state,
       catalogPreview: catalog,
@@ -332,7 +355,7 @@ function createRuntimeApp(options = {}) {
   });
 
   app.post("/v0/runtime/runs/start", asyncRoute(async (req, res) => {
-    const state = await startRun({ clients, orderSettings: req.body && req.body.orderSettings });
+    const state = await startRun({ clients, orderSettings: req.body && req.body.orderSettings, klaarzetten: !(req.body && req.body.klaarzetten === false) });
     cacheState(state);
     res.status(201).json(state);
   }));
@@ -374,6 +397,40 @@ function createRuntimeApp(options = {}) {
     } catch (err) {
       if (err && (err.statusCode === 404 || err.statusCode === 409)) {
         res.status(err.statusCode).json({ ok: false, error: err.message });
+        return;
+      }
+      throw err;
+    }
+    await persistRunState(next);
+    res.json(next);
+  }));
+
+  // START SHOW: de eerste scène kiezen (na START RUN zonder klaarzetten: de inloop).
+  app.post("/v0/runtime/runs/:showRunId/prepare-next", asyncRoute(async (req, res) => {
+    const state = await readRunStateCached(req.params.showRunId);
+    let next;
+    try {
+      next = await prepareNextNow(state, clients, { ...(req.body || {}), skipSave: true });
+    } catch (err) {
+      if (err && err.statusCode === 409) {
+        res.status(409).json({ ok: false, error: err.message });
+        return;
+      }
+      throw err;
+    }
+    await persistRunState(next);
+    res.json(next);
+  }));
+
+  // Knop OVERSLAAN: de klaargezette scène vervalt voor deze run, de volgende wordt klaargezet.
+  app.post("/v0/runtime/runs/:showRunId/skip-prepared", asyncRoute(async (req, res) => {
+    const state = await readRunStateCached(req.params.showRunId);
+    let next;
+    try {
+      next = await skipPreparedSituation(state, clients, { ...(req.body || {}), skipSave: true });
+    } catch (err) {
+      if (err && err.statusCode === 409) {
+        res.status(409).json({ ok: false, error: err.message });
         return;
       }
       throw err;

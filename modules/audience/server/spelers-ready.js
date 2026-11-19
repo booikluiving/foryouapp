@@ -34,7 +34,13 @@ function createSpelersReady({ service, fetchRuntimeView }) {
     // In de startfase kiest het publiek: pas als de winnaar klaarstaat, kan er ready gedrukt worden.
     const reden = view.preparedNext ? String(view.preparedNext.reason || "") : "";
     if (view.startPhase && view.startPhase.active && reden !== "operator_chosen") return { sleutel: "", speelt: !!view.activeSituation };
-    // Alle drie de spelers drukken op READY, ook wie niet in de scène speelt.
+    // Alleen de spelers met een rol in de scène drukken op READY.
+    const catalog = (view.showRunSnapshot && view.showRunSnapshot.catalog) || {};
+    const plekVan = new Map((catalog.performers || []).map((speler) => [speler.id, Number(speler.performerSlot) || 0]));
+    const nodig = [...new Set((klaar.performerSlots || [])
+      .filter((slot) => slot && slot.characterId)
+      .map((slot) => plekVan.get(slot.performerId) || Number(slot.slotIndex) || 0)
+      .filter((plek) => plek >= 1 && plek <= 3))].sort();
     let geschreven = false;
     try {
       const tp = await fetch(`${scriptUrl}/v0/script-agent/teleprompter-parser/current`, { signal: AbortSignal.timeout(1500) }).then((res) => res.json());
@@ -51,7 +57,7 @@ function createSpelersReady({ service, fetchRuntimeView }) {
     }
     // In de proefshow wordt geen tekst geschreven: daar hoeft de tekst er niet te zijn.
     if (process.env.AUDIENCE_READY_ZONDER_TEKST === "1") geschreven = true;
-    return { sleutel: `${view.showRunId}|${klaar.situationId}`, speelt: !!view.activeSituation, nodig: SPELERS.map((speler) => speler.plek), geschreven };
+    return { sleutel: `${view.showRunId}|${klaar.situationId}`, speelt: !!view.activeSituation, nodig: nodig.length ? nodig : SPELERS.map((speler) => speler.plek), geschreven };
   }
 
   function publiek() {

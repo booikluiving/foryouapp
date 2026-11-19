@@ -1,4 +1,7 @@
 const http = require("http");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const net = require("net");
 const { URL } = require("url");
 const osc = require("../common/osc-compat");
@@ -24,9 +27,9 @@ const state = {
   oscListenAddress: DEFAULT_OSC_LISTEN_ADDRESS,
   defaultDestination: "lr",
   channels: {
-    brent: { key: "brent", label: "Brent", input: clampInt(process.env.SHOW_CONTROL_SQ5_BRENT_INPUT || 1, 1, 48) },
+    brent: { key: "brent", label: "Brent", input: clampInt(process.env.SHOW_CONTROL_SQ5_BRENT_INPUT || 3, 1, 48) },
     megan: { key: "megan", label: "Megan", input: clampInt(process.env.SHOW_CONTROL_SQ5_MEGAN_INPUT || 2, 1, 48) },
-    booi: { key: "booi", label: "Booi", input: clampInt(process.env.SHOW_CONTROL_SQ5_BOOI_INPUT || 3, 1, 48) },
+    booi: { key: "booi", label: "Booi", input: clampInt(process.env.SHOW_CONTROL_SQ5_BOOI_INPUT || 1, 1, 48) },
   },
 };
 
@@ -770,6 +773,8 @@ function commandCatalog() {
         { method: "POST", path: "/api/output/:name/mute", body: "{ muted: true|false|'toggle' }", description: "Output mute." },
         { method: "POST", path: "/api/output/:name/level", body: "{ db }", description: "Output fader level." },
         { method: "POST", path: "/api/output/:name/get", body: "{ parameter: 'mute'|'level' }", description: "Get output mute/level." },
+        { method: "POST", path: "/api/spelers/dicht", body: "", description: "Spelerskanalen dicht (buiten de scène); onthoudt welke hier zijn dichtgezet." },
+        { method: "POST", path: "/api/spelers/open", body: "{\"spelers\":[\"booi\",\"megan\"]}", description: "Zet de spelerskanalen open die hier zijn dichtgezet; met spelers alleen die, de rest gaat dicht." },
         { method: "GET", path: "/api/streamdeck/state", body: "", description: "Compacte mute-state voor Companion feedback." },
         { method: "POST", path: "/api/streamdeck/:target/mute", body: "", description: "Expliciet muten voor Stream Deck." },
         { method: "POST", path: "/api/streamdeck/:target/unmute", body: "", description: "Expliciet unmuten voor Stream Deck." },
@@ -1360,6 +1365,77 @@ async function handleStreamdeckAction(name, action, payload = {}, source = "http
   };
 }
 
+// De spelers zijn alleen tijdens de scène te horen. Buiten de scène gaan hun eigen kanalen dicht,
+// zodat de mute op de tafel bij elk kanaal te zien is. Wie met de hand al dicht stond blijft dicht:
+// bij "open" gaan alleen de kanalen open die hier zijn dichtgezet.
+const SPELERS = Object.freeze(["brent", "megan", "booi"]);
+const SPELERS_PATH = process.env.FY_SPELERS_DICHT
+  || path.join(os.homedir(), "Library", "Application Support", "ForYouApp", "spelers-dicht.json");
+
+function leesSpelersDicht() {
+  try {
+    const lijst = JSON.parse(fs.readFileSync(SPELERS_PATH, "utf8"));
+    return Array.isArray(lijst) ? lijst.filter((key) => SPELERS.includes(key)) : [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+function bewaarSpelersDicht(lijst) {
+  fs.mkdirSync(path.dirname(SPELERS_PATH), { recursive: true });
+  fs.writeFileSync(SPELERS_PATH, JSON.stringify(lijst));
+}
+
+async function handleSpelers(stand, source = "http", meespelers = null) {
+  const dicht = leesSpelersDicht();
+  const gedaan = [];
+  if (stand === "dicht") {
+    for (const key of SPELERS) {
+      const mute = controlState[key] && controlState[key].mute;
+      const stondDicht = Boolean(mute && mute.value === true);
+      if (stondDicht && !dicht.includes(key)) continue;
+      await handleInputAction(key, "mute", { muted: true }, source, { spelers: "dicht" });
+      if (!dicht.includes(key)) dicht.push(key);
+      gedaan.push(key);
+    }
+    bewaarSpelersDicht(dicht);
+  } else if (stand === "open") {
+    // Met een lijst (wie in de scène meespeelt): alleen die gaan open; wie niet meespeelt gaat dicht.
+    const mee = Array.isArray(meespelers) ? meespelers.filter((key) => SPELERS.includes(key)) : [];
+    if (!mee.length) {
+      for (const key of dicht) {
+        await handleInputAction(key, "mute", { muted: false }, source, { spelers: "open" });
+        gedaan.push(key);
+      }
+      bewaarSpelersDicht([]);
+    } else {
+      const blijftDicht = [];
+      for (const key of SPELERS) {
+        if (mee.includes(key)) {
+          if (!dicht.includes(key)) continue;
+          await handleInputAction(key, "mute", { muted: false }, source, { spelers: "open" });
+          gedaan.push(key);
+          continue;
+        }
+        const mute = controlState[key] && controlState[key].mute;
+        const stondDicht = Boolean(mute && mute.value === true);
+        if (!stondDicht) {
+          await handleInputAction(key, "mute", { muted: true }, source, { spelers: "speelt niet mee" });
+          gedaan.push(`${key} dicht`);
+          blijftDicht.push(key);
+        } else if (dicht.includes(key)) {
+          blijftDicht.push(key);
+        }
+      }
+      bewaarSpelersDicht(blijftDicht);
+    }
+  } else {
+    throw new Error(`Onbekende stand voor de spelers: ${stand}`);
+  }
+  addActivity({ status: "sent", source, action: `spelers:${stand}`, channel: "Spelers", message: `Spelers ${stand}: ${gedaan.join(", ") || "niets te doen"}` });
+  return { ok: true, stand, kanalen: gedaan, dicht: leesSpelersDicht(), state: streamdeckState() };
+}
+
 async function syncMixerState({ force = false } = {}) {
   if (!state.mixerHost) return publicState();
   if (syncInProgress && !force) return publicState();
@@ -1442,6 +1518,11 @@ async function routeApi(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/spelers") {
+    sendJson(res, 200, { ok: true, dicht: leesSpelersDicht() });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/streamdeck/state") {
     sendJson(res, 200, streamdeckState());
     return;
@@ -1484,6 +1565,12 @@ async function routeApi(req, res, url) {
     const action = String(payload.action || "tap");
     const result = await sendMidi(softKeyBytes(softKey, action), { source: "http", action: "softkey", softKey, softKeyAction: action });
     sendJson(res, 200, result);
+    return;
+  }
+
+  const spelersMatch = url.pathname.match(/^\/api\/spelers\/(dicht|open)$/);
+  if (req.method === "POST" && spelersMatch) {
+    sendJson(res, 200, await handleSpelers(spelersMatch[1], "spelers", payload && payload.spelers));
     return;
   }
 

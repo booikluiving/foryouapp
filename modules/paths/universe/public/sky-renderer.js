@@ -388,10 +388,11 @@
     const regieStapSleutel = (a, b) => (Number(a) < Number(b) ? `${a}-${b}` : `${b}-${a}`);
     // Het hoofdscherm kan opgeven in welke strook van het beeld de kaart hoort: zicht=boven,onder,
     // in beeldpunten van een scherm van 1920 hoog. Boven en onder die strook staan titel, tekst en chat.
-    // Zonder opgave vult de kaart het hele beeld.
+    // Zonder opgave vult de kaart het hele beeld. Een derde getal vergroot de kaart binnen de strook
+    // (1 = passend; groter dan 1 laat de randen van de kaart buiten beeld vallen).
     const regieZichtUit = (waarde) => {
-      const [boven, onder] = String(waarde || "").split(",").map(Number);
-      return Number.isFinite(boven) && Number.isFinite(onder) && onder - boven >= 200 ? { boven: boven / 1920, onder: onder / 1920 } : null;
+      const [boven, onder, schaal] = String(waarde || "").split(",").map(Number);
+      return Number.isFinite(boven) && Number.isFinite(onder) && onder - boven >= 200 ? { boven: boven / 1920, onder: onder / 1920, schaal: schaal > 0 ? Math.min(4, schaal) : 1 } : null;
     };
     let regieZicht = regieZichtUit(REGIE_OPTIES.get("zicht"));
     // Het hoofdscherm zet de titel van de gekozen scène en de stand van het stemmen zelf in beeld.
@@ -3471,6 +3472,62 @@
       return !!options.podium && state.view === "network";
     }
 
+    // De kaart speelt mee met de muziek van de loadingfase. De muziekmotor meldt elke zestiende
+    // wat er klinkt; het lichtspel (poort 4240) geeft dat door met de instellingen van de bedienpagina.
+    // Kick: de kaart pompt en een groep sterren licht op; elke kick een andere groep, zodat het
+    // over de kaart loopt. Scènes die nog kunnen komen slaan het hardst aan, gespeelde zacht, dichte
+    // nauwelijks. Hat: de lijnen lichten op en een paar sterren fonkelen. Klap: een kring om een paar
+    // vrije sterren. Crash: een golf vanuit het midden. Ingezoomd pompt de ster in beeld mee.
+    // Alles wit, alles keer de sterkte.
+    const MUZIEK_GROEPEN = 4;
+    const muziek = { aan: false, klinkt: false, sterkte: 0.6, zoom: true, lijnen: true, kringen: true, golf: true,
+      kick: 0, hat: 0, golfStart: 0, ringen: [], beurt: 0, laatste: 0, vonken: new Map() };
+    function podiumMuziek(bericht) {
+      if (!bericht || typeof bericht !== "object") return;
+      if (bericht.t === "scherm" && bericht.inst) {
+        const w = bericht.inst;
+        muziek.aan = !!w.aan;
+        muziek.sterkte = clamp(Number(w.sterkte) || 0, 0, 1.5);
+        muziek.zoom = w.zoom !== false; muziek.lijnen = w.lijnen !== false;
+        muziek.kringen = w.kringen !== false; muziek.golf = w.golf !== false;
+      } else if (bericht.t === "stand") {
+        muziek.klinkt = !!bericht.aan && !bericht.gedempt;
+      } else if (bericht.t === "tel" && muziek.aan && muziek.klinkt) {
+        const nu = Date.now();
+        const ev = Number(bericht.ev) || 0;
+        muziek.laatste = nu;
+        if (ev & 1) { muziek.kick = nu; muziek.beurt += 1; }
+        if (ev & 12) {
+          muziek.hat = nu;
+          const nodes = state.model ? ((state.model.networkMap || {}).nodes || []) : [];
+          for (let i = 0; i < 3 && nodes.length; i += 1) muziek.vonken.set(Number(nodes[Math.floor(Math.random() * nodes.length)].sceneId), nu);
+          if (muziek.vonken.size > 40) muziek.vonken.forEach((t, id) => { if (nu - t > 300) muziek.vonken.delete(id); });
+        }
+        if ((ev & 512) || (ev & 4096)) muziek.golfStart = nu;
+        if ((ev & 2) && muziek.kringen && state.model) {
+          const vrij = ((state.model.networkMap || {}).nodes || []).filter((node) => isSceneReleased(Number(node.sceneId)));
+          for (let i = 0; i < 2 && vrij.length; i += 1) {
+            muziek.ringen.push({ sceneId: Number(vrij[Math.floor(Math.random() * vrij.length)].sceneId), start: nu });
+          }
+          if (muziek.ringen.length > 12) muziek.ringen.splice(0, muziek.ringen.length - 12);
+        }
+      }
+    }
+    // De stand van de muziek op dit moment: 0 tot 1 per soort, al keer de sterkte.
+    function podiumMuziekNu(nu) {
+      if (!muziek.aan || !muziek.klinkt) return null;
+      const s = muziek.sterkte;
+      return {
+        s,
+        // Welke groep sterren deze kick krijgt; om de acht kicks worden de groepen opnieuw verdeeld.
+        groep: (muziek.beurt - 1) % MUZIEK_GROEPEN,
+        schud: Math.floor((muziek.beurt - 1) / (MUZIEK_GROEPEN * 2)),
+        kick: muziek.kick ? Math.exp(-(nu - muziek.kick) / 150) * s : 0,
+        hat: muziek.lijnen && muziek.hat ? Math.exp(-(nu - muziek.hat) / 70) * s : 0,
+        golf: muziek.golf && muziek.golfStart && nu - muziek.golfStart < 2600 ? (nu - muziek.golfStart) / 1000 : -1,
+      };
+    }
+
     function podiumUit() {
       if (podium.lus) window.cancelAnimationFrame(podium.lus);
       podium.lus = 0;
@@ -3609,7 +3666,7 @@
       const hoog = (regieZicht.onder - regieZicht.boven) * podium.hoogte;
       const rand = 44; // ruimte voor de beweging van de sterren en een titel erboven
       return {
-        k: Math.min(podium.breedte / (kader.b + rand * 2), hoog / (kader.h + rand * 2)),
+        k: Math.min(podium.breedte / (kader.b + rand * 2), hoog / (kader.h + rand * 2)) * regieZicht.schaal,
         mx: kader.x,
         my: kader.y,
         sx: podium.breedte / 2,
@@ -3639,7 +3696,8 @@
       if (!ctx || !model) return;
       const networkMap = model.networkMap || { nodes: [], edges: [] };
       const beeld = podiumBeeld();
-      const k = beeld.k;
+      const mz = podiumMuziekNu(nu);
+      const k = beeld.k * (mz && muziek.zoom ? 1 + (regie.stil ? 0.008 : 0.016) * mz.kick : 1);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, podium.breedte, podium.hoogte);
       ctx.setTransform(k, 0, 0, k, beeld.sx - beeld.mx * k, beeld.sy - beeld.my * k);
@@ -3698,7 +3756,7 @@
           ctx.setLineDash(padLijn && regie.pad.laatste === stap ? [9 * dun, 8 * dun] : []);
           ctx.lineWidth = (padLijn ? 2.6 : Math.min(0.85 + Math.max(Number(edge.pathCount || edge.count || 1), 1) * 0.34, 3.2)) * dun;
           ctx.strokeStyle = kleur;
-          ctx.globalAlpha = padLijn ? 1 : alpha * fade;
+          ctx.globalAlpha = padLijn ? 1 : Math.min(1, alpha * (mz ? 1 + 1.1 * mz.hat : 1)) * fade;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
           ctx.bezierCurveTo(bocht.c1.x, bocht.c1.y, bocht.c2.x, bocht.c2.y, b.x, b.y);
@@ -3779,6 +3837,24 @@
         const popDeel = pop ? Math.min(1, (nu - pop) / REGIE_POP_MS) : 1;
         if (popDeel < 1) straal *= 1 + 1.6 * Math.pow(1 - popDeel, 3);
         straal *= dun;
+        // Muziek: de groep van deze kick pompt (scènes die nog kunnen komen het hardst), een paar
+        // sterren fonkelen op de hat, de golf van een crash tilt elke ster even op.
+        let muziekGloed = 0;
+        if (mz) {
+          const mijnGroep = Math.floor(stableUnit(`muziek:${mz.schud}:${sceneId}`) * MUZIEK_GROEPEN);
+          const gewicht = status === "available" || status === "next" ? 1 : status === "current" ? 0.8
+            : status === "played" ? 0.4 : !vrij || status === "locked" || status === "blocked" ? 0.12 : 0.7;
+          let duw = mz.kick * gewicht * (mijnGroep === mz.groep ? 0.9 : 0.1);
+          const vonk = muziek.vonken.get(sceneId);
+          if (vonk && nu - vonk < 300) duw += Math.exp(-(nu - vonk) / 90) * 0.5 * mz.s * Math.max(gewicht, 0.3);
+          if (mz.golf >= 0) {
+            const afstand = Math.hypot(punt.x - beeld.mx, punt.y - beeld.my);
+            const front = (afstand - mz.golf * 620) / 110;
+            duw += Math.exp(-front * front) * 1.1 * mz.s * (1 - mz.golf / 2.6);
+          }
+          straal *= 1 + duw;
+          muziekGloed = duw;
+        }
 
         let vulling = "#ffffff";
         let rand = "rgba(255,255,255,0.42)";
@@ -3813,7 +3889,7 @@
 
         if (isFocus && !regie.pad) {
           // De ster waar de camera in gaat is een zachte lichtbol, geen platte schijf.
-          const bol = straal * 1.7;
+          const bol = straal * 1.7 * (mz ? 1 + 0.12 * mz.kick : 1);
           const verloop = ctx.createRadialGradient(punt.x, punt.y, 0, punt.x, punt.y, bol);
           verloop.addColorStop(0, "#ffffff");
           verloop.addColorStop(0.12, "rgba(255,255,255,0.95)");
@@ -3825,9 +3901,10 @@
           ctx.arc(punt.x, punt.y, bol, 0, Math.PI * 2);
           ctx.fill();
         } else {
+          if (muziekGloed > 0.05 && vrij && gloedMaat < 6) gloedMaat = 6;
           if (gloedMaat > 0) {
-            const maat = (straal + gloedMaat * 1.6) * 2;
-            ctx.globalAlpha = alpha * gloedSterkte;
+            const maat = (straal + gloedMaat * (1.6 + muziekGloed * 2.4)) * 2;
+            ctx.globalAlpha = Math.min(1, alpha * gloedSterkte * (1 + muziekGloed));
             ctx.drawImage(podiumGloed(gloedKleur), punt.x - maat / 2, punt.y - maat / 2, maat, maat);
           }
           ctx.globalAlpha = alpha;
@@ -3911,6 +3988,23 @@
         }
       }
 
+      // Muziek: op de klap een kring die uitdijt om een paar vrije sterren.
+      if (mz && muziek.ringen.length) {
+        muziek.ringen = muziek.ringen.filter((ring) => nu - ring.start < 520);
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.1 * dun;
+        for (const ring of muziek.ringen) {
+          const punt = pos.get(ring.sceneId);
+          if (!punt) continue;
+          const deel = (nu - ring.start) / 520;
+          ctx.globalAlpha = (1 - deel) * 0.7 * Math.min(1, mz.s) * fade;
+          ctx.beginPath();
+          ctx.arc(punt.x, punt.y, (7 + deel * 30) * dun, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+
       // Het hele pad: een gestippelde kring om de gekozen scène.
       if (regie.pad && regie.pad.punten && pos.get(regie.pad.b)) {
         const punt = pos.get(regie.pad.b);
@@ -3957,7 +4051,8 @@
       // Staat de kaart stil en verandert er niets, dan wordt er ook niets getekend.
       const verborgen = podium.doek && podium.doek.style.visibility === "hidden";
       const knippert = !!(regie.gekozen && regie.gekozenSinds && klok - regie.gekozenSinds < REGIE_KNIPPER_MS + 100);
-      if (!verborgen && (!regie.stil || podium.vuil || podium.tweens.length || pops || knippert)) {
+      const muziekLoopt = muziek.aan && muziek.klinkt && klok - muziek.laatste < 1000;
+      if (!verborgen && (!regie.stil || podium.vuil || podium.tweens.length || pops || knippert || muziekLoopt)) {
         podiumTeken(klok);
         podium.vuil = false;
       }
@@ -4565,6 +4660,7 @@
     wireMotionControls();
 
     return {
+      muziek: podiumMuziek,
       setModel,
       setTweak,
       setView,

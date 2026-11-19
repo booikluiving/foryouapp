@@ -70,6 +70,11 @@ function oscArgsForAction(action) {
     const payload = action.payload || {};
     args.push(String(Number(payload.camera) || 0), String(Number(payload.sterkte) || 0));
   }
+  // td.instel: speler (0 = de instelstand zelf, 1-3 = key van die speler) en waarde (0/1).
+  if (action.command === "td.instel") {
+    const payload = action.payload || {};
+    args.push(String(Number(payload.speler) || 0), payload.waarde ? "1" : "0");
+  }
   // td.effect.speler: per camera spiegelen en zichtbaar ("1", "0" of "-"), en de duur van de fade.
   if (action.command === "td.effect.speler") {
     const payload = action.payload || {};

@@ -221,6 +221,15 @@ const DEFINITIONS = Object.freeze([
     description: "Speelt de clip van een stap van het effect omvallen over de voorgrond (payload: filePath, uit). De clips komen uit modules/catalog/tools/omvallen-clips.js.",
   }),
   command({
+    name: "td.instel",
+    title: "TD instelbeeld teleprompters",
+    targetId: "touchdesigner",
+    adapter: "touchdesigner",
+    ackMode: "fire-and-forget",
+    transport: "osc-control-port",
+    description: "Instelbeeld op de teleprompters in de inloop (payload: speler 0 = instelstand aan/uit, 1-3 = key van die speler aan/uit; waarde 0/1). Links de eigen camera rauw of met key, rechts het universum.",
+  }),
+  command({
     name: "td.effect.haper",
     title: "TD haperen",
     targetId: "touchdesigner",
@@ -351,6 +360,13 @@ const DEFINITIONS = Object.freeze([
     targetId: "sq5",
     adapter: "sq5",
     request: { method: "POST", path: "/api/input/:channel/nudge" },
+  }),
+  command({
+    name: "sq5.spelers",
+    title: "SQ5 spelers open of dicht",
+    targetId: "sq5",
+    adapter: "sq5",
+    request: { method: "POST", path: "/api/spelers/:stand" },
   }),
   command({
     name: "sq5.output.mute",
@@ -547,6 +563,16 @@ const DEFINITIONS = Object.freeze([
     request: { method: "POST", path: "/v0/script-agent/teleprompter-parser/prepare" },
   }),
   command({
+    name: "teleprompter.hierna",
+    title: "Teleprompter: scène hierna",
+    targetId: "teleprompter",
+    adapter: "teleprompter",
+    ackMode: "fire-and-forget",
+    transport: "http-script-agent",
+    request: { method: "POST", path: "/v0/script-agent/teleprompter-parser/hierna" },
+    description: "Bij de start van een scène: de scène die daarna komt, zodat elke speler rechtsonder zijn volgende personage ziet.",
+  }),
+  command({
     name: "teleprompter.ready",
     title: "Teleprompter ready",
     targetId: "teleprompter",
@@ -573,13 +599,13 @@ const DEFINITIONS = Object.freeze([
   }),
   command({
     name: "teleprompter.bord",
-    title: "Bord: volgend plaatje of leeg",
+    title: "Bord: aan of weg",
     targetId: "teleprompter",
     adapter: "teleprompter",
     ackMode: "fire-and-forget",
     transport: "http-script-agent",
     request: { method: "POST", path: "/v0/script-agent/teleprompter-parser/bord" },
-    description: "Blind ranking: actie volgende zet het volgende plaatje in beeld, actie begin haalt alles weg.",
+    description: "Blind ranking: actie aan zet het bord in beeld (het volgt daarna het script), actie begin haalt het weg.",
   }),
   command({
     name: "script-agent.operator.prepareDraft",

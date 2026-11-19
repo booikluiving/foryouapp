@@ -19,6 +19,7 @@ const { createScriptOutput } = require("../script-output/script-service");
 const { parseTeleprompt } = require("../teleprompter-parser/src/domain/parse-teleprompt");
 const { createTelepromptStore } = require("../teleprompter-parser/src/runtime/teleprompt-store");
 const { createTeleprompterParserBridge } = require("../teleprompter-parser/src/integration/script-agent-bridge");
+const { shouldEndSceneFromCueAdvance } = require("../teleprompter-parser/src/integration/express-router");
 const { parseScriptText } = require("../text-parser/text-parser");
 
 const runtimeState = {
@@ -122,6 +123,21 @@ function fakeDeepSeekFetch(expectedApiKey) {
   };
 }
 
+const fakeOpenRouter = { calls: 0, lastBody: null };
+async function fakeOpenRouterFetch(url, options = {}) {
+  assert.equal(url, "https://openrouter.ai/api/v1/chat/completions");
+  assert.equal(options.headers.authorization, "Bearer sk-test-openrouter");
+  const body = JSON.parse(options.body);
+  fakeOpenRouter.calls += 1;
+  fakeOpenRouter.lastBody = body;
+  const chunks = [
+    `data: ${JSON.stringify({ choices: [{ delta: { content: "Ada: Hydrogen regel\\n" } }] })}\n\n`,
+    `data: ${JSON.stringify({ choices: [{ delta: { content: "Ben: Tegenregel" }, finish_reason: "stop" }], usage: { prompt_tokens: 30, completion_tokens: 12, cost: 0.001 } })}\n\n`,
+    "data: [DONE]\n\n",
+  ];
+  return { ok: true, body: Readable.from(chunks.map((chunk) => Buffer.from(chunk))), text: async () => "" };
+}
+
 async function main() {
   await fs.rm(TMP_DB_DIR, { recursive: true, force: true });
 
@@ -172,10 +188,10 @@ async function main() {
     flexiblePromptInput.performerSlots.map((slot) => [slot.slotIndex, slot.performerId, slot.characterId]),
     [
       [1, "performer:1", "character:bobby"],
-      [1, null, "character:flex"],
       [2, "performer:2", "character:adolf"],
+      [3, null, "character:flex"],
     ],
-    "Script Agent fallback should reflect catalog performer choices without redistributing roles"
+    "Script Agent fallback should give a character without a fixed performer the slot that is still open"
   );
 
   const previousCatalogUrl = process.env.SCRIPT_AGENT_CATALOG_URL;
@@ -228,6 +244,19 @@ async function main() {
   assert.equal(situatieTitel.title, "Mark moet kinderziekenhuis opblazen na verlies monopoly");
   assert.deepEqual(situatieTitel.lines.map((line) => line.text), ["Hallo Ben.", "Ze wachten."]);
 
+  // Een ingekorte naam krijgt de volledige naam uit de personagelijst; bij twijfel blijft hij staan.
+  const voluit = parseTeleprompt({
+    rawText: "Marit: Hoi.\nMonster: Boe.\nTreinconducteur: Kaartjes.\nEscape room Marit: Een aanwijzing!\nVrouw: Wie?\nPiet: Ik.",
+    characterNames: ["Escape room Marit", "Monster onder het bed", "Trein conducteur", "Vrouw 1", "Vrouw 2"],
+    source: "unit",
+  });
+  assert.deepEqual(
+    voluit.lines.map((line) => line.speakerLabel),
+    ["Escape room Marit", "Monster onder het bed", "Trein conducteur", "Escape room Marit", "Vrouw", "Piet"]
+  );
+  assert.equal(voluit.characters.length, 5);
+  assert.equal(voluit.lines[0].speakerId, voluit.lines[3].speakerId);
+
   const legacyStore = createTelepromptStore();
   legacyStore.prepareScene({
     sceneId: 1,
@@ -240,6 +269,18 @@ async function main() {
   assert.equal(legacyStore.getPreparedScene().status, "prepared");
   legacyStore.revealPreparedScene();
   assert.equal(legacyStore.getPreparedScene().status, "playing");
+  // De scène opent met de eerste regel: geen titelkaart meer op cue 0.
+  assert.equal(legacyStore.getCue().index, 1);
+  assert.equal(legacyStore.setCueIndex(0).cue.index, 1);
+
+  // Een titel die het taalmodel toch schrijft, wordt geen regel in het script.
+  for (const kop of ["# Monopoly", "## De val", "**Monopoly**", "Titel: Monopoly", "Monopoly in het ziekenhuis", "Open Scene"]) {
+    const zonderTitel = parseTeleprompt({ title: "Open Scene", rawText: `${kop}\n\nAda: Hallo Ben.\nBen: Dag Ada.`, source: "unit" });
+    assert.equal(zonderTitel.title, "Open Scene");
+    assert.deepEqual(zonderTitel.lines.map((line) => `${line.speakerLabel}: ${line.text}`), ["Ada: Hallo Ben.", "Ben: Dag Ada."], kop);
+  }
+  const metRegie = parseTeleprompt({ title: "Open Scene", rawText: "Regie: Ze wachten.\nAda: Hallo Ben.", source: "unit" });
+  assert.deepEqual(metRegie.lines.map((line) => line.text), ["Ze wachten.", "Hallo Ben."]);
   assert.equal(legacyStore.setCaptionStyle({ fontSizeScale: 9, verticalPosition: 10 }).captionStyle.fontSizeScale, 1.25);
 
   const bridge = createTeleprompterParserBridge({
@@ -256,6 +297,18 @@ async function main() {
     performerSlots: [{ characterId: "character:1", legacyCharacterId: 1, characterName: "Ada", slotIndex: 1, performerName: "Performer A" }],
   });
   assert.equal(preparedFromPayload.environment.imageUrl, "http://catalog.test/v0/catalog/media-assets/file/bg");
+  assert.equal(preparedFromPayload.environment.imageKind, undefined);
+  // Een video als achtergrond (Achtbaan): de teleprompter moet weten dat het een video is.
+  const preparedVideo = bridge.preparedSceneFromPayload({
+    situation: { situationId: "situation:93", legacySituationId: 93, title: "Achtbaan" },
+    environment: { id: "environment:33", legacyId: 33, name: "Achtbaan" },
+    backgroundAsset: { url: "/v0/catalog/media-assets/file/rit", filename: "achtbaan-stoeltjes.mp4" },
+    performerSlots: [],
+  });
+  assert.equal(preparedVideo.environment.imageKind, "video");
+  const videoStore = createTelepromptStore();
+  videoStore.prepareScene({ sceneId: 93, title: "Achtbaan", environment: preparedVideo.environment, characters: [] });
+  assert.equal(videoStore.getPreparedScene().environment.imageKind, "video");
   assert.equal(preparedFromPayload.characters[0].slot, 1);
   assert.equal(preparedFromPayload.characters[0].performerName, "Performer A");
 
@@ -303,7 +356,9 @@ async function main() {
       fetchCatalogSnapshot: async () => ({ ok: true, catalog: cloneJson(runtimeState.showRunSnapshot.catalog) }),
     },
     env: {},
-    fetchImpl: fakeDeepSeekFetch("sk-test-deepseek"),
+    fetchImpl: (url, options) => (String(url).includes("openrouter.ai")
+      ? fakeOpenRouterFetch(url, options)
+      : fakeDeepSeekFetch("sk-test-deepseek")(url, options)),
     log: (line) => generationLog.push(JSON.parse(line)),
   });
   assert.equal((await operatorService.secretsStatus()).deepseek.configured, false);
@@ -412,6 +467,29 @@ async function main() {
   assert.equal(fakeDeepSeek.lastBody.max_tokens, 512);
   await operatorService.saveSettings({ reasoningEffort: "low" });
 
+  // Knop Hydrogen: een model met "/" in de instellingen schrijft via OpenRouter, met kort nadenken.
+  assert.equal((await operatorService.secretsStatus()).openrouter.configured, false);
+  const secretsFile = path.join(TMP_DB_DIR, "operator-secrets.json");
+  const secretsNu = JSON.parse(await fs.readFile(secretsFile, "utf8"));
+  await fs.writeFile(secretsFile, JSON.stringify({ ...secretsNu, OPENROUTER_API_KEY: "sk-test-openrouter" }));
+  assert.equal((await operatorService.secretsStatus()).openrouter.configured, true);
+  await operatorService.saveSettings({ reasoningEffort: "off" });
+  const hydrogen = await operatorService.saveSettings({ model: "google/gemini-4-hydrogen" });
+  assert.equal(hydrogen.reasoningEffort, "low");
+  const viaOpenRouter = await operatorService.streamChat({
+    sessionId: "hydrogen_session",
+    message: operatorDraft.text,
+    promptInput: operatorDraft.promptInput,
+  });
+  assert.equal(viaOpenRouter.provider, "openrouter");
+  assert.equal(fakeOpenRouter.lastBody.model, "google/gemini-4-hydrogen");
+  assert.deepEqual(fakeOpenRouter.lastBody.reasoning, { effort: "low" });
+  assert.equal(generationLog.at(-1).provider, "openrouter");
+  const terug = await operatorService.saveSettings({ model: "deepseek-chat" });
+  assert.equal(terug.reasoningEffort, "off");
+  await operatorService.saveSettings({ reasoningEffort: "low" });
+  await fs.writeFile(secretsFile, JSON.stringify(secretsNu));
+
   const sceneChatEvents = [];
   const sceneChat = await operatorService.sceneToChat({ sourceId: "unit-scene-chat" }, (event) => sceneChatEvents.push(event));
   assert.equal(sceneChat.sessionId, runtimeState.showRunId);
@@ -441,6 +519,47 @@ async function main() {
   assert.equal(operatorService.opmerkingStand().bewaard, "", "na het meegeven is de opmerking weg");
   const zonderOpmerking = await operatorService.sceneToChat({ sourceId: "unit-scene-chat" });
   assert.equal(zonderOpmerking.opmerking, null);
+
+  // Trendscène (omgeving Trend): geen taalmodel, een vast script met één regel per emoji, en de druk
+  // na de laatste emoji eindigt de scène (geen kaart "Einde").
+  {
+    const trendState = cloneJson(runtimeState);
+    trendState.resolvedPreparedNext.environment = { id: "environment:32", legacyId: 32, name: "Trend" };
+    trendState.resolvedPreparedNext.promptText = "Boven elke speler staat een rij emoji: 🐙 🦀 🕊️ 🐔 🦋 🐛 🐶 🐱. Schrijf geen dialoog.";
+    const naarTeleprompter = [];
+    const trendService = createOperatorService({
+      clients: {
+        fetchCurrentRuntimeState: async () => ({ ok: true, state: cloneJson(trendState) }),
+        fetchCatalogSnapshot: async () => ({ ok: true, catalog: cloneJson(runtimeState.showRunSnapshot.catalog) }),
+      },
+      env: {},
+      fetchImpl: async () => { throw new Error("trend mag het taalmodel niet aanroepen"); },
+      onScriptOutput: async (uit) => { naarTeleprompter.push(uit); },
+      log: () => {},
+    });
+    trendService.voegOpmerkingToe("bewaar mij");
+    const trendEvents = [];
+    trendService.emitter.on("stage", (event) => trendEvents.push(event.type));
+    const trend = await trendService.sceneToChat({ sourceId: "unit-trend" });
+    assert.equal(trend.done.provider, "trend");
+    assert.equal(trend.done.text, "🐙 🦀 🕊️ 🐔 🦋 🐛 🐶 🐱");
+    assert.equal(naarTeleprompter.length, 1);
+    const trendDeck = parseTeleprompt({ title: "Dans als dieren", rawText: naarTeleprompter[0].scriptOutput.scriptText });
+    assert.deepEqual(trendDeck.lines.map((line) => line.text), ["🐙", "🦀", "🕊️", "🐔", "🦋", "🐛", "🐶", "🐱"]);
+    assert(trendDeck.lines.every((line) => line.type === "stage_direction"));
+    assert.deepEqual(trendEvents.slice(-2), ["operator_stage_delta", "operator_stage_state"], "zaalscherm: eerst bezig, dan klaar");
+    assert.equal(trendService.snapshotStage().streaming, false);
+    assert.equal(trendService.opmerkingStand().bewaard, "bewaar mij", "de opmerking blijft voor de volgende gewone scène");
+
+    const deck = 8 + 2;
+    const trendScene = { status: "playing", environment: { name: "Trend" } };
+    const gewoon = { status: "playing", environment: { name: "Studio" } };
+    assert.equal(shouldEndSceneFromCueAdvance({ cue: { index: 7, deckLength: deck }, requestedIndex: 8, preparedScene: trendScene }), false);
+    assert.equal(shouldEndSceneFromCueAdvance({ cue: { index: 8, deckLength: deck }, requestedIndex: 9, preparedScene: trendScene }), true, "na de laatste emoji is de scène klaar");
+    assert.equal(shouldEndSceneFromCueAdvance({ cue: { index: 8, deckLength: deck }, requestedIndex: 7, preparedScene: trendScene }), false, "terug mag");
+    assert.equal(shouldEndSceneFromCueAdvance({ cue: { index: 8, deckLength: deck }, requestedIndex: 9, preparedScene: gewoon }), false, "gewone scène: eerst Einde");
+    assert.equal(shouldEndSceneFromCueAdvance({ cue: { index: 9, deckLength: deck }, requestedIndex: 10, preparedScene: gewoon }), true);
+  }
 
   process.stdout.write(JSON.stringify({
     ok: true,

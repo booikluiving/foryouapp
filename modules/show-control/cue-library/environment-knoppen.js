@@ -8,7 +8,7 @@
 // - haperen: het vakje van één speler hapert zolang de knop is ingedrukt (houden: true; het deck
 //   stuurt fase "druk" bij indrukken en fase "los" bij loslaten);
 // - keuze: na de laatste stap van omvallen een eigen knop per afloop (links of rechts);
-// - plaatje: bij een bord 1 t/m 5 (blind ranking) het volgende plaatje in beeld;
+// - bord: bij een bord 1 t/m 5 (blind ranking) het bord aan; daarna volgt het vanzelf het script;
 // - begin: zet alles van deze omgeving terug naar het begin.
 // Een omgeving zonder iets geeft een lege lijst.
 
@@ -30,18 +30,19 @@ function environmentKnoppenStatus(runtimeState, options = {}) {
   const omvallen = environmentOmvallenStatus(runtimeState, options.environmentOmvallen || {});
   const knoppen = [];
   let verzet = false;
-  // Bord (blind ranking): elke druk toont het volgende plaatje. Doet het zodra de scène speelt.
+  // Bord (blind ranking): één druk zet het bord aan; daarna loopt het mee met de dialoog.
   const bord = environmentBordStatus(runtimeState, options.environmentFases || {});
   if (bord.klaar) {
     knoppen.push({
-      soort: "plaatje",
-      actie: "volgende",
-      label: "PLAATJE",
-      nu: "",
-      teller: `${bord.getoond}/${bord.totaal}`,
-      staat: bord.speelt && bord.getoond < bord.totaal ? "klaar" : "uit",
+      soort: "bord",
+      actie: "aan",
+      label: "BORD AAN",
+      nu: bord.aan ? "aan" : "",
+      teller: "",
+      staat: bord.speelt && !bord.aan ? "klaar" : "uit",
+      aan: bord.aan,
     });
-    verzet = verzet || bord.getoond > 0;
+    verzet = verzet || bord.aan;
   }
   if (fases.klaar && fases.fases.length > 1) {
     const laatste = fases.actief >= fases.fases.length - 1;
@@ -132,7 +133,7 @@ function buildEnvironmentKnopCue(runtimeState, input = {}, options = {}) {
   }
   const faseOptions = options.environmentFases || {};
   const omvallenOptions = options.environmentOmvallen || {};
-  if (knop.soort === "plaatje") return buildEnvironmentBordCue(runtimeState, { actie: "volgende", source: input.source }, faseOptions);
+  if (knop.soort === "bord") return buildEnvironmentBordCue(runtimeState, { actie: "aan", source: input.source }, faseOptions);
   if (knop.soort === "intro") return buildStartGeluidCue(runtimeState, { source: input.source }, faseOptions);
   if (knop.soort === "fase") return buildEnvironmentFaseCue(runtimeState, { actie: "volgende", source: input.source }, faseOptions);
   if (knop.soort === "keuze") return buildEnvironmentOmvallenCue(runtimeState, { actie: "keuze", keuze: knop.keuze, source: input.source }, omvallenOptions);

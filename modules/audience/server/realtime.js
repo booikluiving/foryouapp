@@ -3,6 +3,7 @@
 const EventEmitter = require("node:events");
 const { normalizeIp } = require("./audience-service");
 const { loadSocketIo, loadWs } = require("./realtime-loader");
+const { isKijkvenster } = require("./kijkvenster");
 
 const WebSocket = loadWs();
 const SocketIOServer = loadSocketIo();
@@ -200,7 +201,11 @@ function attachAudienceRealtime(server, service, options = {}) {
   function handleConnection(client, req) {
     if (publicMode) req.fyPublic = true;
     const ip = service.requestAddress(req);
-    const access = service.ensureSessionAccessForRequest(req, ip);
+    // Kijkvenster van de operator: krijgt alles te zien zonder QR, maar staat niet in de tellingen
+    // en kan niets insturen (geen naam, bericht, emoji, like, stem of oordeel).
+    const kijker = !publicMode && isKijkvenster(req);
+    const actief = kijker ? service.getActiveSession() : null;
+    const access = actief ? { ok: true, reason: "kijkvenster", session: actief } : service.ensureSessionAccessForRequest(req, ip);
     if (!access.ok) {
       const inactive = access.reason === "session_inactive";
       rejectClient(
@@ -217,7 +222,12 @@ function attachAudienceRealtime(server, service, options = {}) {
 
     const meta = service.createClientMeta(req, access);
     client.__meta = meta;
-    service.persistClient(meta);
+    if (kijker) {
+      meta.kijker = true;
+      meta.clientId = 0;
+    } else {
+      service.persistClient(meta);
+    }
     chatClients.add(client);
     sendHello(client, access.session);
 
@@ -234,6 +244,8 @@ function attachAudienceRealtime(server, service, options = {}) {
         sendJson(client, { type: "pong", t: Date.now() });
         return;
       }
+
+      if (meta.kijker) return;
 
       if (msg.type === "register") {
         const result = service.registerClient(meta, msg);

@@ -135,6 +135,10 @@ async function sendMacAudioCommand(action, context = {}) {
   }
   // Een effect kan het lied uitzetten (de bom stopt het piepje).
   if (payload.stopLied) stopSpoor("lied");
+  // Het nummer van een personage zet het andere geluid van de scène uit (cue-library/personage-knop.js).
+  if (payload.stopAnder) {
+    for (const ander of Object.keys(sporen)) if (ander !== naam) stopSpoor(ander);
+  }
   // Binnen een spoor: nog eens drukken = opnieuw beginnen, niet over elkaar heen.
   stopSpoor(naam);
   const spoor = sporen[naam];
@@ -172,7 +176,13 @@ async function sendMacAudioCommand(action, context = {}) {
   };
 }
 
+// Speelt dit bestand nu als lied (de wisselknop)? Voor de stand van de knop op het deck.
+function liedSpeelt(filePath) {
+  return isPlaying("lied", String(filePath || ""));
+}
+
 module.exports = {
+  liedSpeelt,
   sendMacAudioCommand,
   stopCurrent,
 };

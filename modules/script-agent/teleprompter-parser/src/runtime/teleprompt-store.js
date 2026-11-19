@@ -71,7 +71,8 @@ function sanitizePreparedEnvironment(input = {}, base = null) {
   const imageUrl = cleanPreparedText(source.imageUrl || source.image || fallback.imageUrl || "", 500);
   const id = Math.max(0, Number.parseInt(String(source.id || fallback.id || 0), 10) || 0);
   if (!name && !description && !imageUrl && !id) return null;
-  return { id, name, description, imageUrl };
+  const imageKind = String(source.imageKind || (source.imageUrl || source.image ? "" : fallback.imageKind) || "") === "video" && imageUrl ? "video" : "";
+  return { id, name, description, imageUrl, ...(imageKind ? { imageKind } : {}) };
 }
 
 function sanitizePreparedScene(input = {}, base = null) {
@@ -188,24 +189,20 @@ function createTelepromptStore(options = {}) {
   // zaalscherm de keuze meldt. Vangnet: na KEUZE_WACHT_MAX_MS toont de teleprompter hem toch.
   const KEUZE_WACHT_MAX_MS = 12000;
   let keuzeWachtSinds = 0;
-  // Bord (blind ranking): hoeveel plaatjes de operator met de knop in beeld heeft gezet.
-  let bordGetoond = 0;
+  // Bord (blind ranking): staat uit tot de operator het met de knop aanzet. Daarna volgt het
+  // vanzelf de regels van het script.
+  let bordAan = false;
   let bordVersion = 0;
 
-  function bordTotaal() {
-    const namen = current && current.bord && Array.isArray(current.bord.namen) ? current.bord.namen : [];
-    return namen.length;
-  }
-
   function getBord() {
-    return { getoond: Math.min(bordGetoond, bordTotaal()), totaal: bordTotaal(), version: bordVersion };
+    return { aan: bordAan, version: bordVersion };
   }
 
-  // actie "volgende": het volgende plaatje in beeld; "begin": alles weer weg.
+  // actie "aan": het bord in beeld; "begin": weer weg.
   function setBord(actie) {
-    const voor = bordGetoond;
-    bordGetoond = actie === "volgende" ? Math.min(bordGetoond + 1, bordTotaal()) : 0;
-    const changed = bordGetoond !== voor;
+    const voor = bordAan;
+    bordAan = actie === "aan";
+    const changed = bordAan !== voor;
     if (changed) bordVersion += 1;
     return { bord: getBord(), changed };
   }
@@ -215,11 +212,17 @@ function createTelepromptStore(options = {}) {
     return lines.length ? lines.length + 2 : 0;
   }
 
+  // De scène opent met de eerste regel: er is geen titelkaart meer vóór het dialoog. De telling
+  // blijft zoals hij was (regel n = cue n, daarna "Einde"); cue 0 bestaat alleen nog zonder tekst.
+  function firstCueIndex() {
+    return deckLength() ? 1 : 0;
+  }
+
   function clampCueIndex(index) {
     const max = Math.max(deckLength() - 1, 0);
     const numeric = Number.parseInt(index, 10);
-    if (!Number.isFinite(numeric)) return 0;
-    return Math.max(0, Math.min(numeric, max));
+    if (!Number.isFinite(numeric)) return firstCueIndex();
+    return Math.max(firstCueIndex(), Math.min(numeric, max));
   }
 
   function cueLocked() {
@@ -260,8 +263,8 @@ function createTelepromptStore(options = {}) {
   }
 
   function resetCueIndex() {
-    const changed = cueIndex !== 0;
-    cueIndex = 0;
+    const changed = cueIndex !== firstCueIndex();
+    cueIndex = firstCueIndex();
     cueVersion += 1;
     cueUpdatedAt = new Date().toISOString();
     return {
@@ -340,7 +343,11 @@ function createTelepromptStore(options = {}) {
   }
 
   function ingest(input = {}) {
-    const parsed = enrichTelepromptLinesWithPreparedSlots(parseTeleprompt(input), preparedScene);
+    // De personages van de klaargezette scène: daarmee zet de parser een ingekorte naam voluit.
+    const characterNames = Array.isArray(input.characterNames)
+      ? input.characterNames
+      : (preparedScene && preparedScene.characters || []).map((character) => character.name);
+    const parsed = enrichTelepromptLinesWithPreparedSlots(parseTeleprompt({ ...input, characterNames }), preparedScene);
     const sceneId = Math.max(0, Number.parseInt(String(input.sceneId || input.scene_id || 0), 10) || 0);
     version += 1;
     current = {
@@ -352,7 +359,7 @@ function createTelepromptStore(options = {}) {
       version,
       updatedAt: parsed.source.generatedAt,
     };
-    cueIndex = 0;
+    cueIndex = firstCueIndex();
     cueVersion += 1;
     cueUpdatedAt = current.updatedAt;
     setBord("begin");
@@ -424,9 +431,29 @@ function createTelepromptStore(options = {}) {
     };
   }
 
+  // De scène die hierna komt. De runtime kiest hem bij de start van de huidige scène; tijdens de
+  // scène staat rechtsonder per speler klein het personage dat hij daarin speelt.
+  let hierna = null;
+  let hiernaVersion = 0;
+
+  function getHierna() {
+    return hierna
+      ? { ...hierna, characters: hierna.characters.map((character) => ({ ...character })), version: hiernaVersion }
+      : null;
+  }
+
+  function setHierna(input) {
+    const scene = input && typeof input === "object" ? sanitizePreparedScene(input) : null;
+    hierna = scene && (scene.sceneId || scene.characters.length) ? scene : null;
+    hiernaVersion += 1;
+    return { hierna: getHierna(), changed: true };
+  }
+
   return {
     ingest,
     getCurrent,
+    getHierna,
+    setHierna,
     setKeuzeWacht,
     getCue,
     setCueIndex,

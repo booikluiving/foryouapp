@@ -8,8 +8,8 @@ in de Textport:
 
 Wat het doet: maakt /project1/fy_registratie (Base COMP), los van de keten naar het zaalscherm:
 - beeld (Select TOP): het hoofdscherm vóór het kantelen naar het zaalscherm (staand, 1080x1920).
-- sq (Audio Device In CHOP): de USB-kanalen van de SQ-5. 1-3 zijn de spelers (direct out, dus
-  ook als het kanaal op de tafel dicht staat). Staat alleen aan tijdens een opname.
+- sq (Audio Device In CHOP): de USB-kanalen van de SQ-5. Kanaal 1 is de groep Mics (alle spelers,
+  alleen te horen als hun kanaal op de tafel open staat). Staat alleen aan tijdens een opname.
 - muziek (Select CHOP): wat TouchDesigner zelf naar de tafel stuurt (inloop, loading, sfeer).
 - links / rechts / geluid: spelers in het midden, muziek links en rechts.
   Het geluid dat de Mac buiten TouchDesigner om afspeelt (extra geluiden, stappen, geluidjes van
@@ -29,8 +29,18 @@ REGISTRATIE_TERUG = False
 _REG_BEELD = 'extra_shot_switch'   # ingang van fit2, die het beeld naar Main_TV kantelt
 REGISTRATIE_KWALITEIT = 0.8       # 0-1; hoger = groter bestand
 REGISTRATIE_TAFELMIX = None       # bijvoorbeeld (31, 32) als Main LR op USB 31/32 staat
-_REG_SPELERS = 'chan1 chan2 chan3'
+# USB 1 = de groep Mics van de tafel (alle spelers, na fader en mute; gepatcht 18 nov op de tafel:
+# I/O > Outputs > USB, bron Mix Out). De losse spelerskanalen kwamen niet alle drie over USB.
+_REG_SPELERS = 'chan1'
+# De groep komt zacht binnen (pieken rond -35 dB bij gewoon praten, gemeten 18 nov) en is zonder
+# versterking naast de muziek niet te horen.
+REGISTRATIE_SPELERS_DB = 36
 _REG_MUZIEK = 'null11'             # ingang van audiodevout2
+# Vaste samplerate van de opname. De muziek volgt de rate van het sfeergeluid (27 soundscapes zijn
+# 48 kHz); met Sample Rate Match 'max' werd de hele mix dan 48 kHz terwijl het bestand 44,1 kHz is,
+# en liep het geluid in die scènes 8,8 % trager dan het beeld (gemeten 19 nov). Daarom: de SQ op
+# deze rate en elke optelling met Sample Rate Match 'first' (de spelers), muziek wordt omgerekend.
+REGISTRATIE_RATE = 44100
 
 _REG_STUUR = '''
 import os, json, time
@@ -100,7 +110,7 @@ else:
     if _sq_naam:
         _sq.par.device = _sq_naam[0]
     _sq.par.format = 'multichannel'
-    _sq.par.rate = _p.op(_REG_MUZIEK).rate if _p.op(_REG_MUZIEK) is not None else 48000
+    _sq.par.rate = REGISTRATIE_RATE
 
     def _kies(naam, kanaal, bron=None):
         _s = _b.create(selectCHOP, naam)
@@ -124,17 +134,20 @@ else:
     else:
         _sp = _b.create(mathCHOP, 'spelers')
         _sp.par.chanop = 'add'
+        _sp.par.gain = 10 ** (REGISTRATIE_SPELERS_DB / 20.0)
         _sp.inputConnectors[0].connect(_kies('kies_spelers', _REG_SPELERS))
         _zij = []
         for _zijde, _kanaal, _uit in (('links', 'chan1', 'chan1'), ('rechts', 'chan2', 'chan2')):
             _m = _b.create(mathCHOP, _zijde + '_som')
             _m.par.chopop = 'add'
+            _m.par.srselect = 'first'
             _m.inputConnectors[0].connect(_sp)
             if _p.op(_REG_MUZIEK) is not None:
                 _m.inputConnectors[1].connect(_kies('muziek_' + _zijde, _kanaal, '../' + _REG_MUZIEK))
             _zij.append(_naam(_m, _zijde, _uit))
         _l, _r = _zij
     _g = _b.create(mergeCHOP, 'geluid')
+    _g.par.srselect = 'first'
     _g.inputConnectors[0].connect(_l)
     _g.inputConnectors[1].connect(_r)
 

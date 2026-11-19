@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>nl.foryou.hand-ready</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/for_you/ForYou/main</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/for_you/ForYou/main/show/hand-ready/hand_ready</string>
+    <string>--map</string>
+    <string>/Users/for_you/ForYou/spelerbeeld</string>
+    <string>--server</string>
+    <string>http://127.0.0.1:3026</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/for_you/Library/Logs/ForYou/nl.foryou.hand-ready.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/for_you/Library/Logs/ForYou/nl.foryou.hand-ready.err.log</string>
+</dict>
+</plist>

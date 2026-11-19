@@ -17,7 +17,7 @@
       .plek b { font-size: 60px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; text-shadow: 0 0 4px #000, 0 2px 10px rgba(0, 0, 0, 0.9); }
       .vak { height: 164px; border: 4px solid #fff; background: rgba(7, 8, 11, 0.6); position: relative; overflow: hidden; }
       .kaart { position: absolute; inset: 0; background: #12141a; display: grid; place-items: center; }
-      .kaart img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 20%; filter: grayscale(1); }
+      .kaart img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 20%; }
       .kaart span { font-size: 26px; font-weight: 700; text-align: center; padding: 0 8px; overflow-wrap: anywhere; }
       .kaart small { position: absolute; left: 0; right: 0; bottom: 0; font-size: 20px; background: rgba(7, 8, 11, 0.8); padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       #nieuw { position: absolute; left: var(--rx, 151px); top: var(--ry, 864px); width: 626px; height: 626px; border: 4px solid #fff; overflow: hidden; box-sizing: border-box; transition: left 420ms cubic-bezier(.65, 0, .35, 1), top 420ms cubic-bezier(.65, 0, .35, 1), width 420ms cubic-bezier(.65, 0, .35, 1), height 420ms cubic-bezier(.65, 0, .35, 1); }
@@ -25,6 +25,16 @@
       #nieuw .kaart small { font-size: 46px; padding: 12px 22px; }
       #nieuw.weg { visibility: hidden; }
       #nieuw.vast { transition: none; }
+      /* ?vak=los: alleen het rouleervak, beeldvullend (TD zet het op het voorhoofd). ?vak=weg: zonder rouleervak. */
+      body.vaklos #vel { width: 100vw; height: 100vh; transform: none !important; }
+      body.vaklos #bord { display: none; }
+      body.vaklos #nieuw { left: 0; top: 0; width: 100vw; height: 100vh; border-width: 2vmin; transition: none; }
+      body.vaklos #nieuw .kaart small { font-size: 7vmin; padding: 1.6vmin 3vmin; }
+      body.vakweg #nieuw { display: none; }
+      /* Van het voorhoofd naar het bord: TD meldt de plek van het voorhoofd (postMessage), het vak vliegt vandaar. */
+      body.vakweg #nieuw.vliegt { display: block; transition: left 800ms cubic-bezier(.45, 0, .25, 1), top 800ms cubic-bezier(.45, 0, .25, 1), width 800ms cubic-bezier(.45, 0, .25, 1), height 800ms cubic-bezier(.45, 0, .25, 1), transform 800ms cubic-bezier(.45, 0, .25, 1); }
+      body.vakweg #nieuw.vliegt.vast { transition: none; }
+      body.vakweg #nieuw.vliegt .kaart small { display: none; }
     </style>
   </head>
   <body>
@@ -32,6 +42,6 @@
       <div id="bord"></div>
       <div id="nieuw" class="weg"></div>
     </div>
-    <script src="/script-agent/teleprompter-parser/bord-app.js?v=3"></script>
+    <script src="/script-agent/teleprompter-parser/bord-app.js?v=10"></script>
   </body>
 </html>

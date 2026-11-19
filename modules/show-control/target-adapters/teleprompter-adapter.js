@@ -18,6 +18,9 @@ function requestForTeleprompterAction(action) {
   if (action.command === "teleprompter.prepare") {
     return { method: "POST", path: "/v0/script-agent/teleprompter-parser/prepare", body: payload };
   }
+  if (action.command === "teleprompter.hierna") {
+    return { method: "POST", path: "/v0/script-agent/teleprompter-parser/hierna", body: payload };
+  }
   if (action.command === "teleprompter.ready") {
     return {
       method: "POST",
@@ -43,7 +46,7 @@ function requestForTeleprompterAction(action) {
     return {
       method: "POST",
       path: "/v0/script-agent/teleprompter-parser/bord",
-      body: { actie: payload.actie === "begin" ? "begin" : "volgende", source: payload.source || "show-control" },
+      body: { actie: payload.actie === "begin" ? "begin" : "aan", source: payload.source || "show-control" },
     };
   }
   throw new Error(`show_control_teleprompter_command_not_supported:${action.command}`);

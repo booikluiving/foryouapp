@@ -4,6 +4,7 @@ const CHARACTER_COLORS = ["#4cc9f0", "#f72585", "#ffd166", "#80ed99", "#bdb2ff",
 const STAGE_PREFIX_RE = /^(regie|actie|stage|scene|scène|richting|aanwijzing)\s*:\s*/i;
 const DIALOGUE_RE = /^([^:\n]{1,64})\s*:\s*(.+)$/;
 const { leesBordregel, maakBord } = require("./bord");
+const { resolveSpeakerName } = require("../../../text-parser/speaker-names");
 
 function cleanText(value) {
   return String(value || "")
@@ -46,18 +47,35 @@ function titleFromFirstLine(rawText) {
   return stripOuterMarks(withoutBullet);
 }
 
-// Met een opgegeven titel (de titel van de situatie) vervalt elke kopregel bovenaan het script,
-// ook als het taalmodel daar een eigen titel van heeft gemaakt.
-function removeTitleHeading(rawText, title, dropAnyHeading = false) {
-  if (!title) return rawText;
-  const lines = String(rawText || "").split("\n");
-  const titleLower = title.toLowerCase();
-  return lines
-    .filter((line, index) => {
-      if (index > 4) return true;
-      if (dropAnyHeading && /^#{1,3}\s+\S/.test(line.trim())) return false;
-      const cleaned = line.trim().replace(/^#{1,3}\s+/, "").trim().toLowerCase();
-      return cleaned !== titleLower;
+const HEADING_RE = /^#{1,6}\s*\S/;
+const TITLE_PREFIX_RE = /^(titel|title)\s*:/i;
+
+// Het script begint met dialoog: de titel staat al op het zaalscherm terwijl het script geschreven
+// wordt. Schrijft het taalmodel toch een titel, dan vervalt die hier en wordt hij geen regel of cue:
+// elke kopregel (#), een regel "Titel: …", een regel die gelijk is aan de titel, en een losse eerste
+// regel die geen dialoog, regie of bordregel is.
+function removeTitleLines(rawText, title) {
+  const titleLower = stripOuterMarks(String(title || "")).toLowerCase();
+  let seenContent = false;
+  return String(rawText || "")
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      const first = !seenContent;
+      const bare = stripOuterMarks(trimmed.replace(/^#{1,6}\s*/, "").replace(/^[-•]\s+/, ""));
+      if (HEADING_RE.test(trimmed) || TITLE_PREFIX_RE.test(bare)) return false;
+      if (first && titleLower && bare.toLowerCase() === titleLower) return false;
+      seenContent = true;
+      if (!first) return true;
+      const withoutBullet = trimmed.replace(/^[-•]\s+/, "").trim();
+      if (/^\*\*.+\*\*$/.test(withoutBullet)) return false;
+      const keep =
+        DIALOGUE_RE.test(withoutBullet) ||
+        STAGE_PREFIX_RE.test(withoutBullet) ||
+        isBracketedStageDirection(withoutBullet) ||
+        !!leesBordregel(withoutBullet);
+      return keep;
     })
     .join("\n");
 }
@@ -81,8 +99,10 @@ function isBracketedStageDirection(line) {
   );
 }
 
-function getCharacter(charactersByLabel, characters, label) {
-  const normalized = normalizeSpeaker(label);
+// Met de personagelijst van de scène erbij krijgt een ingekorte naam de volledige naam.
+function getCharacter(charactersByLabel, characters, label, characterNames) {
+  const written = normalizeSpeaker(label);
+  const normalized = resolveSpeakerName(written, characterNames) || written;
   const key = normalized.toLowerCase();
   if (charactersByLabel.has(key)) return charactersByLabel.get(key);
   const character = {
@@ -100,9 +120,10 @@ function parseTeleprompt(input = {}) {
   const rawText = cleanText(input.rawText || input.text || "");
   const explicitTitle = cleanText(input.title || "");
   const inferredTitle = explicitTitle || titleFromHeading(rawText) || titleFromFirstLine(rawText) || "Teleprompt";
-  const sourceText = removeTitleHeading(rawText, inferredTitle, !!explicitTitle);
+  const sourceText = removeTitleLines(rawText, inferredTitle);
   const characters = [];
   const charactersByLabel = new Map();
+  const characterNames = Array.isArray(input.characterNames) ? input.characterNames : [];
   const lines = [];
   const bord = maakBord();
   let wachtend = [];
@@ -125,14 +146,14 @@ function parseTeleprompt(input = {}) {
       const bordregel = leesBordregel(withoutBullet);
       if (bordregel) {
         const stappen = bord.verwerk(bordregel);
-        // Een nieuw plaatje staat één klik eerder stil: op de regel vóór de bordregel. Zo staat het al
-        // vast als de speler erover begint. Plekken gaan af met de regel erna.
+        // [PLEK] staat direct ná de regel waarin de speler de plek noemt: de plek gaat af met die regel.
+        // Een nieuw plaatje komt pas met de regel ná [PLAATJE]; de regel ervoor gaat nog over het vorige.
+        // Een plaatje vóór de eerste regel staat al stil op de titelkaart.
         const vorige = lines[lines.length - 1];
-        if (bordregel.soort === "plaatje" && vorige) {
+        if (bordregel.soort === "plek" && vorige && !wachtend.some((stap) => stap.soort === "plaatje")) {
           vorige.bord = [...(vorige.bord || []), ...wachtend, ...stappen];
           wachtend = [];
-        } else if (bordregel.soort === "plaatje" && !vorige) {
-          // Plaatje vóór de eerste regel: staat al stil op de titelkaart.
+        } else if (bordregel.soort === "plaatje" && !lines.length) {
           beginBord.push(...wachtend, ...stappen);
           wachtend = [];
         } else {
@@ -142,7 +163,7 @@ function parseTeleprompt(input = {}) {
       }
       const dialogue = withoutBullet.match(DIALOGUE_RE);
       if (dialogue && !STAGE_PREFIX_RE.test(withoutBullet)) {
-        const character = getCharacter(charactersByLabel, characters, dialogue[1]);
+        const character = getCharacter(charactersByLabel, characters, dialogue[1], characterNames);
         splitDialogueText(dialogue[2]).forEach((text) => {
           pushLine({
             id: `line_${lines.length + 1}`,

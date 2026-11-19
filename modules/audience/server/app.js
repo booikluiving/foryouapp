@@ -31,12 +31,13 @@ const {
   buildAlgorithmInput,
   createAudienceSignal,
 } = require("../signal-normalizer/signal-normalizer");
-const { AudienceService, isLoopbackIp } = require("./audience-service");
+const { AudienceService, isLoopbackIp, getNameColorHex, sanitizeName, sanitizeText } = require("./audience-service");
 const { loadExpress } = require("./express-loader");
 
 const express = loadExpress();
 const { createWaarschuwing } = require("./waarschuwing");
 const { createSpelersReady } = require("./spelers-ready");
+const { KIJK_PATH, isKijkvenster } = require("./kijkvenster");
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
 
 function asyncRoute(handler) {
@@ -88,6 +89,48 @@ function createAudienceApp(options = {}) {
     res.sendFile(path.join(PUBLIC_DIR, "index.html"));
   });
 
+  // Kijkvenster voor de operator: dezelfde telefoonpagina, maar een verbinding vanaf dit adres
+  // telt niet als publiek en kan niets insturen (zie realtime.js).
+  // De telefoonpagina vraagt eerst een naam; het kijkvenster kan niets aantikken en slaat die stap over.
+  // De naam hieronder wordt nooit verstuurd (een kijkvenster kan niets insturen).
+  // De telefoonpagina blijft na een nieuwe sessie wachten op een nieuwe QR. Een kijkvenster heeft geen
+  // QR: deze pagina houdt de telefoonpagina in een eigen venster en laadt hem opnieuw zodra de sessie
+  // wisselt of de dienst herstart is. Zo loopt het kijkvenster de hele dag mee.
+  app.get(`${KIJK_PATH}/stand`, (_req, res) => {
+    const sessie = service.getActiveSession();
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, sessie: sessie ? Number(sessie.id) : 0, dienst: service.serverInstanceId });
+  });
+  app.get(`${KIJK_PATH}/start`, (_req, res) => {
+    res.type("html").send(
+      `<!doctype html><meta charset="utf-8"><title>For_You</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style>
+<body><iframe id="telefoon" title="Telefoon van het publiek"></iframe><script>
+try { if (!localStorage.getItem("live_name")) localStorage.setItem("live_name", "Kijkvenster"); } catch (e) {}
+var telefoon = document.getElementById("telefoon");
+var stand = null;
+function laad() { telefoon.src = ${JSON.stringify(KIJK_PATH)}; }
+function kijk() {
+  fetch(${JSON.stringify(`${KIJK_PATH}/stand`)}, { cache: "no-store" })
+    .then(function (r) { return r.json(); })
+    .then(function (s) {
+      var nu = s.sessie + "|" + s.dienst;
+      if (stand !== null && nu !== stand) laad();
+      stand = nu;
+    })
+    .catch(function () {});
+}
+laad();
+kijk();
+setInterval(kijk, 2000);
+</script></body>`
+    );
+  });
+
+  app.get(KIJK_PATH, (_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, "index.html"));
+  });
+
   app.get(["/admin", "/audience/admin"], (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "admin.html"));
   });
@@ -117,14 +160,45 @@ function createAudienceApp(options = {}) {
   app.get("/audience/ready", (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "ready.html"));
   });
+  // Instelstand (inloop, show control): de teleprompters tonen de eigen camera; een hand omhoog zet
+  // dan de key aan of uit in plaats van READY.
+  const showControlBasis = String(process.env.AUDIENCE_SHOW_CONTROL_URL || "http://127.0.0.1:3025").replace(/\/+$/, "");
+  const instelCache = { om: 0, waarde: null };
+  async function instelNu() {
+    if (Date.now() - instelCache.om < 1000) return instelCache.waarde;
+    instelCache.om = Date.now();
+    try {
+      const antwoord = await fetch(`${showControlBasis}/v0/show-control/instel`, { signal: AbortSignal.timeout(800) });
+      instelCache.waarde = antwoord.ok ? await antwoord.json() : null;
+    } catch (_err) {
+      instelCache.waarde = null;
+    }
+    return instelCache.waarde;
+  }
   app.get("/audience/ready/stand", asyncRoute(async (_req, res) => {
     res.set("Cache-Control", "no-store");
     // De teleprompters (andere poort) lezen mee voor hun groene kader.
     res.set("Access-Control-Allow-Origin", "*");
-    res.json({ ok: true, ...(await spelersReady.haal()) });
+    const inst = await instelNu();
+    res.json({ ok: true, ...(await spelersReady.haal()), instel: !!(inst && inst.aan), instelKeys: inst ? inst.keys : null });
   }));
   app.post("/audience/ready/speler", asyncRoute(async (req, res) => {
     const body = req.body || {};
+    if (body.bron === "hand") {
+      const inst = await instelNu();
+      if (inst && inst.aan) {
+        instelCache.om = 0;
+        const antwoord = await fetch(`${showControlBasis}/v0/show-control/instel/key`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ plek: body.plek, key: "wissel", bron: "hand" }),
+          signal: AbortSignal.timeout(3000),
+        }).catch(() => null);
+        const uit = antwoord ? await antwoord.json().catch(() => ({})) : { ok: false, error: "show_control_onbereikbaar" };
+        res.status(antwoord && antwoord.ok ? 200 : 502).json({ ...uit, instel: true });
+        return;
+      }
+    }
     res.json(await spelersReady.zet(body.plek, body.ready !== false));
   }));
   // De klikker (via de teleprompter) tussen de scènes: de speler met de klikker is ready.
@@ -373,7 +447,7 @@ function createAudienceApp(options = {}) {
   });
 
   // Live stroom voor de podiumlagen (Server-Sent Events): fase, emoji, reacties, instellingen.
-  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag", "ranking", "beoordeling", "beoordeling_dicht", "beoordeling_stem", "waarschuwing", "spelers_ready", "speler_ready"]);
+  const STROOM_TYPES = new Set(["stage_herlaad", "comment", "comment_likes", "reaction_update", "stage_reaction", "fase", "reacties", "stage_settings", "session_reset", "session_closed", "chat_reset", "start_stemming", "poll_update", "poll_closed", "start_stemming_uitslag", "ranking", "beoordeling", "beoordeling_dicht", "beoordeling_stem", "waarschuwing", "spelers_ready", "speler_ready", "show_gestart"]);
   // Stand van de stemming op de startscène, voor het zaalscherm en het universum.
   app.get("/audience/stage/start-stemming", (_req, res) => {
     const stemming = service.getStartStemming();
@@ -454,6 +528,8 @@ function createAudienceApp(options = {}) {
       ranking: service.getRanking(),
       beoordeling: service.beoordeling.publiek(),
       waarschuwing: waarschuwing.publiek(),
+      // Inloop: zolang START SHOW niet gegeven is, toont het zaalscherm nog geen scène.
+      showGestart: service.isShowGestart(),
     });
     const doorsturen = (msg) => {
       if (!msg || !STROOM_TYPES.has(msg.type)) return;
@@ -514,7 +590,9 @@ function createAudienceApp(options = {}) {
 
   app.get("/audience/public/history", (req, res) => {
     const ip = req.socket && req.socket.remoteAddress;
-    const access = service.ensureSessionAccessForRequest(req, ip);
+    const access = isKijkvenster(req) && service.getActiveSession()
+      ? { ok: true }
+      : service.ensureSessionAccessForRequest(req, ip);
     if (!access.ok) {
       res.status(access.reason === "session_inactive" ? 410 : 403).json({
         ok: false,
@@ -568,6 +646,48 @@ function createAudienceApp(options = {}) {
   // Chat leegmaken op de telefoons en het zaalscherm (gebeurt vanzelf bij RESET RUN).
   app.post("/audience/admin/chat/wis", (_req, res) => {
     res.json(service.wisChat("admin"));
+  });
+
+  // De operator praat mee in de chat (invoerveld op de operatorpagina). Het bericht komt op de telefoons
+  // en het zaalscherm, maar telt nergens mee: geen signaal naar het algoritme, geen plek in de tellingen.
+  app.post("/audience/admin/chat/zeg", (req, res) => {
+    const session = service.activeSessionRequired();
+    const ruweNaam = String(req.body && req.body.name || "").trim();
+    const text = sanitizeText(req.body && req.body.text);
+    if (!ruweNaam) {
+      res.status(400).json({ ok: false, error: "naam_ontbreekt", message: "Vul eerst een naam in." });
+      return;
+    }
+    if (!text) {
+      res.status(400).json({ ok: false, error: "tekst_ontbreekt", message: "Geen tekst." });
+      return;
+    }
+    if (service.fase && service.fase.fase === "scene") {
+      res.status(409).json({ ok: false, error: "scene_typen_dicht", message: "Typen kan weer na de scène." });
+      return;
+    }
+    const name = sanitizeName(ruweNaam);
+    const payload = {
+      type: "comment",
+      time: new Date().toISOString(),
+      name,
+      text,
+      nameColor: getNameColorHex(name),
+      isBot: true,
+      simulated: false,
+    };
+    payload.id = service.store.insertChatMessage({
+      sessionId: session.id,
+      name,
+      text,
+      status: "accepted",
+      detail: "operator",
+      isBot: true,
+    });
+    payload.likes = 0;
+    service.emit("broadcast", payload);
+    service.emit("admin-state-changed");
+    res.json({ ok: true, payload });
   });
 
   // Podiumpagina's (emoji, chat, tussen) laten herladen, bv. na een update; TD hoeft niets te doen.

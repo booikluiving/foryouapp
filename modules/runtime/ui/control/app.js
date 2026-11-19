@@ -41,6 +41,7 @@ function normalizeOrderSettings(input = {}) {
     startSceneCount: input && input.startSceneCount !== "" && input.startSceneCount != null && Number.isFinite(count)
       ? Math.min(20, Math.max(0, Math.round(count)))
       : 3,
+    vrijeSpeler: !(input && input.vrijeSpeler === false),
   };
 }
 
@@ -67,6 +68,7 @@ function orderSettingsFromUi() {
   return normalizeOrderSettings({
     randomizeEqualScores: !!(toggle && toggle.checked),
     startSceneCount: count ? count.value : undefined,
+    vrijeSpeler: !!($("vrijeSpelerToggle") && $("vrijeSpelerToggle").checked),
   });
 }
 
@@ -484,6 +486,11 @@ function renderOrderSettings() {
   if (!toggle) return;
   toggle.checked = !!currentOrderSettings().randomizeEqualScores;
   toggle.disabled = actionPending;
+  const vrij = $("vrijeSpelerToggle");
+  if (vrij) {
+    vrij.checked = currentOrderSettings().vrijeSpeler !== false;
+    vrij.disabled = actionPending;
+  }
   const count = $("startSceneCountInput");
   if (count) {
     if (document.activeElement !== count) count.value = String(currentOrderSettings().startSceneCount);
@@ -599,6 +606,7 @@ function bindActions() {
   });
   $("randomizeEqualScoresToggle").addEventListener("change", bewaarVolgorde);
   $("startSceneCountInput").addEventListener("change", bewaarVolgorde);
+  $("vrijeSpelerToggle").addEventListener("change", bewaarVolgorde);
 }
 
 document.addEventListener("DOMContentLoaded", () => {

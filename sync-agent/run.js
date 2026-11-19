@@ -1,5 +1,10 @@
 "use strict";
 
+// Het netwerk op locatie verbreekt TLS-handdrukken met de post-quantum-sleutel (X25519MLKEM768) die
+// Node sinds kort standaard stuurt: ECONNRESET naar de website, OpenRouter en Anthropic. Klassieke curves
+// werken overal.
+require("node:tls").DEFAULT_ECDH_CURVE = "X25519:P-256:P-384";
+
 // Entry point for launchd on the show Mac: one round every `intervalSeconds`.
 // Config: FORYOU_SYNC_CONFIG or sync-agent/config.local.json (not in git; holds secrets).
 

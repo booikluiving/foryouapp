@@ -159,6 +159,21 @@ function maakSchoon(tekst, naam = "") {
   return regel.slice(0, MAX_TEKENS);
 }
 
+// Staat in de catalogus dat een personage alleen zijn eigen naam kan zeggen ("Nadia kan alleen maar
+// 'Nadia' zeggen."), dan zegt het in de chat ook niets anders. Het model komt er dan niet aan te pas.
+function zegtAlleenNaam(personage) {
+  const naam = String((personage && personage.naam) || "").trim();
+  if (!naam) return false;
+  const veilig = naam.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`alleen (maar )?["'‘’“”]?${veilig}["'‘’“”]? (kan )?zeggen`, "i").test(String(personage.beschrijving || ""));
+}
+
+function naamBericht(naam, { eerder = [], rng = Math.random } = {}) {
+  const vormen = [naam, `${naam}!`, `${naam}?`, `${naam}.`, naam.toLowerCase(), naam.toUpperCase(), `${naam} ${naam}`, `${naam}... ${naam}`, `${naam}!!`, `${naam}? ${naam}!`, `${naam} ${naam} ${naam}`];
+  const nieuw = vormen.filter((vorm) => !eerder.slice(-4).includes(vorm));
+  return kies(nieuw.length ? nieuw : vormen, rng);
+}
+
 function maakPersonageStem({ fetchImpl = fetch, env = process.env } = {}) {
   let toegang = null;
   let toegangTot = 0;
@@ -195,6 +210,7 @@ function maakPersonageStem({ fetchImpl = fetch, env = process.env } = {}) {
 
   // Geeft de tekst, of "" als het model niets bruikbaars gaf. Gooit bij een fout.
   async function schrijf(personage, context = {}) {
+    if (zegtAlleenNaam(personage)) return naamBericht(personage.naam, context);
     const { sleutel, model } = await leesToegang();
     if (!sleutel) throw new Error("geen_sleutel");
     context = { ...context, scene: await metScript(context.scene) };
@@ -227,4 +243,6 @@ module.exports = {
   haalScript,
   maakPersonageStem,
   maakSchoon,
+  naamBericht,
+  zegtAlleenNaam,
 };

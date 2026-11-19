@@ -4,6 +4,8 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { createTelepromptStore } = require("../runtime/teleprompt-store");
+const { isBlindRanking, plaatjeSlug } = require("../../../../../shared/blind-ranking/blind-ranking");
+const { isTrendOmgeving } = require("../../../../../shared/trend/trend");
 
 const DEFAULT_CAPTION_STYLE_PATH = path.join(__dirname, "..", "..", "..", "db", "teleprompter-caption-style.json");
 
@@ -55,7 +57,9 @@ function firstDialogueCue(teleprompt, baseCue = {}) {
 function shouldEndSceneFromCueAdvance({ cue, requestedIndex, preparedScene }) {
   const currentIndex = Number(cue && cue.index || 0);
   const deckLength = Number(cue && cue.deckLength || 0);
-  const atEndCard = deckLength > 0 && currentIndex >= deckLength - 1;
+  // Een trendscène heeft geen kaart "Einde": de druk na de laatste emoji eindigt de scène.
+  const trend = isTrendOmgeving(preparedScene && preparedScene.environment);
+  const atEndCard = deckLength > 0 && currentIndex >= deckLength - (trend ? 2 : 1);
   const wantsPastEnd = Number.isFinite(requestedIndex) && requestedIndex > currentIndex;
   const preparedStatus = preparedScene ? String(preparedScene.status || "") : "";
   return atEndCard && wantsPastEnd && (!preparedStatus || preparedStatus === "playing");
@@ -295,6 +299,7 @@ function mountTeleprompterParser(app, options = {}) {
       captionStyle: store.getCaptionStyle(),
       autoCameraSwitch: store.getAutoCameraSwitch(),
       preparedScene: store.getPreparedScene(),
+      hierna: store.getHierna(),
       bord: store.getBord(),
     };
   }
@@ -473,9 +478,49 @@ function mountTeleprompterParser(app, options = {}) {
   // Plaatjes voor het bord (blind ranking). Een plaatje is een PNG-laag die in de beeldcatalogus bij een
   // omgeving is geüpload, met als bestandsnaam de naam van het plaatje in kleine letters (eva-braun.jpg).
   // Daarnaast kan het los in ~/ForYou/bord-plaatjes staan. Zonder bestand toont het bord alleen de naam.
+  // Eerst: het plaatje dat in de situatie (schakelaar Blind ranking, vijf plaatjes) bij deze naam is
+  // geüpload; de situatie die nu klaarstaat of speelt gaat voor.
+  function situatiePlaatje(naam, mediaRoot) {
+    let db = null;
+    try {
+      const { DatabaseSync } = require("node:sqlite");
+      const dbPath = String(process.env.CATALOG_DB_PATH || path.join(mediaRoot, "..", "db", "catalog.sqlite"));
+      if (!fs.existsSync(dbPath)) return null;
+      db = new DatabaseSync(dbPath, { readOnly: true });
+      const prepared = store.getPreparedScene ? store.getPreparedScene() : null;
+      const huidige = prepared && prepared.sceneId ? Number(prepared.sceneId) : 0;
+      const kandidaten = [];
+      for (const row of db.prepare("SELECT record_json FROM situations").all()) {
+        let situatie = null;
+        try { situatie = JSON.parse(row.record_json); } catch (_err) { continue; }
+        if (!isBlindRanking(situatie)) continue;
+        const plaatje = (situatie.blindRanking.plaatjes || []).find((item) => item && item.assetId && plaatjeSlug(item.naam) === naam);
+        if (!plaatje) continue;
+        const nummer = Number(situatie.legacyId || String(situatie.id || "").split(":").pop());
+        kandidaten.push({ assetId: plaatje.assetId, voorrang: nummer === huidige ? 0 : 1, tijd: String(situatie.updatedAt || "") });
+      }
+      kandidaten.sort((a, b) => a.voorrang - b.voorrang || b.tijd.localeCompare(a.tijd));
+      for (const kandidaat of kandidaten) {
+        const asset = db.prepare("SELECT record_json FROM media_assets WHERE id = ? LIMIT 1").get(kandidaat.assetId);
+        const record = asset ? JSON.parse(asset.record_json) : null;
+        const pad = record && record.relativePath ? path.join(mediaRoot, record.relativePath) : "";
+        if (pad && fs.existsSync(pad)) return pad;
+      }
+    } catch (_err) {
+      return null;
+    } finally {
+      if (db) {
+        try { db.close(); } catch (_err) {}
+      }
+    }
+    return null;
+  }
+
   function bordPlaatje(naam) {
     const extensies = [".jpg", ".jpeg", ".png", ".webp"];
     const mediaRoot = String(process.env.CATALOG_MEDIA_ROOT || path.join(__dirname, "..", "..", "..", "..", "catalog", "media"));
+    const uitSituatie = situatiePlaatje(naam, mediaRoot);
+    if (uitSituatie) return uitSituatie;
     const omgevingen = path.join(mediaRoot, "environments");
     const patroon = new RegExp(`^${naam}-[0-9a-f]{8,}\\.(jpe?g|png|webp)$`);
     let beste = null;
@@ -846,6 +891,15 @@ function mountTeleprompterParser(app, options = {}) {
     });
   });
 
+  // De scène hierna (gekozen bij de start van de huidige). Zonder scène ({}) of null: niets hierna.
+  app.post(`${adminPrefix}/hierna`, requireAdmin, (req, res) => {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const leeg = body.leeg === true || !(body.situation || body.performerSlots || body.characterSlots || body.characters || body.sceneId);
+    const result = store.setHierna(leeg ? null : normalizePrepareInput(body));
+    broadcast("hierna");
+    res.json({ ok: true, hierna: result.hierna });
+  });
+
   // Het universum op het zaalscherm heeft de volgende scène gekozen ({ wacht: false }): de teleprompter
   // toont hem nu. { wacht: true } zet het wachten met de hand aan.
   app.post(`${adminPrefix}/keuze`, requireAdmin, (req, res) => {
@@ -855,11 +909,11 @@ function mountTeleprompterParser(app, options = {}) {
     res.json({ ok: true, preparedScene: result.preparedScene });
   });
 
-  // Bord (blind ranking): de knop van de operator. { actie: "volgende" } zet het volgende plaatje
-  // in beeld, { actie: "begin" } haalt alles weer weg.
+  // Bord (blind ranking): de knop van de operator. { actie: "aan" } zet het bord in beeld (daarna
+  // volgt het vanzelf het script), { actie: "begin" } haalt het weer weg.
   app.post(`${adminPrefix}/bord`, requireAdmin, (req, res) => {
     const body = req.body && typeof req.body === "object" ? req.body : {};
-    const result = store.setBord(String(body.actie || "volgende") === "volgende" ? "volgende" : "begin");
+    const result = store.setBord(String(body.actie || "aan") === "begin" ? "begin" : "aan");
     if (result.changed) broadcast("bord");
     res.json({ ok: true, bord: result.bord, changed: result.changed });
   });
