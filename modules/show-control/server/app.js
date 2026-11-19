@@ -370,6 +370,11 @@ function createShowControlApp(options = {}) {
   app.post("/v0/show-control/regie/start", regieRoute((req) => regie.start({ wie: regieWie(req) })));
   app.post("/v0/show-control/regie/stop", regieRoute((req) => regie.stop({ wie: regieWie(req) })));
   app.post("/v0/show-control/regie/random", regieRoute((req) => regie.volgendeRandom({ wie: regieWie(req) })));
+  app.post("/v0/show-control/regie/schakelaars", regieRoute((req) => regie.zetSchakelaars({
+    wie: regieWie(req),
+    aftellen: req.body && req.body.aftellen,
+    stemronde: req.body && req.body.stemronde,
+  })));
 
   // Een gekozen scène klaarzetten (stemwinnaar): runtime én TouchDesigner/teleprompter in één stap,
   // via de ene weg. Vroeger zette het publiek de runtime zelf klaar en volgde show control misschien.
@@ -603,14 +608,15 @@ function createShowControlApp(options = {}) {
 
   // Komt op het zaalscherm het venster met de tekst in beeld, dan gaat de scène die klaarstaat
   // vanzelf naar de chat van de script-agent: het publiek ziet de tekst ontstaan. Eén keer per
-  // klaargezette scène; opnieuw sturen kan met SCENE CHAT. Niet bij het testen van scènes, en niet
-  // als de tekst van deze scène er al is.
+  // klaargezette scène; opnieuw sturen kan met SCENE CHAT. Niet als de tekst van deze scène er al is.
+  // In test en random zet de regie het script zelf klaar: dan is de tekst er (zelfde beeld als de show).
   let vanzelfGestuurd = "";
   async function sceneVanzelfNaarChat() {
     const result = await clients.fetchCurrentRuntimeState();
     const state = result && result.ok ? result.state : null;
     if (!state || state.activeSituation || !state.resolvedPreparedNext || !state.preparedNext) return { gestuurd: false, reden: "niets_klaar" };
-    if (state.testRun && state.testRun.enabled) return { gestuurd: false, reden: "testrun" };
+    const regieNu = regie.stand();
+    if (regieNu.stand !== "show" && regieNu.eigenaar && !regieNu.verlopen) return { gestuurd: false, reden: "tekst_is_er" };
     const sleutel = `${state.showRunId}|${state.preparedNext.situationId}|${state.preparedNext.chosenAt}`;
     if (sleutel === vanzelfGestuurd) return { gestuurd: false, reden: "al_gestuurd" };
     vanzelfGestuurd = sleutel;

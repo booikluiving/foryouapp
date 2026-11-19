@@ -4,8 +4,10 @@
 // Booi en Megan op hun telefoon (/audience/ready), Brent met de klikker. Staan alle spelers van de
 // scène op ready, dan telt het zaalscherm af (3, 2, 1) en begint de scène vanzelf.
 // De operator hoeft geen READY meer te geven; READY en START op de deck blijven als noodgreep werken.
+// Aftellen staat aan of uit (regiepagina); uit = de scène begint meteen als iedereen ready is.
 
 const AFTEL_MS = 3000;
+const AFTELLEN_KEY = "aftellen_aan";
 // Vaste plekken in de ring: wie op welke plek staat (ook de klikker hoort bij een plek).
 const SPELERS = [
   { plek: 1, naam: "Booi" },
@@ -19,11 +21,12 @@ const nummer = (id) => {
   return match ? Number(match[1]) : 0;
 };
 
-function createSpelersReady({ service, fetchRuntimeView }) {
+function createSpelersReady({ service, fetchRuntimeView, store = service && service.store }) {
   const scriptUrl = String(process.env.AUDIENCE_SCRIPT_AGENT_URL || "http://127.0.0.1:3027").replace(/\/+$/, "");
   const showControlUrl = String(process.env.AUDIENCE_SHOW_CONTROL_URL || "http://127.0.0.1:3025").replace(/\/+$/, "");
   const stand = { sleutel: "", plekken: new Set(), aftellenTot: 0, timer: null, start: false, nodig: [1, 2, 3], geschreven: false };
   let wachter = null;
+  let aftellen = !(store && store.getSetting(AFTELLEN_KEY, true) === false);
 
   // De scène die klaarstaat, wie erin speelt en of de tekst er is.
   async function kijk() {
@@ -67,6 +70,7 @@ function createSpelersReady({ service, fetchRuntimeView }) {
       nodig: stand.nodig,
       geschreven: stand.geschreven,
       aftellenTot: stand.aftellenTot || 0,
+      aftellen,
       klaar: !!stand.sleutel,
       nu: Date.now(),
     };
@@ -101,6 +105,7 @@ function createSpelersReady({ service, fetchRuntimeView }) {
   function controleer() {
     if (stand.aftellenTot && !iedereen()) { stopAftellen(); meld(); return; }
     if (stand.aftellenTot || stand.start || !stand.sleutel || !stand.geschreven || !iedereen()) return;
+    if (!aftellen) { start(stand.sleutel).catch(() => {}); return; }
     stand.aftellenTot = Date.now() + AFTEL_MS;
     meld();
     const sleutel = stand.sleutel;
@@ -165,7 +170,14 @@ function createSpelersReady({ service, fetchRuntimeView }) {
     return publiek();
   }
 
-  return { zet, haal, publiek, KLIKKER_PLEK, SPELERS };
+  function zetAftellen(aan) {
+    aftellen = aan !== false;
+    if (store) store.setSetting(AFTELLEN_KEY, aftellen);
+    meld();
+    return aftellen;
+  }
+
+  return { zet, haal, publiek, zetAftellen, aftellen: () => aftellen, KLIKKER_PLEK, SPELERS };
 }
 
 module.exports = { createSpelersReady, SPELERS };

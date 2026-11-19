@@ -356,6 +356,18 @@ location.replace(${JSON.stringify(KIJK_PATH)});
   app.post("/audience/admin/beoordeling/instellingen", (req, res) => {
     res.json({ ok: true, instellingen: service.beoordeling.zetInstellingen(req.body || {}) });
   });
+  // De twee schakelaars van de regiepagina (show control): aftellen voor de scène, stemronde erna.
+  const schakelaars = () => ({ ok: true, aftellen: spelersReady.aftellen(), stemronde: service.beoordeling.stand().instellingen.aan !== false });
+  app.get("/audience/admin/schakelaars", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(schakelaars());
+  });
+  app.post("/audience/admin/schakelaars", (req, res) => {
+    const body = req.body || {};
+    if (typeof body.aftellen === "boolean") spelersReady.zetAftellen(body.aftellen);
+    if (typeof body.stemronde === "boolean") service.beoordeling.zetInstellingen({ aan: body.stemronde });
+    res.json(schakelaars());
+  });
   // Een foto van een speler uit de scène die speelt of net gespeeld is: JPEG, ?plek=1..3 (de plek van de
   // speler in de ring), eventueel ?situationRunId=. Blijft alleen in het geheugen.
   app.post("/audience/beoordeling/foto", express.raw({ type: "image/jpeg", limit: "200kb" }), (req, res) => {
@@ -446,12 +458,14 @@ location.replace(${JSON.stringify(KIJK_PATH)});
       waarschuwingStaat: !!waarschuwing.publiek(),
     });
   });
-  app.post("/audience/admin/show/start", (_req, res) => {
+  app.post("/audience/admin/show/start", asyncRoute(async (_req, res) => {
+    // Net gestarte run (regie: test of random): eerst de run volgen, anders is hij hier nog onbekend.
+    if (!service.isShowGestart()) await service.pollFase().catch(() => {});
     const result = service.startShow();
     // De show begint: de content warning (de stap ervoor) gaat van het scherm.
     if (result.ok) waarschuwing.weg();
     res.status(result.ok ? 200 : 409).json(result);
-  });
+  }));
 
   // De content warning: de stand, de instellingen uit Admin, en met de hand tonen of weghalen.
   app.get("/audience/stage/waarschuwing", (_req, res) => {

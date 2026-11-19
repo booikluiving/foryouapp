@@ -38,6 +38,8 @@ Starten, stoppen, klaarzetten, overslaan en reset van de run gaan alleen via sho
   - `POST /v0/show-control/regie/schrijf`: nieuw script voor de scène die klaarstaat
   - `POST /v0/show-control/regie/stop`, `/start`, `/random`
   - Klaar: `POST /v0/show-control/regie/vrijgeven`. De scène stopt en de stand wordt show; de run blijft (een testrun). Een voorstelling begint met RESET RUN + START RUN.
+- Test en random zien er op het zaalscherm hetzelfde uit als de show: inladen doet ook START SHOW, het bewaarde script staat in het scriptvenster.
+- Aftellen en stemronde aan of uit (elke stand, bij een eigenaar alleen die): `POST /v0/show-control/regie/schakelaars {"aftellen":false,"stemronde":true}`; ook op de regiepagina onder Verloop.
 - Heeft iemand anders de regie, dan krijg je 423 met de naam. Wacht, of vraag Booi. Neem nooit over met `forceer` zonder ja van Booi.
 - De knoppen in de zaal (Stream Deck, klikker, ready van de spelers) werken altijd.
 - Bewaker (in show control): kijkt om de paar seconden of TouchDesigner (fase) en de teleprompter (klaargezette scène) de runtime volgen en herstelt het; ziet een herstart van TouchDesigner aan de pid in `~/Library/Application Support/ForYouApp/td-show.json` (schrijft de TD-waakhond). Wat hij vond staat op de regiepagina onder Controle en in `GET /v0/show-control/regie` → `controle`.

@@ -608,6 +608,16 @@
         try { el("universum").contentWindow.postMessage({ bron: "for_you-scherm", ...bericht }, "*"); } catch (_err) {}
       }
       const universumVerder = () => naarUniversum({ verder: true });
+      // START SHOW, ook als de regie (test, random) een scène klaarzet: het universum gaat meteen naar
+      // de scène die klaarstaat en wacht niet tot het scherm het na een scène vrijgeeft. Een paar
+      // seconden lang, want het universum ziet de nieuwe scène pas bij zijn volgende blik op de run.
+      let losTimer = 0;
+      function universumLos() {
+        clearInterval(losTimer);
+        const tot = Date.now() + 8000;
+        universumVerder();
+        losTimer = setInterval(() => { if (Date.now() > tot) clearInterval(losTimer); else universumVerder(); }, 500);
+      }
       const meldZicht = () => naarUniversum({ zicht: zichtNu() });
       el("universum").addEventListener("load", meldZicht);
 
@@ -2167,7 +2177,7 @@
         else if (msg.type === "start_stemming") stemStart(msg.poll);
         else if (msg.type === "poll_update" && Number(msg.pollId) === stem.pollId && stem.actief) { stem.counts = (msg.counts || []).slice(); tekenStemmen(); geluid.stem(); }
         else if (msg.type === "start_stemming_uitslag") stemUitslag(msg);
-        else if (msg.type === "show_gestart") { showGestart = true; zetFase(); }
+        else if (msg.type === "show_gestart") { showGestart = true; zetFase(); universumLos(); }
         else if (msg.type === "session_reset" || msg.type === "session_closed" || msg.type === "chat_reset") {
           if (msg.type === "chat_reset" && msg.reden === "reset_run") { showGestart = false; zetFase(); }
           berichten = [];

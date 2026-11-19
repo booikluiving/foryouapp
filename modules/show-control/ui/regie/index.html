@@ -83,6 +83,14 @@
     <div id="melding"></div>
   </section>
   <section>
+    <h2>Verloop</h2>
+    <div class="rij">
+      <label class="schakel"><input id="aftellen" type="checkbox"> Aftellen</label>
+      <label class="schakel"><input id="stemronde" type="checkbox"> Stemronde</label>
+    </div>
+    <p class="uitleg">Aftellen uit: de scène begint meteen als iedereen ready is. Stemronde uit: na de scène geen klok en geen vragen. Geldt in elke stand.</p>
+  </section>
+  <section>
     <h2>Controle</h2>
     <div id="controleKop"></div>
     <div id="controleLijst" class="zacht"></div>
@@ -159,6 +167,13 @@ function teken() {
   $("start").disabled = bezig || !ik || !!run.speelt || !run.klaar;
   $("stop").disabled = bezig || !ik || !run.speelt;
   $("volgende").disabled = bezig || !ik;
+  // Schakelaars: in de show iedereen, heeft iemand de regie dan alleen die.
+  const k = o.schakelaars;
+  const anderBedient = !!(o.eigenaar && !o.verlopen && !ik);
+  for (const naam of ["aftellen", "stemronde"]) {
+    $(naam).disabled = bezig || !k || anderBedient;
+    if (k) $(naam).checked = k[naam] !== false;
+  }
   tekenControle(o.controle);
   for (const knop of document.querySelectorAll(".scene button")) knop.disabled = bezig || !ik;
   for (const rij of document.querySelectorAll(".scene")) {
@@ -261,6 +276,12 @@ $("start").addEventListener("click", () => doe("Starten…", () => api("/start",
 $("stop").addEventListener("click", () => doe("Stoppen…", () => api("/stop", {})));
 $("volgende").addEventListener("click", () => doe("Random scène inladen…", () => api("/random", {})));
 $("zoek").addEventListener("input", tekenLijst);
+for (const naam of ["aftellen", "stemronde"]) {
+  $(naam).addEventListener("change", () => {
+    const aan = $(naam).checked;
+    doe(`${naam === "aftellen" ? "Aftellen" : "Stemronde"} ${aan ? "aan" : "uit"}…`, () => api("/schakelaars", { [naam]: aan }));
+  });
+}
 
 async function ververs() {
   if (!bezig) {

@@ -236,6 +236,12 @@ function createRegie(options = {}) {
     return { schrijven: false };
   }
 
+  // Het zaalscherm doet mee zoals in de show: START SHOW (uit de inloop) en het universum gaat meteen
+  // naar de scène die nu klaarstaat. Lukt het niet, dan gaat het inladen gewoon door.
+  async function schermMee() {
+    await vraag(audienceUrl, "/audience/admin/show/start", { method: "POST", body: {}, timeoutMs: 3000 }).catch(() => null);
+  }
+
   async function zetKlaar(state, keuze, schrijven) {
     const r = await vraag(runtimeUrl, `/v0/runtime/runs/${encodeURIComponent(state.showRunId)}/prepare-situation`, {
       method: "POST",
@@ -251,6 +257,7 @@ function createRegie(options = {}) {
     const cue = cues.buildPrepareCue(klaar);
     await cues.executeCue(cue, { runtimeState: klaar });
     await cues.saveCue(cue);
+    await schermMee();
     const script = await scriptVoorKlaar(klaar, schrijven);
     Object.defineProperty(klaar, "_schrijft", { value: script && script.klaar ? script.klaar : null, enumerable: false });
     return klaar;
@@ -414,9 +421,31 @@ function createRegie(options = {}) {
     return laadRandom(false);
   }
 
+  // Aftellen (voor de scène) en stemronde (na de scène): staan in de publieksdienst en gelden in
+  // elke stand. Heeft iemand de regie, dan zet alleen die ze om.
+  const schakelaarsUit = (json) => ({ aftellen: json.aftellen !== false, stemronde: json.stemronde !== false });
+  async function schakelaars() {
+    const r = await vraag(audienceUrl, "/audience/admin/schakelaars", { timeoutMs: 1500 });
+    if (!r.ok || !r.json) throw regieFout(502, "publiek_fout", "De publieksdienst gaf de schakelaars niet.");
+    return schakelaarsUit(r.json);
+  }
+
+  async function zetSchakelaars({ wie, aftellen, stemronde } = {}) {
+    const s = stand();
+    if (s.eigenaar && !s.verlopen && s.eigenaar.wie !== schoneNaam(wie)) {
+      throw regieFout(423, "regie_bezet", `De regie is van ${s.eigenaar.wie}; alleen die zet dit om.`, { eigenaar: s.eigenaar });
+    }
+    const body = {};
+    if (typeof aftellen === "boolean") body.aftellen = aftellen;
+    if (typeof stemronde === "boolean") body.stemronde = stemronde;
+    const r = await vraag(audienceUrl, "/audience/admin/schakelaars", { method: "POST", body, timeoutMs: 3000 });
+    if (!r.ok || !r.json) throw regieFout(502, "publiek_fout", "De schakelaar omzetten lukte niet.");
+    return overzicht();
+  }
+
   async function overzicht() {
     const s = stand();
-    const state = await run().catch(() => null);
+    const [state, knoppen] = await Promise.all([run().catch(() => null), schakelaars().catch(() => null)]);
     return {
       ok: true,
       stand: s.stand,
@@ -432,6 +461,7 @@ function createRegie(options = {}) {
         omgevingKlaar: state.resolvedPreparedNext && state.resolvedPreparedNext.environment ? state.resolvedPreparedNext.environment.name || "" : "",
       } : null,
       random: s.stand === "random" ? { fout: random.fout } : null,
+      schakelaars: knoppen,
     };
   }
 
@@ -476,6 +506,7 @@ function createRegie(options = {}) {
     volgendeRandom,
     vrijgeven,
     schrijfNu,
+    zetSchakelaars,
   };
 }
 
