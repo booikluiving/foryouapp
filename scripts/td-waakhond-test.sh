@@ -80,6 +80,21 @@ geval "ander .toe zonder toestemming gaat dicht" sluiten "900001" "SLUIT pid=900
 900009|900|/x/Greenscreen test.toe
 EOF
 
+# td-lab.sh: een lab openen met toestemming, stop = dicht
+printf '#!/bin/sh\necho OPEN "$@"\n' > "$T/open"; chmod +x "$T/open"
+: > "$T/toestemming"
+touch "$T/Mijn lab.toe"
+FORYOU_TD_LAB_OPEN="$T/open" "$DIR/td-lab.sh" start mijnlab "$T/Mijn lab.toe" 10 > /dev/null
+geval "td-lab start: lab mag draaien" sluiten "900001" "TOEGESTAAN pid=900011" "SLUIT" <<EOF
+900001|500|$SHOW
+900011|900|$T/Mijn lab.toe
+EOF
+"$DIR/td-lab.sh" stop mijnlab > /dev/null
+geval "td-lab stop: lab gaat dicht" sluiten "900001" "SLUIT pid=900011" <<EOF
+900001|500|$SHOW
+900011|900|$T/Mijn lab.toe
+EOF
+
 # Logboek blijft klein
 : > "$T/log"; for i in $(seq 1 400); do echo "regel $i" >> "$T/log"; done
 FORYOU_TD_WAAKHOND_TEST_POORT="900001" "$W" --een-keer

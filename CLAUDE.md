@@ -24,7 +24,7 @@ Elke knop volgt het ontwerpsysteem in `modules/show-control/hardware/streamdeck-
 De waakhond `scripts/td-waakhond.sh` (LaunchAgent `nl.foryou.td-waakhond`) houdt precies één TouchDesigner open: de show-TD met het showbestand. Een leeg project, een tweede show-TD of een ander bestand gaat dicht.
 
 - Welke versie geldt staat in `~/ForYou/td-versie.txt`. Werk altijd op die versie. Na het bewaren van een nieuwe versie staat hij er vanzelf in.
-- Een andere TD (bijvoorbeeld de Greenscreen Lab) vraagt eerst toestemming: `scripts/td-waakhond.sh toestemming greenscreen 60 greenscreen-lab`. Klaar: `scripts/td-waakhond.sh klaar greenscreen`, dan gaat hij dicht. Een verlopen toestemming sluit hem ook.
+- Een lab (een tweede TD, zoals de Greenscreen Lab) open je met `scripts/td-lab.sh start NAAM bestand.toe [minuten]` en sluit je met `scripts/td-lab.sh stop NAAM`; `scripts/td-lab.sh lijst` toont wat toestemming heeft. Zonder toestemming sluit de waakhond hem na een minuut, een verlopen toestemming sluit hem ook. De Greenscreen Lab (`start-lab.command` / `stop-lab.command`) doet dit zelf.
 - Logboek: `~/Library/Logs/ForYou/td-waakhond.log`. Test: `scripts/td-waakhond-test.sh`.
 
 ## Regie: één weg voor run en scènes
