@@ -252,11 +252,15 @@ function stageSend(payload = {}) {
   return true;
 }
 
+// De sessie van de dienst geldt. Tot de pagina die kent, stuurt hij zijn eigen (bewaarde) sessienaam
+// niet mee: een afwijkende naam laat de dienst het klaarstaande script en de chat leegmaken.
+let stageSessieBekend = false;
+
 function sendStageControl() {
   return stageSend({
     type: "operator_stage_control",
     sourceId: SOURCE_ID,
-    sessionId: currentSessionId(),
+    sessionId: stageSessieBekend ? currentSessionId() : "",
     model: els.model.value || "deepseek-chat",
   });
 }
@@ -487,6 +491,7 @@ function applyDraftInfo(info = {}, opnieuw = false) {
 function applyStageState(stage = {}, remoteSourceId = "") {
   if (Number.isFinite(Number(stage.revision))) stageRevision = Number(stage.revision);
   if (stage.model) toonModel(stage.model);
+  if (stage.sessionId) stageSessieBekend = true;
   if (stage.sessionId && document.activeElement !== els.sessionId) {
     els.sessionId.value = stage.sessionId;
     try { localStorage.setItem(STORAGE_SESSION_KEY, currentSessionId()); } catch {}
@@ -998,6 +1003,7 @@ els.sessionId.value = localStorage.getItem(STORAGE_SESSION_KEY) || els.sessionId
 els.reloadCatalog.addEventListener("click", () => withUiError(loadCatalog));
 els.sessionId.addEventListener("change", () => {
   localStorage.setItem(STORAGE_SESSION_KEY, currentSessionId());
+  stageSessieBekend = true;
   sendStageControl();
   withUiError(loadSession);
 });
