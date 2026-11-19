@@ -74,7 +74,7 @@ async function tdLabel() {
 async function gather() {
   const coreEntries = await Promise.all(Object.entries(CORE).map(async ([key, port]) => [key, (await fetchJson(`http://127.0.0.1:${port}/health`, { timeoutMs: 800 })).ok]));
   const hwEntries = await Promise.all(Object.entries(HARDWARE).map(async ([key, url]) => [key, await fetchJson(url, { timeoutMs: 800 })]));
-  const [showStatus, runtime, sq5, teleprompter, stem, sim, ports, tdText] = await Promise.all([
+  const [showStatus, runtime, sq5, teleprompter, stem, sim, ports, tdText, regie] = await Promise.all([
     fetchJson(`${CONFIG.showControlUrl}/v0/show-control/status`, { timeoutMs: 1000 }),
     fetchJson(`${CONFIG.runtimeUrl}/v0/runtime/runs/current`, { timeoutMs: 1000 }),
     fetchJson(`${CONFIG.sq5Url}/api/streamdeck/state`, { timeoutMs: 1000 }),
@@ -83,8 +83,9 @@ async function gather() {
     fetchJson(`${CONFIG.audienceUrl}/audience/stage/simulatie`, { timeoutMs: 1000 }),
     udpPorts([9100, 9101, 8008]),
     tdLabel(),
+    fetchJson(`${CONFIG.showControlUrl}/v0/show-control/regie`, { timeoutMs: 1000 }),
   ]);
-  return { core: Object.fromEntries(coreEntries), hw: Object.fromEntries(hwEntries), showStatus, runtime, sq5, teleprompter, stem, sim, ports, tdText };
+  return { core: Object.fromEntries(coreEntries), hw: Object.fromEntries(hwEntries), showStatus, runtime, sq5, teleprompter, stem, sim, ports, tdText, regie };
 }
 
 const first = (label) => String(label).split("\n")[0];
@@ -209,6 +210,17 @@ function compute(deck, g) {
         const aan = stand && (knop.actie.simulatie === "personages" ? stand.personages : stand.bots > 0);
         if (!stand) { t = `${first(label)}\n?`; s = "onbekend"; }
         else { t = `${label}\n${aan ? "AAN" : "UIT"}`; s = aan ? "aan" : "klaar"; }
+      }
+      else if (knop.actie && knop.actie.regie) {
+        // TEST / RANDOM: aan als de regie in die stand is (van de operator), BEZET als iemand anders hem heeft.
+        const r = g.regie && g.regie.ok ? g.regie.body : null;
+        if (!r) { t = `${first(label)}\n?`; s = "onbekend"; }
+        else {
+          const eigen = r.eigenaar && !r.verlopen ? r.eigenaar.wie : null;
+          if (eigen && eigen !== "operator") { t = `${first(label)}\nBEZET`; s = "uit"; }
+          else if (r.stand === knop.actie.regie && eigen) { t = `${first(label)}\nAAN`; s = "aan"; }
+          else { t = first(label); s = "klaar"; }
+        }
       }
       else if (knop.actie && knop.actie.opname) {
         const loopt = fs.existsSync(CONFIG.opnamePath);

@@ -409,6 +409,62 @@ async function doShowMuziek(knop) {
   }
 }
 
+// TEST en RANDOM: de regie van show control overnemen of vrijgeven, als "operator" (dezelfde naam als
+// de regie op de operatorpagina). Vanuit SHOW twee keer drukken binnen 3 s, zodat een voorstelling
+// niet per ongeluk een testrun wordt. Staat de knop al aan, dan geeft één druk de regie vrij.
+const REGIE_WIE = "operator";
+const REGIE_BEVESTIG_MS = 3000;
+const REGIE_BEVESTIG_PAD = process.env.FY_DECK_REGIE_BEVESTIG
+  || path.join(process.env.HOME || "", "Library", "Application Support", "ForYouApp", "deck-regie-bevestig.json");
+
+async function doRegie(knop) {
+  const wil = knop.actie.regie === "random" ? "random" : "test";
+  const label = firstLine(knop.label);
+  const basis = `${CONFIG.showControlUrl}/v0/show-control/regie`;
+  const stand = await fetchJson(basis, { timeoutMs: 2000 });
+  if (!stand.ok || !stand.body) {
+    await flash(knop.key, `${label}
+?`, "mislukt");
+    return { ok: false, fout: "regie niet bereikbaar" };
+  }
+  const o = stand.body;
+  const eigen = o.eigenaar && !o.verlopen ? o.eigenaar.wie : null;
+  if (eigen && eigen !== REGIE_WIE) {
+    await flash(knop.key, `${label}
+BEZET`, "uit");
+    return { ok: true, bezet: eigen };
+  }
+  let wat;
+  if (o.stand === wil && eigen === REGIE_WIE) wat = "vrijgeven";
+  else if (o.stand === "show") {
+    let bevestig = null;
+    try { bevestig = JSON.parse(fs.readFileSync(REGIE_BEVESTIG_PAD, "utf8")); } catch (_err) { bevestig = null; }
+    if (!bevestig || bevestig.stand !== wil || Date.now() > Number(bevestig.tot || 0)) {
+      fs.mkdirSync(path.dirname(REGIE_BEVESTIG_PAD), { recursive: true });
+      fs.writeFileSync(REGIE_BEVESTIG_PAD, JSON.stringify({ stand: wil, tot: Date.now() + REGIE_BEVESTIG_MS }));
+      await flash(knop.key, `${label}
+NOG 1X`, "volgende", REGIE_BEVESTIG_MS);
+      return { ok: true, bevestigen: wil };
+    }
+    fs.rmSync(REGIE_BEVESTIG_PAD, { force: true });
+    wat = "overnemen";
+  } else wat = "overnemen";
+  if (CONFIG.droog) {
+    await flash(knop.key, `${label}
+${wat === "vrijgeven" ? "VRIJ" : "AAN"}`, "gelukt");
+    return { ok: true, droog: true, wat, stand: wil };
+  }
+  await flash(knop.key, `${label}
+...`, "bezig", 40000);
+  const pad = wat === "vrijgeven" ? "/vrijgeven" : "/overnemen";
+  const result = await fetchJson(`${basis}${pad}`, { method: "POST", body: wat === "vrijgeven" ? { wie: REGIE_WIE } : { stand: wil, wie: REGIE_WIE }, timeoutMs: 40000 });
+  const ok = result.ok && result.body && result.body.ok !== false;
+  await flash(knop.key, ok ? `${label}
+${wat === "vrijgeven" ? "VRIJ" : "AAN"}` : `${label}
+FAIL`, ok ? "gelukt" : "mislukt");
+  return { ok, wat, stand: wil, fout: ok ? undefined : result.body };
+}
+
 async function doLink(knop) {
   if (CONFIG.droog) return { ok: true, droog: true, link: knop.actie.link };
   const result = await run(path.join(DIR, "browser-tabs.sh"), ["open-or-focus", knop.actie.link], 15000);
@@ -579,6 +635,7 @@ async function perform(key, fase) {
     if (actie.showmuziek) return await doShowMuziek(knop);
     if (actie.opname) return await doOpname(knop);
     if (actie.simulatie) return await doSimulatie(knop);
+    if (actie.regie) return await doRegie(knop);
     throw new Error(`actie onbekend voor ${key}`);
   } finally {
     // na de flits geeft deck-status.js de knop weer zijn echte staat
