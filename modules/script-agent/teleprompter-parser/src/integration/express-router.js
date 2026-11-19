@@ -11,6 +11,7 @@ const { isTrendOmgeving } = require("../../../../../shared/trend/trend");
 const DEFAULT_CAPTION_STYLE_PATH = path.join(__dirname, "..", "..", "..", "db", "teleprompter-caption-style.json");
 
 const DEFAULT_AUTO_CAMERA_PATH = path.join(__dirname, "..", "..", "..", "db", "teleprompter-autocam.json");
+const DEFAULT_ENGELS_PATH = path.join(__dirname, "..", "..", "..", "db", "teleprompter-engels.json");
 const AUTO_CAMERA_IDS = Object.freeze({
   1: "camera:1",
   2: "camera:2",
@@ -312,6 +313,11 @@ function mountTeleprompterParser(app, options = {}) {
     onKlaar: () => broadcast("vertaling"),
     log: (regel) => fs.appendFile(options.vertaalLogPath || VERTAAL_LOG, `${JSON.stringify({ at: new Date().toISOString(), ...regel })}\n`, () => {}),
   });
+  // Schakelaar (deckknop ENGELS): staat hij uit, dan komt er geen Engels in beeld. Vertalen gaat door,
+  // zodat aanzetten midden in een scène meteen werkt. De stand blijft bewaard na een herstart.
+  const engelsPath = String(options.engelsPath || DEFAULT_ENGELS_PATH);
+  let engelsAan = true;
+  try { engelsAan = JSON.parse(fs.readFileSync(engelsPath, "utf8")).aan !== false; } catch (_error) { engelsAan = true; }
   const autoCameraPath = String(options.autoCameraPath || process.env.FORYOU_TELEPROMPTER_AUTO_CAMERA_PATH || DEFAULT_AUTO_CAMERA_PATH);
   const bewaardeAutocam = readAutoCameraFile(autoCameraPath);
   if (bewaardeAutocam) store.setAutoCameraSwitch(bewaardeAutocam);
@@ -396,7 +402,8 @@ function mountTeleprompterParser(app, options = {}) {
       hierna: store.getHierna(),
       bord: store.getBord(),
       ondertitelVersie: ondertitelPaginaVersie(),
-      engels: vertaler.voor(store.getCurrent()),
+      engelsAan,
+      engels: engelsAan ? vertaler.voor(store.getCurrent()) : {},
     };
   }
 
@@ -963,6 +970,22 @@ function mountTeleprompterParser(app, options = {}) {
       teleprompt: store.getCurrent(),
       preparedScene: store.getPreparedScene(),
     });
+  });
+
+  app.post(`${adminPrefix}/engels`, requireAdmin, (req, res) => {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const aan = body.aan === undefined ? !engelsAan : body.aan === true;
+    if (aan !== engelsAan) {
+      engelsAan = aan;
+      try {
+        fs.mkdirSync(path.dirname(engelsPath), { recursive: true });
+        fs.writeFileSync(engelsPath, JSON.stringify({ aan, updatedAt: new Date().toISOString() }, null, 2));
+      } catch (err) {
+        console.warn(`Engels: stand niet bewaard: ${err && err.message ? err.message : err}`);
+      }
+      broadcast("engels");
+    }
+    res.json({ ok: true, engelsAan });
   });
 
   app.post(`${adminPrefix}/auto-camera`, requireAdmin, (req, res) => {

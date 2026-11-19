@@ -212,6 +212,11 @@ function compute(deck, g) {
         else if (stand.enabled && stand.pauze) { t = `${first(label)}\nPAUZE ${Math.max(1, Number(stand.pauzeSeconden) || 1)}`; s = "actief"; }
         else { t = `${first(label)}\n${stand.enabled ? "AAN" : "UIT"}`; s = stand.enabled ? "aan" : "klaar"; }
       }
+      else if (knop.actie && knop.actie.engels) {
+        const aan = g.teleprompter.ok && g.teleprompter.body ? g.teleprompter.body.engelsAan : undefined;
+        if (typeof aan !== "boolean") { t = `${first(label)}\n?`; s = "onbekend"; }
+        else { t = `${first(label)}\n${aan ? "AAN" : "UIT"}`; s = aan ? "aan" : "klaar"; }
+      }
       else if (knop.actie && knop.actie.simulatie) {
         const stand = g.sim && g.sim.ok && g.sim.body ? g.sim.body : null;
         const aan = stand && (knop.actie.simulatie === "personages" ? stand.personages : stand.bots > 0);

@@ -365,6 +365,28 @@ async function doAutocam(knop) {
   return { ok, enabled: ok ? enabled : undefined, status: result.status, fout: ok ? undefined : result.body };
 }
 
+// Engelse ondertitel onder het Nederlands: aan of uit (de stand blijft bewaard in de tekstparser).
+async function doEngels(knop) {
+  const label = firstLine(knop.label);
+  const url = `${CONFIG.scriptAgentUrl}/v0/script-agent/teleprompter-parser/engels`;
+  const nu = await fetchJson(`${CONFIG.scriptAgentUrl}/v0/script-agent/teleprompter-parser/current`, { timeoutMs: 1200 });
+  const stand = nu.ok && nu.body ? nu.body.engelsAan : undefined;
+  if (typeof stand !== "boolean") {
+    await flash(knop.key, `${label}\n--`, "uit");
+    return { ok: true, overgeslagen: "stand_onbekend" };
+  }
+  const aan = !stand;
+  const tekst = `${label}\n${aan ? "AAN" : "UIT"}`;
+  if (CONFIG.droog) {
+    await flash(knop.key, tekst, "gelukt");
+    return { ok: true, droog: true, post: url, body: { aan } };
+  }
+  const result = await fetchJson(url, { method: "POST", body: { aan }, timeoutMs: 2500 });
+  const ok = result.ok && result.body && result.body.ok !== false;
+  await flash(knop.key, ok ? tekst : `${label}\nFAIL`, ok ? "gelukt" : "mislukt");
+  return { ok, aan: ok ? aan : undefined, status: result.status, fout: ok ? undefined : result.body };
+}
+
 // Bot-simulatie in de publiekschat: de gewone bots en de For_You-personages los van elkaar aan of uit.
 async function doSimulatie(knop) {
   const label = knop.label;
@@ -657,6 +679,7 @@ async function perform(key, fase) {
     if (actie.showmuziek) return await doShowMuziek(knop);
     if (actie.opname) return await doOpname(knop);
     if (actie.simulatie) return await doSimulatie(knop);
+    if (actie.engels) return await doEngels(knop);
     if (actie.regie) return await doRegie(knop);
     throw new Error(`actie onbekend voor ${key}`);
   } finally {

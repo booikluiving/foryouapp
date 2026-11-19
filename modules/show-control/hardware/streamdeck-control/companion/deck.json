@@ -118,6 +118,7 @@
         { "plek": [2, 2], "key": "d_streamdeck", "label": "SDECK", "soort": "sys" },
         { "plek": [2, 3], "key": "d_perfectcue", "label": "KLIKKER", "soort": "sys" },
         { "plek": [2, 4], "key": "d_dmx", "label": "DMX", "soort": "sys" },
+        { "plek": [2, 5], "key": "engels", "label": "ENGELS", "soort": "publiek", "actie": { "engels": "toggle" } },
         { "plek": [2, 6], "key": "simbots", "label": "BOTS", "soort": "publiek", "actie": { "simulatie": "bots" } },
         { "plek": [2, 7], "key": "simpersonages", "label": "FY BOTS", "soort": "publiek", "actie": { "simulatie": "personages" } },
         { "plek": [3, 0], "key": "nav_systeem_show", "label": "SHOW", "soort": "nav", "actie": { "pagina": "show" } },
