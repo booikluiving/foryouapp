@@ -250,12 +250,26 @@
       if (st.nu && this.S.has(st.nu)) {
         this.ring.setAttribute("cx", this.S.get(st.nu).x); this.ring.setAttribute("cy", this.S.get(st.nu).y); this.ring.style.display = "";
       } else this.ring.style.display = "none";
+      // Titels bij gespeelde scènes. Botst een titel met een eerdere, dan links van de ster; past
+      // dat ook niet, dan geen titel (tikken op de ster toont hem).
       this.lNamen.textContent = "";
-      reeks.forEach(function (id) {
+      var vakken = [];
+      var botst = function (v) {
+        return vakken.some(function (w) { return v.x1 < w.x2 && w.x1 < v.x2 && v.y1 < w.y2 && w.y1 < v.y2; });
+      };
+      reeks.slice().reverse().forEach(function (id) {
         var s = self.S.get(id), i = self.info(id);
         if (!s || !i) return;
-        var t = svgEl("text", { x: s.x + 11, y: s.y + 4, "class": "naam" });
-        t.textContent = kort(i.t, 24);
+        var tekst = kort(i.t, 24), breed = tekst.length * 5.6;
+        var rechts = { x1: s.x + 10, x2: s.x + 12 + breed, y1: s.y - 8, y2: s.y + 6 };
+        var links = { x1: s.x - 12 - breed, x2: s.x - 10, y1: s.y - 8, y2: s.y + 6 };
+        var plek = !botst(rechts) ? "rechts" : !botst(links) ? "links" : "";
+        if (!plek) return;
+        vakken.push(plek === "rechts" ? rechts : links);
+        var t = svgEl("text", plek === "rechts"
+          ? { x: s.x + 11, y: s.y + 4, "class": "naam" }
+          : { x: s.x - 11, y: s.y + 4, "class": "naam", "text-anchor": "end" });
+        t.textContent = tekst;
         self.lNamen.appendChild(t);
       });
       this.zetBalk();

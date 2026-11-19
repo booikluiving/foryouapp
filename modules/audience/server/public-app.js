@@ -110,6 +110,10 @@ function createAudiencePublicApp({ service } = {}) {
     res.sendFile(path.join(PUBLIC_DIR, "universum.html"));
   });
 
+  app.get("/audience/universum/tab.js", (_req, res) => {
+    res.type("application/javascript").sendFile(path.join(PUBLIC_DIR, "tabs", "universum.js"));
+  });
+
   app.get("/audience/universum/kaart", (req, res) => {
     const access = service.ensureSessionAccessForRequest(req, service.requestAddress(req));
     if (!access.ok) {

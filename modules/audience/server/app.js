@@ -625,6 +625,11 @@ setInterval(kijk, 2000);
     res.sendFile(path.join(PUBLIC_DIR, "universum.html"));
   });
 
+  app.get("/audience/universum/tab.js", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.type("application/javascript").sendFile(path.join(PUBLIC_DIR, "tabs", "universum.js"));
+  });
+
   app.get("/audience/universum/kaart", (req, res) => {
     const ip = req.socket && req.socket.remoteAddress;
     const access = isKijkvenster(req) && service.getActiveSession()
