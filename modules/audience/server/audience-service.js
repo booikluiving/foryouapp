@@ -565,7 +565,7 @@ class AudienceService extends EventEmitter {
       log: (regel) => console.log(regel),
     });
     // Personagestab op de telefoon: wie in deze run al gespeeld is (personages.js).
-    this.personages = createPersonages({ service: this, fotoVan: (run, id) => this.beoordeling.personagefoto(run, id) });
+    this.personages = createPersonages({ service: this, fotoVan: (run, id) => this.beoordeling.personagekaart(run, id) });
     this.pollAutoCloseTimer = null;
     this.internalSimulatorKey = crypto.randomBytes(16).toString("hex");
     this.liveScoreDispatchWork = Promise.resolve();

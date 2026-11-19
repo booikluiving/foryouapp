@@ -17,8 +17,8 @@
     ".pk-portret{aspect-ratio:1/1;position:relative;overflow:hidden;background:var(--bg)}",
     ".pk-portret img{width:100%;height:100%;object-fit:cover;object-position:50% 20%;display:block}",
     ".pk-letters{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:calc(var(--vakpx,56px)*.38);font-weight:300;color:var(--b)}",
-    ".pk-balk{margin-top:2px;height:var(--balk,14px);display:flex;align-items:center;justify-content:center;background:var(--bg);font-size:var(--balkletter,8px);font-weight:700;letter-spacing:.08em;text-transform:uppercase;line-height:1;padding:0 2px;overflow:hidden;white-space:nowrap}",
-    ".pk-balk span{overflow:hidden;text-overflow:ellipsis}",
+    ".pk-balk{margin-top:2px;min-height:var(--balk,14px);display:flex;align-items:center;justify-content:center;background:var(--bg);font-size:var(--balkletter,8px);font-weight:700;letter-spacing:.06em;text-transform:uppercase;line-height:1.1;padding:1px 2px;text-align:center}",
+    ".pk-balk span{overflow-wrap:anywhere;hyphens:auto}",
     ".pk-dicht{border-color:var(--d);cursor:default}",
     ".pk-dicht .pk-balk{color:transparent}",
     ".pk-dicht .pk-portret{background:repeating-linear-gradient(135deg,rgba(255,255,255,.04) 0 6px,var(--bg) 6px 7px)}",
@@ -163,7 +163,8 @@
       var rijen = Math.ceil(n / kol);
       var breed = (W - gat * (kol - 1)) / kol;
       var balk = Math.max(11, Math.min(18, Math.round(breed * 0.2)));
-      var portret = Math.min(breed - 6, (H - gat * (rijen - 1)) / rijen - balk - 2 - 6);
+      // Ruimte voor een naam over twee regels (lange namen worden niet afgekapt).
+      var portret = Math.min(breed - 6, (H - gat * (rijen - 1)) / rijen - balk * 1.8 - 2 - 6);
       if (portret < 18) continue;
       if (!best || portret > best.portret) best = { kol: kol, portret: portret, balk: balk };
     }
@@ -172,7 +173,7 @@
     st.setProperty("--kol", best.kol);
     st.setProperty("--vakb", Math.floor(best.portret + 6) + "px");
     st.setProperty("--vakpx", Math.floor(best.portret) + "px");
-    st.setProperty("--balk", best.balk + "px");
+    st.setProperty("--balk", Math.round(best.balk * 1.8) + "px");
     st.setProperty("--balkletter", Math.max(6.5, Math.min(10, best.balk * 0.58)).toFixed(1) + "px");
   }
 
