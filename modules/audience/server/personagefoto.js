@@ -10,7 +10,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const MAX_BYTES = 150 * 1024;
-// Onder dit cijfer staat er niemand in beeld (zie show/spelersfoto/spelersfoto.py): geen snapshot.
+// Onder dit cijfer staat er niemand in beeld (zie show/spelersfoto/spelersfoto.py).
 const MIN_PUNTEN = 0.2;
 
 const veilig = (tekst) => String(tekst || "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
@@ -26,7 +26,9 @@ function createPersonagefoto(opties = {}) {
   function zet({ showRunId, characterId, jpeg, punten }) {
     if (!showRunId || !characterId) return { ok: false, error: "run_of_personage_ontbreekt" };
     if (!Buffer.isBuffer(jpeg) || jpeg.length < 100 || jpeg.length > MAX_BYTES) return { ok: false, error: "foto_te_groot_of_leeg" };
-    if (Number.isFinite(punten) && punten < MIN_PUNTEN) return { ok: false, error: "niemand_in_beeld" };
+    // Niemand in beeld: alleen als dit personage nog geen snapshot heeft (beter de omgeving dan niets);
+    // een snapshot met iemand erop wordt er nooit door vervangen.
+    if (Number.isFinite(punten) && punten < MIN_PUNTEN && van(showRunId, characterId)) return { ok: false, error: "niemand_in_beeld" };
     const at = Date.now();
     if (!geheugen.has(showRunId)) { geheugen.clear(); geheugen.set(showRunId, new Map()); }
     geheugen.get(showRunId).set(String(characterId), { jpeg, at });
