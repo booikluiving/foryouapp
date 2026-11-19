@@ -41,6 +41,7 @@ const { createWaarschuwing } = require("./waarschuwing");
 const { createSpelersReady } = require("./spelers-ready");
 const { serveerTabs } = require("./telefoon-tabs");
 const { personagefotoRoute } = require("./personages");
+const { omgevingsbeeldRoute } = require("./omgevingsbeeld");
 const { KIJK_PATH, isKijkvenster } = require("./kijkvenster");
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
 
@@ -445,6 +446,7 @@ setInterval(kijk, 2000);
   // het speelde. Zonder snapshot 204.
   // Personagestab op de telefoon in de zaal (LAN): dezelfde verkleinde foto als op de publieke poort.
   app.get("/audience/public/personagefoto/:characterId", personagefotoRoute(service));
+  app.get("/audience/public/omgevingsbeeld/:nr", omgevingsbeeldRoute(service));
 
   app.get("/audience/stage/personagefoto/:characterId", (req, res) => {
     const foto = service.beoordeling.personagefoto(String(req.query.run || ""), req.params.characterId);
