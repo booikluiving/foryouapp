@@ -307,6 +307,13 @@ function mountTeleprompterParser(app, options = {}) {
   const autoCameraPath = String(options.autoCameraPath || process.env.FORYOU_TELEPROMPTER_AUTO_CAMERA_PATH || DEFAULT_AUTO_CAMERA_PATH);
   const bewaardeAutocam = readAutoCameraFile(autoCameraPath);
   if (bewaardeAutocam) store.setAutoCameraSwitch(bewaardeAutocam);
+  // Handmatig overnemen: een druk op CAM 1/2/3 zet de autocam even op pauze (elke druk opnieuw). Daarna,
+  // of als AUTOCAM tijdens de pauze wordt ingedrukt, neemt de autocam meteen weer over. Hier staat ook
+  // welke camera live staat (van de autocam of van de hand), voor de knoppen op de deck.
+  const AUTOCAM_PAUZE_MS = Number(options.autoCameraPauzeMs) > 0 ? Number(options.autoCameraPauzeMs) : 30000;
+  let autocamPauzeTot = 0;
+  let autocamPauzeTimer = null;
+  let liveCamera = { camera: 0, bron: "", at: "" };
   const publicDir = path.join(__dirname, "..", "..", "public");
   const publicPrefix = String(options.publicPrefix || "/teleprompter-parser").replace(/\/+$/, "");
   const apiPrefix = String(options.apiPrefix || "/api/teleprompter-parser").replace(/\/+$/, "");
@@ -376,7 +383,7 @@ function mountTeleprompterParser(app, options = {}) {
       teleprompt: store.getCurrent(),
       cue: store.getCue(),
       captionStyle: store.getCaptionStyle(),
-      autoCameraSwitch: store.getAutoCameraSwitch(),
+      autoCameraSwitch: autocamStand(),
       preparedScene: store.getPreparedScene(),
       hierna: store.getHierna(),
       bord: store.getBord(),
@@ -416,10 +423,53 @@ function mountTeleprompterParser(app, options = {}) {
     return timer;
   }
 
+  function autocamGepauzeerd() {
+    return autocamPauzeTot > Date.now();
+  }
+
+  // De stand van de autocam zoals de pagina's en de deck hem zien, met pauze en live camera.
+  function autocamStand() {
+    const stand = store.getAutoCameraSwitch();
+    const rest = stand.enabled && autocamGepauzeerd() ? Math.ceil((autocamPauzeTot - Date.now()) / 1000) : 0;
+    return {
+      ...stand,
+      pauze: rest > 0,
+      pauzeSeconden: rest,
+      pauzeTot: rest > 0 ? new Date(autocamPauzeTot).toISOString() : null,
+      liveCamera: liveCamera.camera,
+      liveBron: liveCamera.bron,
+    };
+  }
+
+  function autocamPauzeStart() {
+    clearAutoCameraReactionTimers();
+    autocamPauzeTot = Date.now() + AUTOCAM_PAUZE_MS;
+    // De autocam weet niet welke camera de hand koos: na de pauze wisselt hij altijd naar wie spreekt.
+    store.recordAutoCameraSwitch({ lastCameraSlot: 0, lastReason: "handmatig" });
+    if (autocamPauzeTimer) clearTimeout(autocamPauzeTimer);
+    autocamPauzeTimer = unrefTimer(setTimeout(() => {
+      autocamPauzeTimer = null;
+      autocamPauzeOpheffen(true);
+      broadcast("auto_camera");
+    }, AUTOCAM_PAUZE_MS + 50));
+  }
+
+  // Pauze weg. Met overnemen: de camera gaat meteen naar wie nu spreekt (als er een scène speelt).
+  function autocamPauzeOpheffen(overnemen) {
+    if (autocamPauzeTimer) clearTimeout(autocamPauzeTimer);
+    autocamPauzeTimer = null;
+    const wasPauze = autocamPauzeTot > 0;
+    autocamPauzeTot = 0;
+    if (!overnemen || !wasPauze || !store.getAutoCameraSwitch().enabled) return null;
+    return maybeAutoCameraSwitch(getShowState(), store.getCue(), "pauze_voorbij", { force: true, switchReason: "pauze_voorbij" });
+  }
+
   function emitAutoCameraDecision(decision, source = "cue") {
+    if (autocamGepauzeerd()) return { ...decision, action: "skipped", reason: "pauze" };
     const emitResult = onAutoCameraSwitch
       ? onAutoCameraSwitch({ ...decision, source })
       : { sent: false, reason: "auto_camera_handler_missing" };
+    if (!emitResult || emitResult.sent !== false) liveCamera = { camera: Number(decision.slot) || 0, bron: "autocam", at: new Date().toISOString() };
     store.recordAutoCameraSwitch({
       lastCameraSlot: decision.slot,
       lastSpeakerLabel: decision.cameraLabel || decision.speakerLabel,
@@ -455,7 +505,7 @@ function mountTeleprompterParser(app, options = {}) {
       cue,
       preparedScene: store.getPreparedScene(),
       fallbackScene: getAutoCameraScene ? getAutoCameraScene() : null,
-      autoCameraSwitch: store.getAutoCameraSwitch(),
+      autoCameraSwitch: autocamStand(),
     });
     if (plan.action !== "schedule") return plan;
 
@@ -507,7 +557,7 @@ function mountTeleprompterParser(app, options = {}) {
       cue,
       preparedScene: store.getPreparedScene(),
       fallbackScene: getAutoCameraScene ? getAutoCameraScene() : null,
-      autoCameraSwitch: store.getAutoCameraSwitch(),
+      autoCameraSwitch: autocamStand(),
       force: !!(options && options.force),
       switchReason: options && options.switchReason,
     });
@@ -658,7 +708,7 @@ function mountTeleprompterParser(app, options = {}) {
       show: getShowState(),
       cue: store.getCue(),
       captionStyle: store.getCaptionStyle(),
-      autoCameraSwitch: store.getAutoCameraSwitch(),
+      autoCameraSwitch: autocamStand(),
       preparedScene: store.getPreparedScene(),
     });
   });
@@ -788,7 +838,7 @@ function mountTeleprompterParser(app, options = {}) {
       show,
       teleprompt: store.getCurrent(),
       captionStyle: store.getCaptionStyle(),
-      autoCameraSwitch: store.getAutoCameraSwitch(),
+      autoCameraSwitch: autocamStand(),
       preparedScene: store.getPreparedScene(),
     });
   });
@@ -804,7 +854,7 @@ function mountTeleprompterParser(app, options = {}) {
         show,
         teleprompt: store.getCurrent(),
         captionStyle: store.getCaptionStyle(),
-        autoCameraSwitch: store.getAutoCameraSwitch(),
+        autoCameraSwitch: autocamStand(),
         preparedScene: store.getPreparedScene(),
       });
       return;
@@ -846,7 +896,7 @@ function mountTeleprompterParser(app, options = {}) {
       show,
       teleprompt: store.getCurrent(),
       captionStyle: store.getCaptionStyle(),
-      autoCameraSwitch: store.getAutoCameraSwitch(),
+      autoCameraSwitch: autocamStand(),
       preparedScene: store.getPreparedScene(),
     });
   });
@@ -899,7 +949,7 @@ function mountTeleprompterParser(app, options = {}) {
       ok: true,
       captionStyle: result.captionStyle,
       captionStylePersisted: true,
-      autoCameraSwitch: store.getAutoCameraSwitch(),
+      autoCameraSwitch: autocamStand(),
       cue: store.getCue(),
       teleprompt: store.getCurrent(),
       preparedScene: store.getPreparedScene(),
@@ -924,6 +974,7 @@ function mountTeleprompterParser(app, options = {}) {
         console.warn(`Autocam: stand niet bewaard: ${err && err.message ? err.message : err}`);
       }
     }
+    if (!result.autoCameraSwitch.enabled) autocamPauzeOpheffen(false);
     let autoCameraReactionPlan = null;
     if (!result.autoCameraSwitch.enabled || !result.autoCameraSwitch.reactionShotsEnabled) {
       clearAutoCameraReactionTimers();
@@ -933,13 +984,33 @@ function mountTeleprompterParser(app, options = {}) {
     if (result.changed) broadcast("auto_camera");
     res.json({
       ok: true,
-      autoCameraSwitch: result.autoCameraSwitch,
+      autoCameraSwitch: autocamStand(),
       autoCameraReactionPlan,
       cue: store.getCue(),
       teleprompt: store.getCurrent(),
       captionStyle: store.getCaptionStyle(),
       preparedScene: store.getPreparedScene(),
     });
+  });
+
+  // Een druk op CAM 1/2/3: deze camera staat nu live. Staat de autocam aan, dan pauzeert hij.
+  app.post(`${adminPrefix}/auto-camera/handmatig`, requireAdmin, (req, res) => {
+    const camera = Number.parseInt(String(req.body && req.body.camera), 10);
+    if (!(camera >= 1 && camera <= 3)) {
+      res.status(400).json({ ok: false, error: "camera_1_2_3" });
+      return;
+    }
+    liveCamera = { camera, bron: "handmatig", at: new Date().toISOString() };
+    if (store.getAutoCameraSwitch().enabled) autocamPauzeStart();
+    broadcast("auto_camera");
+    res.json({ ok: true, autoCameraSwitch: autocamStand() });
+  });
+
+  // AUTOCAM tijdens de pauze: de autocam neemt meteen weer over.
+  app.post(`${adminPrefix}/auto-camera/pauze-weg`, requireAdmin, (_req, res) => {
+    const overgenomen = autocamPauzeOpheffen(true);
+    broadcast("auto_camera");
+    res.json({ ok: true, overgenomen, autoCameraSwitch: autocamStand() });
   });
 
   app.post(`${adminPrefix}/parse`, requireAdmin, (req, res) => {
@@ -961,7 +1032,7 @@ function mountTeleprompterParser(app, options = {}) {
       ok: true,
       teleprompt,
       cue: store.getCue(),
-      autoCameraSwitch: store.getAutoCameraSwitch(),
+      autoCameraSwitch: autocamStand(),
       preparedScene: store.getPreparedScene(),
     });
   });
@@ -977,7 +1048,7 @@ function mountTeleprompterParser(app, options = {}) {
       teleprompt: store.getCurrent(),
       cue: store.getCue(),
       captionStyle: store.getCaptionStyle(),
-      autoCameraSwitch: store.getAutoCameraSwitch(),
+      autoCameraSwitch: autocamStand(),
     });
   });
 
@@ -992,7 +1063,7 @@ function mountTeleprompterParser(app, options = {}) {
       teleprompt: store.getCurrent(),
       cue: store.getCue(),
       captionStyle: store.getCaptionStyle(),
-      autoCameraSwitch: store.getAutoCameraSwitch(),
+      autoCameraSwitch: autocamStand(),
     });
   });
 
@@ -1036,7 +1107,7 @@ function mountTeleprompterParser(app, options = {}) {
       autoCameraSwitchResult,
       teleprompt: store.getCurrent(),
       captionStyle: store.getCaptionStyle(),
-      autoCameraSwitch: store.getAutoCameraSwitch(),
+      autoCameraSwitch: autocamStand(),
     });
   });
 

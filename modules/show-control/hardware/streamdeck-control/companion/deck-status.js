@@ -146,7 +146,12 @@ function compute(deck, g) {
       }
       else if (cue && cue.startsWith("phase-")) { s = showOk && tdOsc && volgorde.fase.mag ? "klaar" : "uit"; }
       else if (cue && cue.startsWith("teleprompter-")) { s = showOk ? "klaar" : "uit"; }
-      else if (cue && cue.startsWith("td-camera-")) { s = showOk && tdOsc && tdAck ? "camera" : "uit"; }
+      else if (cue && cue.startsWith("td-camera-")) {
+        // De camera die nu live staat (van de autocam of met de hand gekozen) is wit.
+        const tp = g.teleprompter.ok && g.teleprompter.body ? g.teleprompter.body.autoCameraSwitch : null;
+        const live = tp && Number(tp.liveCamera) === Number(cue.slice("td-camera-".length));
+        s = showOk && tdOsc && tdAck ? (live ? "aan" : "camera") : "uit";
+      }
       else if (cue && cue.startsWith("sq5-")) {
         const target = cue.slice(4);
         const muted = sq5[target];
@@ -203,6 +208,8 @@ function compute(deck, g) {
       else if (knop.actie && knop.actie.autocam) {
         const stand = g.teleprompter.ok && g.teleprompter.body ? g.teleprompter.body.autoCameraSwitch : null;
         if (!stand) { t = `${first(label)}\n?`; s = "onbekend"; }
+        // Op pauze na CAM 1/2/3: amber met de resterende seconden.
+        else if (stand.enabled && stand.pauze) { t = `${first(label)}\nPAUZE ${Math.max(1, Number(stand.pauzeSeconden) || 1)}`; s = "actief"; }
         else { t = `${first(label)}\n${stand.enabled ? "AAN" : "UIT"}`; s = stand.enabled ? "aan" : "klaar"; }
       }
       else if (knop.actie && knop.actie.simulatie) {

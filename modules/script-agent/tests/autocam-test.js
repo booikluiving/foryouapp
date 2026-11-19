@@ -25,7 +25,7 @@ const scene = {
 };
 const wacht = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function start() {
+async function start(extra = {}) {
   const app = express();
   app.use(express.json());
   mountTeleprompterParser(app, {
@@ -35,6 +35,7 @@ async function start() {
     getShowState: () => ({ active: true }),
     getAutoCameraScene: () => scene,
     onAutoCameraSwitch: (event) => stuurAutocamCamera(event.slot, { fetchImpl: nepFetch, source: event.source }),
+    ...extra,
   });
   const server = await new Promise((resolve) => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
   const basis = `http://127.0.0.1:${server.address().port}`;
@@ -74,6 +75,56 @@ const camerasNa = (vanaf) => verstuurd.slice(vanaf).map((v) => Number(v.body.act
   assert.equal(eerste.body.actions[0].command, "td.camera.set", "zelfde opdracht als CAM 1/2/3");
   assert.deepEqual(eerste.body.actions[0].payload, { camera: "1", cameraId: "camera:1", source: "autocam", cueIntent: "camera_trigger" });
   console.log("ok: aan volgt de spreker via show control");
+
+  // Handmatig overnemen: CAM 1 gedrukt. De autocam pauzeert, de live camera is 1.
+  dienst.server.close();
+  dienst = await start({ autoCameraPauzeMs: 400 });
+  await dienst.post("/admin/teleprompter-parser/parse", { rawText: "Ada: hoi\nBo: hallo\nBo: nog iets\nCas: daag", sceneId: 96 });
+  await dienst.post("/api/teleprompter-parser/cue", { index: 0 });
+  await dienst.post("/api/teleprompter-parser/cue", { index: 1 });
+  await wacht(20);
+  let vanaf = verstuurd.length;
+  let hand = await dienst.post("/admin/teleprompter-parser/auto-camera/handmatig", { camera: 1 });
+  assert.equal(hand.autoCameraSwitch.pauze, true, "CAM-druk: autocam op pauze");
+  assert.equal(hand.autoCameraSwitch.liveCamera, 1);
+  assert.equal(hand.autoCameraSwitch.liveBron, "handmatig");
+  assert.ok(hand.autoCameraSwitch.pauzeSeconden >= 1, "resterende tijd voor de knop");
+  for (let i = 2; i <= aantal; i += 1) await dienst.post("/api/teleprompter-parser/cue", { index: i });
+  await wacht(20);
+  assert.equal(verstuurd.length, vanaf, "tijdens de pauze wisselt de autocam niet");
+  console.log("ok: CAM-druk zet de autocam op pauze");
+
+  // AUTOCAM tijdens de pauze: meteen weer over, naar wie nu spreekt (Cas, camera 3).
+  const weg = await dienst.post("/admin/teleprompter-parser/auto-camera/pauze-weg", {});
+  await wacht(20);
+  assert.equal(weg.autoCameraSwitch.pauze, false);
+  assert.deepEqual(camerasNa(vanaf), [3], "na opheffen meteen naar de spreker");
+  assert.equal(weg.autoCameraSwitch.liveCamera, 3);
+  assert.equal(weg.autoCameraSwitch.liveBron, "autocam");
+  console.log("ok: AUTOCAM heft de pauze op en neemt meteen over");
+
+  // Pauze verloopt vanzelf: daarna weer naar de spreker, ook als dat dezelfde camera is als voor de pauze.
+  vanaf = verstuurd.length;
+  hand = await dienst.post("/admin/teleprompter-parser/auto-camera/handmatig", { camera: 2 });
+  assert.equal(hand.autoCameraSwitch.pauze, true);
+  await wacht(250);
+  hand = await dienst.post("/admin/teleprompter-parser/auto-camera/handmatig", { camera: 1 });
+  await wacht(250);
+  assert.equal(verstuurd.length, vanaf, "elke CAM-druk zet de pauze opnieuw");
+  await wacht(300);
+  assert.deepEqual(camerasNa(vanaf), [3], "na de pauze neemt de autocam over");
+  assert.equal((await dienst.get("/api/teleprompter-parser/current")).autoCameraSwitch.pauze, false);
+  console.log("ok: pauze verloopt en begint opnieuw bij elke druk");
+
+  // Autocam uit: een CAM-druk pauzeert niets, maar de live camera klopt wel. Fout nummer: 400.
+  await dienst.post("/admin/teleprompter-parser/auto-camera", { enabled: false });
+  hand = await dienst.post("/admin/teleprompter-parser/auto-camera/handmatig", { camera: 3 });
+  assert.equal(hand.autoCameraSwitch.pauze, false);
+  assert.equal(hand.autoCameraSwitch.liveCamera, 3);
+  const fout = await fetch("http://127.0.0.1:" + dienst.server.address().port + "/admin/teleprompter-parser/auto-camera/handmatig", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ camera: 5 }) });
+  assert.equal(fout.status, 400);
+  await dienst.post("/admin/teleprompter-parser/auto-camera", { enabled: true });
+  console.log("ok: uit pauzeert niet, live camera klopt");
 
   // Herstart: de stand blijft aan.
   dienst.server.close();
