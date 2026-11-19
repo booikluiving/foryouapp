@@ -29,6 +29,8 @@ const {
 } = require("../simulation/chat-simulator");
 const { createWordFilter } = require("./word-filter");
 const { createBeoordeling } = require("./beoordeling");
+const { createUniversum } = require("./universum");
+const { fetchTelefoonKaart } = require("../client/paths-client");
 
 const SERVICE_VERSION = "audience.0";
 const ACCESS_COOKIE = "fy_audience_access";
@@ -553,6 +555,11 @@ class AudienceService extends EventEmitter {
     this.showGestartRun = this.store.getSetting(SHOW_GESTART_KEY, null) || null;
     // De vragen na elke scène (beoordeling.js).
     this.beoordeling = createBeoordeling(this);
+    // Het universum op de telefoon (universum.js). Zonder padendienst (tests) blijft de kaart leeg.
+    this.universum = createUniversum({
+      fetchKaart: options.clients ? options.clients.fetchTelefoonKaart : fetchTelefoonKaart,
+      log: (regel) => console.log(regel),
+    });
     this.pollAutoCloseTimer = null;
     this.internalSimulatorKey = crypto.randomBytes(16).toString("hex");
     this.liveScoreDispatchWork = Promise.resolve();
@@ -745,12 +752,27 @@ class AudienceService extends EventEmitter {
     // Runtime onbereikbaar: laatste stand houden.
     if (!result || !result.ok || !result.state) return this.getFase();
     this.volgRun(result.state);
+    this.volgUniversum(result.state);
     this.onthoudScene(result.state);
     this.beoordeling.onthoudScene(result.state);
     const active = result.state.activeSituation;
     return this.setFase(active
       ? { fase: "scene", titel: active.title, situationRunId: active.situationRunId || active.situationId || "actief" }
       : { fase: "tussen" });
+  }
+
+  // Universum op de telefoon: één bericht met de hele stand als er iets verandert (scène start of
+  // stopt, nieuwe scènes vrij, iets klaargezet, nieuwe run, nieuwe kaart). Fouten hier mogen de
+  // fase en de chat nooit raken.
+  volgUniversum(state) {
+    try {
+      if (this.universum.volg(state)) this.emit("broadcast", this.universum.publiek());
+      this.universum.laadKaart().then((uitkomst) => {
+        if (uitkomst && uitkomst.anders) this.emit("broadcast", this.universum.publiek());
+      }).catch(() => {});
+    } catch (err) {
+      console.warn(`universum: ${err && err.message || err}`);
+    }
   }
 
   // Wat het publiek het laatst zag (of nu ziet): titel, verloop, omgeving en wie erin speelden.

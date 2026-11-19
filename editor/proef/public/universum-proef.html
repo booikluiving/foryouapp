@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>For_You universum-proef</title>
+    <style>
+      :root { --bg: #07080b; --a: #fff; --b: rgba(255, 255, 255, 0.66); --rand: rgba(255, 255, 255, 0.18); color-scheme: dark; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--a); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+      header { display: flex; gap: 16px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--rand); font-size: 14px; }
+      header span { color: var(--b); margin-left: auto; font-size: 13px; }
+      main { display: flex; gap: 24px; padding: 16px; align-items: flex-start; flex-wrap: wrap; }
+      #telefoon { flex: none; height: min(844px, calc(100vh - 90px)); aspect-ratio: 390 / 844; border: 1px solid var(--rand); border-radius: 28px; overflow: hidden; position: relative; background: #000; }
+      #telefoonFrame { position: absolute; left: 0; top: 0; width: 390px; height: 844px; border: 0; transform-origin: 0 0; }
+      #knoppen { display: flex; flex-direction: column; gap: 8px; width: 180px; }
+      button { background: var(--bg); color: var(--a); border: 1px solid var(--rand); border-radius: 10px; padding: 12px 10px; font: inherit; font-size: 14px; cursor: pointer; text-align: left; }
+      button:hover { border-color: var(--a); }
+      button:disabled { opacity: .4; cursor: default; }
+      button.klein { font-size: 12px; padding: 8px 10px; color: var(--b); }
+      hr { width: 100%; border: 0; border-top: 1px solid var(--rand); margin: 4px 0; }
+      @media (max-width: 640px) { #telefoon { height: auto; width: 100%; } #knoppen { width: 100%; } }
+    </style>
+  </head>
+  <body>
+    <header><b>For_You universum-proef</b><a href="/proefshow/" style="color:var(--b)">Werkplaats</a><span id="stand">…</span></header>
+    <main>
+      <div id="telefoon"><iframe id="telefoonFrame" title="Telefoon"></iframe></div>
+      <div id="knoppen">
+        <button id="run" data-knop="run">RUN</button>
+        <button id="scene" data-knop="scenePlus">SCÈNE START</button>
+        <hr>
+        <button id="sessie" data-knop="sessie">SESSIE STOPPEN</button>
+        <button class="klein" id="herlaad">Telefoon herladen</button>
+      </div>
+    </main>
+    <script>
+      const el = (id) => document.getElementById(id);
+      let stand = null, sessieWas = null, bezig = false;
+      function laadTelefoon() { el("telefoonFrame").src = `/proefshow/universum?_=${Date.now()}`; }
+      function pas() { el("telefoonFrame").style.transform = `scale(${el("telefoon").clientWidth / 390})`; }
+      async function ververs() {
+        try {
+          stand = await (await fetch("/proefshow/api/stand", { cache: "no-store" })).json();
+        } catch (_err) { el("stand").textContent = "proefshow niet bereikbaar"; return; }
+        el("stand").textContent = !stand.run ? "geen run" : stand.scene ? `speelt: ${stand.titel || "scène"}` : stand.wachtOpShow ? "inloop (START SHOW)" : "tussen de scènes";
+        el("run").textContent = !stand.run ? "START RUN" : stand.wachtOpShow ? "START SHOW" : "RESET RUN";
+        el("scene").textContent = stand.scene ? "SCÈNE STOP" : "SCÈNE START";
+        el("scene").disabled = !stand.run || stand.wachtOpShow;
+        el("sessie").textContent = stand.sessie ? "SESSIE STOPPEN (4011)" : "SESSIE STARTEN";
+        if (stand.sessie && sessieWas === false) laadTelefoon();
+        sessieWas = !!stand.sessie;
+      }
+      document.querySelectorAll("[data-knop]").forEach((knop) => knop.addEventListener("click", async () => {
+        if (bezig) return;
+        bezig = true; knop.disabled = true;
+        try {
+          await fetch("/proefshow/api/knop", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ knop: knop.dataset.knop }) });
+        } catch (_err) {}
+        bezig = false; knop.disabled = false;
+        ververs();
+      }));
+      el("herlaad").addEventListener("click", laadTelefoon);
+      window.addEventListener("resize", pas);
+      pas();
+      laadTelefoon();
+      ververs();
+      setInterval(ververs, 1500);
+    </script>
+  </body>
+</html>

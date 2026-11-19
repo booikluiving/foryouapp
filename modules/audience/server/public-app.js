@@ -7,6 +7,7 @@
 const path = require("node:path");
 const { loadExpress } = require("./express-loader");
 const { serveerTabs } = require("./telefoon-tabs");
+const { stuurKaart } = require("./universum");
 
 const express = loadExpress();
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
@@ -98,6 +99,30 @@ function createAudiencePublicApp({ service } = {}) {
     }
     service.setAccessCookie(res, req, joined.grant);
     res.redirect(302, "/");
+  });
+
+  // Universum op de telefoon: pagina en kaart achter dezelfde pas als de chat.
+  app.get("/universum", (req, res) => {
+    const access = service.ensureSessionAccessForRequest(req, service.requestAddress(req));
+    if (!access.ok) {
+      sendPage(res, access.reason === "session_inactive" ? "De voorstelling is afgelopen" : "For_You",
+        access.reason === "session_inactive" ? "Er loopt nu geen voorstelling. Bedankt voor het meedoen." : "Scan de QR-code in de zaal om mee te doen.");
+      return;
+    }
+    res.sendFile(path.join(PUBLIC_DIR, "universum.html"));
+  });
+
+  app.get("/audience/universum/tab.js", (_req, res) => {
+    res.type("application/javascript").sendFile(path.join(PUBLIC_DIR, "tabs", "universum.js"));
+  });
+
+  app.get("/audience/universum/kaart", (req, res) => {
+    const access = service.ensureSessionAccessForRequest(req, service.requestAddress(req));
+    if (!access.ok) {
+      res.status(access.reason === "session_inactive" ? 410 : 403).json({ ok: false, error: access.reason });
+      return;
+    }
+    stuurKaart(service.universum, req, res);
   });
 
   app.get("/audience/public/history", (req, res) => {

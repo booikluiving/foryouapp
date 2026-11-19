@@ -21,6 +21,8 @@ const {
   sendAudienceSignalsToAlgorithm,
   sendScoreFeedToRuntime,
 } = require("../client/runtime-client");
+const { fetchTelefoonKaart } = require("../client/paths-client");
+const { stuurKaart } = require("./universum");
 const {
   appendAudienceSession,
   appendAudienceSignal,
@@ -55,6 +57,7 @@ function audienceClients() {
   return {
     fetchCurrentRuntimeState,
     fetchRuntimeView,
+    fetchTelefoonKaart,
     prepareChosenSituation,
     restoreRuntimeAlgorithmContext,
     sendAudienceSignalsToAlgorithm,
@@ -618,6 +621,28 @@ setInterval(kijk, 2000);
   app.get("/audience/status", asyncRoute(async (req, res) => {
     res.json(await service.adminState(req));
   }));
+
+  // Universum op de telefoon (universum.js): eigen pagina en de kaart zonder namen.
+  app.get("/audience/universum", (_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, "universum.html"));
+  });
+
+  app.get("/audience/universum/tab.js", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.type("application/javascript").sendFile(path.join(PUBLIC_DIR, "tabs", "universum.js"));
+  });
+
+  app.get("/audience/universum/kaart", (req, res) => {
+    const ip = req.socket && req.socket.remoteAddress;
+    const access = isKijkvenster(req) && service.getActiveSession()
+      ? { ok: true }
+      : service.ensureSessionAccessForRequest(req, ip);
+    if (!access.ok) {
+      res.status(access.reason === "session_inactive" ? 410 : 403).json({ ok: false, error: access.reason });
+      return;
+    }
+    stuurKaart(service.universum, req, res);
+  });
 
   app.get("/audience/public/history", (req, res) => {
     const ip = req.socket && req.socket.remoteAddress;
