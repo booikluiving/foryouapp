@@ -1357,7 +1357,11 @@
         const spelers = el("p-spelers").getBoundingClientRect();
         const schaal = kader.width ? (el("universum").clientWidth || kader.width) / kader.width : 1;
         const strook = { boven: Math.max(0, (titel.bottom - kader.top) * schaal), onder: spelers.height ? (spelers.top - kader.top) * schaal : (kader.bottom - kader.top) * schaal };
-        naarUniversum({ kaartjes: aan ? { sceneId: k.sceneId, strook, kleur: k.kleur.map(absoluut), grijs: (k.grijs || []).map(absoluut) } : null });
+        // Het vakje van de locatie: de kaartjes in kleur staan er precies onder, even breed.
+        const vakEl = el("titelBeeld");
+        const v = vakEl && !vakEl.hidden ? vakEl.getBoundingClientRect() : null;
+        const vak = v && v.width ? { x: (v.left - kader.left) * schaal, y: (v.top - kader.top) * schaal, b: v.width * schaal, h: v.height * schaal } : null;
+        naarUniversum({ kaartjes: aan ? { sceneId: k.sceneId, strook, vak, kleur: k.kleur.map(absoluut), grijs: (k.grijs || []).map(absoluut) } : null });
       }
 
       // Ready per speler: het kader van wie klaar is wordt groen. Zijn ze er allemaal (en is de tekst

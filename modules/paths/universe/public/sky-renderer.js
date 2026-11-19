@@ -4074,10 +4074,11 @@
     // ---------- Kaartjes in Up next ----------
     //
     // Het zaalscherm stuurt in Up next de personages van de volgende scène (kleur) en tot vijf uit andere
-    // vrije scènes (grijs). Kleur: vierkante kaartjes naast elkaar rechtsboven de gekozen ster. Grijs:
+    // vrije scènes (grijs). Kleur: vierkante kaartjes naast elkaar precies onder het vakje van de locatie
+    // (zonder vakje: rechtsboven de gekozen ster). Grijs:
     // één klein kaartje rechtsboven de eigen ster. Maten in px van een zaalscherm van 1080 breed; ze
     // drijven mee met de ster en groeien niet mee met de camera.
-    const KAART = { groot: 96, tussen: 10, klein: 56, afstand: 26, kleinAfstand: 14, marge: 40 };
+    const KAART = { groot: 96, tussen: 10, vakTussen: 10, klein: 56, afstand: 26, kleinAfstand: 14, marge: 40 };
     const kaart = { lijst: null, alpha: 0, beelden: new Map() };
 
     function kaartBeeld(url) {
@@ -4116,7 +4117,7 @@
 
     function zetKaartjes(lijst) {
       const geldig = lijst && Number(lijst.sceneId) > 0 && Array.isArray(lijst.kleur) ? lijst : null;
-      const sleutel = (l) => (l ? JSON.stringify([l.sceneId, l.strook, l.kleur.map((k) => k.foto), (l.grijs || []).map((k) => k.foto)]) : "");
+      const sleutel = (l) => (l ? JSON.stringify([l.sceneId, l.strook, l.vak, l.kleur.map((k) => k.foto), (l.grijs || []).map((k) => k.foto)]) : "");
       if (sleutel(geldig) === sleutel(kaart.lijst)) return;
       const nieuw = !kaart.lijst || !geldig || Number(geldig.sceneId) !== Number(kaart.lijst.sceneId);
       kaart.lijst = geldig;
@@ -4168,6 +4169,13 @@
         const y = Math.max(boven + KAART.tussen * s, marge, p.y - KAART.afstand * s - maat);
         rij = { x, y, breed, maat };
       }
+      // Met het vakje van de locatie: de rij staat er precies onder, zo breed als het vakje (drie kaartjes).
+      const vak = lijst.vak;
+      if (klaar.length && vak && Number(vak.b) > 0) {
+        const tussen = KAART.vakTussen * s;
+        const maat = (Number(vak.b) - 2 * tussen) / 3;
+        rij = { x: Number(vak.x), y: Number(vak.y) + Number(vak.h) + tussen, breed: klaar.length * maat + (klaar.length - 1) * tussen, maat, tussen };
+      }
       // Grijs: rechtsboven de eigen ster, als die in beeld is; hooguit vijf, niet over elkaar.
       const bezet = [];
       for (const item of lijst.grijs || []) {
@@ -4185,7 +4193,7 @@
         bezet.push({ x, y });
         teken(beeld.grijs, x, y, maat, "rgba(255,255,255,0.3)", 0.75);
       }
-      if (rij) klaar.forEach((beeld, index) => teken(beeld.kleur, rij.x + index * (rij.maat + KAART.tussen * s), rij.y, rij.maat, "rgba(255,255,255,0.9)", 1));
+      if (rij) klaar.forEach((beeld, index) => teken(beeld.kleur, rij.x + index * (rij.maat + (rij.tussen != null ? rij.tussen : KAART.tussen * s)), rij.y, rij.maat, "rgba(255,255,255,0.9)", 1));
       ctx.restore();
     }
 
