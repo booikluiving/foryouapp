@@ -4,6 +4,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { createTelepromptStore } = require("../runtime/teleprompt-store");
+const { createVertaler } = require("./vertaling");
 const { isBlindRanking, plaatjeSlug } = require("../../../../../shared/blind-ranking/blind-ranking");
 const { isTrendOmgeving } = require("../../../../../shared/trend/trend");
 
@@ -304,6 +305,13 @@ function mountTeleprompterParser(app, options = {}) {
   const normalizePrepareInput = typeof options.normalizePrepareInput === "function" ? options.normalizePrepareInput : (input) => input;
   const captionStylePath = String(options.captionStylePath || process.env.FORYOU_TELEPROMPTER_CAPTION_STYLE_PATH || DEFAULT_CAPTION_STYLE_PATH);
   const store = createTelepromptStore({ captionStyle: readCaptionStyleFile(captionStylePath) });
+  // Engels onder het Nederlands: elk binnenkomend script wordt meteen in één keer vertaald.
+  const VERTAAL_LOG = path.join(os.homedir(), "Library", "Logs", "ForYou", "ondertitel-vertaling.log");
+  const vertaler = options.vertaler || createVertaler({
+    secretsPath: options.secretsPath || path.resolve(__dirname, "../../../db/operator-secrets.json"),
+    onKlaar: () => broadcast("vertaling"),
+    log: (regel) => fs.appendFile(options.vertaalLogPath || VERTAAL_LOG, `${JSON.stringify({ at: new Date().toISOString(), ...regel })}\n`, () => {}),
+  });
   const autoCameraPath = String(options.autoCameraPath || process.env.FORYOU_TELEPROMPTER_AUTO_CAMERA_PATH || DEFAULT_AUTO_CAMERA_PATH);
   const bewaardeAutocam = readAutoCameraFile(autoCameraPath);
   if (bewaardeAutocam) store.setAutoCameraSwitch(bewaardeAutocam);
@@ -388,6 +396,7 @@ function mountTeleprompterParser(app, options = {}) {
       hierna: store.getHierna(),
       bord: store.getBord(),
       ondertitelVersie: ondertitelPaginaVersie(),
+      engels: vertaler.voor(store.getCurrent()),
     };
   }
 
@@ -1028,6 +1037,7 @@ function mountTeleprompterParser(app, options = {}) {
       sceneId: body.sceneId || body.scene_id || 0,
     });
     broadcast("parse");
+    vertaler.vertaal(teleprompt);
     res.json({
       ok: true,
       teleprompt,
@@ -1115,6 +1125,7 @@ function mountTeleprompterParser(app, options = {}) {
     clearAutoCameraReactionTimers();
     const teleprompt = store.ingest(input);
     broadcast("ingest");
+    vertaler.vertaal(teleprompt);
     return teleprompt;
   }
 

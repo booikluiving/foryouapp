@@ -927,6 +927,15 @@ body:not(.stage-td-render-mode) .stage-hierna {
   margin-bottom: 0.25em;
 }
 
+/* Engels onder het Nederlands: eigen regel, eigen kleur, iets kleiner. */
+.caption-engels {
+  display: block;
+  margin-top: 0.2em;
+  font-size: 0.78em;
+  color: #ffd34d;
+  -webkit-text-fill-color: #ffd34d;
+}
+
 /* Aanwijzing in de ondertitel: tussen sterretjes en cursief, de gesproken tekst blijft recht. */
 .caption-inline-direction {
   font-style: italic;

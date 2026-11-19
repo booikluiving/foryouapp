@@ -20,6 +20,8 @@
 
   let teleprompt = null;
   let preparedScene = null;
+  // Engelse vertaling per Nederlandse regel (komt van de tekstparser zodra het script vertaald is).
+  let engels = {};
   let showState = null;
   let cue = { index: 0, version: -1, deckLength: 0 };
   let captionStyle = { ...DEFAULT_CAPTION_STYLE };
@@ -163,11 +165,12 @@
     if (line.type === "dialogue") {
       const speaker = String(line.speakerLabel || "").trim();
       const vorige = vorigeSpreker(lines, index - 1);
-      return { type: "dialogue", speaker: speaker && speaker !== vorige ? speaker : "", text: line.text };
+      return { type: "dialogue", speaker: speaker && speaker !== vorige ? speaker : "", text: line.text, en: engels[String(line.text).trim()] || "" };
     }
     // Een regel die alleen een aanwijzing is: tussen sterretjes en cursief op de plek van de ondertitel.
     const aanwijzing = String(line.text).replace(/^\*+|\*+$/g, "").trim();
-    return aanwijzing ? { type: "direction", text: aanwijzing } : null;
+    const en = String(engels[String(line.text).trim()] || "").replace(/^\*+|\*+$/g, "").trim();
+    return aanwijzing ? { type: "direction", text: aanwijzing, en } : null;
   }
 
   function atEndCard() {
@@ -189,6 +192,14 @@
       if (!isOverflowing(card)) return;
     }
     card.style.fontSize = `${Math.max(26, Math.round(minFontSize))}px`;
+  }
+
+  // De Engelse zin staat onder de Nederlandse, in een eigen kleur, voor publiek dat geen Nederlands spreekt.
+  function engelsRegel() {
+    const regel = document.createElement("span");
+    regel.className = "caption-engels";
+    card.appendChild(regel);
+    return regel;
   }
 
   function render() {
@@ -217,6 +228,7 @@
       card.appendChild(blok);
     } else if (activeCaption.type === "direction") {
       addDirection(card, activeCaption.text);
+      if (activeCaption.en) addDirection(engelsRegel(), activeCaption.en);
     } else {
       if (activeCaption.type === "dialogue" && activeCaption.speaker) {
         const naam = document.createElement("span");
@@ -227,6 +239,7 @@
         card.appendChild(naam);
       }
       appendFormattedText(card, activeCaption.text);
+      if (activeCaption.en) appendFormattedText(engelsRegel(), activeCaption.en);
     }
     fitCaption();
     meldGetoond();
@@ -253,6 +266,7 @@
     showState = payload.show || null;
     preparedScene = payload.preparedScene || null;
     teleprompt = payload.teleprompt || null;
+    engels = payload.engels && typeof payload.engels === "object" ? payload.engels : {};
     cue = payload.cue || { index: 0, version: -1, deckLength: 0 };
     // Met een bord (blind ranking) staat het plaatje midden in beeld: de ondertitel gaat eronder.
     const stijl = payload.captionStyle || DEFAULT_CAPTION_STYLE;
