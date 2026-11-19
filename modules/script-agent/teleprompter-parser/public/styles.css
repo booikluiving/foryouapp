@@ -921,6 +921,12 @@ body:not(.stage-td-render-mode) .stage-hierna {
   box-decoration-break: clone;
 }
 
+/* Naam van wie spreekt: iets kleiner dan de zin, met wat ruimte eronder (keuze Booi, variant E). */
+.caption-speaker {
+  font-size: 0.8em;
+  margin-bottom: 0.25em;
+}
+
 /* Aanwijzing in de ondertitel: tussen sterretjes en cursief, de gesproken tekst blijft recht. */
 .caption-inline-direction {
   font-style: italic;
