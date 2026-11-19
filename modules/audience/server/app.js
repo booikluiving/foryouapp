@@ -37,6 +37,7 @@ const { loadExpress } = require("./express-loader");
 const express = loadExpress();
 const { createWaarschuwing } = require("./waarschuwing");
 const { createSpelersReady } = require("./spelers-ready");
+const { serveerTabs } = require("./telefoon-tabs");
 const { KIJK_PATH, isKijkvenster } = require("./kijkvenster");
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
 
@@ -80,6 +81,7 @@ function createAudienceApp(options = {}) {
   service.waarschuwing = waarschuwing;
   app.use(express.json({ limit: "512kb" }));
   app.use("/audience/vendor", express.static(path.join(PUBLIC_DIR, "vendor"), { fallthrough: false }));
+  app.use("/audience/public/tabs", serveerTabs(express, PUBLIC_DIR));
 
   app.get("/health", (_req, res) => {
     res.json(service.health());
@@ -723,6 +725,11 @@ setInterval(kijk, 2000);
   app.post("/audience/admin/stage/herlaad", (_req, res) => {
     service.emit("broadcast", { type: "stage_herlaad" });
     res.json({ ok: true });
+  });
+
+  // Noodknop: tabs naast de chat op de publiekstelefoon aan of uit, zonder herladen.
+  app.post("/audience/admin/tabs", (req, res) => {
+    res.json({ ok: true, tabs: service.saveTelefoonTabs(req.body || {}) });
   });
 
   app.post("/audience/admin/reacties", (req, res) => {

@@ -601,6 +601,61 @@
         color: var(--b);
       }
 
+      /* ------------------------------------------------ tabs naast de chat */
+      #tabBalk {
+        flex: none;
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: 1fr;
+        margin: 0 -16px calc(-16px - env(safe-area-inset-bottom));
+        padding-bottom: env(safe-area-inset-bottom);
+        border-top: 1px solid var(--c);
+      }
+      #tabBalk button {
+        position: relative;
+        padding: 13px 4px 15px;
+        color: var(--b);
+        font-size: 15px;
+        white-space: nowrap;
+      }
+      #tabBalk button[aria-current="true"] { color: var(--a); }
+      #tabBalk button[aria-current="true"]::before {
+        content: "";
+        position: absolute;
+        top: -1px;
+        left: 22%;
+        right: 22%;
+        height: 1px;
+        background: var(--a);
+      }
+      #tabBalk button.nieuw::after {
+        content: "";
+        display: inline-block;
+        width: 5px;
+        height: 5px;
+        margin-left: 4px;
+        vertical-align: 0.5em;
+        background: var(--a);
+      }
+      .vlak {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        overscroll-behavior: contain;
+        display: flex;
+        flex-direction: column;
+      }
+      .vlak .vlakFout { margin: auto; color: var(--b); }
+      body[data-tab]:not([data-tab="chat"]) #chatFeed,
+      body[data-tab]:not([data-tab="chat"]) .composer,
+      body[data-tab]:not([data-tab="chat"]) #naVraag,
+      body[data-tab]:not([data-tab="chat"]) #topComment,
+      body[data-tab]:not([data-tab="chat"]) #rankingBalk,
+      body[data-tab]:not([data-tab="chat"]) #nameRow,
+      body[data-tab]:not([data-tab="chat"]):not([data-interaction-mode="scene_reaction"]) #reactionBar {
+        display: none !important;
+      }
+
       /* ------------------------------------------------ chat */
       #chatFeed {
         flex: 1 1 auto;
@@ -967,6 +1022,8 @@
     <div id="rankingBalk" hidden></div>
     <div id="topComment" hidden></div>
     <div id="chatFeed"></div>
+    <section id="vlak-universum" class="vlak" aria-label="for_youniverse" hidden></section>
+    <section id="vlak-personages" class="vlak" aria-label="Personages" hidden></section>
     <div id="naVraag" hidden></div>
     <div class="composer">
       <textarea
@@ -987,6 +1044,7 @@
     </div>
     <div id="reactionBar" hidden>
     </div>
+    <nav id="tabBalk" aria-label="Tabs" hidden></nav>
     <div id="reactionBurstLayer" aria-hidden="true"></div>
     <div id="connectionToast" role="status" aria-live="polite" aria-atomic="true">
       <span id="toastIcon"></span>
@@ -1003,6 +1061,180 @@
       </form>
     </div>
 
+    <script>
+      // Tabs naast de chat: for_youniverse en Personages. De chat blijft de pagina; een tab is een vlak
+      // in dezelfde pagina, met dezelfde verbinding. De inhoud van een tab staat in public/tabs/<naam>.js en
+      // laadt pas bij de eerste tik (afspraken: public/tabs/LEESMIJ.md). Breekt een tab, dan blijft alleen dat
+      // vlak leeg; chat en stemmen draaien door. Stemrondes en de content warning liggen als vaste laag over
+      // alles heen. Elke tab staat apart aan of uit in Admin (Telefoon); uit = meteen terug naar de chat.
+      (function () {
+        var TABS = [
+          { naam: "chat", label: "Chat" },
+          { naam: "universum", label: "for_youniverse" },
+          { naam: "personages", label: "Personages" },
+        ];
+        var ALTIJD = { hello: 1, chat_reset: 1, session_reset: 1, session_closed: 1 };
+        var aan = { universum: false, personages: false };
+        var huidig = "chat";
+        var tabs = {};
+        var laatste = {};
+        var versie = "";
+        var nieuw = false;
+
+        function el(id) { return document.getElementById(id); }
+        function log(tekst) { try { if (typeof debugLog === "function") debugLog("tabs: " + tekst); } catch (e) {} }
+        function beschikbaar(naam) { return naam === "chat" || aan[naam] === true; }
+        function laagOpen() {
+          var b = el("beoordeelBox"), w = el("waarschuwingBox");
+          return !!((b && !b.hidden) || (w && !w.hidden));
+        }
+        function zichtbaar(naam) { return huidig === naam && !document.hidden && !laagOpen(); }
+
+        function roep(naam, functie, arg) {
+          var t = tabs[naam];
+          if (!t || t.status !== "klaar" || !t.def || typeof t.def[functie] !== "function") return;
+          try { t.def[functie](arg); } catch (err) {
+            t.fouten = (t.fouten || 0) + 1;
+            log(naam + "." + functie + " fout: " + (err && err.message));
+            if (t.fouten >= 3) fout(naam);
+          }
+        }
+        function fout(naam) {
+          var t = tabs[naam] || (tabs[naam] = {});
+          t.status = "fout";
+          var vlak = el("vlak-" + naam);
+          if (!vlak) return;
+          vlak.textContent = "";
+          var p = document.createElement("p");
+          p.className = "vlakFout";
+          p.textContent = "Even niet beschikbaar";
+          vlak.appendChild(p);
+        }
+        function start(naam) {
+          var t = tabs[naam];
+          if (!t || !t.def || t.status === "klaar" || t.status === "fout") return;
+          var vlak = el("vlak-" + naam);
+          try {
+            if (typeof t.def.start === "function") t.def.start(vlak, api(naam));
+            t.status = "klaar";
+          } catch (err) {
+            log(naam + ".start fout: " + (err && err.message));
+            fout(naam);
+            return;
+          }
+          var wil = Array.isArray(t.def.berichten) ? t.def.berichten : [];
+          if (laatste.hello) roep(naam, "bericht", laatste.hello);
+          for (var i = 0; i < wil.length; i++) if (laatste[wil[i]]) roep(naam, "bericht", laatste[wil[i]]);
+          if (zichtbaar(naam)) roep(naam, "toon");
+        }
+        function laad(naam) {
+          if (tabs[naam]) return;
+          var t = tabs[naam] = { status: "laden" };
+          var script = document.createElement("script");
+          script.src = "/audience/public/tabs/" + naam + ".js?v=" + encodeURIComponent(versie || "0");
+          script.async = true;
+          var wacht = setTimeout(function () { if (t.status === "laden") { log(naam + " laadt niet"); fout(naam); } }, 12000);
+          script.onload = function () { clearTimeout(wacht); if (t.status === "laden" && !t.def) fout(naam); };
+          script.onerror = function () { clearTimeout(wacht); log(naam + " niet gevonden"); fout(naam); };
+          document.head.appendChild(script);
+        }
+        function api(naam) {
+          return {
+            naam: naam,
+            zichtbaar: function () { return zichtbaar(naam); },
+            laatste: function (type) { return laatste[type] || null; },
+            naarTab: function (doel) { kies(doel); },
+          };
+        }
+
+        function tekenBalk() {
+          var balk = el("tabBalk");
+          if (!balk) return;
+          var lijst = TABS.filter(function (t) { return beschikbaar(t.naam); });
+          balk.textContent = "";
+          balk.hidden = lijst.length < 2;
+          if (balk.hidden) return;
+          lijst.forEach(function (t) {
+            var knop = document.createElement("button");
+            knop.type = "button";
+            knop.textContent = t.label;
+            knop.setAttribute("aria-current", String(t.naam === huidig));
+            if (t.naam === "chat" && nieuw && huidig !== "chat") knop.className = "nieuw";
+            knop.addEventListener("click", function () { kies(t.naam); });
+            balk.appendChild(knop);
+          });
+        }
+        function kies(naam) {
+          if (!beschikbaar(naam)) naam = "chat";
+          var vorige = huidig;
+          huidig = naam;
+          if (naam === "chat") nieuw = false;
+          document.body.dataset.tab = naam;
+          TABS.forEach(function (t) {
+            var vlak = el("vlak-" + t.naam);
+            if (vlak) vlak.hidden = t.naam !== naam;
+          });
+          if (vorige !== naam) roep(vorige, "verberg");
+          if (naam !== "chat") {
+            laad(naam);
+            if (vorige !== naam && zichtbaar(naam)) roep(naam, "toon");
+          }
+          tekenBalk();
+        }
+        function zet(nieuweTabs) {
+          var bron = nieuweTabs && typeof nieuweTabs === "object" ? nieuweTabs : {};
+          aan = { universum: bron.universum === true, personages: bron.personages === true };
+          kies(huidig);
+        }
+
+        function bericht(msg) {
+          if (!msg || typeof msg.type !== "string") return;
+          var type = msg.type;
+          if (type === "hello") {
+            versie = String(msg.serverInstanceId || msg.buildVersion || versie || "");
+            zet(msg.tabs);
+          } else if (type === "tabs") {
+            zet(msg.tabs);
+          } else if (type === "session_closed") {
+            zet(null);
+          } else if (type === "comment" && huidig !== "chat" && !nieuw) {
+            nieuw = true;
+            tekenBalk();
+          }
+          laatste[type] = msg;
+          for (var naam in tabs) {
+            var t = tabs[naam];
+            if (t.status !== "klaar") continue;
+            var wil = Array.isArray(t.def.berichten) ? t.def.berichten : [];
+            if (ALTIJD[type] || wil.indexOf(type) >= 0) roep(naam, "bericht", msg);
+          }
+        }
+        // Inhoud van een tab meldt zich zo: ForYouTabs.registreer("universum", { berichten, start, bericht, toon, verberg }).
+        function registreer(naam, def) {
+          if (!tabs[naam] || tabs[naam].def || !def) return;
+          tabs[naam].def = def;
+          start(naam);
+        }
+
+        // Stemlaag of content warning open/dicht, of telefoon weggelegd: de tab mag stoppen of verder tekenen.
+        function volgLaag() {
+          if (huidig === "chat") return;
+          roep(huidig, zichtbaar(huidig) ? "toon" : "verberg");
+        }
+        document.addEventListener("visibilitychange", volgLaag);
+        document.addEventListener("DOMContentLoaded", function () {
+          if (typeof MutationObserver === "function") {
+            var kijk = new MutationObserver(volgLaag);
+            ["beoordeelBox", "waarschuwingBox"].forEach(function (id) {
+              if (el(id)) kijk.observe(el(id), { attributes: true, attributeFilter: ["hidden"] });
+            });
+          }
+          kies("chat");
+        });
+
+        window.ForYouTabs = { registreer: registreer, bericht: bericht, kies: kies, huidig: function () { return huidig; } };
+      })();
+    </script>
     <script src="/audience/socket.io/socket.io.js"></script>
     <script>
       const statusEl = document.getElementById("status");
@@ -3466,6 +3698,7 @@
           if (socket !== ws) return;
           try {
             const msg = JSON.parse(ev.data);
+            try { if (window.ForYouTabs) window.ForYouTabs.bericht(msg); } catch {}
             if (msg.type === "hello") {
               if (Number(msg.sessionId || 0) !== likeSessieId) laadMijnLikes(msg.sessionId);
               volgChatGewist(msg.chatGewistTot);

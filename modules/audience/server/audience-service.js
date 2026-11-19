@@ -47,6 +47,9 @@ const REACTIES_STANDAARD = Object.freeze([
 const FASE_POLL_MS = 1000;
 // Vraag die na de scène op de telefoon verschijnt (met een paar trillingen); instelbaar in Admin.
 const NA_SCENE_VRAAG_KEY = "na_scene_vraag";
+// Tabs op de publiekstelefoon naast de chat; elk apart aan/uit in Admin (noodknop, standaard uit).
+const TELEFOON_TABS_KEY = "telefoon_tabs";
+const TELEFOON_TABS = Object.freeze(["universum", "personages"]);
 // Stemmen op de startscène: welke stemming het is, bij welke run, en de uitslag.
 const START_STEMMING_KEY = "start_stemming";
 const START_STEMMING_INSTELLINGEN_KEY = "start_stemming_instellingen";
@@ -69,6 +72,12 @@ const CHAT_RUN_KEY = "chat_show_run";
 const SHOW_GESTART_KEY = "show_gestart_run";
 const NA_SCENE_VRAAG_STANDAARD = "En?";
 
+function normalizeTelefoonTabs(raw) {
+  const bron = raw && typeof raw === "object" ? raw : {};
+  const tabs = {};
+  for (const naam of TELEFOON_TABS) tabs[naam] = bron[naam] === true;
+  return tabs;
+}
 function normalizeNaSceneVraag(raw) {
   if (raw === null || raw === undefined) return NA_SCENE_VRAAG_STANDAARD;
   return String(raw).replace(/\s+/g, " ").trim().slice(0, 80);
@@ -521,6 +530,7 @@ class AudienceService extends EventEmitter {
     this.wifiQrSettings = normalizeWifiQrSettings(this.store.getSetting(WIFI_QR_SETTINGS_KEY, {}));
     this.reacties = normalizeReacties(this.store.getSetting(REACTIES_KEY, null));
     this.naSceneVraag = normalizeNaSceneVraag(this.store.getSetting(NA_SCENE_VRAAG_KEY, null));
+    this.telefoonTabs = normalizeTelefoonTabs(this.store.getSetting(TELEFOON_TABS_KEY, null));
     this.startStemming = this.store.getSetting(START_STEMMING_KEY, null);
     this.startStemmingInstellingen = normalizeStartStemmingInstellingen(this.store.getSetting(START_STEMMING_INSTELLINGEN_KEY, null));
     // Fase van de voorstelling, uit de runtime: "scene" (situatie loopt) of "tussen".
@@ -637,6 +647,24 @@ class AudienceService extends EventEmitter {
 
   getNaSceneVraag() {
     return this.naSceneVraag;
+  }
+
+  getTelefoonTabs() {
+    return { ...this.telefoonTabs };
+  }
+
+  // Alleen wat meegegeven wordt verandert; de telefoons krijgen de nieuwe stand meteen, zonder herladen.
+  saveTelefoonTabs(wijziging) {
+    const bron = wijziging && typeof wijziging === "object" ? wijziging : {};
+    const volgende = { ...this.telefoonTabs };
+    for (const naam of TELEFOON_TABS) {
+      if (typeof bron[naam] === "boolean") volgende[naam] = bron[naam];
+    }
+    this.telefoonTabs = normalizeTelefoonTabs(volgende);
+    this.store.setSetting(TELEFOON_TABS_KEY, this.telefoonTabs);
+    this.emit("broadcast", { type: "tabs", tabs: this.getTelefoonTabs() });
+    this.emit("admin-state-changed");
+    return this.getTelefoonTabs();
   }
 
   saveReacties(lijst, vraag) {
@@ -2421,6 +2449,7 @@ class AudienceService extends EventEmitter {
       fase: this.getFase(),
       reacties: this.getReacties(),
       naSceneVraag: this.naSceneVraag,
+      telefoonTabs: this.getTelefoonTabs(),
       ronde: this.getRonde(),
       activePoll: this.pollSnapshot(activePoll),
       startStemming: this.getStartStemming(),

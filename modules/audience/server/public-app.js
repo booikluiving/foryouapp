@@ -6,6 +6,7 @@
 
 const path = require("node:path");
 const { loadExpress } = require("./express-loader");
+const { serveerTabs } = require("./telefoon-tabs");
 
 const express = loadExpress();
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
@@ -42,6 +43,7 @@ function createAudiencePublicApp({ service } = {}) {
 
   app.use(express.json({ limit: "16kb" }));
   app.use("/audience/vendor", express.static(path.join(PUBLIC_DIR, "vendor"), { fallthrough: false }));
+  app.use("/audience/public/tabs", serveerTabs(express, PUBLIC_DIR));
 
   app.get("/health", (_req, res) => {
     const health = service.health();
