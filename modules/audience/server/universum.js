@@ -31,10 +31,21 @@ function omgevingVan(resolved) {
   return naam ? String(naam).replace(/_/g, " ").trim() : null;
 }
 
+function vrijeIds(view, gespeeld) {
+  const items = view && view.pathEvaluation && Array.isArray(view.pathEvaluation.items) ? view.pathEvaluation.items : [];
+  const ids = items.filter((item) => item && item.status === "available").map(idVan).filter((id) => id && !gespeeld.includes(id));
+  return Array.from(new Set(ids)).sort((a, b) => a - b);
+}
+
 // Runtime-view → stand. Puur, zodat het te testen is.
 function standUitView(view) {
   const leeg = { run: "", gespeeld: [], nu: 0, klaar: 0, vrij: [], echt: {} };
-  if (!view || !view.showRunId || ["idle", "reset"].includes(String(view.status || ""))) return leeg;
+  if (!view) return leeg;
+  // Geen run (inloop, na RESET RUN): niets gespeeld, maar de startscènes zijn wel vrij, net als op
+  // het zaalscherm.
+  if (!view.showRunId || ["idle", "reset"].includes(String(view.status || ""))) {
+    return { ...leeg, vrij: vrijeIds(view, []) };
+  }
   const echt = {};
   const runs = Array.isArray(view.situationRuns) ? view.situationRuns : [];
   const perRun = new Map(runs.map((run) => [String(run.situationRunId || ""), run]));
@@ -58,11 +69,7 @@ function standUitView(view) {
   if (klaar && klaar !== nu && view.resolvedPreparedNext && idVan(view.resolvedPreparedNext) === klaar) {
     echt[klaar] = { w: namenVan(view.resolvedPreparedNext), o: omgevingVan(view.resolvedPreparedNext) };
   }
-  const items = view.pathEvaluation && Array.isArray(view.pathEvaluation.items) ? view.pathEvaluation.items : [];
-  const vrij = items
-    .filter((item) => item && item.status === "available")
-    .map(idVan)
-    .filter((id) => id && id !== nu && !gespeeld.includes(id));
+  const vrij = vrijeIds(view, gespeeld).filter((id) => id !== nu);
   if (klaar && !vrij.includes(klaar) && klaar !== nu && !gespeeld.includes(klaar)) vrij.push(klaar);
   vrij.sort((a, b) => a - b);
   return { run: String(view.showRunId), gespeeld, nu, klaar: klaar === nu ? 0 : klaar, vrij, echt };
