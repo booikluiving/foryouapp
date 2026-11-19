@@ -200,8 +200,9 @@ def apply_samen_achter_patch():
     if masker is None:
         masker = root.create(moviefileinTOP, "samen_masker")
         masker.nodeX, masker.nodeY = x, y - 300
-    if os.path.isfile(leeg_png) and not masker.par.file.eval():
-        masker.par.file = leeg_png
+        # Een nieuwe Movie File In begint met het voorbeeldfilmpje van TouchDesigner: dat dekt alles.
+        if os.path.isfile(leeg_png):
+            masker.par.file = leeg_png
 
     achter = root.op("samen_achter")
     if achter is None:
