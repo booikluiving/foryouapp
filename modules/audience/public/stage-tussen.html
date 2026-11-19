@@ -337,14 +337,15 @@
       #p-schrijf { left: 110px; top: var(--schrijf-top, 1018px); width: 860px; --wx: -1000px; z-index: 5; }
       /* Boven het venster: "Generating next scene", en zodra de scène gekozen is de titel ervan, groot.
          De tekst staat onderin dit vak, vlak boven het venster; grootte en hoogte komen uit TITEL. */
-      /* Vóór de klok: de prompt van de gekozen scène, getypt in hetzelfde venster als waarin de scène
+      /* Vóór de klok: de prompt van de gekozen scène, in hetzelfde venster als waarin de scène
          daarna geschreven wordt. Het universum blijft erachter staan; het venster heeft een donkere
          ondergrond zodat de tekst leesbaar blijft. De hoogte volgt de tekst (zie PROMPT). */
       #p-prompt { left: 110px; top: var(--schrijf-top, 1018px); width: 860px; --wx: -1000px; z-index: 5; }
       #p-prompt .venster { border: 2px solid #fff; box-sizing: border-box; background: rgba(7, 8, 11, 0.9); }
       #p-prompt .balk { height: 24px; border-bottom: 2px solid #fff; }
-      #promptTekst { padding: 18px 24px 22px; font-family: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 30px; line-height: 1.34; white-space: pre-wrap; overflow-wrap: break-word; }
-      #promptTekst .rest { visibility: hidden; }
+      /* Letter zoals de tekst in het schrijfvenster: de terminal van de script-agent (30px, daar op 0,85
+         geschaald), dun gezet. */
+      #promptTekst { padding: 14px 20px 18px; font-family: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 25.5px; line-height: 1.34; letter-spacing: 0; white-space: pre-wrap; word-break: break-word; color: #fff; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
       #promptTekst .promptlabel { display: block; font-weight: 700; font-size: 1.45em; line-height: 1.1; margin-bottom: 0.35em; }
       #promptTekst .cursor { display: inline-block; width: 0.6em; height: 1.1em; margin-right: -0.6em; vertical-align: -0.18em; background: #fff; }
       #p-schrijf .label, #p-prompt .label { height: var(--schrijf-kop, 100px); box-sizing: border-box; padding-bottom: 22px; display: flex; align-items: flex-end; font-weight: 700; font-size: 62px; line-height: 1; letter-spacing: -0.03em; }
@@ -1059,7 +1060,7 @@
       // universum weg (NA_KEUZE_MS), daarna schuift de klok omhoog. Kiest het universum niet, zoals in
       // de startfase, dan na GROOT_MAX_MS. Het schrijven begint als de klok op zijn plek staat.
       const GROOT_MS = 1800, GROOT_MAX_MS = 12000, NA_KEUZE_MS = 3500, OMHOOG_MS = 800, SCHRIJF_NA_OMHOOG_MS = 200, CIRKEL = 2 * Math.PI * 230;
-      const stemFase = { id: "", opent: 0, tot: 0, schrijf: false, schrijfGevraagd: "", lus: 0, schrijfTimer: 0, kiest: false, gekozen: false, klokVanaf: 0, grootTot: 0, ping: 0, klokGestart: "", prompt: "", promptVan: 0, promptAan: false, promptGetypt: -1 };
+      const stemFase = { id: "", opent: 0, tot: 0, schrijf: false, schrijfGevraagd: "", lus: 0, schrijfTimer: 0, kiest: false, gekozen: false, klokVanaf: 0, grootTot: 0, ping: 0, klokGestart: "", prompt: "", promptVan: 0, promptAan: false };
       // Het universum mag verder (nieuwe scènes vrij, kiezer): tot het kiest, elke halve seconde opnieuw,
       // want het luistert pas als het de stop van de scène gezien heeft.
       function kiezenStop() {
@@ -1094,12 +1095,11 @@
       }
 
       // ── De prompt vóór de klok ────────────────────────────────────────────────────────────────
-      // Is de scène gekozen, dan wordt na de stilte (RUST_MS) eerst de prompt getypt in het venster,
-      // met de titel erboven en het universum erachter. Daarna komt de klok. aan: false = zoals
-      // vroeger, meteen de klok. tikMs = tijd per letter (wordt korter bij een lange prompt, zodat het
-      // typen binnen max past), blijft = hoe lang de hele prompt nog staat, min/max = de totale duur.
+      // Is de scène gekozen, dan staat na de stilte (RUST_MS) eerst de prompt in het venster, in één
+      // keer helemaal, met het universum erachter. Daarna komt de klok. aan: false = zoals vroeger,
+      // meteen de klok. Hoe lang hij staat: basis + leesMs per letter, tussen min en max (ms).
       // marge = zoveel tijd moet er voor de klok nog over zijn, anders wordt het korter of slaat het over.
-      const PROMPT = { aan: true, tikMs: 14, blijft: 2500, min: 4000, max: 11000, marge: 6000, groot: 30, klein: 20, hoogte: 318, kop: "Prompting next scene..." };
+      const PROMPT = { aan: true, leesMs: 14, basis: 2500, min: 4000, max: 11000, marge: 6000, groot: 25.5, klein: 20, hoogte: 318, kop: "Prompting next scene..." };
       const promptInBeeld = () => !!stemFase.prompt && stemFase.gekozen && Date.now() >= stemFase.promptVan && Date.now() < stemFase.klokVanaf && stemFase.tot > Date.now();
       // De prompt van de scène die het universum koos komt binnen (via Up next): de klok schuift op.
       function promptBinnen(data) {
@@ -1110,19 +1110,16 @@
         if (nu >= stemFase.klokVanaf - 300) return;
         const tekst = String(data.prompt).trim();
         const ruimte = stemFase.tot - PROMPT.marge - stemFase.klokVanaf;
-        const duur = Math.min(PROMPT.max, ruimte, Math.max(PROMPT.min, tekst.length * PROMPT.tikMs + PROMPT.blijft));
+        const duur = Math.min(PROMPT.max, ruimte, Math.max(PROMPT.min, tekst.length * PROMPT.leesMs + PROMPT.basis));
         if (duur < PROMPT.min) return;
         stemFase.prompt = tekst;
         stemFase.promptVan = stemFase.klokVanaf;
-        stemFase.promptTik = Math.min(PROMPT.tikMs, (duur - PROMPT.blijft) / Math.max(1, tekst.length));
         stemFase.klokVanaf += duur;
         stemFase.grootTot = Math.max(stemFase.opent + GROOT_MS, stemFase.klokVanaf + NA_KEUZE_MS);
-        stemFase.promptGetypt = -1;
         vulPrompt();
         planSchrijven();
       }
-      // Titel en tekst in het venster zetten (het vlak is dan nog uit beeld). De tekst staat er meteen
-      // helemaal in, onzichtbaar: zo heeft het venster vanaf het begin zijn hoogte en springt er niets.
+      // Kop en tekst in het venster zetten (het vlak is dan nog uit beeld).
       function vulPrompt() {
         // Boven het venster eerst "Prompting next scene..."; de titel komt pas met het schrijfvenster.
         const kop = el("promptKop");
@@ -1130,7 +1127,7 @@
         kop.style.removeProperty("font-size");
         const vak = el("promptTekst");
         vak.textContent = "";
-        vak.append(maak("span", "promptlabel", "PROMPT:"), maak("span", "getypt"), maak("span", "cursor"), maak("span", "rest", stemFase.prompt));
+        vak.append(maak("span", "promptlabel", "PROMPT:"), maak("span", "", stemFase.prompt), maak("span", "cursor"));
         let px = PROMPT.groot;
         vak.style.fontSize = px + "px";
         while (px > PROMPT.klein && vak.offsetHeight > PROMPT.hoogte) {
@@ -1138,21 +1135,14 @@
           vak.style.fontSize = px + "px";
         }
       }
-      // Elk beeld: zoveel letters zijn er nu getypt.
-      function tekenPrompt(nu) {
+      // Elk beeld: komt het venster in of uit beeld? Erbij de doffe klap van het schrijfvenster (niet
+      // zolang TouchDesigner de scène nog toont).
+      function tekenPrompt() {
         const aan = promptInBeeld();
-        if (aan !== stemFase.promptAan) { stemFase.promptAan = aan; zetFase(); }
-        if (!aan) return;
-        const tekst = stemFase.prompt;
-        const n = Math.min(tekst.length, Math.floor((nu - stemFase.promptVan - 500) / stemFase.promptTik));
-        if (n === stemFase.promptGetypt) return;
-        stemFase.promptGetypt = n;
-        const vak = el("promptTekst");
-        vak.querySelector(".getypt").textContent = tekst.slice(0, Math.max(0, n));
-        vak.querySelector(".rest").textContent = tekst.slice(Math.max(0, n));
-        // Hetzelfde geluid als het schrijven van de scène.
-        // Geen geluid zolang TouchDesigner de scène nog toont. Klaar met typen: de doffe klap van een regeleinde.
-        if (!inScene && n > 0) geluid.typ(n >= tekst.length);
+        if (aan === stemFase.promptAan) return;
+        stemFase.promptAan = aan;
+        zetFase();
+        if (aan && !inScene) geluid.typ(true);
       }
       let tekstGemeld = "", wachtUniversum = false, tekstTijdensStemmen = false;
       el("stemLoop").style.strokeDasharray = String(CIRKEL);
@@ -1201,7 +1191,7 @@
           zetStemGetal(s, tik);
         }
         if (stemFase.schrijfGevraagd !== stemFase.id && nu >= stemFase.grootTot + OMHOOG_MS + SCHRIJF_NA_OMHOOG_MS) vraagSchrijven();
-        tekenPrompt(nu);
+        tekenPrompt();
         stemFase.lus = requestAnimationFrame(tekenStem);
       }
       // Het schrijven van de volgende scène begint; het venster komt pas als er echt geschreven wordt
