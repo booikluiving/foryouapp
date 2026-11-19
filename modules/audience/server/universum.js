@@ -60,18 +60,11 @@ function standUitView(view) {
   const actief = view.activeSituation || null;
   const nu = idVan(actief);
   if (nu) echt[nu] = { w: namenVan(actief.resolved), o: omgevingVan(actief.resolved) };
-  // Klaargezet: zoals op het zaalscherm. Tijdens de startfase kiest het publiek; dan staat er
-  // niets klaar, behalve als de operator zelf koos.
-  const prepared = view.preparedNext || null;
-  const begin = !nu && (view.startPhase ? !!view.startPhase.active : gespeeld.length === 0);
-  let klaar = idVan(prepared);
-  if (klaar && begin && String(prepared.reason || "") !== "operator_chosen") klaar = 0;
-  if (klaar && klaar !== nu && view.resolvedPreparedNext && idVan(view.resolvedPreparedNext) === klaar) {
-    echt[klaar] = { w: namenVan(view.resolvedPreparedNext), o: omgevingVan(view.resolvedPreparedNext) };
-  }
+  // Klaargezet: NIET tonen. De runtime zet de volgende scène al klaar bij de start van de scène; het
+  // zaalscherm onthult hem pas als de kiezer na het stemmen landt, en de keuze kan nog wisselen.
+  // Op de telefoon blijft hij een gewone vrije scène tot hij speelt.
+  const klaar = 0;
   const vrij = vrijeIds(view, gespeeld).filter((id) => id !== nu);
-  if (klaar && !vrij.includes(klaar) && klaar !== nu && !gespeeld.includes(klaar)) vrij.push(klaar);
-  vrij.sort((a, b) => a - b);
   return { run: String(view.showRunId), gespeeld, nu, klaar: klaar === nu ? 0 : klaar, vrij, echt };
 }
 
@@ -150,10 +143,12 @@ function createUniversum({ fetchKaart, log = () => {} } = {}) {
       const scene = scenes.get(id);
       if (!scene) continue;
       const echt = stand.echt[id] || {};
+      // Omgeving is de verrassing: alleen bij wat gespeeld is of nu speelt.
+      const gezien = id === stand.nu || stand.gespeeld.includes(id);
       kaartjes[id] = {
         t: scene.t,
         w: echt.w || scene.w,
-        o: echt.o || scene.o || null,
+        o: gezien ? (echt.o || scene.o || null) : null,
       };
     }
     publiekCache = {
