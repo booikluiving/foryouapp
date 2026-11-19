@@ -8,10 +8,11 @@ const { buildCaptions } = require("../live-captions/caption-builder");
 const { defaultScriptText } = require("../prompt-builder/prompt-builder");
 const { buildTeleprompterView } = require("../teleprompter/teleprompter");
 const { parseScriptText } = require("../text-parser/text-parser");
+const { metIntroRegel } = require("../../../shared/intro/intro");
 
 function createScriptOutput({ promptInput, scriptText, createdAtDate = new Date() }) {
   if (!promptInput || typeof promptInput !== "object") throw new Error("script_agent_missing_prompt_input");
-  const text = String(scriptText == null || scriptText === "" ? defaultScriptText(promptInput) : scriptText);
+  const text = metIntroRegel(promptInput, String(scriptText == null || scriptText === "" ? defaultScriptText(promptInput) : scriptText));
   const parserOutput = parseScriptText({ promptInput, scriptText: text, parsedAtDate: createdAtDate });
   const teleprompter = buildTeleprompterView({ promptInput, parserOutput, createdAtDate });
   const captions = buildCaptions({ promptInput, parserOutput, createdAtDate });
