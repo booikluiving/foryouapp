@@ -93,11 +93,36 @@ function createAudienceApp(options = {}) {
   // telt niet als publiek en kan niets insturen (zie realtime.js).
   // De telefoonpagina vraagt eerst een naam; het kijkvenster kan niets aantikken en slaat die stap over.
   // De naam hieronder wordt nooit verstuurd (een kijkvenster kan niets insturen).
+  // De telefoonpagina blijft na een nieuwe sessie wachten op een nieuwe QR. Een kijkvenster heeft geen
+  // QR: deze pagina houdt de telefoonpagina in een eigen venster en laadt hem opnieuw zodra de sessie
+  // wisselt of de dienst herstart is. Zo loopt het kijkvenster de hele dag mee.
+  app.get(`${KIJK_PATH}/stand`, (_req, res) => {
+    const sessie = service.getActiveSession();
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, sessie: sessie ? Number(sessie.id) : 0, dienst: service.serverInstanceId });
+  });
   app.get(`${KIJK_PATH}/start`, (_req, res) => {
     res.type("html").send(
-      `<!doctype html><meta charset="utf-8"><title>For_You</title><body style="background:#000"><script>
+      `<!doctype html><meta charset="utf-8"><title>For_You</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style>
+<body><iframe id="telefoon" title="Telefoon van het publiek"></iframe><script>
 try { if (!localStorage.getItem("live_name")) localStorage.setItem("live_name", "Kijkvenster"); } catch (e) {}
-location.replace(${JSON.stringify(KIJK_PATH)});
+var telefoon = document.getElementById("telefoon");
+var stand = null;
+function laad() { telefoon.src = ${JSON.stringify(KIJK_PATH)}; }
+function kijk() {
+  fetch(${JSON.stringify(`${KIJK_PATH}/stand`)}, { cache: "no-store" })
+    .then(function (r) { return r.json(); })
+    .then(function (s) {
+      var nu = s.sessie + "|" + s.dienst;
+      if (stand !== null && nu !== stand) laad();
+      stand = nu;
+    })
+    .catch(function () {});
+}
+laad();
+kijk();
+setInterval(kijk, 2000);
 </script></body>`
     );
   });
