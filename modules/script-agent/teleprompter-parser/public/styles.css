@@ -921,7 +921,7 @@ body:not(.stage-td-render-mode) .stage-hierna {
   box-decoration-break: clone;
 }
 
-/* Aanwijzing in de ondertitel: tussen haken en cursief, de gesproken tekst blijft recht. */
+/* Aanwijzing in de ondertitel: tussen sterretjes en cursief, de gesproken tekst blijft recht. */
 .caption-inline-direction {
   font-style: italic;
   font-weight: 500;
