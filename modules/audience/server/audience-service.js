@@ -31,6 +31,7 @@ const { createWordFilter } = require("./word-filter");
 const { createBeoordeling } = require("./beoordeling");
 const { createUniversum } = require("./universum");
 const { fetchTelefoonKaart } = require("../client/paths-client");
+const { createPersonages } = require("./personages");
 
 const SERVICE_VERSION = "audience.0";
 const ACCESS_COOKIE = "fy_audience_access";
@@ -563,6 +564,8 @@ class AudienceService extends EventEmitter {
       fetchKaart: options.clients ? options.clients.fetchTelefoonKaart : fetchTelefoonKaart,
       log: (regel) => console.log(regel),
     });
+    // Personagestab op de telefoon: wie in deze run al gespeeld is (personages.js).
+    this.personages = createPersonages({ service: this, fotoVan: (run, id) => this.beoordeling.personagefoto(run, id) });
     this.pollAutoCloseTimer = null;
     this.internalSimulatorKey = crypto.randomBytes(16).toString("hex");
     this.liveScoreDispatchWork = Promise.resolve();
@@ -758,6 +761,7 @@ class AudienceService extends EventEmitter {
     this.volgUniversum(result.state);
     this.onthoudScene(result.state);
     this.beoordeling.onthoudScene(result.state);
+    this.personages.volg(result.state);
     const active = result.state.activeSituation;
     return this.setFase(active
       ? { fase: "scene", titel: active.title, situationRunId: active.situationRunId || active.situationId || "actief" }
