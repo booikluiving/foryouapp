@@ -26,7 +26,7 @@ function view(over = {}) {
     status: "running",
     startPhase: { active: false },
     playedSituations: [{ situationRunId: "r1", situationId: "situation:1" }],
-    situationRuns: [{ situationRunId: "r1", situationId: "situation:1", resolved: { characters: [{ name: "Peter" }, { name: "Yaël" }], environment: { name: "Grimmige_slaapkamer" } } }],
+    situationRuns: [{ situationRunId: "r1", situationId: "situation:1", resolved: { characters: [{ name: "Peter" }, { name: "Yaël" }], environmentId: "environment:3", environment: { name: "Grimmige_slaapkamer" } } }],
     activeSituation: null,
     preparedNext: { situationId: "situation:4", reason: "after_start_situation" },
     resolvedPreparedNext: { situationId: "situation:4", characters: [{ name: "Emma" }, { name: "Mark" }], environment: { name: "Trein" } },
@@ -46,12 +46,12 @@ async function main() {
   assert.deepEqual(d.gespeeld, [1]);
   assert.equal(d.klaar, 4);
   assert.deepEqual([...d.rel].sort(), [1, 2, 4]);
-  assert.deepEqual(d.echt[1], { w: ["Peter", "Yaël"], o: "Grimmige slaapkamer" }, "wie er echt speelde, ook op een vrije plek");
+  assert.deepEqual(d.echt[1], { w: ["Peter", "Yaël"], o: "Grimmige slaapkamer", e: "environment:3" }, "wie er echt speelde, ook op een vrije plek");
   assert.equal(doelUitView({ status: "idle", showRunId: null, pathEvaluation: { items: [{ situationId: "situation:4", status: "available" }, { situationId: "situation:2", status: "available" }] } }).rel.size, 2, "geen run: startscènes vrij");
   assert.equal(doelUitView(view({ startPhase: { active: true }, playedSituations: [], situationRuns: [], pathEvaluation: { items: [{ situationId: "situation:4", status: "available" }] } })).klaar, 0, "startfase: niets klaargezet tonen");
 
   // Stappen zoals het zaalscherm
-  const u = createUniversum({ fetchKaart: async () => KAART });
+  const u = createUniversum({ fetchKaart: async () => KAART, beeldVersie: (id) => (id === "environment:3" ? "abc" : "") });
   await u.laadKaart(true);
   // Eerste blik midden in een run: meteen de hele stand (springen), klaar ook.
   assert.equal(u.volg(view()), true, "eerste stand is nieuw");
@@ -62,6 +62,10 @@ async function main() {
   assert.ok(!JSON.stringify(p).includes("Geheim"), "titel van een slotscène verlaat de Mac niet");
   assert.deepEqual(p.kaartjes[2], { t: "Tweede", w: ["Lisa"], o: null }, "vrij: titel en personages, geen omgeving");
   assert.equal(p.kaartjes[4].o, "Trein", "gekozen: omgeving zoals het vakje op het zaalscherm");
+  assert.equal(p.kaartjes[1].b, "/audience/public/omgevingsbeeld/3?v=abc", "gespeeld: beeld van de omgeving");
+  assert.ok(!p.kaartjes[2].b, "vrij: geen beeld");
+  assert.equal(u.omgevingZichtbaar("environment:3"), true);
+  assert.equal(u.omgevingZichtbaar("environment:9"), false, "een omgeving die niemand zag: geen beeld");
 
   // Scène 4 speelt: niets klaar, wat nu vrijkomt wacht.
   const speelt = { activeSituation: { situationId: "situation:4", resolved: { characters: [{ name: "Emma" }, { name: "Mark" }] } }, preparedNext: { situationId: "situation:3", reason: "after_start_situation" },

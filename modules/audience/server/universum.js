@@ -28,6 +28,11 @@ function namenVan(resolved) {
   return namen.length ? namen : null;
 }
 
+function omgevingIdVan(resolved) {
+  if (!resolved) return "";
+  return String(resolved.environmentId || (resolved.environment && resolved.environment.id) || "");
+}
+
 function omgevingVan(resolved) {
   const naam = resolved && resolved.environment && resolved.environment.name;
   return naam ? String(naam).replace(/_/g, " ").trim() : null;
@@ -56,11 +61,11 @@ function doelUitView(view, stemming) {
   const runs = Array.isArray(view.situationRuns) ? view.situationRuns : [];
   for (const sr of runs) {
     const id = idVan(sr);
-    if (id && gespeeld.includes(id) && sr.resolved) echt[id] = { w: namenVan(sr.resolved), o: omgevingVan(sr.resolved) };
+    if (id && gespeeld.includes(id) && sr.resolved) echt[id] = { w: namenVan(sr.resolved), o: omgevingVan(sr.resolved), e: omgevingIdVan(sr.resolved) };
   }
-  if (nu && view.activeSituation) echt[nu] = { w: namenVan(view.activeSituation.resolved), o: omgevingVan(view.activeSituation.resolved) };
+  if (nu && view.activeSituation) echt[nu] = { w: namenVan(view.activeSituation.resolved), o: omgevingVan(view.activeSituation.resolved), e: omgevingIdVan(view.activeSituation.resolved) };
   if (klaar && view.resolvedPreparedNext && idVan(view.resolvedPreparedNext) === klaar) {
-    echt[klaar] = { w: namenVan(view.resolvedPreparedNext), o: omgevingVan(view.resolvedPreparedNext) };
+    echt[klaar] = { w: namenVan(view.resolvedPreparedNext), o: omgevingVan(view.resolvedPreparedNext), e: omgevingIdVan(view.resolvedPreparedNext) };
   }
   // Stemming op de startscène: stemmen per scène, koplopers, winnaar (het zaalscherm laat ze oplichten).
   let stem = null;
@@ -78,7 +83,7 @@ function doelUitView(view, stemming) {
 // Hoe lang na een scène het universum hooguit wacht op het zaalscherm (zoals NA_SCENE_MAX daar).
 const VANGNET_MS = 60 * 1000;
 
-function createUniversum({ fetchKaart, log = () => {} } = {}) {
+function createUniversum({ fetchKaart, beeldVersie, log = () => {} } = {}) {
   let kaart = null; // volledige kaart uit de padendienst
   let kaartBezig = null;
   let kaartAt = 0;
@@ -219,6 +224,10 @@ function createUniversum({ fetchKaart, log = () => {} } = {}) {
         w: echt.w || scene.w,
         o: gezien ? (echt.o || scene.o || null) : null,
       };
+      // Het beeld van de omgeving, zoals het vakje op het zaalscherm (omgevingsbeeld.js).
+      const nr = gezien && echt.e ? Number(String(echt.e).replace(/\D+/g, "")) : 0;
+      const v = nr && typeof beeldVersie === "function" ? beeldVersie(echt.e) : "";
+      if (nr && v) kaartjes[id].b = `/audience/public/omgevingsbeeld/${nr}?v=${v}`;
     }
     publiekCache = {
       type: "universum",
@@ -250,7 +259,21 @@ function createUniversum({ fetchKaart, log = () => {} } = {}) {
     return skeletCache;
   }
 
-  return { laadKaart, volg, vrijgave, keuzeGetoond, publiek, skelet, stand: () => stand };
+  // Mag het publiek het beeld van deze omgeving zien? Alleen van gespeeld, wat nu speelt en de gekozen scène.
+  function omgevingZichtbaar(environmentId) {
+    const id = String(environmentId || "");
+    if (!id) return false;
+    const gezien = [...stand.gespeeld, stand.nu, stand.klaar].filter(Boolean);
+    return gezien.some((sceneId) => stand.echt[sceneId] && stand.echt[sceneId].e === id);
+  }
+
+  // Iets buiten de stand veranderde (bv. de beelden van de omgevingen): nieuwe versie van het bericht.
+  function vernieuw() {
+    versie += 1;
+    publiekCache = null;
+  }
+
+  return { laadKaart, volg, vrijgave, keuzeGetoond, publiek, skelet, omgevingZichtbaar, vernieuw, stand: () => stand };
 }
 
 // De kaart verandert alleen als de paden veranderen: met ?v=<versie> mag de telefoon hem bewaren.

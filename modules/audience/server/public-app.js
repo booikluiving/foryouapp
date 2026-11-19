@@ -9,6 +9,7 @@ const { loadExpress } = require("./express-loader");
 const { serveerTabs } = require("./telefoon-tabs");
 const { stuurKaart } = require("./universum");
 const { personagefotoRoute } = require("./personages");
+const { omgevingsbeeldRoute } = require("./omgevingsbeeld");
 
 const express = loadExpress();
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
@@ -137,6 +138,7 @@ function createAudiencePublicApp({ service } = {}) {
 
   // Foto van een vrijgespeeld personage (personagestab), alleen met een geldige pas.
   app.get("/audience/public/personagefoto/:characterId", personagefotoRoute(service, (req) => service.ensureSessionAccessForRequest(req, service.requestAddress(req)).ok));
+  app.get("/audience/public/omgevingsbeeld/:nr", omgevingsbeeldRoute(service, (req) => service.ensureSessionAccessForRequest(req, service.requestAddress(req)).ok));
 
   app.post("/audience/public/debug", (_req, res) => {
     res.status(204).end();

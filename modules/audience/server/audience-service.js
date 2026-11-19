@@ -30,6 +30,7 @@ const {
 const { createWordFilter } = require("./word-filter");
 const { createBeoordeling } = require("./beoordeling");
 const { createUniversum } = require("./universum");
+const { createOmgevingsbeeld } = require("./omgevingsbeeld");
 const { fetchTelefoonKaart } = require("../client/paths-client");
 const { createPersonages } = require("./personages");
 
@@ -560,7 +561,19 @@ class AudienceService extends EventEmitter {
     // De vragen na elke scène (beoordeling.js).
     this.beoordeling = createBeoordeling(this);
     // Het universum op de telefoon (universum.js). Zonder padendienst (tests) blijft de kaart leeg.
+    // Omgevingsbeeld in het kaartje van for_youniverse (omgevingsbeeld.js). Zonder catalogus (tests) geen beeld.
+    this.omgevingsbeeld = createOmgevingsbeeld({
+      fetchImpl: options.omgevingsbeeldFetch || globalThis.fetch,
+      log: (regel) => console.log(regel),
+      opNieuweLijst: () => {
+        if (!this.universum) return;
+        this.universum.vernieuw();
+        this.emit("broadcast", this.universum.publiek());
+      },
+    });
+    this.omgevingsbeeld.laadLijst();
     this.universum = createUniversum({
+      beeldVersie: (environmentId) => this.omgevingsbeeld.versie(environmentId),
       fetchKaart: options.clients ? options.clients.fetchTelefoonKaart : fetchTelefoonKaart,
       log: (regel) => console.log(regel),
     });
