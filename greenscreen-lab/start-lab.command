@@ -23,6 +23,12 @@ if [[ -f "$OUT/td-lab.pid" ]] && kill -0 "$(cat "$OUT/td-lab.pid")" 2>/dev/null;
   echo "lab-TD draait al (pid $(cat "$OUT/td-lab.pid"))"
   exit 0
 fi
+# De TD-waakhond sluit elke andere TD dan de show, behalve met toestemming (scripts/td-waakhond.sh).
+# Stoppen met stop-lab.command geeft de toestemming terug; na de tijd sluit de waakhond hem ook.
+WAAKHOND="${FORYOU_TD_WAAKHOND:-$HOME/ForYou/main/scripts/td-waakhond.sh}"
+if [[ -x "$WAAKHOND" ]]; then
+  "$WAAKHOND" toestemming greenscreen "${LAB_MINUTEN:-180}" 'greenscreen-lab\.toe' || { echo "geen toestemming van de TD-waakhond" >&2; exit 1; }
+fi
 before="$(pgrep -x TouchDesigner | sort || true)"
 open -n -a TouchDesigner "$LAB/td/greenscreen-lab.toe"
 for _ in $(seq 1 40); do

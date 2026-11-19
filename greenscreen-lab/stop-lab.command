@@ -26,3 +26,7 @@ if [[ -f "$OUT/td-lab.pid" ]]; then
   fi
   rm -f "$OUT/td-lab.pid"
 fi
+
+# Toestemming bij de TD-waakhond terug: een lab-TD die nog draait, sluit hij dan zelf.
+WAAKHOND="${FORYOU_TD_WAAKHOND:-$HOME/ForYou/main/scripts/td-waakhond.sh}"
+[[ -x "$WAAKHOND" ]] && "$WAAKHOND" klaar greenscreen >/dev/null && echo "toestemming greenscreen ingetrokken"
