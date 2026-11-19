@@ -92,15 +92,18 @@ function createPersonages({ service, fotoVan, fetchImpl = globalThis.fetch, sips
   function bereken(state = {}) {
     const status = String(state.status || "");
     const run = state.showRunId && !["idle", "reset"].includes(status) ? String(state.showRunId) : null;
-    if (!run) return { run: null, totaal: 0, vrij: [] };
-    const catalog = (state.showRunSnapshot && state.showRunSnapshot.catalog) || {};
+    // Zonder run (inloop) de catalogus die de runtime al laat zien; de startscènes zijn dan al vrij.
+    const catalog = (run && state.showRunSnapshot && state.showRunSnapshot.catalog) || state.catalogPreview || {};
+    if (!Array.isArray(catalog.situations) || !catalog.situations.length) return { run, totaal: 0, vrij: [] };
     const namen = new Map((catalog.characters || []).map((c) => [String(c.id), String(c.name || "").trim()]));
     const spelerOpPlek = new Map((catalog.performers || []).map((p) => [Number(p.performerSlot) || 0, String(p.name || "").trim()]));
     const plekVanSpeler = new Map((catalog.performers || []).map((p) => [String(p.id), Number(p.performerSlot) || 0]));
     const { ids, tellen } = kandidaten(catalog);
-    const sleutel = run + "|" + ids.length;
+    // Zaad voor de plekken: de run, en zonder run de dag (zo blijft het rooster de hele inloop gelijk).
+    const zaad = run || "inloop-" + new Date().toISOString().slice(0, 10);
+    const sleutel = zaad + "|" + ids.length;
     if (plekVoor.sleutel !== sleutel) {
-      plekVoor = { run, sleutel, plekken: new Map(hussel(ids, run).map((id, i) => [id, i])) };
+      plekVoor = { run: zaad, sleutel, plekken: new Map(hussel(ids, zaad).map((id, i) => [id, i])) };
     }
 
     const vrij = new Map();
@@ -121,12 +124,24 @@ function createPersonages({ service, fotoVan, fetchImpl = globalThis.fetch, sips
       }
     });
 
+    // Vrije scènes (zoals de startscènes): hun personages zijn ook vrij, net als in het universum.
+    const items = state.pathEvaluation && Array.isArray(state.pathEvaluation.items) ? state.pathEvaluation.items : [];
+    const vrijeScenes = new Set(items.filter((item) => item && item.status === "available").map((item) => String(item.situationId || "")));
+    for (const sit of catalog.situations) {
+      if (!sit || !vrijeScenes.has(String(sit.id)) || sit.active === false || sit.archivedAt) continue;
+      for (const raw of Array.isArray(sit.characterIds) ? sit.characterIds : []) {
+        const id = String(raw || "");
+        if (!ID_PATROON.test(id) || !plekVoor.plekken.has(id) || vrij.has(id)) continue;
+        vrij.set(id, { id, naam: namen.get(id) || "", spelers: [], scenes: [] });
+      }
+    }
+
     laadCatalogus();
     return {
       run,
       totaal: plekVoor.plekken.size,
       vrij: [...vrij.values()].map((rij) => {
-        const foto = typeof fotoVan === "function" ? fotoVan(run, rij.id) : null;
+        const foto = run && typeof fotoVan === "function" ? fotoVan(run, rij.id) : null;
         return {
           id: rij.id,
           plek: plekVoor.plekken.get(rij.id),

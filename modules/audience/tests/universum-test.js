@@ -47,7 +47,8 @@ async function main() {
   assert.equal(stand.klaar, 4);
   assert.deepEqual(stand.vrij, [2, 4]);
   assert.deepEqual(stand.echt[1], { w: ["Peter", "Yaël"], o: "Grimmige slaapkamer" }, "wie er echt speelde, ook op een vrije plek");
-  assert.deepEqual(standUitView({ showRunId: "x", status: "idle" }).gespeeld, [], "geen run = leeg universum");
+  assert.deepEqual(standUitView({ showRunId: "x", status: "idle" }).gespeeld, [], "geen run = niets gespeeld");
+  assert.deepEqual(standUitView({ status: "idle", showRunId: null, pathEvaluation: { items: [{ situationId: "situation:4", status: "available" }, { situationId: "situation:2", status: "available" }, { situationId: "situation:9", status: "locked" }] } }).vrij, [2, 4], "geen run: startscènes wel vrij");
   assert.equal(standUitView(view({ startPhase: { active: true }, playedSituations: [], situationRuns: [] })).klaar, 0, "startfase: niets klaargezet tonen");
 
   // Publiek: alleen open scènes, op slot nooit
