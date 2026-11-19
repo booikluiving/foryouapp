@@ -186,6 +186,7 @@ function attachAudienceRealtime(server, service, options = {}) {
       reacties: service.getReacties(),
       naSceneVraag: service.getNaSceneVraag(),
       tabs: service.getTelefoonTabs(),
+      personages: service.personages ? service.personages.publiek() : null,
       beoordeling: service.beoordeling.publiek(),
       waarschuwing: service.waarschuwing ? service.waarschuwing.publiek() : null,
       ranking: service.getRanking(),

@@ -29,6 +29,7 @@ const {
 } = require("../simulation/chat-simulator");
 const { createWordFilter } = require("./word-filter");
 const { createBeoordeling } = require("./beoordeling");
+const { createPersonages } = require("./personages");
 
 const SERVICE_VERSION = "audience.0";
 const ACCESS_COOKIE = "fy_audience_access";
@@ -553,6 +554,8 @@ class AudienceService extends EventEmitter {
     this.showGestartRun = this.store.getSetting(SHOW_GESTART_KEY, null) || null;
     // De vragen na elke scène (beoordeling.js).
     this.beoordeling = createBeoordeling(this);
+    // Personagestab op de telefoon: wie in deze run al gespeeld is (personages.js).
+    this.personages = createPersonages({ service: this, fotoVan: (run, id) => this.beoordeling.personagefoto(run, id) });
     this.pollAutoCloseTimer = null;
     this.internalSimulatorKey = crypto.randomBytes(16).toString("hex");
     this.liveScoreDispatchWork = Promise.resolve();
@@ -747,6 +750,7 @@ class AudienceService extends EventEmitter {
     this.volgRun(result.state);
     this.onthoudScene(result.state);
     this.beoordeling.onthoudScene(result.state);
+    this.personages.volg(result.state);
     const active = result.state.activeSituation;
     return this.setFase(active
       ? { fase: "scene", titel: active.title, situationRunId: active.situationRunId || active.situationId || "actief" }

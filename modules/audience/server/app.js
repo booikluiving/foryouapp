@@ -38,6 +38,7 @@ const express = loadExpress();
 const { createWaarschuwing } = require("./waarschuwing");
 const { createSpelersReady } = require("./spelers-ready");
 const { serveerTabs } = require("./telefoon-tabs");
+const { personagefotoRoute } = require("./personages");
 const { KIJK_PATH, isKijkvenster } = require("./kijkvenster");
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
 
@@ -410,6 +411,9 @@ setInterval(kijk, 2000);
   });
   // De snapshot van een personage in deze run: de speler als dat personage, uit de laatste scène waarin
   // het speelde. Zonder snapshot 204.
+  // Personagestab op de telefoon in de zaal (LAN): dezelfde verkleinde foto als op de publieke poort.
+  app.get("/audience/public/personagefoto/:characterId", personagefotoRoute(service));
+
   app.get("/audience/stage/personagefoto/:characterId", (req, res) => {
     const foto = service.beoordeling.personagefoto(String(req.query.run || ""), req.params.characterId);
     if (!foto) { res.set("Cache-Control", "no-store"); return res.status(204).end(); }
