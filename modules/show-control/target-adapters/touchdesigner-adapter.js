@@ -28,7 +28,7 @@ function oscArgsForAction(action) {
     const payload = action.payload || {};
     args.push(String(payload.filePath || ""), String(Number(payload.duur) || 0), payload.uit ? "1" : "0");
   }
-  // td.samen.shot: twee camera's naast elkaar; alles in de OSC-args.
+  // td.samen.shot: twee camera's naast elkaar, eventueel een derde erachter; alles in de OSC-args.
   if (action.command === "td.samen.shot") {
     const payload = action.payload || {};
     const cameras = Array.isArray(payload.cameras) ? payload.cameras : [];
@@ -41,6 +41,17 @@ function oscArgsForAction(action) {
       String(Number(payload.schaal) || 0.6),
       String(Number(payload.omhoog) || 0),
     );
+    // Een derde speler achter de twee voorste: camera, x, omhoog, schaal, masker. Zonder: niets erbij.
+    const achter = payload.achter && typeof payload.achter === "object" ? payload.achter : null;
+    if (achter && !payload.uit) {
+      args.push(
+        String(Number(achter.camera) || 0),
+        String(Number(achter.x) || 0),
+        String(Number(achter.omhoog) || 0),
+        String(Number(achter.schaal) || 0.4),
+        String(achter.masker || ""),
+      );
+    }
   }
   // td.samen.beeld: één beeld met de spelers erin; alles uitgerekend in de OSC-args.
   if (action.command === "td.samen.beeld") {

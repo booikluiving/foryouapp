@@ -191,7 +191,7 @@ const DEFINITIONS = Object.freeze([
     adapter: "touchdesigner",
     ackMode: "fire-and-forget",
     transport: "osc-control-port",
-    description: "Toont twee camera's naast elkaar op het staande scherm (payload: cameras, achtergrond, voorgrond, schaal, omhoog, uit). Per omgeving in samen/samen.json bij de media.",
+    description: "Toont twee camera's naast elkaar op het staande scherm (payload: cameras, achtergrond, voorgrond, schaal, omhoog, achter, uit); met achter staat een derde camera kleiner achter de twee. Per omgeving in samen/samen.json bij de media.",
   }),
   command({
     name: "td.samen.beeld",
