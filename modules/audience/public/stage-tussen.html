@@ -1335,12 +1335,30 @@
           });
         }
         if (data.spelersReady) zetSpelersReady(data.spelersReady);
+        meldKaartjes();
         tekenKaart();
         const was = stage.classList.contains("klaar");
         stage.classList.toggle("klaar", !!data.ready);
         if (data.ready && !was && faseNu === "upnext") geluid.slot();
       }
       setInterval(() => { if (faseNu === "upnext") haalUpNext(); }, 2000);
+      // Up next: de personages als kaartjes in het universum (kleur = in deze scène, grijs = elders vrij).
+      // Aan of uit in Admin (Personages in Up next). Het universum tekent ze; buiten Up next weg.
+      function meldKaartjes(fase = faseNu) {
+        try { meldKaartjesNu(fase); } catch (_err) {}
+      }
+      function meldKaartjesNu(fase) {
+        const k = upNext && upNext.kaartjes;
+        const aan = fase === "upnext" && settings.upnextKaartjes === true && k && Array.isArray(k.kleur) && k.kleur.length;
+        const absoluut = (item) => ({ ...item, foto: new URL(item.foto, location.origin).href });
+        // De strook tussen de titel en de spelers: daarbuiten komen geen kaartjes (in px van het universum).
+        const kader = el("universum").getBoundingClientRect();
+        const titel = el("p-titel").getBoundingClientRect();
+        const spelers = el("p-spelers").getBoundingClientRect();
+        const schaal = kader.width ? (el("universum").clientWidth || kader.width) / kader.width : 1;
+        const strook = { boven: Math.max(0, (titel.bottom - kader.top) * schaal), onder: spelers.height ? (spelers.top - kader.top) * schaal : (kader.bottom - kader.top) * schaal };
+        naarUniversum({ kaartjes: aan ? { sceneId: k.sceneId, strook, kleur: k.kleur.map(absoluut), grijs: (k.grijs || []).map(absoluut) } : null });
+      }
 
       // Ready per speler: het kader van wie klaar is wordt groen. Zijn ze er allemaal (en is de tekst
       // er), dan telt het scherm af en begint de scène vanzelf.
@@ -1434,6 +1452,7 @@
         stage.classList.toggle("stemfase", fase === "stem");
         stage.classList.toggle("kiest", fase === "stem" && stemFase.kiest);
         stage.classList.toggle("upnextfase", fase === "upnext");
+        meldKaartjes(fase);
         if (fase === "upnext" && faseNu !== "upnext") haalUpNext();
         // Het scherm 'Doe mee': er is nog geen scène gekozen, dus geen personages bij de spelers.
         if (fase === "inloop" && upNext) wisUpNext();
@@ -2031,6 +2050,7 @@
       // ── Chat ──────────────────────────────────────────────────────────────────────────────────
       function toepassen(next) {
         settings = next || settings || {};
+        meldKaartjes();
         plaatsCamera();
         const plek = chatPlek();
         const vlak = el("p-chat");

@@ -117,6 +117,9 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
       RUNTIME_AUDIENCE_URL: url("audience"),
       AUDIENCE_PORT: String(poort.audience),
       AUDIENCE_DB_DIR: path.join(dataDir, "audience"),
+      // Foto's van personages: eigen mappen, nooit die van de show (een nieuwe run wist oude runmappen).
+      AUDIENCE_PERSONAGEFOTO_DIR: path.join(dataDir, "audience", "personages"),
+      AUDIENCE_PERSONAGEARCHIEF_DIR: path.join(dataDir, "audience", "archief"),
       AUDIENCE_RUNTIME_URL: url("runtime"),
       AUDIENCE_SCRIPT_AGENT_URL: url("script-agent"),
       AUDIENCE_SHOW_CONTROL_URL: url("show-control"),

@@ -10,6 +10,8 @@ const path = require("node:path");
 
 const map = fs.mkdtempSync(path.join(os.tmpdir(), "personagefoto-"));
 process.env.AUDIENCE_PERSONAGEFOTO_DIR = map;
+const archief = fs.mkdtempSync(path.join(os.tmpdir(), "personagearchief-"));
+process.env.AUDIENCE_PERSONAGEARCHIEF_DIR = archief;
 const { createBeoordeling } = require("../server/beoordeling");
 
 const instellingen = new Map();
@@ -57,5 +59,27 @@ assert.deepEqual(b.personagefoto("run:b", "character:28").jpeg, jpeg(5));
 assert.deepEqual(fs.readdirSync(map), ["run_b"], "alleen de map van de lopende run blijft");
 assert.equal(createBeoordeling(service).personagefoto("run:a", "character:15"), null);
 
+// Archief over runs heen: alleen snapshots met iemand in beeld, max vier per personage, vast- blijft.
+const inArchief = (id) => fs.readdirSync(path.join(archief, id)).sort();
+assert.deepEqual(inArchief("character_28").length, 1, "Marit: alleen de foto met iemand in beeld (run b), niet het lege beeld");
+assert.equal(inArchief("character_15").length, 2, "Bobbie: twee verschillende snapshots");
+assert.equal(b.personagekaart("run:b", "character:28").bron, "run", "zonder keuze eerst de snapshot van deze run");
+assert.equal(b.personagekaart("run:b", "character:15").bron, "archief", "geen snapshot in deze run: nieuwste uit het archief");
+assert.deepEqual(b.personagekaart("run:b", "character:15").jpeg, jpeg(4));
+assert.equal(b.personagekaart("run:b", "character:99"), null);
+for (const teken of [11, 12, 13, 14, 15]) {
+  b.onthoudScene(state("run:b", `sr:${teken}`, [slot("p1", "character:15", "Bobbie")]));
+  b.zetFoto({ plek: 1, jpeg: jpeg(teken), punten: 2 });
+}
+assert.equal(inArchief("character_15").length, 4, "max vier");
+const gekozen = inArchief("character_15")[0];
+fs.renameSync(path.join(archief, "character_15", gekozen), path.join(archief, "character_15", `vast-${gekozen}`));
+b.onthoudScene(state("run:b", "sr:20", [slot("p1", "character:15", "Bobbie")]));
+b.zetFoto({ plek: 1, jpeg: jpeg(20), punten: 2 });
+assert.ok(inArchief("character_15").includes(`vast-${gekozen}`), "de gekozen foto gaat nooit weg");
+assert.equal(inArchief("character_15").length, 4);
+assert.equal(b.personagekaart("run:b", "character:15").bron, "gekozen", "gekozen wint van de snapshot van deze run");
+
 fs.rmSync(map, { recursive: true, force: true });
+fs.rmSync(archief, { recursive: true, force: true });
 console.log("personagefoto-test: alles ok");

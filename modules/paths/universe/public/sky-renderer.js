@@ -4028,6 +4028,7 @@
         etiketten.push({ regels, x: stemMidden.x, y: top - 50 - (regels.length - 1) * 24, grootte: 19, kleur: "#ffffff", alpha: 1, regelhoogte: 24 });
       }
       etiketten.forEach((etiket) => podiumTekst(ctx, etiket.regels, etiket.x, etiket.y, etiket.grootte, etiket.kleur, etiket.alpha * fade, etiket.regelhoogte));
+      podiumKaartjes(ctx, pos);
     }
 
     function podiumLus(nu) {
@@ -4068,6 +4069,124 @@
       podiumIndeling();
       podium.vuil = true;
       if (!podium.lus) podium.lus = window.requestAnimationFrame(podiumLus);
+    }
+
+    // ---------- Kaartjes in Up next ----------
+    //
+    // Het zaalscherm stuurt in Up next de personages van de volgende scène (kleur) en tot vijf uit andere
+    // vrije scènes (grijs). Kleur: vierkante kaartjes naast elkaar rechtsboven de gekozen ster. Grijs:
+    // één klein kaartje rechtsboven de eigen ster. Maten in px van een zaalscherm van 1080 breed; ze
+    // drijven mee met de ster en groeien niet mee met de camera.
+    const KAART = { groot: 96, tussen: 10, klein: 56, afstand: 26, kleinAfstand: 14, marge: 40 };
+    const kaart = { lijst: null, alpha: 0, beelden: new Map() };
+
+    function kaartBeeld(url) {
+      if (!url) return null;
+      let beeld = kaart.beelden.get(url);
+      if (beeld) return beeld;
+      if (kaart.beelden.size > 60) kaart.beelden.clear();
+      beeld = { klaar: false, kleur: null, grijs: null };
+      kaart.beelden.set(url, beeld);
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        // Eén keer een vierkante uitsnede maken (gezicht zit in het bovenste deel), in kleur en grijs.
+        const zijde = Math.min(img.naturalWidth, img.naturalHeight);
+        if (!zijde) return;
+        const sx = (img.naturalWidth - zijde) / 2;
+        const sy = (img.naturalHeight - zijde) * 0.3;
+        const maak = (filter) => {
+          const doek = document.createElement("canvas");
+          doek.width = 192;
+          doek.height = 192;
+          const c = doek.getContext("2d");
+          if (filter) c.filter = filter;
+          c.drawImage(img, sx, sy, zijde, zijde, 0, 0, 192, 192);
+          return doek;
+        };
+        beeld.kleur = maak("");
+        beeld.grijs = maak("grayscale(1) contrast(0.9) brightness(0.85)");
+        beeld.klaar = true;
+        podium.vuil = true;
+      };
+      img.onerror = () => { kaart.beelden.delete(url); };
+      img.src = url;
+      return beeld;
+    }
+
+    function zetKaartjes(lijst) {
+      const geldig = lijst && Number(lijst.sceneId) > 0 && Array.isArray(lijst.kleur) ? lijst : null;
+      const sleutel = (l) => (l ? JSON.stringify([l.sceneId, l.strook, l.kleur.map((k) => k.foto), (l.grijs || []).map((k) => k.foto)]) : "");
+      if (sleutel(geldig) === sleutel(kaart.lijst)) return;
+      const nieuw = !kaart.lijst || !geldig || Number(geldig.sceneId) !== Number(kaart.lijst.sceneId);
+      kaart.lijst = geldig;
+      if (geldig) {
+        geldig.kleur.forEach((k) => kaartBeeld(k.foto));
+        (geldig.grijs || []).forEach((k) => kaartBeeld(k.foto));
+        if (nieuw) {
+          // Rustig invloeien.
+          kaart.alpha = 0;
+          podium.tweens.push({ doel: kaart, sleutel: "alpha", van: 0, naar: 1, start: Date.now(), ms: 900, ease: (t) => t * t * (3 - 2 * t), klaar: () => {} });
+        }
+      }
+      podium.vuil = true;
+    }
+
+    function podiumKaartjes(ctx, pos) {
+      const lijst = kaart.lijst;
+      if (!lijst || kaart.alpha <= 0 || !regie.pad || !regie.pad.punten) return;
+      const sterId = Number(lijst.sceneId);
+      if (Number(regie.pad.b) !== sterId) return;
+      const m = ctx.getTransform();
+      const opScherm = (punt) => ({ x: m.a * punt.x + m.c * punt.y + m.e, y: m.b * punt.x + m.d * punt.y + m.f });
+      const s = podium.breedte / 1080;
+      // De strook waar kaartjes mogen staan (tussen de titel en de spelers van het zaalscherm).
+      const boven = Number(lijst.strook && lijst.strook.boven) || 0;
+      const onder = Number(lijst.strook && lijst.strook.onder) || podium.hoogte;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.setLineDash([]);
+      const teken = (doek, x, y, maat, rand, alpha) => {
+        ctx.globalAlpha = alpha * kaart.alpha;
+        ctx.drawImage(doek, x, y, maat, maat);
+        ctx.strokeStyle = rand;
+        ctx.lineWidth = Math.max(1, 1.5 * s);
+        ctx.strokeRect(x + ctx.lineWidth / 2, y + ctx.lineWidth / 2, maat - ctx.lineWidth, maat - ctx.lineWidth);
+      };
+      // Kleur: rij rechtsboven de gekozen ster, binnen beeld gehouden.
+      const ster = pos.get(sterId);
+      const klaar = lijst.kleur.map((item) => kaart.beelden.get(item.foto)).filter((beeld) => beeld && beeld.klaar);
+      let rij = null;
+      if (ster && klaar.length) {
+        const p = opScherm(ster);
+        const maat = KAART.groot * s;
+        const breed = klaar.length * maat + (klaar.length - 1) * KAART.tussen * s;
+        const marge = KAART.marge * s;
+        let x = p.x + KAART.afstand * s;
+        if (x + breed > podium.breedte - marge) x = podium.breedte - marge - breed;
+        x = Math.max(marge, x);
+        const y = Math.max(boven + KAART.tussen * s, marge, p.y - KAART.afstand * s - maat);
+        rij = { x, y, breed, maat };
+      }
+      // Grijs: rechtsboven de eigen ster, als die in beeld is; hooguit vijf, niet over elkaar.
+      const bezet = [];
+      for (const item of lijst.grijs || []) {
+        if (bezet.length >= 5) break;
+        const beeld = kaart.beelden.get(item.foto);
+        const punt = pos.get(Number(item.sceneId));
+        if (!beeld || !beeld.klaar || !punt || Number(item.sceneId) === sterId) continue;
+        const p = opScherm(punt);
+        const maat = KAART.klein * s;
+        const x = p.x + KAART.kleinAfstand * s;
+        const y = p.y - KAART.kleinAfstand * s - maat;
+        if (x < 0 || y < boven || x + maat > podium.breedte || y + maat > onder) continue;
+        if (bezet.some((b) => Math.abs(b.x - x) < maat + 6 * s && Math.abs(b.y - y) < maat + 6 * s)) continue;
+        if (rij && x < rij.x + rij.breed + 6 * s && x + maat > rij.x - 6 * s && y < rij.y + rij.maat + 6 * s && y + maat > rij.y - 6 * s) continue;
+        bezet.push({ x, y });
+        teken(beeld.grijs, x, y, maat, "rgba(255,255,255,0.3)", 0.75);
+      }
+      if (rij) klaar.forEach((beeld, index) => teken(beeld.kleur, rij.x + index * (rij.maat + KAART.tussen * s), rij.y, rij.maat, "rgba(255,255,255,0.9)", 1));
+      ctx.restore();
     }
 
     // ---------- Regie op het zaalscherm ----------
@@ -4158,6 +4277,8 @@
       const bericht = ev.data;
       if (!bericht || bericht.bron !== "for_you-scherm") return;
       if (bericht.verder && regieVrijgave) regieVrijgave();
+      // Up next: de personages als kaartjes (null = weg).
+      if (Object.prototype.hasOwnProperty.call(bericht, "kaartjes")) zetKaartjes(bericht.kaartjes);
       // Het scherm verlegt de strook van de kaart (de chat is hoger of lager gezet).
       if (Array.isArray(bericht.zicht)) {
         regieZicht = regieZichtUit(bericht.zicht.join(","));

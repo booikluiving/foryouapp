@@ -467,7 +467,7 @@ function createBeoordeling(service) {
     personagefoto.reset();
   }
 
-  return { onthoudScene, zetFoto, personagefoto: (showRunId, characterId) => personagefoto.van(showRunId, characterId), start, sluit, klokOpnieuw, antwoord, publiek, stand, zetInstellingen, reset, uitslagen: () => uitslagen.slice() };
+  return { onthoudScene, zetFoto, personagefoto: (showRunId, characterId) => personagefoto.van(showRunId, characterId), personagekaart: (showRunId, characterId) => personagefoto.kaart(showRunId, characterId), start, sluit, klokOpnieuw, antwoord, publiek, stand, zetInstellingen, reset, uitslagen: () => uitslagen.slice() };
 }
 
 module.exports = { createBeoordeling, normalizeInstellingen };

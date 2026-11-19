@@ -5,6 +5,7 @@
 // herstart van de dienst de beelden niet kwijtraakt; bij de eerste snapshot van een nieuwe run gaan
 // de mappen van eerdere runs weg.
 
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -12,11 +13,17 @@ const path = require("node:path");
 const MAX_BYTES = 150 * 1024;
 // Onder dit cijfer staat er niemand in beeld (zie show/spelersfoto/spelersfoto.py).
 const MIN_PUNTEN = 0.2;
+// Archief over runs heen: per personage de vier nieuwste snapshots met iemand in beeld, om uit te kiezen.
+// Een bestand dat met "vast-" begint is gekozen: dat wordt het kaartje en gaat nooit weg.
+const ARCHIEF_MAX = 4;
 
 const veilig = (tekst) => String(tekst || "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
 
 function createPersonagefoto(opties = {}) {
   const map = opties.map || process.env.AUDIENCE_PERSONAGEFOTO_DIR || path.join(os.homedir(), "ForYou", "spelersfoto", "personages");
+  const archief = opties.archief || process.env.AUDIENCE_PERSONAGEARCHIEF_DIR || path.join(os.homedir(), "ForYou", "spelersfoto", "archief");
+  // bestand → { jpeg, at } van gelezen archieffoto's
+  const archiefGeheugen = new Map();
   // run → (personage → { jpeg, at })
   const geheugen = new Map();
 
@@ -43,6 +50,7 @@ function createPersonagefoto(opties = {}) {
     } catch (_err) {
       // Schijf niet beschikbaar: het beeld staat nog in het geheugen.
     }
+    if (!(Number.isFinite(punten) && punten < MIN_PUNTEN)) bewaarInArchief(showRunId, characterId, jpeg, at);
     return { ok: true, characterId: String(characterId), at };
   }
 
@@ -63,7 +71,60 @@ function createPersonagefoto(opties = {}) {
     }
   }
 
-  return { zet, van, reset: () => geheugen.clear(), map };
+  const archiefMap = (characterId) => path.join(archief, veilig(characterId).replace(/^character_?/, "character_"));
+  const stempel = (ms) => new Date(ms).toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 19);
+
+  function bewaarInArchief(showRunId, characterId, jpeg, at) {
+    try {
+      const doelMap = archiefMap(characterId);
+      fs.mkdirSync(doelMap, { recursive: true });
+      const hash = crypto.createHash("sha1").update(jpeg).digest("hex").slice(0, 10);
+      const namen = fs.readdirSync(doelMap).filter((naam) => naam.endsWith(".jpg"));
+      if (namen.some((naam) => naam.includes(hash))) return;
+      const doel = path.join(doelMap, `${stempel(at)}-${veilig(showRunId)}-${hash}.jpg`);
+      fs.writeFileSync(`${doel}.tmp`, jpeg);
+      fs.renameSync(`${doel}.tmp`, doel);
+      const alle = fs.readdirSync(doelMap).filter((naam) => naam.endsWith(".jpg"));
+      const vast = alle.filter((naam) => naam.startsWith("vast-")).length;
+      const los = alle.filter((naam) => !naam.startsWith("vast-")).sort().reverse();
+      for (const naam of los.slice(Math.max(0, ARCHIEF_MAX - vast))) fs.rmSync(path.join(doelMap, naam), { force: true });
+    } catch (_err) {
+      // Archief niet beschikbaar: de show gaat gewoon door.
+    }
+  }
+
+  function leesArchief(bestand) {
+    try {
+      const at = Math.round(fs.statSync(bestand).mtimeMs);
+      const bekend = archiefGeheugen.get(bestand);
+      if (bekend && bekend.at === at) return bekend;
+      const jpeg = fs.readFileSync(bestand);
+      if (jpeg.length < 100) return null;
+      if (archiefGeheugen.size > 200) archiefGeheugen.clear();
+      const foto = { jpeg, at };
+      archiefGeheugen.set(bestand, foto);
+      return foto;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  // De foto voor het kaartje van een personage: de gekozen foto uit het archief, anders de snapshot van
+  // deze run, anders de nieuwste uit het archief.
+  function kaart(showRunId, characterId) {
+    if (!characterId) return null;
+    let namen = [];
+    try { namen = fs.readdirSync(archiefMap(characterId)).filter((naam) => naam.endsWith(".jpg")).sort().reverse(); } catch (_err) { namen = []; }
+    const vast = namen.find((naam) => naam.startsWith("vast-"));
+    if (vast) { const foto = leesArchief(path.join(archiefMap(characterId), vast)); if (foto) return { ...foto, bron: "gekozen" }; }
+    const run = van(showRunId, characterId);
+    if (run) return { ...run, bron: "run" };
+    const nieuwste = namen.find((naam) => !naam.startsWith("vast-"));
+    if (nieuwste) { const foto = leesArchief(path.join(archiefMap(characterId), nieuwste)); if (foto) return { ...foto, bron: "archief" }; }
+    return null;
+  }
+
+  return { zet, van, kaart, reset: () => geheugen.clear(), map, archief };
 }
 
 module.exports = { createPersonagefoto };

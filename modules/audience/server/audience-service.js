@@ -125,6 +125,8 @@ const STAGE_OUTPUT_DEFAULTS = Object.freeze({
   tussenChatGrootte: 36,
   // Volume van de geluidjes van het zaalscherm (telwerk, relais, kiezer), in procenten.
   tussenGeluid: 50,
+  // Up next: personages als kaartjes met foto in het universum (kleur = in deze scène, grijs = elders vrij).
+  upnextKaartjes: false,
   // Rapport, blad van de publiekscamera: kop en uitleg (waarom je gezicht gemeten wordt). Leeg = niet tonen.
   // Live camerabeeld bij inloop en stemmen: plek en breedte (0 = uit).
   tussenCameraX: 640,
@@ -252,6 +254,7 @@ function normalizeStageSettings(raw = {}, base = STAGE_OUTPUT_DEFAULTS) {
     tussenChatHoogte: clampInt(src.tussenChatHoogte, 100, 1920, Number(base.tussenChatHoogte ?? STAGE_OUTPUT_DEFAULTS.tussenChatHoogte)),
     tussenChatGrootte: clampInt(src.tussenChatGrootte, 16, 120, Number(base.tussenChatGrootte ?? STAGE_OUTPUT_DEFAULTS.tussenChatGrootte)),
     tussenGeluid: clampInt(src.tussenGeluid, 0, 100, Number(base.tussenGeluid ?? STAGE_OUTPUT_DEFAULTS.tussenGeluid)),
+    upnextKaartjes: src.upnextKaartjes === undefined ? !!base.upnextKaartjes : !!src.upnextKaartjes,
     tussenCameraX: clampInt(src.tussenCameraX, 0, 1080, Number(base.tussenCameraX ?? STAGE_OUTPUT_DEFAULTS.tussenCameraX)),
     tussenCameraY: clampInt(src.tussenCameraY, 0, 1900, Number(base.tussenCameraY ?? STAGE_OUTPUT_DEFAULTS.tussenCameraY)),
     tussenCameraBreedte: clampInt(src.tussenCameraBreedte, 0, 1080, Number(base.tussenCameraBreedte ?? STAGE_OUTPUT_DEFAULTS.tussenCameraBreedte)),
