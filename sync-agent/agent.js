@@ -144,6 +144,7 @@ function createAgent(config) {
     mediaMissing: (files) => fromWebsite(requestJson(`${config.websiteUrl}/sync/v1/media/ontbrekend`, { method: "POST", headers: websiteHeaders(), body: { files }, timeoutMs: 120000 })),
     mediaUrl: (relativePath, sha256) => `${config.websiteUrl}/sync/v1/media?pad=${encodeURIComponent(relativePath)}${sha256 ? `&sha256=${sha256}` : ""}`,
     schrijver: () => fromWebsite(requestJson(`${config.websiteUrl}/sync/v1/schrijver`, { headers: websiteHeaders() })),
+    voorbeelden: () => fromWebsite(requestJson(`${config.websiteUrl}/sync/v1/schrijver/voorbeelden`, { headers: websiteHeaders() })),
   };
   const scriptAgentUrl = String(config.scriptAgentUrl || "http://127.0.0.1:3027").replace(/\/+$/, "");
 
@@ -459,8 +460,10 @@ function createAgent(config) {
       return null;
     }
     let state = readState();
+    let standGelezen = null;
+    const standVanWebsite = async () => standGelezen || (standGelezen = await website.stand());
     try {
-      const stand = await website.stand();
+      const stand = await standVanWebsite();
       const nr = stand.schrijver && Number(stand.schrijver.nr);
       if (nr && nr !== state.schrijverNr) {
         const released = await website.schrijver();
@@ -477,6 +480,23 @@ function createAgent(config) {
       }
     } catch (err) {
       if (!err.fromWebsite) log(`prompt van de website niet gezet: ${err.message}`);
+    }
+    // Voorbeeldscènes: per situatie wint de nieuwste, dus alles opnieuw sturen kan geen kwaad.
+    try {
+      const stand = await standVanWebsite();
+      const nr = stand.schrijver && Number(stand.schrijver.voorbeelden);
+      if (nr && nr !== state.voorbeeldenNr) {
+        const lijst = await website.voorbeelden();
+        const result = await requestJson(`${scriptAgentUrl}/v0/script-agent/operator/voorbeelden`, {
+          method: "PUT",
+          body: { voorbeelden: lijst.voorbeelden || [] },
+        });
+        state = { ...readState(), voorbeeldenNr: nr };
+        saveState(state);
+        if (result.veranderd) log(`voorbeeldscènes van de website: ${result.veranderd} veranderd, ${result.voorbeelden.length} in de Script Agent`);
+      }
+    } catch (err) {
+      if (!err.fromWebsite) log(`voorbeeldscènes van de website niet gezet: ${err.message}`);
     }
     return {
       systemPrompt: settings.systemPrompt,

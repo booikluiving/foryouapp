@@ -372,7 +372,7 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
       conflict: state.conflict ? { id: state.conflict.id, basis: state.conflict.basis } : null,
       overwriteLocal: state.overwriteLocal || null,
       // The prompt of the Script Agent that was put through to the show (its number only).
-      schrijver: { nr: (schrijver.vrijgegeven() || {}).nr || 0 },
+      schrijver: { nr: (schrijver.vrijgegeven() || {}).nr || 0, voorbeelden: schrijver.voorbeeldenVoorShow().nr },
     };
   }
 
@@ -407,6 +407,8 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
     await schrijver.meldingVanShow(prompts);
     res.json(syncStand());
   }));
+
+  sync.get("/schrijver/voorbeelden", (_req, res) => res.json({ ok: true, ...schrijver.voorbeeldenVoorShow() }));
 
   sync.get("/schrijver", (_req, res) => {
     const released = schrijver.vrijgegeven();
@@ -713,6 +715,9 @@ function createEditorApp({ catalogUrl, pathsUrl, store, authenticate, config = {
   api.get("/schrijver/bewaard", proef(async (req) => schrijver.bewaard(req.editorUser)));
   api.post("/schrijver/bewaard", proef((req) => schrijver.bewaar(req.editorUser, sent(req))));
   api.delete("/schrijver/bewaard/:id", proef(async (req) => schrijver.verwijder(req.editorUser, req.params.id)));
+  api.get("/schrijver/voorbeelden", proef(async (req) => schrijver.voorbeelden(req.editorUser)));
+  api.post("/schrijver/voorbeelden", proef((req) => schrijver.maakVoorbeeld(req.editorUser, sent(req))));
+  api.delete("/schrijver/voorbeelden/:situationId", proef(async (req) => schrijver.haalVoorbeeldWeg(req.editorUser, req.params.situationId)));
   // The scene comes in as it is written (server-sent events), as in the operator chat.
   api.post("/schrijver/chat", (req, res) => {
     let closed = false;

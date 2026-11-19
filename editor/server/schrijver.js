@@ -39,6 +39,8 @@ function createSchrijver({ dir, catalogUrl, env = process.env, fetchImpl } = {})
 
   const statePath = path.join(dir, "stand.json");
   const lastPromptInput = new Map();
+  // Per persoon de laatst klaargezette scène: de opdracht die een voorbeeldscène meekrijgt.
+  const lastKlaar = new Map();
   const busy = new Set();
 
   async function catalog() {
@@ -171,7 +173,9 @@ function createSchrijver({ dir, catalogUrl, env = process.env, fetchImpl } = {})
       },
     });
     lastPromptInput.set(sessionId(email), promptInput);
-    return { tekst: service.buildOperatorPrompt(promptInput, await service.readSettings()) };
+    const tekst = service.buildOperatorPrompt(promptInput, await service.readSettings());
+    lastKlaar.set(sessionId(email), { situationId: situation.id, titel: title(situation), tekst });
+    return { tekst };
   }
 
   async function chat(email, body = {}, emit = () => {}) {
@@ -244,6 +248,57 @@ function createSchrijver({ dir, catalogUrl, env = process.env, fetchImpl } = {})
     return bewaard(email);
   }
 
+  // ---- Voorbeeldscènes: per situatie de best gelukte versie. De show-Mac haalt ze op en begint
+  // elke run met deze scènes in het gesprek van de schrijver. Weghalen = een lege tekst, zodat
+  // de show-Mac het ook weghaalt. ----
+  const voorbeeldPath = path.join(dir, "voorbeelden.json");
+
+  function readVoorbeelden() {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(voorbeeldPath, "utf8"));
+      return { nr: Number(parsed.nr) || 0, voorbeelden: Array.isArray(parsed.voorbeelden) ? parsed.voorbeelden : [] };
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+      return { nr: 0, voorbeelden: [] };
+    }
+  }
+
+  function zetVoorbeeld(item) {
+    const huidig = readVoorbeelden();
+    const lijst = [item, ...huidig.voorbeelden.filter((other) => other.situationId !== item.situationId)];
+    writeFileAtomic(voorbeeldPath, `${JSON.stringify({ nr: huidig.nr + 1, voorbeelden: lijst }, null, 2)}\n`);
+  }
+
+  function voorbeelden(email) {
+    return { voorbeelden: readVoorbeelden().voorbeelden.filter((item) => item.tekst).map((item) => ({ ...item, eigen: item.by === email })) };
+  }
+
+  async function maakVoorbeeld(email, body = {}) {
+    const tekst = clean(body.tekst);
+    if (!tekst) throw new SchrijverFout(400, "leeg", "Er is geen scène om als voorbeeld te nemen.");
+    const klaar = lastKlaar.get(sessionId(email));
+    const situationId = String(body.situationId || (klaar && klaar.situationId) || "");
+    if (!situationId) throw new SchrijverFout(409, "geen_situatie", "Van welke situatie is deze scène? Zet hem opnieuw klaar en schrijf hem nog eens.");
+    const situatie = (await catalogus()).situaties.find((item) => item.id === situationId);
+    if (!situatie) throw new SchrijverFout(400, "situatie", "Deze situatie staat niet (meer) in de catalogus.");
+    // De opdracht waarmee de show de scène klaarzet; een vervolgvraag in de chat is geen opdracht.
+    const vraag = klaar && klaar.situationId === situationId ? klaar.tekst : clean(body.vraag);
+    zetVoorbeeld({ situationId, titel: situatie.naam, vraag, tekst, by: email, at: new Date().toISOString() });
+    return voorbeelden(email);
+  }
+
+  function haalVoorbeeldWeg(email, situationId) {
+    const bestaand = readVoorbeelden().voorbeelden.find((item) => item.situationId === situationId && item.tekst);
+    if (!bestaand) throw new SchrijverFout(404, "onbekend", "Deze voorbeeldscène is er niet (meer).");
+    zetVoorbeeld({ situationId, titel: bestaand.titel, vraag: "", tekst: "", by: email, at: new Date().toISOString() });
+    return voorbeelden(email);
+  }
+
+  // For the show Mac: everything, the removed ones too.
+  function voorbeeldenVoorShow() {
+    return readVoorbeelden();
+  }
+
   // ---- What has been tried: the models and the scenes they wrote, read from a file in the data folder ----
   function proeven() {
     try {
@@ -285,7 +340,7 @@ function createSchrijver({ dir, catalogUrl, env = process.env, fetchImpl } = {})
     }
   }
 
-  return { bewaar, bewaard, catalogus, chat, doorvoeren, klaarzetten, meldingVanShow, proeven, saveProef, stand, vanShow, verwijder, vrijgegeven, wis };
+  return { bewaar, bewaard, catalogus, chat, doorvoeren, haalVoorbeeldWeg, klaarzetten, maakVoorbeeld, meldingVanShow, proeven, saveProef, stand, vanShow, verwijder, voorbeelden, voorbeeldenVoorShow, vrijgegeven, wis };
 }
 
 module.exports = { SchrijverFout, createSchrijver };

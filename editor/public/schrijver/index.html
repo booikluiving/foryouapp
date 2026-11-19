@@ -56,7 +56,7 @@
   #gesprek .meta button { font: inherit; color: #fff; border: 1px solid rgba(255, 255, 255, .5); padding: 1px 8px; margin-left: 10px; }
   #gesprek .meta button:hover { background: #fff; color: #000; }
   #gesprek .meta button:disabled { opacity: 1; border-color: transparent; padding-left: 0; }
-  #bewaard-deel, #proeven-deel { grid-column: 1 / -1; }
+  #bewaard-deel, #voorbeelden-deel, #proeven-deel { grid-column: 1 / -1; }
   .rij3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
   @media (max-width: 560px) { .rij3 { grid-template-columns: 1fr; } }
   .tabel { overflow-x: auto; }
@@ -149,6 +149,13 @@
       <div><label class="kop" for="proef-situatie">Situatie</label><select id="proef-situatie"></select></div>
     </div>
     <div id="proef-scenes"></div>
+  </section>
+
+  <section id="voorbeelden-deel">
+    <h2>Voorbeeldscènes</h2>
+    <p class="zacht">Per situatie de best gelukte scène. Elke run begint met deze scènes in het gesprek; een scène met een voorbeeld blijft dicht bij dezelfde opbouw en punchline.</p>
+    <p id="voorbeelden-leeg" class="zacht">Nog geen voorbeeldscènes. Onder een geschreven scène staat de knop Maak voorbeeldscène.</p>
+    <ul class="bewaard" id="voorbeelden"></ul>
   </section>
 
   <section id="bewaard-deel">

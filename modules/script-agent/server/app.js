@@ -157,6 +157,17 @@ function createScriptAgentApp(options = {}) {
     res.json({ ok: true, settings: await operatorService.saveSettings(req.body || {}) });
   }));
 
+  // Voorbeeldscènes per situatie (kalibreren). PUT zet er een of meer neer; per situatie wint de nieuwste,
+  // een lege tekst haalt hem weg. De website stuurt ze via de sync-agent.
+  app.get("/v0/script-agent/operator/voorbeelden", asyncRoute(async (_req, res) => {
+    res.json(await operatorService.voorbeeldStand());
+  }));
+
+  app.put("/v0/script-agent/operator/voorbeelden", asyncRoute(async (req, res) => {
+    const body = req.body || {};
+    res.json(await operatorService.zetVoorbeelden(Array.isArray(body.voorbeelden) ? body.voorbeelden : [body]));
+  }));
+
   app.get("/v0/script-agent/operator/secrets/status", asyncRoute(async (_req, res) => {
     res.json(await operatorService.secretsStatus());
   }));

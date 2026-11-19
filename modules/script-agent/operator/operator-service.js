@@ -25,6 +25,7 @@ const {
   readScriptOutputs,
   scriptAgentDbDir,
 } = require("../script-output/state-store");
+const { createVoorbeeldStore, kalibratieBerichten, voorbeeldOpdracht } = require("./voorbeeldscenes");
 
 const OPERATOR_SETTINGS_SCHEMA_VERSION = "script-agent.operator-settings.v0";
 const OPERATOR_DRAFT_SCHEMA_VERSION = "script-agent.operator-draft.v0";
@@ -360,6 +361,15 @@ function operatorSettingsFilePath() {
   return assertPathUnderApp(path.join(scriptAgentDbDir(), "operator-settings.json"));
 }
 
+function voorbeeldscenesFilePath() {
+  return assertPathUnderApp(path.join(scriptAgentDbDir(), "voorbeeldscenes.json"));
+}
+
+// Alleen een echte run kalibreert; de tests op de website en de scènetest niet.
+function isShowRunSession(sessionId) {
+  return /^show-run-/.test(String(sessionId || ""));
+}
+
 function operatorSecretsFilePath() {
   return assertPathUnderApp(path.join(scriptAgentDbDir(), "operator-secrets.json"));
 }
@@ -392,6 +402,7 @@ function defaultOperatorSettings() {
     temperature: 0.8,
     reasoningEffort: "low",
     firstSceneLengthFactor: DEFAULT_FIRST_SCENE_LENGTH_FACTOR,
+    kalibreren: true,
     fallbackModel: DEFAULT_FALLBACK_MODEL,
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     promptTemplate: DEFAULT_PROMPT_TEMPLATE,
@@ -416,6 +427,7 @@ function normalizeOperatorSettings(input = {}, base = defaultOperatorSettings())
     reasoningEffort: normalizeReasoningEffort(source.reasoningEffort ?? base.reasoningEffort),
     reasoningByModel: normalizeReasoningByModel(source.reasoningByModel ?? base.reasoningByModel),
     firstSceneLengthFactor: normalizeFirstSceneLengthFactor(source.firstSceneLengthFactor ?? base.firstSceneLengthFactor),
+    kalibreren: (source.kalibreren ?? base.kalibreren) !== false,
     fallbackModel: normalizeText(source.fallbackModel || base.fallbackModel || DEFAULT_FALLBACK_MODEL, 120) || DEFAULT_FALLBACK_MODEL,
     systemPrompt: withoutTitleRule(normalizeText(source.systemPrompt || base.systemPrompt || DEFAULT_SYSTEM_PROMPT, 12000)),
     promptTemplate: normalizeText(source.promptTemplate || base.promptTemplate || DEFAULT_PROMPT_TEMPLATE, 12000),
@@ -612,6 +624,7 @@ function createOperatorService(options = {}) {
   const onScriptOutput = typeof options.onScriptOutput === "function" ? options.onScriptOutput : null;
   const log = typeof options.log === "function" ? options.log : (line) => console.log(line);
   const sessions = new Map();
+  const voorbeelden = createVoorbeeldStore({ filePath: voorbeeldscenesFilePath() });
   let settingsCache = null;
   let draft = null;
   let stageState = {
@@ -1151,6 +1164,7 @@ function createOperatorService(options = {}) {
   function clearSession(sessionId) {
     const session = getSession(sessionId);
     session.messages = [];
+    session.kalibratie = null;
     stageState.messages = [];
     opmerking.bewaard = "";
     opmerking.laatsteScene = "";
@@ -1362,11 +1376,26 @@ function createOperatorService(options = {}) {
     const rawUserText = normalizeText(body.message, 12000)
       || normalizeText(stageState.draft, 12000)
       || normalizeText(activeDraft && activeDraft.text, 12000);
-    const userText = session.messages.length === 0
+    // Kalibreren: een nieuwe run begint met de voorbeeldscènes als eerdere scènes in het gesprek.
+    // Ze blijven de hele run vooraan staan en schuiven niet weg.
+    const kalibreert = settings.kalibreren && isShowRunSession(sessionId);
+    if (kalibreert && !session.kalibratie) {
+      session.kalibratie = kalibratieBerichten(await voorbeelden.actief());
+      if (session.kalibratie.length) {
+        log(JSON.stringify({ at: nowIso(), event: "script_agent_kalibratie", sessionId, voorbeelden: session.kalibratie.length / 2 }));
+      }
+    }
+    const kalibratie = session.kalibratie || [];
+    // Zonder eerdere scène als maat loopt de eerste scène uit; met voorbeelden is die maat er al.
+    const userText = session.messages.length === 0 && !kalibratie.length
       ? shortenLengthRule(rawUserText, settings.firstSceneLengthFactor)
       : rawUserText;
     if (!userText) throw new Error("script_agent_operator_message_required");
     if (!promptInput) throw new Error("script_agent_operator_prompt_input_missing");
+    // Een scène met een voorbeeld krijgt het voorbeeld onder de opdracht. Alleen voor het model;
+    // in het gesprek blijft de gewone opdracht staan.
+    const voorbeeld = kalibreert && promptInput.situation ? await voorbeelden.voor(promptInput.situation.situationId) : null;
+    const modelText = voorbeeld ? `${userText}\n${voorbeeldOpdracht(voorbeeld)}` : userText;
 
     // Eerste keus; valt terug op DeepSeek als Claude weigert, faalt of geen sleutel heeft.
     let provider = wantsOpenRouter ? "openrouter" : wantsClaude && anthropicKey ? "claude" : "deepseek";
@@ -1409,7 +1438,7 @@ function createOperatorService(options = {}) {
     emitStage("chat_started");
     emit({ type: "start", assistantId, provider, model });
 
-    const history = session.messages.slice(-8).map((message) => ({
+    const history = [...kalibratie, ...session.messages.slice(-8)].map((message) => ({
       role: message.role === "assistant" ? "assistant" : "user",
       content: normalizeText(message.content, 12000),
     }));
@@ -1447,6 +1476,8 @@ function createOperatorService(options = {}) {
         situationId: promptInput.situation && promptInput.situation.situationId,
         sessionId,
         historyMessages: history.length,
+        kalibratieMessages: kalibratie.length,
+        voorbeeld: Boolean(voorbeeld),
         provider,
         model,
         reasoningEffort: settings.reasoningEffort,
@@ -1465,20 +1496,20 @@ function createOperatorService(options = {}) {
       }));
     };
     const runDeepSeek = (deepSeekModel, effort) => streamDeepSeekText({
-      apiKey: deepSeekKey, model: deepSeekModel, settings, effort, history, userText, onText: (text) => publish(text),
+      apiKey: deepSeekKey, model: deepSeekModel, settings, effort, history, userText: modelText, onText: (text) => publish(text),
     });
 
     let result;
     try {
       if (provider === "openrouter") {
         result = await streamOpenRouterText({
-          apiKey: openRouterKey, model, settings, effort: settings.reasoningEffort, history, userText, onText: (text) => publish(text),
+          apiKey: openRouterKey, model, settings, effort: settings.reasoningEffort, history, userText: modelText, onText: (text) => publish(text),
         });
       } else if (provider === "claude") {
         let claudeError = null;
         try {
           result = await streamClaudeText({
-            apiKey: anthropicKey, model, settings, effort: settings.reasoningEffort, history, userText, onText: (text) => publish(text),
+            apiKey: anthropicKey, model, settings, effort: settings.reasoningEffort, history, userText: modelText, onText: (text) => publish(text),
           });
         } catch (err) {
           claudeError = err;
@@ -1532,8 +1563,9 @@ function createOperatorService(options = {}) {
     logGeneration();
     const priced = result.priced;
     recordUsage(session, priced, provider);
-    session.messages.push({ role: "user", content: userText, at: userMessage.at });
-    session.messages.push({ role: "assistant", content: fullText, at: nowIso() });
+    const beurtSituatie = promptInput.situation && promptInput.situation.situationId || null;
+    session.messages.push({ role: "user", content: userText, at: userMessage.at, situationId: beurtSituatie });
+    session.messages.push({ role: "assistant", content: fullText, at: nowIso(), situationId: beurtSituatie });
     session.laatsteBeurt = { situationId: promptInput.situation && promptInput.situation.situationId, berichten: session.messages.length };
     assistantMessage.streaming = false;
     const bucket = session.providerUsage[provider];
@@ -1716,6 +1748,25 @@ function createOperatorService(options = {}) {
     };
   }
 
+  // ---- Voorbeeldscènes (kalibreren) ----
+  async function voorbeeldStand() {
+    const settings = await readSettings();
+    const lijst = await voorbeelden.actief();
+    const sessie = sessions.get(normalizeSessionId(stageState.sessionId));
+    return {
+      ok: true,
+      kalibreren: settings.kalibreren,
+      voorbeelden: lijst,
+      inDezeRun: sessie && sessie.kalibratie ? sessie.kalibratie.length / 2 : null,
+    };
+  }
+
+  async function zetVoorbeelden(items) {
+    const { veranderd } = await voorbeelden.zet(items);
+    if (veranderd) log(JSON.stringify({ at: nowIso(), event: "script_agent_voorbeelden", veranderd }));
+    return { ...(await voorbeeldStand()), veranderd };
+  }
+
   async function status() {
     const settings = await readSettings();
     let latestScriptOutput = null;
@@ -1772,6 +1823,8 @@ function createOperatorService(options = {}) {
     status,
     streamChat,
     undo,
+    voorbeeldStand,
+    zetVoorbeelden,
     updateStageControl,
     updateStageDraft,
     updateStageStyle,

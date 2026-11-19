@@ -1,7 +1,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const state = { stand: null, catalogus: null, proeven: { modellen: [], situaties: [], scenes: [] }, bezig: false, vuil: false };
+const state = { voorbeelden: [], situatieId: "", stand: null, catalogus: null, proeven: { modellen: [], situaties: [], scenes: [] }, bezig: false, vuil: false };
 
 // What the browser remembers per person: the model, thinking and length last chosen.
 function onthoud(key, value) {
@@ -89,7 +89,22 @@ function vulPrompts() {
 }
 
 // The line under a scene: what it is, and the button that keeps it for the team.
-function metaRegel(info, vraag, tekst, model = "") {
+function metaRegel(info, vraag, tekst, model = "", situationId = "") {
+  const voorbeeld = el("button", { type: "button", class: "licht" }, "Maak voorbeeldscène");
+  voorbeeld.addEventListener("click", async () => {
+    const situatie = state.catalogus && state.catalogus.situaties.find((item) => item.id === situationId);
+    const huidig = state.voorbeelden.find((item) => item.situationId === situationId);
+    const naamSituatie = situatie ? situatie.naam : "deze situatie";
+    if (!confirm(huidig ? `Deze scène wordt de voorbeeldscène van "${naamSituatie}" in plaats van die van ${naam(huidig.by)}.` : `Deze scène wordt de voorbeeldscène van "${naamSituatie}".`)) return;
+    voorbeeld.disabled = true;
+    try {
+      toonVoorbeelden((await api("/voorbeelden", { method: "POST", body: { tekst, vraag, situationId } })).voorbeelden);
+      voorbeeld.textContent = "Voorbeeldscène";
+    } catch (err) {
+      voorbeeld.disabled = false;
+      meld(err.message, "fout");
+    }
+  });
   const knop = el("button", { type: "button" }, "Bewaar");
   knop.addEventListener("click", async () => {
     knop.disabled = true;
@@ -101,7 +116,7 @@ function metaRegel(info, vraag, tekst, model = "") {
       meld(err.message, "fout");
     }
   });
-  return el("p", { class: "meta" }, info, knop);
+  return el("p", { class: "meta" }, info, knop, " ", voorbeeld);
 }
 
 function toonGesprek(messages) {
@@ -109,7 +124,7 @@ function toonGesprek(messages) {
   messages.forEach((message, index) => {
     const antwoord = message.role === "assistant";
     regels.push(el("p", { class: antwoord ? "antwoord" : "vraag" }, message.content));
-    if (antwoord && message.content) regels.push(metaRegel(`${message.content.length} tekens`, index ? messages[index - 1].content : "", message.content));
+    if (antwoord && message.content) regels.push(metaRegel(`${message.content.length} tekens`, index ? messages[index - 1].content : "", message.content, "", message.situationId || ""));
   });
   $("gesprek").replaceChildren(...regels);
   $("gesprek").scrollTop = $("gesprek").scrollHeight;
@@ -141,6 +156,28 @@ function toonBewaard(list) {
       el("details", {}, el("summary", {}, "Waarmee geschreven"),
         el("pre", {}, `${item.model || ""}\n\nHOOFDPROMPT\n${item.systemPrompt}\n\nOPDRACHT PER SCÈNE\n${item.promptTemplate}${item.vraag ? `\n\nVERSTUURD\n${item.vraag}` : ""}`)),
       el("div", { class: "knoppen" }, gebruik, weg)));
+  }));
+}
+
+// Per situatie de best gelukte scène. De show begint elke run met deze scènes.
+function toonVoorbeelden(list) {
+  state.voorbeelden = list;
+  $("voorbeelden-leeg").hidden = list.length > 0;
+  $("voorbeelden").replaceChildren(...list.map((item) => {
+    const weg = el("button", { type: "button", class: "licht" }, "Haal weg");
+    weg.addEventListener("click", async () => {
+      if (!confirm(`De voorbeeldscène van "${item.titel}" weghalen? De show gebruikt hem dan niet meer.`)) return;
+      try {
+        toonVoorbeelden((await api(`/voorbeelden/${encodeURIComponent(item.situationId)}`, { method: "DELETE" })).voorbeelden);
+      } catch (err) {
+        meld(err.message, "fout");
+      }
+    });
+    return el("li", {}, el("details", {},
+      el("summary", {}, item.titel, el("span", { class: "zacht" }, `${naam(item.by)} · ${when(item.at)}`)),
+      el("pre", {}, item.tekst),
+      item.vraag ? el("details", {}, el("summary", {}, "Opdracht"), el("pre", {}, item.vraag)) : null,
+      el("div", { class: "knoppen" }, weg)));
   }));
 }
 
@@ -201,7 +238,7 @@ async function stuur(message) {
       const regels = event.text.split("\n").filter((line) => /^[^:\n]{1,40}:\s/.test(line)).length;
       const kosten = event.kosten ? ` · ${(event.kosten * 100).toFixed(2).replace(".", ",")} cent` : "";
       const duur = event.seconden ? ` · ${String(event.seconden).replace(".", ",")} s` : "";
-      log.append(metaRegel(`${regels} regels · ${event.text.length} tekens · ${event.model}${event.fallback ? " (terugval)" : ""}${duur}${kosten} · ${event.tokensIn} in, ${event.tokensUit} uit`, message, event.text, event.model));
+      log.append(metaRegel(`${regels} regels · ${event.text.length} tekens · ${event.model}${event.fallback ? " (terugval)" : ""}${duur}${kosten} · ${event.tokensIn} in, ${event.tokensUit} uit`, message, event.text, event.model, state.situatieId));
     } else if (event.type === "error") {
       log.append(el("p", { class: "mis" }, event.error));
     }
@@ -326,6 +363,7 @@ $("proef-situatie").addEventListener("change", toonProefScenes);
 $("schrijf").addEventListener("click", () => werk(async () => {
   await bewaar();
   const characterIds = [...$("personages").querySelectorAll("input:checked")].map((input) => input.value);
+  state.situatieId = $("situatie").value;
   const klaar = await api("/klaarzetten", { method: "POST", body: { situationId: $("situatie").value, environmentId: $("omgeving").value, characterIds } });
   const regels = Math.round(Number($("lengte").value));
   await stuur(regels > 0 ? `${klaar.tekst}\n- Deze scène is ongeveer ${regels} regels.` : klaar.tekst);
@@ -377,8 +415,10 @@ async function ververs() {
 (async () => {
   try {
     let kept;
-    [state.stand, state.catalogus, kept, state.proeven] = await Promise.all([api(""), api("/catalogus"), api("/bewaard"), api("/proeven").catch(() => state.proeven)]);
+    let vb;
+    [state.stand, state.catalogus, kept, state.proeven, vb] = await Promise.all([api(""), api("/catalogus"), api("/bewaard"), api("/proeven").catch(() => state.proeven), api("/voorbeelden")]);
     toonBewaard(kept.bewaard);
+    toonVoorbeelden(vb.voorbeelden);
     vulModellen();
     toonProeven();
     vulPrompts();
