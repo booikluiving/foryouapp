@@ -54,7 +54,7 @@
         { "plek": [2, 0], "key": "brent", "label": "BRENT", "soort": "geluid", "actie": { "cue": "sq5-brent" } },
         { "plek": [2, 1], "key": "megan", "label": "MEGAN", "soort": "geluid", "actie": { "cue": "sq5-megan" } },
         { "plek": [2, 2], "key": "booi", "label": "BOOI", "soort": "geluid", "actie": { "cue": "sq5-booi" } },
-        { "plek": [2, 3], "key": "mics", "label": "MICS", "soort": "geluid", "actie": { "cue": "sq5-mics" } },
+        { "plek": [2, 3], "key": "zaalmic", "label": "ZAAL\nMIC", "soort": "geluid", "actie": { "zaalmic": "houden", "max": 30 } },
         { "plek": [2, 4], "key": "muziek", "label": "MUZIEK", "soort": "geluid", "actie": { "cue": "sq5-muziek" } },
         { "plek": [2, 5], "key": "main", "label": "MAIN", "soort": "geluid", "actie": { "cue": "sq5-main" } },
         { "plek": [2, 6], "key": "stem", "label": "STEM", "soort": "publiek", "actie": { "stem": "start" } },

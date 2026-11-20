@@ -421,6 +421,35 @@ async function doOpname(knop) {
   return { ok, opname: ok ? !loopt : loopt, pad: result.body && result.body.pad, fout: ok ? undefined : result.body };
 }
 
+// ZAAL MIC: de microfoon van de operator klinkt over de speakers zolang de knop aan staat.
+// De helper van de microfoon (hardware/mic-dictation, :3231) geeft het geluid door aan de uitgang
+// van de Mac naar de tafel en sluit hem vanzelf na `max` seconden. "wissel": druk = open, druk = dicht.
+// "houden": open zolang de knop ingedrukt is.
+async function doZaalMic(knop, fase) {
+  const houden = knop.actie.zaalmic === "houden";
+  const base = `${CONFIG.micKnopUrl}/api`;
+  if (CONFIG.droog) {
+    if (fase !== "los") await flash(knop.key, "MIC\nOPEN", "actief");
+    return { ok: true, droog: true, zaalmic: fase === "los" ? "uit" : "aan" };
+  }
+  let aan = fase !== "los";
+  if (!houden) {
+    if (fase === "los") return { ok: true, los: "niets" };
+    const nu = await fetchJson(`${base}/state`, { timeoutMs: 800 });
+    aan = !(nu.ok && nu.body && nu.body.zaal && nu.body.zaal.open);
+  }
+  const max = Number(knop.actie.max) > 0 ? `?max=${Number(knop.actie.max)}` : "";
+  const result = await fetchJson(`${base}/zaal/${aan ? `aan${max}` : "uit"}`, { method: "POST", timeoutMs: 2000 });
+  if (result.ok) {
+    await flash(knop.key, aan ? "MIC\nOPEN" : "ZAAL\nMIC", aan ? "actief" : "klaar", aan ? FLASH_MS : 300);
+    return { ok: true, zaalmic: aan ? "aan" : "uit" };
+  }
+  const waarom = String((result.body && result.body.fout) || "");
+  const tekst = /dicteren/.test(waarom) ? "MIC\nBEZET" : /aangesloten/.test(waarom) ? "MIC\nLOS" : "MIC\nFAIL";
+  await flash(knop.key, tekst, "mislukt");
+  return { ok: false, zaalmic: "niet open", status: result.status, fout: waarom || result.body };
+}
+
 // Alleen de muziek van de show (inloop, loading, sfeergeluid uit TouchDesigner) aan of uit.
 // Ander geluid van de Mac blijft klinken; de SQ-5 blijft ongemoeid. TD luistert op UDP 8008
 // naar /osc/showmuziek_uit (1 = uit, 0 = aan), zie show/td-qhub-test/apply_show_muziek_patch.py.
@@ -663,7 +692,10 @@ async function perform(key, fase) {
   }
   if (!knop || !knop.actie) throw new Error(`geen knop met actie: ${key}`);
   const actie = knop.actie;
-  if (fase === "los") return Number.isInteger(actie.omgeving) ? await doOmgevingLos(knop) : { ok: true, los: "niets" };
+  if (fase === "los") {
+    if (actie.zaalmic) return await doZaalMic(knop, "los");
+    return Number.isInteger(actie.omgeving) ? await doOmgevingLos(knop) : { ok: true, los: "niets" };
+  }
   try {
     if (actie.cue) return await doCue(knop);
     if (actie.link) return await doLink(knop);
@@ -678,6 +710,7 @@ async function perform(key, fase) {
     if (actie.autocam) return await doAutocam(knop);
     if (actie.showmuziek) return await doShowMuziek(knop);
     if (actie.opname) return await doOpname(knop);
+    if (actie.zaalmic) return await doZaalMic(knop, "");
     if (actie.simulatie) return await doSimulatie(knop);
     if (actie.engels) return await doEngels(knop);
     if (actie.regie) return await doRegie(knop);

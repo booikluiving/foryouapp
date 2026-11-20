@@ -68,6 +68,8 @@ function validate(deck) {
     if (actie.stem && actie.stem !== "start") errors.push(`${where}: stem ${actie.stem} onbekend (start)`);
     if (actie.extra && !["shot", "geluid"].includes(actie.extra)) errors.push(`${where}: extra ${actie.extra} onbekend (shot of geluid)`);
     if (actie.personage && actie.personage !== "nummer") errors.push(`${where}: personage ${actie.personage} onbekend (nummer)`);
+    if (actie.zaalmic && !["wissel", "houden"].includes(actie.zaalmic)) errors.push(`${where}: zaalmic ${actie.zaalmic} onbekend (wissel of houden)`);
+    if (actie.zaalmic && knop.soort !== "geluid") errors.push(`${where}: zaalmic is soort geluid`);
   };
   for (const page of deck.paginas) {
     const spots = new Set();
@@ -187,7 +189,7 @@ function buttonControl(deck, knop, pageNumbers, scriptsDir, plaatjes) {
 
   // omgevingsknoppen melden ook het loslaten: een knop die "houden" is (haperen) gaat dan weer uit
   const up = [];
-  if (knop.actie && (knop.actie.scenePlek || Number.isInteger(knop.actie.omgeving))) {
+  if (knop.actie && (knop.actie.scenePlek || Number.isInteger(knop.actie.omgeving) || knop.actie.zaalmic === "houden")) {
     up.push({
       id: `act_${knop.key}_los`,
       type: "action",
