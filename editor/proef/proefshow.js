@@ -14,6 +14,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { DatabaseSync } = require("node:sqlite");
 const { createTestpubliek } = require("./testpubliek");
+const { createTestpadKeuze } = require("./testpad-keuze");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const ONDERDELEN = ["catalog", "paths", "algorithm", "runtime", "script-agent", "show-control", "audience"];
@@ -376,6 +377,12 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
     personages: () => vraag("audience", "/audience/admin/simulation/schakel", { method: "POST", body: { wat: "personages" } }),
   };
 
+  // Test pad op de universumpagina: de keuze van de show met de catalogus en paden van de website.
+  const testpad = createTestpadKeuze({
+    catalogUrl: String(env.PROEF_TESTPAD_CATALOG_URL || "http://127.0.0.1:3021").replace(/\/+$/, ""),
+    pathsUrl: String(env.PROEF_TESTPAD_PATHS_URL || "http://127.0.0.1:3022").replace(/\/+$/, ""),
+  });
+
   // Een nagespeeld publiek dat de run vanzelf afspeelt (testpubliek.js).
   const testpubliek = createTestpubliek({ url, vraag, runNu, knoppen: KNOPPEN, log });
 
@@ -515,6 +522,14 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
     if (pathname === "/proefshow/telefoon") return telefoon(req, res);
     // Het universum op de telefoon: zelfde toegang als de telefoon, eigen pagina.
     if (pathname === "/proefshow/universum") return telefoon(req, res, "/audience/universum");
+    if (pathname === "/proefshow/api/testpad" && req.method === "POST") {
+      const body = await leesBody(req);
+      try {
+        return json(res, 200, { ok: true, ...(await testpad.kies(body)) });
+      } catch (err) {
+        return json(res, 502, { ok: false, error: "testpad_fout", message: String(err && err.message || err) });
+      }
+    }
     if (pathname === "/proefshow/api/testpubliek" && req.method === "POST") {
       const body = await leesBody(req);
       const antwoord = body.doe === "stop" ? await testpubliek.stop() : body.doe === "verder" ? testpubliek.verder() : await testpubliek.start(body);
