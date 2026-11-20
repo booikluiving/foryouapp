@@ -556,6 +556,12 @@ async function observeSituation(event) {
     observation.personageVoorkeur = eerderPersonage;
     state.personageVoorkeurWacht = wachtPersonage.filter((item) => item !== eerderPersonage);
   }
+  const wachtZaal = Array.isArray(state.zaalWacht) ? state.zaalWacht : [];
+  const eerderZaal = wachtZaal.find((item) => item.situationRunId && item.situationRunId === observation.situationRunId);
+  if (eerderZaal) {
+    observation.zaalOordeel = eerderZaal;
+    state.zaalWacht = wachtZaal.filter((item) => item !== eerderZaal);
+  }
   const wachtOordeel = Array.isArray(state.oordeelWacht) ? state.oordeelWacht : [];
   const eerderOordeel = wachtOordeel.find((item) => item.situationRunId && item.situationRunId === observation.situationRunId);
   if (eerderOordeel) {
@@ -589,6 +595,42 @@ async function observeSituation(event) {
     observation,
     scoreFeed: state.scoreFeed,
   };
+}
+
+// Het zaaloordeel: de operator of de spelers vonden dat de scène werkte (of niet), van -1 tot 1, met de
+// knop op het deck of de applausmeter op de telefoon. Het laatste oordeel per scène telt. Komt het binnen
+// terwijl de scène nog speelt, dan wacht het tot de scène beoordeeld is.
+async function observeZaalOordeel(event = {}) {
+  const state = await getScoringContext(event.showRunId);
+  const waarde = Number(event.waarde);
+  if (!Number.isFinite(waarde) || !event.situationRunId) return { ok: false, error: "waarde_of_scene_ontbreekt" };
+  const zaal = {
+    waarde: Math.round(Math.max(-1, Math.min(1, waarde)) * 1000) / 1000,
+    bron: String(event.bron || "").slice(0, 40),
+    situationRunId: String(event.situationRunId),
+    at: new Date().toISOString(),
+  };
+  const observations = Array.isArray(state.observations) ? state.observations : [];
+  const observation = observations.find((item) => item && item.situationRunId === zaal.situationRunId);
+  if (observation) {
+    observation.zaalOordeel = zaal;
+    berekenScore(observation, state);
+  } else {
+    state.zaalWacht = (Array.isArray(state.zaalWacht) ? state.zaalWacht : []).filter((item) => item.situationRunId !== zaal.situationRunId);
+    state.zaalWacht.push(zaal);
+  }
+  state.scoreFeed = buildScoreFeed({
+    showRunId: state.showRunId,
+    catalog: state.catalog,
+    observations: state.observations,
+    liveObservation: state.liveAudienceObservation || null,
+    config: state.config,
+  });
+  state.updatedAt = new Date().toISOString();
+  state.log = Array.isArray(state.log) ? state.log : [];
+  state.log.push({ type: "zaal_oordeel", at: state.updatedAt, ...zaal, observedScore: observation ? observation.observedScore : null, wacht: !observation });
+  await saveScoringContextState(state);
+  return { ok: true, zaal, wacht: !observation, observedScore: observation ? observation.observedScore : null, scoreFeed: state.scoreFeed };
 }
 
 // Het oordeel na de scène (de thermometer): het gemiddelde van -1 tot 1, het zwaarste deel van de
@@ -777,6 +819,7 @@ module.exports = {
   observeAudienceSignals: achterElkaar(perRun, observeAudienceSignals),
   observeLabelVoorkeur: achterElkaar(perRun, observeLabelVoorkeur),
   observePersonageVoorkeur: achterElkaar(perRun, observePersonageVoorkeur),
+  observeZaalOordeel: achterElkaar(perRun, observeZaalOordeel),
   observeSituation: achterElkaar(perRun, observeSituation),
   // Eerst de chat van die scène laten beoordelen (hooguit 3 s), dan het oordeel verwerken.
   observeSceneOordeel: async (event = {}) => {

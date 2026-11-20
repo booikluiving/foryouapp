@@ -17,6 +17,7 @@ const {
   observeLabelVoorkeur,
   observePersonageVoorkeur,
   observeSceneOordeel,
+  observeZaalOordeel,
   observeSituation,
   readAlgorithmConfig,
   simulateSituationObservation,
@@ -149,6 +150,12 @@ function createAlgorithmApp(options = {}) {
   // Publieksvraag na de scène: wat vond je van de scène (het oordeel, het zwaarste deel van de score).
   app.post("/v0/algorithm/events/scene-oordeel", asyncRoute(async (req, res) => {
     const result = await observeSceneOordeel(req.body || {});
+    res.status(result.ok ? 201 : 400).json(result);
+  }));
+
+  // Zaaloordeel van de operator of de spelers (knop op het deck, applausmeter): -1 tot 1 per scène.
+  app.post("/v0/algorithm/events/zaal-oordeel", asyncRoute(async (req, res) => {
+    const result = await observeZaalOordeel(req.body || {});
     res.status(result.ok ? 201 : 400).json(result);
   }));
 

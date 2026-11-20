@@ -49,6 +49,9 @@ function defaultAlgorithmConfig() {
       // direct na die scène komen haar score × dit gewicht mee. Zo loopt een run vaker verder in een pad
       // dat het publiek leuk vindt.
       padVolgende: 1,
+      // Zaaloordeel: het oordeel van de operator of de spelers (knop op het deck, applausmeter op de
+      // telefoon), van -1 tot 1. Weegt minder dan het publiek (oordeel 3), maar telt ook als er niemand stemt.
+      zaal: 1,
     },
     // Grenzen tegen spammen: zoveel telt er per telefoon per scène.
     grenzen: {
@@ -125,6 +128,7 @@ function normalizeAlgorithmConfig(input = {}, options = {}) {
       labelVoorkeur: rounded(clampNumber(sourceWeights.labelVoorkeur, -10, 10, baseWeights.labelVoorkeur ?? 1), 3),
       personageVoorkeur: rounded(clampNumber(sourceWeights.personageVoorkeur, -10, 10, baseWeights.personageVoorkeur ?? 1), 3),
       padVolgende: rounded(clampNumber(sourceWeights.padVolgende, 0, 10, baseWeights.padVolgende ?? 1), 3),
+      zaal: rounded(clampNumber(sourceWeights.zaal, 0, 10, baseWeights.zaal ?? 1), 3),
       sceneRepeatPenalty: rounded(clampNumber(
         sourceWeights.sceneRepeatPenalty ?? source.sceneRepeatPenalty,
         0,
@@ -288,6 +292,13 @@ function mensenInScene(event = {}) {
   return { per, metRefs: !!(refs || bewaard) };
 }
 
+// Het zaaloordeel (operator of spelers): -1 tot 1, of null als het niet gegeven is.
+function zaalOordeelVan(event = {}) {
+  const zaal = event.zaalOordeel;
+  if (!zaal || typeof zaal !== "object" || !Number.isFinite(Number(zaal.waarde))) return null;
+  return rounded(clampNumber(Number(zaal.waarde), -1, 1, 0), 4);
+}
+
 // Het oordeel na de scène: gemiddelde van -1 tot 1 en hoeveel telefoons stemden.
 function oordeelVan(event = {}) {
   const oordeel = event.oordeel;
@@ -369,13 +380,16 @@ function scoreOnderdelen(event = {}, config = defaultAlgorithmConfig(), options 
     telefoons,
     zaalgeluid: rounded(roomSoundLift(event) * safeNumber(weights.roomSound, 0), 4),
     camera: rounded(cameraPoints(event, weights), 4),
+    // Het zaaloordeel van de operator of de spelers (-1..1), als dat gegeven is.
+    zaalOordeel: zaalOordeelVan(event),
   };
   delen.punten = {
     oordeel: rounded((oordeel ? oordeel.gemiddelde : 0) * safeNumber(weights.oordeel, 3), 4),
     chat: rounded(chat * safeNumber(weights.chat, 1), 4),
     likes: rounded(likes * safeNumber(weights.likes, 0.5), 4),
+    zaal: rounded((delen.zaalOordeel || 0) * safeNumber(weights.zaal, 1), 4),
   };
-  delen.totaal = rounded(delen.punten.oordeel + delen.punten.chat + delen.punten.likes + delen.zaalgeluid + delen.camera, 4);
+  delen.totaal = rounded(delen.punten.oordeel + delen.punten.chat + delen.punten.likes + delen.punten.zaal + delen.zaalgeluid + delen.camera, 4);
   return { ...delen, chatNamen };
 }
 
