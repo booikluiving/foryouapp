@@ -249,9 +249,19 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
     const publiek = run.publiek;
     const gestopt = () => loopt !== run;
     let rt = await runNu();
-    if (rt && rt.showRunId && rt.status !== "idle") await knoppen.run();
-    await knoppen.run();
-    rt = await wachtTot(async () => { const nu = await runNu(); return nu && nu.showRunId && nu.status !== "idle" ? nu : null; }, 10000, 200);
+    // Een lopende run eerst resetten, en wachten tot de reset echt door is (anders lijkt de oude run de nieuwe).
+    const oud = rt && rt.showRunId && rt.status !== "idle" ? rt.showRunId : null;
+    if (oud) {
+      await knoppen.run();
+      await wachtTot(async () => { const nu = await runNu(); return !nu || nu.showRunId !== oud || nu.status === "idle"; }, 8000, 150);
+    }
+    rt = null;
+    const nieuweRun = async () => { const nu = await runNu(); return nu && nu.showRunId && nu.showRunId !== oud && nu.status !== "idle" ? nu : null; };
+    // Net na het opstarten neemt show control de knop soms nog niet aan: dan nog een keer.
+    for (let poging = 0; poging < 3 && !rt; poging += 1) {
+      await knoppen.run();
+      rt = await wachtTot(nieuweRun, 5000, 200);
+    }
     if (!rt) throw new Error("de run start niet");
     run.showRunId = rt.showRunId;
     await vraag("runtime", `/v0/runtime/runs/${encodeURIComponent(rt.showRunId)}/order-settings`, { method: "PATCH", body: { startSceneCount: 0, randomizeEqualScores: true } });
@@ -263,11 +273,13 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
     const binnen = await Promise.all(Array.from({ length: publiek.telefoons }, (_x, nr) => meedoen(publiek, nr, sessie)));
     if (gestopt()) { binnen.forEach((t) => { try { t.ws.close(); } catch (_err) {} }); return; }
     telefoons.push(...binnen);
-    // START SHOW (met de content warning als die er is): de eerste scène wordt gekozen.
-    for (let i = 0; i < 3 && !gestopt(); i += 1) {
-      const stemming = await vraag("audience", "/audience/stage/start-stemming", { timeoutMs: 1500 });
-      if (!(stemming.ok && stemming.body && stemming.body.showGestart === false)) break;
-      await knoppen.run();
+    // START SHOW zoals de deck (show control kiest en zet de eerste scène klaar). Net na een nieuwe run
+    // kent de publieksdienst hem soms nog niet; dan opnieuw, tot er echt een scène klaarstaat.
+    const klaar = async () => { const nu = await runNu(); return nu && nu.preparedNext ? nu : null; };
+    for (let poging = 0; poging < 6 && !gestopt() && !(await klaar()); poging += 1) {
+      const show = await vraag("show-control", "/v0/show-control/cues/start-show", { method: "POST", body: {}, timeoutMs: 15000 });
+      if (!show.ok) log(`testpubliek: start show ${show.status}`);
+      await wachtTot(klaar, 1500, 150);
     }
   }
 
