@@ -517,7 +517,7 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
     if (pathname === "/proefshow/universum") return telefoon(req, res, "/audience/universum");
     if (pathname === "/proefshow/api/testpubliek" && req.method === "POST") {
       const body = await leesBody(req);
-      const antwoord = body.doe === "stop" ? await testpubliek.stop() : await testpubliek.start(body);
+      const antwoord = body.doe === "stop" ? await testpubliek.stop() : body.doe === "verder" ? testpubliek.verder() : await testpubliek.start(body);
       return json(res, 200, { ok: antwoord.ok, fout: antwoord.ok ? undefined : antwoord.body, testpubliek: testpubliek.stand() });
     }
     if (pathname === "/proefshow/api/knop" && req.method === "POST") {

@@ -71,6 +71,21 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
   let verloop = [];
   let fase = "";
   let foutmelding = "";
+  // Zelf doorklikken: de regie wacht op "verder" met deze knoptekst.
+  let wachtKnop = null;
+
+  function wachtOpKlik(run, label) {
+    if (!run.stappen || loopt !== run) return Promise.resolve();
+    return new Promise((resolve) => { wachtKnop = { label, resolve }; });
+  }
+
+  function verder() {
+    if (!wachtKnop) return { ok: false, status: 409, body: { error: "niets_om_op_te_wachten" } };
+    const { resolve } = wachtKnop;
+    wachtKnop = null;
+    resolve();
+    return { ok: true, status: 200, body: {} };
+  }
 
   // ---- De telefoons ----
   async function meedoen(publiek, nr, token) {
@@ -253,6 +268,9 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
     if (gestopt()) return;
 
     // START SHOW (met de content warning als die er is): de eerste scène wordt gekozen.
+    fase = "inloop";
+    await wachtOpKlik(run, "Start show");
+    if (gestopt()) return;
     fase = "start show";
     for (let i = 0; i < 3 && !gestopt(); i += 1) {
       const stemming = await vraag("audience", "/audience/stage/start-stemming", { timeoutMs: 1500 });
@@ -272,7 +290,8 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
       await wachtTot(async () => !(await schrijft()), 60000, 1000);
       // Up next staat even in beeld, dan READY en START.
       fase = `Up next: ${klaar.title || klaar.situationId}`;
-      await wacht(upNextSec * 1000);
+      if (run.stappen) await wachtOpKlik(run, `Start scène ${nr}`);
+      else await wacht(upNextSec * 1000);
       if (gestopt()) return;
       await knoppen.ready();
       await wacht(1500);
@@ -286,10 +305,15 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
       verloop.push(rij);
       fase = `scène ${nr} speelt: ${scene.titel}`;
       log(`testpubliek ${publiek.id}: scène ${nr} ${scene.titel} [${scene.labels.join(", ")}]`);
-      for (const telefoon of telefoons) speelMee(telefoon, scene, publiek, sceneSec * 1000, gestopt);
+      run.sceneNr = nr;
+      // Reacties stoppen zodra de run stopt of deze scène voorbij is.
+      const voorbij = () => gestopt() || run.sceneNr !== nr;
+      for (const telefoon of telefoons) speelMee(telefoon, scene, publiek, sceneSec * 1000, voorbij);
       rij.zin = Math.round((telefoons.reduce((som, telefoon) => som + telefoon.zin, 0) / Math.max(1, telefoons.length)) * 100) / 100;
-      await wacht(sceneSec * 1000);
+      if (run.stappen) await wachtOpKlik(run, `Stop scène ${nr}`);
+      else await wacht(sceneSec * 1000);
       if (gestopt()) return;
+      run.sceneNr = 0;
       await knoppen.scene();
       // De stemronde: tellingen bewaren zodra hij dicht is.
       await wachtTot(beoordelingLoopt, 8000, 400);
@@ -306,15 +330,15 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
     await werkScoresBij(run.showRunId);
   }
 
-  async function start({ publiek: id, scenes = 8, sceneSec = 20, upNextSec = 5 } = {}) {
+  async function start({ publiek: id, stappen = false, scenes, sceneSec = 20, upNextSec = 5 } = {}) {
     const profiel = PUBLIEKEN[id];
     if (!profiel) return { ok: false, status: 400, body: { error: "onbekend_publiek" } };
     await stop();
-    const run = { publiek: { ...profiel, id }, startedAt: new Date().toISOString() };
+    const run = { publiek: { ...profiel, id }, stappen: Boolean(stappen), startedAt: new Date().toISOString() };
     loopt = run;
     verloop = [];
     foutmelding = "";
-    const opties = { scenes: klem(Number(scenes) || 8, 1, 30), sceneSec: klem(Number(sceneSec) || 20, 6, 180), upNextSec: klem(Number(upNextSec) || 5, 1, 60) };
+    const opties = { scenes: klem(Number(scenes) || (run.stappen ? 30 : 8), 1, 30), sceneSec: klem(Number(sceneSec) || 20, 6, 180), upNextSec: klem(Number(upNextSec) || 5, 1, 60) };
     regie(run, opties)
       .catch((err) => {
         if (loopt !== run) return;
@@ -333,6 +357,7 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
   async function stop() {
     const was = loopt;
     loopt = null;
+    if (wachtKnop) verder();
     sluitTelefoons();
     if (!was) return { ok: true, status: 200, body: {} };
     fase = "gestopt";
@@ -348,12 +373,15 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
       publiek: loopt ? loopt.publiek.id : null,
       telefoons: telefoons.filter((t) => t.open).length,
       fase,
+      stappen: Boolean(loopt && loopt.stappen),
+      // De knop waarop de regie wacht (zelf doorklikken), of null.
+      wacht: wachtKnop ? wachtKnop.label : null,
       fout: foutmelding,
       verloop,
     };
   }
 
-  return { start, stop, stand };
+  return { start, stop, verder, stand };
 }
 
 module.exports = { createTestpubliek, PUBLIEKEN };
