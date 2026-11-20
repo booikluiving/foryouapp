@@ -37,6 +37,15 @@
       button.bezig { opacity: .5; }
       button.fout { border-color: #e5484d; }
       button.klein { font-weight: 400; padding: 8px 10px; color: var(--grijs); }
+      /* Testpubliek: een nagespeelde zaal die de run vanzelf afspeelt. */
+      #tp { flex: none; width: 250px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+      #tp > span { color: var(--grijs); }
+      #tpPubliek { font: inherit; padding: 10px; background: #15171d; color: #fff; border: 1px solid var(--rand); border-radius: 6px; }
+      #tpFase { color: var(--grijs); min-height: 1.3em; }
+      #tpFase.fout { color: #e5484d; }
+      #tpVerloop { margin: 0; padding: 0; list-style: none; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+      #tpVerloop li { border-top: 1px solid var(--rand); padding-top: 6px; }
+      #tpVerloop small { display: block; color: var(--grijs); }
       hr { width: 100%; border: 0; border-top: 1px solid var(--rand); margin: 4px 0; }
       /* Op een telefoon: zaalscherm en telefoon naast elkaar, de knoppen eronder, de teleprompter onderaan. */
       @media (max-width: 820px) {
@@ -54,6 +63,7 @@
         #knoppen hr { display: none; }
         #knoppen button { padding: 12px 6px; font-size: 13px; }
         #knoppen button.klein { font-size: 12px; }
+        #tp { order: 5; width: 100%; }
       }
     </style>
   </head>
@@ -98,6 +108,13 @@
         <button class="klein" id="herlaadTelefoon">Telefoon herladen</button>
         <button class="klein" id="losZaal">Zaalscherm los openen</button>
       </div>
+      <div id="tp">
+        <span>Testpubliek</span>
+        <select id="tpPubliek"></select>
+        <button id="tpKnop">AFSPELEN</button>
+        <div id="tpFase"></div>
+        <ol id="tpVerloop"></ol>
+      </div>
     </main>
     <script>
       const el = (id) => document.getElementById(id);
@@ -139,6 +156,7 @@
         el("stand").textContent = uit.length ? `start: ${uit.join(", ")}` : ["inloop", "loading", stand.titel || "scène"][stand.fase];
         if (stand.sessie && !sessieWas) laadTelefoon();
         sessieWas = stand.sessie;
+        toonTestpubliek(stand.testpubliek);
         geefFase();
       }
 
@@ -170,6 +188,41 @@
       }
       window.addEventListener("resize", pasPrompter);
       pasPrompter();
+      // Testpubliek: kiezen, afspelen en stoppen; het verloop per gespeelde scène.
+      const getal = (waarde) => (waarde == null || !Number.isFinite(Number(waarde)) ? "–" : (Number(waarde) > 0 ? "+" : "") + Number(waarde).toFixed(2));
+      function toonTestpubliek(tp) {
+        if (!tp) return;
+        const keuze = el("tpPubliek");
+        if (!keuze.options.length) tp.publieken.forEach((p) => keuze.add(new Option(`${p.naam} (${p.telefoons})`, p.id)));
+        if (tp.loopt && tp.publiek) keuze.value = tp.publiek;
+        keuze.disabled = tp.loopt;
+        el("tpKnop").textContent = tp.loopt ? "STOPPEN" : "AFSPELEN";
+        el("tpKnop").classList.toggle("aan", tp.loopt);
+        el("tpFase").textContent = tp.fout ? tp.fout : tp.fase ? `${tp.fase}${tp.loopt ? ` · ${tp.telefoons} telefoons` : ""}` : "";
+        el("tpFase").classList.toggle("fout", !!tp.fout);
+        el("tpVerloop").innerHTML = "";
+        tp.verloop.slice().reverse().forEach((rij) => {
+          const li = document.createElement("li");
+          const s = rij.score;
+          const stem = rij.stemmen && rij.stemmen.scene ? Object.values(rij.stemmen.scene).join(" / ") : "";
+          li.textContent = `${rij.nr}. ${rij.titel}`;
+          const info = document.createElement("small");
+          info.textContent = `${rij.labels.join(", ") || "geen label"}${stem ? ` · oordeel ${stem}` : ""}`;
+          const som = document.createElement("small");
+          som.textContent = s ? `oordeel ${getal(s.oordeel)} · chat ${getal(s.chat)} · likes ${getal(s.likes)} = ${getal(s.totaal)}` : "nog geen score";
+          li.append(info, som);
+          el("tpVerloop").append(li);
+        });
+      }
+      el("tpKnop").addEventListener("click", async () => {
+        const loopt = el("tpKnop").textContent === "STOPPEN";
+        el("tpKnop").classList.add("bezig");
+        try {
+          const antwoord = await fetch("/proefshow/api/testpubliek", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(loopt ? { doe: "stop" } : { publiek: el("tpPubliek").value }) }).then((res) => res.json());
+          toonTestpubliek(antwoord.testpubliek);
+        } catch (_err) {}
+        el("tpKnop").classList.remove("bezig");
+      });
       el("herlaadZaal").addEventListener("click", laadZaal);
       el("herlaadTelefoon").addEventListener("click", laadTelefoon);
       el("losZaal").addEventListener("click", () => window.open(ZAAL, "_blank"));

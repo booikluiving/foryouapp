@@ -13,6 +13,7 @@ const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { DatabaseSync } = require("node:sqlite");
+const { createTestpubliek } = require("./testpubliek");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const ONDERDELEN = ["catalog", "paths", "algorithm", "runtime", "script-agent", "show-control", "audience"];
@@ -235,6 +236,7 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
 
   function stop() {
     gestopt = true;
+    testpubliek.stop().catch(() => {});
     if (spelersTimer) clearInterval(spelersTimer);
     for (const kind of kinderen.values()) kind.kill();
     if (leesdeur) leesdeur.close();
@@ -283,7 +285,8 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
         const stemming = await vraag("audience", "/audience/stage/start-stemming", { timeoutMs: 1500 });
         if (stemming.ok && stemming.body && stemming.body.showGestart === false) {
           if (stemming.body.waarschuwingNodig) return vraag("audience", "/audience/admin/waarschuwing/toon", { method: "POST", body: {} });
-          return vraag("audience", "/audience/admin/show/start", { method: "POST", body: {} });
+          // Zoals de deck: via show control, die ook de eerste scène laat kiezen en klaarzet.
+          return cue("/v0/show-control/cues/start-show", {}, 15000);
         }
       }
       if (rt && rt.showRunId && rt.status !== "idle") {
@@ -373,6 +376,9 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
     personages: () => vraag("audience", "/audience/admin/simulation/schakel", { method: "POST", body: { wat: "personages" } }),
   };
 
+  // Een nagespeeld publiek dat de run vanzelf afspeelt (testpubliek.js).
+  const testpubliek = createTestpubliek({ url, vraag, runNu, knoppen: KNOPPEN, log });
+
   async function stand() {
     const [rt, stemming, script, publiek, stemronde] = await Promise.all([
       runNu(),
@@ -387,6 +393,7 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
     if (loopt && rt.orderSettings) startfaseBekend = Number(rt.orderSettings.startSceneCount) > 0;
     return {
       ok: true,
+      testpubliek: testpubliek.stand(),
       onderdelen: Object.fromEntries(ONDERDELEN.map((naam) => [naam, kinderen.has(naam)])),
       // De fase die TouchDesigner in de zaal aan de pagina doorgeeft: 0 inloop, 1 loading, 2 scène.
       fase: scene ? 2 : loopt ? 1 : 0,
@@ -508,6 +515,11 @@ function createProefshow({ dataDir, inhoud, basisPoort = 4120, adres = "", env =
     if (pathname === "/proefshow/telefoon") return telefoon(req, res);
     // Het universum op de telefoon: zelfde toegang als de telefoon, eigen pagina.
     if (pathname === "/proefshow/universum") return telefoon(req, res, "/audience/universum");
+    if (pathname === "/proefshow/api/testpubliek" && req.method === "POST") {
+      const body = await leesBody(req);
+      const antwoord = body.doe === "stop" ? await testpubliek.stop() : await testpubliek.start(body);
+      return json(res, 200, { ok: antwoord.ok, fout: antwoord.ok ? undefined : antwoord.body, testpubliek: testpubliek.stand() });
+    }
     if (pathname === "/proefshow/api/knop" && req.method === "POST") {
       const body = await leesBody(req);
       const knop = KNOPPEN[String(body.knop || "")];
