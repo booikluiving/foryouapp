@@ -533,7 +533,14 @@ function buildRunProfile(observations = [], liveObservation = null, config = def
     // personage zei (ook personages die niet in de scène zaten: "wij willen Bea weer").
     const perPersonage = new Map();
     const personages = observation.personageVoorkeur;
-    for (const [characterId, waarde] of personageVoorkeurWaarden(personages)) perPersonage.set(characterId, waarde);
+    // Een toppersonage uit een scène die iedereen goed vond telt zwaarder dan een uit een slechte scène:
+    // een voorkeur boven 0 keer 1 + ½ × het oordeel over de scène (slecht 0,5, neutraal 1, goed 1,5).
+    const oordeel = observation.oordeel && Number.isFinite(Number(observation.oordeel.gemiddelde))
+      ? Math.max(-1, Math.min(1, Number(observation.oordeel.gemiddelde)))
+      : 0;
+    for (const [characterId, waarde] of personageVoorkeurWaarden(personages)) {
+      perPersonage.set(characterId, waarde > 0 ? waarde * (1 + 0.5 * oordeel) : waarde);
+    }
     for (const naam of Array.isArray(observation.chatNamen) ? observation.chatNamen : []) {
       if (naam && naam.characterId && Number.isFinite(Number(naam.waarde))) {
         const id = String(naam.characterId);
