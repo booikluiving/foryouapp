@@ -322,7 +322,8 @@ function createBeoordeling(service) {
       som += aantal * (n > 1 ? -1 + (2 * i) / (n - 1) : 0);
     });
     if (!stemmen) return;
-    uitslag.oordeel = { gemiddelde: Math.round((som / stemmen) * 1000) / 1000, stemmen, mensen: service.onlineMensen() };
+    // Hoeveel telefoons er zijn, voor het delen in het algoritme: zonder bots als die niet meetellen.
+    uitslag.oordeel = { gemiddelde: Math.round((som / stemmen) * 1000) / 1000, stemmen, mensen: service.onlineMensen({ zonderBots: !instellingen.botsTellenMee }) };
     store.setSetting(UITSLAGEN_KEY, uitslagen);
     if (typeof fetch !== "function") return;
     try {

@@ -975,13 +975,15 @@ class AudienceService extends EventEmitter {
 
   // Hoeveel telefoons meedoen: verbonden en in de laatste tien minuten iets gedaan. Wie langer stil
   // is telt niet meer mee, tot hij weer iets doet. Bots van de simulatie tellen mee zolang ze er zijn.
-  onlineMensen() {
+  // Met { zonderBots: true }: alleen echte telefoons (voor het algoritme, als de bots niet meetellen).
+  onlineMensen({ zonderBots = false } = {}) {
     const session = this.getActiveSession();
     if (!session) return 0;
     const grens = Date.now() - ACTIEF_MS;
     const sleutels = new Set();
     for (const client of this.store.listOnlineClients(session.id)) {
       const sleutel = String(client.clientKey || client.id);
+      if (client.isBot && zonderBots) continue;
       if (client.isBot ? this.simulation && this.simulation.running : (this.actief.get(sleutel) || 0) >= grens) sleutels.add(sleutel);
     }
     return sleutels.size;
