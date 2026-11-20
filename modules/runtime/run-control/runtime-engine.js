@@ -455,12 +455,6 @@ function randomizeEqualScoreGroups(candidates, orderSettings = defaultOrderSetti
   return out;
 }
 
-function charactersOverlap(a, b) {
-  if (!a || !b) return false;
-  const left = new Set(a.characterIds || []);
-  return (b.characterIds || []).some((id) => left.has(id));
-}
-
 function sameEnvironment(a, b) {
   return !!(a && b && a.environmentId && b.environmentId && a.environmentId === b.environmentId);
 }
@@ -475,6 +469,7 @@ function buildEligiblePool({
   orderSettings,
   rankingTieBreaks,
   skippedSituations = [],
+  recentCharacterIds = null,
 }) {
   const situationMap = catalogSituationMap(catalog);
   const scoreBySituation = scoreMapFromFeed(scoreFeed);
@@ -500,20 +495,31 @@ function buildEligiblePool({
   const inStartPhase = startCandidates.length > 0
     && startPhaseFor(pathEvaluation, orderSettings, activeSituationId).active;
   const orderedBase = inStartPhase ? startCandidates : available;
-  // Niet twee keer achter elkaar dezelfde omgeving of dezelfde personages. De volgende scène wordt
-  // gekozen terwijl de huidige nog speelt: dan telt de scène die nu speelt als de vorige, niet de
-  // scène daarvoor. Is er niets anders vrij, dan mag het wel.
+  // Niet twee keer achter elkaar dezelfde omgeving. Een personage komt pas terug als er minstens twee
+  // scènes tussen zitten (Adolf, X, Y, Adolf mag; Adolf, X, Adolf niet). De volgende scène wordt
+  // gekozen terwijl de huidige nog speelt: dan telt de scène die nu speelt als de vorige.
+  // Is er niets vrij, dan eerst alleen de vorige scène ontwijken, en anders mag het wel.
   const activeCatalogSituation = activeSituationId ? situationMap.get(activeSituationId) : null;
   const activeEnvironmentId = activeSituation && activeSituation.resolved && activeSituation.resolved.environmentId;
   const previousSituation = activeCatalogSituation
     ? { ...activeCatalogSituation, environmentId: activeEnvironmentId || activeCatalogSituation.environmentId }
     : lastPlayedSituation;
-  const hardFiltered = orderedBase.filter((item) => {
-    if (previousSituation && charactersOverlap(item.situation, previousSituation)) return false;
-    if (previousSituation && sameEnvironment(item.situation, previousSituation)) return false;
-    return true;
-  });
-  const finalCandidates = hardFiltered.length > 0 ? hardFiltered : orderedBase;
+  const played = (playedSituations || []).map((item) => situationMap.get(item && item.situationId)).filter(Boolean);
+  const beforePrevious = activeCatalogSituation ? played[played.length - 1] : played[played.length - 2];
+  const previousCharacters = new Set([
+    ...((previousSituation && previousSituation.characterIds) || []),
+    ...((activeSituation && activeSituation.resolved && activeSituation.resolved.characterIds) || []),
+  ]);
+  const recentCharacters = new Set([
+    ...previousCharacters,
+    ...((beforePrevious && beforePrevious.characterIds) || []),
+    ...(Array.isArray(recentCharacterIds) ? recentCharacterIds : []),
+  ]);
+  const deelt = (situation, set) => (situation.characterIds || []).some((id) => set.has(id));
+  const andereOmgeving = (item) => !(previousSituation && sameEnvironment(item.situation, previousSituation));
+  const tweeErtussen = orderedBase.filter((item) => andereOmgeving(item) && !deelt(item.situation, recentCharacters));
+  const eenErtussen = orderedBase.filter((item) => andereOmgeving(item) && !deelt(item.situation, previousCharacters));
+  const finalCandidates = tweeErtussen.length > 0 ? tweeErtussen : eenErtussen.length > 0 ? eenErtussen : orderedBase;
 
   const sortedCandidates = finalCandidates
     .map((item) => {
@@ -627,12 +633,11 @@ function recentSlotIndexesFor(state) {
     .filter((slotIndexes) => slotIndexes.length);
 }
 
-// Personages van de laatste scène van de run (de spelende of de vorige): een invulscène
-// trekt die liever niet meteen opnieuw.
+// Personages van de laatste twee scènes van de run (de spelende en de vorige, of de twee vorige): een
+// personage komt pas terug als er twee scènes tussen zitten, ook bij een invulscène.
 function recentCharacterIdsFor(state) {
   const runs = (state && state.situationRuns) || [];
-  const last = runs.length ? runs[runs.length - 1] : null;
-  return ((last && last.resolved && last.resolved.characterIds) || []).slice();
+  return [...new Set(runs.slice(-2).flatMap((run) => (run && run.resolved && run.resolved.characterIds) || []))];
 }
 
 function nieuweSeed(situationId) {
@@ -743,6 +748,7 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
     orderSettings: state.orderSettings,
     rankingTieBreaks: state.rankingTieBreaks,
     skippedSituations: state.skippedSituations,
+    recentCharacterIds: recentCharacterIdsFor(state),
   });
   applyEligiblePoolUpdate(state, eligiblePool, reason);
   state.startPhase = startPhaseFor(pathEvaluation, state.orderSettings, state.activeSituation ? state.activeSituation.situationId : null);
@@ -803,6 +809,7 @@ async function refreshEligiblePool(state, clients, reason = "runtime_refresh") {
     orderSettings: state.orderSettings,
     rankingTieBreaks: state.rankingTieBreaks,
     skippedSituations: state.skippedSituations,
+    recentCharacterIds: recentCharacterIdsFor(state),
   });
   const summary = applyEligiblePoolUpdate(state, eligiblePool, reason);
   state.startPhase = startPhaseFor(pathEvaluation, state.orderSettings, state.activeSituation ? state.activeSituation.situationId : null);
