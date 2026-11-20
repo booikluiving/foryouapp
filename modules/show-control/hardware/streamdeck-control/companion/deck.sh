@@ -239,7 +239,7 @@ live_status() {
 }
 
 case "${1:-}" in
-  check) "$NODE" "$SRC/bouw.js" --check && "$NODE" "$SRC/test/ontwerp-test.js" ;;
+  check) "$NODE" "$SRC/bouw.js" --check && "$NODE" "$SRC/test/ontwerp-test.js" && "$NODE" "$SRC/test/zaalmic-test.js" ;;
   test)
     case "${2:-}" in
       start) test_start ;;

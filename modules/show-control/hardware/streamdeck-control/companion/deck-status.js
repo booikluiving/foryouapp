@@ -28,6 +28,8 @@ const {
   varMaat,
   varStaat,
   varTekst,
+  zaalMicDichtBijStart,
+  zaalMicStand,
 } = require("./lib");
 
 const TICK_MS = 1000;
@@ -74,7 +76,7 @@ async function tdLabel() {
 async function gather() {
   const coreEntries = await Promise.all(Object.entries(CORE).map(async ([key, port]) => [key, (await fetchJson(`http://127.0.0.1:${port}/health`, { timeoutMs: 800 })).ok]));
   const hwEntries = await Promise.all(Object.entries(HARDWARE).map(async ([key, url]) => [key, await fetchJson(url, { timeoutMs: 800 })]));
-  const [showStatus, runtime, sq5, teleprompter, stem, sim, ports, tdText, regie] = await Promise.all([
+  const [showStatus, runtime, sq5, teleprompter, stem, sim, ports, tdText, regie, mic] = await Promise.all([
     fetchJson(`${CONFIG.showControlUrl}/v0/show-control/status`, { timeoutMs: 1000 }),
     fetchJson(`${CONFIG.runtimeUrl}/v0/runtime/runs/current`, { timeoutMs: 1000 }),
     fetchJson(`${CONFIG.sq5Url}/api/streamdeck/state`, { timeoutMs: 1000 }),
@@ -84,8 +86,9 @@ async function gather() {
     udpPorts([9100, 9101, 8008]),
     tdLabel(),
     fetchJson(`${CONFIG.showControlUrl}/v0/show-control/regie`, { timeoutMs: 1000 }),
+    fetchJson(`${CONFIG.micKnopUrl}/api/state`, { timeoutMs: 600 }),
   ]);
-  return { core: Object.fromEntries(coreEntries), hw: Object.fromEntries(hwEntries), showStatus, runtime, sq5, teleprompter, stem, sim, ports, tdText, regie };
+  return { core: Object.fromEntries(coreEntries), hw: Object.fromEntries(hwEntries), showStatus, runtime, sq5, teleprompter, stem, sim, ports, tdText, regie, mic };
 }
 
 const first = (label) => String(label).split("\n")[0];
@@ -239,6 +242,10 @@ function compute(deck, g) {
         t = loopt ? `${first(label)}\nLOOPT` : label;
         s = !portOk[3025] ? "uit" : loopt ? "actief" : "klaar";
       }
+      else if (knop.actie && knop.actie.zaalmic) {
+        // De microfoon van de operator over de speakers: amber met kader zolang hij open staat.
+        ({ t, s } = zaalMicStand(g.mic && g.mic.ok ? g.mic.body : null, sq5));
+      }
       else if (knop.actie && knop.actie.showmuziek) {
         const uit = fs.existsSync(CONFIG.showMuziekUitPath);
         if (!g.ports[8008]) { t = `${first(label)}\n?`; s = "onbekend"; }
@@ -316,12 +323,25 @@ async function loop() {
   let laatsteKaart = "";
   let lastResync = Date.now();
   let companionUp = false;
+  let speelde = null; // speelde er bij de vorige ronde een scène (null = nog niet gezien)
   log({ dienst: "deck-status", start: true, companion: CONFIG.companionUrl, knoppen: allButtons(deck).length });
 
   for (;;) {
     const started = Date.now();
     try {
-      const want = compute(deck, await gather());
+      const g = await gather();
+      // ZAAL MIC gaat dicht zodra een scène begint.
+      if (g.runtime.ok) {
+        const speelt = !!(g.runtime.body && g.runtime.body.activeSituation);
+        const open = !!(g.mic && g.mic.ok && g.mic.body && g.mic.body.zaal && g.mic.body.zaal.open);
+        if (zaalMicDichtBijStart(speelde, speelt, open)) {
+          const dicht = await fetchJson(`${CONFIG.micKnopUrl}/api/zaal/uit`, { method: "POST", timeoutMs: 1000 });
+          log({ dienst: "deck-status", zaalmic: "dicht bij start van de scène", ok: dicht.ok });
+          if (dicht.ok) g.mic = dicht;
+        }
+        speelde = speelt;
+      }
+      const want = compute(deck, g);
       const kaart = JSON.stringify(want.plekken || {});
       if (kaart !== laatsteKaart) { schrijfScenePlekken(want.plekken || {}); laatsteKaart = kaart; }
       if (Date.now() - lastResync > RESYNC_MS) { written.clear(); lastResync = Date.now(); }
