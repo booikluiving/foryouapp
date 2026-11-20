@@ -92,7 +92,17 @@ function defaultOrderSettings() {
     startSceneCount: DEFAULT_START_SCENE_COUNT,
     vrijeSpeler: true,
     padWaarde: false,
+    diversePaden: DIVERSE_PADEN_STANDAARD,
   };
+}
+
+// De eerste scènes van een run komen uit verschillende paden: zolang er minder dan dit aantal gespeeld
+// is (de spelende meegeteld), valt een vrije scène af die een pad deelt met een scène die al gespeeld is.
+// Is er niets anders vrij, dan de scène(s) met de minste gedeelde paden. 0 = uit.
+const DIVERSE_PADEN_STANDAARD = 8;
+
+function padenVanItem(item) {
+  return new Set(((item && item.pathStatuses) || []).map((status) => status && status.pathId).filter(Boolean).map(String));
 }
 
 // Padwaarde: elk pad is apart 1 waard, gedeeld door de scènes die in dat pad nu vrij (en te kiezen)
@@ -258,7 +268,15 @@ function normalizeOrderSettings(input = {}, base = defaultOrderSettings()) {
     padWaarde: Object.prototype.hasOwnProperty.call(source, "padWaarde")
       ? !!source.padWaarde
       : !!(base && base.padWaarde),
+    diversePaden: normalizeDiversePaden(
+      Object.prototype.hasOwnProperty.call(source, "diversePaden") ? source.diversePaden : base && base.diversePaden,
+    ),
   };
+}
+
+function normalizeDiversePaden(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.min(30, Math.max(0, Math.round(n))) : DIVERSE_PADEN_STANDAARD;
 }
 
 function savedOrderSettingsFrom(orderSettings) {
@@ -267,6 +285,7 @@ function savedOrderSettingsFrom(orderSettings) {
     randomizeEqualScores: !!orderSettings.randomizeEqualScores,
     vrijeSpeler: orderSettings.vrijeSpeler !== false,
     padWaarde: !!orderSettings.padWaarde,
+    diversePaden: normalizeDiversePaden(orderSettings.diversePaden),
   };
 }
 
@@ -519,7 +538,21 @@ function buildEligiblePool({
   const andereOmgeving = (item) => !(previousSituation && sameEnvironment(item.situation, previousSituation));
   const tweeErtussen = orderedBase.filter((item) => andereOmgeving(item) && !deelt(item.situation, recentCharacters));
   const eenErtussen = orderedBase.filter((item) => andereOmgeving(item) && !deelt(item.situation, previousCharacters));
-  const finalCandidates = tweeErtussen.length > 0 ? tweeErtussen : eenErtussen.length > 0 ? eenErtussen : orderedBase;
+  const naRegels = tweeErtussen.length > 0 ? tweeErtussen : eenErtussen.length > 0 ? eenErtussen : orderedBase;
+  // De eerste scènes uit verschillende paden (zie DIVERSE_PADEN_STANDAARD).
+  const diversePaden = normalizeDiversePaden(orderSettings && orderSettings.diversePaden);
+  const aantalGespeeld = (playedSituations || []).length + (activeSituationId ? 1 : 0);
+  let finalCandidates = naRegels;
+  if (diversePaden > 0 && aantalGespeeld > 0 && aantalGespeeld < diversePaden && naRegels.length > 1) {
+    const evaluatiePerScene = new Map((pathEvaluation.items || []).map((item) => [item.situationId, item]));
+    const gebruikt = new Set();
+    for (const id of [...(playedSituations || []).map((item) => item && item.situationId), activeSituationId].filter(Boolean)) {
+      for (const pad of padenVanItem(evaluatiePerScene.get(id))) gebruikt.add(pad);
+    }
+    const overlap = (item) => [...padenVanItem(item.pathStatus)].filter((pad) => gebruikt.has(pad)).length;
+    const minste = Math.min(...naRegels.map(overlap));
+    finalCandidates = naRegels.filter((item) => overlap(item) === minste);
+  }
 
   const sortedCandidates = finalCandidates
     .map((item) => {
@@ -959,6 +992,7 @@ async function startRun({ clients, orderSettings, klaarzetten = true } = {}) {
       randomizeEqualScores: !!(await readSavedOrderSettings() || {}).randomizeEqualScores,
       vrijeSpeler: (await readSavedOrderSettings() || {}).vrijeSpeler !== false,
       padWaarde: !!(await readSavedOrderSettings() || {}).padWaarde,
+      diversePaden: (await readSavedOrderSettings() || {}).diversePaden,
     }),
     runLog: [{
       type: "show_run_started",
@@ -1401,6 +1435,7 @@ async function updateOrderSettings(state, clients, patch = {}) {
     startSceneCount: state.orderSettings.startSceneCount,
     vrijeSpeler: state.orderSettings.vrijeSpeler !== false,
     padWaarde: !!state.orderSettings.padWaarde,
+    diversePaden: state.orderSettings.diversePaden,
     preparedNextFrozen: !!state.preparedNext,
   });
   await refreshEligiblePool(state, clients, "order_settings_updated");
