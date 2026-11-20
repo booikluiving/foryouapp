@@ -34,5 +34,19 @@ assert.deepEqual(trek.map((rij) => [rij.name, rij.procent]), [["Grof", 100], ["A
 
 const fav = personageFavorieten({ observations });
 assert.equal(fav[0].characterId, "character:1");
-assert.equal(fav[0].aandeel, 0.75);
+// Eén personage: 75 % ja, 25 % "Hoeft niet" → voorkeur 0,75 − 0,25 = 0,5.
+assert.equal(fav[0].aandeel, 0.5);
+
+// De personagevraag is relatief: gelijk verdeeld = 0, minder dan gelijk = min, "Hoeft niet" = min.
+const { personageVoorkeurWaarden } = require("../scoring/score-engine");
+const waarden = (keuzes) => Object.fromEntries(personageVoorkeurWaarden({ keuzes }).map(([id, w]) => [id, Math.round(w * 100) / 100]));
+assert.deepEqual(waarden([{ characterId: "a", aandeel: 0.5 }, { characterId: "b", aandeel: 0.5 }]), { a: 0, b: 0 });
+assert.deepEqual(waarden([{ characterId: "a", aandeel: 1 / 3 }, { characterId: "b", aandeel: 1 / 3 }, { characterId: "c", aandeel: 1 / 3 }]), { a: 0, b: 0, c: 0 });
+assert.deepEqual(waarden([{ characterId: "a", aandeel: 1 }, { characterId: "b", aandeel: 0 }]), { a: 1, b: -1 });
+assert.deepEqual(waarden([{ characterId: "a", aandeel: 0.6 }, { characterId: "b", aandeel: 0.3 }, { characterId: "c", aandeel: 0.1 }]), { a: 0.4, b: -0.1, c: -0.7 });
+assert.deepEqual(waarden([{ characterId: "a", aandeel: 0.2 }, { characterId: "nee", aandeel: 0.8 }]), { a: -0.6 });
+// Een personage dat niemand terug wil zien drukt zijn scènes omlaag.
+const tegen = buildScoreFeed({ catalog, observations: [{ situationRunId: "r1", situationId: "situation:1", labelIds: [], characterIds: ["character:1"], observedScore: 0,
+  personageVoorkeur: { stemmen: 10, keuzes: [{ characterId: "character:1", aandeel: 0.1 }, { characterId: "nee", aandeel: 0.9 }] } }] });
+assert.ok(score(tegen, "situation:3") < 0, "Mark-scène daalt als niemand Mark terug wil zien");
 console.log("voorkeur en trek: ok");
