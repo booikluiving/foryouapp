@@ -14,7 +14,7 @@ const PUBLIEKEN = {
   grof: {
     naam: "Wil grof",
     telefoons: 14,
-    smaak: { Grof: 1, Absurd: 0.4, Satirisch: 0.2, Verwarring: -0.1, Herkenbaar: -0.4, Maatschappelijk: -0.8 },
+    smaak: { Plat: 1, "Seks & drugs": 1, "Zwarte humor": 0.6, Absurd: 0.3, Ongemakkelijk: 0, Misverstand: -0.2, Actueel: -0.4, "Politiek correct": -0.6 },
     ruis: 0.25,
     likes: 1,
     chat: 0.7,
@@ -23,7 +23,7 @@ const PUBLIEKEN = {
   subtiel: {
     naam: "Wil subtiel",
     telefoons: 12,
-    smaak: { Grof: -1, Maatschappelijk: 0.7, Herkenbaar: 0.6, Satirisch: 0.4, Verwarring: 0.1, Absurd: -0.3 },
+    smaak: { Ongemakkelijk: 0.8, Misverstand: 0.7, Actueel: 0.6, "Politiek correct": 0.5, Absurd: 0, "Zwarte humor": -0.3, "Seks & drugs": -0.8, Plat: -1 },
     ruis: 0.2,
     likes: 0.4,
     chat: 0.3,
@@ -34,8 +34,8 @@ const PUBLIEKEN = {
     telefoons: 18,
     // Twee kampen door elkaar; elke telefoon zit in een van beide, met veel ruis per scène.
     kampen: [
-      { Grof: 1, Absurd: 0.6, Verwarring: 0.3, Maatschappelijk: -0.6, Herkenbaar: -0.2, Satirisch: 0 },
-      { Grof: -0.8, Maatschappelijk: 0.5, Herkenbaar: 0.7, Satirisch: 0.5, Absurd: -0.4, Verwarring: -0.5 },
+      { Plat: 1, "Seks & drugs": 0.8, Absurd: 0.6, "Zwarte humor": 0.4, Misverstand: 0.2, Actueel: -0.5, "Politiek correct": -0.6, Ongemakkelijk: 0 },
+      { Plat: -0.8, "Seks & drugs": -0.6, Ongemakkelijk: 0.7, Actueel: 0.6, "Politiek correct": 0.5, Misverstand: 0.3, Absurd: -0.4, "Zwarte humor": -0.2 },
     ],
     ruis: 0.7,
     likes: 1.6,
@@ -264,7 +264,7 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
     }
     if (!rt) throw new Error("de run start niet");
     run.showRunId = rt.showRunId;
-    await vraag("runtime", `/v0/runtime/runs/${encodeURIComponent(rt.showRunId)}/order-settings`, { method: "PATCH", body: { startSceneCount: 0, randomizeEqualScores: true } });
+    await vraag("runtime", `/v0/runtime/runs/${encodeURIComponent(rt.showRunId)}/order-settings`, { method: "PATCH", body: { startSceneCount: 0, randomizeEqualScores: true, padWaarde: true } });
     const sessie = await wachtTot(async () => {
       const stand = await vraag("audience", "/audience/admin/state", { timeoutMs: 2000 });
       return stand.ok && stand.body && stand.body.sessionJoin && stand.body.sessionJoin.token ? String(stand.body.sessionJoin.token) : null;
@@ -350,8 +350,9 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
     fase = "klaar";
   }
 
-  async function start({ publiek: id, stappen = true, scenes, sceneSec = 20, upNextSec = 5 } = {}) {
-    const profiel = PUBLIEKEN[id];
+  async function start({ publiek: id, stappen = true, scenes, sceneSec = 20, upNextSec = 5, telefoons: aantal } = {}) {
+    const basis = PUBLIEKEN[id];
+    const profiel = basis && Number(aantal) > 0 ? { ...basis, telefoons: Math.min(150, Math.max(1, Math.round(Number(aantal)))) } : basis;
     if (!profiel) return { ok: false, status: 400, body: { error: "onbekend_publiek" } };
     await stop();
     const run = { publiek: { ...profiel, id }, stappen: Boolean(stappen), startedAt: new Date().toISOString() };
