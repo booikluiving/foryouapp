@@ -465,6 +465,30 @@ function profileLiveWeightForIds(map, ids = []) {
     .reduce((sum, entry) => sum + safeNumber(entry.liveWeight, 0), 0);
 }
 
+// De personagevraag als voorkeur van -1 tot 1 per personage. Een gelijke verdeling over de personages
+// van de scène is 0 (geen voorkeur); meer stemmen dan gelijk is plus, minder is min. Bij één personage
+// ("Wil je X terugzien?") is het ja min "Hoeft niet" (keuze "nee").
+function personageVoorkeurWaarden(personages) {
+  const keuzes = personages && Array.isArray(personages.keuzes)
+    ? personages.keuzes.filter((keuze) => keuze && keuze.characterId && Number.isFinite(Number(keuze.aandeel)))
+    : [];
+  const echte = keuzes.filter((keuze) => String(keuze.characterId) !== "nee");
+  const nee = keuzes.find((keuze) => String(keuze.characterId) === "nee");
+  if (!echte.length) return [];
+  if (echte.length === 1) {
+    const ja = Number(echte[0].aandeel);
+    const niet = nee ? Number(nee.aandeel) : 1 - ja;
+    return [[String(echte[0].characterId), clampNumber(ja - niet, -1, 1, 0)]];
+  }
+  const gelijk = 1 / echte.length;
+  // Van -1 (niemand koos hem) tot 1 (iedereen koos hem), 0 bij een gelijke verdeling.
+  return echte.map((keuze) => {
+    const aandeel = Number(keuze.aandeel);
+    const waarde = aandeel >= gelijk ? (aandeel - gelijk) / (1 - gelijk) : (aandeel - gelijk) / gelijk;
+    return [String(keuze.characterId), clampNumber(waarde, -1, 1, 0)];
+  });
+}
+
 function buildRunProfile(observations = [], liveObservation = null, config = defaultAlgorithmConfig()) {
   const normalizedConfig = normalizeAlgorithmConfig(config);
   const profile = {
@@ -495,13 +519,7 @@ function buildRunProfile(observations = [], liveObservation = null, config = def
     // personage zei (ook personages die niet in de scène zaten: "wij willen Bea weer").
     const perPersonage = new Map();
     const personages = observation.personageVoorkeur;
-    if (personages && Array.isArray(personages.keuzes)) {
-      for (const keuze of personages.keuzes) {
-        if (keuze && keuze.characterId && Number.isFinite(Number(keuze.aandeel))) {
-          perPersonage.set(String(keuze.characterId), Number(keuze.aandeel));
-        }
-      }
-    }
+    for (const [characterId, waarde] of personageVoorkeurWaarden(personages)) perPersonage.set(characterId, waarde);
     for (const naam of Array.isArray(observation.chatNamen) ? observation.chatNamen : []) {
       if (naam && naam.characterId && Number.isFinite(Number(naam.waarde))) {
         const id = String(naam.characterId);
@@ -807,6 +825,7 @@ function personageFavorieten({ observations = [], config = defaultAlgorithmConfi
 
 module.exports = {
   padVoorgangersUitPaden,
+  personageVoorkeurWaarden,
   labelTrek,
   personageFavorieten,
   activeSituations,

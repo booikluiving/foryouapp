@@ -197,6 +197,58 @@ class ChatSimulator {
     };
   }
 
+  // Smaak van het nagespeelde publiek, per run anders: een paar personages waar het fan van is (en
+  // soms een waar het een hekel aan heeft), en per label meer, zo of minder. Personages en labels
+  // worden pas gekozen als ze voor het eerst langskomen. Niet elke bot volgt de smaak van de zaal.
+  smaakVoorRun() {
+    const run = String(this.service.chatRun || "");
+    if (!this.publiekSmaak || this.publiekSmaak.run !== run) {
+      this.publiekSmaak = { run, gezien: new Set(), fans: new Set(), hekel: new Set(), labels: new Map() };
+    }
+    return this.publiekSmaak;
+  }
+
+  // De antwoorden van één bot op de vragen na de scène, volgens de smaak van de zaal plus eigen ruis.
+  botAntwoorden(bot, beoordeling) {
+    const smaak = this.smaakVoorRun();
+    if (bot.volgtZaal === undefined) bot.volgtZaal = Math.random() < 0.75;
+    const vragen = Array.isArray(beoordeling.vragen) ? beoordeling.vragen : [];
+    const personageVraag = vragen.find((vraag) => vraag.id === "personage");
+    const personages = personageVraag ? (personageVraag.keuzes || []).filter((keuze) => !keuze.nee).map((keuze) => String(keuze.id)) : [];
+    for (const id of personages) {
+      if (smaak.gezien.has(id)) continue;
+      smaak.gezien.add(id);
+      if (smaak.fans.size < 2 && Math.random() < 0.3) smaak.fans.add(id);
+      else if (smaak.hekel.size < 1 && Math.random() < 0.12) smaak.hekel.add(id);
+    }
+    const fan = personages.find((id) => smaak.fans.has(id));
+    const hekel = personages.find((id) => smaak.hekel.has(id));
+    const ruis = () => (Math.random() + Math.random() + Math.random() - 1.5) * 0.9;
+    const zin = Math.max(-1, Math.min(1, (bot.volgtZaal ? (fan ? 0.8 : 0) + (hekel ? -0.8 : 0) : 0) + ruis()));
+    const uit = [];
+    for (const vraag of vragen) {
+      const keuzes = Array.isArray(vraag.keuzes) ? vraag.keuzes : [];
+      if (!keuzes.length) continue;
+      let keuze = keuzes[this.randomInt(0, keuzes.length - 1)].id;
+      if (vraag.id === "scene") {
+        // Thermometer: van onder (slechtst) naar boven (best).
+        keuze = keuzes[Math.max(0, Math.min(keuzes.length - 1, Math.floor(((zin + 1) / 2) * keuzes.length)))].id;
+      } else if (vraag.id === "personage" && bot.volgtZaal) {
+        const nee = keuzes.find((item) => item.nee);
+        if (fan && Math.random() < 0.8) keuze = fan;
+        else if (hekel && nee && Math.random() < 0.8) keuze = nee.id;
+        else if (hekel && personages.length > 1) keuze = this.sample(personages.filter((id) => id !== hekel), keuze);
+      } else if (vraag.id === "label" && vraag.labelId) {
+        if (!smaak.labels.has(vraag.labelId)) smaak.labels.set(vraag.labelId, [-1, 0, 0, 1][this.randomInt(0, 3)]);
+        const richting = bot.volgtZaal ? smaak.labels.get(vraag.labelId) + ruis() : ruis() * 1.5;
+        const kies = richting > 0.5 ? "meer" : richting < -0.5 ? "minder" : "goed";
+        if (keuzes.some((item) => item.id === kies)) keuze = kies;
+      }
+      uit.push({ vraag: vraag.id, keuze });
+    }
+    return uit;
+  }
+
   makeMessage(action) {
     const intent = String(action && action.intent || "agree");
     const base = this.sample(INTENT_LINES[intent], this.sample(INTENT_LINES.agree, "ja"));
@@ -480,10 +532,8 @@ class ChatSimulator {
         if (bot.beoordeelt !== beoordeling.id) { bot.beoordeelt = beoordeling.id; bot.slaatOver = Math.random() < 0.1; }
         if (!bot.slaatOver && Math.random() < 1 / 40) {
           bot.beoordeeld = beoordeling.id;
-          for (const vraag of beoordeling.vragen || []) {
-            const keuzes = Array.isArray(vraag.keuzes) ? vraag.keuzes : [];
-            if (!keuzes.length) continue;
-            this.service.beoordeling.antwoord(bot.clientKey, { id: beoordeling.id, vraag: vraag.id, keuze: keuzes[this.randomInt(0, keuzes.length - 1)].id });
+          for (const antwoord of this.botAntwoorden(bot, beoordeling)) {
+            this.service.beoordeling.antwoord(bot.clientKey, { id: beoordeling.id, ...antwoord }, { bot: true });
           }
         }
       }

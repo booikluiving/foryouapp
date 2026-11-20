@@ -39,6 +39,9 @@ const STANDAARD = {
   // Per label een eigen vraag en drie antwoorden (in te vullen in Admin). Niet ingevuld: de naam van het
   // label als vraag en de standaardantwoorden hieronder.
   label: { aan: true, anders: true, minder: "Te veel", goed: "Precies goed", meer: "Mag meer", vragen: {} },
+  // Bots (de knop BOTS / PERSONAGES) beantwoorden de vragen ook, maar tellen standaard niet mee voor het
+  // algoritme. Aan = wel meetellen, om met een nagespeeld publiek te testen.
+  botsTellenMee: false,
 };
 
 // Per label de twee richtingen (vergrotende trap). Per label te overschrijven in Admin (vraag en antwoorden).
@@ -87,6 +90,7 @@ function normalizeInstellingen(raw) {
     aan: bron.aan === undefined ? STANDAARD.aan : Boolean(bron.aan),
     duur: Number.isFinite(duur) ? Math.min(300, Math.max(10, Math.round(duur))) : STANDAARD.duur,
     aanloop: Number.isFinite(aanloop) ? Math.min(10, Math.max(0, aanloop)) : STANDAARD.aanloop,
+    botsTellenMee: bron.botsTellenMee === undefined ? STANDAARD.botsTellenMee : Boolean(bron.botsTellenMee),
     scene: {
       aan: deel("scene").aan === undefined ? true : Boolean(deel("scene").aan),
       vraag: tekst(deel("scene").vraag, STANDAARD.scene.vraag),
@@ -210,11 +214,15 @@ function createBeoordeling(service) {
     return vragen.slice(0, 3);
   }
 
+  // Wie meetelt: mensen, en bots alleen als dat aan staat.
+  const telt = (antwoord) => !antwoord.bot || instellingen.botsTellenMee;
+
   function tellingen() {
     if (!lopend) return {};
     const uit = {};
     for (const vraag of lopend.vragen) uit[vraag.id] = Object.fromEntries(vraag.keuzes.map((keuze) => [keuze.id, 0]));
     for (const antwoord of lopend.antwoorden.values()) {
+      if (!telt(antwoord)) continue;
       for (const [vraag, keuze] of Object.entries(antwoord.keuzes)) {
         if (uit[vraag] && uit[vraag][keuze] !== undefined) uit[vraag][keuze] += 1;
       }
@@ -261,11 +269,13 @@ function createBeoordeling(service) {
       startedAt: lopend.startedAt,
       closedAt: new Date().toISOString(),
       reden,
-      deelnemers: lopend.antwoorden.size,
+      deelnemers: [...lopend.antwoorden.values()].filter(telt).length,
+      bots: [...lopend.antwoorden.values()].filter((antwoord) => antwoord.bot).length,
+      botsTellenMee: instellingen.botsTellenMee,
       // Zonder de foto's: alleen wat er gevraagd is en wat er gekozen is.
       vragen: lopend.vragen.map((vraag) => ({ id: vraag.id, vraag: vraag.vraag, keuzes: vraag.keuzes.map((keuze) => ({ id: keuze.id, naam: keuze.naam || keuze.emoji || "" })) })),
       tellingen: tellingen(),
-      anders: [...lopend.anders.values()],
+      anders: [...lopend.anders.entries()].filter(([sleutel]) => telt(lopend.antwoorden.get(sleutel) || {})).map(([, item]) => item),
     };
     const labelVraag = lopend.vragen.find((vraag) => vraag.id === "label");
     if (labelVraag) uitslag.label = { id: labelVraag.labelId, naam: labelVraag.labelNaam };
@@ -433,13 +443,13 @@ function createBeoordeling(service) {
   }
 
   // Eén antwoord van één telefoon. Per vraag telt het laatste antwoord.
-  function antwoord(clientKey, { id, vraag, keuze, tekst: getypt, naam } = {}) {
+  function antwoord(clientKey, { id, vraag, keuze, tekst: getypt, naam } = {}, { bot = false } = {}) {
     if (!lopend || String(id) !== lopend.id) return { error: { code: "beoordeling_voorbij", message: "De vragen zijn gesloten." } };
     const gevraagd = lopend.vragen.find((item) => item.id === String(vraag));
     if (!gevraagd || !gevraagd.keuzes.some((item) => item.id === String(keuze))) return { error: { code: "beoordeling_ongeldig", message: "Ongeldig antwoord." } };
     const sleutel = String(clientKey || "");
     if (!sleutel) return { error: { code: "beoordeling_ongeldig", message: "Ongeldig antwoord." } };
-    const van = lopend.antwoorden.get(sleutel) || { keuzes: {} };
+    const van = lopend.antwoorden.get(sleutel) || { keuzes: {}, bot: Boolean(bot) };
     if (String(keuze) === "anders") {
       const zin = String(getypt || "").replace(/\s+/g, " ").trim().slice(0, 140);
       if (!zin) return { error: { code: "beoordeling_leeg", message: "Typ eerst iets." } };
