@@ -19,6 +19,8 @@ const CONFIG = {
   sq5Url: env("FY_DECK_SQ5_URL", "http://127.0.0.1:3225").replace(/\/+$/, ""),
   cameraUrl: env("FY_DECK_CAMERA_URL", "http://127.0.0.1:3226").replace(/\/+$/, ""),
   audienceUrl: env("FY_DECK_AUDIENCE_URL", "http://127.0.0.1:3026").replace(/\/+$/, ""),
+  // de helper van de microfoon van de operator (hardware/mic-dictation): knop ZAAL MIC
+  micKnopUrl: env("FY_DECK_MIC_KNOP_URL", "http://127.0.0.1:3231").replace(/\/+$/, ""),
   mainDir: env("FY_DECK_MAIN_DIR", path.join(HOME, "ForYou", "main")),
   // droog = knoppen doen niets buiten Companion (test): alleen loggen
   droog: env("FY_DECK_DROOG", "") === "1",
@@ -252,8 +254,30 @@ function showVolgorde(rt, tp, stem) {
   };
 }
 
+// ZAAL MIC: de microfoon van de operator over de speakers. Wat de knop toont:
+// mic = antwoord van de helper (/api/state) of null, sq5 = mute-stand van de tafel.
+function zaalMicStand(mic, sq5 = {}) {
+  const zaal = mic && mic.zaal;
+  if (!zaal) return { t: "MIC\n?", s: "onbekend" };
+  if (zaal.open) {
+    // Open, maar de weg van de Mac naar de speakers staat dicht op de tafel: niemand hoort het.
+    const dicht = ["mac", "muziek", "main"].some((k) => sq5[k] === true);
+    return dicht ? { t: "TAFEL\nDICHT", s: "mute" } : { t: "MIC\nOPEN", s: "actief" };
+  }
+  if (mic.verbonden === false) return { t: "MIC\nLOS", s: "uit" };
+  if (mic.claudeNeemtOp === true) return { t: "MIC\nBEZET", s: "uit" };
+  return { t: "ZAAL\nMIC", s: "klaar" };
+}
+
+// De microfoon gaat dicht zodra een scène begint (hij mag daarna in de scène wel weer open).
+function zaalMicDichtBijStart(speeldeAl, speeltNu, open) {
+  return speeldeAl === false && speeltNu === true && open === true;
+}
+
 module.exports = {
   ALLE_STATEN,
+  zaalMicDichtBijStart,
+  zaalMicStand,
   CONFIG,
   leesScenePlekken,
   sceneKnoppen,
