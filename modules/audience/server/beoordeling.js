@@ -28,11 +28,13 @@ const STANDAARD = {
   scene: {
     aan: true,
     vraag: "Wat vond je van de scène?",
+    // Vijf stappen; voor het algoritme -1, -½, 0, +½, +1 (gelijk verdeeld van onder naar boven).
     keuzes: [
-      { id: "nooit", emoji: "🤮", naam: "Nooit meer" },
-      { id: "matig", emoji: "👎", naam: "Matig" },
-      { id: "goed", emoji: "❤️", naam: "Goed" },
-      { id: "top", emoji: "🔥", naam: "Nog een keer" },
+      { id: "heelsaai", emoji: "😴", naam: "Heel saai" },
+      { id: "saai", emoji: "🥱", naam: "Beetje saai" },
+      { id: "medium", emoji: "😐", naam: "Medium" },
+      { id: "leuk", emoji: "🙂", naam: "Leuk" },
+      { id: "heelleuk", emoji: "😂", naam: "Heel leuk" },
     ],
   },
   personage: { aan: true, vraag: "Wie wil je terugzien?" },
@@ -84,7 +86,7 @@ function normalizeInstellingen(raw) {
   const duur = Number(bron.duur);
   const aanloop = Number(bron.aanloop);
   const keuzes = Array.isArray(deel("scene").keuzes)
-    ? deel("scene").keuzes.map((keuze) => ({ id: tekst(keuze && keuze.id, "", 20), emoji: tekst(keuze && keuze.emoji, "", 8), naam: tekst(keuze && keuze.naam, "", 30) })).filter((keuze) => keuze.id && keuze.emoji).slice(0, 4)
+    ? deel("scene").keuzes.map((keuze) => ({ id: tekst(keuze && keuze.id, "", 20), emoji: tekst(keuze && keuze.emoji, "", 8), naam: tekst(keuze && keuze.naam, "", 30) })).filter((keuze) => keuze.id && keuze.emoji).slice(0, 5)
     : [];
   return {
     aan: bron.aan === undefined ? STANDAARD.aan : Boolean(bron.aan),

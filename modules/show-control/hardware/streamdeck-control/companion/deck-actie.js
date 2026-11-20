@@ -302,15 +302,17 @@ async function doAutofocus(knop) {
   return { ok, mislukt: ok ? undefined : mis, fout: ok ? undefined : results.map((r) => r.body) };
 }
 
-// Zaaloordeel: "dit werkte, ze lachten" over de scène die speelt of net gespeeld is (+1 in het
-// algoritme). Nog een keer drukken op dezelfde scène zet het terug op 0.
+// Zaaloordeel over de scène die speelt of net gespeeld is: LACH 1× +½, 2× +1; SAAI 1× -½, 2× -1;
+// nog een keer drukken zet het terug op 0.
+const zaalTekst = (w) => (w >= 1 ? "+1" : w > 0 ? "+½" : w <= -1 ? "-1" : w < 0 ? "-½" : "0");
 async function doZaal(knop) {
   const label = firstLine(knop.label);
+  const stap = knop.actie.zaal === "saai" ? "saai" : "lach";
   if (CONFIG.droog) {
-    await flash(knop.key, `${label}\n+1`, "gelukt");
+    await flash(knop.key, `${label}\n${stap === "saai" ? "-½" : "+½"}`, "gelukt");
     return { ok: true, droog: true, post: `${CONFIG.showControlUrl}/v0/show-control/zaal` };
   }
-  const result = await fetchJson(`${CONFIG.showControlUrl}/v0/show-control/zaal`, { method: "POST", body: { stap: "lach", bron: "deck" }, timeoutMs: 5000 });
+  const result = await fetchJson(`${CONFIG.showControlUrl}/v0/show-control/zaal`, { method: "POST", body: { stap, bron: "deck" }, timeoutMs: 5000 });
   const body = result.body || {};
   if (!result.ok) {
     const geen = body.error === "geen_scene";
@@ -318,7 +320,7 @@ async function doZaal(knop) {
     return { ok: geen, fout: body };
   }
   const waarde = body.oordeel ? Number(body.oordeel.waarde) : 0;
-  await flash(knop.key, `${label}\n${waarde > 0 ? "+1" : "0"}`, waarde > 0 ? "gelukt" : "klaar");
+  await flash(knop.key, `${label}\n${zaalTekst(waarde)}`, waarde !== 0 ? "gelukt" : "klaar");
   return { ok: true, waarde, scene: body.scene && body.scene.situationRunId };
 }
 

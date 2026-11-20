@@ -1,7 +1,7 @@
 "use strict";
 
 // Zaaloordeel: de operator of de spelers zeggen hoe een scène viel ("ze lachten, dit werkte"), van -1 tot 1.
-// Met de knop op het deck (lach = +1, nog een keer = terug naar 0) of de applausmeter op een telefoon
+// Met de knoppen op het deck (LACH: 1× +½, 2× +1; SAAI: 1× -½, 2× -1; nog een keer = 0) of de applausmeter op een telefoon
 // op de wifi (/zaal/). Het gaat over de scène die speelt, of anders de scène die net voorbij is (tot de
 // volgende start). Het algoritme telt het mee met gewicht "zaal" (standaard 1, naast het publiek: oordeel 3).
 // Na elk oordeel gaan de nieuwe scores naar de runtime, zoals na de stemronde van het publiek.
@@ -45,13 +45,16 @@ function createZaalOordeel({ fetchCurrentRuntimeState, runtimeUrl, algorithmUrl,
     return { ok: true, scene, oordeel, stappen: STAPPEN };
   }
 
-  // waarde: -1..1, of stap "lach" (deck): +1, en nog een keer op dezelfde scène = terug naar 0.
+  // waarde: -1..1, of een stap van het deck: "lach" 1× = +½, 2× = +1, 3× = 0; "saai" 1× = -½, 2× = -1, 3× = 0.
+  // Een lach na saai (of andersom) begint opnieuw bij ½.
   async function geef({ waarde, stap, bron = "" } = {}) {
     const scene = await sceneNu();
     if (!scene) return { ok: false, status: 409, error: "geen_scene" };
     const eerder = gegeven.get(scene.situationRunId);
     let nieuw;
-    if (stap === "lach") nieuw = eerder && eerder.waarde >= 1 ? 0 : 1;
+    const was = eerder ? Number(eerder.waarde) || 0 : 0;
+    if (stap === "lach") nieuw = was >= 1 ? 0 : was >= 0.5 ? 1 : 0.5;
+    else if (stap === "saai") nieuw = was <= -1 ? 0 : was <= -0.5 ? -1 : -0.5;
     else nieuw = Number(waarde);
     if (!Number.isFinite(nieuw)) return { ok: false, status: 400, error: "waarde_ontbreekt" };
     nieuw = Math.max(-1, Math.min(1, nieuw));

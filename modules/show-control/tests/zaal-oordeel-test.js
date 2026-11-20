@@ -27,14 +27,25 @@ const zaal = createZaalOordeel({ fetchCurrentRuntimeState: async () => ({ ok: tr
   let uit = await zaal.geef({ stap: "lach", bron: "deck" });
   assert.equal(uit.ok, true);
   assert.equal(uit.scene.situationRunId, "sr-2");
-  assert.equal(uit.oordeel.waarde, 1);
+  assert.equal(uit.oordeel.waarde, 0.5, "lach 1× = +½");
   const naarAlgoritme = verstuurd.find((v) => v.url === "http://al/v0/algorithm/events/zaal-oordeel");
-  assert.deepEqual(naarAlgoritme.body, { showRunId: "run-1", situationRunId: "sr-2", situationId: "situation:2", waarde: 1, bron: "deck" });
+  assert.deepEqual(naarAlgoritme.body, { showRunId: "run-1", situationRunId: "sr-2", situationId: "situation:2", waarde: 0.5, bron: "deck" });
   assert.ok(verstuurd.some((v) => v.url === "http://rt/v0/runtime/runs/run-1/scores" && v.body.source === "zaal_oordeel"), "scores naar de runtime");
 
-  // Nog een keer lach op dezelfde scène: terug naar 0.
   uit = await zaal.geef({ stap: "lach", bron: "deck" });
-  assert.equal(uit.oordeel.waarde, 0);
+  assert.equal(uit.oordeel.waarde, 1, "lach 2× = +1");
+  uit = await zaal.geef({ stap: "lach", bron: "deck" });
+  assert.equal(uit.oordeel.waarde, 0, "lach 3× = 0");
+  uit = await zaal.geef({ stap: "saai", bron: "deck" });
+  assert.equal(uit.oordeel.waarde, -0.5, "saai 1× = -½");
+  uit = await zaal.geef({ stap: "saai", bron: "deck" });
+  assert.equal(uit.oordeel.waarde, -1, "saai 2× = -1");
+  uit = await zaal.geef({ stap: "lach", bron: "deck" });
+  assert.equal(uit.oordeel.waarde, 0.5, "lach na saai begint bij +½");
+  uit = await zaal.geef({ stap: "saai", bron: "deck" });
+  uit = await zaal.geef({ stap: "saai", bron: "deck" });
+  uit = await zaal.geef({ stap: "saai", bron: "deck" });
+  assert.equal(uit.oordeel.waarde, 0, "saai 3× = 0");
 
   // Scène voorbij: het oordeel gaat over de laatste gespeelde scène.
   state = { status: "running", showRunId: "run-1", activeSituation: null, situationRuns: [{ situationRunId: "sr-1", resolved: { situationId: "situation:1", title: "Een" } }, { situationRunId: "sr-2", resolved: { situationId: "situation:2", title: "Twee" } }] };
