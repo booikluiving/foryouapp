@@ -1,6 +1,6 @@
 // Hand omhoog = ready. Kijkt naar de strook met de drie spelers die TouchDesigner wegschrijft
 // (~/ForYou/spelerbeeld/strook_0..2.jpg, drie beelden naast elkaar: plek 1, 2, 3). Houdt een speler
-// een hand omhoog (onderarm rechtop) een seconde vast, dan meldt dit programma die speler
+// een hand boven het hoofd een seconde vast (korte gaten in de herkenning tellen niet), dan meldt dit programma die speler
 // als ready bij de publieksdienst (POST /audience/ready/speler). Hand omlaag zet ready niet terug.
 // Alleen tussen de scènes, als er een scène klaarstaat (GET /audience/ready/stand → klaar).
 // In de inloop (instelstand, stand → instel) zet een hand omhoog de key van die speler aan of uit:
@@ -47,13 +47,13 @@ func handenOmhoog(_ pad: String) -> [Int: Bool]? {
         guard let m = midden else { continue }
         let plek = min(3, max(1, Int(m.location.x * 3) + 1))
         var omhoog = false
+        // Hand boven het hoofd: pols op of boven neushoogte. Valt de pols bij een gestrekte arm
+        // boven het beeld weg, dan telt de elleboog duidelijk boven de schouder ook.
+        let hoofd = p(.nose) ?? p(.leftEye) ?? p(.rightEye) ?? p(.leftEar) ?? p(.rightEar)
         for (pols, schouder, elleboog) in [(VNHumanBodyPoseObservation.JointName.leftWrist, VNHumanBodyPoseObservation.JointName.leftShoulder, VNHumanBodyPoseObservation.JointName.leftElbow),
                                            (.rightWrist, .rightShoulder, .rightElbow)] {
-            guard let w = p(pols), let e = p(elleboog) else { continue }
-            // Onderarm rechtop (pols duidelijk boven de elleboog) en de pols op of boven schouderhoogte.
-            guard w.location.y > e.location.y + 0.12 else { continue }
-            if let s = p(schouder) ?? p(.neck), w.location.y < s.location.y - 0.03 { continue }
-            omhoog = true
+            if let w = p(pols), let h = hoofd, w.location.y >= h.location.y { omhoog = true }
+            if let e = p(elleboog), let s = p(schouder) ?? p(.neck), e.location.y > s.location.y + 0.05 { omhoog = true }
         }
         if omhoog { uit[plek] = true }
     }
@@ -97,6 +97,8 @@ func strook() -> (String, Date)? {
 
 log("hand_ready kijkt in \(map), meldt bij \(server), \(vastSeconden) s vasthouden\(droog ? " (droog)" : "")")
 var sinds: [Int: Date] = [:]        // plek → sinds wanneer de hand omhoog is
+var laatstGezien: [Int: Date] = [:]  // plek → laatste beeld met hand omhoog
+let gatSeconden = 0.5                // zo lang mag de herkenning de hand missen
 var gemeld: [Int: Bool] = [:]       // plek → al gemeld voor deze hand omhoog
 var laatsteBeeld = Date.distantPast
 var stand: [String: Any] = [:]
@@ -120,6 +122,7 @@ while true {
     let nu = Date()
     for plek in 1...3 {
         if handen[plek] == true {
+            laatstGezien[plek] = nu
             if sinds[plek] == nil { sinds[plek] = nu; log("plek \(plek): hand omhoog") }
             if gemeld[plek] != true, nu.timeIntervalSince(sinds[plek]!) >= vastSeconden {
                 gemeld[plek] = true
@@ -128,7 +131,7 @@ while true {
                 if !droog { _ = haal("/audience/ready/speler", methode: "POST", body: ["plek": plek, "ready": true, "bron": "hand"]) }
                 standOm = .distantPast
             }
-        } else if sinds[plek] != nil {
+        } else if sinds[plek] != nil, nu.timeIntervalSince(laatstGezien[plek] ?? .distantPast) > gatSeconden {
             sinds[plek] = nil; gemeld[plek] = nil
         }
     }
