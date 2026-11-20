@@ -10,6 +10,7 @@ const {
   signalCounts,
   labelTrek,
   personageFavorieten,
+  recencyWeightForObservation,
 } = require("../scoring/score-engine");
 
 function round(value, digits = 2) {
@@ -28,13 +29,19 @@ function average(values) {
 }
 
 // Eén rij per label of personage: hoe vaak gespeeld en wat het publiek ervan vond.
-function groupRows(scenes, key, names) {
+// Met gewichtVan (per scènenummer) vervaagt de score: recente scènes wegen 1, oudere minder, en er wordt
+// gedeeld door minstens 1. Zo zakt een personage dat lang niet meer speelde langzaam weg uit de top
+// (averageScore = die vervaagde score, gemiddelde = het gewone gemiddelde).
+function groupRows(scenes, key, names, gewichtVan = null) {
   const groups = new Map();
   for (const scene of scenes) {
     for (const id of scene[key]) {
-      if (!groups.has(id)) groups.set(id, { id, name: names.get(id) || id, scores: [], hearts: 0, bored: 0, messages: 0 });
+      if (!groups.has(id)) groups.set(id, { id, name: names.get(id) || id, scores: [], gewogen: 0, gewicht: 0, hearts: 0, bored: 0, messages: 0 });
       const group = groups.get(id);
+      const gewicht = gewichtVan ? gewichtVan(scene.nr - 1) : 1;
       group.scores.push(scene.score);
+      group.gewogen += scene.score * gewicht;
+      group.gewicht += gewicht;
       group.hearts += scene.hearts;
       group.bored += scene.bored;
       group.messages += scene.messages;
@@ -45,7 +52,8 @@ function groupRows(scenes, key, names) {
       id: group.id,
       name: group.name,
       scenes: group.scores.length,
-      averageScore: round(average(group.scores)),
+      averageScore: round(gewichtVan ? group.gewogen / Math.max(group.gewicht, 1) : average(group.scores)),
+      gemiddelde: round(average(group.scores)),
       hearts: group.hearts,
       bored: group.bored,
       messages: group.messages,
@@ -131,7 +139,8 @@ function buildAudienceReport(state = {}) {
   };
 
   const labels = groupRows(scenes, "labelIds", labelNames);
-  const characters = groupRows(scenes, "characterIds", characterNames);
+  // Toppersonages vervagen als ze niet terugkomen, zodat de top meebeweegt met de run.
+  const characters = groupRows(scenes, "characterIds", characterNames, (index) => recencyWeightForObservation(index, scenes.length, config));
 
   // Een conclusie pas als er iets te vergelijken valt: twee labels met een verschillende score.
   let conclusion = null;

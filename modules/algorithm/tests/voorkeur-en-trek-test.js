@@ -34,8 +34,21 @@ assert.deepEqual(trek.map((rij) => [rij.name, rij.procent]), [["Grof", 100], ["A
 
 const fav = personageFavorieten({ observations });
 assert.equal(fav[0].characterId, "character:1");
-// Eén personage: 75 % ja, 25 % "Hoeft niet" → voorkeur 0,75 − 0,25 = 0,5.
-assert.equal(fav[0].aandeel, 0.5);
+// Eén personage: 75 % ja, 25 % "Hoeft niet" → voorkeur 0,75 − 0,25 = 0,5; één scène geleden, dus al
+// iets vervaagd (halfwaarde 6 scènes): 0,5 × 0,5^(1/6).
+assert.equal(fav[0].aandeel, Math.round(0.5 * 0.5 ** (1 / 6) * 10000) / 10000);
+
+// Vervagen: een favoriet die niet terugkomt telt na 6 scènes de helft; komt hij terug, dan meteen weer vol.
+const stem = (n, id, ja) => ({ situationRunId: `v${n}`, situationId: "situation:2", labelIds: [], characterIds: [id], observedScore: 0,
+  personageVoorkeur: { stemmen: 10, keuzes: [{ characterId: id, aandeel: ja }, { characterId: "nee", aandeel: 1 - ja }] } });
+const leeg = (n) => ({ situationRunId: `l${n}`, situationId: "situation:4", labelIds: [], characterIds: [], observedScore: 0 });
+const aandeelVan = (obs, id) => (personageFavorieten({ observations: obs }).find((rij) => rij.characterId === id) || { aandeel: 0 }).aandeel;
+const oud = [stem(0, "character:1", 1), ...[1, 2, 3, 4, 5, 6].map(leeg)];
+assert.equal(aandeelVan(oud, "character:1"), 0.5, "6 scènes niet terug: de helft");
+assert.equal(aandeelVan([...oud, stem(7, "character:1", 1)], "character:1"), 1, "terug en weer gekozen: vol");
+// Een nieuwe favoriet haalt een oude in.
+const wissel = [stem(0, "character:1", 1), ...[1, 2, 3, 4, 5, 6].map(leeg), stem(7, "character:2", 0.8)];
+assert.equal(personageFavorieten({ observations: wissel })[0].characterId, "character:2");
 
 // De personagevraag is relatief: gelijk verdeeld = 0, minder dan gelijk = min, "Hoeft niet" = min.
 const { personageVoorkeurWaarden } = require("../scoring/score-engine");
