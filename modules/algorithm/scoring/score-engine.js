@@ -45,6 +45,10 @@ function defaultAlgorithmConfig() {
       // Publieksvraag na de scène welk personage je nog een keer wilt zien: het aandeel van de stemmen
       // (0 tot 1) telt met dit gewicht op bij elke scène met dat personage.
       personageVoorkeur: 1,
+      // Padvoorkeur: vond het publiek een scène goed (of slecht), dan krijgen de scènes die in een pad
+      // direct na die scène komen haar score × dit gewicht mee. Zo loopt een run vaker verder in een pad
+      // dat het publiek leuk vindt.
+      padVolgende: 1,
     },
     // Grenzen tegen spammen: zoveel telt er per telefoon per scène.
     grenzen: {
@@ -120,6 +124,7 @@ function normalizeAlgorithmConfig(input = {}, options = {}) {
       cameraBored: rounded(clampNumber(sourceWeights.cameraBored, -10, 10, baseWeights.cameraBored ?? 0), 3),
       labelVoorkeur: rounded(clampNumber(sourceWeights.labelVoorkeur, -10, 10, baseWeights.labelVoorkeur ?? 1), 3),
       personageVoorkeur: rounded(clampNumber(sourceWeights.personageVoorkeur, -10, 10, baseWeights.personageVoorkeur ?? 1), 3),
+      padVolgende: rounded(clampNumber(sourceWeights.padVolgende, 0, 10, baseWeights.padVolgende ?? 1), 3),
       sceneRepeatPenalty: rounded(clampNumber(
         sourceWeights.sceneRepeatPenalty ?? source.sceneRepeatPenalty,
         0,
@@ -171,6 +176,24 @@ function catalogFromRunSnapshot(runSnapshotOrCatalog) {
   }
   if (Array.isArray(runSnapshotOrCatalog.situations)) return runSnapshotOrCatalog;
   return null;
+}
+
+// Per scène de scènes die in een pad direct ervoor komen, uit de paden van de run (paths.snapshot.v0).
+// Wordt bij het begin van een run bij de catalogus van het algoritme gezet (catalog.padVoorgangers).
+function padVoorgangersUitPaden(paths) {
+  const lijst = paths && Array.isArray(paths.paths) ? paths.paths : [];
+  const uit = {};
+  for (const pad of lijst) {
+    if (!pad || pad.active === false || pad.archivedAt) continue;
+    for (const edge of Array.isArray(pad.edges) ? pad.edges : []) {
+      const van = edge && edge.fromSituationId ? String(edge.fromSituationId) : "";
+      const naar = edge && edge.toSituationId ? String(edge.toSituationId) : "";
+      if (!van || !naar || van === naar) continue;
+      if (!uit[naar]) uit[naar] = [];
+      if (!uit[naar].includes(van)) uit[naar].push(van);
+    }
+  }
+  return uit;
 }
 
 function activeSituations(catalog) {
@@ -596,6 +619,7 @@ function buildScoreFeed({
   }
   const latestObservation = liveObservation || (observations.length ? observations[observations.length - 1] : null);
   const latestIsLive = !!liveObservation;
+  const padVoorgangers = (catalog && catalog.padVoorgangers && typeof catalog.padVoorgangers === "object") ? catalog.padVoorgangers : {};
   const observedSituation = latestObservation
     ? situationById(catalog, latestObservation.situationId)
     : null;
@@ -626,8 +650,17 @@ function buildScoreFeed({
       sceneRepeatPenalty: 0,
       labelVoorkeur: 0,
       personageVoorkeur: 0,
+      padVoorkeur: 0,
     };
     const reasons = [];
+    // Padvoorkeur: de beste score van een gespeelde scène die in een pad direct hiervoor komt.
+    const voorgangerScores = ((padVoorgangers[situation.id]) || [])
+      .map((id) => observedBySituation.get(id))
+      .filter((item) => item && Number.isFinite(Number(item.observedScore)))
+      .map((item) => Number(item.observedScore));
+    const padVoorkeur = voorgangerScores.length
+      ? Math.max(...voorgangerScores) * safeNumber(normalizedConfig.weights.padVolgende, 1)
+      : 0;
     const labelProfile = profileAverageForIds(runProfile.labels, situation.labelIds || []);
     const characterProfile = profileAverageForIds(runProfile.characters, situation.characterIds || []);
     const situationProfile = profileEntryValue(runProfile.situations.get(situation.id));
@@ -654,6 +687,9 @@ function buildScoreFeed({
     components.personageVoorkeur = rounded(personageVoorkeur, 4);
     predictedScore += personageVoorkeur;
     if (personageVoorkeur !== 0) reasons.push("publiek_personage_voorkeur");
+    components.padVoorkeur = rounded(padVoorkeur, 4);
+    predictedScore += padVoorkeur;
+    if (padVoorkeur !== 0) reasons.push("publiek_pad_voorkeur");
     if (labelProfile !== 0) reasons.push("profile_label_affinity");
     if (characterProfile !== 0) reasons.push("profile_character_affinity");
     if (runProfile.includesLive && (
@@ -770,6 +806,7 @@ function personageFavorieten({ observations = [], config = defaultAlgorithmConfi
 }
 
 module.exports = {
+  padVoorgangersUitPaden,
   labelTrek,
   personageFavorieten,
   activeSituations,

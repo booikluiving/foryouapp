@@ -8,6 +8,7 @@ const {
   catalogFromRunSnapshot,
   defaultAlgorithmConfig,
   normalizeAlgorithmConfig,
+  padVoorgangersUitPaden,
   personagesUitCatalogus,
   scoreOnderdelen,
 } = require("./score-engine");
@@ -194,8 +195,12 @@ async function createScoringContext({ showRunId, runSnapshot, catalog, config } 
   assertNoRuntimeOwnershipFields({ showRunId, runSnapshot, catalog, config });
   assertNoPromptSettings(config || {});
   if (!showRunId) throw new Error("algorithm_missing_show_run_id");
-  const catalogSnapshot = catalogFromRunSnapshot(runSnapshot || catalog);
-  if (!catalogSnapshot) throw new Error("algorithm_missing_catalog_snapshot");
+  const catalogUitSnapshot = catalogFromRunSnapshot(runSnapshot || catalog);
+  if (!catalogUitSnapshot) throw new Error("algorithm_missing_catalog_snapshot");
+  // De paden van de run: per scène de voorgangers, voor de padvoorkeur.
+  const catalogSnapshot = runSnapshot && runSnapshot.paths
+    ? { ...catalogUitSnapshot, padVoorgangers: padVoorgangersUitPaden(runSnapshot.paths) }
+    : catalogUitSnapshot;
   const scoringConfig = normalizeAlgorithmConfig(config || await readAlgorithmConfig());
   const state = {
     schemaVersion: "algorithm.score-state.v0",
