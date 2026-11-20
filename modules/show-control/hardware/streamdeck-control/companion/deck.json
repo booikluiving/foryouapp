@@ -39,7 +39,7 @@
         { "plek": [0, 1], "key": "sit", "label": "SCENE", "soort": "run", "actie": { "cue": "toggle-situation" } },
         { "plek": [0, 2], "key": "scenechat", "label": "SCENE\nCHAT", "soort": "run", "actie": { "cue": "scene-chat" } },
         { "plek": [0, 3], "key": "ready", "label": "READY", "soort": "run", "actie": { "cue": "teleprompter-ready" } },
-        { "plek": [0, 4], "key": "lach", "label": "LACH", "soort": "publiek", "actie": { "zaal": "lach" } },
+        { "plek": [0, 4], "key": "lach", "label": "😂", "soort": "publiek", "actie": { "zaal": "lach" } },
         { "plek": [0, 5], "key": "overslaan", "label": "SKIP\nSCENE", "soort": "run", "actie": { "cue": "overslaan" } },
         { "plek": [0, 6], "key": "regie_test", "label": "TEST", "soort": "run", "actie": { "regie": "test" } },
         { "plek": [0, 7], "key": "overzicht", "label": "STATUS", "soort": "sys", "actie": { "pagina": "systeem" }, "status": true },
