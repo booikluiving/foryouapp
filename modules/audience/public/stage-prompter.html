@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <title>For_You · teleprompterlaag</title>
-    <!-- Laag over de teleprompters van de spelers, alleen tussen de scènes: rechtsboven de stemklok
+    <!-- Laag over de teleprompters van de spelers, alleen tussen de scènes: linksboven hoe laat het is, rechtsboven de stemklok
          (en het 3-2-1 aftellen voor de start), linksonder de live chat. Doorzichtig; tijdens de scène leeg. -->
     <style>
       html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font-family: "Metropolis", -apple-system, "Helvetica Neue", Arial, sans-serif; color: #fff; }
@@ -11,6 +11,7 @@
       body.scene #laag { display: none; }
       #klok { position: absolute; top: 3vh; right: 3vw; font-size: 12vh; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; text-shadow: 0 0 6px #000, 0 2px 16px rgba(0, 0, 0, 0.9); }
       #klok:empty { display: none; }
+      #tijd { position: absolute; top: 3vh; left: 3vw; font-size: 5vh; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, 0.85); text-shadow: 0 0 6px #000, 0 2px 12px rgba(0, 0, 0, 0.9); }
       #klok.aftel { color: #37d67a; }
       #chat { position: absolute; left: 3vw; bottom: 3vh; width: 42vw; max-height: 40vh; display: flex; flex-direction: column; justify-content: flex-end; gap: 0.6vh; overflow: hidden;
               -webkit-mask-image: linear-gradient(to top, #000 70%, transparent 100%); mask-image: linear-gradient(to top, #000 70%, transparent 100%); }
@@ -19,11 +20,12 @@
     </style>
   </head>
   <body>
-    <div id="laag"><div id="klok"></div><div id="chat"></div></div>
+    <div id="laag"><div id="tijd"></div><div id="klok"></div><div id="chat"></div></div>
     <script>
       const MAX_REGELS = 8;
       const klok = document.getElementById("klok");
       const chat = document.getElementById("chat");
+      const tijdEl = document.getElementById("tijd");
       let stemTot = 0, stemOpen = 0, aftelTot = 0;
 
       function zetFase(fase) { document.body.classList.toggle("scene", !!fase && fase.fase === "scene"); }
@@ -53,6 +55,9 @@
         else if (stemTot > nu && nu >= stemOpen) tekst = String(Math.ceil((stemTot - nu) / 1000));
         if (klok.textContent !== tekst) klok.textContent = tekst;
         klok.classList.toggle("aftel", aftel);
+        const d = new Date();
+        const tijd = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+        if (tijdEl.textContent !== tijd) tijdEl.textContent = tijd;
       }
       setInterval(tik, 200);
 
