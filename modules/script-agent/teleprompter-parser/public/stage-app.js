@@ -40,6 +40,21 @@
     root.classList.add("is-performer-stage");
     root.dataset.stageSlot = String(stageSlotIndex);
     volgSpelerReady();
+    toonPrompterLaag();
+  }
+
+  // Tussen de scènes: de stemklok rechtsboven en de live chat linksonder, als doorzichtige laag van
+  // de publieksdienst over de teleprompter (tijdens de scène is die laag leeg). ?laag=0 zet hem uit.
+  function toonPrompterLaag() {
+    if (params.get("laag") === "0") return;
+    const adres = params.get("publiek") || `${window.location.protocol}//${window.location.hostname}:3026`;
+    const laag = document.createElement("iframe");
+    laag.src = `${adres}/audience/stage/prompter`;
+    laag.setAttribute("aria-hidden", "true");
+    laag.tabIndex = -1;
+    laag.style.cssText = "position:fixed;inset:0;width:100%;height:100%;border:0;background:transparent;pointer-events:none;z-index:2147483646;";
+    laag.allowTransparency = true;
+    document.body.appendChild(laag);
   }
 
   // Ready per speler: drukt deze speler op READY (telefoon of klikker), dan krijgt zijn teleprompter

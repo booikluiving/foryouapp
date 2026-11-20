@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <title>For_You · teleprompterlaag</title>
+    <!-- Laag over de teleprompters van de spelers, alleen tussen de scènes: rechtsboven de stemklok
+         (en het 3-2-1 aftellen voor de start), linksonder de live chat. Doorzichtig; tijdens de scène leeg. -->
+    <style>
+      html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font-family: "Metropolis", -apple-system, "Helvetica Neue", Arial, sans-serif; color: #fff; }
+      #laag { position: fixed; inset: 0; pointer-events: none; }
+      body.scene #laag { display: none; }
+      #klok { position: absolute; top: 3vh; right: 3vw; font-size: 12vh; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; text-shadow: 0 0 6px #000, 0 2px 16px rgba(0, 0, 0, 0.9); }
+      #klok:empty { display: none; }
+      #klok.aftel { color: #37d67a; }
+      #chat { position: absolute; left: 3vw; bottom: 3vh; width: 42vw; max-height: 40vh; display: flex; flex-direction: column; justify-content: flex-end; gap: 0.6vh; overflow: hidden;
+              -webkit-mask-image: linear-gradient(to top, #000 70%, transparent 100%); mask-image: linear-gradient(to top, #000 70%, transparent 100%); }
+      .regel { font-size: 3.4vh; line-height: 1.2; overflow-wrap: anywhere; text-shadow: 0 0 4px #000, 0 2px 10px rgba(0, 0, 0, 0.95); }
+      .regel .naam { font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <div id="laag"><div id="klok"></div><div id="chat"></div></div>
+    <script>
+      const MAX_REGELS = 8;
+      const klok = document.getElementById("klok");
+      const chat = document.getElementById("chat");
+      let stemTot = 0, stemOpen = 0, aftelTot = 0;
+
+      function zetFase(fase) { document.body.classList.toggle("scene", !!fase && fase.fase === "scene"); }
+      function zetBeoordeling(b) {
+        const nu = Date.now();
+        if (!b || !b.id) { stemTot = 0; stemOpen = 0; return; }
+        stemOpen = Number.isFinite(b.aanloopMs) ? nu + b.aanloopMs : Date.parse(b.opentAt || "") || 0;
+        stemTot = Number.isFinite(b.overMs) ? nu + b.overMs : Date.parse(b.endsAt || "") || 0;
+      }
+      function regel(msg) {
+        if (!msg || msg.system || !msg.text) return;
+        const el = document.createElement("div");
+        el.className = "regel";
+        const naam = document.createElement("span");
+        naam.className = "naam";
+        naam.textContent = (msg.name || "Anoniem") + " ";
+        if (/^#[0-9a-f]{6}$/i.test(String(msg.nameColor || ""))) naam.style.color = msg.nameColor;
+        el.append(naam, document.createTextNode(msg.text));
+        chat.appendChild(el);
+        while (chat.childElementCount > MAX_REGELS) chat.firstElementChild.remove();
+      }
+      function tik() {
+        const nu = Date.now();
+        let tekst = "", aftel = false;
+        if (aftelTot > nu) { tekst = String(Math.ceil((aftelTot - nu) / 1000)); aftel = true; }
+        else if (stemTot > nu && nu >= stemOpen) tekst = String(Math.ceil((stemTot - nu) / 1000));
+        if (klok.textContent !== tekst) klok.textContent = tekst;
+        klok.classList.toggle("aftel", aftel);
+      }
+      setInterval(tik, 200);
+
+      function verbind() {
+        const bron = new EventSource("/audience/stage/stroom");
+        bron.onmessage = (ev) => {
+          let msg;
+          try { msg = JSON.parse(ev.data); } catch { return; }
+          if (msg.type === "stage_herlaad") { location.reload(); return; }
+          if (msg.type === "begin") {
+            zetFase(msg.fase);
+            zetBeoordeling(msg.beoordeling);
+            chat.textContent = "";
+            for (const m of msg.berichten || []) regel(m);
+          } else if (msg.type === "fase") zetFase(msg);
+          else if (msg.type === "comment") regel(msg);
+          else if (msg.type === "beoordeling") zetBeoordeling(msg.beoordeling);
+          else if (msg.type === "beoordeling_dicht") zetBeoordeling(null);
+          else if (msg.type === "spelers_ready") aftelTot = Number(msg.aftellenTot) || 0;
+          else if (msg.type === "session_reset" || msg.type === "session_closed" || msg.type === "chat_reset") chat.textContent = "";
+        };
+      }
+      verbind();
+    </script>
+  </body>
+</html>

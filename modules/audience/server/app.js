@@ -161,6 +161,10 @@ setInterval(kijk, 2000);
   app.get("/audience/stage/chat", (_req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, "stage-chat.html"));
   });
+  // Laag over de teleprompters van de spelers: tussen de scènes de stemklok rechtsboven en de chat linksonder.
+  app.get("/audience/stage/prompter", (_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, "stage-prompter.html"));
+  });
 
   // Tussenscherm: titel, het script dat gegenereerd wordt, tellingen en reacties van de vorige scène.
   // Ready per speler: de knop op de telefoon van de speler (alleen op het netwerk van de show).
