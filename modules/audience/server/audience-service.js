@@ -1594,6 +1594,11 @@ class AudienceService extends EventEmitter {
     return { ok: true, banMinuten: BAN_MINUTEN, mensen };
   }
 
+  // Kleur van een naam in de chat (dezelfde op telefoon en zaalscherm).
+  naamKleur(naam) {
+    return getNameColorHex(naam);
+  }
+
   // Berichten van iemand die een time-out of ban kreeg: alles wat hij vóór die mute schreef. Blijft zo,
   // ook na opheffen. De tekst blijft in de database; telefoons en zaalscherm tonen VERWIJDERD_TEKST.
   verwijderdeBerichten(sessionId) {

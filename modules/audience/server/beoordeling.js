@@ -452,6 +452,7 @@ function createBeoordeling(service) {
     if (!gevraagd || !gevraagd.keuzes.some((item) => item.id === String(keuze))) return { error: { code: "beoordeling_ongeldig", message: "Ongeldig antwoord." } };
     const sleutel = String(clientKey || "");
     if (!sleutel) return { error: { code: "beoordeling_ongeldig", message: "Ongeldig antwoord." } };
+    const eersteStem = !lopend.antwoorden.has(sleutel);
     const van = lopend.antwoorden.get(sleutel) || { keuzes: {}, bot: Boolean(bot) };
     if (String(keuze) === "anders") {
       const zin = String(getypt || "").replace(/\s+/g, " ").trim().slice(0, 140);
@@ -462,6 +463,9 @@ function createBeoordeling(service) {
     lopend.antwoorden.set(sleutel, van);
     // Het zaalscherm laat zien dát er gestemd wordt en door hoeveel mensen, niet waarop.
     service.emit("broadcast", { type: "beoordeling_stem", id: lopend.id, gestemd: lopend.antwoorden.size, mensen: service.onlineMensen() });
+    // Eerste antwoord van een echte telefoon met een naam: "NAAM heeft gestemd!" in de chat op het zaalscherm.
+    const stemNaam = String(naam || "").trim();
+    if (eersteStem && !bot && stemNaam && stemNaam !== "Anoniem") service.emit("broadcast", { type: "gestemd", naam: stemNaam, kleur: service.naamKleur(stemNaam), time: new Date().toISOString() });
     // Heeft iedereen die er is alles beantwoord, dan hoeft de klok niet uit te lopen.
     const klaar = [...lopend.antwoorden.values()].filter((item) => lopend.vragen.every((v) => item.keuzes[v.id])).length;
     const mensen = service.onlineMensen();
