@@ -99,7 +99,7 @@ function defaultOrderSettings() {
 // De eerste scènes van een run komen uit verschillende paden: zolang er minder dan dit aantal gespeeld
 // is (de spelende meegeteld), valt een vrije scène af die een pad deelt met een scène die al gespeeld is.
 // Is er niets anders vrij, dan de scène(s) met de minste gedeelde paden. 0 = uit.
-const DIVERSE_PADEN_STANDAARD = 8;
+const DIVERSE_PADEN_STANDAARD = 6;
 
 function padenVanItem(item) {
   return new Set(((item && item.pathStatuses) || []).map((status) => status && status.pathId).filter(Boolean).map(String));
