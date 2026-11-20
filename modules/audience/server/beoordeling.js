@@ -7,6 +7,7 @@
 // bewaard; het antwoord op de labelvraag gaat naar het algoritme als voorkeur voor dat label.
 
 const { createPersonagefoto } = require("./personagefoto");
+const { cameraVoor } = require("../../../shared/casting/camera-per-personage");
 
 const INSTELLINGEN_KEY = "beoordeling_instellingen";
 const UITSLAGEN_KEY = "beoordeling_uitslagen";
@@ -136,8 +137,15 @@ function createBeoordeling(service) {
         id: String(slot.characterId),
         naam: String(slot.characterName || "").trim(),
         speler: String(slot.performerName || "").trim(),
-        // De plek van de speler in de ring (camera 1, 2 of 3).
-        plek: plek.get(slot.performerId) || Number(slot.slotIndex) || 0,
+        // De camera waarop de speler staat: die van zijn plek in de ring (1, 2 of 3), tenzij hij in deze
+        // scène bij een ander op de camera staat (shared/casting/camera-per-personage.json).
+        plek: cameraVoor({
+          omgeving: bron.environmentId || (bron.environment && bron.environment.id),
+          situatie: bron.situationId,
+          personage: slot.characterId,
+          plek: plek.get(slot.performerId) || Number(slot.slotIndex) || 0,
+        }),
+        vast: !!personagefoto.vast(slot.characterId),
       })),
       labels: (bron.labelIds || []).map((id) => ({ id: String(id), naam: labelNaam.get(id) || "" })).filter((label) => label.naam),
     };
@@ -146,6 +154,12 @@ function createBeoordeling(service) {
   function fotoVan(situationRunId, plek) {
     const van = fotos.get(situationRunId);
     return (van && van.get(Number(plek))) || "";
+  }
+
+  // De vaste foto van een personage als data-URL (zie personagefoto.js), of "".
+  function vasteFotoUrl(characterId) {
+    const foto = personagefoto.vast(characterId);
+    return foto ? `data:image/jpeg;base64,${foto.jpeg.toString("base64")}` : "";
   }
 
   // Een foto van een speler uit de scène (JPEG), aangeleverd door wie de camera's heeft.
@@ -160,7 +174,7 @@ function createBeoordeling(service) {
     }
     fotos.get(id).set(nummer, `data:image/jpeg;base64,${jpeg.toString("base64")}`);
     // Wie op die plek speelde in deze scène krijgt het beeld als snapshot van het personage.
-    const personage = scene && scene.situationRunId === id ? scene.personages.find((rij) => rij.plek === nummer) : null;
+    const personage = scene && scene.situationRunId === id ? scene.personages.find((rij) => rij.plek === nummer && !rij.vast) : null;
     const snapshot = personage ? personagefoto.zet({ showRunId: scene.showRunId, characterId: personage.id, jpeg, punten: punten == null || punten === "" ? undefined : Number(punten) }) : null;
     return { ok: true, situationRunId: id, plek: nummer, personage: snapshot && snapshot.ok ? personage.id : null };
   }
@@ -172,7 +186,7 @@ function createBeoordeling(service) {
       vragen.push({ id: "scene", soort: "thermometer", vraag: instellingen.scene.vraag, keuzes: instellingen.scene.keuzes.map((keuze) => ({ id: keuze.id, emoji: keuze.emoji, naam: keuze.naam || "" })) });
     }
     if (instellingen.personage.aan && van.personages.length >= 1) {
-      const keuzes = van.personages.map((personage) => ({ id: personage.id, naam: personage.naam, speler: personage.speler, foto: fotoVan(van.situationRunId, personage.plek) }));
+      const keuzes = van.personages.map((personage) => ({ id: personage.id, naam: personage.naam, speler: personage.speler, foto: vasteFotoUrl(personage.id) || fotoVan(van.situationRunId, personage.plek) }));
       // Eén personage: niets te kiezen, dus ja (de kaart) of "Hoeft niet".
       const een = keuzes.length === 1;
       if (een) keuzes.push({ id: "nee", naam: "Hoeft niet", nee: true });

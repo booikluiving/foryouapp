@@ -7,6 +7,7 @@ const { createTelepromptStore } = require("../runtime/teleprompt-store");
 const { createVertaler } = require("./vertaling");
 const { isBlindRanking, plaatjeSlug } = require("../../../../../shared/blind-ranking/blind-ranking");
 const { isTrendOmgeving } = require("../../../../../shared/trend/trend");
+const { cameraVoor } = require("../../../../../shared/casting/camera-per-personage");
 
 const DEFAULT_CAPTION_STYLE_PATH = path.join(__dirname, "..", "..", "..", "db", "teleprompter-caption-style.json");
 
@@ -103,6 +104,21 @@ function preparedCharacterForLine(preparedScene, line) {
   return preparedCharacterForSpeaker(preparedScene, line && line.speakerLabel);
 }
 
+// De camera die een personage in beeld brengt. Meestal die van zijn plek; staan twee spelers samen op
+// één camera (monster onder het bed, de twee zonnebloemen), dan zegt shared/casting welke.
+function cameraForCharacter(scene, character) {
+  const slot = Number(character && character.slot || 0);
+  if (slot < 1 || slot > 3) return 0;
+  const environment = scene && scene.environment;
+  const camera = cameraVoor({
+    omgeving: environment && typeof environment === "object" ? environment.id : environment,
+    situatie: scene && (scene.sceneId || scene.id),
+    personage: character && (character.characterId || character.legacyCharacterId || character.id),
+    plek: slot,
+  });
+  return camera >= 1 && camera <= 3 ? camera : slot;
+}
+
 function mappedAutoCameraCharacters(scene) {
   const characters = Array.isArray(scene && scene.characters) ? scene.characters : [];
   const seenSlots = new Set();
@@ -110,6 +126,7 @@ function mappedAutoCameraCharacters(scene) {
     .map((character) => ({
       ...character,
       slot: Number(character && character.slot || 0),
+      camera: cameraForCharacter(scene, character),
       name: String(character && character.name || ""),
     }))
     .filter((character) => {
@@ -129,8 +146,14 @@ function randomBetweenMs(min, max, random = Math.random) {
 }
 
 function reactionCharacterForSpeaker(cameraScene, speakerCharacter, random = Math.random) {
-  const speakerSlot = Number(speakerCharacter && speakerCharacter.slot || 0);
-  const candidates = mappedAutoCameraCharacters(cameraScene).filter((character) => character.slot !== speakerSlot);
+  const speakerCamera = cameraForCharacter(cameraScene, speakerCharacter);
+  // Een reactieshot laat een andere camera zien; wie op dezelfde camera staat telt niet.
+  const seenCameras = new Set();
+  const candidates = mappedAutoCameraCharacters(cameraScene).filter((character) => {
+    if (character.camera === speakerCamera || seenCameras.has(character.camera)) return false;
+    seenCameras.add(character.camera);
+    return true;
+  });
   if (!candidates.length) return null;
   const value = Number(typeof random === "function" ? random() : Math.random());
   const safeValue = Number.isFinite(value) ? Math.max(0, Math.min(0.999999, value)) : 0;
@@ -149,6 +172,7 @@ function autoCameraSceneForResolution(preparedScene, fallbackScene) {
     sceneId: Number(fallbackScene && (fallbackScene.sceneId || fallbackScene.id) || 0),
     title: String(fallbackScene && fallbackScene.title || ""),
     status: String(fallbackScene && fallbackScene.status || "playing") || "playing",
+    environment: fallbackScene && fallbackScene.environment || null,
     characters: Array.isArray(fallbackScene && fallbackScene.characters) ? fallbackScene.characters : [],
   };
 }
@@ -209,7 +233,7 @@ function buildAutoCameraReactionShotPlan({ show, teleprompt, cue, preparedScene,
   if (!line || line.type !== "dialogue") return { action: "skipped", reason: "not_dialogue" };
 
   const speakerCharacter = preparedCharacterForLine(cameraScene, line);
-  const speakerSlot = Number(speakerCharacter && speakerCharacter.slot || 0);
+  const speakerSlot = cameraForCharacter(cameraScene, speakerCharacter);
   if (speakerSlot < 1 || speakerSlot > 3) {
     return {
       action: "skipped",
@@ -219,7 +243,7 @@ function buildAutoCameraReactionShotPlan({ show, teleprompt, cue, preparedScene,
   }
 
   const reactionCharacter = reactionCharacterForSpeaker(cameraScene, speakerCharacter, random);
-  const reactionSlot = Number(reactionCharacter && reactionCharacter.slot || 0);
+  const reactionSlot = Number(reactionCharacter && reactionCharacter.camera || 0);
   if (reactionSlot < 1 || reactionSlot > 3) {
     return {
       action: "skipped",
@@ -259,7 +283,7 @@ function resolveAutoCameraSwitch({ show, teleprompt, cue, preparedScene, fallbac
   if (!line || line.type !== "dialogue") return { action: "skipped", reason: "not_dialogue" };
 
   const character = preparedCharacterForLine(cameraScene, line);
-  const slot = Number(character && character.slot || 0);
+  const slot = cameraForCharacter(cameraScene, character);
   if (slot < 1 || slot > 3) {
     return {
       action: "skipped",

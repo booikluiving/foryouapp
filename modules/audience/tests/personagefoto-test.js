@@ -80,6 +80,23 @@ assert.ok(inArchief("character_15").includes(`vast-${gekozen}`), "de gekozen fot
 assert.equal(inArchief("character_15").length, 4);
 assert.equal(b.personagekaart("run:b", "character:15").bron, "gekozen", "gekozen wint van de snapshot van deze run");
 
+// Twee spelers op één camera (shared/casting/camera-per-personage.json): monster onder het bed staat in
+// de slaapkamer bij Penelope op camera 2 en heeft een vaste foto; in 44 komt hij uit de kast.
+const slaapkamer = (situationRunId, situationId) => ({
+  showRunId: "run:c",
+  showRunSnapshot: { catalog: { performers: [{ id: "p1", performerSlot: 1 }, { id: "p2", performerSlot: 2 }, { id: "p3", performerSlot: 3 }] } },
+  situationRuns: [{ situationRunId, resolved: { situationId, environmentId: "environment:3", title: "Monster", performerSlots: [slot("p2", "character:3", "Penelope"), slot("p3", "character:19", "Monster onder het bed")] } }],
+});
+b.onthoudScene(slaapkamer("sr:30", "situation:4"));
+assert.equal(b.zetFoto({ plek: 2, jpeg: jpeg(30), punten: 2 }).personage, "character:3", "camera 2 is van Penelope");
+assert.equal(b.zetFoto({ plek: 3, jpeg: jpeg(31), punten: 2 }).personage, null, "camera 3 is leeg: van niemand");
+assert.equal(b.personagefoto("run:c", "character:19").bron, "vast", "het monster heeft altijd zijn vaste foto");
+assert.equal(b.personagekaart("run:c", "character:19").bron, "vast");
+assert.equal(b.personagefoto("run:c", "character:7").bron, "vast", "zonnebloem 2 ook");
+assert.equal(fs.existsSync(path.join(archief, "character_19")), false, "geen camerabeeld in het archief van het monster");
+b.onthoudScene(slaapkamer("sr:31", "situation:44"));
+assert.equal(b.zetFoto({ plek: 3, jpeg: jpeg(32), punten: 2 }).personage, null, "ook in 44 geen camerabeeld voor het monster");
+
 fs.rmSync(map, { recursive: true, force: true });
 fs.rmSync(archief, { recursive: true, force: true });
 console.log("personagefoto-test: alles ok");
