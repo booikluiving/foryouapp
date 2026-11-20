@@ -34,9 +34,10 @@
         stemTot = Number.isFinite(b.overMs) ? nu + b.overMs : Date.parse(b.endsAt || "") || 0;
       }
       function regel(msg) {
-        if (!msg || msg.system || !msg.text) return;
+        if (!msg || msg.system || msg.verwijderd || !msg.text || msg.text === "<message deleted>") return;
         const el = document.createElement("div");
         el.className = "regel";
+        if (msg.id != null) el.dataset.id = String(msg.id);
         const naam = document.createElement("span");
         naam.className = "naam";
         naam.textContent = (msg.name || "Anoniem") + " ";
@@ -68,6 +69,7 @@
             for (const m of msg.berichten || []) regel(m);
           } else if (msg.type === "fase") zetFase(msg);
           else if (msg.type === "comment") regel(msg);
+          else if (msg.type === "berichten_verwijderd") for (const id of msg.ids || []) { const el = chat.querySelector(`[data-id="${Number(id)}"]`); if (el) el.remove(); }
           else if (msg.type === "beoordeling") zetBeoordeling(msg.beoordeling);
           else if (msg.type === "beoordeling_dicht") zetBeoordeling(null);
           else if (msg.type === "spelers_ready") aftelTot = Number(msg.aftellenTot) || 0;
