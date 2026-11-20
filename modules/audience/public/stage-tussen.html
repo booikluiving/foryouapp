@@ -285,8 +285,6 @@
       #stage.upnextfase .spelerrij .namen { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; font-size: 40px; font-weight: 500; line-height: 1.05; text-align: center; hyphens: auto; overflow-wrap: break-word; }
       .spelerrij .speler.spelerklaar { border: 6px solid #37d67a; }
       #stage.upnextfase .spelerrij .speler.spelerklaar { border: 8px solid #37d67a; }
-      /* Tijdens de stemklok staat de chat over de spelers heen, op zijn gewone plek. */
-      #stage.stemfase #p-chat { z-index: 5; text-shadow: 0 0 4px #000, 0 2px 12px rgba(0, 0, 0, 0.95); }
       #stage.upnextfase #p-chat { left: 70px; top: 1380px !important; height: 380px !important; width: 640px; font-size: 40px !important; z-index: 5; text-shadow: 0 0 4px #000, 0 2px 12px rgba(0, 0, 0, 0.95); }
       #stage.upnextfase .chatregel { color: #fff; }
       #stage.upnextfase .chatregel b { font-weight: 500; }
@@ -881,7 +879,7 @@
         // Startscènes: vóór het venster met de tekst eerst kort de prompt (zie startPromptBegin).
         prompt: ["titel", "prompt", "chat", "voet", "spelers"],
         // Vóór de klok staat even de prompt van de gekozen scène in beeld (zie PROMPT).
-        stem: ["stem", "schrijf", "stemspelers", "prompt", "chat"],
+        stem: ["stem", "schrijf", "stemspelers", "prompt"],
         // Na het stemmen: de scène die komt.
         upnext: ["titel", "upnext", "chat", "spelers"],
         // Tussen het stemmen en Up next: het blad 'Dit publiek' van het rapport.
