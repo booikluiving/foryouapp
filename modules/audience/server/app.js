@@ -814,6 +814,19 @@ setInterval(kijk, 2000);
     res.json({ ok: true, wifiQr: service.updateWifiQrSettings(req.body || {}) });
   });
 
+  // Een emoji van de operator (deckknoppen 😂 en 😴): stijgt op het scherm op zoals een emoji van een
+  // telefoon, maar telt niet mee bij het publiek.
+  app.post("/audience/admin/stage/emoji", (req, res) => {
+    const emoji = String(req.body && req.body.emoji || "").trim().slice(0, 8);
+    if (!emoji) {
+      res.status(400).json({ ok: false, error: "emoji_ontbreekt" });
+      return;
+    }
+    const burst = Math.max(1, Math.min(5, Math.round(Number(req.body && req.body.burst) || 1)));
+    service.emit("broadcast", { type: "stage_reaction", reaction: "emoji", emoji, burst, counts: { ...service.reactionCounts } });
+    res.json({ ok: true, emoji, burst });
+  });
+
   app.post("/audience/admin/stage/test-emoji", (_req, res) => {
     service.emit("broadcast", {
       type: "stage_reaction",
