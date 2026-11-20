@@ -2439,6 +2439,7 @@ class AudienceService extends EventEmitter {
         nameColor: getNameColorHex(message.name),
         system: String(message.detail || "").startsWith("moderation_notice:"),
         isBot: message.isBot,
+        mod: message.detail === "operator",
       }));
     return { ok: true, sessionId: session.id, gewistTot, messages };
   }

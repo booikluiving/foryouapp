@@ -776,6 +776,8 @@ setInterval(kijk, 2000);
       nameColor: getNameColorHex(name),
       isBot: true,
       simulated: false,
+      // De operator krijgt een mod-zwaardje voor zijn naam (telefoon en zaalscherm).
+      mod: true,
     };
     payload.id = service.store.insertChatMessage({
       sessionId: session.id,
@@ -810,6 +812,19 @@ setInterval(kijk, 2000);
 
   app.post("/audience/admin/wifi-qr", (req, res) => {
     res.json({ ok: true, wifiQr: service.updateWifiQrSettings(req.body || {}) });
+  });
+
+  // Een emoji van de operator (deckknoppen 😂 en 😴): stijgt op het scherm op zoals een emoji van een
+  // telefoon, maar telt niet mee bij het publiek.
+  app.post("/audience/admin/stage/emoji", (req, res) => {
+    const emoji = String(req.body && req.body.emoji || "").trim().slice(0, 8);
+    if (!emoji) {
+      res.status(400).json({ ok: false, error: "emoji_ontbreekt" });
+      return;
+    }
+    const burst = Math.max(1, Math.min(5, Math.round(Number(req.body && req.body.burst) || 1)));
+    service.emit("broadcast", { type: "stage_reaction", reaction: "emoji", emoji, burst, counts: { ...service.reactionCounts } });
+    res.json({ ok: true, emoji, burst });
   });
 
   app.post("/audience/admin/stage/test-emoji", (_req, res) => {

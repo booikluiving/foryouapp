@@ -221,6 +221,9 @@
       #chatRegels { flex: none; display: grid; gap: 8px; }
       .chatregel { line-height: 1.2; color: rgba(255, 255, 255, 0.5); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
       .chatregel b { font-weight: 700; margin-right: 0.35em; color: var(--wit-2); }
+      /* Mod-zwaardje voor de naam van de operator. */
+      .modZwaard { display: inline-block; width: 1em; height: 1em; margin-right: 0.3em; vertical-align: -0.14em; background: #00ad03; border-radius: 0.16em; }
+      .modZwaard svg { display: block; width: 100%; height: 100%; }
       .chatregel .likes { white-space: nowrap; color: rgba(255, 255, 255, 0.34); }
       .chatregel.vast { color: var(--wit-2); }
 
@@ -2199,11 +2202,18 @@
       let berichten = [];
       // Elke regel wordt één keer gemaakt en daarna hergebruikt.
       const regelEls = new WeakMap();
+      function modZwaard() {
+        const badge = document.createElement("span");
+        badge.className = "modZwaard";
+        badge.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path fill="#fff" d="M17 3v3l-7.5 7.5-3-3L14 3zM4.6 9.6 6 8.2l5.8 5.8-1.4 1.4zM6.2 12.4l1.4 1.4L4.4 17 3 15.6z"/></svg>';
+        return badge;
+      }
       function vulRegel(r, msg) {
         r.textContent = "";
         const naam = maak("b", "", msg.name || "Anoniem");
         const kleur = dof(msg.nameColor);
         if (kleur) naam.style.color = kleur;
+        if (msg.mod) naam.prepend(modZwaard());
         r.append(naam, document.createTextNode(msg.join ? " " + msg.text : msg.text));
         if (msg.likes > 0) r.appendChild(maak("span", "likes", " ♥ " + msg.likes));
         r.dataset.likes = String(msg.likes || 0);
@@ -2243,7 +2253,7 @@
         if (!msg || msg.system || !msg.text) return;
         if (ronde && ronde.start && msg.time && Date.parse(msg.time) < Date.parse(ronde.start)) return;
         if (msg.id && berichten.some((m) => m.id === msg.id)) return;
-        berichten.push({ id: Number(msg.id) || 0, name: msg.name, nameColor: msg.nameColor, text: msg.text, likes: Number(msg.likes) || 0, time: msg.time });
+        berichten.push({ id: Number(msg.id) || 0, name: msg.name, nameColor: msg.nameColor, text: msg.text, likes: Number(msg.likes) || 0, time: msg.time, mod: !!msg.mod });
         if (berichten.length > 200) berichten = berichten.slice(-200);
         tekenChat();
         if (!stil && !inScene) geluid.chat();
@@ -2257,6 +2267,7 @@
         const r = maak("div", "");
         const naam = maak("b", "", msg.name || "Anoniem");
         if (msg.nameColor) naam.style.color = msg.nameColor;
+        if (msg.mod) naam.prepend(modZwaard());
         r.append(naam, document.createTextNode(String(msg.text || "").slice(0, 140)));
         vak.appendChild(r);
         while (vak.children.length > SCENE_CHAT_MAX) vak.firstElementChild.remove();
