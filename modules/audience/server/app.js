@@ -591,7 +591,7 @@ setInterval(kijk, 2000);
     let berichten = [];
     try {
       const history = service.publicHistory(60);
-      berichten = (history.messages || []).filter((m) => !m.system);
+      berichten = history.messages || [];
     } catch {}
     stuur({
       type: "begin",
@@ -612,7 +612,7 @@ setInterval(kijk, 2000);
     });
     const doorsturen = (msg) => {
       if (!msg || !STROOM_TYPES.has(msg.type)) return;
-      if (msg.type === "comment" && msg.system) return;
+      // Meldingen van de operator (time-out, ban) gaan mee; het zaalscherm toont ze als losse zin.
       stuur(msg);
     };
     service.on("broadcast", doorsturen);
@@ -791,6 +791,11 @@ setInterval(kijk, 2000);
     service.emit("broadcast", payload);
     service.emit("admin-state-changed");
     res.json({ ok: true, payload });
+  });
+
+  // Namenvenster op de operatorpagina: wie er in de chat zit, en wie gemute is.
+  app.get("/audience/admin/chat/mensen", (_req, res) => {
+    res.json(service.chatMensen());
   });
 
   // Podiumpagina's (emoji, chat, tussen) laten herladen, bv. na een update; TD hoeft niets te doen.

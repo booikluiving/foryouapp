@@ -2210,6 +2210,8 @@
       }
       function vulRegel(r, msg) {
         r.textContent = "";
+        // Een melding van de operator (time-out, ban) staat er als losse zin, zonder naam ervoor.
+        if (msg.melding) { r.textContent = msg.text; r.dataset.likes = "0"; return; }
         const naam = maak("b", "", msg.name || "Anoniem");
         const kleur = dof(msg.nameColor);
         if (kleur) naam.style.color = kleur;
@@ -2250,9 +2252,15 @@
       }
       // stil: een bericht dat er bij het laden al stond geeft geen tik.
       function regel(msg, stil) {
-        if (!msg || msg.system || !msg.text) return;
+        if (!msg || !msg.text) return;
         if (ronde && ronde.start && msg.time && Date.parse(msg.time) < Date.parse(ronde.start)) return;
         if (msg.id && berichten.some((m) => m.id === msg.id)) return;
+        if (msg.system) {
+          if (inScene) return;
+          berichten.push({ id: Number(msg.id) || 0, join: true, melding: true, text: msg.text, likes: 0, time: msg.time });
+          tekenChat();
+          return;
+        }
         berichten.push({ id: Number(msg.id) || 0, name: msg.name, nameColor: msg.nameColor, text: msg.text, likes: Number(msg.likes) || 0, time: msg.time, mod: !!msg.mod });
         if (berichten.length > 200) berichten = berichten.slice(-200);
         tekenChat();

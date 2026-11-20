@@ -373,6 +373,38 @@ function createScriptAgentApp(options = {}) {
     res.json({ ok: true });
   }));
 
+  // Namenvenster: wie er in de publiekschat zit, en een time-out of ban (mute op die telefoon).
+  async function naarPubliek(pad, init = {}) {
+    const fetchImpl = options.fetchImpl || fetch;
+    let antwoord;
+    try {
+      antwoord = await fetchImpl(`${publiekUrl}${pad}`, { ...init, signal: AbortSignal.timeout(3000) });
+    } catch (_err) {
+      throw httpError(502, "De publieksdienst is niet bereikbaar.");
+    }
+    const body = await antwoord.json().catch(() => ({}));
+    if (!antwoord.ok || body.ok === false) {
+      const meldingen = { session_inactive: "Er is geen publiekssessie.", clientKey_required: "Deze persoon is niet gevonden." };
+      throw httpError(antwoord.ok ? 409 : antwoord.status, body.message || meldingen[body.error] || body.error || "Publieksdienst weigert.");
+    }
+    return body;
+  }
+  app.get("/v0/script-agent/operator/publiek/mensen", asyncRoute(async (_req, res) => {
+    const body = await naarPubliek("/audience/admin/chat/mensen");
+    res.json({ ok: true, banMinuten: body.banMinuten, mensen: body.mensen || [] });
+  }));
+  app.post("/v0/script-agent/operator/publiek/mute", asyncRoute(async (req, res) => {
+    const clientKey = String(req.body && req.body.clientKey || "");
+    if (!clientKey) throw httpError(400, "Geen persoon gekozen.");
+    const op = req.body && req.body.op === "opheffen" ? "unmute" : "mute";
+    const body = await naarPubliek(`/audience/admin/users/${op}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ clientKey, targetKind: "client", minutes: req.body && req.body.minuten, reason: "operator" }),
+    });
+    res.json({ ok: true, mutedUntil: body.mutedUntil || null });
+  }));
+
   app.post("/v0/script-agent/operator/scene-to-chat", asyncRoute(async (req, res) => {
     const events = [];
     const result = await operatorService.sceneToChat(req.body || {}, (event) => {

@@ -842,3 +842,11 @@ textarea:focus {
 }
 .publiek-chat { display: grid; gap: 8px; }
 .publiek-chat .operator-form { align-items: center; }
+.chat-mensen { display: grid; gap: 6px; }
+.chat-mensen ul { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; border: 1px solid var(--line); }
+.chat-mensen li { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.chat-mensen li:last-child { border-bottom: 0; }
+.chat-mensen .naam { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-mensen .stand { color: var(--bad); font-size: 0.85em; white-space: nowrap; }
+.chat-mensen li.weg .naam { opacity: 0.45; }
+.chat-mensen button { padding: 2px 8px; font-size: 0.85em; }

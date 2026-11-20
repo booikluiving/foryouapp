@@ -33,6 +33,8 @@ const { createUniversum } = require("./universum");
 const { createOmgevingsbeeld } = require("./omgevingsbeeld");
 const { fetchTelefoonKaart } = require("../client/paths-client");
 const { createPersonages } = require("./personages");
+// Een mute van zo lang of langer heet een ban: de rest van de show (een nieuwe sessie wist hem).
+const BAN_MINUTEN = 600;
 
 const SERVICE_VERSION = "audience.0";
 const ACCESS_COOKIE = "fy_audience_access";
@@ -1546,13 +1548,48 @@ class AudienceService extends EventEmitter {
     return { targetKey, label };
   }
 
+  // Melding in de chat (telefoons en zaalscherm). Een mute van BAN_MINUTEN of langer is een ban: die
+  // duurt de rest van de show.
   moderationFeedText(actionType, label, minutes = 0) {
-    if (actionType === "mute") return `Moderator heeft ${label} gemute${minutes ? ` (${minutes}m)` : ""}.`;
-    if (actionType === "unmute") return `Moderator heeft de mute van ${label} opgeheven.`;
-    if (actionType === "block") return `Moderator heeft ${label} geblokkeerd.`;
-    if (actionType === "unblock") return `Moderator heeft de blokkade van ${label} opgeheven.`;
-    if (actionType === "kick") return `Moderator heeft ${label} verwijderd.`;
+    if (actionType === "mute") return minutes >= BAN_MINUTEN
+      ? `De operator heeft ${label} gebanned.`
+      : `De operator heeft ${label} een time-out van ${minutes || 5} ${minutes === 1 ? "minuut" : "minuten"} gegeven.`;
+    if (actionType === "unmute") return `De operator heeft ${label} weer toegelaten in de chat.`;
+    if (actionType === "block") return `De operator heeft ${label} geblokkeerd.`;
+    if (actionType === "unblock") return `De operator heeft de blokkade van ${label} opgeheven.`;
+    if (actionType === "kick") return `De operator heeft ${label} verwijderd.`;
     return "";
+  }
+
+  // Wie er nu in de chat zit (echte telefoons met een naam), voor het namenvenster op de operatorpagina.
+  // Wie gemute is staat erbij met tot wanneer, ook als die telefoon even weg is.
+  chatMensen() {
+    const session = this.getActiveSession();
+    if (!session) return { ok: false, error: "session_inactive", mensen: [] };
+    this.cleanupEnforcementMaps();
+    const perSleutel = new Map();
+    for (const client of this.store.listOnlineClients(session.id)) {
+      if (client.isBot || !client.clientKey) continue;
+      const naam = sanitizeName(client.name || "");
+      if (!naam || naam === "Anoniem") continue;
+      const mute = this.getMuteState({ clientKey: client.clientKey });
+      perSleutel.set(client.clientKey, {
+        clientKey: client.clientKey,
+        naam,
+        kleur: getNameColorHex(naam),
+        online: true,
+        mutedUntil: mute && mute.expiresAt ? mute.expiresAt : null,
+      });
+    }
+    for (const [scopeKey, state] of this.mutedUsers.entries()) {
+      if (!scopeKey.startsWith("client:") || !state.targetClientKey || perSleutel.has(state.targetClientKey)) continue;
+      const naam = sanitizeName(state.targetLabel || "iemand");
+      perSleutel.set(state.targetClientKey, { clientKey: state.targetClientKey, naam, kleur: getNameColorHex(naam), online: false, mutedUntil: state.expiresAt || null });
+    }
+    // Nog meer dan een uur te gaan: dat is een ban, geen time-out.
+    for (const m of perSleutel.values()) m.ban = !!(m.mutedUntil && Date.parse(m.mutedUntil) - Date.now() > 60 * 60000);
+    const mensen = [...perSleutel.values()].sort((a, b) => a.naam.localeCompare(b.naam, "nl"));
+    return { ok: true, banMinuten: BAN_MINUTEN, mensen };
   }
 
   publishModerationNotice(actionType, scope, meta = {}) {
@@ -1561,7 +1598,7 @@ class AudienceService extends EventEmitter {
     const label = String(meta.targetLabel || "").trim() || this.getClientLabel(scope);
     const text = this.moderationFeedText(actionType, label, Number(meta.minutes || 0));
     if (!text) return null;
-    this.store.insertChatMessage({
+    const id = this.store.insertChatMessage({
       sessionId: session.id,
       time: nowIso(),
       clientId: 0,
@@ -1572,7 +1609,7 @@ class AudienceService extends EventEmitter {
       status: "accepted",
       detail: `moderation_notice:${actionType}`,
     });
-    const payload = { type: "comment", time: nowIso(), name: "Melding", text, system: true };
+    const payload = { type: "comment", id, time: nowIso(), name: "Melding", text, system: true };
     this.emit("broadcast", payload);
     return payload;
   }
@@ -1589,7 +1626,7 @@ class AudienceService extends EventEmitter {
     const targetLabel = this.getClientLabel(scope);
     let response = { ok: true, targetKind: scope.kind, targetKey: scope.kind === "client" ? scope.clientKey : scope.ip };
     if (actionType === "mute") {
-      const minutes = clampInt(body.minutes, 1, 180, 5);
+      const minutes = clampInt(body.minutes, 1, BAN_MINUTEN, 5);
       const expiresAt = new Date(Date.now() + minutes * 60 * 1000).toISOString();
       this.mutedUsers.set(scope.scopeKey, { expiresAt, targetKind: scope.kind, targetIp: scope.ip || null, targetClientKey: scope.clientKey || null, targetLabel });
       this.recordModerationAction("mute", scope, { reason, expiresAt, targetLabel });
@@ -1598,7 +1635,7 @@ class AudienceService extends EventEmitter {
         message: {
           type: "moderation_notice",
           code: "user_muted",
-          message: "Je bent tijdelijk gemute door de moderator.",
+          message: minutes >= BAN_MINUTEN ? "De operator heeft je gebanned uit de chat." : `De operator heeft je een time-out van ${minutes} ${minutes === 1 ? "minuut" : "minuten"} gegeven.`,
           mutedUntil: expiresAt,
           remainingMs: Math.max(0, Date.parse(expiresAt) - Date.now()),
         },
@@ -1608,7 +1645,7 @@ class AudienceService extends EventEmitter {
     } else if (actionType === "unmute") {
       this.mutedUsers.delete(scope.scopeKey);
       this.recordModerationAction("unmute", scope, { reason, targetLabel });
-      this.emit("target", { scope, message: { type: "moderation_notice", code: "user_unmuted", message: "Je mute is opgeheven. Je kunt weer reageren." } });
+      this.emit("target", { scope, message: { type: "moderation_notice", code: "user_unmuted", message: "Je kunt weer meedoen in de chat." } });
       this.publishModerationNotice("unmute", scope, { targetLabel });
     } else if (actionType === "block") {
       this.blockedUsers.set(scope.scopeKey, { expiresAt: null, targetKind: scope.kind, targetIp: scope.ip || null, targetClientKey: scope.clientKey || null, targetLabel });
@@ -1837,7 +1874,7 @@ class AudienceService extends EventEmitter {
       return {
         ok: false,
         code: "user_muted",
-        message: "Je bent tijdelijk gemute.",
+        message: "Je kunt nu niet in de chat typen.",
         mutedUntil: mute.expiresAt || null,
         remainingMs: Number.isFinite(ts) ? Math.max(0, ts - Date.now()) : null,
       };

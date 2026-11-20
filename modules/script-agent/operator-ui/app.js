@@ -1245,11 +1245,108 @@ publiek.form.addEventListener("submit", (event) => {
   submitPubliekChat();
 });
 
+// In de chat: namen van wie er nu in de publiekschat zit. Time-out = een paar minuten niet typen,
+// ban = de rest van de show. In de chat staat dan een melding van de operator.
+const TIMEOUT_MINUTEN = 5;
+const chatMensen = {
+  lijst: $("#chatMensen"),
+  aantal: $("#chatMensenAantal"),
+  msg: $("#chatMensenMsg"),
+  banMinuten: 600,
+  laatste: "",
+  zeker: "",
+  zekerTimer: 0,
+};
+
+function tijdVan(iso) {
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime()) ? d.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" }) : "";
+}
+
+function tekenChatMensen(mensen) {
+  const sleutel = JSON.stringify([mensen, chatMensen.zeker]);
+  if (sleutel === chatMensen.laatste) return;
+  chatMensen.laatste = sleutel;
+  const online = mensen.filter((m) => m.online).length;
+  chatMensen.aantal.textContent = online ? String(online) : "";
+  chatMensen.lijst.textContent = "";
+  for (const m of mensen) {
+    const li = document.createElement("li");
+    if (!m.online) li.className = "weg";
+    const naam = document.createElement("span");
+    naam.className = "naam";
+    naam.textContent = m.naam;
+    if (m.kleur) naam.style.color = m.kleur;
+    li.appendChild(naam);
+    const knop = (tekst, fn, klasse) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = tekst;
+      if (klasse) b.className = klasse;
+      b.addEventListener("click", fn);
+      li.appendChild(b);
+    };
+    if (m.mutedUntil) {
+      const stand = document.createElement("span");
+      stand.className = "stand";
+      stand.textContent = m.ban ? "gebanned" : `time-out tot ${tijdVan(m.mutedUntil)}`;
+      li.appendChild(stand);
+      knop("Opheffen", () => muteChatPersoon(m, "opheffen"));
+    } else {
+      knop(`${TIMEOUT_MINUTEN} min`, () => muteChatPersoon(m, TIMEOUT_MINUTEN));
+      // Ban vraagt een tweede klik, zodat een misklik niemand uit de chat zet.
+      const zeker = chatMensen.zeker === m.clientKey;
+      knop(zeker ? "Zeker?" : "Ban", () => {
+        if (zeker) { chatMensen.zeker = ""; muteChatPersoon(m, chatMensen.banMinuten); return; }
+        chatMensen.zeker = m.clientKey;
+        clearTimeout(chatMensen.zekerTimer);
+        chatMensen.zekerTimer = setTimeout(() => { chatMensen.zeker = ""; laadChatMensen(); }, 3000);
+        laadChatMensen();
+      }, "danger");
+    }
+    chatMensen.lijst.appendChild(li);
+  }
+  if (!mensen.length) {
+    const li = document.createElement("li");
+    li.className = "weg";
+    li.textContent = "Nog niemand";
+    chatMensen.lijst.appendChild(li);
+  }
+}
+
+async function laadChatMensen() {
+  try {
+    const body = await api("/v0/script-agent/operator/publiek/mensen");
+    chatMensen.banMinuten = Number(body.banMinuten) || chatMensen.banMinuten;
+    chatMensen.msg.textContent = "";
+    tekenChatMensen(body.mensen || []);
+  } catch (err) {
+    chatMensen.msg.textContent = err.message || "Namen niet geladen.";
+    chatMensen.msg.style.color = "var(--bad)";
+  }
+}
+
+async function muteChatPersoon(m, minuten) {
+  chatMensen.msg.textContent = "";
+  try {
+    await api("/v0/script-agent/operator/publiek/mute", {
+      method: "POST",
+      body: JSON.stringify(minuten === "opheffen" ? { clientKey: m.clientKey, op: "opheffen" } : { clientKey: m.clientKey, minuten }),
+    });
+  } catch (err) {
+    chatMensen.msg.textContent = err.message || "Niet gelukt.";
+    chatMensen.msg.style.color = "var(--bad)";
+  }
+  laadChatMensen();
+}
+
 async function boot() {
   emptyChat();
   applyStageStyle({ font: "jetbrains", cursor: "block", fontSize: 30 });
   connectStage();
   loadPubliek().catch((err) => setPubliekMsg(err.message || "publiek niet geladen", true));
+  laadChatMensen();
+  setInterval(laadChatMensen, 3000);
   await Promise.all([
     loadStageStyle().catch((err) => setMsg(err.message || "stage style niet geladen", true)),
     loadSettings().catch((err) => {
