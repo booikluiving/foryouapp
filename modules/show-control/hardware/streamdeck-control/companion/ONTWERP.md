@@ -45,7 +45,7 @@ Groen, rood en amber zijn standen, nooit een soortkleur.
 1. Kies een soort uit de lijst. Past hij nergens: niet bouwen, Booi vragen. Een nieuwe soort alleen op ja van Booi.
 2. Geef de knop geen kleur, rol of pictogram: alleen `soort`.
 3. Gebruik alleen de standen van die soort (`ontwerp.soorten.<soort>.standen`). De scripts zetten een staat (`klaar`, `mute`, `actief` ...); `lib.js` → `STAAT_NAAR_STAND` vertaalt die naar de stand.
-4. Label in hoofdletters, hooguit twee regels van acht tekens. Uitzondering op ja van Booi: de zaalknop (`lach`) heeft 😂 als label (20 nov 2026).
+4. Label in hoofdletters, hooguit twee regels van acht tekens. Uitzondering op ja van Booi: de zaalknoppen hebben een emoji als label, `lach` 😂 en `saai` 🥱 (20 nov 2026).
 5. Plek: `ontwerp.rijen` zegt per pagina en rij welke soorten er mogen. Navigatie alleen in de onderste rij.
 6. Knoppen van een scène (omgeving, extra's, personage) staan in `scene` zonder plek; deck-status zet wat er is van links aangeschoven op `sc1`..`sc6`.
 7. `deck.sh check`, dan `deck.sh test start`. Op het echte deck alleen met `deck.sh toepassen --ja` na een ja van Booi.

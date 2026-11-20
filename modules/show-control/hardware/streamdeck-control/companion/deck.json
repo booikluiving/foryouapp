@@ -25,7 +25,7 @@
       "onbekend": { "vlak": "#2f3540", "tekst": "#a8adb5" }
     },
     "rijen": {
-      "show": [["run", "publiek", "sys"], ["run", "cam"], ["geluid", "publiek"], ["scene", "nav"]],
+      "show": [["run", "publiek", "sys"], ["run", "cam"], ["geluid", "publiek", "sys"], ["scene", "nav"]],
       "schermen": [["web", "cam"], ["web"], ["web"], ["nav"]],
       "systeem": [["sys", "publiek"], ["sys", "publiek"], ["sys", "publiek"], ["nav"]]
     },
@@ -40,9 +40,10 @@
         { "plek": [0, 2], "key": "scenechat", "label": "SCENE\nCHAT", "soort": "run", "actie": { "cue": "scene-chat" } },
         { "plek": [0, 3], "key": "ready", "label": "READY", "soort": "run", "actie": { "cue": "teleprompter-ready" } },
         { "plek": [0, 4], "key": "lach", "label": "😂", "soort": "publiek", "actie": { "zaal": "lach" } },
-        { "plek": [0, 5], "key": "overslaan", "label": "SKIP\nSCENE", "soort": "run", "actie": { "cue": "overslaan" } },
-        { "plek": [0, 6], "key": "regie_test", "label": "TEST", "soort": "run", "actie": { "regie": "test" } },
-        { "plek": [0, 7], "key": "overzicht", "label": "STATUS", "soort": "sys", "actie": { "pagina": "systeem" }, "status": true },
+        { "plek": [0, 5], "key": "saai", "label": "🥱", "soort": "publiek", "actie": { "zaal": "saai" } },
+        { "plek": [0, 6], "key": "overslaan", "label": "SKIP\nSCENE", "soort": "run", "actie": { "cue": "overslaan" } },
+        { "plek": [0, 7], "key": "regie_test", "label": "TEST", "soort": "run", "actie": { "regie": "test" } },
+        { "plek": [2, 7], "key": "overzicht", "label": "STATUS", "soort": "sys", "actie": { "pagina": "systeem" }, "status": true },
         { "plek": [1, 0], "key": "prev", "label": "PREV", "soort": "run", "actie": { "cue": "teleprompter-prev" } },
         { "plek": [1, 1], "key": "next", "label": "NEXT", "soort": "run", "actie": { "cue": "teleprompter-next" } },
         { "plek": [1, 2], "key": "autocam", "label": "AUTOCAM", "soort": "cam", "actie": { "autocam": "toggle" } },
@@ -57,8 +58,7 @@
         { "plek": [2, 3], "key": "zaalmic", "label": "ZAAL\nMIC", "soort": "geluid", "actie": { "zaalmic": "houden", "max": 30 } },
         { "plek": [2, 4], "key": "muziek", "label": "MUZIEK", "soort": "geluid", "actie": { "cue": "sq5-muziek" } },
         { "plek": [2, 5], "key": "main", "label": "MAIN", "soort": "geluid", "actie": { "cue": "sq5-main" } },
-        { "plek": [2, 6], "key": "stem", "label": "STEM", "soort": "publiek", "actie": { "stem": "start" } },
-        { "plek": [2, 7], "key": "showmuziek", "label": "SHOW\nMUZIEK", "soort": "geluid", "actie": { "showmuziek": "toggle" } },
+        { "plek": [2, 6], "key": "showmuziek", "label": "SHOW\nMUZIEK", "soort": "geluid", "actie": { "showmuziek": "toggle" } },
         { "plek": [3, 0], "key": "sc1", "label": "", "soort": "scene", "actie": { "scenePlek": 1 } },
         { "plek": [3, 1], "key": "sc2", "label": "", "soort": "scene", "actie": { "scenePlek": 2 } },
         { "plek": [3, 2], "key": "sc3", "label": "", "soort": "scene", "actie": { "scenePlek": 3 } },

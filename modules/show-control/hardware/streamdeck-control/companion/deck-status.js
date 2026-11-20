@@ -206,11 +206,14 @@ function compute(deck, g) {
       else if (knop.actie && knop.actie.osc) { s = g.ports[knop.actie.osc.poort || 8008] ? "klaar" : "uit"; }
       else if (knop.actie && knop.actie.autofocus) { s = portOk[3226] ? "klaar" : "uit"; }
       else if (knop.actie && knop.actie.zaal) {
-        // Zaaloordeel: wit (aan) als de scène van nu al een lach heeft, anders kan; geen scène = uit.
+        // Zaaloordeel: wit (aan) met de waarde als de scène van nu al een lach (LACH) of saai (SAAI) heeft,
+        // anders kan; geen scène = uit.
         const stand = g.zaal && g.zaal.ok && g.zaal.body ? g.zaal.body : null;
+        const w = stand && stand.oordeel ? Number(stand.oordeel.waarde) || 0 : 0;
+        const mijn = knop.actie.zaal === "saai" ? w < 0 : w > 0;
         if (!showOk || !stand) { t = `${first(label)}\n?`; s = showOk ? "onbekend" : "uit"; }
         else if (!stand.scene) { t = `${first(label)}\n--`; s = "uit"; }
-        else if (stand.oordeel && Number(stand.oordeel.waarde) > 0) { t = `${first(label)}\n+1`; s = "aan"; }
+        else if (mijn) { t = `${first(label)}\n${w >= 1 ? "+1" : w > 0 ? "+½" : w <= -1 ? "-1" : "-½"}`; s = "aan"; }
         else s = "klaar";
       }
       else if (knop.actie && knop.actie.stem) {

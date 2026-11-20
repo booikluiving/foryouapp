@@ -28,24 +28,24 @@ function ronde(botsTellenMee) {
   assert.ok(open, "vragen gaan open");
   // Twee mensen: top en Adolf. Drie bots: nooit en Bea.
   for (const mens of ["m1", "m2"]) {
-    beoordeling.antwoord(mens, { id: open.id, vraag: "scene", keuze: "top" });
+    beoordeling.antwoord(mens, { id: open.id, vraag: "scene", keuze: "heelleuk" });
     beoordeling.antwoord(mens, { id: open.id, vraag: "personage", keuze: "character:1" });
   }
   for (const bot of ["b1", "b2", "b3"]) {
-    beoordeling.antwoord(bot, { id: open.id, vraag: "scene", keuze: "nooit" }, { bot: true });
+    beoordeling.antwoord(bot, { id: open.id, vraag: "scene", keuze: "heelsaai" }, { bot: true });
     beoordeling.antwoord(bot, { id: open.id, vraag: "personage", keuze: "character:2" }, { bot: true });
   }
   return beoordeling.sluit("test");
 }
 
 let uitslag = ronde(false);
-assert.deepEqual(uitslag.tellingen.scene, { nooit: 0, matig: 0, goed: 0, top: 2 }, "zonder bots: alleen de mensen");
+assert.deepEqual(uitslag.tellingen.scene, { heelsaai: 0, saai: 0, medium: 0, leuk: 0, heelleuk: 2 }, "zonder bots: alleen de mensen");
 assert.deepEqual(uitslag.tellingen.personage, { "character:1": 2, "character:2": 0 });
 assert.equal(uitslag.deelnemers, 2);
 assert.equal(uitslag.bots, 3);
 
 uitslag = ronde(true);
-assert.deepEqual(uitslag.tellingen.scene, { nooit: 3, matig: 0, goed: 0, top: 2 }, "met bots: iedereen");
+assert.deepEqual(uitslag.tellingen.scene, { heelsaai: 3, saai: 0, medium: 0, leuk: 0, heelleuk: 2 }, "met bots: iedereen");
 assert.equal(uitslag.deelnemers, 5);
 
 // Standaard tellen bots niet mee.
@@ -60,7 +60,7 @@ if (ChatSimulator) {
   sim.randomInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
   sim.sample = (lijst, d) => (lijst.length ? lijst[sim.randomInt(0, lijst.length - 1)] : d);
   const vragen = [
-    { id: "scene", keuzes: ["nooit", "matig", "goed", "top"].map((id) => ({ id })) },
+    { id: "scene", keuzes: ["heelsaai", "saai", "medium", "leuk", "heelleuk"].map((id) => ({ id })) },
     { id: "personage", keuzes: [{ id: "character:1" }, { id: "character:2" }] },
   ];
   let fanStemmen = 0;
@@ -75,4 +75,20 @@ if (ChatSimulator) {
   assert.notEqual(sim.smaakVoorRun(), smaak, "nieuwe run, nieuwe smaak");
 }
 
-process.stdout.write("beoordeling-bots-test: ok\n");
+// Vijf stappen op de thermometer; het oordeel voor het algoritme is -1, -½, 0, +½, +1.
+assert.deepEqual(normalizeInstellingen({}).scene.keuzes.map((k) => k.id), ["heelsaai", "saai", "medium", "leuk", "heelleuk"]);
+assert.equal(normalizeInstellingen({ scene: { keuzes: [1, 2, 3, 4, 5, 6].map((n) => ({ id: `k${n}`, emoji: "x" })) } }).scene.keuzes.length, 5);
+let verstuurd = null;
+global.fetch = async (url, opties = {}) => { if (url.includes("scene-oordeel")) verstuurd = JSON.parse(opties.body); return { ok: true, json: async () => ({}) }; };
+beoordeling.zetInstellingen({ botsTellenMee: false, scene: { keuzes: normalizeInstellingen({}).scene.keuzes } });
+beoordeling.reset();
+beoordeling.onthoudScene({ ...state, situationRuns: [{ ...state.situationRuns[0], situationRunId: "sr-vijf" }] });
+const open5 = beoordeling.start();
+["heelsaai", "saai", "medium", "leuk", "heelleuk"].forEach((k, i) => beoordeling.antwoord(`m${i}`, { id: open5.id, vraag: "scene", keuze: k }));
+beoordeling.antwoord("m5", { id: open5.id, vraag: "scene", keuze: "leuk" });
+beoordeling.sluit("test");
+setTimeout(() => {
+  // (−1 − ½ + 0 + ½ + 1 + ½) / 6 = 0,083
+  assert.equal(verstuurd && verstuurd.gemiddelde, 0.083);
+  process.stdout.write("beoordeling-bots-test: ok\n");
+}, 50);
