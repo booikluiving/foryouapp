@@ -9,6 +9,8 @@
 // Niets start vanzelf. Een opname stopt alleen vanzelf als de schijf volloopt.
 // Opdrachten gaan via de opdrachtenmap van TouchDesigner (~/ForYou/td-opdrachten), geen netwerk.
 // De bestanden staan op de externe schijf Expansion, in /Volumes/Expansion/gedocumenteerde-shows/.
+// Elke opname heeft een eigen map: de .mov en daarnaast een los geluidsbestand per speler en van
+// de muziek (wav), voor de montage. TouchDesigner schrijft ze, met hetzelfde begin als de opname.
 // Zit de schijf er niet in, dan gaat de opname naar ~/ForYou/gedocumenteerde-shows/ op deze Mac
 // en zegt het antwoord dat erbij: een opname gaat nooit verloren om een losse kabel.
 //
@@ -139,13 +141,14 @@ async function startRegistratie(runtimeState, options = {}) {
     return { ok: false, opname: false, fout: `te weinig schijfruimte (${vrij.toFixed(1)} GB vrij, ${MIN_VRIJ_START_GB} nodig)` };
   }
   const { naam, showRunId } = naamVoor(runtimeState, options.nu);
-  fs.mkdirSync(inst.doelDir, { recursive: true });
   let nummer = 1;
   let pad;
   do {
-    pad = path.join(inst.doelDir, `${naam}${nummer > 1 ? `-${nummer}` : ""}.mov`);
+    const eigen = `${naam}${nummer > 1 ? `-${nummer}` : ""}`;
+    pad = path.join(inst.doelDir, eigen, `${eigen}.mov`);
     nummer += 1;
-  } while (fs.existsSync(pad));
+  } while (fs.existsSync(path.dirname(pad)));
+  fs.mkdirSync(path.dirname(pad), { recursive: true });
   const antwoord = await tdOpdracht(inst, `${STUUR}.start(${JSON.stringify(pad)})`);
   if (!antwoord.ok) return { ok: false, opname: false, fout: antwoord.fout };
   const stand = { pad: antwoord.td.pad, showRunId, gestartOp: new Date().toISOString(), ...(inst.melding ? { melding: inst.melding } : {}) };
@@ -213,7 +216,15 @@ async function gelijkzetten(pad, { gestartOp, gestoptOp } = {}, options = {}) {
   const meldingen = [];
   if (Math.abs(controle.beeldGeluidS) > MAX_VERSCHIL_S) meldingen.push(`geluid is ${controle.beeldGeluidS} s langer dan het beeld`);
   if (klokS !== null && Math.abs(controle.beeldKlokS) > MAX_VERSCHIL_S + 1) meldingen.push(`beeld is ${controle.beeldKlokS} s langer dan de klok`);
-  const uit = { ok: true, pad, controle, gelijk: meldingen.length === 0, meldingen, verschovenMs: 0 };
+  // De losse sporen in dezelfde map: even lang als het beeld, anders is er iets misgegaan.
+  const sporen = [];
+  for (const naam of fs.readdirSync(path.dirname(pad)).filter((n) => n.endsWith(".wav")).sort()) {
+    const r = await draai(inst.ffprobe, ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path.join(path.dirname(pad), naam)]);
+    const duurS = r.ok ? Number(r.uit) : null;
+    sporen.push({ naam, duurS });
+    if (duurS === null || Math.abs(duurS - meting.beeldS) > MAX_VERSCHIL_S) meldingen.push(`spoor ${naam} is ${duurS === null ? "niet leesbaar" : `${(duurS - meting.beeldS).toFixed(2)} s langer dan het beeld`}`);
+  }
+  const uit = { ok: true, pad, controle, sporen, gelijk: meldingen.length === 0, meldingen, verschovenMs: 0 };
   const ms = Math.round(inst.geluidMs);
   if (!ms) return uit;
   const vrij = vrijGb(path.dirname(pad));
