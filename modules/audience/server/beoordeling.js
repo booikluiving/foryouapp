@@ -43,12 +43,14 @@ const STANDAARD = {
 
 // Per label de twee richtingen (vergrotende trap). Per label te overschrijven in Admin (vraag en antwoorden).
 const RICHTINGEN = {
-  grof: { meer: "grover", tegen: "subtieler" },
-  maatschappelijk: { meer: "maatschappelijker", tegen: "persoonlijker" },
   absurd: { meer: "absurder", tegen: "herkenbaarder" },
-  herkenbaar: { meer: "herkenbaarder", tegen: "absurder" },
-  satirisch: { meer: "satirischer", tegen: "oprechter" },
-  verwarring: { meer: "verwarrender", tegen: "helderder" },
+  misverstand: { meer: "verwarrender", tegen: "duidelijker" },
+  ongemakkelijk: { meer: "ongemakkelijker", tegen: "gezelliger" },
+  "zwarte humor": { meer: "zwarter", tegen: "luchtiger" },
+  "seks & drugs": { meer: "wilder", tegen: "braver" },
+  plat: { meer: "platter", tegen: "netter" },
+  "politiek correct": { meer: "politiek correcter", tegen: "politiek incorrecter" },
+  actueel: { meer: "actueler", tegen: "tijdlozer" },
 };
 function richtingVan(labelNaam) {
   const naam = String(labelNaam || "").trim();
@@ -126,7 +128,7 @@ function createBeoordeling(service) {
     if (scene && scene.situationRunId === laatste.situationRunId) return;
     const catalog = (state.showRunSnapshot && state.showRunSnapshot.catalog) || {};
     const labelNaam = new Map((catalog.labels || []).map((label) => [label.id, String(label.name || "").trim()]));
-    if ((catalog.labels || []).length) labelLijst = catalog.labels.map((label) => ({ id: String(label.id), naam: String(label.name || "").trim() })).filter((label) => label.naam);
+    if ((catalog.labels || []).length) labelLijst = catalog.labels.filter((label) => label.active !== false && !label.archivedAt).map((label) => ({ id: String(label.id), naam: String(label.name || "").trim() })).filter((label) => label.naam);
     const plek = new Map((catalog.performers || []).map((speler) => [speler.id, Number(speler.performerSlot) || 0]));
     scene = {
       situationRunId: String(laatste.situationRunId),
@@ -193,7 +195,7 @@ function createBeoordeling(service) {
       vragen.push({ id: "personage", soort: "personage", vraag: een ? `Wil je ${keuzes[0].naam} terugzien?` : instellingen.personage.vraag, keuzes });
     }
     if (instellingen.label.aan && van.labels.length) {
-      // Het eerste label van de scène, tegenover zijn tegendeel: "Mag het grover of subtieler?".
+      // Het eerste label van de scène, tegenover zijn tegendeel: "Mag het platter of netter?".
       // Links (minder) het tegendeel, midden zo houden, rechts (meer) meer van het label.
       const label = van.labels[0];
       const eigen = instellingen.label.vragen[label.id] || {};

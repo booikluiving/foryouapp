@@ -77,4 +77,8 @@ const metCamera = { ...metGeluid, roomSound: null, camera: { seconds: 60, laughM
 assert.equal(observedScoreForEvent(metCamera, {}), 0.5);
 assert.equal(observedScoreForEvent(metCamera, { weights: { cameraLaugh: 2, cameraBored: -2 } }), 4.5);
 
+// Een gearchiveerd label staat niet in de lijst van alle labels op het zaalscherm.
+const metOudLabel = buildAudienceReport({ catalog: { ...catalog, labels: [...catalog.labels, { id: "label:9", name: "Oud", active: false, archivedAt: "2026-11-20T00:00:00.000Z" }] } });
+assert.deepEqual(metOudLabel.labelNames, ["Satirisch", "Grof", "Absurd"]);
+
 console.log("publieksrapport: ok");

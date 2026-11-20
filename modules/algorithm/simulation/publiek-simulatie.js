@@ -28,7 +28,10 @@ const CATALOG_URL = process.env.SIM_CATALOG_URL || "http://127.0.0.1:3021/v0/cat
 const WANTED = (process.env.SIM_SCENES || "39,3,59,14,2,30,47,74").split(",").map((n) => `situation:${n.trim()}`);
 
 // De smaak van dit gesimuleerde publiek, per label: van −1 (haakt af) tot +1 (vindt het geweldig).
-const SMAAK = { Satirisch: 0.9, Maatschappelijk: 0.6, Absurd: 0.3, Verwarring: 0, Herkenbaar: -0.3, Grof: -0.8 };
+const SMAAK = {
+  "Politiek correct": 0.9, Actueel: 0.6, Absurd: 0.3, Misverstand: 0, Ongemakkelijk: -0.3,
+  "Zwarte humor": -0.5, Plat: -0.8, "Seks & drugs": -0.8,
+};
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const round = (value, digits = 1) => Math.round(value * 10 ** digits) / 10 ** digits;
