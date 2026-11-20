@@ -17,8 +17,9 @@ Wat het doet: maakt /project1/fy_registratie (Base COMP), los van de keten naar 
   mix van de zaal (Main LR) op twee USB-uitgangen en vul die nummers in bij REGISTRATIE_TAFELMIX:
   dan wordt precies opgenomen wat de zaal hoort, en vervalt de losse optelling.
 - opname (Movie File Out TOP): één .mov met beeld en geluid.
-- spoor_<naam> (Audio File Out CHOP): naast de .mov een los geluidsbestand per speler en één van de
-  muziek (wav, 24 bit, dezelfde samplerate en hetzelfde begin als de opname), voor de montage.
+- sporen (Audio File Out CHOP): naast de .mov één wav (24 bit) met een kanaal per speler en twee
+  voor de muziek, voor de montage. Eén bestand, zodat alle kanalen op de sample gelijk lopen; show
+  control knipt het na de stop in losse bestanden per speler en één voor de muziek.
   De spelers komen rauw van de tafel (direct out, zonder versterking); zie REGISTRATIE_SPOREN.
 - meting (Perform CHOP): fps en tijd per frame, voor stand().
 - stuur (Text DAT): start(pad), stop(), stand(). Show control roept die aan via de opdrachtenmap.
@@ -55,7 +56,7 @@ def _o():
     return parent().op('opname')
 
 def _sporen():
-    return [c for c in parent().children if c.name.startswith('spoor_') and c.OPType == 'audiofileoutCHOP']
+    return parent().op('sporen')
 
 def start(pad):
     o = _o()
@@ -64,11 +65,9 @@ def start(pad):
     os.makedirs(os.path.dirname(pad), exist_ok=True)
     parent().op('sq').par.active = True
     o.par.file = pad
-    basis = os.path.splitext(pad)[0]
-    for s in _sporen():
-        s.par.file = basis + ' ' + s.name[len('spoor_'):] + '.wav'
-    # Alles in dezelfde stap aan: de sporen beginnen op hetzelfde moment als de opname.
-    for s in _sporen():
+    s = _sporen()
+    if s is not None:
+        s.par.file = os.path.splitext(pad)[0] + ' sporen.wav'
         s.par.record = True
     o.par.record = True
     return stand()
@@ -76,8 +75,8 @@ def start(pad):
 def stop():
     o = _o()
     o.par.record = False
-    for s in _sporen():
-        s.par.record = False
+    if _sporen() is not None:
+        _sporen().par.record = False
     parent().op('sq').par.active = False
     return stand()
 
@@ -93,7 +92,10 @@ def stand():
         'fps': round(m['fps'].eval(), 1) if m is not None and m.chan('fps') is not None else None,
         'frameMs': round(m['msec'].eval(), 2) if m is not None and m.chan('msec') is not None else None,
         'cookMs': round(o.cookTime, 3),
-        'sporen': [s.par.file.eval() for s in _sporen()],
+        'sporen': None if _sporen() is None else {
+            'bestand': _sporen().par.file.eval(),
+            'kanalen': parent().op('sporen_samen').fetch('kanalen', []),
+        },
         'waarschuwing': (o.warnings() or '') + (o.errors() or '') + (parent().op('sq').errors() or ''),
     }
     print('REGISTRATIE ' + json.dumps(uit))
@@ -107,9 +109,8 @@ if REGISTRATIE_TERUG:
     if _oud is not None:
         if _oud.op('opname') is not None:
             _oud.op('opname').par.record = False
-        for _c in _oud.children:
-            if _c.name.startswith('spoor_'):
-                _c.par.record = False
+        if _oud.op('sporen') is not None:
+            _oud.op('sporen').par.record = False
         _oud.destroy()
     print('For_You registratie: weggehaald')
 elif _p.op(_REG_BEELD) is None:
@@ -185,35 +186,31 @@ else:
     _o.par.stallforopen = False
     _o.par.record = False
 
-    # Losse sporen voor de montage. Elk spoor op de vaste rate: de muziek via een optelling met een
-    # stil kanaal van de tafel vooraan (Sample Rate Match 'first'), net als de mix hierboven.
-    def _spoor(naam, bron):
-        _a = _b.create(audiofileoutCHOP, 'spoor_' + naam)
-        _a.par.filetype = 'wav'
-        _a.par.codec = 'pcm24'
-        _a.par.record = False
-        _a.inputConnectors[0].connect(bron)
-        return _a
-
-    for _naam_s, _kanaal_s in REGISTRATIE_SPOREN:
-        _spoor(_naam_s, _naam(_kies('kies_' + _naam_s, _kanaal_s), 'naam_' + _naam_s, _naam_s))
+    # Losse sporen voor de montage: alle kanalen in één bestand, dus op de sample gelijk. De muziek
+    # op de vaste rate via een optelling met een stil kanaal van de tafel vooraan ('first').
+    _sp_in = [_naam(_kies('kies_' + _n_s, _k_s), 'naam_' + _n_s, _n_s) for _n_s, _k_s in REGISTRATIE_SPOREN]
     if _p.op(_REG_MUZIEK) is not None:
         _stil = _b.create(mathCHOP, 'stil')
         _stil.par.gain = 0
         _stil.inputConnectors[0].connect(_kies('kies_klok', 'chan1'))
-        _mz = []
-        for _zijde, _kanaal in (('links', 'chan1'), ('rechts', 'chan2')):
+        for _zijde, _kanaal in (('l', 'chan1'), ('r', 'chan2')):
             _m = _b.create(mathCHOP, 'muziek_vast_' + _zijde)
             _m.par.chopop = 'add'
             _m.par.srselect = 'first'
             _m.inputConnectors[0].connect(_stil)
             _m.inputConnectors[1].connect(_kies('muziek_los_' + _zijde, _kanaal, '../' + _REG_MUZIEK))
-            _mz.append(_naam(_m, 'muziek_' + _zijde + '_naam', _zijde))
-        _mm = _b.create(mergeCHOP, 'muziek_spoor')
-        _mm.par.srselect = 'first'
-        _mm.inputConnectors[0].connect(_mz[0])
-        _mm.inputConnectors[1].connect(_mz[1])
-        _spoor('muziek', _mm)
+            _sp_in.append(_naam(_m, 'muziek_naam_' + _zijde, 'muziek_' + _zijde))
+    _ss = _b.create(mergeCHOP, 'sporen_samen')
+    _ss.par.srselect = 'first'
+    for _i_s, _bron_s in enumerate(_sp_in):
+        _ss.inputConnectors[_i_s].connect(_bron_s)
+    # Zonder opname staat de tafel uit en zijn de spelerskanalen leeg: de namen staan daarom vast.
+    _ss.store('kanalen', [n for n, _k in REGISTRATIE_SPOREN] + (['muziek_l', 'muziek_r'] if _p.op(_REG_MUZIEK) is not None else []))
+    _sf = _b.create(audiofileoutCHOP, 'sporen')
+    _sf.par.filetype = 'wav'
+    _sf.par.codec = 'pcm24'
+    _sf.par.record = False
+    _sf.inputConnectors[0].connect(_ss)
 
     _b.create(performCHOP, 'meting')
 

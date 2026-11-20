@@ -10,7 +10,8 @@
 // Opdrachten gaan via de opdrachtenmap van TouchDesigner (~/ForYou/td-opdrachten), geen netwerk.
 // De bestanden staan op de externe schijf Expansion, in /Volumes/Expansion/gedocumenteerde-shows/.
 // Elke opname heeft een eigen map: de .mov en daarnaast een los geluidsbestand per speler en van
-// de muziek (wav), voor de montage. TouchDesigner schrijft ze, met hetzelfde begin als de opname.
+// de muziek (wav), voor de montage. TouchDesigner schrijft ze als één bestand met een kanaal per
+// spoor (zo lopen ze op de sample gelijk); de stop knipt dat in losse bestanden.
 // Zit de schijf er niet in, dan gaat de opname naar ~/ForYou/gedocumenteerde-shows/ op deze Mac
 // en zegt het antwoord dat erbij: een opname gaat nooit verloren om een losse kabel.
 //
@@ -201,7 +202,37 @@ async function wachtOpBestand(inst, pad, maxMs = 30000) {
 // Na de stop: meet de opname na en zet de vaste verschuiving recht in het bestand zelf.
 // Beeld en geluid worden gekopieerd, niet opnieuw gecodeerd; alleen het begin van het geluid
 // (of, bij een negatieve waarde, van het beeld) schuift op. Het bestand houdt zijn naam.
-async function gelijkzetten(pad, { gestartOp, gestoptOp } = {}, options = {}) {
+// Knipt "<naam> sporen.wav" (een kanaal per spoor) in "<naam> megan.wav" enzovoort. Kanalen die op
+// _l en _r eindigen worden samen één stereobestand. Lukt het, dan gaat het ene bestand weg; lukt
+// het niet, dan blijft het staan en komt er een melding terug.
+async function knipSporen(inst, pad, tdSporen) {
+  if (!tdSporen || !tdSporen.bestand || !Array.isArray(tdSporen.kanalen) || !fs.existsSync(tdSporen.bestand)) return null;
+  const bron = tdSporen.bestand;
+  const telling = await draai(inst.ffprobe, ["-v", "error", "-show_entries", "stream=channels", "-of", "csv=p=0", bron]);
+  if (!telling.ok || Number(telling.uit) !== tdSporen.kanalen.length) {
+    return `sporen niet geknipt: ${telling.ok ? `${Number(telling.uit)} kanalen in het bestand, ${tdSporen.kanalen.length} verwacht` : telling.fout}`;
+  }
+  const groepen = new Map();
+  tdSporen.kanalen.forEach((naam, i) => {
+    const sleutel = naam.replace(/_[lr]$/, "");
+    groepen.set(sleutel, [...(groepen.get(sleutel) || []), i]);
+  });
+  const basis = bron.replace(/ sporen\.wav$/, "");
+  const args = ["-n", "15", inst.ffmpeg, "-v", "error", "-y", "-i", bron];
+  const doelen = [];
+  for (const [naam, kanalen] of groepen) {
+    const doel = `${basis} ${naam}.wav`;
+    doelen.push(doel);
+    const pan = kanalen.length === 2 ? `pan=stereo|c0=c${kanalen[0]}|c1=c${kanalen[1]}` : `pan=mono|c0=c${kanalen[0]}`;
+    args.push("-map", "0:a:0", "-af", pan, "-c:a", "pcm_s24le", doel);
+  }
+  const r = await draai("/usr/bin/nice", args);
+  if (!r.ok || doelen.some((d) => !fs.existsSync(d) || fs.statSync(d).size < 1000)) return `sporen niet geknipt: ${r.fout || "bestand ontbreekt"}`;
+  fs.rmSync(bron, { force: true });
+  return null;
+}
+
+async function gelijkzetten(pad, { gestartOp, gestoptOp, tdSporen } = {}, options = {}) {
   const inst = instellingen(options);
   const meting = await wachtOpBestand(inst, pad, options.maxWachtMs);
   if (!meting) return { ok: false, pad, fout: "opname niet leesbaar (ffprobe)" };
@@ -212,11 +243,15 @@ async function gelijkzetten(pad, { gestartOp, gestoptOp } = {}, options = {}) {
     beeldGeluidS: Number((meting.geluidS - meting.beeldS).toFixed(3)),
     beeldKlokS: klokS === null ? null : Number((meting.beeldS - klokS).toFixed(3)),
   };
-  // De klok begint te lopen na het antwoord van TouchDesigner: tot een seconde speling is gewoon.
+  // De klok loopt van het antwoord op de start tot het versturen van de stop: het beeld mag dus
+  // iets langer zijn dan de klok, en een seconde speling is gewoon.
   const meldingen = [];
   if (Math.abs(controle.beeldGeluidS) > MAX_VERSCHIL_S) meldingen.push(`geluid is ${controle.beeldGeluidS} s langer dan het beeld`);
   if (klokS !== null && Math.abs(controle.beeldKlokS) > MAX_VERSCHIL_S + 1) meldingen.push(`beeld is ${controle.beeldKlokS} s langer dan de klok`);
-  // De losse sporen in dezelfde map: even lang als het beeld, anders is er iets misgegaan.
+  // De losse sporen: knip het ene bestand van TouchDesigner in een bestand per speler en één voor
+  // de muziek, en meet ze na. Even lang als het beeld, anders is er iets misgegaan.
+  const knip = await knipSporen(inst, pad, tdSporen);
+  if (knip) meldingen.push(knip);
   const sporen = [];
   for (const naam of fs.readdirSync(path.dirname(pad)).filter((n) => n.endsWith(".wav")).sort()) {
     const r = await draai(inst.ffprobe, ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path.join(path.dirname(pad), naam)]);
@@ -251,15 +286,16 @@ let laatsteNazorg = null;
 async function stopRegistratie(options = {}) {
   const inst = instellingen(options);
   const loopt = leesStand(inst);
-  const antwoord = await tdOpdracht(inst, `${STUUR}.stop()`);
+  // De tijd vóór het versturen: TouchDesigner antwoordt pas als de bestanden dicht zijn.
   const gestoptOp = new Date().toISOString();
+  const antwoord = await tdOpdracht(inst, `${STUUR}.stop()`);
   if (antwoord.ok || !loopt) schrijfStand(inst, null);
   if (!antwoord.ok) return { ok: false, opname: Boolean(loopt), fout: antwoord.fout };
   const uit = { ok: true, opname: false, pad: antwoord.td.pad, bytes: antwoord.td.bytes, td: antwoord.td };
   if (!loopt || !inst.nazorg) return uit;
   // Het nameten en rechtzetten loopt door na het antwoord: de knop hoeft er niet op te wachten.
   laatsteNazorg = { pad: loopt.pad, bezig: true };
-  const nazorg = gelijkzetten(loopt.pad, { gestartOp: loopt.gestartOp, gestoptOp }, options)
+  const nazorg = gelijkzetten(loopt.pad, { gestartOp: loopt.gestartOp, gestoptOp, tdSporen: antwoord.td.sporen }, options)
     .catch((err) => ({ ok: false, pad: loopt.pad, fout: err.message }))
     .then((n) => {
       laatsteNazorg = n;

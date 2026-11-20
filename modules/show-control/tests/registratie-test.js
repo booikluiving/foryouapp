@@ -108,6 +108,26 @@ const run = { showRunId: "show-run-a", status: "running", createdAt: new Date(20
     assert.equal(metSporen.meldingen.length, 1);
     assert.match(metSporen.meldingen[0], /brent/);
     fs.rmSync(path.join(tmp, "proef", "proef brent.wav"));
+    fs.rmSync(path.join(tmp, "proef", "proef megan.wav"));
+    // Het ene bestand van TouchDesigner wordt geknipt: een bestand per speler, de muziek stereo.
+    const samen = path.join(tmp, "proef", "proef sporen.wav");
+    const maakSamen = () => execFileSync(ffmpeg, ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100", "-t", "3",
+      "-af", "pan=5c|c0=c0|c1=0.5*c0|c2=0*c0|c3=c0|c4=c0", "-c:a", "pcm_s24le", samen]);
+    maakSamen();
+    const td = { bestand: samen, kanalen: ["megan", "brent", "booi", "muziek_l", "muziek_r"] };
+    const geknipt = await gelijkzetten(proef, { ...tijden, tdSporen: td }, { geluidMs: 0 });
+    assert.deepEqual(geknipt.sporen.map((s) => s.naam), ["proef booi.wav", "proef brent.wav", "proef megan.wav", "proef muziek.wav"]);
+    assert.equal(geknipt.gelijk, true, JSON.stringify(geknipt.meldingen));
+    assert.equal(fs.existsSync(samen), false);
+    const kanalen = (n) => Number(execFileSync(ffmpeg.replace(/ffmpeg$/, "ffprobe"), ["-v", "error", "-show_entries", "stream=channels", "-of", "csv=p=0", path.join(tmp, "proef", n)]));
+    assert.equal(kanalen("proef muziek.wav"), 2);
+    assert.equal(kanalen("proef megan.wav"), 1);
+    // Klopt het aantal kanalen niet, dan blijft het ene bestand staan, met een melding.
+    maakSamen();
+    const mis = await gelijkzetten(proef, { ...tijden, tdSporen: { bestand: samen, kanalen: ["megan", "brent"] } }, { geluidMs: 0 });
+    assert.match(mis.meldingen.join(" "), /niet geknipt/);
+    assert.equal(fs.existsSync(samen), true);
+    for (const n of fs.readdirSync(path.join(tmp, "proef"))) if (n.endsWith(".wav")) fs.rmSync(path.join(tmp, "proef", n));
     const later = await gelijkzetten(proef, tijden, { geluidMs: 80 });
     assert.equal(later.verschovenMs, 80);
     const na = await gelijkzetten(proef, tijden, { geluidMs: 0 });
