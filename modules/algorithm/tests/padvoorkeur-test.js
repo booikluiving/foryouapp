@@ -29,8 +29,10 @@ const scores = (observations, config = defaultAlgorithmConfig()) => {
   return Object.fromEntries(feed.scores.map((item) => [item.situationId, item]));
 };
 
+// Gewicht 1 (zo rekent deze test); standaard is 0,5.
+const w1 = normalizeAlgorithmConfig({ weights: { padVolgende: 1 } });
 // Scène 1 goed (+4): de opvolgers 2 en 6 krijgen +4, de rest niets.
-let s = scores([{ situationId: "situation:1", observedScore: 4, labelIds: [], characterIds: [] }]);
+let s = scores([{ situationId: "situation:1", observedScore: 4, labelIds: [], characterIds: [] }], w1);
 assert.equal(s["situation:2"].components.padVoorkeur, 4);
 assert.equal(s["situation:6"].components.padVoorkeur, 4);
 assert.equal(s["situation:3"].components.padVoorkeur, 0);
@@ -39,16 +41,16 @@ assert.ok(s["situation:2"].reasons.includes("publiek_pad_voorkeur"));
 assert.equal(s["situation:2"].predictedScore, 4);
 
 // Scène 4 slecht (−2): opvolger 5 krijgt −2.
-s = scores([{ situationId: "situation:4", observedScore: -2, labelIds: [], characterIds: [] }]);
+s = scores([{ situationId: "situation:4", observedScore: -2, labelIds: [], characterIds: [] }], w1);
 assert.equal(s["situation:5"].components.padVoorkeur, -2);
 
 // Gewicht 0,25: een kwart.
 s = scores([{ situationId: "situation:1", observedScore: 4, labelIds: [], characterIds: [] }], normalizeAlgorithmConfig({ weights: { padVolgende: 0.25 } }));
 assert.equal(s["situation:2"].components.padVoorkeur, 1);
 
-// Gewicht standaard 1, ook als een bewaarde instelling het nog niet kent; 0 zet het uit.
-assert.equal(defaultAlgorithmConfig().weights.padVolgende, 1);
-assert.equal(normalizeAlgorithmConfig({ weights: { oordeel: 3 } }).weights.padVolgende, 1);
+// Gewicht standaard 0,5, ook als een bewaarde instelling het nog niet kent; 0 zet het uit.
+assert.equal(defaultAlgorithmConfig().weights.padVolgende, 0.5);
+assert.equal(normalizeAlgorithmConfig({ weights: { oordeel: 3 } }).weights.padVolgende, 0.5);
 s = scores([{ situationId: "situation:1", observedScore: 4, labelIds: [], characterIds: [] }], normalizeAlgorithmConfig({ weights: { padVolgende: 0 } }));
 assert.equal(s["situation:2"].components.padVoorkeur, 0);
 

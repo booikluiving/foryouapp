@@ -47,8 +47,8 @@ function defaultAlgorithmConfig() {
       personageVoorkeur: 1,
       // Padvoorkeur: vond het publiek een scène goed (of slecht), dan krijgen de scènes die in een pad
       // direct na die scène komen haar score × dit gewicht mee. Zo loopt een run vaker verder in een pad
-      // dat het publiek leuk vindt.
-      padVolgende: 1,
+      // dat het publiek leuk vindt. Half gewicht: de volgende scène krijgt de helft van de score van de vorige.
+      padVolgende: 0.5,
       // Zaaloordeel: het oordeel van de operator of de spelers (knop op het deck, applausmeter op de
       // telefoon), van -1 tot 1. Weegt minder dan het publiek (oordeel 3), maar telt ook als er niemand stemt.
       zaal: 1,
@@ -127,7 +127,7 @@ function normalizeAlgorithmConfig(input = {}, options = {}) {
       cameraBored: rounded(clampNumber(sourceWeights.cameraBored, -10, 10, baseWeights.cameraBored ?? 0), 3),
       labelVoorkeur: rounded(clampNumber(sourceWeights.labelVoorkeur, -10, 10, baseWeights.labelVoorkeur ?? 1), 3),
       personageVoorkeur: rounded(clampNumber(sourceWeights.personageVoorkeur, -10, 10, baseWeights.personageVoorkeur ?? 1), 3),
-      padVolgende: rounded(clampNumber(sourceWeights.padVolgende, 0, 10, baseWeights.padVolgende ?? 1), 3),
+      padVolgende: rounded(clampNumber(sourceWeights.padVolgende, 0, 10, baseWeights.padVolgende ?? 0.5), 3),
       zaal: rounded(clampNumber(sourceWeights.zaal, 0, 10, baseWeights.zaal ?? 1), 3),
       sceneRepeatPenalty: rounded(clampNumber(
         sourceWeights.sceneRepeatPenalty ?? source.sceneRepeatPenalty,
@@ -534,12 +534,12 @@ function buildRunProfile(observations = [], liveObservation = null, config = def
     const perPersonage = new Map();
     const personages = observation.personageVoorkeur;
     // Een toppersonage uit een scène die iedereen goed vond telt zwaarder dan een uit een slechte scène:
-    // een voorkeur boven 0 keer 1 + ½ × het oordeel over de scène (slecht 0,5, neutraal 1, goed 1,5).
+    // een voorkeur boven 0 keer 1 + ¼ × het oordeel over de scène (slecht 0,75, neutraal 1, goed 1,25).
     const oordeel = observation.oordeel && Number.isFinite(Number(observation.oordeel.gemiddelde))
       ? Math.max(-1, Math.min(1, Number(observation.oordeel.gemiddelde)))
       : 0;
     for (const [characterId, waarde] of personageVoorkeurWaarden(personages)) {
-      perPersonage.set(characterId, waarde > 0 ? waarde * (1 + 0.5 * oordeel) : waarde);
+      perPersonage.set(characterId, waarde > 0 ? waarde * (1 + 0.25 * oordeel) : waarde);
     }
     for (const naam of Array.isArray(observation.chatNamen) ? observation.chatNamen : []) {
       if (naam && naam.characterId && Number.isFinite(Number(naam.waarde))) {
@@ -698,7 +698,7 @@ function buildScoreFeed({
       .filter((item) => item && Number.isFinite(Number(item.observedScore)))
       .map((item) => Number(item.observedScore));
     const padVoorkeur = voorgangerScores.length
-      ? Math.max(...voorgangerScores) * safeNumber(normalizedConfig.weights.padVolgende, 1)
+      ? Math.max(...voorgangerScores) * safeNumber(normalizedConfig.weights.padVolgende, 0.5)
       : 0;
     const labelProfile = profileAverageForIds(runProfile.labels, situation.labelIds || []);
     const characterProfile = profileAverageForIds(runProfile.characters, situation.characterIds || []);

@@ -49,13 +49,13 @@ assert.deepEqual(waarden([{ characterId: "a", aandeel: 0.2 }, { characterId: "ne
 const tegen = buildScoreFeed({ catalog, observations: [{ situationRunId: "r1", situationId: "situation:1", labelIds: [], characterIds: ["character:1"], observedScore: 0,
   personageVoorkeur: { stemmen: 10, keuzes: [{ characterId: "character:1", aandeel: 0.1 }, { characterId: "nee", aandeel: 0.9 }] } }] });
 assert.ok(score(tegen, "situation:3") < 0, "Mark-scène daalt als niemand Mark terug wil zien");
-// De personagevraag weegt mee met het oordeel over de scène: goed ×1,5, neutraal ×1, slecht ×0,5.
+// De personagevraag weegt mee met het oordeel over de scène: goed ×1,25, neutraal ×1, slecht ×0,75.
 const metOordeel = (gemiddelde) => buildScoreFeed({ catalog, observations: [{ situationRunId: "r1", situationId: "situation:1", labelIds: [], characterIds: ["character:1"], observedScore: 0,
   oordeel: gemiddelde == null ? undefined : { gemiddelde, stemmen: 10 },
   personageVoorkeur: { stemmen: 10, keuzes: [{ characterId: "character:1", aandeel: 1 }, { characterId: "character:2", aandeel: 0 }] } }] })
   .scores.find((item) => item.situationId === "situation:3").components.personageVoorkeur;
 assert.equal(metOordeel(null), 1);
-assert.equal(metOordeel(1), 1.5);
-assert.equal(metOordeel(-1), 0.5);
+assert.equal(metOordeel(1), 1.25);
+assert.equal(metOordeel(-1), 0.75);
 assert.ok(metOordeel(0.5) > metOordeel(-0.5));
 console.log("voorkeur en trek: ok");
