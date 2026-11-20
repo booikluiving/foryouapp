@@ -51,7 +51,7 @@ const run = { showRunId: "show-run-a", status: "running", createdAt: new Date(20
   // Starten: één bestand in de map van de gedocumenteerde shows.
   const eerste = await startRegistratie(run, { ...options, nu });
   assert.equal(eerste.ok, true);
-  assert.equal(eerste.pad, path.join(options.doelDir, "2026-11-17-1432-run-1050.mov"));
+  assert.equal(eerste.pad, path.join(options.doelDir, "2026-11-17-1432-run-1050", "2026-11-17-1432-run-1050.mov"));
   assert.equal(td.opname, true);
 
   // Nog een keer starten verandert niets.
@@ -66,9 +66,8 @@ const run = { showRunId: "show-run-a", status: "running", createdAt: new Date(20
   assert.equal((await registratieStatus(options)).opname, false);
 
   // Zelfde minuut nog een keer: volgnummer.
-  fs.writeFileSync(eerste.pad, "x");
   const tweede = await startRegistratie(run, { ...options, nu });
-  assert.match(tweede.pad, /-run-1050-2\.mov$/);
+  assert.match(tweede.pad, /-run-1050-2\/2026-11-17-1432-run-1050-2\.mov$/);
   assert.equal((await stopRegistratie(options)).ok, true);
 
   // Zit de schijf er niet in (hier: een gewone map, geen eigen apparaat), dan gaat de opname naar de Mac, met een melding.
@@ -91,7 +90,8 @@ const run = { showRunId: "show-run-a", status: "running", createdAt: new Date(20
   // Na de stop: nameten, en de vaste verschuiving rechtzetten in het bestand zelf.
   const ffmpeg = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"].find((p) => fs.existsSync(p));
   if (ffmpeg) {
-    const proef = path.join(tmp, "proef.mov");
+    fs.mkdirSync(path.join(tmp, "proef"));
+    const proef = path.join(tmp, "proef", "proef.mov");
     const maak = () => execFileSync(ffmpeg, ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=108x192:rate=50", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100",
       "-t", "3", "-c:v", "mpeg4", "-c:a", "pcm_s16le", proef]);
     maak();
@@ -100,11 +100,19 @@ const run = { showRunId: "show-run-a", status: "running", createdAt: new Date(20
     const zonder0 = await gelijkzetten(proef, tijden, { geluidMs: 0 });
     assert.equal(zonder0.ok && zonder0.gelijk, true);
     assert.equal(zonder0.verschovenMs, 0);
+    // Een los spoor dat korter is dan het beeld wordt gemeld.
+    execFileSync(ffmpeg, ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100", "-t", "3", path.join(tmp, "proef", "proef megan.wav")]);
+    execFileSync(ffmpeg, ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100", "-t", "1", path.join(tmp, "proef", "proef brent.wav")]);
+    const metSporen = await gelijkzetten(proef, tijden, { geluidMs: 0 });
+    assert.deepEqual(metSporen.sporen.map((s) => s.naam), ["proef brent.wav", "proef megan.wav"]);
+    assert.equal(metSporen.meldingen.length, 1);
+    assert.match(metSporen.meldingen[0], /brent/);
+    fs.rmSync(path.join(tmp, "proef", "proef brent.wav"));
     const later = await gelijkzetten(proef, tijden, { geluidMs: 80 });
     assert.equal(later.verschovenMs, 80);
     const na = await gelijkzetten(proef, tijden, { geluidMs: 0 });
     assert.ok(Math.abs((na.controle.geluidStartS - na.controle.beeldStartS) - 0.08) < 0.005, JSON.stringify(na.controle));
-    assert.deepEqual(fs.readdirSync(tmp).filter((n) => n.includes("gelijk")), []);
+    assert.deepEqual(fs.readdirSync(path.join(tmp, "proef")).filter((n) => n.includes("gelijk")), []);
     maak();
     await gelijkzetten(proef, tijden, { geluidMs: -60 });
     const eerder = await gelijkzetten(proef, tijden, { geluidMs: 0 });
