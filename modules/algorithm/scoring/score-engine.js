@@ -464,6 +464,14 @@ function profileEntryValue(entry) {
   return entry.total / entry.weight;
 }
 
+// Personagevoorkeur vervaagt: recente scènes wegen 1, oudere minder (halfwaarde recencyHalfLifeObservations).
+// Door te delen door minstens 1 telt een oude favoriet die niet terugkomt steeds minder; komt hij terug
+// en valt hij goed, dan staat hij meteen weer vooraan.
+function vervaagdeWaarde(entry) {
+  if (!entry || !entry.weight) return 0;
+  return entry.total / Math.max(entry.weight, 1);
+}
+
 function profileAverageForIds(map, ids = []) {
   const values = (ids || [])
     .map((id) => map.get(id))
@@ -721,7 +729,7 @@ function buildScoreFeed({
     const personageVoorkeur = (situation.characterIds || [])
       .map((id) => runProfile.personageVoorkeur.get(id))
       .filter((entry) => entry && entry.weight > 0)
-      .reduce((som, entry) => som + profileEntryValue(entry), 0)
+      .reduce((som, entry) => som + vervaagdeWaarde(entry), 0)
       * safeNumber(normalizedConfig.weights.personageVoorkeur, 1);
     components.personageVoorkeur = rounded(personageVoorkeur, 4);
     predictedScore += personageVoorkeur;
@@ -839,7 +847,7 @@ function labelTrek({ catalog, observations = [], liveObservation = null, config 
 function personageFavorieten({ observations = [], config = defaultAlgorithmConfig() }) {
   const runProfile = buildRunProfile(observations, null, normalizeAlgorithmConfig(config));
   return [...runProfile.personageVoorkeur.entries()]
-    .map(([characterId, entry]) => ({ characterId, aandeel: rounded(profileEntryValue(entry), 4), rondes: entry.count }))
+    .map(([characterId, entry]) => ({ characterId, aandeel: rounded(vervaagdeWaarde(entry), 4), rondes: entry.count }))
     .filter((rij) => rij.aandeel > 0)
     .sort((a, b) => b.aandeel - a.aandeel || b.rondes - a.rondes);
 }
@@ -847,6 +855,8 @@ function personageFavorieten({ observations = [], config = defaultAlgorithmConfi
 module.exports = {
   padVoorgangersUitPaden,
   personageVoorkeurWaarden,
+  recencyWeightForObservation,
+  vervaagdeWaarde,
   labelTrek,
   personageFavorieten,
   activeSituations,

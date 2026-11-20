@@ -77,6 +77,21 @@ const metCamera = { ...metGeluid, roomSound: null, camera: { seconds: 60, laughM
 assert.equal(observedScoreForEvent(metCamera, {}), 0.5);
 assert.equal(observedScoreForEvent(metCamera, { weights: { cameraLaugh: 2, cameraBored: -2 } }), 4.5);
 
+// Toppersonages vervagen: Peter scoorde hoog in de eerste scène, Adolf iets lager maar net. Na 6 scènes
+// zonder Peter staat Adolf bovenaan; het gewone gemiddelde blijft erbij staan.
+const lang = buildAudienceReport({
+  catalog,
+  observations: [
+    observation(1, "situation:1", 0, 0, 4),
+    ...[2, 3, 4, 5, 6].map((nr) => ({ ...observation(nr, "situation:2", 0, 0, 0), characterIds: [] })),
+    observation(7, "situation:4", 0, 0, 3),
+  ],
+});
+assert.deepEqual(lang.characters.map((row) => row.name), ["Adolf", "Peter"]);
+assert.equal(lang.characters[1].averageScore, 2, "Peter: 4 × 0,5 (6 scènes geleden)");
+assert.equal(lang.characters[1].gemiddelde, 4);
+assert.equal(lang.characters[0].averageScore, 3);
+
 // Een gearchiveerd label staat niet in de lijst van alle labels op het zaalscherm.
 const metOudLabel = buildAudienceReport({ catalog: { ...catalog, labels: [...catalog.labels, { id: "label:9", name: "Oud", active: false, archivedAt: "2026-11-20T00:00:00.000Z" }] } });
 assert.deepEqual(metOudLabel.labelNames, ["Satirisch", "Grof", "Absurd"]);
