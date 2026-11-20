@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>For_You zaal</title>
+    <style>
+      :root { color-scheme: dark; --bg: #000; --ink: #fff; --zacht: rgba(255, 255, 255, 0.55); --rand: rgba(255, 255, 255, 0.18); }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+      body { display: flex; flex-direction: column; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); gap: 12px; }
+      #scene { min-height: 2.6em; }
+      #titel { font-size: 20px; font-weight: 700; line-height: 1.2; }
+      #stand { color: var(--zacht); font-size: 14px; margin-top: 4px; }
+      #meter { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+      #meter button { flex: 1; border: 1px solid var(--rand); border-radius: 14px; background: #0d0d0d; color: var(--ink); font-size: 44px; touch-action: manipulation; }
+      #meter button.aan { background: #fff; border-color: #fff; }
+      #meter button:disabled { opacity: 0.3; }
+    </style>
+  </head>
+  <body>
+    <div id="scene"><div id="titel">…</div><div id="stand"></div></div>
+    <div id="meter"></div>
+    <script>
+      // Applausmeter: hoe viel deze scène in de zaal? Boven = het werkte (ze lachten), onder = het viel stil.
+      const STANDEN = [[1, "😂"], [0.5, "🙂"], [0, "😐"], [-0.5, "🙁"], [-1, "🥱"]];
+      const meter = document.getElementById("meter");
+      let nu = null;
+      for (const [waarde, emoji] of STANDEN) {
+        const knop = document.createElement("button");
+        knop.type = "button";
+        knop.textContent = emoji;
+        knop.dataset.waarde = String(waarde);
+        knop.addEventListener("click", () => geef(waarde));
+        meter.append(knop);
+      }
+      function toon(stand) {
+        nu = stand;
+        const scene = stand && stand.scene;
+        document.getElementById("titel").textContent = scene ? scene.titel || "Scène" : "Geen scène";
+        document.getElementById("stand").textContent = scene ? (scene.speelt ? "speelt nu" : "net gespeeld") : "";
+        const gekozen = stand && stand.oordeel ? Number(stand.oordeel.waarde) : null;
+        for (const knop of meter.children) {
+          knop.disabled = !scene;
+          knop.classList.toggle("aan", gekozen !== null && Number(knop.dataset.waarde) === gekozen);
+        }
+      }
+      async function ververs() {
+        try { toon(await fetch("/v0/show-control/zaal", { cache: "no-store" }).then((res) => res.json())); } catch (_err) {}
+      }
+      async function geef(waarde) {
+        try {
+          const uit = await fetch("/v0/show-control/zaal", {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-foryou-wie": "applausmeter" },
+            body: JSON.stringify({ waarde, bron: "telefoon" }),
+          }).then((res) => res.json());
+          if (uit && uit.ok) toon({ scene: uit.scene, oordeel: uit.oordeel });
+        } catch (_err) {}
+        ververs();
+      }
+      ververs();
+      setInterval(ververs, 2000);
+    </script>
+  </body>
+</html>

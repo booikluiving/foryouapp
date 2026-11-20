@@ -76,7 +76,7 @@ async function tdLabel() {
 async function gather() {
   const coreEntries = await Promise.all(Object.entries(CORE).map(async ([key, port]) => [key, (await fetchJson(`http://127.0.0.1:${port}/health`, { timeoutMs: 800 })).ok]));
   const hwEntries = await Promise.all(Object.entries(HARDWARE).map(async ([key, url]) => [key, await fetchJson(url, { timeoutMs: 800 })]));
-  const [showStatus, runtime, sq5, teleprompter, stem, sim, ports, tdText, regie, mic] = await Promise.all([
+  const [showStatus, runtime, sq5, teleprompter, stem, sim, ports, tdText, regie, mic, zaal] = await Promise.all([
     fetchJson(`${CONFIG.showControlUrl}/v0/show-control/status`, { timeoutMs: 1000 }),
     fetchJson(`${CONFIG.runtimeUrl}/v0/runtime/runs/current`, { timeoutMs: 1000 }),
     fetchJson(`${CONFIG.sq5Url}/api/streamdeck/state`, { timeoutMs: 1000 }),
@@ -87,8 +87,9 @@ async function gather() {
     tdLabel(),
     fetchJson(`${CONFIG.showControlUrl}/v0/show-control/regie`, { timeoutMs: 1000 }),
     fetchJson(`${CONFIG.micKnopUrl}/api/state`, { timeoutMs: 600 }),
+    fetchJson(`${CONFIG.showControlUrl}/v0/show-control/zaal`, { timeoutMs: 1000 }),
   ]);
-  return { core: Object.fromEntries(coreEntries), hw: Object.fromEntries(hwEntries), showStatus, runtime, sq5, teleprompter, stem, sim, ports, tdText, regie, mic };
+  return { core: Object.fromEntries(coreEntries), hw: Object.fromEntries(hwEntries), showStatus, runtime, sq5, teleprompter, stem, sim, ports, tdText, regie, mic, zaal };
 }
 
 const first = (label) => String(label).split("\n")[0];
@@ -204,6 +205,14 @@ function compute(deck, g) {
       else if (knop.actie && knop.actie.stack === "restart") { s = "klaar"; }
       else if (knop.actie && knop.actie.osc) { s = g.ports[knop.actie.osc.poort || 8008] ? "klaar" : "uit"; }
       else if (knop.actie && knop.actie.autofocus) { s = portOk[3226] ? "klaar" : "uit"; }
+      else if (knop.actie && knop.actie.zaal) {
+        // Zaaloordeel: wit (aan) als de scène van nu al een lach heeft, anders kan; geen scène = uit.
+        const stand = g.zaal && g.zaal.ok && g.zaal.body ? g.zaal.body : null;
+        if (!showOk || !stand) { t = `${first(label)}\n?`; s = showOk ? "onbekend" : "uit"; }
+        else if (!stand.scene) { t = `${first(label)}\n--`; s = "uit"; }
+        else if (stand.oordeel && Number(stand.oordeel.waarde) > 0) { t = `${first(label)}\n+1`; s = "aan"; }
+        else s = "klaar";
+      }
       else if (knop.actie && knop.actie.stem) {
         if (portOk[3026] && volgorde.stemLoopt) { t = `${first(label)}\nLOOPT`; s = "actief"; }
         else s = portOk[3026] && volgorde.stem.mag ? "klaar" : "uit";

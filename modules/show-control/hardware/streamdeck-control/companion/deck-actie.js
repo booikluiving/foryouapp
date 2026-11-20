@@ -302,6 +302,26 @@ async function doAutofocus(knop) {
   return { ok, mislukt: ok ? undefined : mis, fout: ok ? undefined : results.map((r) => r.body) };
 }
 
+// Zaaloordeel: "dit werkte, ze lachten" over de scène die speelt of net gespeeld is (+1 in het
+// algoritme). Nog een keer drukken op dezelfde scène zet het terug op 0.
+async function doZaal(knop) {
+  const label = firstLine(knop.label);
+  if (CONFIG.droog) {
+    await flash(knop.key, `${label}\n+1`, "gelukt");
+    return { ok: true, droog: true, post: `${CONFIG.showControlUrl}/v0/show-control/zaal` };
+  }
+  const result = await fetchJson(`${CONFIG.showControlUrl}/v0/show-control/zaal`, { method: "POST", body: { stap: "lach", bron: "deck" }, timeoutMs: 5000 });
+  const body = result.body || {};
+  if (!result.ok) {
+    const geen = body.error === "geen_scene";
+    await flash(knop.key, `${label}\n${geen ? "--" : "FAIL"}`, geen ? "uit" : "mislukt");
+    return { ok: geen, fout: body };
+  }
+  const waarde = body.oordeel ? Number(body.oordeel.waarde) : 0;
+  await flash(knop.key, `${label}\n${waarde > 0 ? "+1" : "0"}`, waarde > 0 ? "gelukt" : "klaar");
+  return { ok: true, waarde, scene: body.scene && body.scene.situationRunId };
+}
+
 // Stemmen op de startscène: opent de stemming bij het publiek. Loopt er al een, dan sluit
 // de knop hem nu (de winnaar wordt dan meteen klaargezet).
 async function doStem(knop) {
@@ -707,6 +727,7 @@ async function perform(key, fase) {
     if (actie.personage) return await doPersonage(knop);
     if (actie.autofocus) return await doAutofocus(knop);
     if (actie.stem) return await doStem(knop);
+    if (actie.zaal) return await doZaal(knop);
     if (actie.autocam) return await doAutocam(knop);
     if (actie.showmuziek) return await doShowMuziek(knop);
     if (actie.opname) return await doOpname(knop);

@@ -66,6 +66,7 @@ const { perfectCueBaseUrl } = require("../target-adapters/perfect-cue-adapter");
 const { sq5BaseUrl } = require("../target-adapters/sq5-adapter");
 const { streamDeckBaseUrl } = require("../target-adapters/streamdeck-adapter");
 const { loadExpress } = require("./express-loader");
+const { createZaalOordeel } = require("./zaal-oordeel");
 const { createRegie } = require("../regie/regie");
 const { createBewaker } = require("../regie/bewaker");
 
@@ -303,6 +304,8 @@ function createShowControlApp(options = {}) {
   app.use("/shared/ui", express.static(sharedUiRoot));
   app.use("/show-control", express.static(uiRoot, { extensions: ["html"] }));
   app.use("/regie", express.static(path.resolve(__dirname, "../ui/regie"), { extensions: ["html"] }));
+  // Zaaloordeel van operator of spelers (deck-knop, applausmeter op /zaal/).
+  createZaalOordeel({ fetchCurrentRuntimeState: () => clients.fetchCurrentRuntimeState(), runtimeUrl: process.env.SHOW_CONTROL_RUNTIME_URL, algorithmUrl: process.env.SHOW_CONTROL_ALGORITHM_URL }).attach(app, express);
 
   app.get("/health", (_req, res) => {
     const port = Number(process.env.SHOW_CONTROL_PORT || process.env.PORT || options.port || 3025);
