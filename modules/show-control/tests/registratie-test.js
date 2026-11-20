@@ -71,6 +71,16 @@ const run = { showRunId: "show-run-a", status: "running", createdAt: new Date(20
   assert.match(tweede.pad, /-run-1050-2\.mov$/);
   assert.equal((await stopRegistratie(options)).ok, true);
 
+  // Zit de schijf er niet in (hier: een gewone map, geen eigen apparaat), dan gaat de opname naar de Mac, met een melding.
+  const thuis = process.env.HOME;
+  process.env.HOME = tmp;
+  const zonderSchijf = await startRegistratie(run, { ...options, doelDir: undefined, schijf: path.join(tmp, "geen-schijf"), nu });
+  process.env.HOME = thuis;
+  assert.equal(zonderSchijf.ok, true);
+  assert.match(zonderSchijf.melding, /zit er niet in/);
+  assert.ok(zonderSchijf.pad.startsWith(path.join(tmp, "ForYou", "gedocumenteerde-shows")), zonderSchijf.pad);
+  assert.equal((await stopRegistratie(options)).ok, true);
+
   // TouchDesigner heeft de patch niet: nette melding, geen opname onthouden.
   td.aanwezig = false;
   const zonder = await startRegistratie(run, options);

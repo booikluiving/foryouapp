@@ -8,7 +8,9 @@
 // (OVERZICHT), POST /v0/show-control/registratie/start en /stop, of tools/registratie.js.
 // Niets start vanzelf. Een opname stopt alleen vanzelf als de schijf volloopt.
 // Opdrachten gaan via de opdrachtenmap van TouchDesigner (~/ForYou/td-opdrachten), geen netwerk.
-// De bestanden blijven op deze Mac, in ~/ForYou/gedocumenteerde-shows/.
+// De bestanden staan op de externe schijf Expansion, in /Volumes/Expansion/gedocumenteerde-shows/.
+// Zit de schijf er niet in, dan gaat de opname naar ~/ForYou/gedocumenteerde-shows/ op deze Mac
+// en zegt het antwoord dat erbij: een opname gaat nooit verloren om een losse kabel.
 //
 // Gelijk lopen van beeld en geluid. TouchDesigner schrijft het geluid op één vaste samplerate
 // (zie de patch); het beeld volgt de klok. Wat overblijft is een vaste verschuiving tussen de
@@ -21,6 +23,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const STUUR = "op('/project1/fy_registratie').op('stuur').module";
+const SCHIJF = "/Volumes/Expansion";
 const MIN_VRIJ_START_GB = 8;
 const MIN_VRIJ_DOOR_GB = 3;
 // Zoveel milliseconden komt het geluid in het bestand later dan TouchDesigner het schreef
@@ -30,11 +33,25 @@ const GELUID_MS = 0;
 // wegdrijven (samplerate) of weggevallen beelden: dat meldt de stop, rechtzetten kan dan niet blind.
 const MAX_VERSCHIL_S = 0.5;
 
+// Een schijf zit erin als zijn map op een ander apparaat staat dan de map erboven. Alleen kijken
+// of de map bestaat is niet genoeg: een lege map /Volumes/Expansion staat op de Mac zelf.
+function schijfAanwezig(schijf) {
+  try {
+    return fs.statSync(schijf).dev !== fs.statSync(path.dirname(schijf)).dev;
+  } catch (_err) {
+    return false;
+  }
+}
+
 function instellingen(options = {}) {
   const env = process.env;
+  const vast = options.doelDir || env.SHOW_CONTROL_REGISTRATIE_DIR;
+  const schijf = options.schijf || env.SHOW_CONTROL_REGISTRATIE_SCHIJF || SCHIJF;
+  const opSchijf = !vast && schijfAanwezig(schijf);
   return {
     opdrachtenDir: options.opdrachtenDir || env.FY_TD_OPDRACHTEN || path.join(os.homedir(), "ForYou", "td-opdrachten"),
-    doelDir: options.doelDir || env.SHOW_CONTROL_REGISTRATIE_DIR || path.join(os.homedir(), "ForYou", "gedocumenteerde-shows"),
+    doelDir: vast || (opSchijf ? path.join(schijf, "gedocumenteerde-shows") : path.join(os.homedir(), "ForYou", "gedocumenteerde-shows")),
+    melding: vast || opSchijf ? null : `schijf ${path.basename(schijf)} zit er niet in: de opname staat op de Mac`,
     standPad: options.standPad || env.SHOW_CONTROL_REGISTRATIE_STAND
       || path.join(os.homedir(), "Library", "Application Support", "ForYouApp", "registratie.json"),
     wachtMs: Number(options.wachtMs ?? 5000),
@@ -131,7 +148,7 @@ async function startRegistratie(runtimeState, options = {}) {
   } while (fs.existsSync(pad));
   const antwoord = await tdOpdracht(inst, `${STUUR}.start(${JSON.stringify(pad)})`);
   if (!antwoord.ok) return { ok: false, opname: false, fout: antwoord.fout };
-  const stand = { pad: antwoord.td.pad, showRunId, gestartOp: new Date().toISOString() };
+  const stand = { pad: antwoord.td.pad, showRunId, gestartOp: new Date().toISOString(), ...(inst.melding ? { melding: inst.melding } : {}) };
   schrijfStand(inst, stand);
   return { ok: true, opname: true, ...stand, td: antwoord.td };
 }
@@ -249,6 +266,8 @@ async function registratieStatus(options = {}) {
     ok: antwoord.ok,
     opname: antwoord.ok ? antwoord.td.opname : Boolean(loopt),
     vrijGb: vrijGb(fs.existsSync(inst.doelDir) ? inst.doelDir : os.homedir()),
+    map: inst.doelDir,
+    ...(inst.melding ? { melding: inst.melding } : {}),
     ...(loopt || {}),
     ...(laatsteNazorg ? { nazorg: laatsteNazorg } : {}),
     ...(antwoord.ok ? { td: antwoord.td } : { fout: antwoord.fout }),
