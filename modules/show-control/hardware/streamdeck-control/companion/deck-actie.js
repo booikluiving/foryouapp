@@ -320,6 +320,10 @@ async function doZaal(knop) {
     return { ok: geen, fout: body };
   }
   const waarde = body.oordeel ? Number(body.oordeel.waarde) : 0;
+  // De emoji van de knop stijgt ook op het scherm op, zoals een emoji van een telefoon (niet bij terug naar 0).
+  if (waarde !== 0) {
+    await fetchJson(`${CONFIG.audienceUrl}/audience/admin/stage/emoji`, { method: "POST", body: { emoji: label }, timeoutMs: 1500 }).catch(() => {});
+  }
   await flash(knop.key, `${label}\n${zaalTekst(waarde)}`, waarde !== 0 ? "gelukt" : "klaar");
   return { ok: true, waarde, scene: body.scene && body.scene.situationRunId };
 }

@@ -683,6 +683,9 @@
       #chatFeed .chatName {
         font-weight: 700;
       }
+      /* Mod-zwaardje voor de naam van de operator. */
+      .modZwaard { display: inline-block; width: 1em; height: 1em; margin-right: 0.3em; vertical-align: -0.14em; background: #00ad03; border-radius: 0.16em; }
+      .modZwaard svg { display: block; width: 100%; height: 100%; }
       #chatFeed .chatLine:has(.likeKnop) {
         display: flex;
         align-items: baseline;
@@ -1486,6 +1489,13 @@
         return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "";
       }
 
+      function modZwaard() {
+        const badge = document.createElement("span");
+        badge.className = "modZwaard";
+        badge.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path fill="#fff" d="M17 3v3l-7.5 7.5-3-3L14 3zM4.6 9.6 6 8.2l5.8 5.8-1.4 1.4zM6.2 12.4l1.4 1.4L4.4 17 3 15.6z"/></svg>';
+        return badge;
+      }
+
       function normalizeRankBadge(input) {
         const raw = String(input || "").trim();
         if (raw === "👑" || raw === "🥈" || raw === "🥉") return raw;
@@ -1513,6 +1523,7 @@
               : String(entry.name || "Anoniem");
             nameNode.textContent = nameLabel;
             if (entry.nameColor) nameNode.style.color = entry.nameColor;
+            if (entry.mod) nameNode.prepend(modZwaard());
 
             const textNode = document.createElement("span");
             textNode.textContent = ": " + String(entry.text || "");
@@ -1608,6 +1619,7 @@
         naam.className = "chatName";
         naam.textContent = String(top.name || "Anoniem");
         if (top.nameColor) naam.style.color = top.nameColor;
+        if (top.mod) naam.prepend(modZwaard());
         body.append(label, naam, document.createTextNode(": " + String(top.text || "")));
         topCommentEl.append(body, likeKnop(top));
       }
@@ -1716,6 +1728,7 @@
           nameColor,
           rankBadge,
           systemNotice,
+          mod: !!(msg && msg.mod),
           _chatKey: key,
         }, options);
       }
