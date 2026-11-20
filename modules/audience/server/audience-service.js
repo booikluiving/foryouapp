@@ -1047,6 +1047,9 @@ class AudienceService extends EventEmitter {
       if (bezig) return;
       bezig = true;
       try { await this.pollFase(); } catch {} finally { bezig = false; }
+      // Elke paar tellen: klopt het aantal deelnemers op het zaalscherm nog?
+      this.deelnemersTik = (this.deelnemersTik || 0) + 1;
+      if (this.deelnemersTik % 5 === 0) { try { this.meldDeelnemers(); } catch {} }
     };
     this.faseTimer = setInterval(tick, ms);
     if (typeof this.faseTimer.unref === "function") this.faseTimer.unref();
@@ -1410,11 +1413,19 @@ class AudienceService extends EventEmitter {
   }
 
   // Deelnemers: iedereen die in deze sessie heeft meegedaan (telefoons, geen bots), ook als hij nu weg is.
+  // Deelnemers op het zaalscherm: echte telefoons die verbonden zijn en in de laatste tien minuten iets
+  // deden (zelfde regel als voor het algoritme). Wie stil is of weg is, telt niet meer; zo begint een
+  // volgende show met alleen wie er dan is.
   aantalDeelnemers() {
-    const session = this.getActiveSession();
-    if (!session) return 0;
-    const rij = this.store.db.prepare("SELECT COUNT(DISTINCT client_key) AS n FROM clients WHERE session_id = ? AND is_bot = 0").get(Number(session.id));
-    return Number(rij && rij.n) || 0;
+    return this.onlineMensen({ zonderBots: true });
+  }
+
+  // Het getal verandert ook als mensen stil worden of weggaan: dan het nieuwe getal naar de schermen.
+  meldDeelnemers() {
+    const n = this.aantalDeelnemers();
+    if (n === this.laatsteDeelnemers) return;
+    this.laatsteDeelnemers = n;
+    this.emit("broadcast", { type: "deelnemer", deelnemers: n, time: nowIso() });
   }
 
   disconnectClient(meta) {
