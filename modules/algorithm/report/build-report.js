@@ -189,8 +189,8 @@ function buildAudienceReport(state = {}) {
     conclusion,
     live,
     labels,
-    // Alle labels van de catalogus, ook die waar nog geen scène van gespeeld is.
-    labelNames: [...labelNames.values()],
+    // Alle actieve labels van de catalogus, ook die waar nog geen scène van gespeeld is.
+    labelNames: [...nameMap((catalog.labels || []).filter((label) => label.active !== false && !label.archivedAt)).values()],
     characters,
     // Hoe sterk het algoritme nu naar elk label trekt, in procenten (sterkste label = 100).
     labelTrek: labelTrek({ catalog, observations, liveObservation: state.liveAudienceObservation || null, config: state.config }),

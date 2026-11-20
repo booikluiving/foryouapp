@@ -9,6 +9,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { vasteFoto } = require("../../../shared/casting/camera-per-personage");
 
 const MAX_BYTES = 150 * 1024;
 // Onder dit cijfer staat er niemand in beeld (zie show/spelersfoto/spelersfoto.py).
@@ -27,11 +28,21 @@ function createPersonagefoto(opties = {}) {
   // run → (personage → { jpeg, at })
   const geheugen = new Map();
 
+  // Een personage met een vaste foto (shared/casting) krijgt nooit het camerabeeld: dat klopt niet
+  // als twee spelers op één camera staan.
+  function vasteVan(characterId) {
+    const pad = vasteFoto(characterId);
+    if (!pad) return null;
+    const foto = leesArchief(pad);
+    return foto ? { ...foto, bron: "vast" } : null;
+  }
+
   const runMap = (showRunId) => path.join(map, veilig(showRunId));
   const bestand = (showRunId, characterId) => path.join(runMap(showRunId), `${veilig(characterId)}.jpg`);
 
   function zet({ showRunId, characterId, jpeg, punten }) {
     if (!showRunId || !characterId) return { ok: false, error: "run_of_personage_ontbreekt" };
+    if (vasteFoto(characterId)) return { ok: false, error: "vaste_foto" };
     if (!Buffer.isBuffer(jpeg) || jpeg.length < 100 || jpeg.length > MAX_BYTES) return { ok: false, error: "foto_te_groot_of_leeg" };
     // Niemand in beeld: alleen als dit personage nog geen snapshot heeft (beter de omgeving dan niets);
     // een snapshot met iemand erop wordt er nooit door vervangen.
@@ -56,6 +67,8 @@ function createPersonagefoto(opties = {}) {
 
   function van(showRunId, characterId) {
     if (!showRunId || !characterId) return null;
+    const vaste = vasteVan(characterId);
+    if (vaste) return vaste;
     const inGeheugen = geheugen.get(showRunId) && geheugen.get(showRunId).get(String(characterId));
     if (inGeheugen) return inGeheugen;
     try {
@@ -113,6 +126,8 @@ function createPersonagefoto(opties = {}) {
   // deze run, anders de nieuwste uit het archief.
   function kaart(showRunId, characterId) {
     if (!characterId) return null;
+    const vaste = vasteVan(characterId);
+    if (vaste) return vaste;
     let namen = [];
     try { namen = fs.readdirSync(archiefMap(characterId)).filter((naam) => naam.endsWith(".jpg")).sort().reverse(); } catch (_err) { namen = []; }
     const vast = namen.find((naam) => naam.startsWith("vast-"));
@@ -124,7 +139,7 @@ function createPersonagefoto(opties = {}) {
     return null;
   }
 
-  return { zet, van, kaart, reset: () => geheugen.clear(), map, archief };
+  return { zet, van, kaart, vast: vasteVan, reset: () => geheugen.clear(), map, archief };
 }
 
 module.exports = { createPersonagefoto };

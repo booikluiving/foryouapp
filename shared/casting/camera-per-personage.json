@@ -1,0 +1,10 @@
+{
+  "camera": [
+    { "omgeving": "environment:3", "personage": "character:19", "camera": 2, "nietIn": ["situation:44"], "waarom": "Monster onder het bed ligt onder het bed bij Penelope; alleen in 44 komt hij uit de kast" },
+    { "omgeving": "environment:22", "personage": "character:7", "camera": 2, "waarom": "De twee zonnebloemen staan samen in beeld" }
+  ],
+  "foto": {
+    "character:19": "vaste-foto/monster-onder-het-bed.jpg",
+    "character:7": "vaste-foto/zonnebloem-2.jpg"
+  }
+}
