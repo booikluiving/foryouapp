@@ -91,6 +91,58 @@ function defaultOrderSettings() {
     randomizeEqualScores: false,
     startSceneCount: DEFAULT_START_SCENE_COUNT,
     vrijeSpeler: true,
+    padWaarde: false,
+  };
+}
+
+// Padwaarde: elk pad is apart 1 waard, gedeeld door de scènes die in dat pad nu vrij (en te kiezen)
+// zijn. Een pad met één vrije scène geeft die scène 1, een pad met vijf geeft elk 0,2. Een scène die
+// in meerdere paden vrij is krijgt de delen opgeteld. De keuze wordt dan een loting over alle vrije
+// scènes: kans ∝ padwaarde × e^(sterkte × score). Het publiek (de score) bepaalt dus de kans, niet de
+// uitkomst; paden met veel vrije scènes krijgen niet meer kans dan paden met weinig.
+const PADWAARDE_SCORE_STERKTE = 1;
+
+function vrijePadenVan(pathStatus) {
+  return Array.from(new Set(((pathStatus && pathStatus.pathStatuses) || [])
+    .filter((item) => item && item.status === "available" && item.pathId)
+    .map((item) => String(item.pathId))));
+}
+
+function padWaardenVoor(kandidaten) {
+  const perPad = new Map();
+  const padenPerKandidaat = kandidaten.map((item) => vrijePadenVan(item.pathStatus));
+  for (const paden of padenPerKandidaat) for (const pad of paden) perPad.set(pad, (perPad.get(pad) || 0) + 1);
+  // Zonder pad (alleen bij voorrang) telt een scène als een eigen pad.
+  return padenPerKandidaat.map((paden) => (paden.length ? paden.reduce((som, pad) => som + 1 / perPad.get(pad), 0) : 1));
+}
+
+// Trekt de scène die klaargezet wordt. Geeft de lijst terug met de getrokken scène vooraan (de rest
+// in de volgorde van het algoritme) en wat er getrokken is.
+function trekMetPadwaarde(eligiblePool, { sterkte = PADWAARDE_SCORE_STERKTE, random = Math.random } = {}) {
+  if (!Array.isArray(eligiblePool) || eligiblePool.length < 2) return { pool: eligiblePool || [], trekking: null };
+  const gewichten = eligiblePool.map((item) => {
+    const waarde = Number.isFinite(Number(item.padWaarde)) ? Number(item.padWaarde) : 1;
+    const score = Number.isFinite(Number(item.scoreValue)) ? Number(item.scoreValue) : 0;
+    return Math.max(0, waarde) * Math.exp(sterkte * score);
+  });
+  const totaal = gewichten.reduce((som, gewicht) => som + gewicht, 0);
+  if (!(totaal > 0)) return { pool: eligiblePool, trekking: null };
+  let rest = random() * totaal;
+  let index = gewichten.length - 1;
+  for (let i = 0; i < gewichten.length; i += 1) {
+    rest -= gewichten[i];
+    if (rest < 0) { index = i; break; }
+  }
+  const gekozen = eligiblePool[index];
+  return {
+    pool: [gekozen, ...eligiblePool.filter((_item, i) => i !== index)],
+    trekking: {
+      situationId: gekozen.situationId,
+      kans: Math.round((gewichten[index] / totaal) * 10000) / 10000,
+      padWaarde: Math.round(Number(gekozen.padWaarde || 0) * 10000) / 10000,
+      plaatsBijAlgoritme: index + 1,
+      kandidaten: eligiblePool.length,
+    },
   };
 }
 
@@ -203,6 +255,9 @@ function normalizeOrderSettings(input = {}, base = defaultOrderSettings()) {
     vrijeSpeler: Object.prototype.hasOwnProperty.call(source, "vrijeSpeler")
       ? !!source.vrijeSpeler
       : !(base && base.vrijeSpeler === false),
+    padWaarde: Object.prototype.hasOwnProperty.call(source, "padWaarde")
+      ? !!source.padWaarde
+      : !!(base && base.padWaarde),
   };
 }
 
@@ -211,6 +266,7 @@ function savedOrderSettingsFrom(orderSettings) {
     startSceneCount: orderSettings.startSceneCount,
     randomizeEqualScores: !!orderSettings.randomizeEqualScores,
     vrijeSpeler: orderSettings.vrijeSpeler !== false,
+    padWaarde: !!orderSettings.padWaarde,
   };
 }
 
@@ -475,6 +531,8 @@ function buildEligiblePool({
       return stableCandidateOrder(a, b);
     });
 
+  const padWaarden = padWaardenVoor(sortedCandidates);
+  sortedCandidates.forEach((item, index) => { item.padWaarde = padWaarden[index]; });
   return randomizeEqualScoreGroups(sortedCandidates, orderSettings, rankingTieBreaks)
     .map((item) => ({
       situationId: item.situationId,
@@ -486,6 +544,7 @@ function buildEligiblePool({
       scoreValue: item.scoreValue,
       tieGroupKey: item.tieGroupKey || null,
       tieBreakKey: item.tieBreakKey == null ? null : item.tieBreakKey,
+      padWaarde: Math.round(item.padWaarde * 10000) / 10000,
     }));
 }
 
@@ -636,18 +695,22 @@ function kiesKandidaat({ catalog, eligiblePool, recentSlotIndexes, recentCharact
   return { ...eerste, vrijeSpeler: null };
 }
 
-function choosePreparedNext({ catalog, eligiblePool, reason = "runtime_order", recentSlotIndexes = [], recentCharacterIds = [], vrijePlekken = [] }) {
+function choosePreparedNext({ catalog, eligiblePool, reason = "runtime_order", recentSlotIndexes = [], recentCharacterIds = [], vrijePlekken = [], padWaarde = false }) {
   if (!eligiblePool || eligiblePool.length === 0) return null;
-  const keuze = kiesKandidaat({ catalog, eligiblePool, recentSlotIndexes, recentCharacterIds, vrijePlekken });
+  // Met padwaarde: eerst loten (padwaarde × score); de vrije-spelervoorkeur kijkt daarna naar de lijst
+  // met de getrokken scène vooraan.
+  const { pool, trekking } = padWaarde ? trekMetPadwaarde(eligiblePool) : { pool: eligiblePool, trekking: null };
+  const keuze = kiesKandidaat({ catalog, eligiblePool: pool, recentSlotIndexes, recentCharacterIds, vrijePlekken });
   const candidate = keuze.candidate;
   return {
     situationId: candidate.situationId,
     legacySituationId: candidate.legacySituationId,
     title: candidate.title,
     chosenAt: new Date().toISOString(),
-    reason: keuze.vrijeSpeler ? "vrije_speler" : reason,
+    reason: keuze.vrijeSpeler ? "vrije_speler" : trekking ? "padwaarde" : reason,
     seed: keuze.seed,
     vrijeSpeler: keuze.vrijeSpeler,
+    padWaarde: trekking,
     resolvedPreparedNext: keuze.resolved,
   };
 }
@@ -690,6 +753,7 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
     recentSlotIndexes: recentSlotIndexesFor(state),
     recentCharacterIds: recentCharacterIdsFor(state),
     vrijePlekken: vrijePlekkenVoor(state),
+    padWaarde: !!state.orderSettings.padWaarde,
   });
   state.pathEvaluation = pathEvaluation;
   state.eligiblePool = eligiblePool;
@@ -701,6 +765,7 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
     reason: prepared.reason,
     seed: prepared.seed,
     ...(prepared.vrijeSpeler ? { vrijeSpeler: prepared.vrijeSpeler } : {}),
+    ...(prepared.padWaarde ? { padWaarde: prepared.padWaarde } : {}),
   } : null;
   state.resolvedPreparedNext = prepared ? prepared.resolvedPreparedNext : null;
   state.updatedAt = new Date().toISOString();
@@ -713,6 +778,8 @@ async function computeAndSetPreparedNext(state, clients, reason = "runtime_order
     rankingRevision: state.rankingRevision,
     // Vrije speler: welke scène het algoritme bovenaan had en waarom een andere gekozen is.
     ...(prepared && prepared.vrijeSpeler ? { vrijeSpeler: prepared.vrijeSpeler } : {}),
+    // Padwaarde: met welke kans de scène getrokken is en waar het algoritme hem had staan.
+    ...(prepared && prepared.padWaarde ? { padWaarde: prepared.padWaarde } : {}),
   });
   return state;
 }
@@ -884,6 +951,7 @@ async function startRun({ clients, orderSettings, klaarzetten = true } = {}) {
       startSceneCount: normalizeStartSceneCount((await readSavedOrderSettings() || {}).startSceneCount),
       randomizeEqualScores: !!(await readSavedOrderSettings() || {}).randomizeEqualScores,
       vrijeSpeler: (await readSavedOrderSettings() || {}).vrijeSpeler !== false,
+      padWaarde: !!(await readSavedOrderSettings() || {}).padWaarde,
     }),
     runLog: [{
       type: "show_run_started",
@@ -1325,6 +1393,7 @@ async function updateOrderSettings(state, clients, patch = {}) {
     randomizeEqualScores: !!state.orderSettings.randomizeEqualScores,
     startSceneCount: state.orderSettings.startSceneCount,
     vrijeSpeler: state.orderSettings.vrijeSpeler !== false,
+    padWaarde: !!state.orderSettings.padWaarde,
     preparedNextFrozen: !!state.preparedNext,
   });
   await refreshEligiblePool(state, clients, "order_settings_updated");
@@ -1585,6 +1654,9 @@ module.exports = {
   buildEligiblePool,
   kiesKandidaat,
   vrijePlekkenVoor,
+  padWaardenVoor,
+  trekMetPadwaarde,
+  choosePreparedNext,
   computeAndSetPreparedNext,
   prepareNextNow,
   createIdleRuntimeState,
