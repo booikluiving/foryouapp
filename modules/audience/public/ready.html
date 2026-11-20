@@ -85,7 +85,8 @@
     const rest = tot ? Math.ceil((tot - Date.now()) / 1000) : 0;
     knop.className = !klaar ? "dicht" : aan || rest > 0 ? "aan" : "";
     knop.firstChild.textContent = !klaar ? "WACHT" : "READY";
-    knop.querySelector("small").textContent = rest > 0 ? "de scène begint" : klaar && !nodig.has(plek) ? "je speelt niet mee in deze scène" : !klaar ? "nog geen scène" : aan ? "tik nog eens = toch niet" : stand.geschreven ? "tik als je klaar bent" : "tekst wordt geschreven";
+    const wacht = stand && stand.wachtTot && stand.wachtTot - verschil > Date.now();
+    knop.querySelector("small").textContent = rest > 0 ? "de scène begint" : wacht ? "publiek stemt nog" : klaar && !nodig.has(plek) ? "je speelt niet mee in deze scène" : !klaar ? "nog geen scène" : aan ? "tik nog eens = toch niet" : stand.geschreven ? "tik als je klaar bent" : "tekst wordt geschreven";
   }
   el("knop").addEventListener("click", async () => {
     if (!stand || !stand.klaar || (stand.aftellenTot && stand.aftellenTot - verschil > Date.now())) return;
