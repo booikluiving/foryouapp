@@ -404,7 +404,7 @@ async function doSimulatie(knop) {
   return { ok, simulatie: wat, aan: ok ? Boolean(aan) : undefined, status: result.status, fout: ok ? undefined : result.body };
 }
 
-// OPNAME: het hoofdscherm en het geluid opnemen in ~/ForYou/gedocumenteerde-shows.
+// OPNAME: het hoofdscherm en het geluid opnemen op de schijf Expansion (gedocumenteerde-shows).
 // Eén druk start, de volgende stopt. Show control doet het werk (TouchDesigner neemt op).
 async function doOpname(knop) {
   const label = firstLine(knop.label);
