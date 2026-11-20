@@ -7,6 +7,9 @@
 // Aftellen staat aan of uit (regiepagina); uit = de scène begint meteen als iedereen ready is.
 
 const AFTEL_MS = 3000;
+// Na het einde van een scène mag een speler zo lang nog niet op READY: het publiek stemt dan nog.
+// (De READY-knop van de operator op het deck blijft werken.)
+const READY_WACHT_MS = (Number(process.env.AUDIENCE_READY_WACHT_S) || 25) * 1000;
 const AFTELLEN_KEY = "aftellen_aan";
 // Vaste plekken in de ring: wie op welke plek staat (ook de klikker hoort bij een plek).
 const SPELERS = [
@@ -63,15 +66,25 @@ function createSpelersReady({ service, fetchRuntimeView, store = service && serv
     return { sleutel: `${view.showRunId}|${klaar.situationId}`, speelt: !!view.activeSituation, nodig: nodig.length ? nodig : SPELERS.map((speler) => speler.plek), geschreven };
   }
 
+  // Tot wanneer READY van spelers nog niet mag (0 = mag): het einde van de laatste scène + de wachttijd.
+  function wachtTot() {
+    const ronde = typeof service.getRonde === "function" ? service.getRonde() : null;
+    const eind = ronde && ronde.eind ? Date.parse(ronde.eind) : 0;
+    const tot = eind ? eind + READY_WACHT_MS : 0;
+    return tot > Date.now() ? tot : 0;
+  }
+
   function publiek() {
+    const wacht = wachtTot();
     return {
+      wachtTot: wacht,
       spelers: SPELERS,
       plekken: [...stand.plekken].sort(),
       nodig: stand.nodig,
       geschreven: stand.geschreven,
       aftellenTot: stand.aftellenTot || 0,
       aftellen,
-      klaar: !!stand.sleutel,
+      klaar: !!stand.sleutel && !wacht,
       nu: Date.now(),
     };
   }
@@ -155,6 +168,7 @@ function createSpelersReady({ service, fetchRuntimeView, store = service && serv
     if (!SPELERS.some((speler) => speler.plek === plek)) return { ok: false, fout: "onbekende_plek" };
     const nu = await bij();
     if (!stand.sleutel) return { ok: false, fout: nu.speelt ? "scene_speelt" : "geen_scene", ...publiek() };
+    if (ready && wachtTot()) return { ok: false, fout: "te_vroeg", ...publiek() };
     if (stand.start) return { ok: true, ...publiek() };
     const was = stand.plekken.has(plek);
     if (ready) stand.plekken.add(plek); else stand.plekken.delete(plek);
