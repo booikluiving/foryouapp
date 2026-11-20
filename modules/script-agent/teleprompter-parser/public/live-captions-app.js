@@ -53,22 +53,29 @@
 
   // Ondertitel uit de gezichten: TouchDesigner (FY Gezichten) stuurt een paar keer per seconde de kaders
   // van de gezichten op het hoofdscherm (0..1, linksboven). Staat de ondertitel op een gezicht, dan
-  // verspringt hij naar een vrije plek: laag, anders hoog. De gewone plek blijft de standaard: is die
+  // verspringt hij naar een vrije plek: eerst lager (onder), dan omhoog: midden, en boven alleen als het
+  // echt niet anders kan (bijvoorbeeld bij meerdere gezichten). De gewone plek blijft de standaard: is die
   // 0,7 s vrij, dan gaat hij terug. Niet steeds heen en weer: pas na 0,7 s op een gezicht en hooguit eens
   // per 2 s (bij een nieuwe regel meteen). Zonder kaders (TD stuurt niets, FY Gezichten uit) staat hij
   // gewoon op de gewone plek.
-  const PLEK_LAAG = 84;
-  const PLEK_HOOG = 14;
+  const RAND = 3; // % vrij aan de boven- en onderkant van het beeld
   const GEZICHT_MARGE = 0.02;
   const BOTS_WACHT_MS = 700;
   const MIN_HOUD_MS = 2000;
   const ZONDER_KADERS_MS = 1000;
   const plek = { volg: true, top: null, sinds: 0, botsSinds: 0, vrijSinds: 0, kaders: [], kadersAt: 0, regel: null };
 
+  // Alle hoogtes (per 1 %) waar de ondertitel helemaal in beeld past: de gewone plek, dan alles eronder
+  // (dichtbij eerst), dan omhoog (dichtbij eerst, dus midden vóór boven).
   function plekken() {
     const gewoon = captionStyle.verticalPosition;
     if (!plek.volg) return [gewoon];
-    return [gewoon, PLEK_LAAG, PLEK_HOOG].filter((top, i, lijst) => lijst.indexOf(top) === i);
+    const half = (card.offsetHeight / (root.clientHeight || CAPTION_HEIGHT)) * 50;
+    const min = Math.ceil(RAND + half), max = Math.floor(100 - RAND - half);
+    const lijst = [gewoon];
+    for (let top = gewoon + 1; top <= max; top += 1) lijst.push(top);
+    for (let top = gewoon - 1; top >= min; top -= 1) lijst.push(top);
+    return lijst;
   }
 
   function kadersVers(nu) {
@@ -95,7 +102,7 @@
     return som / (b * h);
   }
 
-  // De eerste vrije plek in de volgorde gewoon, laag, hoog; is er geen vrij, die met de minste overlap.
+  // De eerste vrije plek in die volgorde; is er geen vrij, die met de minste overlap.
   function besteTop() {
     const lijst = plekken();
     let beste = lijst[0];
@@ -121,9 +128,9 @@
   // nieuweRegel: er staat net een andere zin; dan mag hij meteen kiezen, ook terug naar de gewone plek.
   function zetPlek(nieuweRegel = false) {
     const nu = Date.now();
-    const lijst = plekken();
-    const gewoon = lijst[0];
-    if (plek.top === null || !lijst.includes(plek.top)) {
+    const gewoon = captionStyle.verticalPosition;
+    if (plek.top === null || plek.gewoon !== gewoon || (!plek.volg && plek.top !== gewoon)) {
+      plek.gewoon = gewoon;
       springNaar(gewoon, nu);
       return;
     }
