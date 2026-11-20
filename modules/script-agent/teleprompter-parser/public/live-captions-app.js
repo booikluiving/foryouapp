@@ -42,13 +42,143 @@
     };
   }
 
-  function applyCaptionStyle(style = {}) {
+  function applyCaptionStyle(style = {}, { volgGezichten = true } = {}) {
     captionStyle = normalizeCaptionStyle(style);
+    plek.volg = volgGezichten;
     root.style.setProperty("--caption-size-scale", captionStyle.fontSizeScale.toFixed(3));
-    root.style.setProperty("--caption-top", `${captionStyle.verticalPosition.toFixed(1)}%`);
     root.style.setProperty("--caption-width", `${captionStyle.widthPercent.toFixed(1)}%`);
     root.style.setProperty("--caption-outline", buildOutline(OUTLINE_EM_AT_100 * captionStyle.outlineScale));
+    zetPlek();
   }
+
+  // Ondertitel uit de gezichten: TouchDesigner (FY Gezichten) stuurt een paar keer per seconde de kaders
+  // van de gezichten op het hoofdscherm (0..1, linksboven). Staat de ondertitel op een gezicht, dan
+  // verspringt hij naar een vrije plek: laag, anders hoog. Niet steeds heen en weer: midden in een regel
+  // pas na 0,7 s op een gezicht en hooguit eens per 2 s; terug naar de gewone plek alleen bij een nieuwe
+  // regel. Zonder kaders (TD stuurt niets, FY Gezichten uit) staat hij gewoon op de gewone plek.
+  const PLEK_LAAG = 84;
+  const PLEK_HOOG = 14;
+  const GEZICHT_MARGE = 0.02;
+  const BOTS_WACHT_MS = 700;
+  const MIN_HOUD_MS = 2000;
+  const ZONDER_KADERS_MS = 1000;
+  const plek = { volg: true, top: null, sinds: 0, botsSinds: 0, kaders: [], kadersAt: 0, regel: null };
+
+  function plekken() {
+    const gewoon = captionStyle.verticalPosition;
+    if (!plek.volg) return [gewoon];
+    return [gewoon, PLEK_LAAG, PLEK_HOOG].filter((top, i, lijst) => lijst.indexOf(top) === i);
+  }
+
+  function kadersVers(nu) {
+    return plek.kaders.length > 0 && nu - plek.kadersAt < ZONDER_KADERS_MS;
+  }
+
+  // Hoeveel van de ondertitel (op hoogte top, in %) over gezichten valt, als deel van zijn oppervlak.
+  function overlapOp(top) {
+    if (card.hidden) return 0;
+    const rootB = root.clientWidth || CAPTION_WIDTH;
+    const rootH = root.clientHeight || CAPTION_HEIGHT;
+    const b = card.offsetWidth / rootB;
+    const h = card.offsetHeight / rootH;
+    if (!(b > 0 && h > 0)) return 0;
+    const x0 = 0.5 - b / 2, x1 = 0.5 + b / 2, y0 = top / 100 - h / 2, y1 = top / 100 + h / 2;
+    let som = 0;
+    plek.kaders.forEach((k) => {
+      const kx0 = k.x - GEZICHT_MARGE, kx1 = k.x + k.b + GEZICHT_MARGE;
+      const ky0 = k.y - GEZICHT_MARGE, ky1 = k.y + k.h + GEZICHT_MARGE;
+      const ox = Math.max(0, Math.min(x1, kx1) - Math.max(x0, kx0));
+      const oy = Math.max(0, Math.min(y1, ky1) - Math.max(y0, ky0));
+      som += ox * oy;
+    });
+    return som / (b * h);
+  }
+
+  // De eerste vrije plek in de volgorde gewoon, laag, hoog; is er geen vrij, die met de minste overlap.
+  function besteTop() {
+    const lijst = plekken();
+    let beste = lijst[0];
+    let minst = Infinity;
+    for (const top of lijst) {
+      const o = overlapOp(top);
+      if (o === 0) return top;
+      if (o < minst - 0.05) { minst = o; beste = top; }
+    }
+    return beste;
+  }
+
+  function springNaar(top, nu) {
+    if (top === plek.top) return;
+    plek.top = top;
+    plek.sinds = nu;
+    plek.botsSinds = 0;
+    root.style.setProperty("--caption-top", `${top.toFixed(1)}%`);
+    root.dataset.plek = String(top);
+  }
+
+  // nieuweRegel: er staat net een andere zin; dan mag hij meteen kiezen, ook terug naar de gewone plek.
+  function zetPlek(nieuweRegel = false) {
+    const nu = Date.now();
+    const lijst = plekken();
+    const gewoon = lijst[0];
+    if (plek.top === null || !lijst.includes(plek.top)) {
+      springNaar(gewoon, nu);
+      return;
+    }
+    if (!kadersVers(nu)) {
+      // Geen gezichten (meer): terug naar de gewone plek, maar niet vlak na een sprong.
+      if (plek.top !== gewoon && (nieuweRegel || nu - plek.sinds >= MIN_HOUD_MS)) springNaar(gewoon, nu);
+      plek.botsSinds = 0;
+      return;
+    }
+    const bots = overlapOp(plek.top) > 0;
+    if (nieuweRegel) {
+      if (bots || (plek.top !== gewoon && overlapOp(gewoon) === 0)) springNaar(besteTop(), nu);
+      return;
+    }
+    if (!bots) {
+      plek.botsSinds = 0;
+      return;
+    }
+    if (!plek.botsSinds) plek.botsSinds = nu;
+    if (nu - plek.botsSinds >= BOTS_WACHT_MS && nu - plek.sinds >= MIN_HOUD_MS) springNaar(besteTop(), nu);
+  }
+
+  function tekenKaders() {
+    if (!debugEnabled) return;
+    let laag = document.getElementById("captionKaders");
+    if (!laag) {
+      laag = document.createElement("div");
+      laag.id = "captionKaders";
+      laag.style.cssText = "position:absolute;inset:0;pointer-events:none;";
+      root.appendChild(laag);
+    }
+    laag.textContent = "";
+    if (!kadersVers(Date.now())) return;
+    plek.kaders.forEach((k) => {
+      const vak = document.createElement("div");
+      vak.style.cssText = `position:absolute;left:${k.x * 100}%;top:${k.y * 100}%;width:${k.b * 100}%;height:${k.h * 100}%;border:3px solid #ffd400;box-sizing:border-box;`;
+      laag.appendChild(vak);
+    });
+  }
+
+  function ontvangKaders(lijst) {
+    plek.kaders = (Array.isArray(lijst) ? lijst : [])
+      .map((k) => ({ x: Number(k.x), y: Number(k.y), b: Number(k.b), h: Number(k.h) }))
+      .filter((k) => [k.x, k.y, k.b, k.h].every(Number.isFinite) && k.b > 0 && k.h > 0)
+      .slice(0, 8);
+    plek.kadersAt = Date.now();
+    zetPlek();
+    tekenKaders();
+  }
+
+  window.addEventListener("message", (event) => {
+    const data = event.data;
+    if (!data || data.type !== "fy-gezichten") return;
+    ontvangKaders(data.kaders);
+  });
+  // Stuurt TD niets meer, dan valt hij vanzelf terug (ook als er geen bericht meer komt om op te reageren).
+  window.setInterval(() => { zetPlek(); tekenKaders(); }, 250);
 
   // Ronde zwarte rand buiten de letter (zoals CapCut): ringen van schaduwkopieën in em,
   // zodat de rand meeschaalt met de lettergrootte en niet afhangt van paint-order in TD's browser.
@@ -242,6 +372,9 @@
       if (activeCaption.en) appendFormattedText(engelsRegel(), activeCaption.en);
     }
     fitCaption();
+    const regel = `${activeCaption.type}|${activeCaption.speaker || ""}|${activeCaption.text}`;
+    zetPlek(regel !== plek.regel);
+    plek.regel = regel;
     meldGetoond();
   }
 
@@ -270,7 +403,8 @@
     cue = payload.cue || { index: 0, version: -1, deckLength: 0 };
     // Met een bord (blind ranking) staat het plaatje midden in beeld: de ondertitel gaat eronder.
     const stijl = payload.captionStyle || DEFAULT_CAPTION_STYLE;
-    applyCaptionStyle(teleprompt && teleprompt.bord ? { ...stijl, verticalPosition: 84 } : stijl);
+    // Met een bord volgt de ondertitel de gezichten niet: hij blijft onder het plaatje.
+    applyCaptionStyle(teleprompt && teleprompt.bord ? { ...stijl, verticalPosition: 84 } : stijl, { volgGezichten: !(teleprompt && teleprompt.bord) });
     render();
     herlaadBijNieuweVersie(payload.ondertitelVersie);
   }
