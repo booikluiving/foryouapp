@@ -1331,8 +1331,10 @@
         const labels = (data.labels || []).filter((label) => label.procent > 0);
         const personages = data.personages || [];
         // Niets te melden: meteen door naar Up next.
-        if (upNext && !labels.length && !personages.length && kaart.tot) { kaart.tot = 0; clearTimeout(kaart.timer); zetFase(); return; }
-        const sleutel = JSON.stringify([labels, personages]);
+        // Top chatters: wie het meest in de chat zette (berichten + likes op je berichten), zonder bots.
+        const chatters = (ranking || []).filter((rij) => !rij.isBot && rij.punten > 0).slice(0, 3);
+        if (upNext && !labels.length && !personages.length && !chatters.length && kaart.tot) { kaart.tot = 0; clearTimeout(kaart.timer); zetFase(); return; }
+        const sleutel = JSON.stringify([labels, personages, chatters]);
         if (!kaart.tot || !upNext || kaartGetekend) return;
         kaartGetekend = sleutel;
         rpLeeg();
@@ -1409,6 +1411,38 @@
             });
           });
           t += 350 + personages.length * 260 + 3500;
+        }
+        // 3. Top chatters: als beloning in beeld, nummer 1 met een kroon.
+        if (chatters.length) {
+          const eigenKop = labels.length || personages.length;
+          if (!eigenKop) { el("rpPubliekKop").textContent = "Top chatters:"; el("rpPubliekUitleg").textContent = ""; }
+          const hoogste = Math.max(chatters[0].punten || 1, 1);
+          na(t, () => {
+            if (eigenKop) {
+              const kop = maak("div", "tussenkop", "Top chatters:");
+              el("rpLabels").append(kop);
+              requestAnimationFrame(() => kop.classList.add("aan"));
+              geluid.relais();
+            }
+            chatters.forEach((rij, index) => {
+              const staaf = maak("div", "staaf persoon" + (index === 0 ? " nu" : ""));
+              const spoor = maak("div", "spoor");
+              const vulling = maak("i");
+              spoor.append(vulling);
+              const naam = maak("span", "", `${index === 0 ? "👑 " : ""}${index + 1}. ${rij.naam || "Anoniem"}`);
+              naam.append(maak("small", "", `${rij.aantal} ${rij.aantal === 1 ? "bericht" : "berichten"} · ${rij.likes} ${rij.likes === 1 ? "like" : "likes"}`));
+              const getal = maak("b", "", "");
+              staaf.append(naam, spoor, getal);
+              el("rpLabels").append(staaf);
+              rpTimers.push(setTimeout(() => {
+                staaf.classList.add("aan");
+                geluid.relais();
+                requestAnimationFrame(() => { vulling.style.width = `${(rij.punten / hoogste) * 100}%`; });
+                rpTelOp(getal, rij.punten, 600, (n) => String(Math.round(n)));
+              }, 350 + index * 260));
+            });
+          });
+          t += 350 + chatters.length * 260 + 2500;
         }
         // De kaart blijft staan tot alles opgebouwd en even te lezen is; dan Up next.
         kaart.tot = Date.now() + t;
