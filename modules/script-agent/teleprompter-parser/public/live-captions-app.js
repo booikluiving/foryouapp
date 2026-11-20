@@ -53,16 +53,17 @@
 
   // Ondertitel uit de gezichten: TouchDesigner (FY Gezichten) stuurt een paar keer per seconde de kaders
   // van de gezichten op het hoofdscherm (0..1, linksboven). Staat de ondertitel op een gezicht, dan
-  // verspringt hij naar een vrije plek: laag, anders hoog. Niet steeds heen en weer: midden in een regel
-  // pas na 0,7 s op een gezicht en hooguit eens per 2 s; terug naar de gewone plek alleen bij een nieuwe
-  // regel. Zonder kaders (TD stuurt niets, FY Gezichten uit) staat hij gewoon op de gewone plek.
+  // verspringt hij naar een vrije plek: laag, anders hoog. De gewone plek blijft de standaard: is die
+  // 0,7 s vrij, dan gaat hij terug. Niet steeds heen en weer: pas na 0,7 s op een gezicht en hooguit eens
+  // per 2 s (bij een nieuwe regel meteen). Zonder kaders (TD stuurt niets, FY Gezichten uit) staat hij
+  // gewoon op de gewone plek.
   const PLEK_LAAG = 84;
   const PLEK_HOOG = 14;
   const GEZICHT_MARGE = 0.02;
   const BOTS_WACHT_MS = 700;
   const MIN_HOUD_MS = 2000;
   const ZONDER_KADERS_MS = 1000;
-  const plek = { volg: true, top: null, sinds: 0, botsSinds: 0, kaders: [], kadersAt: 0, regel: null };
+  const plek = { volg: true, top: null, sinds: 0, botsSinds: 0, vrijSinds: 0, kaders: [], kadersAt: 0, regel: null };
 
   function plekken() {
     const gewoon = captionStyle.verticalPosition;
@@ -112,6 +113,7 @@
     plek.top = top;
     plek.sinds = nu;
     plek.botsSinds = 0;
+    plek.vrijSinds = 0;
     root.style.setProperty("--caption-top", `${top.toFixed(1)}%`);
     root.dataset.plek = String(top);
   }
@@ -138,8 +140,16 @@
     }
     if (!bots) {
       plek.botsSinds = 0;
+      // De gewone plek is de standaard: is die weer vrij, dan gaat hij terug (niet vlak na een sprong).
+      if (plek.top !== gewoon && overlapOp(gewoon) === 0) {
+        if (!plek.vrijSinds) plek.vrijSinds = nu;
+        if (nu - plek.vrijSinds >= BOTS_WACHT_MS && nu - plek.sinds >= MIN_HOUD_MS) springNaar(gewoon, nu);
+      } else {
+        plek.vrijSinds = 0;
+      }
       return;
     }
+    plek.vrijSinds = 0;
     if (!plek.botsSinds) plek.botsSinds = nu;
     if (nu - plek.botsSinds >= BOTS_WACHT_MS && nu - plek.sinds >= MIN_HOUD_MS) springNaar(besteTop(), nu);
   }
