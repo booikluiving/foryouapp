@@ -776,6 +776,8 @@ setInterval(kijk, 2000);
       nameColor: getNameColorHex(name),
       isBot: true,
       simulated: false,
+      // De operator krijgt een mod-zwaardje voor zijn naam (telefoon en zaalscherm).
+      mod: true,
     };
     payload.id = service.store.insertChatMessage({
       sessionId: session.id,
