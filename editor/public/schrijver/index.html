@@ -8,6 +8,7 @@
   /* Zelfde huisstijl als Versies en Ideeën: Helvetica Neue, zwart op wit, één dunne lijn. */
   :root { --tekst: #000; --zacht: rgba(0, 0, 0, .55); --lijn: rgba(0, 0, 0, .14); --vlak: rgba(0, 0, 0, .035); --rood: #b00020; --groen: #0a6b2d; --rand: clamp(16px, 3vw, 40px); --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: #fff; color: var(--tekst); font: 16px/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
   a { color: var(--tekst); text-underline-offset: .3em; text-decoration-thickness: 1px; }
   header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 6px 24px; padding: 20px var(--rand) 16px; border-bottom: 1px solid var(--lijn); }
@@ -77,6 +78,15 @@
   ul.bewaard summary .zacht { font-size: 14px; margin-left: 10px; }
   ul.bewaard pre { font: 14px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0; max-width: 860px; }
   ul.bewaard details details summary { font-size: 14px; color: var(--zacht); }
+  .tabs { display: flex; gap: 24px; padding: 14px var(--rand) 0; border-bottom: 1px solid var(--lijn); }
+  .tabs a { color: var(--zacht); text-decoration: none; padding: 0 0 10px; border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: 18px; }
+  .tabs a:hover { color: var(--tekst); }
+  .tabs a[aria-current="page"] { color: var(--tekst); border-bottom-color: var(--tekst); }
+  #alleen-voorbeelden { padding: 8px var(--rand) 80px; }
+  #vb-raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 32px clamp(24px, 4vw, 56px); margin-top: 24px; }
+  #vb-raster article { min-width: 0; }
+  #vb-raster h3 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+  #vb-raster pre { font: 14px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0 0; }
   @keyframes knipper { 50% { opacity: 0; } }
   #invoer { margin-top: 10px; font: 14px/1.5 var(--mono); min-height: 70px; }
 </style>
@@ -95,7 +105,15 @@
   </nav>
   <div class="wie"><span id="wie"></span><a href="https://www.foryouniverse.nl/team/">← Team</a></div>
 </header>
-<main>
+<nav class="tabs" aria-label="Weergave">
+  <a href="#" id="tab-testen" aria-current="page">Testen</a>
+  <a href="#voorbeelden" id="tab-voorbeelden">Voorbeeldscènes</a>
+</nav>
+<div id="alleen-voorbeelden" hidden>
+  <p id="vb-leeg" class="zacht">Nog geen voorbeeldscènes.</p>
+  <div id="vb-raster"></div>
+</div>
+<main id="testen">
   <section>
     <h2>Prompt testen</h2>
     <p class="zacht">Los van de show. Wat je hier aanpast en laat schrijven, komt niet op de teleprompter.</p>

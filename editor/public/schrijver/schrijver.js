@@ -196,8 +196,36 @@ function toonBewaard(list) {
 }
 
 // Per situatie de best gelukte scène. De show begint elke run met deze scènes.
+// Tab Voorbeeldscènes: alleen de voorbeelden, per situatie naast elkaar om te vergelijken.
+function toonVoorbeeldRaster() {
+  const lijst = [...state.voorbeelden].sort((a, b) => a.titel.localeCompare(b.titel, "nl"));
+  $("vb-leeg").hidden = lijst.length > 0;
+  $("vb-raster").replaceChildren(...lijst.map((item) => el("article", {},
+    el("h3", {}, item.titel),
+    el("p", { class: "zacht klein", style: "margin: 2px 0 0" }, `${naam(item.by)} · ${when(item.at)}`),
+    el("pre", {}, item.tekst))));
+}
+
+function kiesTab() {
+  const voorbeelden = location.hash === "#voorbeelden";
+  $("testen").hidden = voorbeelden;
+  $("alleen-voorbeelden").hidden = !voorbeelden;
+  $("tab-testen").toggleAttribute("aria-current", !voorbeelden);
+  $("tab-voorbeelden").toggleAttribute("aria-current", voorbeelden);
+  if (voorbeelden) $("tab-voorbeelden").setAttribute("aria-current", "page");
+  else $("tab-testen").setAttribute("aria-current", "page");
+}
+window.addEventListener("hashchange", kiesTab);
+$("tab-testen").addEventListener("click", (event) => {
+  event.preventDefault();
+  history.pushState(null, "", location.pathname + location.search);
+  kiesTab();
+});
+kiesTab();
+
 function toonVoorbeelden(list) {
   state.voorbeelden = list;
+  toonVoorbeeldRaster();
   for (const item of state.bewaard || []) if (item.voorbeeldStand) item.voorbeeldStand();
   $("voorbeelden-leeg").hidden = list.length > 0;
   $("voorbeelden").replaceChildren(...list.map((item) => {
@@ -437,6 +465,9 @@ $("van-show").addEventListener("click", () => {
 });
 
 async function ververs() {
+  if (!$("alleen-voorbeelden").hidden) {
+    api("/voorbeelden").then((vb) => toonVoorbeelden(vb.voorbeelden)).catch(() => {});
+  }
   if (state.bezig || state.vuil) return;
   try {
     const stand = await api("");
