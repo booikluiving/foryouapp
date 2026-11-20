@@ -1,6 +1,6 @@
 "use strict";
 
-// De eerste scènes van een run komen uit verschillende paden (diversePaden, standaard 8).
+// De eerste scènes van een run komen uit verschillende paden (diversePaden, standaard 6).
 // Draai: node modules/runtime/tests/diverse-paden-test.js (leest en schrijft geen showdata).
 const assert = require("node:assert/strict");
 const { buildEligiblePool, normalizeOrderSettings } = require("../run-control/runtime-engine");
@@ -39,8 +39,8 @@ assert.deepEqual(pool([1, 3], 5), [2, 4]);
 // Uit (0) of na het aantal: gewoon alles wat vrij is.
 assert.deepEqual(pool([], 1, { diversePaden: 0 }), [2, 3, 4, 5, 6]);
 assert.deepEqual(pool([], 1, { diversePaden: 1 }), [2, 3, 4, 5, 6]);
-// Standaard 8, instelbaar, bewaard naast de rest.
-assert.equal(normalizeOrderSettings({}).diversePaden, 8);
+// Standaard 6, instelbaar, bewaard naast de rest.
+assert.equal(normalizeOrderSettings({}).diversePaden, 6);
 assert.equal(normalizeOrderSettings({ diversePaden: 5 }).diversePaden, 5);
 assert.equal(normalizeOrderSettings({ vrijeSpeler: false }, { diversePaden: 5 }).diversePaden, 5);
 process.stdout.write("diverse-paden-test: ok\n");
