@@ -73,6 +73,8 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
   let foutmelding = "";
   // Zelf doorklikken: de regie wacht op "verder" met deze knoptekst.
   let wachtKnop = null;
+  // Wat de publieksdienst denkt dat er speelt (zoals de telefoons het horen).
+  let publiekFase = { fase: "tussen", situationRunId: null };
 
   function wachtOpKlik(run, label) {
     if (!run.stappen || loopt !== run) return Promise.resolve();
@@ -110,6 +112,7 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
         let bericht = null;
         try { bericht = JSON.parse(String(raw)); } catch (_err) { return; }
         if (bericht && bericht.type === "beoordeling" && bericht.beoordeling) beantwoord(telefoon, bericht.beoordeling);
+        if (bericht && bericht.type === "fase") publiekFase = { fase: bericht.fase, situationRunId: bericht.situationRunId || null };
       });
       ws.on("close", () => { telefoon.open = false; });
       ws.on("error", (err) => { clearTimeout(klaar); reject(err); });
@@ -137,18 +140,19 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
   }
 
   // Tijdens de scène: likes (hart of saai) en een paar chatberichten, verspreid over de scène.
-  function speelMee(telefoon, scene, publiek, duurMs, stop) {
+  function speelMee(telefoon, scene, publiek, duurMs, stop, snel = false) {
     const t = zin(telefoon, scene, publiek);
     telefoon.zin = t;
     const acties = [];
     const likes = Math.round(Math.random() * 12 * publiek.likes * Math.abs(t));
-    for (let i = 0; i < likes; i += 1) acties.push({ op: Math.random() * duurMs, doe: () => stuur(telefoon, { type: "reaction", reaction: t >= 0 ? "heart" : "bored" }) });
-    const berichten = Math.round(Math.random() * 2 * publiek.chat * (0.4 + Math.abs(t)));
+    for (let i = 0; i < likes; i += 1) acties.push({ op: snel ? i * 140 : Math.random() * duurMs, doe: () => stuur(telefoon, { type: "reaction", reaction: t >= 0 ? "heart" : "bored" }) });
+    // Snel: hooguit één bericht per telefoon (de chat remt een tweede bericht kort na het eerste af).
+    const berichten = Math.min(snel ? 1 : 9, Math.round(Math.random() * 2 * publiek.chat * (0.4 + Math.abs(t))));
     for (let i = 0; i < berichten; i += 1) {
       let tekst = Math.abs(t) < 0.2 ? kies(CHAT_NEUTRAAL) : t > 0 ? kies(CHAT_PLUS) : kies(CHAT_MIN);
       // Wie het goed vindt noemt soms een personage bij naam (telt als personagevoorkeur).
       if (t > 0.4 && scene.personages.length && Math.random() < 0.35) tekst = `meer ${kies(scene.personages).naam}!`;
-      acties.push({ op: 1500 + Math.random() * (duurMs - 1500), doe: () => stuur(telefoon, { type: "comment", name: telefoon.naam, text: tekst }) });
+      acties.push({ op: snel ? Math.random() * duurMs : 1500 + Math.random() * (duurMs - 1500), doe: () => stuur(telefoon, { type: "comment", name: telefoon.naam, text: tekst }) });
     }
     for (const actie of acties) {
       const timer = setTimeout(() => { if (!stop()) actie.doe(); }, actie.op);
@@ -161,9 +165,11 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
     if (!loopt || telefoon.beantwoord.has(beoordeling.id)) return;
     telefoon.beantwoord.add(beoordeling.id);
     const publiek = loopt.publiek;
-    if (Math.random() > publiek.stemt) return;
+    const snel = loopt.stappen;
+    // Snel (zelf doorklikken): iedereen stemt meteen, anders met bedenktijd en niet iedereen.
+    if (!snel && Math.random() > publiek.stemt) return;
     const t = Number.isFinite(telefoon.zin) ? telefoon.zin : 0;
-    await wacht(Number(beoordeling.aanloopMs || 0) + 1200 + Math.random() * 5000);
+    await wacht(Number(beoordeling.aanloopMs || 0) + (snel ? Math.random() * 300 : 1200 + Math.random() * 5000));
     for (const v of beoordeling.vragen || []) {
       if (!loopt) return;
       let keuze = null;
@@ -182,7 +188,7 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
       }
       if (!keuze) continue;
       stuur(telefoon, { type: "beoordeling_antwoord", id: beoordeling.id, vraag: v.id, keuze });
-      await wacht(600 + Math.random() * 2200);
+      await wacht(snel ? 30 : 600 + Math.random() * 2200);
     }
   }
 
@@ -238,99 +244,101 @@ function createTestpubliek({ url, vraag, runNu, knoppen, log }) {
     }
   }
 
-  async function regie(run, { scenes, sceneSec, upNextSec }) {
+  // De run klaarzetten: verse run zonder startscènes (zoals in de show), telefoons erin, START SHOW.
+  async function zetKlaar(run) {
     const publiek = run.publiek;
     const gestopt = () => loopt !== run;
-    // Een verse run, zonder startscènes (zoals in de show), met loten bij gelijke scores.
-    fase = "run starten";
     let rt = await runNu();
-    if (rt && rt.showRunId && rt.status !== "idle") {
-      await knoppen.run();
-      await wacht(1500);
-    }
+    if (rt && rt.showRunId && rt.status !== "idle") await knoppen.run();
     await knoppen.run();
-    rt = await wachtTot(async () => { const nu = await runNu(); return nu && nu.showRunId && nu.status !== "idle" ? nu : null; }, 10000);
+    rt = await wachtTot(async () => { const nu = await runNu(); return nu && nu.showRunId && nu.status !== "idle" ? nu : null; }, 10000, 200);
     if (!rt) throw new Error("de run start niet");
-    await vraag("runtime", `/v0/runtime/runs/${encodeURIComponent(rt.showRunId)}/order-settings`, { method: "PATCH", body: { startSceneCount: 0, randomizeEqualScores: true } });
     run.showRunId = rt.showRunId;
-
-    // Het publiek komt binnen.
-    fase = "publiek komt binnen";
+    await vraag("runtime", `/v0/runtime/runs/${encodeURIComponent(rt.showRunId)}/order-settings`, { method: "PATCH", body: { startSceneCount: 0, randomizeEqualScores: true } });
     const sessie = await wachtTot(async () => {
       const stand = await vraag("audience", "/audience/admin/state", { timeoutMs: 2000 });
       return stand.ok && stand.body && stand.body.sessionJoin && stand.body.sessionJoin.token ? String(stand.body.sessionJoin.token) : null;
-    }, 8000);
+    }, 8000, 200);
     if (!sessie) throw new Error("geen publiekssessie");
-    for (let nr = 0; nr < publiek.telefoons && !gestopt(); nr += 1) {
-      telefoons.push(await meedoen(publiek, nr, sessie));
-      await wacht(150);
-    }
-    if (gestopt()) return;
-
+    const binnen = await Promise.all(Array.from({ length: publiek.telefoons }, (_x, nr) => meedoen(publiek, nr, sessie)));
+    if (gestopt()) { binnen.forEach((t) => { try { t.ws.close(); } catch (_err) {} }); return; }
+    telefoons.push(...binnen);
     // START SHOW (met de content warning als die er is): de eerste scène wordt gekozen.
-    fase = "inloop";
-    await wachtOpKlik(run, "Start show");
-    if (gestopt()) return;
-    fase = "start show";
     for (let i = 0; i < 3 && !gestopt(); i += 1) {
       const stemming = await vraag("audience", "/audience/stage/start-stemming", { timeoutMs: 1500 });
       if (!(stemming.ok && stemming.body && stemming.body.showGestart === false)) break;
       await knoppen.run();
-      await wacht(1200);
     }
+  }
+
+  // Na de scène: wachten tot de telefoons gestemd hebben (snel: hooguit kort, dan dicht).
+  async function stemronde(run, rij, snel) {
+    await wachtTot(beoordelingLoopt, 6000, 200);
+    if (snel) {
+      await wachtTot(async () => {
+        const stand = await vraag("audience", "/audience/stage/beoordeling", { timeoutMs: 1500 });
+        const lopend = stand.ok && stand.body ? stand.body.lopend : null;
+        return !lopend || Number(lopend.gestemd || 0) >= telefoons.length;
+      }, 2500, 200);
+      if (await beoordelingLoopt()) await vraag("audience", "/audience/admin/beoordeling/sluit", { method: "POST", body: { reden: "operator" } });
+    } else {
+      await wachtTot(async () => !(await beoordelingLoopt()), 45000);
+    }
+    const stand = await vraag("audience", "/audience/stage/beoordeling", { timeoutMs: 1500 });
+    const laatste = stand.ok && stand.body ? stand.body.laatste : null;
+    if (laatste && laatste.tellingen) rij.stemmen = { scene: laatste.tellingen.scene || null, deelnemers: laatste.deelnemers };
+    // De scores komen even later (het algoritme rekent op de achtergrond).
+    for (const na of [800, 2500, 6000]) setTimeout(() => { werkScoresBij(run.showRunId).catch(() => {}); }, na).unref();
+  }
+
+  async function regie(run, { scenes, sceneSec, upNextSec }) {
+    const publiek = run.publiek;
+    const gestopt = () => loopt !== run;
+    const snel = run.stappen;
+    fase = "";
+    await zetKlaar(run);
 
     for (let nr = 1; nr <= scenes && !gestopt(); nr += 1) {
-      fase = nr === 1 ? "eerste scène wordt gekozen" : "stemmen";
-      await wachtTot(async () => !(await beoordelingLoopt()), 45000);
-      if (gestopt()) return;
-      rt = await wachtTot(async () => { const nu = await runNu(); return nu && nu.preparedNext ? nu : null; }, 20000);
-      if (!rt) throw new Error("er staat geen scène klaar");
-      const klaar = rt.preparedNext;
-      fase = "schrijven";
-      await wachtTot(async () => !(await schrijft()), 60000, 1000);
-      // Up next staat even in beeld, dan READY en START.
-      fase = `Up next: ${klaar.title || klaar.situationId}`;
-      if (run.stappen) await wachtOpKlik(run, `Start scène ${nr}`);
-      else await wacht(upNextSec * 1000);
+      const rt0 = await wachtTot(async () => { const nu = await runNu(); return nu && nu.preparedNext ? nu : null; }, 20000, 200);
+      if (!rt0) throw new Error("er staat geen scène klaar");
+      fase = "";
+      if (snel) {
+        await wachtOpKlik(run, `Start scène ${nr}`);
+      } else {
+        await wachtTot(async () => !(await schrijft()), 60000, 1000);
+        await wacht(upNextSec * 1000);
+      }
       if (gestopt()) return;
       await knoppen.ready();
-      await wacht(1500);
-      if (gestopt()) return;
       const gestart = await knoppen.scene();
       if (!gestart.ok) throw new Error(`scène start niet (${gestart.status})`);
-      rt = await wachtTot(async () => { const nu = await runNu(); return nu && nu.activeSituation ? nu : null; }, 10000, 400);
+      const rt = await wachtTot(async () => { const nu = await runNu(); return nu && nu.activeSituation ? nu : null; }, 10000, 200);
       if (!rt) throw new Error("scène speelt niet");
       const scene = sceneVan(rt);
       const rij = { nr, titel: scene.titel, labels: scene.labels, situationRunId: scene.situationRunId, stemmen: null, score: null };
       verloop.push(rij);
-      fase = `scène ${nr} speelt: ${scene.titel}`;
+      fase = `scène ${nr} speelt`;
       log(`testpubliek ${publiek.id}: scène ${nr} ${scene.titel} [${scene.labels.join(", ")}]`);
+      // Pas reageren als de publieksdienst de scène ziet (die kijkt eens per seconde naar de runtime);
+      // anders tellen de reacties niet voor deze scène en komt er na de stop geen stemronde.
+      await wachtTot(async () => publiekFase.fase === "scene" && publiekFase.situationRunId === scene.situationRunId, 4000, 100);
       run.sceneNr = nr;
-      // Reacties stoppen zodra de run stopt of deze scène voorbij is.
+      // Reacties stoppen zodra de run stopt of deze scène voorbij is. Snel: alles in de eerste seconde.
       const voorbij = () => gestopt() || run.sceneNr !== nr;
-      for (const telefoon of telefoons) speelMee(telefoon, scene, publiek, sceneSec * 1000, voorbij);
+      for (const telefoon of telefoons) speelMee(telefoon, scene, publiek, snel ? 1200 : sceneSec * 1000, voorbij, snel);
       rij.zin = Math.round((telefoons.reduce((som, telefoon) => som + telefoon.zin, 0) / Math.max(1, telefoons.length)) * 100) / 100;
-      if (run.stappen) await wachtOpKlik(run, `Stop scène ${nr}`);
+      if (snel) await wachtOpKlik(run, `Stop scène ${nr}`);
       else await wacht(sceneSec * 1000);
       if (gestopt()) return;
       run.sceneNr = 0;
       await knoppen.scene();
-      // De stemronde: tellingen bewaren zodra hij dicht is.
-      await wachtTot(beoordelingLoopt, 8000, 400);
       fase = "stemmen";
-      await wachtTot(async () => !(await beoordelingLoopt()), 45000);
-      const stand = await vraag("audience", "/audience/stage/beoordeling", { timeoutMs: 1500 });
-      const laatste = stand.ok && stand.body ? stand.body.laatste : null;
-      if (laatste && laatste.tellingen) rij.stemmen = { scene: laatste.tellingen.scene || null, deelnemers: laatste.deelnemers };
-      await wacht(1500);
-      await werkScoresBij(run.showRunId);
+      await stemronde(run, rij, snel);
     }
     fase = "klaar";
-    await wacht(3000);
-    await werkScoresBij(run.showRunId);
   }
 
-  async function start({ publiek: id, stappen = false, scenes, sceneSec = 20, upNextSec = 5 } = {}) {
+  async function start({ publiek: id, stappen = true, scenes, sceneSec = 20, upNextSec = 5 } = {}) {
     const profiel = PUBLIEKEN[id];
     if (!profiel) return { ok: false, status: 400, body: { error: "onbekend_publiek" } };
     await stop();

@@ -112,7 +112,6 @@
         <span>Testpubliek</span>
         <select id="tpPubliek"></select>
         <button id="tpKnop">AFSPELEN</button>
-        <label style="color:var(--grijs)"><input id="tpStappen" type="checkbox" checked> Zelf doorklikken</label>
         <button id="tpVerder" hidden></button>
         <div id="tpFase"></div>
         <ol id="tpVerloop"></ol>
@@ -199,12 +198,10 @@
         if (tp.loopt && tp.publiek) keuze.value = tp.publiek;
         keuze.disabled = tp.loopt;
         el("tpKnop").textContent = tp.loopt ? "STOPPEN" : "AFSPELEN";
-        el("tpStappen").disabled = tp.loopt;
-        if (tp.loopt) el("tpStappen").checked = !!tp.stappen;
         el("tpVerder").hidden = !tp.wacht;
         el("tpVerder").textContent = tp.wacht ? tp.wacht.toUpperCase() : "";
         el("tpKnop").classList.toggle("aan", tp.loopt);
-        el("tpFase").textContent = tp.fout ? tp.fout : tp.fase ? `${tp.fase}${tp.loopt ? ` · ${tp.telefoons} telefoons` : ""}` : "";
+        el("tpFase").textContent = tp.fout ? tp.fout : tp.loopt && !tp.wacht ? "…" : "";
         el("tpFase").classList.toggle("fout", !!tp.fout);
         el("tpVerloop").innerHTML = "";
         tp.verloop.slice().reverse().forEach((rij) => {
@@ -224,7 +221,7 @@
         const loopt = el("tpKnop").textContent === "STOPPEN";
         el("tpKnop").classList.add("bezig");
         try {
-          const antwoord = await fetch("/proefshow/api/testpubliek", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(loopt ? { doe: "stop" } : { publiek: el("tpPubliek").value, stappen: el("tpStappen").checked }) }).then((res) => res.json());
+          const antwoord = await fetch("/proefshow/api/testpubliek", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(loopt ? { doe: "stop" } : { publiek: el("tpPubliek").value }) }).then((res) => res.json());
           toonTestpubliek(antwoord.testpubliek);
         } catch (_err) {}
         el("tpKnop").classList.remove("bezig");
