@@ -85,6 +85,7 @@
         100% { transform: translate(calc(-50% + var(--drift, 0px)), var(--hoogte, -600px)) scale(0); }
       }
       .chatregel.join { color: rgba(255, 255, 255, 0.38); font-style: italic; }
+      .chatregel.verwijderd { color: rgba(255, 255, 255, 0.38); font-style: italic; }
       body.scene #ondertitel, body.scene #bord { visibility: visible; }
       /* Het universum vult het beeld; de kaart zelf staat in de strook tussen de tekst boven en de chat onder. */
       #universum {
@@ -2217,6 +2218,7 @@
         if (kleur) naam.style.color = kleur;
         if (msg.mod) naam.prepend(modZwaard());
         r.append(naam, document.createTextNode(msg.join ? " " + msg.text : msg.text));
+        r.classList.toggle("verwijderd", !!msg.verwijderd);
         if (msg.likes > 0) r.appendChild(maak("span", "likes", " ♥ " + msg.likes));
         r.dataset.likes = String(msg.likes || 0);
       }
@@ -2261,7 +2263,7 @@
           tekenChat();
           return;
         }
-        berichten.push({ id: Number(msg.id) || 0, name: msg.name, nameColor: msg.nameColor, text: msg.text, likes: Number(msg.likes) || 0, time: msg.time, mod: !!msg.mod });
+        berichten.push({ id: Number(msg.id) || 0, name: msg.name, nameColor: msg.nameColor, text: msg.text, likes: Number(msg.likes) || 0, time: msg.time, mod: !!msg.mod, verwijderd: !!msg.verwijderd });
         if (berichten.length > 200) berichten = berichten.slice(-200);
         tekenChat();
         if (!stil && !inScene) geluid.chat();
@@ -2359,6 +2361,12 @@
         else if (msg.type === "comment_likes") {
           const m = berichten.find((b) => b.id === Number(msg.id));
           if (m) { m.likes = Number(msg.likes) || 0; tekenChat(); }
+        }
+        else if (msg.type === "berichten_verwijderd") {
+          // Time-out of ban: wat die persoon schreef wordt <message deleted>.
+          const ids = new Set((msg.ids || []).map(Number));
+          for (const m of berichten) if (ids.has(m.id)) { m.text = msg.tekst; m.likes = 0; m.verwijderd = true; regelEls.delete(m); }
+          tekenChat();
         }
         else if (msg.type === "ranking") tekenRanking(msg.ranking);
         else if (msg.type === "deelnemer") nieuweDeelnemer(msg);

@@ -672,6 +672,7 @@
         font-size: 16px;
         line-height: 1.35;
       }
+      #chatFeed .chatVerwijderd { opacity: 0.5; font-style: italic; }
       #chatFeed .chatLine {
         color: var(--b);
         font-size: 14px;
@@ -1527,6 +1528,7 @@
 
             const textNode = document.createElement("span");
             textNode.textContent = ": " + String(entry.text || "");
+            if (entry.verwijderd) textNode.className = "chatVerwijderd";
 
             if (entry.id) {
               const body = document.createElement("span");
@@ -1708,7 +1710,12 @@
         const systemNotice = !!(msg && msg.system);
         const time = String((msg && msg.time) || "").trim();
         const id = Number(msg && msg.id) || 0;
-        if (id && chatLogEntries.some((e) => e && e.id === id)) return false;
+        const bestaand = id ? chatLogEntries.find((e) => e && e.id === id) : null;
+        if (bestaand) {
+          // Opnieuw geladen terwijl het bericht intussen verwijderd is (time-out of ban).
+          if (msg.verwijderd && !bestaand.verwijderd) { bestaand.text = text; bestaand.likes = 0; bestaand.verwijderd = true; if (options.render !== false) renderChatFeed(); }
+          return false;
+        }
         const key = buildChatEntryKey({
           time,
           name,
@@ -1729,6 +1736,7 @@
           rankBadge,
           systemNotice,
           mod: !!(msg && msg.mod),
+          verwijderd: !!(msg && msg.verwijderd),
           _chatKey: key,
         }, options);
       }
@@ -3738,6 +3746,13 @@
             }
             if (msg.type === "comment_likes") {
               zetLikes(Number(msg.id), msg.likes);
+              return;
+            }
+            if (msg.type === "berichten_verwijderd") {
+              // Time-out of ban: wat die persoon schreef wordt <message deleted>.
+              const ids = new Set((msg.ids || []).map(Number));
+              for (const e of chatLogEntries) if (e && ids.has(e.id)) { e.text = msg.tekst; e.likes = 0; e.verwijderd = true; }
+              renderChatFeed();
               return;
             }
             if (msg.type === "like_ok") {

@@ -33,6 +33,8 @@ const { createUniversum } = require("./universum");
 const { createOmgevingsbeeld } = require("./omgevingsbeeld");
 const { fetchTelefoonKaart } = require("../client/paths-client");
 const { createPersonages } = require("./personages");
+// Wat er van een bericht overblijft als de schrijver een time-out of ban krijgt.
+const VERWIJDERD_TEKST = "<message deleted>";
 // Een mute van zo lang of langer heet een ban: de rest van de show (een nieuwe sessie wist hem).
 const BAN_MINUTEN = 600;
 
@@ -1592,6 +1594,24 @@ class AudienceService extends EventEmitter {
     return { ok: true, banMinuten: BAN_MINUTEN, mensen };
   }
 
+  // Berichten van iemand die een time-out of ban kreeg: alles wat hij vóór die mute schreef. Blijft zo,
+  // ook na opheffen. De tekst blijft in de database; telefoons en zaalscherm tonen VERWIJDERD_TEKST.
+  verwijderdeBerichten(sessionId) {
+    const rijen = this.store.db.prepare(`
+      SELECT DISTINCT c.id FROM chat_messages c
+      JOIN moderation_actions m ON m.session_id = c.session_id AND m.action_type = 'mute'
+        AND m.target_client_key IS NOT NULL AND m.target_client_key = c.client_key AND c.time <= m.time
+      WHERE c.session_id = ?`).all(Number(sessionId || 0));
+    return new Set(rijen.map((r) => Number(r.id)));
+  }
+
+  meldVerwijderd(sessionId, scope) {
+    if (!scope || !scope.clientKey) return;
+    const ids = this.store.db.prepare("SELECT id FROM chat_messages WHERE session_id = ? AND client_key = ?")
+      .all(Number(sessionId || 0), String(scope.clientKey)).map((r) => Number(r.id));
+    if (ids.length) this.emit("broadcast", { type: "berichten_verwijderd", ids, tekst: VERWIJDERD_TEKST });
+  }
+
   publishModerationNotice(actionType, scope, meta = {}) {
     const session = this.getActiveSession();
     if (!session) return null;
@@ -1640,6 +1660,7 @@ class AudienceService extends EventEmitter {
           remainingMs: Math.max(0, Date.parse(expiresAt) - Date.now()),
         },
       });
+      this.meldVerwijderd(session.id, scope);
       this.publishModerationNotice("mute", scope, { targetLabel, minutes });
       response = { ...response, mutedUntil: expiresAt };
     } else if (actionType === "unmute") {
@@ -2382,6 +2403,7 @@ class AudienceService extends EventEmitter {
     return this.store.recentChatMessages({ sessionId: session.id, limit, status: "accepted" })
       .filter((m) => m.id > gewistTot)
       .filter((m) => !String(m.detail || "").startsWith("moderation_notice:"))
+      .filter((m) => !this.verwijderdeBerichten(session.id).has(m.id))
       .reverse()
       .map((m) => ({ id: m.id, clientKey: m.clientKey, likes: Number(likes[m.id] || 0) }));
   }
@@ -2394,6 +2416,7 @@ class AudienceService extends EventEmitter {
     return this.store.recentChatMessages({ sessionId: session.id, limit, status: "accepted" })
       .filter((m) => m.id > gewistTot)
       .filter((m) => !String(m.detail || "").startsWith("moderation_notice:"))
+      .filter((m) => !this.verwijderdeBerichten(session.id).has(m.id))
       .reverse()
       .map((m) => ({ naam: String(m.name || ""), tekst: String(m.text || "") }));
   }
@@ -2450,16 +2473,18 @@ class AudienceService extends EventEmitter {
     if (!session) return { ok: false, error: "session_inactive", messages: [] };
     const likes = this.store.commentLikeCounts(session.id);
     const gewistTot = this.chatGewistTot(session);
+    const weg = this.verwijderdeBerichten(session.id);
     const messages = this.store.recentChatMessages({ sessionId: session.id, limit, status: "accepted" })
       .filter((message) => message.id > gewistTot)
       .reverse()
       .map((message) => ({
         type: "comment",
         id: message.id,
-        likes: Number(likes[message.id] || 0),
+        likes: weg.has(message.id) ? 0 : Number(likes[message.id] || 0),
         time: message.time,
         name: message.name || "Anoniem",
-        text: message.text,
+        text: weg.has(message.id) ? VERWIJDERD_TEKST : message.text,
+        verwijderd: weg.has(message.id),
         nameColor: getNameColorHex(message.name),
         system: String(message.detail || "").startsWith("moderation_notice:"),
         isBot: message.isBot,

@@ -611,6 +611,7 @@ setInterval(kijk, 2000);
       showGestart: service.isShowGestart(),
     });
     const doorsturen = (msg) => {
+      if (msg && msg.type === "berichten_verwijderd") { stuur(msg); return; }
       if (!msg || !STROOM_TYPES.has(msg.type)) return;
       // Meldingen van de operator (time-out, ban) gaan mee; het zaalscherm toont ze als losse zin.
       stuur(msg);

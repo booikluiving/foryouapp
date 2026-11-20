@@ -118,8 +118,19 @@ const wachtOp = async (fn, ms = 3000) => {
     ok("namenlijst niet via de publieke poort");
 
     const key = lijst[0].clientKey;
+    tel.ws.send(JSON.stringify({ type: "comment", name: "Lastpak", text: "iets ongepasts" }));
+    assert.ok(await wachtOp(() => stroom.msgs.some((m) => m.type === "comment" && m.text === "iets ongepasts")));
+    const ongepastId = stroom.msgs.find((m) => m.type === "comment" && m.text === "iets ongepasts").id;
     let res = await post("/audience/admin/users/mute", { clientKey: key, targetKind: "client", minutes: 5 });
     assert.equal(res.ok, true);
+    assert.ok(await wachtOp(() => stroom.msgs.some((m) => m.type === "berichten_verwijderd" && m.ids.includes(ongepastId) && m.tekst === "<message deleted>")));
+    assert.ok(await wachtOp(() => tel.msgs.some((m) => m.type === "berichten_verwijderd" && m.ids.includes(ongepastId))));
+    const hist = (await (await pub("/audience/public/history", { headers: { cookie } })).json()).messages;
+    const weg = hist.find((m) => m.id === ongepastId);
+    assert.equal(weg.text, "<message deleted>");
+    assert.equal(weg.verwijderd, true);
+    assert.ok(!hist.some((m) => m.text === "iets ongepasts"));
+    ok("time-out: eerdere berichten worden <message deleted> (live en in de geschiedenis)");
     assert.ok(await wachtOp(() => stroom.msgs.some((m) => m.system && /time-out van 5 minuten/.test(m.text) && m.id)));
     assert.ok(await wachtOp(() => tel.msgs.some((m) => m.type === "moderation_notice" && m.code === "user_muted")));
     lijst = await mensen();
@@ -142,6 +153,7 @@ const wachtOp = async (fn, ms = 3000) => {
     const stroom2 = await openStroom();
     assert.ok(await wachtOp(() => stroom2.msgs.some((m) => m.type === "begin")));
     assert.ok(stroom2.msgs.find((m) => m.type === "begin").berichten.some((m) => m.system && /gebanned/.test(m.text)));
+    assert.ok(stroom2.msgs.find((m) => m.type === "begin").berichten.some((m) => m.id === ongepastId && m.text === "<message deleted>"));
     stroom2.stop();
     ok("zaalscherm dat opnieuw laadt krijgt de melding ook");
 
