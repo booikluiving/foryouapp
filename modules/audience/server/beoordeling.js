@@ -161,13 +161,22 @@ function createBeoordeling(service) {
 
   function fotoVan(situationRunId, plek) {
     const van = fotos.get(situationRunId);
-    return (van && van.get(Number(plek))) || "";
+    return (van && van.get(Number(plek))) || null;
   }
 
-  // De vaste foto van een personage als data-URL (zie personagefoto.js), of "".
-  function vasteFotoUrl(characterId) {
-    const foto = personagefoto.vast(characterId);
-    return foto ? `data:image/jpeg;base64,${foto.jpeg.toString("base64")}` : "";
+  // De foto's bij de personagevraag gaan niet in het bericht naar de telefoons (dat werd met drie foto's
+  // ± 200 kB per telefoon: met 60 telefoons kwam de hartslag te laat en verbraken ze allemaal), maar als
+  // adres dat de telefoon zelf ophaalt. Hier staat welke foto bij welk adres hoort.
+  const fotoAdres = new Map();
+  function fotoUrl(situationRunId, characterId, jpeg) {
+    if (!jpeg) return "";
+    const sleutel = `${situationRunId}|${characterId}`;
+    fotoAdres.set(sleutel, jpeg);
+    while (fotoAdres.size > 24) fotoAdres.delete(fotoAdres.keys().next().value);
+    return `/audience/public/beoordeling/foto/${encodeURIComponent(situationRunId)}/${encodeURIComponent(characterId)}`;
+  }
+  function foto(situationRunId, characterId) {
+    return fotoAdres.get(`${situationRunId}|${characterId}`) || null;
   }
 
   // Een foto van een speler uit de scène (JPEG), aangeleverd door wie de camera's heeft.
@@ -180,7 +189,7 @@ function createBeoordeling(service) {
       fotos.set(id, new Map());
       while (fotos.size > 4) fotos.delete(fotos.keys().next().value);
     }
-    fotos.get(id).set(nummer, `data:image/jpeg;base64,${jpeg.toString("base64")}`);
+    fotos.get(id).set(nummer, Buffer.from(jpeg));
     // Wie op die plek speelde in deze scène krijgt het beeld als snapshot van het personage.
     const personage = scene && scene.situationRunId === id ? scene.personages.find((rij) => rij.plek === nummer && !rij.vast) : null;
     const snapshot = personage ? personagefoto.zet({ showRunId: scene.showRunId, characterId: personage.id, jpeg, punten: punten == null || punten === "" ? undefined : Number(punten) }) : null;
@@ -194,7 +203,11 @@ function createBeoordeling(service) {
       vragen.push({ id: "scene", soort: "thermometer", vraag: instellingen.scene.vraag, keuzes: instellingen.scene.keuzes.map((keuze) => ({ id: keuze.id, emoji: keuze.emoji, naam: keuze.naam || "" })) });
     }
     if (instellingen.personage.aan && van.personages.length >= 1) {
-      const keuzes = van.personages.map((personage) => ({ id: personage.id, naam: personage.naam, speler: personage.speler, foto: vasteFotoUrl(personage.id) || fotoVan(van.situationRunId, personage.plek) }));
+      const keuzes = van.personages.map((personage) => {
+        const vast = personagefoto.vast(personage.id);
+        const jpeg = (vast && vast.jpeg) || fotoVan(van.situationRunId, personage.plek);
+        return { id: personage.id, naam: personage.naam, speler: personage.speler, foto: fotoUrl(van.situationRunId, personage.id, jpeg) };
+      });
       // Eén personage: niets te kiezen, dus ja (de kaart) of "Hoeft niet".
       const een = keuzes.length === 1;
       if (een) keuzes.push({ id: "nee", naam: "Hoeft niet", nee: true });
@@ -500,7 +513,24 @@ function createBeoordeling(service) {
     personagefoto.reset();
   }
 
-  return { onthoudScene, zetFoto, personagefoto: (showRunId, characterId) => personagefoto.van(showRunId, characterId), personagekaart: (showRunId, characterId) => personagefoto.kaart(showRunId, characterId), start, sluit, klokOpnieuw, antwoord, publiek, stand, zetInstellingen, reset, uitslagen: () => uitslagen.slice() };
+  return { onthoudScene, zetFoto, foto, personagefoto: (showRunId, characterId) => personagefoto.van(showRunId, characterId), personagekaart: (showRunId, characterId) => personagefoto.kaart(showRunId, characterId), start, sluit, klokOpnieuw, antwoord, publiek, stand, zetInstellingen, reset, uitslagen: () => uitslagen.slice() };
 }
 
-module.exports = { createBeoordeling, normalizeInstellingen };
+// De foto bij de personagevraag (zie fotoUrl). magKijken: alleen met een geldige pas (publieke poort).
+function beoordelingFotoRoute(service, magKijken) {
+  return (req, res) => {
+    if (typeof magKijken === "function" && !magKijken(req)) {
+      res.status(403).set("Cache-Control", "no-store").type("text").send("Geen toegang");
+      return;
+    }
+    const jpeg = service.beoordeling.foto(String(req.params.id || ""), String(req.params.characterId || ""));
+    if (!jpeg) {
+      res.status(404).set("Cache-Control", "no-store").type("text").send("Niet gevonden");
+      return;
+    }
+    res.set({ "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff" });
+    res.send(jpeg);
+  };
+}
+
+module.exports = { createBeoordeling, normalizeInstellingen, beoordelingFotoRoute };
