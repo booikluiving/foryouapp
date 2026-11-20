@@ -36,7 +36,7 @@ assert.equal(zaalMicDichtBijStart(true, true, true), false, "in de scène mag hi
 assert.equal(zaalMicDichtBijStart(null, true, true), false);
 assert.equal(zaalMicDichtBijStart(false, true, false), false);
 
-// de knop zelf tegen een nagebootste helper: wissel = aan, uit; geweigerd tijdens dicteren
+// de knop zelf tegen een nagebootste helper: open, dicht; geweigerd tijdens dicteren
 (async () => {
   const stand = { open: false, dicteert: false, vragen: [] };
   const server = http.createServer((req, res) => {
@@ -53,8 +53,9 @@ assert.equal(zaalMicDichtBijStart(false, true, false), false);
   await druk();
   assert.equal(stand.open, true, "eerste druk: open");
   assert.ok(stand.vragen.includes(`POST /api/zaal/aan${knop.actie.max ? `?max=${knop.actie.max}` : ""}`));
-  await druk();
-  assert.equal(stand.open, false, "tweede druk: dicht");
+  // wissel: de tweede druk sluit; houden: loslaten sluit
+  await (knop.actie.zaalmic === "houden" ? druk("los") : druk());
+  assert.equal(stand.open, false, knop.actie.zaalmic === "houden" ? "loslaten: dicht" : "tweede druk: dicht");
   stand.dicteert = true;
   await druk();
   assert.equal(stand.open, false, "tijdens dicteren gaat hij niet open");
