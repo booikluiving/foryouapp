@@ -265,7 +265,13 @@ async function main() {
     characters: [{ id: 1, name: "Ada", slot: 1 }, { id: 2, name: "Ben", slot: 2 }],
   });
   legacyStore.ingest({ sceneId: 1, rawText: "Ada: Eerste.\nBen: Tweede.", source: "unit" });
-  assert.equal(legacyStore.getCue().deckLength, 4);
+  // Het script begint met dialoog: er komt een lege eerste stap voor (hoofdscherm leeg tot de eerste klik).
+  assert.equal(legacyStore.getCue().deckLength, 5);
+  assert.deepEqual(legacyStore.getCurrent().lines.map((line) => line.text), ["", "Eerste.", "Tweede."]);
+  // Begint het script met een regieregel, dan is dat de eerste stap en komt er geen lege bij.
+  const regieStore = createTelepromptStore();
+  regieStore.ingest({ sceneId: 1, title: "Open Scene", rawText: "*kijkt rond*\nAda: Eerste.", source: "unit" });
+  assert.deepEqual(regieStore.getCurrent().lines.map((line) => line.text), ["kijkt rond", "Eerste."]);
   assert.equal(legacyStore.getPreparedScene().status, "prepared");
   legacyStore.revealPreparedScene();
   assert.equal(legacyStore.getPreparedScene().status, "playing");

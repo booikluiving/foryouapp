@@ -342,12 +342,21 @@ function createTelepromptStore(options = {}) {
     };
   }
 
+  // De scène begint met een lege stap: het hoofdscherm blijft leeg tot de spelers doorklikken, zodat
+  // ze eerst even zonder tekst kunnen spelen. Begint het script met een regieregel, dan is dat de
+  // eerste stap en komt er geen lege bij.
+  function metLegeEersteStap(parsed) {
+    const lines = parsed && Array.isArray(parsed.lines) ? parsed.lines : [];
+    if (!lines.length || lines[0].type !== "dialogue") return parsed;
+    return { ...parsed, lines: [{ id: "line_0", type: "stage_direction", text: "", leeg: true }, ...lines] };
+  }
+
   function ingest(input = {}) {
     // De personages van de klaargezette scène: daarmee zet de parser een ingekorte naam voluit.
     const characterNames = Array.isArray(input.characterNames)
       ? input.characterNames
       : (preparedScene && preparedScene.characters || []).map((character) => character.name);
-    const parsed = enrichTelepromptLinesWithPreparedSlots(parseTeleprompt({ ...input, characterNames }), preparedScene);
+    const parsed = metLegeEersteStap(enrichTelepromptLinesWithPreparedSlots(parseTeleprompt({ ...input, characterNames }), preparedScene));
     const sceneId = Math.max(0, Number.parseInt(String(input.sceneId || input.scene_id || 0), 10) || 0);
     version += 1;
     current = {
