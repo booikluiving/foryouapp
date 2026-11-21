@@ -475,7 +475,7 @@
         <section class="card">
           <h2>Stemmen op de startscène</h2>
           <div class="row">
-            <label>Duur (s) <input id="startStemDuur" type="number" min="10" max="600" step="5" value="45" /></label>
+            <label>Duur (s) <input id="startStemDuur" type="number" min="10" max="600" step="5" value="90" /></label>
           </div>
           <div class="row">
             <button id="startStemBtn" class="primary" type="button">Open stemming</button>
@@ -1709,13 +1709,13 @@
           session_inactive: "Er is geen publiekssessie gestart.",
         };
         post("/audience/admin/start-stemming/start", {
-          durationSeconds: Number(document.getElementById("startStemDuur").value || 45),
+          durationSeconds: Number(document.getElementById("startStemDuur").value || 90),
         }).then(() => { setActionMessage(""); return refresh(); })
           .catch((err) => setActionMessage(fouten[err.message] || ("Stemming openen mislukt: " + err.message), true));
       });
       document.getElementById("startStemDuur").addEventListener("change", () => {
         post("/audience/admin/start-stemming/instellingen", {
-          durationSeconds: Number(document.getElementById("startStemDuur").value || 45),
+          durationSeconds: Number(document.getElementById("startStemDuur").value || 90),
         }).catch(() => {});
       });
       document.getElementById("sluitStemBtn").addEventListener("click", () => {

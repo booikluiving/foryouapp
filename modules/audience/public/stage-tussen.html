@@ -56,6 +56,10 @@
         visibility: hidden;
       }
       body.een #emoji { visibility: visible; }
+      /* Tijdens de scène: de chat linksonder over het camerabeeld. Een bericht blijft even staan en gaat dan weg. */
+      #sceneChat { position: absolute; left: 60px; bottom: 70px; width: 600px; display: grid; gap: 10px; font-size: 32px; line-height: 1.2; color: #fff; text-shadow: 0 0 4px #000, 0 2px 10px rgba(0, 0, 0, 0.9); overflow-wrap: anywhere; pointer-events: none; visibility: hidden; }
+      body.scene #sceneChat { visibility: visible; }
+      #sceneChat b { font-weight: 700; margin-right: 0.35em; }
       body.scene #ondertitel { visibility: visible; }
       /* Het universum vult het beeld; de kaart zelf staat in de strook tussen de tekst boven en de chat onder. */
       #universum {
@@ -119,13 +123,23 @@
       #p-camera .klein { font-size: 20px; margin-top: 8px; }
 
       /* Inloop: meedoen, groot bovenaan. */
-      #p-meedoen { left: 60px; top: 60px; width: 960px; --wy: -320px; display: flex; justify-content: space-between; align-items: flex-start; gap: 36px; }
+      /* "Doe mee", een pijl, en de QR-code waar de pijl naar wijst: zo is te zien hoe je meedoet. */
+      #p-meedoen { left: 60px; top: 60px; width: 960px; --wy: -400px; display: flex; align-items: center; gap: 32px; }
+      #p-meedoen .pijl { flex: 1 1 auto; min-width: 60px; height: 0; border-top: 5px solid #fff; position: relative; }
+      #p-meedoen .pijl::after { content: ""; position: absolute; right: 2px; top: -17px; width: 24px; height: 24px; border-top: 5px solid #fff; border-right: 5px solid #fff; transform: rotate(45deg); }
       #p-meedoen .kop { font-size: 108px; line-height: 0.9; letter-spacing: -0.045em; margin-left: -0.04em; }
       #p-meedoen .klein { font-size: 26px; margin-top: 16px; }
-      #p-meedoen .qr { width: 173px; height: 173px; }
+      #p-meedoen .qr { width: 280px; height: 280px; padding: 14px; }
+      #p-meedoen .tekst { flex: none; }
 
       /* Stemmen: links de lijst met balken, rechts de QR-code met de tijd die er nog is. */
       #p-stemmen { left: 60px; top: 60px; width: 720px; --wy: -640px; display: grid; }
+      /* Boven de lijst: de hoeveelste startscène dit is, met de teller groot. */
+      #stemKop { display: flex; align-items: baseline; gap: 22px; margin-bottom: 22px; }
+      #stemKop:empty { display: none; }
+      #stemKop b { font-weight: 700; font-size: 108px; line-height: 0.9; letter-spacing: -0.045em; font-variant-numeric: tabular-nums; }
+      #stemKop span { font-weight: 700; font-size: 40px; letter-spacing: -0.025em; }
+      #stemLijst { display: grid; }
       .stemrij { display: grid; grid-template-columns: minmax(0, 1fr) 150px 46px; align-items: center; gap: 17px; height: 42px; font-size: 26px; color: var(--wit-2); }
       .stemrij span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .stemrij b { text-align: right; font-size: 25px; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
@@ -136,7 +150,11 @@
       .stemrij.af { color: var(--wit-3); }
       #p-stemqr { left: 820px; top: 60px; width: 200px; --wy: -360px; }
       #p-stemqr .qr { width: 200px; height: 200px; }
-      #stemKlok { font-weight: 700; font-size: 30px; line-height: 1; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; margin-top: 14px; }
+      #stemKlok { font-weight: 700; font-size: 72px; line-height: 1; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; margin-top: 14px; transform-origin: left center; }
+      /* De laatste tien seconden: alleen het getal, groter, met een tik per seconde. */
+      #stemKlok.laatste { font-size: 120px; }
+      #stemKlok.tik { animation: stemTik 380ms var(--curve); }
+      @keyframes stemTik { from { transform: scale(1.18); } to { transform: scale(1); } }
       #p-stemqr .klein { font-size: 15px; margin-top: 6px; white-space: nowrap; }
 
       /* De titel van de scène die komt: altijd op dezelfde plek, met het beeld van de omgeving. */
@@ -168,6 +186,66 @@
       .chatregel b { font-weight: 700; margin-right: 0.35em; color: var(--wit-2); }
       .chatregel .likes { white-space: nowrap; color: rgba(255, 255, 255, 0.34); }
       .chatregel.vast { color: var(--wit-2); }
+
+      /* De ranking: wie het meest in de chat zet. Rechts naast het venster met de tekst. */
+      #p-ranking { left: 730px; top: 248px; width: 290px; --wx: 400px; display: grid; gap: 6px; }
+      #p-ranking .klein { font-size: 22px; margin-bottom: 4px; }
+      .rankrij { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: baseline; gap: 8px; font-size: 26px; line-height: 1.25; color: var(--wit-2); }
+      .rankrij span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .rankrij b { font-variant-numeric: tabular-nums; }
+      .rankrij.eerst { color: #fff; font-size: 34px; font-weight: 700; }
+      /* De spelers die zich klaarmaken: drie kleine vensters in zwart-wit, rechtsonder. Tijdens het
+         stemmen staan ze groter in het midden onderin (p-stemspelers). */
+      #p-spelers { left: 640px; top: 1634px; width: 380px; --wy: 320px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+      /* Staat het beeld van de publiekscamera er ook (inloop, stemmen op de startscène), dan staan de spelers erboven. */
+      #stage.metcamera #p-spelers { top: 1487px; }
+      #p-stemspelers { left: 265px; top: 1400px; width: 550px; --wy: 560px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+      .spelerrij .speler { position: relative; aspect-ratio: 9 / 16; overflow: hidden; border: 2px solid var(--wit-3); background: repeating-linear-gradient(135deg, #15171c 0 10px, #0d0e12 10px 20px); }
+      .spelerrij img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: grayscale(1) contrast(1.1); }
+      .spelerrij .speler.leeg img { visibility: hidden; }
+      /* Doorlopende stroom: één strook met de drie spelers naast elkaar; elk venster toont zijn derde. */
+      .spelerrij.stroom .speler img { width: 300%; max-width: none; object-fit: fill; }
+      .spelerrij.stroom .speler:nth-child(2) img { left: -100%; }
+      .spelerrij.stroom .speler:nth-child(3) img { left: -200%; }
+      /* Komt er van geen enkele speler beeld, dan blijven de vensters weg. */
+      .spelerrij.geen { visibility: hidden; }
+
+      /* Stemmen na de scène. Bovenaan de oproep; eerst groot 3, 2, 1 in het midden, dan schuift het
+         getal omhoog naar de klok en wordt de cirkel rondgetrokken. Eronder een balk van wie gestemd
+         heeft. Het universum is zolang weg. */
+      #universum { transition: opacity 400ms var(--curve); }
+      html.snel #universum { transition-duration: 200ms; }
+      html.snel .p { transition-duration: 260ms, 0s; }
+      html.snel .p.uit { transition-duration: 180ms, 0s; transition-delay: 0s, 180ms; }
+      html.snel #tussenlaag { transition-duration: 340ms; }
+      #stage.stemfase #universum { opacity: 0; }
+      #p-stem { left: 0; top: 0; width: 1080px; height: 1000px; --wy: -1040px; }
+      #p-stem .oproep { position: absolute; left: 60px; top: 60px; width: 700px; font-weight: 700; font-size: 108px; line-height: 0.9; letter-spacing: -0.045em; margin-left: -0.04em; text-wrap: balance; }
+      #p-stem .qr { position: absolute; left: 800px; top: 60px; width: 220px; height: 220px; padding: 11px; }
+      #stemCirkel { position: absolute; left: 290px; top: 340px; width: 500px; height: 500px; overflow: visible; }
+      #stemCirkel circle { fill: none; }
+      #stemCirkel .spoor { stroke: var(--wit-3); stroke-width: 2; transition: opacity 300ms; }
+      #stemCirkel .loop { stroke: #fff; stroke-width: 10; transform: rotate(-90deg); transform-origin: 250px 250px; }
+      #stemGetal { position: absolute; left: 540px; top: 590px; font-weight: 700; font-size: 540px; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; white-space: nowrap;
+        transform: translate(-50%, -50%) scale(0.37); transition: transform 800ms var(--curve); }
+      #stemGetal span { display: inline-block; }
+      #stemGetal span.tik { animation: stemGetalTik 260ms var(--curve); }
+      @keyframes stemGetalTik { from { transform: scale(1.18); } to { transform: scale(1); } }
+      #p-stem.groot #stemGetal { transform: translate(-50%, calc(-50% + 470px)) scale(1); transition: none; }
+      #stemBalk { position: absolute; left: 60px; top: 884px; width: 960px; height: 12px; transition: opacity 300ms; }
+      #stemBalk::before { content: ""; position: absolute; left: 0; right: 0; top: 5px; height: 2px; background: var(--wit-3); }
+      #stemBalk i { position: absolute; left: 0; top: 0; height: 100%; width: 0; background: #fff; transition: width 300ms var(--curve); }
+      #stemTal { position: absolute; left: 60px; right: 60px; top: 920px; text-align: center; font-size: 26px; color: var(--wit-2); font-variant-numeric: tabular-nums; transition: opacity 300ms; }
+      #p-stem:not(.klok) .spoor, #p-stem:not(.klok) #stemBalk, #p-stem:not(.klok) #stemTal { opacity: 0; }
+      /* Onder de klok: de volgende scène wordt geschreven, in het venster van de operator-chat. Het
+         venster is doorzichtig en ligt deels over de spelers. */
+      #p-schrijf { left: 110px; top: 1018px; width: 860px; --wx: -1000px; z-index: 5; }
+      #p-schrijf .label { height: 100px; font-weight: 700; font-size: 62px; line-height: 1; letter-spacing: -0.03em; }
+      #p-schrijf .venster { height: 340px; border: 2px solid #fff; box-sizing: border-box; display: flex; flex-direction: column; }
+      #p-schrijf .balk { flex: none; height: 24px; border-bottom: 2px solid #fff; }
+      #script2 { flex: 1; position: relative; overflow: hidden; }
+      #scriptFrame2 { position: absolute; left: 0; top: 0; border: 0; background: transparent; transform-origin: 0 0; pointer-events: none; }
+      #p-schrijf .laadrij { height: 46px; }
 
       /* Na het begin staat alleen het adres nog klein onderin. */
       #p-voet { left: 0; top: 1867px; width: 1080px; height: 53px; --wy: 80px; padding: 0 60px; display: flex; align-items: center; font-size: 22px; color: var(--wit-2); }
@@ -228,13 +306,15 @@
       <iframe id="universum" title="Universum" scrolling="no"></iframe>
 
       <div class="p uit" id="p-meedoen">
-        <div><div class="kop">Doe mee</div><div class="klein" data-adres></div></div>
+        <div class="tekst"><div class="kop">Doe mee</div><div class="klein">Scan de code</div><div class="klein" data-adres></div></div>
+        <div class="pijl" aria-hidden="true"></div>
         <div class="qr" data-qr></div>
       </div>
-      <div class="p uit" id="p-stemmen"></div>
+      <div class="p uit" id="p-stemmen"><div id="stemKop"></div><div id="stemLijst"></div></div>
       <div class="p uit" id="p-stemqr">
         <div class="qr" data-qr></div>
         <div id="stemKlok"></div>
+        <div class="klein">om te stemmen</div>
         <div class="klein" data-adres></div>
       </div>
       <div class="p uit" id="p-titel">
@@ -248,6 +328,25 @@
       </div>
       <div class="p uit" id="p-camera"><div class="venster"><img id="cameraBeeld" alt="" /></div><div class="klein">Beelden worden niet opgeslagen.</div></div>
       <div class="p uit" id="p-chat"><div id="chatRegels"></div></div>
+      <div class="p uit" id="p-ranking"></div>
+      <div class="p uit spelerrij geen" id="p-spelers"><div class="speler leeg"><img alt="" /></div><div class="speler leeg"><img alt="" /></div><div class="speler leeg"><img alt="" /></div></div>
+      <div class="p uit spelerrij geen" id="p-stemspelers"><div class="speler leeg"><img alt="" /></div><div class="speler leeg"><img alt="" /></div><div class="speler leeg"><img alt="" /></div></div>
+      <div class="p uit" id="p-stem">
+        <div class="oproep">Stem nu op je telefoon</div>
+        <div class="qr" data-qr></div>
+        <svg id="stemCirkel" viewBox="0 0 500 500"><circle class="spoor" cx="250" cy="250" r="230" /><circle class="loop" id="stemLoop" cx="250" cy="250" r="230" /></svg>
+        <div id="stemGetal"><span></span></div>
+        <div id="stemBalk"><i></i></div>
+        <div id="stemTal"></div>
+      </div>
+      <div class="p uit" id="p-schrijf">
+        <div class="label">Generating next scene</div>
+        <div class="venster">
+          <div class="balk"></div>
+          <div id="script2"><iframe id="scriptFrame2" title="Script" scrolling="no"></iframe></div>
+          <div class="laadrij"><div class="laad"><i id="laadVul2"></i></div><span id="laadGetal2">0%</span></div>
+        </div>
+      </div>
       <div class="p uit" id="p-voet"><span data-adres></span></div>
       <div class="p uit" id="p-rapport">
         <div class="inhoud">
@@ -277,6 +376,7 @@
      </div>
       <iframe id="ondertitel" title="Ondertitel" scrolling="no"></iframe>
       <iframe id="emoji" title="Emoji" scrolling="no"></iframe>
+      <div id="sceneChat"></div>
     </div>
     <script src="/audience/vendor/qrcode-generator.min.js"></script>
     <script>
@@ -310,12 +410,32 @@
       // en na elke scène uitzoomen en nieuwe scènes laten vrijkomen. Het meldt waar het is.
       // Na een scène wacht het met uitzoomen tot het rapport is getoond en dit scherm het vrijgeeft.
       // NA_SCENE_MAX is het vangnet: komt de vrijgave niet, dan gaat het universum na die tijd vanzelf verder.
-      const NA_SCENE_MAX = 30000;
+      const NA_SCENE_MAX = new URLSearchParams(location.search).get("rapport") === "1" ? 30000 : 60000;
+      // ?tempo= : de reeks van het universum en de overgangen van de vlakken sneller (proef).
+      // De reeks van het universum loopt vlot (?tempo=1&vlot=0 geeft de rustige reeks van vroeger).
+      const TEMPO = Number(new URLSearchParams(location.search).get("tempo")) || 3.5;
+      const VLOT = new URLSearchParams(location.search).get("vlot") !== "0";
+      const SNEL = TEMPO > 1;
+      if (SNEL) document.documentElement.classList.add("snel");
+      // Het rapport: bij scène RAPPORT_SNELST_BIJ duurt het nog dit deel van de eerste keer, sneller wordt het niet.
+      const RAPPORT_SNELST = 0.2, RAPPORT_SNELST_BIJ = 10;
       // De poorten van het universum en de script-agent zijn alleen op een proefopstelling anders
       // (?universumPoort=…&scriptPoort=…).
       const UNIVERSUM_POORT = Number(new URLSearchParams(location.search).get("universumPoort")) || 3022;
       const SCRIPT_POORT = Number(new URLSearchParams(location.search).get("scriptPoort")) || 3027;
-      el("universum").src = `${location.protocol}//${location.hostname}:${UNIVERSUM_POORT}/universe/stage.html?naScene=${NA_SCENE_MAX}&vrijgave=1&padZoom=1&binnenTitel=0&gekozenTitel=0&stemTekst=0&zicht=${zichtNu().join(",")}`;
+      // Op de website (de proefshow) staat alles achter één adres: ?eenAdres=1. In de zaal heeft elk
+      // onderdeel zijn eigen poort. ?stand= geeft het universum een ander adres voor zijn stand.
+      const EEN_ADRES = new URLSearchParams(location.search).get("eenAdres") === "1";
+      const STAND = new URLSearchParams(location.search).get("stand") || "";
+      // Na de scène wordt er gestemd en gaat het universum daarna meteen verder. Met ?rapport=1 komt
+      // het rapport van vroeger terug.
+      const RAPPORT = new URLSearchParams(location.search).get("rapport") === "1";
+      // ?universum= : het pad van het universum op dit adres (de proefshow heeft een eigen universum).
+      const universumParam = new URLSearchParams(location.search).get("universum") || "";
+      const UNIVERSUM_PAD = /^\/[\w\-/]+$/.test(universumParam) ? universumParam : "/universe";
+      const opPoort = (poort) => (EEN_ADRES ? location.origin : `${location.protocol}//${location.hostname}:${poort}`);
+      const wsOpPoort = (poort) => `${location.protocol === "https:" ? "wss" : "ws"}://${EEN_ADRES ? location.host : `${location.hostname}:${poort}`}`;
+      el("universum").src = `${opPoort(UNIVERSUM_POORT)}${UNIVERSUM_PAD}/stage.html?naScene=${NA_SCENE_MAX}&vrijgave=1&padZoom=1&tempo=${Number(new URLSearchParams(location.search).get("tempo")) || 3.5}${new URLSearchParams(location.search).get("meet") ? "&meet=1" : ""}${new URLSearchParams(location.search).get("vlot") !== "0" ? "&vlot=1" : ""}&binnenTitel=0&gekozenTitel=0&stemTekst=0&zicht=${zichtNu().join(",")}${STAND ? `&stand=${encodeURIComponent(STAND)}` : ""}`;
       function naarUniversum(bericht) {
         try { el("universum").contentWindow.postMessage({ bron: "for_you-scherm", ...bericht }, "*"); } catch (_err) {}
       }
@@ -324,11 +444,15 @@
       el("universum").addEventListener("load", meldZicht);
 
       // ── Geluid ────────────────────────────────────────────────────────────────────────────────
-      // Als een analoog rekentoestel: telwerk, relais, stappenschakelaar, magneet met bel. Alles is
-      // ruis door filters met een doffe klap eronder. Een browser laat geluid pas toe na een klik of
+      // Als een analoog toestel: tikken van ruis door filters met een doffe klap eronder, en tonen uit
+      // twee licht verstemde oscillatoren. Alles gaat door een zachte oversturing en een demper, zodat
+      // het warm en niet digitaal klinkt. Een browser laat geluid pas toe na een klik of
       // toets; lukt het starten niet, dan blijft het scherm stil en werkt de rest gewoon.
       // Het volume is in Admin te regelen (Geluid zaalscherm, in procenten).
-      let audio = null, ruis = null, meester = null, laatsteTik = 0;
+      let audio = null, ruis = null, meester = null;
+      // De tikken en klappen zijn kort en vallen weg naast de bel; ze gaan daarom dit aantal keer harder.
+      // Een begrenzer achter het hoofdvolume houdt het geheel onder de rand.
+      const TIK_HARDER = 3;
       const geluidVolume = () => Math.min(100, Math.max(0, getal(settings.tussenGeluid, 50))) / 100;
       function geluidAan() {
         if (audio) { if (audio.state === "suspended") audio.resume().catch(() => {}); return; }
@@ -341,7 +465,22 @@
           for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
           meester = audio.createGain();
           meester.gain.value = geluidVolume();
-          meester.connect(audio.destination);
+          const begrenzer = audio.createDynamicsCompressor();
+          begrenzer.threshold.value = -4;
+          begrenzer.knee.value = 0;
+          begrenzer.ratio.value = 20;
+          begrenzer.attack.value = 0.001;
+          begrenzer.release.value = 0.08;
+          const warm = audio.createWaveShaper();
+          const kromme = new Float32Array(1024);
+          for (let i = 0; i < kromme.length; i++) kromme[i] = Math.tanh(1.6 * (i / 511.5 - 1)) / Math.tanh(1.6);
+          warm.curve = kromme;
+          warm.oversample = "2x";
+          const demper = audio.createBiquadFilter();
+          demper.type = "lowpass";
+          demper.frequency.value = 7000;
+          demper.Q.value = 0.5;
+          meester.connect(warm).connect(demper).connect(begrenzer).connect(audio.destination);
           audio.resume().catch(() => {});
         } catch (_err) { audio = null; }
       }
@@ -349,6 +488,7 @@
       ["pointerdown", "keydown"].forEach((naam) => window.addEventListener(naam, geluidAan));
       function klik({ hoogte = 3000, scherpte = 2, duur = 0.008, sterkte = 0.3, dof = 0, wanneer = 0 }) {
         if (!audio || audio.state !== "running") return;
+        sterkte *= TIK_HARDER;
         const nu = audio.currentTime + wanneer;
         const bronGeluid = audio.createBufferSource();
         bronGeluid.buffer = ruis;
@@ -374,39 +514,120 @@
           osc.stop(nu + 0.09);
         }
       }
+      // Een toon: driehoek en sinus, een fractie uit elkaar gestemd, door een eigen demper.
+      function toon({ hoogte = 880, naar = 0, duur = 0.1, sterkte = 0.2, wanneer = 0, inzet = 0.003, wiebel = 0 }) {
+        if (!audio || audio.state !== "running") return;
+        const nu = audio.currentTime + wanneer, eind = nu + inzet + duur;
+        const zweef = 1 + (Math.random() - 0.5) * 0.006;
+        const filter = audio.createBiquadFilter();
+        filter.type = "lowpass";
+        filter.frequency.value = Math.min(6000, hoogte * 3);
+        filter.Q.value = 0.6;
+        const gain = audio.createGain();
+        gain.gain.setValueAtTime(0.0001, nu);
+        gain.gain.exponentialRampToValueAtTime(sterkte, nu + inzet);
+        gain.gain.exponentialRampToValueAtTime(0.0001, eind);
+        let golf = null;
+        if (wiebel) {
+          const lfo = audio.createOscillator();
+          lfo.frequency.value = 4.5;
+          golf = audio.createGain();
+          golf.gain.value = hoogte * wiebel;
+          lfo.connect(golf);
+          lfo.start(nu);
+          lfo.stop(eind + 0.05);
+        }
+        [["triangle", 1.003, 0.7], ["sine", 0.997, 0.5]].forEach(([vorm, factor, deel]) => {
+          const osc = audio.createOscillator();
+          osc.type = vorm;
+          osc.frequency.setValueAtTime(hoogte * factor * zweef, nu);
+          if (naar) osc.frequency.exponentialRampToValueAtTime(naar * factor * zweef, nu + Math.min(duur, 0.12));
+          if (golf) golf.connect(osc.frequency);
+          const stem = audio.createGain();
+          stem.gain.value = deel;
+          osc.connect(stem).connect(filter);
+          osc.start(nu);
+          osc.stop(eind + 0.05);
+        });
+        filter.connect(gain).connect(meester);
+      }
+      // Een zwiep: ruis waarvan het filter open schuift.
+      function zwiep({ van = 300, tot = 2600, duur = 0.5, sterkte = 0.25, wanneer = 0 }) {
+        if (!audio || audio.state !== "running") return;
+        const nu = audio.currentTime + wanneer;
+        const bronGeluid = audio.createBufferSource();
+        bronGeluid.buffer = ruis;
+        bronGeluid.loop = true;
+        const filter = audio.createBiquadFilter();
+        filter.type = "bandpass";
+        filter.Q.value = 1.4;
+        filter.frequency.setValueAtTime(van, nu);
+        filter.frequency.exponentialRampToValueAtTime(tot, nu + duur);
+        const gain = audio.createGain();
+        gain.gain.setValueAtTime(0.0001, nu);
+        gain.gain.exponentialRampToValueAtTime(sterkte, nu + duur * 0.6);
+        gain.gain.exponentialRampToValueAtTime(0.0001, nu + duur);
+        bronGeluid.connect(filter).connect(gain).connect(meester);
+        bronGeluid.start(nu);
+        bronGeluid.stop(nu + duur + 0.05);
+      }
+      // Niet vaker dan eens per zoveel milliseconden, per soort geluid.
+      const laatst = {};
+      function mag(soort, ms) {
+        const nu = performance.now();
+        if (nu - (laatst[soort] || 0) < ms) return false;
+        laatst[soort] = nu;
+        return true;
+      }
       const geluid = {
-        tel() {
-          const nu = performance.now();
-          if (nu - laatsteTik < 38) return;
-          laatsteTik = nu;
-          klik({ hoogte: 3800, scherpte: 3, duur: 0.006, sterkte: 0.22 });
+        // Cijfers tellen op: een toon die meeloopt met hoe ver het is (0 tot 1).
+        tel(deel = 0) {
+          if (!mag("tel", 38)) return;
+          toon({ hoogte: 660 * (1 + 0.65 * Math.min(1, Math.max(0, deel))), duur: 0.025, sterkte: 0.1 });
+        },
+        // Een chatbericht komt binnen: een fijne tik.
+        chat() {
+          if (!mag("chat", 60)) return;
+          klik({ hoogte: 5200, scherpte: 4, duur: 0.006, sterkte: 0.3 });
+        },
+        // De tekst wordt geschreven: radertjes. Twee metalige tikjes per stukje tekst, hoog en laag, en
+        // een doffe klap aan het eind van een regel.
+        typ(regelEinde) {
+          if (regelEinde) { klik({ hoogte: 700, scherpte: 3, duur: 0.03, sterkte: 0.3, dof: 85 }); return; }
+          if (!mag("typ", 50)) return;
+          for (let k = 0; k < 2; k++) klik({ hoogte: k ? 2300 : 2900, scherpte: 12, duur: 0.014, sterkte: 0.5, wanneer: k * 0.022 });
+        },
+        // Een stem komt binnen: een opstapje.
+        stem() {
+          if (!mag("stem", 60)) return;
+          toon({ hoogte: 440, naar: 660, duur: 0.09, sterkte: 0.18 });
+        },
+        // Een regel of vlak verschijnt: een doffe klik, als een diaprojector.
+        // De stemklok: een korte piep per seconde, om en om hoog en laag.
+        seconde(over = 0) {
+          toon({ hoogte: over % 2 ? 880 : 988, duur: 0.05, sterkte: 0.4 });
+        },
+        // De laatste seconden van het stemmen: een lange, harde piep, de laatste drie hoger.
+        aftel(over = 0) {
+          toon({ hoogte: over <= 3 ? 1568 : 1175, duur: 0.22, sterkte: 0.8 });
         },
         relais() {
-          klik({ hoogte: 2400, scherpte: 2, duur: 0.007, sterkte: 0.4 });
-          klik({ hoogte: 750, scherpte: 4, duur: 0.03, sterkte: 0.45, dof: 120, wanneer: 0.024 });
+          klik({ hoogte: 900, scherpte: 2, duur: 0.022, sterkte: 0.3, dof: 90 });
         },
+        // De kiezer springt: een tik met glans.
         stap() {
-          klik({ hoogte: 1500, scherpte: 5, duur: 0.02, sterkte: 0.5, dof: 160 });
-          klik({ hoogte: 4200, scherpte: 2, duur: 0.004, sterkte: 0.18, wanneer: 0.03 });
+          toon({ hoogte: 1175, duur: 0.05, sterkte: 0.12 });
+          klik({ hoogte: 6000, scherpte: 3, duur: 0.004, sterkte: 0.12 });
         },
+        // Een overgang: een zwiep met diepte eronder.
         schakel() {
-          for (let i = 0; i < 5; i++) klik({ hoogte: 1300 - i * 90, scherpte: 5, duur: 0.018, sterkte: 0.38, dof: 150, wanneer: i * 0.05 });
+          if (!mag("schakel", 400)) return;
+          zwiep({ van: 260, tot: 2400, duur: 0.55, sterkte: 0.3 });
+          toon({ hoogte: 82, naar: 55, duur: 0.5, sterkte: 0.45, inzet: 0.08 });
         },
+        // Keuze gemaakt of tekst klaar: een synth die opengaat.
         slot() {
-          klik({ hoogte: 320, scherpte: 1.2, duur: 0.09, sterkte: 0.8, dof: 68 });
-          if (!audio || audio.state !== "running") return;
-          const nu = audio.currentTime + 0.05;
-          [2093, 3322, 5210].forEach((hoogte, index) => {
-            const osc = audio.createOscillator();
-            const gain = audio.createGain();
-            osc.type = "sine";
-            osc.frequency.value = hoogte;
-            gain.gain.setValueAtTime(0.07 / (index + 1), nu);
-            gain.gain.exponentialRampToValueAtTime(0.0001, nu + 1.1 - index * 0.25);
-            osc.connect(gain).connect(meester);
-            osc.start(nu);
-            osc.stop(nu + 1.2);
-          });
+          [147, 220, 330].forEach((hoogte, i) => toon({ hoogte, duur: 1.3, sterkte: 0.2 - i * 0.04, inzet: 0.35, wiebel: 0.003 }));
         },
       };
 
@@ -422,19 +643,22 @@
       const stem = { actief: false, pollId: 0, opties: [], counts: [], endsAt: 0, winnaar: -1, tot: 0 };
       const rapport = { aan: false, data: null, speelt: false, haalt: false, vraag: 0 };
 
-      const VLAKKEN = ["meedoen", "stemmen", "stemqr", "titel", "tekst", "chat", "voet", "rapport", "camera"];
+      const VLAKKEN = ["meedoen", "stemmen", "stemqr", "titel", "tekst", "chat", "voet", "rapport", "camera", "ranking", "spelers", "stem", "schrijf", "stemspelers"];
       const FASE_VLAKKEN = {
-        inloop: ["meedoen", "chat", "camera"],
-        stemmen: ["stemmen", "stemqr", "chat", "camera"],
-        kiezen: ["chat", "voet"],
-        gekozen: ["titel", "chat", "voet"],
-        tekst: ["titel", "tekst", "chat", "voet"],
+        inloop: ["meedoen", "chat", "camera", "spelers"],
+        stemmen: ["stemmen", "stemqr", "chat", "camera", "spelers"],
+        kiezen: ["chat", "voet", "ranking", "spelers"],
+        gekozen: ["titel", "chat", "voet", "ranking", "spelers"],
+        tekst: ["titel", "tekst", "chat", "voet", "ranking", "spelers"],
         scene: ["chat", "voet"],
         rapport: ["rapport"],
+        // De scène is voorbij: stemmen, en eronder wordt de volgende scène geschreven.
+        stem: ["stem", "schrijf", "stemspelers"],
       };
       function bepaalFase() {
         const u = universum || {};
         if (rapport.aan) return "rapport";
+        if (stemFase.tot > Date.now()) return "stem";
         if (stem.actief || stem.tot > Date.now()) return "stemmen";
         if (u.volgende) return "tekst";
         if (gekozen) return "gekozen";
@@ -452,7 +676,7 @@
       }
       // Beeld van de omgeving: foto of video uit de catalogus (poort 3021), in kleur.
       function zetBeeld(box, omgeving) {
-        const adres = omgeving && omgeving.beeld ? `${location.protocol}//${location.hostname}:3021${omgeving.beeld}` : "";
+        const adres = omgeving && omgeving.beeld ? `${opPoort(3021)}${omgeving.beeld}` : "";
         box.dataset.uitsnede = (omgeving && omgeving.uitsnede) || "hoog";
         if (box.dataset.adres === adres) return;
         box.dataset.adres = adres;
@@ -475,7 +699,7 @@
       }
 
       // Zet de vlakken van de fase in beeld: eerst wat weg moet eruit, dan wat nieuw is erin.
-      let faseNu = "", toonTimer = 0;
+      let faseNu = "", toonTimer = 0, stemGevraagd = "";
       // ── Live camerabeeld ──────────────────────────────────────────────────────────────────────
       // De stroom loopt alleen terwijl het vlak in beeld is; het vlak komt pas als er een beeld binnen is.
       let cameraBinnen = false, cameraStop = null;
@@ -499,13 +723,224 @@
         vlak.style.width = Math.max(1, getal(settings.tussenCameraBreedte, 380)) + "px";
       }
 
+      // ── Ranking, spelers en de stemlijn ───────────────────────────────────────────────────────
+      let ranking = [];
+      function tekenRanking(lijst) {
+        ranking = Array.isArray(lijst) ? lijst.slice(0, 5) : [];
+        const vlak = el("p-ranking");
+        vlak.textContent = "";
+        if (ranking.length) vlak.appendChild(maak("div", "klein", "top commenter"));
+        for (const rij of ranking) {
+          const r = maak("div", "rankrij" + (rij.plek === 1 ? " eerst" : ""));
+          const naam = maak("span", "", rij.naam || "Anoniem");
+          r.append(maak("span", "", String(rij.plek)), naam, maak("b", "", String(rij.punten)));
+          vlak.appendChild(r);
+        }
+        zetFase();
+      }
+      // De spelers die zich klaarmaken: het laatste beeld per plek, alleen terwijl de vensters in beeld zijn.
+      // Eerst de doorlopende stroom (soepel beeld uit TouchDesigner). Is die er niet, dan elke 0,7 s
+      // een los beeld per speler (zoals in de proef), en af en toe opnieuw de stroom proberen.
+      let spelersTimer = 0, spelersAan = false, stroomAan = false, stroomProbeer = 0;
+      const spelerRijen = () => document.querySelectorAll(".spelerrij");
+      function spelersGeen() { spelerRijen().forEach((rij) => rij.classList.toggle("geen", !rij.querySelector(".speler:not(.leeg)"))); }
+      function stroomStop() {
+        stroomAan = false;
+        spelerRijen().forEach((rij) => { rij.classList.remove("stroom"); rij.querySelectorAll("img").forEach((img) => { img.onload = img.onerror = null; img.removeAttribute("src"); }); rij.querySelectorAll(".speler").forEach((v) => v.classList.add("leeg")); });
+        spelersGeen();
+      }
+      function stroomStart() {
+        clearTimeout(stroomProbeer);
+        const adres = `/audience/stage/spelers-stroom?ts=${Date.now()}`;
+        const proef = new Image();
+        proef.onload = () => {
+          proef.onload = proef.onerror = null;
+          proef.src = "";
+          if (!spelersAan) return;
+          stroomAan = true;
+          clearInterval(spelersTimer);
+          spelersTimer = 0;
+          spelerRijen().forEach((rij) => {
+            rij.classList.add("stroom");
+            rij.querySelectorAll(".speler").forEach((venster) => {
+              const img = venster.firstElementChild;
+              img.onload = () => { venster.classList.remove("leeg"); spelersGeen(); };
+              // De stroom is opgehouden: terug naar de losse beelden.
+              img.onerror = () => { if (stroomAan) { stroomStop(); if (spelersAan) losseBeelden(); } };
+              img.src = adres;
+            });
+          });
+        };
+        proef.onerror = () => { if (spelersAan && !stroomAan) stroomProbeer = setTimeout(stroomStart, 5000); };
+        proef.src = adres;
+      }
+      function losseBeelden() {
+        if (spelersTimer || stroomAan) return;
+        const haal = () => {
+          [1, 2, 3].forEach((plek) => {
+            const beeld = new Image();
+            const vensters = document.querySelectorAll(`.spelerrij .speler:nth-child(${plek})`);
+            beeld.onload = () => { if (stroomAan) return; vensters.forEach((venster) => { if (beeld.naturalWidth) { venster.firstElementChild.src = beeld.src; venster.classList.remove("leeg"); } else venster.classList.add("leeg"); }); spelersGeen(); };
+            beeld.onerror = () => { if (stroomAan) return; vensters.forEach((venster) => venster.classList.add("leeg")); spelersGeen(); };
+            beeld.src = `/audience/stage/spelerbeeld/${plek}?ts=${Date.now()}`;
+          });
+        };
+        haal();
+        spelersTimer = setInterval(haal, 700);
+        stroomProbeer = setTimeout(stroomStart, 5000);
+      }
+      function volgSpelers(aan) {
+        if (aan === spelersAan) return;
+        spelersAan = aan;
+        if (aan) { losseBeelden(); stroomStart(); }
+        else {
+          clearInterval(spelersTimer);
+          spelersTimer = 0;
+          clearTimeout(stroomProbeer);
+          if (stroomAan) stroomStop();
+        }
+      }
+
+      // ── Stemmen na de scène ───────────────────────────────────────────────────────────────────
+      // De vragen gaan open: bovenaan "Stem nu op je telefoon" met de QR-code, in het midden de klok,
+      // eerst groot, dan schuift hij omhoog en wordt de cirkel rondgetrokken. De balk vult zich met wie
+      // gestemd heeft; de uitslag is niet te zien. Staat de klok op zijn plek, dan begint het schrijven
+      // van de volgende scène, in het venster onderin. Als het stemmen voorbij is,
+      // gaat het universum verder: nieuwe scènes komen vrij en de kiezer landt op de geschreven scène.
+      // Eerst staat de klok groot in het midden (GROOT_MS), dan schuift hij in OMHOOG_MS naar zijn plek.
+      // Het schrijven begint als de klok op zijn plek staat.
+      const GROOT_MS = 1800, OMHOOG_MS = 800, SCHRIJF_NA_MS = 2800, CIRKEL = 2 * Math.PI * 230;
+      const stemFase = { id: "", opent: 0, tot: 0, schrijf: false, schrijfGevraagd: "", lus: 0, schrijfTimer: 0 };
+      let tekstGemeld = "", wachtUniversum = false, tekstTijdensStemmen = false;
+      el("stemLoop").style.strokeDasharray = String(CIRKEL);
+      el("stemLoop").style.strokeDashoffset = String(CIRKEL);
+      function zetStemGetal(waarde, geluidje) {
+        const span = el("stemGetal").firstElementChild;
+        if (span.textContent === String(waarde)) return;
+        span.textContent = String(waarde);
+        span.classList.remove("tik");
+        void span.offsetWidth;
+        span.classList.add("tik");
+        if (geluidje) geluidje();
+      }
+      function tekenStem() {
+        stemFase.lus = 0;
+        const nu = Date.now();
+        if (stemFase.tot <= nu) { stemKlaar(); return; }
+        const vlak = el("p-stem"), loop = el("stemLoop");
+        const duur = Math.max(1, stemFase.tot - stemFase.opent), over = Math.min(duur, stemFase.tot - nu), s = Math.ceil(over / 1000);
+        const sinds = nu - stemFase.opent;
+        const tik = () => (s <= 5 ? geluid.aftel(s) : geluid.seconde(s));
+        if (sinds < GROOT_MS) {
+          // Groot in het midden: de klok loopt al.
+          vlak.classList.add("groot");
+          vlak.classList.remove("klok");
+          loop.style.strokeDashoffset = String(CIRKEL);
+          zetStemGetal(s, tik);
+        } else if (sinds < GROOT_MS + OMHOOG_MS) {
+          // Het getal schuift omhoog naar zijn plek en de cirkel wordt rondgetrokken tot waar de klok is.
+          if (vlak.classList.contains("groot")) { vlak.classList.remove("groot"); geluid.schakel(); }
+          const p = (sinds - GROOT_MS) / OMHOOG_MS, rond = Math.min(1, Math.max(0, (p - 0.4) / 0.6));
+          loop.style.strokeDashoffset = String(CIRKEL * (1 - rond * (over / duur)));
+          zetStemGetal(s, tik);
+        } else {
+          vlak.classList.remove("groot");
+          vlak.classList.add("klok");
+          loop.style.strokeDashoffset = String(CIRKEL * (1 - over / duur));
+          zetStemGetal(s, tik);
+        }
+        if (stemFase.schrijfGevraagd !== stemFase.id && sinds >= SCHRIJF_NA_MS) vraagSchrijven();
+        stemFase.lus = requestAnimationFrame(tekenStem);
+      }
+      // Het schrijven van de volgende scène begint; het venster komt pas als er echt geschreven wordt
+      // (in de startfase kiest het publiek de scène nog, dan blijft het weg).
+      function vraagSchrijven() {
+        const id = stemFase.id;
+        stemFase.schrijfGevraagd = id;
+        fetch("/audience/stage/tekst-in-beeld?tijdensStemmen=1", { method: "POST" })
+          .then((res) => res.json())
+          .then((uit) => {
+            if (stemFase.id !== id || !uit) return;
+            if (uit.gestuurd || ["al_gestuurd", "tekst_is_er", "schrijft_al"].includes(uit.reden)) { stemFase.schrijf = true; tekstTijdensStemmen = true; zetFase(); }
+          })
+          .catch(() => {});
+      }
+      function stemNu(beoordeling) {
+        const nu = Date.now();
+        if (beoordeling && beoordeling.id) {
+          const opent = Number.isFinite(beoordeling.aanloopMs) ? nu + beoordeling.aanloopMs : Date.parse(beoordeling.opentAt || beoordeling.endsAt || "") || 0;
+          const tot = Number.isFinite(beoordeling.overMs) ? nu + beoordeling.overMs : Date.parse(beoordeling.endsAt || "") || 0;
+          if (tot <= nu) { if (stemFase.tot) stemKlaar(); return; }
+          if (beoordeling.id !== stemFase.id) {
+            stemFase.id = String(beoordeling.id);
+            stemFase.schrijf = false;
+            tekstTijdensStemmen = false;
+            el("stemGetal").firstElementChild.textContent = "";
+          }
+          stemFase.opent = opent;
+          stemFase.tot = tot;
+          // Het schrijven begint twee seconden na de start van de klok (ook als het scherm even niet tekent).
+          clearTimeout(stemFase.schrijfTimer);
+          stemFase.schrijfTimer = setTimeout(() => {
+            if (stemFase.schrijfGevraagd !== stemFase.id && stemFase.tot > Date.now()) vraagSchrijven();
+          }, Math.max(0, opent + SCHRIJF_NA_MS - nu));
+          stemVoortgang(beoordeling);
+          if (!stemFase.lus) stemFase.lus = requestAnimationFrame(tekenStem);
+          zetFase();
+        } else if (stemFase.tot) stemKlaar();
+      }
+      function stemKlaar() {
+        clearTimeout(stemFase.schrijfTimer);
+        if (stemFase.lus) cancelAnimationFrame(stemFase.lus);
+        stemFase.lus = 0;
+        const was = !!stemFase.tot;
+        stemFase.tot = 0;
+        // De vragen zijn dicht: nu mag (in de startfase) de stemming op de volgende scène open, en het
+        // universum gaat verder.
+        stemGevraagd = "";
+        zetFase();
+        if (was && wachtUniversum) { wachtUniversum = false; setTimeout(universumVerder, SNEL ? 120 : 450); }
+      }
+      // Iemand stemt: de balk vult zich met wie gestemd heeft. Waarop, is niet te zien.
+      function stemVoortgang(msg, nieuw) {
+        const gestemd = Number(msg && msg.gestemd) || 0;
+        const mensen = Math.max(Number(msg && msg.mensen) || 0, gestemd);
+        el("stemBalk").firstElementChild.style.width = (mensen ? (gestemd / mensen) * 100 : 0) + "%";
+        el("stemTal").textContent = `${gestemd} van de ${mensen} hebben gestemd`;
+        if (nieuw && stemFase.tot > Date.now()) geluid.stem();
+      }
+
       function zetFase(direct) {
         const fase = bepaalFase();
         const wil = new Set(FASE_VLAKKEN[fase]);
         if (!joinUrl) { wil.delete("meedoen"); wil.delete("stemqr"); wil.delete("voet"); }
         if (!cameraAan()) wil.delete("camera");
         volgCamera(wil.has("camera"));
+        stage.classList.toggle("metcamera", wil.has("camera"));
+        // De ranking komt pas als het stemmen voorbij is en er iets te tonen valt.
+        if (!ranking.length || stemFase.tot > Date.now()) wil.delete("ranking");
+        if (!stemFase.schrijf) wil.delete("schrijf");
+        // De tekst is al tijdens het stemmen geschreven: na de keuze komt het venster niet terug.
+        if (tekstTijdensStemmen) wil.delete("tekst");
+        stage.classList.toggle("stemfase", fase === "stem");
+        volgSpelers(wil.has("spelers") || wil.has("stemspelers"));
         if (fase === "gekozen" || fase === "tekst") vulTitel(fase);
+        // Het venster met de tekst komt in beeld: de scène die klaarstaat gaat vanzelf naar de chat
+        // van de script-agent (één keer per scène; show control houdt dat bij).
+        if (fase === "tekst" && universum && universum.volgende && tekstGemeld !== String(universum.sceneId || "x")) {
+          tekstGemeld = String(universum.sceneId || "x");
+          fetch("/audience/stage/tekst-in-beeld", { method: "POST" }).catch(() => {});
+        }
+        // Het scherm is klaar voor een stemming (inloop van een lopende run, of het rapport is voorbij):
+        // in de startfase gaat de stemming dan vanzelf open. De publieksdienst beslist en doet het
+        // één keer per startscène.
+        if ((fase === "inloop" || fase === "kiezen") && universum && universum.actief && !universum.speelt) {
+          const sleutel = `${fase}|${universum.gespeeld}`;
+          if (sleutel !== stemGevraagd) {
+            stemGevraagd = sleutel;
+            fetch("/audience/stage/stemmen-mag", { method: "POST" }).catch(() => {});
+          }
+        }
         faseNu = fase;
         // Staat het vel niet in beeld, dan hoeft er niets te schuiven.
         const stil = !!direct || laagWeg;
@@ -524,7 +959,7 @@
           }
           if (kwam && !stil) geluid.relais();
         };
-        if (stil || !gingWeg) toon(); else toonTimer = setTimeout(toon, 300);
+        if (stil || !gingWeg) toon(); else toonTimer = setTimeout(toon, SNEL ? 180 : 300);
         if (stil) { void stage.offsetHeight; stage.classList.remove("direct"); }
       }
 
@@ -552,8 +987,10 @@
         universum = stand;
         if (!vorige) meldZicht();
         if (stand.omgeving && stand.sceneId) omgevingVan = { id: stand.sceneId, omgeving: stand.omgeving };
-        // Een nieuwe run of een reset: wat er nog stond hoort bij de vorige.
-        if (vorige && stand.gespeeld < vorige.gespeeld) { gekozen = null; hierna = null; rapportWeg(); }
+        // Een nieuwe run of een reset: wat er nog stond hoort bij de vorige. Ook als er in die run
+        // nog niets gespeeld was (alleen gekozen): dan staat het inloopscherm er weer.
+        const andereRun = !!vorige && (stand.gespeeld < vorige.gespeeld || (vorige.actief && !stand.actief) || String(stand.sessie || "") !== String(vorige.sessie || ""));
+        if (andereRun) { gekozen = null; hierna = null; tekstGemeld = ""; tekstTijdensStemmen = false; rapportWeg(); }
         if (stand.speelt && !(vorige && vorige.speelt && vorige.sceneId === stand.sceneId)) {
           speel = { titel: stand.titel, omgeving: omgevingVan && omgevingVan.id === stand.sceneId ? omgevingVan.omgeving : null };
           gekozen = null;
@@ -584,7 +1021,7 @@
           if (mijn !== rpRonde) return;
           const deel = Math.min(1, (nu - begin) / ms);
           const tekst = vorm(doel * (1 - Math.pow(1 - deel, 3)));
-          if (tekst !== vorige) { node.textContent = tekst; vorige = tekst; geluid.tel(); }
+          if (tekst !== vorige) { node.textContent = tekst; vorige = tekst; geluid.tel(deel); }
           if (deel < 1) requestAnimationFrame(stapje);
         };
         requestAnimationFrame(stapje);
@@ -617,6 +1054,7 @@
       }
       // Het rapport staat klaar met de titel van de scène; de cijfers volgen zodra het algoritme ze heeft.
       function rapportKlaarzetten() {
+        if (!RAPPORT) return;
         rpLeeg();
         zetKop(el("rpTitel"), (speel && speel.titel) || (ronde && ronde.titel) || "", 16, 30);
         zetBeeld(el("rpBeeld"), speel && speel.omgeving);
@@ -628,6 +1066,13 @@
       // Scène afgelopen: het rapport ophalen. Het algoritme heeft even nodig om de scène te verwerken;
       // komt het rapport niet, dan gaat het scherm zonder verder.
       async function haalRapport() {
+        if (!RAPPORT) {
+          // Geen rapport: het universum wacht tot het stemmen voorbij is. Gaan er geen vragen open,
+          // dan gaat het na een paar seconden toch verder.
+          wachtUniversum = true;
+          setTimeout(() => { if (wachtUniversum && stemFase.tot <= Date.now()) { wachtUniversum = false; universumVerder(); } }, 6000);
+          return;
+        }
         if (rapport.haalt || rapport.data) return;
         if (!rapport.aan) rapportKlaarzetten();
         rapport.haalt = true;
@@ -660,17 +1105,17 @@
         // Eerst schuift het rapport weg, dan zoomt het universum uit.
         setTimeout(universumVerder, 320);
       }
-      // Speelt het rapport af. De eerste keer rustig; elke volgende scène iets sneller.
+      // Speelt het rapport af. De eerste keer rustig, elke volgende scène sneller. Bij de tiende scène
+      // is het op zijn snelst (RAPPORT_SNELST van de eerste duur); daarna blijft het zo.
       function speelRapport(data) {
         rpLeeg();
         const mijn = rpRonde;
         const scene = data.scene, som = data.som;
-        const tempo = Math.max(0.45, 1 - 0.14 * (Math.max(1, scene.nr) - 1));
+        const tempo = Math.max(RAPPORT_SNELST, Math.pow(RAPPORT_SNELST, (Math.max(1, Number(scene.nr) || 1) - 1) / (RAPPORT_SNELST_BIJ - 1)));
         const straks = (ms, fn) => rpTimers.push(setTimeout(() => { if (mijn === rpRonde) fn(); }, ms * tempo));
         zetKop(el("rpTitel"), scene.titel, 16, 30);
         const camera = scene.camera;
         el("rpMeta").textContent = `${scene.seconden} seconden · ${scene.kijkers} kijkers`;
-        geluid.schakel();
         let t = 500;
 
         // 1. Reacties: de emoji die het publiek indrukte, de berichten, en het geluid in de zaal.
@@ -838,7 +1283,13 @@
 
       // ── Stemmen op de startscène ──────────────────────────────────────────────────────────────
       function tekenStemmen() {
-        const lijst = el("p-stemmen");
+        const lijst = el("stemLijst");
+        const kop = el("stemKop");
+        const kopTekst = stem.startscene ? `${stem.startscene.nummer}/${stem.startscene.van}` : "";
+        if (kop.dataset.tekst !== kopTekst) {
+          kop.dataset.tekst = kopTekst;
+          kop.replaceChildren(...(kopTekst ? [maak("b", "", kopTekst), maak("span", "", "Startscène")] : []));
+        }
         if (lijst.children.length !== stem.opties.length) {
           lijst.replaceChildren(...stem.opties.map((titel) => {
             const rij = maak("div", "stemrij");
@@ -861,15 +1312,32 @@
       }
       function tekenKlok() {
         const over = stem.actief && stem.endsAt ? Math.max(0, Math.ceil((stem.endsAt - Date.now()) / 1000)) : 0;
-        const tekst = `${Math.floor(over / 60)}:${String(over % 60).padStart(2, "0")}`;
-        if (el("stemKlok").textContent !== tekst) el("stemKlok").textContent = tekst;
+        // De laatste STEM_AFTELLEN seconden staat alleen het getal er, groot.
+        const laatste = stem.actief && over > 0 && over <= STEM_AFTELLEN;
+        const tekst = laatste ? String(over) : `${Math.floor(over / 60)}:${String(over % 60).padStart(2, "0")}`;
+        const klok = el("stemKlok");
+        if (klok.textContent === tekst) return;
+        klok.textContent = tekst;
+        klok.classList.toggle("laatste", laatste);
+        if (!stem.actief || !over || faseNu !== "stemmen" || inScene) return;
+        // Elke seconde een tik; in de laatste seconden een piep en een stootje in het getal.
+        if (laatste) {
+          geluid.aftel(over);
+          klok.classList.remove("tik");
+          void klok.offsetWidth;
+          klok.classList.add("tik");
+        } else {
+          geluid.seconde(over);
+        }
       }
+      const STEM_AFTELLEN = 10;
       setInterval(tekenKlok, 250);
       function stemStart(poll) {
         if (!poll || !Array.isArray(poll.options)) return;
         stem.actief = true;
         stem.pollId = Number(poll.id);
         stem.opties = poll.options.slice();
+        stem.startscene = poll.startscene && poll.startscene.van > 0 ? { nummer: Number(poll.startscene.nummer), van: Number(poll.startscene.van) } : null;
         stem.counts = (poll.counts || []).slice();
         stem.endsAt = Date.parse(poll.endsAt || "") || 0;
         stem.winnaar = -1;
@@ -904,17 +1372,28 @@
         frame.style.width = breedte + "px";
         frame.style.height = hoogte + "px";
         frame.style.transform = `scale(${SCRIPT_SCHAAL})`;
-        frame.src = `${location.protocol}//${location.hostname}:${SCRIPT_POORT}/script-agent/operator/stage?doorzichtig=1&venster=1&b=${breedte}&h=${hoogte}`;
+        frame.src = `${opPoort(SCRIPT_POORT)}/script-agent/operator/stage?doorzichtig=1&venster=1&b=${breedte}&h=${hoogte}`;
       })();
-      const tekst = { bezig: false, inhoud: "", id: "", klaar: false };
+      // Hetzelfde voor het venster onder de klok tijdens het stemmen: groter en doorzichtig.
+      (() => {
+        const frame = el("scriptFrame2"), schaal = 0.85;
+        const breedte = Math.round(856 / schaal), hoogte = Math.round(264 / schaal);
+        frame.style.width = breedte + "px";
+        frame.style.height = hoogte + "px";
+        frame.style.transform = `scale(${schaal})`;
+        frame.src = `${opPoort(SCRIPT_POORT)}/script-agent/operator/stage?doorzichtig=1&venster=1&b=${breedte}&h=${hoogte}`;
+      })();
+      const tekst = { bezig: false, inhoud: "", id: "", klaar: false, regels: 0 };
       function tekenLaad() {
         const regels = tekst.inhoud.split("\n").filter((regel) => regel.trim()).length;
         const procent = tekst.bezig ? Math.min(96, Math.round((regels / TEKST_REGELS) * 100)) : tekst.klaar ? 100 : 0;
         el("laadVul").style.width = procent + "%";
+        el("laadVul2").style.width = procent + "%";
         const getalTekst = procent + "%";
         if (el("laadGetal").textContent !== getalTekst) {
           el("laadGetal").textContent = getalTekst;
-          if (tekst.bezig && faseNu === "tekst") geluid.tel();
+          el("laadGetal2").textContent = getalTekst;
+          if (tekst.bezig && faseNu === "tekst") geluid.tel(procent / 100);
           if (procent === 100 && faseNu === "tekst") geluid.slot();
         }
       }
@@ -928,7 +1407,7 @@
       function tekstStroom() {
         let ws;
         const opnieuw = () => setTimeout(tekstStroom, 4000);
-        try { ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:${SCRIPT_POORT}/v0/script-agent/operator/stage/ws`); } catch (_err) { opnieuw(); return; }
+        try { ws = new WebSocket(`${wsOpPoort(SCRIPT_POORT)}/v0/script-agent/operator/stage/ws`); } catch (_err) { opnieuw(); return; }
         ws.addEventListener("close", opnieuw);
         ws.addEventListener("message", (ev) => {
           let msg;
@@ -951,6 +1430,9 @@
             tekst.klaar = false;
             tekst.inhoud = typeof msg.fullText === "string" ? msg.fullText : tekst.inhoud + String(msg.text || "");
             tekenLaad();
+            const regels = tekst.inhoud.split("\n").length;
+            if ((faseNu === "tekst" || (faseNu === "stem" && stemFase.schrijf)) && !inScene) geluid.typ(regels > tekst.regels);
+            tekst.regels = regels;
           }
         });
       }
@@ -965,7 +1447,7 @@
         if (eenGeladen) return;
         eenGeladen = true;
         el("emoji").src = "/audience/stage/emoji";
-        el("ondertitel").src = `${location.protocol}//${location.hostname}:3027/script-agent/teleprompter-parser/live-captions`;
+        el("ondertitel").src = `${opPoort(3027)}/script-agent/teleprompter-parser/live-captions`;
       }
       window.forYouFase = (fase, direct) => {
         const scene = Number(fase) === 2;
@@ -976,9 +1458,11 @@
         try { localStorage.setItem("for_you_fase", JSON.stringify({ fase: scene ? 2 : 1, at: faseSinds })); } catch (_err) {}
         if (scene === inScene) return;
         inScene = scene;
+        if (!direct) geluid.schakel();
         clearTimeout(wegTimer);
         if (direct) stage.classList.add("direct");
         document.body.classList.toggle("scene", scene);
+        if (!scene) el("sceneChat").textContent = "";
         if (direct) { void stage.offsetHeight; stage.classList.remove("direct"); }
         if (scene) {
           // Is het vel uit beeld, dan wordt alles klaargezet voor als het terugkomt.
@@ -1081,13 +1565,29 @@
         const eerste = vast ? 1 : 0;
         while (ruimte > 0 && c.offsetHeight > ruimte && c.children.length > eerste + 1) c.children[eerste].remove();
       }
-      function regel(msg) {
+      // stil: een bericht dat er bij het laden al stond geeft geen tik.
+      function regel(msg, stil) {
         if (!msg || msg.system || !msg.text) return;
         if (ronde && ronde.start && msg.time && Date.parse(msg.time) < Date.parse(ronde.start)) return;
         if (msg.id && berichten.some((m) => m.id === msg.id)) return;
         berichten.push({ id: Number(msg.id) || 0, name: msg.name, nameColor: msg.nameColor, text: msg.text, likes: Number(msg.likes) || 0, time: msg.time });
         if (berichten.length > 200) berichten = berichten.slice(-200);
         tekenChat();
+        if (!stil && !inScene) geluid.chat();
+        if (!stil && inScene) sceneRegel(msg);
+      }
+      // Tijdens de scène verschijnt elk nieuw bericht linksonder over het camerabeeld: hoogstens vijf
+      // tegelijk, elk een paar seconden.
+      const SCENE_CHAT_MAX = 5, SCENE_CHAT_MS = 9000;
+      function sceneRegel(msg) {
+        const vak = el("sceneChat");
+        const r = maak("div", "");
+        const naam = maak("b", "", msg.name || "Anoniem");
+        if (msg.nameColor) naam.style.color = msg.nameColor;
+        r.append(naam, document.createTextNode(String(msg.text || "").slice(0, 140)));
+        vak.appendChild(r);
+        while (vak.children.length > SCENE_CHAT_MAX) vak.firstElementChild.remove();
+        setTimeout(() => r.remove(), SCENE_CHAT_MS);
       }
       function nieuweRonde(next) {
         const was = ronde && ronde.start;
@@ -1105,9 +1605,11 @@
           reacties = msg.reacties || [];
           ronde = msg.ronde || ronde;
           berichten = [];
-          for (const m of msg.berichten || []) regel(m);
+          for (const m of msg.berichten || []) regel(m, true);
           tekenChat();
           if (msg.startStemming) stemStart(msg.startStemming);
+          tekenRanking(msg.ranking);
+          stemNu(msg.beoordeling);
           zetFase(true);
         } else if (msg.type === "stage_settings") toepassen(msg.stage && msg.stage.settings);
         else if (msg.type === "reacties") reacties = msg.reacties || [];
@@ -1118,8 +1620,12 @@
           const m = berichten.find((b) => b.id === Number(msg.id));
           if (m) { m.likes = Number(msg.likes) || 0; tekenChat(); }
         }
+        else if (msg.type === "ranking") tekenRanking(msg.ranking);
+        else if (msg.type === "beoordeling") stemNu(msg.beoordeling);
+        else if (msg.type === "beoordeling_dicht") stemNu(null);
+        else if (msg.type === "beoordeling_stem") stemVoortgang(msg, true);
         else if (msg.type === "start_stemming") stemStart(msg.poll);
-        else if (msg.type === "poll_update" && Number(msg.pollId) === stem.pollId && stem.actief) { stem.counts = (msg.counts || []).slice(); tekenStemmen(); geluid.tel(); }
+        else if (msg.type === "poll_update" && Number(msg.pollId) === stem.pollId && stem.actief) { stem.counts = (msg.counts || []).slice(); tekenStemmen(); geluid.stem(); }
         else if (msg.type === "start_stemming_uitslag") stemUitslag(msg);
         else if (msg.type === "session_reset" || msg.type === "session_closed" || msg.type === "chat_reset") {
           berichten = [];
