@@ -979,13 +979,15 @@ class AudienceService extends EventEmitter {
 
   // Hoeveel telefoons meedoen: verbonden en in de laatste tien minuten iets gedaan. Wie langer stil
   // is telt niet meer mee, tot hij weer iets doet. Bots van de simulatie tellen mee zolang ze er zijn.
-  onlineMensen() {
+  // Met { zonderBots: true }: alleen echte telefoons (voor het algoritme, als de bots niet meetellen).
+  onlineMensen({ zonderBots = false } = {}) {
     const session = this.getActiveSession();
     if (!session) return 0;
     const grens = Date.now() - ACTIEF_MS;
     const sleutels = new Set();
     for (const client of this.store.listOnlineClients(session.id)) {
       const sleutel = String(client.clientKey || client.id);
+      if (client.isBot && zonderBots) continue;
       if (client.isBot ? this.simulation && this.simulation.running : (this.actief.get(sleutel) || 0) >= grens) sleutels.add(sleutel);
     }
     return sleutels.size;
@@ -1049,6 +1051,9 @@ class AudienceService extends EventEmitter {
       if (bezig) return;
       bezig = true;
       try { await this.pollFase(); } catch {} finally { bezig = false; }
+      // Elke paar tellen: klopt het aantal deelnemers op het zaalscherm nog?
+      this.deelnemersTik = (this.deelnemersTik || 0) + 1;
+      if (this.deelnemersTik % 5 === 0) { try { this.meldDeelnemers(); } catch {} }
     };
     this.faseTimer = setInterval(tick, ms);
     if (typeof this.faseTimer.unref === "function") this.faseTimer.unref();
@@ -1402,21 +1407,29 @@ class AudienceService extends EventEmitter {
     }
     meta.name = nextName;
     meta.clientKey = buildClientKey(meta.ip, meta.clientTag);
-    // Nieuw in deze sessie (met een naam, geen bot): het hoofdscherm meldt het in de chat en telt mee.
-    const nieuw = !!(meta.sessionId && !meta.isBot && payload.name && nextName !== "Anoniem" && !this.store.db
-      .prepare("SELECT 1 FROM clients WHERE session_id = ? AND client_key = ? AND is_bot = 0 AND name <> 'Anoniem' LIMIT 1")
-      .get(Number(meta.sessionId), String(meta.clientKey)));
+    // Meedoen gedrukt op de telefoon (naamscherm), met een naam en geen bot: het hoofdscherm meldt het
+    // in de chat, ook als dezelfde telefoon met een nieuwe naam opnieuw meedoet. Openen met een naam
+    // die er al op stond, of opnieuw verbinden, geeft geen melding.
+    const nieuw = !!(meta.sessionId && !meta.isBot && payload.meedoen === true && payload.name && nextName !== "Anoniem");
     this.persistClient(meta);
     if (nieuw) this.emit("broadcast", { type: "deelnemer", naam: meta.name, kleur: getNameColorHex(meta.name), deelnemers: this.aantalDeelnemers(), time: nowIso() });
     return { ok: true, meta };
   }
 
   // Deelnemers: iedereen die in deze sessie heeft meegedaan (telefoons, geen bots), ook als hij nu weg is.
+  // Deelnemers op het zaalscherm: echte telefoons die verbonden zijn en in de laatste tien minuten iets
+  // deden (zelfde regel als voor het algoritme). Wie stil is of weg is, telt niet meer; zo begint een
+  // volgende show met alleen wie er dan is.
   aantalDeelnemers() {
-    const session = this.getActiveSession();
-    if (!session) return 0;
-    const rij = this.store.db.prepare("SELECT COUNT(DISTINCT client_key) AS n FROM clients WHERE session_id = ? AND is_bot = 0").get(Number(session.id));
-    return Number(rij && rij.n) || 0;
+    return this.onlineMensen({ zonderBots: true });
+  }
+
+  // Het getal verandert ook als mensen stil worden of weggaan: dan het nieuwe getal naar de schermen.
+  meldDeelnemers() {
+    const n = this.aantalDeelnemers();
+    if (n === this.laatsteDeelnemers) return;
+    this.laatsteDeelnemers = n;
+    this.emit("broadcast", { type: "deelnemer", deelnemers: n, time: nowIso() });
   }
 
   disconnectClient(meta) {

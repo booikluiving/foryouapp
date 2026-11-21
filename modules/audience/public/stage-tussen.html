@@ -862,6 +862,7 @@
       let hierna = null;         // uit het laatste rapport: { titel, score } van de scène die het algoritme koos
       let inScene = false;       // TouchDesigner zegt: de scène speelt
       let laagWeg = false;       // het vel is helemaal uit beeld geschoven
+      let sceneAf = false;       // TouchDesigner zegt dat de scène voorbij is, het universum weet het nog niet
       let joinUrl = "";
       const stem = { actief: false, pollId: 0, opties: [], counts: [], endsAt: 0, winnaar: -1, tot: 0 };
       const rapport = { aan: false, data: null, speelt: false, haalt: false, vraag: 0 };
@@ -901,7 +902,9 @@
         if (u.volgende) return !u.speelt && startPromptVan(u.sceneId) ? "prompt" : "tekst";
         if (gekozen) return "gekozen";
         // De scène begint: titel en tekst blijven staan tot het vel ermee uit beeld is.
-        if (u.speelt) return faseSinds && !laagWeg ? "tekst" : "scene";
+        // Is de scène net voorbij, dan komt het scherm terug met het universum en niet nog even met de
+        // titel en tekst van de scène die gespeeld is.
+        if (u.speelt) return sceneAf ? "kiezen" : faseSinds && !laagWeg ? "tekst" : "scene";
         if (!u.gespeeld) return "inloop";
         return "kiezen";
       }
@@ -1318,6 +1321,10 @@
       function kaartStart() {
         kaart.tot = Date.now() + KAART_MS;
         kaartGetekend = "";
+        // Het blad is leeg tot de nieuwe cijfers er zijn: anders staat het rapport van de vorige ronde
+        // heel even in beeld voordat de animatie begint.
+        rpLeeg();
+        rpBlad(2, true);
         clearTimeout(kaart.timer);
         kaart.timer = setTimeout(() => { kaart.tot = 0; zetFase(); }, KAART_MS);
         // De laatste stemmen moeten eerst in het algoritme zijn.
@@ -1691,6 +1698,7 @@
         }
         const vorige = universum;
         universum = stand;
+        if (!stand.speelt) sceneAf = false;
         if (!vorige) meldZicht();
         if (stand.omgeving && stand.sceneId) omgevingVan = { id: stand.sceneId, omgeving: stand.omgeving };
         // Een nieuwe run of een reset: wat er nog stond hoort bij de vorige. Ook als er in die run
@@ -2171,10 +2179,13 @@
         if (!scene) el("sceneChat").textContent = "";
         if (direct) { void stage.offsetHeight; stage.classList.remove("direct"); }
         if (scene) {
+          sceneAf = false;
           // Is het vel uit beeld, dan wordt alles klaargezet voor als het terugkomt.
           wegTimer = setTimeout(() => { laagWeg = true; herzie(); }, direct ? 0 : 560);
         } else {
           laagWeg = false;
+          sceneAf = true;
+          zetFase(true);
           // Terug uit de scène: het rapport ophalen als dat nog niet gebeurd is, en beginnen met tellen.
           if (rapport.aan && !rapport.data) haalRapport(); else probeerRapport();
         }

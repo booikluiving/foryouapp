@@ -2838,12 +2838,16 @@
       }
 
       let ensureNamePromise = null;
+      // Meedoen gedrukt in het naamscherm: de eerstvolgende registratie zegt dat erbij, dan meldt het
+      // zaalscherm de naam in de chat. Openen met een naam die er al stond geeft geen melding.
+      var meedoenGedrukt = false;
       function ensureName() {
         if (ensureNamePromise) return ensureNamePromise;
         ensureNamePromise = (async () => {
           let name = sanitizeNameClient(localStorage.getItem("live_name"));
           while (!name) {
             name = sanitizeNameClient(await openNameScreen());
+            if (name) meedoenGedrukt = true;
           }
           applyName(name);
           return name;
@@ -2858,9 +2862,11 @@
         const name = sanitizeNameClient(await openNameScreen({ initial: current, cancellable: !required, error }));
         if (!name) return;
         applyName(name);
+        meedoenGedrukt = true;
         if (ws && ws.readyState === WebSocket.OPEN) {
           try {
-            ws.send(JSON.stringify({ type: "register", clientTag, name }));
+            ws.send(JSON.stringify({ type: "register", clientTag, name, meedoen: true }));
+            meedoenGedrukt = false;
           } catch {}
         }
         if (!pausedByServer) connect();
@@ -3654,7 +3660,8 @@
           startHeartbeat();
           try {
             const currentName = sanitizeNameClient(localStorage.getItem("live_name")) || myName;
-            socket.send(JSON.stringify({ type: "register", clientTag, name: currentName }));
+            socket.send(JSON.stringify({ type: "register", clientTag, name: currentName, meedoen: meedoenGedrukt }));
+            meedoenGedrukt = false;
           } catch {}
           flushReactionQueue(true);
         });
