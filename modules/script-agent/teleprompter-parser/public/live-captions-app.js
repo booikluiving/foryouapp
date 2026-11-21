@@ -52,29 +52,28 @@
   }
 
   // Ondertitel uit de gezichten: TouchDesigner (FY Gezichten) stuurt een paar keer per seconde de kaders
-  // van de gezichten op het hoofdscherm (0..1, linksboven). Staat de ondertitel op een gezicht, dan
-  // verspringt hij naar een vrije plek: eerst lager (onder), dan omhoog: midden, en boven alleen als het
-  // echt niet anders kan (bijvoorbeeld bij meerdere gezichten). De gewone plek blijft de standaard: is die
-  // 0,7 s vrij, dan gaat hij terug. Niet steeds heen en weer: pas na 0,7 s op een gezicht en hooguit eens
-  // per 2 s (bij een nieuwe regel meteen). Zonder kaders (TD stuurt niets, FY Gezichten uit) staat hij
-  // gewoon op de gewone plek.
+  // van de gezichten op het hoofdscherm (0..1, linksboven). De pagina onthoudt die van de laatste minuut
+  // (alle camerabeelden door elkaar) en rekent per hoogte uit hoe vaak de ondertitel daar op een gezicht
+  // had gestaan. Zo vindt hij één plek die voor alle drie de camera's vrij is en blijft daar staan: bij
+  // een camerawissel verschuift hij niet. Alleen bij een nieuwe regel kijkt hij opnieuw, en hij verhuist
+  // alleen als de plek duidelijk vrijer is. Liever laag dan hoog; boven 40 % alleen als het echt moet.
+  // Nagebootst op de opname van 20 nov (23 scènes): 16 verplaatsingen in plaats van ± 350, nooit midden
+  // in een zin, even vaak op een gezicht als eerst.
   const RAND = 3; // % vrij aan de boven- en onderkant van het beeld
   const GEZICHT_MARGE = 0.02;
-  const BOTS_WACHT_MS = 700;
-  const MIN_HOUD_MS = 2000;
   const ZONDER_KADERS_MS = 1000;
-  const plek = { volg: true, top: null, sinds: 0, botsSinds: 0, vrijSinds: 0, kaders: [], kadersAt: 0, regel: null };
+  const VENSTER_MS = 60000; // hoe ver hij terugkijkt
+  const STROOK = 0.2; // hoogte waarmee hij een plek kiest (vast, zodat een langere zin hem niet laat verhuizen)
+  const OP_GEZICHT = 0.15; // telt als op een gezicht als zoveel van de ondertitel erover valt
+  const MARGE = 0.08; // zoveel vrijer moet een nieuwe plek zijn
+  const AL_VRIJ = 0.05; // staat hij hooguit zo vaak op een gezicht, dan blijft hij altijd staan
+  const plek = { volg: true, top: null, kaders: [], kadersAt: 0, regel: null, geschiedenis: [] };
 
-  // Alle hoogtes (per 1 %) waar de ondertitel helemaal in beeld past: de gewone plek, dan alles eronder
-  // (dichtbij eerst), dan omhoog (dichtbij eerst, dus midden vóór boven).
+  // Alle hoogtes (per 1 %) waar de strook helemaal in beeld past.
   function plekken() {
-    const gewoon = captionStyle.verticalPosition;
-    if (!plek.volg) return [gewoon];
-    const half = (card.offsetHeight / (root.clientHeight || CAPTION_HEIGHT)) * 50;
-    const min = Math.ceil(RAND + half), max = Math.floor(100 - RAND - half);
-    const lijst = [gewoon];
-    for (let top = gewoon + 1; top <= max; top += 1) lijst.push(top);
-    for (let top = gewoon - 1; top >= min; top -= 1) lijst.push(top);
+    const half = STROOK * 50;
+    const lijst = [];
+    for (let top = Math.ceil(RAND + half); top <= Math.floor(100 - RAND - half); top += 1) lijst.push(top);
     return lijst;
   }
 
@@ -82,83 +81,63 @@
     return plek.kaders.length > 0 && nu - plek.kadersAt < ZONDER_KADERS_MS;
   }
 
-  // Hoeveel van de ondertitel (op hoogte top, in %) over gezichten valt, als deel van zijn oppervlak.
-  function overlapOp(top) {
-    if (card.hidden) return 0;
-    const rootB = root.clientWidth || CAPTION_WIDTH;
-    const rootH = root.clientHeight || CAPTION_HEIGHT;
-    const b = card.offsetWidth / rootB;
-    const h = card.offsetHeight / rootH;
-    if (!(b > 0 && h > 0)) return 0;
-    const x0 = 0.5 - b / 2, x1 = 0.5 + b / 2, y0 = top / 100 - h / 2, y1 = top / 100 + h / 2;
+  function onthoud(nu) {
+    if (captionsAreLive()) plek.geschiedenis.push({ t: nu, kaders: plek.kaders });
+    while (plek.geschiedenis.length && plek.geschiedenis[0].t < nu - VENSTER_MS) plek.geschiedenis.shift();
+  }
+
+  function opGezicht(top, kaders) {
+    const b = captionStyle.widthPercent / 100;
+    const x0 = 0.5 - b / 2, x1 = 0.5 + b / 2, y0 = top / 100 - STROOK / 2, y1 = top / 100 + STROOK / 2;
     let som = 0;
-    plek.kaders.forEach((k) => {
-      const kx0 = k.x - GEZICHT_MARGE, kx1 = k.x + k.b + GEZICHT_MARGE;
-      const ky0 = k.y - GEZICHT_MARGE, ky1 = k.y + k.h + GEZICHT_MARGE;
-      const ox = Math.max(0, Math.min(x1, kx1) - Math.max(x0, kx0));
-      const oy = Math.max(0, Math.min(y1, ky1) - Math.max(y0, ky0));
+    kaders.forEach((k) => {
+      const ox = Math.max(0, Math.min(x1, k.x + k.b + GEZICHT_MARGE) - Math.max(x0, k.x - GEZICHT_MARGE));
+      const oy = Math.max(0, Math.min(y1, k.y + k.h + GEZICHT_MARGE) - Math.max(y0, k.y - GEZICHT_MARGE));
       som += ox * oy;
     });
-    return som / (b * h);
+    return som / (b * STROOK) > OP_GEZICHT;
   }
 
-  // De eerste vrije plek in die volgorde; is er geen vrij, die met de minste overlap.
-  function besteTop() {
-    const lijst = plekken();
-    let beste = lijst[0];
-    let minst = Infinity;
-    for (const top of lijst) {
-      const o = overlapOp(top);
-      if (o === 0) return top;
-      if (o < minst - 0.05) { minst = o; beste = top; }
-    }
-    return beste;
+  // Deel van de laatste minuut dat de ondertitel op hoogte top op een gezicht had gestaan.
+  function kostOp(top) {
+    const lijst = plek.geschiedenis;
+    if (!lijst.length) return 0;
+    let n = 0;
+    lijst.forEach((m) => { if (opGezicht(top, m.kaders)) n += 1; });
+    return n / lijst.length;
   }
 
-  function springNaar(top, nu) {
+  // Voorkeur: de gewone plek; lager kost weinig, hoger iets meer, boven 40 % veel.
+  function voorkeur(top) {
+    const gewoon = captionStyle.verticalPosition;
+    if (top >= gewoon) return (top - gewoon) * 0.001;
+    return (gewoon - top) * 0.002 + (top < 40 ? 0.3 : 0);
+  }
+
+  function springNaar(top) {
     if (top === plek.top) return;
     plek.top = top;
-    plek.sinds = nu;
-    plek.botsSinds = 0;
-    plek.vrijSinds = 0;
     root.style.setProperty("--caption-top", `${top.toFixed(1)}%`);
     root.dataset.plek = String(top);
   }
 
-  // nieuweRegel: er staat net een andere zin; dan mag hij meteen kiezen, ook terug naar de gewone plek.
+  // nieuweRegel: er staat net een andere zin; alleen dan mag hij verhuizen.
   function zetPlek(nieuweRegel = false) {
-    const nu = Date.now();
     const gewoon = captionStyle.verticalPosition;
-    if (plek.top === null || plek.gewoon !== gewoon || (!plek.volg && plek.top !== gewoon)) {
+    if (plek.top === null || plek.gewoon !== gewoon || !plek.volg) {
       plek.gewoon = gewoon;
-      springNaar(gewoon, nu);
+      springNaar(gewoon);
       return;
     }
-    if (!kadersVers(nu)) {
-      // Geen gezichten (meer): terug naar de gewone plek, maar niet vlak na een sprong.
-      if (plek.top !== gewoon && (nieuweRegel || nu - plek.sinds >= MIN_HOUD_MS)) springNaar(gewoon, nu);
-      plek.botsSinds = 0;
-      return;
-    }
-    const bots = overlapOp(plek.top) > 0;
-    if (nieuweRegel) {
-      if (bots || (plek.top !== gewoon && overlapOp(gewoon) === 0)) springNaar(besteTop(), nu);
-      return;
-    }
-    if (!bots) {
-      plek.botsSinds = 0;
-      // De gewone plek is de standaard: is die weer vrij, dan gaat hij terug (niet vlak na een sprong).
-      if (plek.top !== gewoon && overlapOp(gewoon) === 0) {
-        if (!plek.vrijSinds) plek.vrijSinds = nu;
-        if (nu - plek.vrijSinds >= BOTS_WACHT_MS && nu - plek.sinds >= MIN_HOUD_MS) springNaar(gewoon, nu);
-      } else {
-        plek.vrijSinds = 0;
-      }
-      return;
-    }
-    plek.vrijSinds = 0;
-    if (!plek.botsSinds) plek.botsSinds = nu;
-    if (nu - plek.botsSinds >= BOTS_WACHT_MS && nu - plek.sinds >= MIN_HOUD_MS) springNaar(besteTop(), nu);
+    if (!nieuweRegel || card.hidden || !plek.geschiedenis.length) return;
+    const nu = kostOp(plek.top);
+    if (nu <= AL_VRIJ) return;
+    let beste = plek.top, besteScore = Infinity;
+    plekken().forEach((top) => {
+      const score = kostOp(top) + voorkeur(top);
+      if (score < besteScore) { beste = top; besteScore = score; }
+    });
+    if (besteScore < nu + voorkeur(plek.top) - MARGE) springNaar(beste);
   }
 
   function tekenKaders() {
@@ -185,7 +164,7 @@
       .filter((k) => [k.x, k.y, k.b, k.h].every(Number.isFinite) && k.b > 0 && k.h > 0)
       .slice(0, 8);
     plek.kadersAt = Date.now();
-    zetPlek();
+    onthoud(plek.kadersAt);
     tekenKaders();
   }
 
@@ -194,8 +173,7 @@
     if (!data || data.type !== "fy-gezichten") return;
     ontvangKaders(data.kaders);
   });
-  // Stuurt TD niets meer, dan valt hij vanzelf terug (ook als er geen bericht meer komt om op te reageren).
-  window.setInterval(() => { zetPlek(); tekenKaders(); }, 250);
+  window.setInterval(() => { tekenKaders(); }, 250);
 
   // Ronde zwarte rand buiten de letter (zoals CapCut): ringen van schaduwkopieën in em,
   // zodat de rand meeschaalt met de lettergrootte en niet afhangt van paint-order in TD's browser.
