@@ -53,20 +53,20 @@
 
   // Ondertitel uit de gezichten: TouchDesigner (FY Gezichten) stuurt een paar keer per seconde de kaders
   // van de gezichten op het hoofdscherm (0..1, linksboven). De pagina onthoudt die van de laatste minuut
-  // (alle camerabeelden door elkaar) en rekent per hoogte uit hoe vaak de ondertitel daar op een gezicht
-  // had gestaan. Zo vindt hij één plek die voor alle drie de camera's vrij is en blijft daar staan: bij
+  // (alle camerabeelden door elkaar) en rekent per hoogte uit hoe vaak de ondertitel daar over iemands
+  // ogen had gestaan (bovenste helft van het gezicht; over een kin mag, over ogen niet). Zo vindt hij één plek die voor alle drie de camera's vrij is en blijft daar staan: bij
   // een camerawissel verschuift hij niet. Alleen bij een nieuwe regel kijkt hij opnieuw, en hij verhuist
   // alleen als de plek duidelijk vrijer is. Liever laag dan hoog; boven 40 % alleen als het echt moet.
-  // Nagebootst op de opname van 20 nov (23 scènes): 16 verplaatsingen in plaats van ± 350, nooit midden
-  // in een zin, even vaak op een gezicht als eerst.
+  // Nagebootst op de opname van 20 nov (23 scènes): 17 verplaatsingen in plaats van ± 350, nooit midden
+  // in een zin, en minder vaak over ogen dan eerst (2,4 % van de tijd tegen 2,7 %).
   const RAND = 3; // % vrij aan de boven- en onderkant van het beeld
-  const GEZICHT_MARGE = 0.02;
+  const OOG_DEEL = 0.55; // bovenste deel van het gezichtskader: daar zitten de ogen
+  const OOG_MARGE = 0.01;
   const ZONDER_KADERS_MS = 1000;
   const VENSTER_MS = 60000; // hoe ver hij terugkijkt
   const STROOK = 0.2; // hoogte waarmee hij een plek kiest (vast, zodat een langere zin hem niet laat verhuizen)
-  const OP_GEZICHT = 0.15; // telt als op een gezicht als zoveel van de ondertitel erover valt
   const MARGE = 0.08; // zoveel vrijer moet een nieuwe plek zijn
-  const AL_VRIJ = 0.05; // staat hij hooguit zo vaak op een gezicht, dan blijft hij altijd staan
+  const AL_VRIJ = 0.03; // staat hij hooguit zo vaak op een gezicht, dan blijft hij altijd staan
   const plek = { volg: true, top: null, kaders: [], kadersAt: 0, regel: null, geschiedenis: [] };
 
   // Alle hoogtes (per 1 %) waar de strook helemaal in beeld past.
@@ -86,24 +86,20 @@
     while (plek.geschiedenis.length && plek.geschiedenis[0].t < nu - VENSTER_MS) plek.geschiedenis.shift();
   }
 
-  function opGezicht(top, kaders) {
+  // Valt de strook op hoogte top over iemands ogen?
+  function overOgen(top, kaders) {
     const b = captionStyle.widthPercent / 100;
     const x0 = 0.5 - b / 2, x1 = 0.5 + b / 2, y0 = top / 100 - STROOK / 2, y1 = top / 100 + STROOK / 2;
-    let som = 0;
-    kaders.forEach((k) => {
-      const ox = Math.max(0, Math.min(x1, k.x + k.b + GEZICHT_MARGE) - Math.max(x0, k.x - GEZICHT_MARGE));
-      const oy = Math.max(0, Math.min(y1, k.y + k.h + GEZICHT_MARGE) - Math.max(y0, k.y - GEZICHT_MARGE));
-      som += ox * oy;
-    });
-    return som / (b * STROOK) > OP_GEZICHT;
+    return kaders.some((k) => Math.min(x1, k.x + k.b) > Math.max(x0, k.x)
+      && Math.min(y1, k.y + k.h * OOG_DEEL + OOG_MARGE) > Math.max(y0, k.y - OOG_MARGE));
   }
 
-  // Deel van de laatste minuut dat de ondertitel op hoogte top op een gezicht had gestaan.
+  // Deel van de laatste minuut dat de ondertitel op hoogte top over iemands ogen had gestaan.
   function kostOp(top) {
     const lijst = plek.geschiedenis;
     if (!lijst.length) return 0;
     let n = 0;
-    lijst.forEach((m) => { if (opGezicht(top, m.kaders)) n += 1; });
+    lijst.forEach((m) => { if (overOgen(top, m.kaders)) n += 1; });
     return n / lijst.length;
   }
 
