@@ -19,7 +19,7 @@ async function main() {
   fs.mkdirSync(knopDir, { recursive: true });
   const nummer = path.join(knopDir, "marit.wav");
   fs.writeFileSync(nummer, "");
-  fs.writeFileSync(path.join(knopDir, "knop.json"), JSON.stringify({ label: "MARIT", geluid: "marit.wav", volume: 0.8 }));
+  fs.writeFileSync(path.join(knopDir, "knop.json"), JSON.stringify({ label: "MARIT", geluid: "marit.wav", volume: 0.8, overgang: 0.3 }));
   const extra = path.join(dir, "extra.wav");
   const stap = path.join(dir, "stap.wav");
   const faseSfeer = path.join(dir, "fase.wav");
@@ -80,10 +80,14 @@ async function main() {
   assert.equal(actie.payload.volume, 0.8);
   assert.equal(actie.payload.lus, undefined, "speelt één keer");
   assert.deepEqual(actie.payload.dempSfeer, { terug: 0.6 }, "het sfeergeluid komt terug op het niveau van de omgeving");
+  assert.equal(actie.payload.overgang, 0.3, "de overgang uit knop.json gaat mee");
   const gestart = await sendMacAudioCommand(actie, context);
   assert.match(gestart.message, /^speelt marit\.wav/);
-  await even();
-  assert.ok(tdOntvangen.some((message) => message.includes("td.sfeer.volume") && /\b0\b/.test(message.split("td.sfeer.volume")[1])), "het sfeergeluid gaat naar nul");
+  // Het sfeergeluid zakt in stappen weg en eindigt op nul.
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  const sfeer = tdOntvangen.filter((message) => message.includes("td.sfeer.volume")).map((message) => Number((message.split("td.sfeer.volume")[1].match(/[0-9.]+/g) || []).pop()));
+  assert.ok(sfeer.length >= 2 && sfeer[0] > 0 && sfeer[0] < 0.6, "het sfeergeluid zakt in stappen");
+  assert.equal(sfeer[sfeer.length - 1], 0, "het sfeergeluid gaat naar nul");
   assert.equal(personageKnopStatus(metMarit, options).staat, "actief", "de knop toont dat het nummer speelt");
   // Het extra geluid, het stapgeluid en het sfeergeluid van de fase zijn weg: een druk begint ze opnieuw.
   const faseOpnieuw = await play({ filePath: faseSfeer, spoor: "fase", lus: true });
@@ -104,6 +108,26 @@ async function main() {
     await sendMacAudioCommand(action, context);
   }
   assert.equal(personageKnopStatus(metMarit, options).aan, false, "het nummer stopt met de scène");
+
+  // 4b. Met "over" in knop.json klinkt het nummer over het geluid van de scène heen: niets gaat weg,
+  // geen overgang; de knop blijft een wissel die vanaf het begin start.
+  fs.writeFileSync(path.join(knopDir, "knop.json"), JSON.stringify({ label: "MARIT", geluid: "marit.wav", volume: 0.8, over: true, overgang: 5 }));
+  await play({ filePath: faseSfeer, spoor: "fase", lus: true });
+  await even();
+  tdOntvangen.length = 0;
+  const over = buildPersonageKnopCue(metMarit, {}, options).actions[0];
+  assert.equal(over.payload.stopAnder, undefined);
+  assert.equal(over.payload.dempSfeer, undefined);
+  assert.equal(over.payload.overgang, undefined);
+  assert.equal(over.payload.wissel, true);
+  assert.equal(over.payload.hard, true, "zonder overgang is het een harde cut");
+  await sendMacAudioCommand(over, context);
+  await even();
+  assert.ok(!tdOntvangen.some((message) => message.includes("td.sfeer.volume")), "het sfeergeluid blijft staan");
+  assert.match((await play({ filePath: faseSfeer, spoor: "fase", lus: true })).message, /speelt al/, "het sfeergeluid van de fase loopt door");
+  assert.equal((await sendMacAudioCommand(buildPersonageKnopCue(metMarit, {}, options).actions[0], context)).data.gestopt, true, "nog een druk zet het uit");
+  assert.match((await sendMacAudioCommand(buildPersonageKnopCue(metMarit, {}, options).actions[0], context)).message, /^speelt marit\.wav/, "en de druk daarna begint opnieuw");
+  for (const action of sceneEindeActions({ generatedBy: "test" }).filter((item) => item.targetId === "mac-audio")) await sendMacAudioCommand(action, context);
 
   // 5. Bestand weg: de knop is donker.
   fs.rmSync(nummer);

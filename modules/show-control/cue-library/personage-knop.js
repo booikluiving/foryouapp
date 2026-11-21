@@ -6,7 +6,11 @@
 //
 // Staat niet in de catalogus maar als bestand bij de media van het personage:
 //   <media>/characters/character_<nr>/knop/knop.json
-//   { "label": "MARIT", "geluid": "marit.wav", "volume": 1, "lus": false }
+//   { "label": "MARIT", "geluid": "marit.wav", "volume": 1, "lus": false, "overgang": 5 }
+// over: true = het nummer klinkt over het geluid van de scène heen; false = het andere geluid van de
+// scène gaat weg zolang het nummer speelt. overgang (alleen bij over: false): in zoveel seconden
+// zakt het andere geluid weg en komt het nummer op (0 = meteen).
+// De knop is een wissel: een druk start het nummer vanaf het begin, de volgende druk zet het uit.
 //
 // Een druk start het nummer en zet het andere geluid van de scène uit: het sfeergeluid van de
 // omgeving (ook dat van een fase), het extra geluid en de geluiden van fases en stappen. Nog een
@@ -44,11 +48,14 @@ function readKnop(characterId, options = {}) {
   }
   if (!manifest || typeof manifest !== "object" || !manifest.geluid) return null;
   const volume = Number(manifest.volume);
+  const overgang = Number(manifest.overgang);
   return {
     label: String(manifest.label || "").slice(0, 24),
     filePath: path.join(dir, path.basename(String(manifest.geluid))),
     volume: Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1,
     lus: manifest.lus === true,
+    over: manifest.over === true,
+    overgang: manifest.over === true ? 0 : (Number.isFinite(overgang) ? Math.min(15, Math.max(0, overgang)) : 5),
   };
 }
 
@@ -94,6 +101,8 @@ function personageKnopStatus(runtimeState, options = {}) {
         label: knop.label || character.name.toUpperCase(),
         volume: knop.volume,
         lus: knop.lus,
+        over: knop.over,
+        overgang: knop.overgang,
       };
       if (!fileExists(knop.filePath, options)) return { ...basis, reden: "bestand_ontbreekt" };
       if (!speeltNu) return { ...basis, reden: "scene_speelt_niet", filePath: knop.filePath };
@@ -165,8 +174,12 @@ function buildPersonageKnopCue(runtimeState, input = {}, options = {}) {
         ...(status.lus ? { lus: true } : {}),
         // Het andere geluid van de scène gaat weg: de geluiden van fases en stappen stoppen,
         // het sfeergeluid in TouchDesigner gaat naar nul zolang het nummer speelt.
-        stopAnder: true,
-        dempSfeer: { terug: sfeerTerug },
+        // Zonder overgang is het een harde cut: meteen aan en meteen uit, geen fade.
+        ...(status.overgang ? {} : { hard: true }),
+        // Met "over" in knop.json blijft alles staan en klinkt het nummer eroverheen.
+        ...(status.over ? {} : { stopAnder: true, dempSfeer: { terug: sfeerTerug } }),
+        // Het andere geluid zakt in deze tijd weg en het nummer komt in dezelfde tijd op.
+        ...(status.overgang ? { overgang: status.overgang } : {}),
       },
       transport: { type: "http-or-internal" },
       simulate: null,

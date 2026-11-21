@@ -65,23 +65,56 @@ function stuurSfeerVolume(options, volume) {
   }).catch(() => {});
 }
 
-function dempSfeer(options, terug) {
+// overgang (seconden): het sfeergeluid zakt in die tijd weg in plaats van meteen (de knop van een
+// personage, zodat het nummer vloeiend overneemt).
+let sfeerZakt = null;
+function dempSfeer(options, terug, overgang = 0) {
   const volume = Math.min(1, Math.max(0, Number.isFinite(Number(terug)) ? Number(terug) : 1));
+  if (sfeerZakt) clearInterval(sfeerZakt);
+  sfeerZakt = null;
   gedempt = { terug: volume, options };
-  stuurSfeerVolume(options, 0);
+  const duur = Math.min(15, Math.max(0, Number(overgang) || 0));
+  if (!duur || !volume) {
+    stuurSfeerVolume(options, 0);
+    return;
+  }
+  const begin = Date.now();
+  sfeerZakt = setInterval(() => {
+    const deel = Math.min(1, (Date.now() - begin) / (duur * 1000));
+    stuurSfeerVolume(options, Math.round(volume * (1 - deel) * 1000) / 1000);
+    if (deel >= 1) {
+      clearInterval(sfeerZakt);
+      sfeerZakt = null;
+    }
+  }, 100);
+  if (typeof sfeerZakt.unref === "function") sfeerZakt.unref();
 }
 
 function herstelSfeer() {
+  if (sfeerZakt) clearInterval(sfeerZakt);
+  sfeerZakt = null;
   if (!gedempt) return;
   const { terug, options } = gedempt;
   gedempt = null;
   stuurSfeerVolume(options, terug);
 }
 
-function stopSpoor(naam) {
+// overgang (seconden): een spoor dat via speel-fade loopt zakt in die tijd weg (SIGUSR1, de tijd
+// staat in /tmp/speel-fade-<pid>); een spoor via afplay stopt zoals altijd meteen.
+function stopSpoor(naam, overgang = 0) {
   const spoor = sporen[naam];
   if (spoor.child && spoor.child.exitCode === null && !spoor.child.killed) {
-    try { spoor.child.kill("SIGTERM"); } catch (_err) {}
+    const duur = Math.min(15, Math.max(0, Number(overgang) || 0));
+    let lang = false;
+    if (duur && spoor.fade && spoor.child.pid) {
+      try {
+        fs.writeFileSync(`/tmp/speel-fade-${spoor.child.pid}`, String(duur));
+        lang = spoor.child.kill("SIGUSR1");
+      } catch (_err) {}
+    }
+    if (!lang) {
+      try { spoor.child.kill("SIGTERM"); } catch (_err) {}
+    }
   }
   spoor.child = null;
   spoor.file = "";
@@ -137,18 +170,26 @@ async function sendMacAudioCommand(action, context = {}) {
   if (payload.stopLied) stopSpoor("lied");
   // Het nummer van een personage zet het andere geluid van de scène uit (cue-library/personage-knop.js).
   if (payload.stopAnder) {
-    for (const ander of Object.keys(sporen)) if (ander !== naam) stopSpoor(ander);
+    for (const ander of Object.keys(sporen)) if (ander !== naam) stopSpoor(ander, payload.overgang);
   }
   // Binnen een spoor: nog eens drukken = opnieuw beginnen, niet over elkaar heen.
-  stopSpoor(naam);
+  stopSpoor(naam, payload.overgang);
   const spoor = sporen[naam];
-  const lus = payload.lus === true && (naam === "lied" || naam === "fase");
-  const speler = playerVoor(naam, options);
+  // Ook het startgeluid kan in een lus (het nummer van een trendscène).
+  const lus = payload.lus === true && (naam === "lied" || naam === "fase" || naam === "intro");
+  // hard: zonder fade, ook bij uitzetten (de knop van een personage): dan loopt het via afplay,
+  // dat bij stoppen meteen stil is.
+  const speler = payload.hard === true ? player(options) : playerVoor(lus && naam === "intro" ? "fase" : naam, options);
   // speel-fade kan zelf zonder naad herhalen (--lus); met afplay begint het bestand opnieuw
   // zodra het afloopt (hieronder), met een klein gaatje.
-  const naadloos = lus && naam === "fase" && speler !== player(options);
+  const naadloos = lus && (naam === "fase" || naam === "intro") && speler !== player(options);
+  const metFade = speler !== player(options);
+  // Met een overgang komt het geluid op in plaats van meteen op volle sterkte (alleen de eerste keer).
+  const opkomst = metFade ? Math.min(15, Math.max(0, Number(payload.overgang) || 0)) : 0;
+  let eerste = true;
   const start = () => {
-    const child = spawn(speler, ["-v", String(volume), ...(naadloos ? ["--lus"] : []), filePath], { stdio: "ignore", detached: false });
+    const child = spawn(speler, ["-v", String(volume), ...(naadloos ? ["--lus"] : []), ...(opkomst && eerste ? ["--in", String(opkomst)] : []), filePath], { stdio: "ignore", detached: false });
+    eerste = false;
     child.on("error", () => {});
     child.on("exit", (code) => {
       if (spoor.child !== child) return;
@@ -164,10 +205,11 @@ async function sendMacAudioCommand(action, context = {}) {
     });
     spoor.child = child;
     spoor.file = filePath;
+    spoor.fade = metFade;
     return child;
   };
   const child = start();
-  if (naam === "lied" && payload.dempSfeer) dempSfeer(options, payload.dempSfeer.terug);
+  if (naam === "lied" && payload.dempSfeer) dempSfeer(options, payload.dempSfeer.terug, payload.overgang);
   return {
     stage: "applied",
     state: "ok",

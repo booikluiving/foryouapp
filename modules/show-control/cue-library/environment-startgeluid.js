@@ -11,6 +11,7 @@ const {
 } = require("../../../shared/contracts/show-control-v0");
 const { currentEnvironmentRef } = require("./environment-extras");
 const { assetFilePath, fileExists, isPresent, readFromCatalog } = require("./environment-fases");
+const { isTrendOmgeving } = require("../../../shared/trend/trend");
 
 function situationIdVan(runtimeState, ref) {
   const active = runtimeState && runtimeState.activeSituation ? runtimeState.activeSituation : null;
@@ -33,7 +34,9 @@ function startGeluidStatus(runtimeState, options = {}) {
   const asset = (read.mediaAssets || []).filter(isPresent).find((item) => item.id === fase.geluidAssetId) || null;
   const filePath = asset ? assetFilePath(asset, options) : "";
   if (!fileExists(filePath, options)) return { ...base, reden: "bestand_ontbreekt" };
-  return { ...base, klaar: true, naam: fase.naam || "Intro", filePath };
+  // Een trendscène is puur beeld en muziek: het nummer blijft in een lus spelen tot de scène stopt.
+  const lus = isTrendOmgeving(ref.resolved && ref.resolved.environment);
+  return { ...base, klaar: true, naam: fase.naam || "Intro", filePath, lus };
 }
 
 function payloadVoor(status, source) {
@@ -45,6 +48,7 @@ function payloadVoor(status, source) {
     volume: 1,
     // Eigen spoor: een stap (stoel, buzzer) of het lied kapt de intro niet af, en andersom.
     spoor: "intro",
+    ...(status.lus ? { lus: true } : {}),
     source,
     cueIntent: "environment_startgeluid",
   };
