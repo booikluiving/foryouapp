@@ -72,7 +72,7 @@ def onFrameStart(frame):
         _status()
 """
 
-UI_PARS = "Modus Keyvast Herkalibreer Actief Keyonder Keyboven Tint Despill Aifill Dichten Randlinks Randrechts Randboven Randonder"
+UI_PARS = "Modus Keyvast Herkalibreer Actief Keyonder Keyboven Despill Dichten Randlinks Randrechts Randboven Randonder"
 
 
 def dat_text(s):
