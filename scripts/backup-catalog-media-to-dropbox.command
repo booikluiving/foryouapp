@@ -25,6 +25,16 @@ log() {
   printf '%s %s\n' "$(timestamp_utc)" "$*"
 }
 
+case "${BACKUP_ROOT}" in
+  /Volumes/*)
+    VOLUME="/Volumes/$(printf '%s' "${BACKUP_ROOT#/Volumes/}" | cut -d/ -f1)"
+    if ! mount | grep -q " on ${VOLUME} ("; then
+      log "Backup disk ${VOLUME} is not mounted; skipping."
+      exit 0
+    fi
+    ;;
+esac
+
 if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
   log "Another catalog media backup is already running; exiting."
   exit 0

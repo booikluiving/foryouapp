@@ -56,6 +56,19 @@ open_touchdesigner_file() {
     return 0
   fi
   /usr/bin/open "$file"
+  request_perform_mode
+}
+
+# TD start in perform mode (regiemonitor als perform-venster). performOnStart in
+# het showbestand werkt niet bij openen via `open`, dus via de opdrachtenmap:
+# TD voert dit uit zodra het project draait.
+request_perform_mode() {
+  local inbox="${FORYOU_TD_OPDRACHTEN_DIR:-$HOME/ForYou/td-opdrachten}/in"
+  [[ "${FORYOU_TD_PERFORM_ON_START:-1}" == "1" ]] || return 0
+  [[ -d "$inbox" ]] || return 0
+  printf '%s\n' "run('ui.performMode = True', delayFrames=150)" "print('perform mode bij start')" \
+    > "$inbox/perform-bij-start.py"
+  log "PERFORM requested via $inbox/perform-bij-start.py"
 }
 
 main() {
