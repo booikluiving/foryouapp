@@ -44,3 +44,7 @@ Starten, stoppen, klaarzetten, overslaan en reset van de run gaan alleen via sho
 - De knoppen in de zaal (Stream Deck, klikker, ready van de spelers) werken altijd.
 - Bewaker (in show control): kijkt om de paar seconden of TouchDesigner (fase) en de teleprompter (klaargezette scène) de runtime volgen en herstelt het; ziet een herstart van TouchDesigner aan de pid in `~/Library/Application Support/ForYouApp/td-show.json` (schrijft de TD-waakhond). Wat hij vond staat op de regiepagina onder Controle en in `GET /v0/show-control/regie` → `controle`.
 - Proef zonder show: `node modules/show-control/tests/regie-proef.js` (pagina op :4325/regie/). Tests: `regie-test.js`, `bewaker-test.js` in `modules/show-control/tests`.
+
+## Show-Mac staat dicht (sinds 22 nov 2026)
+
+Show-diensten (`nl.foryou.*`), sync-agent en Companion zijn uit, ook na een herstart. Weer openzetten, dichtzetten en wat er van buiten bereikbaar is: `docs/TOEGANG_VAN_BUITEN.md`. Zet niets open zonder ja van Booi en werk de tabel daar bij.
