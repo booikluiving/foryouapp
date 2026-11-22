@@ -23,7 +23,7 @@ async function main() {
   fs.mkdirSync(options.mediaRoot, { recursive: true });
   const store = await readCatalogStore(options);
   store.environments.push(
-    { id: "environment:7", name: "Spelletjeskamer", description: "", active: true },
+    { id: "environment:7", name: "Spelletjeskamer", description: "", active: true, labelScores: { spel: 3 }, legacyId: 7 },
     { id: "environment:12", name: "Ziekenhuis", description: "", active: true }
   );
   await writeCatalogStore(store, options);
@@ -50,6 +50,10 @@ async function main() {
   saved = readModel.environments.find((item) => item.id === "environment:7");
   assert.equal(saved.description, "nieuw");
   assert.equal(saved.extras.geluid.label, "Bom");
+  const stored = (await readCatalogStore(options)).environments.find((item) => item.id === "environment:7");
+  assert.deepEqual(stored.labelScores, { spel: 3 }, "labelScores blijft staan");
+  assert.equal(stored.legacyId, 7);
+  assert.equal(stored.promptText, "nieuw");
 
   // Upload als extraGeluid: type "extra", map extra/, geen soundscape
   const tmpFile = path.join(ROOT, "bom.mp3");
