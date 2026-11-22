@@ -9,7 +9,7 @@ Sinds 22 nov 2026 staat de show-Mac **dicht**: show-diensten, sync-agent en Comp
 | Show-diensten (`nl.foryou.*`, poorten 3020–3027, 4210, 4240) | lokaal netwerk | dicht |
 | Sync-agent website → show (`nl.foryou.sync`) | belt zelf naar buiten | dicht |
 | Companion (16622–16623, 8008) | lokaal netwerk / Tailscale | dicht |
-| Cloudflare-tunnel `live.foryouniverse.nl` → `127.0.0.1:3030` (alleen de telefoonpagina) | internet | open, sluiten vraagt het beheerderswachtwoord |
+| Cloudflare-tunnel `live.foryouniverse.nl` → `127.0.0.1:3030` (alleen de telefoonpagina) | internet | blijft aan; zonder show-diensten alleen een foutpagina (503), met de diensten aan is de telefoonpagina vanzelf terug |
 | AnyDesk | internet | open (in gebruik) |
 | SSH (Externe login) | lokaal netwerk + Tailscale | open, sluiten vraagt het beheerderswachtwoord |
 | Tailscale | eigen apparaten | open |
