@@ -15,7 +15,6 @@ const {
   normalizeLightingPreset,
 } = require("../../../shared/lighting/environment-lighting-v0");
 const { normalizeEnvironmentExtras } = require("../../../shared/environment-extras/environment-extras-v0");
-const { normalizeBlindRanking } = require("../../../shared/blind-ranking/blind-ranking");
 
 const STORE_SCHEMA_VERSION = "catalog.write-store.v0";
 const COMPOSITION_SCHEMA_VERSION = "catalog.environment-composition.v0";
@@ -123,7 +122,7 @@ const MEDIA_ROLE_ALIASES = Object.freeze({
 });
 
 const CATALOG_ROOT = path.resolve(__dirname, "..");
-const APP_ROOT = path.resolve(__dirname, "../../..");
+const V2_ROOT = path.resolve(__dirname, "../../..");
 const DEFAULT_STORE_PATH = path.join(CATALOG_ROOT, "db", "catalog-store.json");
 const DEFAULT_DB_PATH = path.join(CATALOG_ROOT, "db", "catalog.sqlite");
 const DEFAULT_MEDIA_ROOT = path.join(CATALOG_ROOT, "media");
@@ -137,21 +136,21 @@ class CatalogInputError extends Error {
   }
 }
 
-function assertPathUnderApp(targetPath) {
+function assertPathUnderV2(targetPath) {
   const resolved = path.resolve(targetPath);
-  const relative = path.relative(APP_ROOT, resolved);
+  const relative = path.relative(V2_ROOT, resolved);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`catalog_store_path_outside_app:${resolved}`);
+    throw new Error(`catalog_store_path_outside_v2:${resolved}`);
   }
   return resolved;
 }
 
 function catalogStorePath(options = {}) {
-  return assertPathUnderApp(options.storePath || process.env.CATALOG_STORE_PATH || DEFAULT_STORE_PATH);
+  return assertPathUnderV2(options.storePath || process.env.V2_CATALOG_STORE_PATH || DEFAULT_STORE_PATH);
 }
 
 function catalogMediaRoot(options = {}) {
-  return assertPathUnderApp(options.mediaRoot || process.env.CATALOG_MEDIA_ROOT || DEFAULT_MEDIA_ROOT);
+  return assertPathUnderV2(options.mediaRoot || process.env.V2_CATALOG_MEDIA_ROOT || DEFAULT_MEDIA_ROOT);
 }
 
 function nowIso() {
@@ -201,14 +200,14 @@ function normalizeStore(raw) {
 }
 
 function catalogDbPath(options = {}) {
-  const explicit = options.dbPath || options.catalogDbPath || process.env.CATALOG_DB_PATH;
-  if (explicit) return assertPathUnderApp(explicit);
-  const legacyJsonStorePath = options.storePath || process.env.CATALOG_STORE_PATH;
+  const explicit = options.dbPath || options.catalogDbPath || process.env.V2_CATALOG_DB_PATH;
+  if (explicit) return assertPathUnderV2(explicit);
+  const legacyJsonStorePath = options.storePath || process.env.V2_CATALOG_STORE_PATH;
   if (legacyJsonStorePath) {
     const parsed = path.parse(legacyJsonStorePath);
-    return assertPathUnderApp(path.join(parsed.dir, `${parsed.name}.sqlite`));
+    return assertPathUnderV2(path.join(parsed.dir, `${parsed.name}.sqlite`));
   }
-  return assertPathUnderApp(DEFAULT_DB_PATH);
+  return assertPathUnderV2(DEFAULT_DB_PATH);
 }
 
 function openCatalogDb(options = {}) {
@@ -535,61 +534,10 @@ function slugify(value, fallback = "item") {
   return slug || fallback;
 }
 
-const ENTITY_COLLECTIONS = Object.freeze({
-  performer: "performers",
-  character: "characters",
-  environment: "environments",
-  situation: "situations",
-});
-
-// Paths, runtime and the legacy-shaped clients address entities by number, so new
-// entities get the next free number (never reused) instead of a slug id.
-function nextEntityId(store, entityType) {
-  let highest = 0;
-  for (const item of store[ENTITY_COLLECTIONS[entityType]] || []) {
-    highest = Math.max(highest, Number(item.legacyId) || 0, legacyIdFromCatalogId(item.id, entityType) || 0);
-  }
-  const next = Math.max(Number(store.nextCounters[entityType] || 1), highest + 1);
+function nextEntityId(store, entityType, name) {
+  const next = Number(store.nextCounters[entityType] || 1);
   store.nextCounters[entityType] = next + 1;
-  return { id: `${entityType}:${next}`, legacyId: next };
-}
-
-function nextSortOrder(items) {
-  return (items || []).reduce((highest, item) => Math.max(highest, Number(item.sortOrder) || 0), 0) + 10;
-}
-
-function hasField(body, key) {
-  return Object.prototype.hasOwnProperty.call(body || {}, key) && body[key] !== undefined;
-}
-
-function sameIds(left, right) {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function legacyNumberFor(item, id, prefix) {
-  return Number(item && item.legacyId) || legacyIdFromCatalogId(id, prefix) || null;
-}
-
-function editedStatus(existing, active) {
-  if (existing && existing.status && (existing.active !== false) === active) return existing.status;
-  return statusFor(active);
-}
-
-function editedPromptText(existing, description) {
-  if (!existing) return description;
-  const followsDescription = !existing.promptText || existing.promptText === (existing.description || "");
-  return followsDescription ? description : existing.promptText;
-}
-
-function entityIdentity(store, entityType, body, existing) {
-  if (existing) {
-    return { id: existing.id, legacyId: legacyNumberFor(existing, existing.id, entityType) };
-  }
-  if (body.id) {
-    const id = String(body.id);
-    return { id, legacyId: legacyIdFromCatalogId(id, entityType) };
-  }
-  return nextEntityId(store, entityType);
+  return `${entityType}:v2-${String(next).padStart(4, "0")}-${slugify(name, entityType)}`;
 }
 
 function upsertById(items, item) {
@@ -644,39 +592,6 @@ function characterSlot(characterId, index) {
   };
 }
 
-const MAX_SITUATION_SLOTS = 3;
-
-// The catalog UI only edits the fixed characters. Empty and random-character slots
-// stay where they are; they are only dropped when the new characters need the room.
-function mergeCharacterSlots(existingSlots, characterIds, characterMap) {
-  const slots = (Array.isArray(existingSlots) ? existingSlots : []).filter((slot) => slot && typeof slot === "object");
-  const fixedIds = slots.filter((slot) => slot.mode === "fixed-character").map((slot) => slot.characterId);
-  if (slots.length && sameIds(fixedIds, characterIds)) return slots.map((slot) => ({ ...slot }));
-
-  const kept = [...slots];
-  let surplusOpen = kept.filter((slot) => slot.mode !== "fixed-character").length
-    - Math.max(0, MAX_SITUATION_SLOTS - characterIds.length);
-  for (let index = kept.length - 1; index >= 0 && surplusOpen > 0; index -= 1) {
-    if (kept[index].mode === "fixed-character") continue;
-    kept.splice(index, 1);
-    surplusOpen -= 1;
-  }
-
-  const queue = [...characterIds];
-  const fixedSlot = (characterId) => ({
-    mode: "fixed-character",
-    characterId,
-    legacyCharacterId: legacyNumberFor(characterMap.get(characterId), characterId, "character"),
-  });
-  const merged = [];
-  for (const slot of kept) {
-    if (slot.mode !== "fixed-character") merged.push({ ...slot });
-    else if (queue.length) merged.push(fixedSlot(queue.shift()));
-  }
-  while (queue.length) merged.push(fixedSlot(queue.shift()));
-  return merged.map(({ slotIndex: _previousIndex, ...slot }, index) => ({ slotIndex: index + 1, ...slot }));
-}
-
 function normalizePerformerRecord(record, base = null) {
   const active = record.active !== false;
   return {
@@ -692,8 +607,8 @@ function normalizePerformerRecord(record, base = null) {
     status: record.status || statusFor(active),
     createdAt: record.createdAt || (base && base.createdAt) || nowIso(),
     updatedAt: record.updatedAt || (base && base.updatedAt) || nowIso(),
-    source: record.source || { type: "catalog-sqlite" },
-    edited: record.edited !== false,
+    source: record.source || { type: "v2-catalog-sqlite" },
+    v2Edited: record.v2Edited !== false,
   };
 }
 
@@ -715,8 +630,8 @@ function normalizeCharacterRecord(record, base = null) {
     status: record.status || statusFor(active),
     createdAt: record.createdAt || (base && base.createdAt) || nowIso(),
     updatedAt: record.updatedAt || (base && base.updatedAt) || nowIso(),
-    source: record.source || { type: "catalog-sqlite" },
-    edited: record.edited !== false,
+    source: record.source || { type: "v2-catalog-sqlite" },
+    v2Edited: record.v2Edited !== false,
   };
 }
 
@@ -737,8 +652,8 @@ function normalizeEnvironmentRecord(record, base = null) {
     status: record.status || statusFor(active),
     createdAt: record.createdAt || (base && base.createdAt) || nowIso(),
     updatedAt: record.updatedAt || (base && base.updatedAt) || nowIso(),
-    source: record.source || { type: "catalog-sqlite" },
-    edited: record.edited !== false,
+    source: record.source || { type: "v2-catalog-sqlite" },
+    v2Edited: record.v2Edited !== false,
   };
 }
 
@@ -749,7 +664,7 @@ function normalizeSituationRecord(record, base = null) {
     ...(base || {}),
     id: record.id,
     legacyId: base ? base.legacyId || record.legacyId || null : record.legacyId || null,
-    legacyTable: base ? base.legacyTable || record.legacyTable || "algorithm_scenes" : record.legacyTable || "catalog-sqlite",
+    legacyTable: base ? base.legacyTable || record.legacyTable || "algorithm_scenes" : record.legacyTable || "v2-catalog-sqlite",
     title: record.title,
     description: record.description || "",
     promptText: record.promptText || record.description || "",
@@ -769,7 +684,6 @@ function normalizeSituationRecord(record, base = null) {
     legacyLabelIds: Array.isArray(record.legacyLabelIds) ? record.legacyLabelIds : base && Array.isArray(base.legacyLabelIds) ? base.legacyLabelIds : [],
     legacySituationIds: Array.isArray(record.legacySituationIds) ? record.legacySituationIds : base && Array.isArray(base.legacySituationIds) ? base.legacySituationIds : [],
     contextSituationId: record.contextSituationId || (base ? base.contextSituationId || null : null),
-    blindRanking: normalizeBlindRanking(record.blindRanking || (base && base.blindRanking) || null),
     legacyContextSceneId: record.legacyContextSceneId || (base ? base.legacyContextSceneId || null : null),
     externalId: base ? base.externalId || record.externalId || null : record.externalId || null,
     active,
@@ -777,8 +691,8 @@ function normalizeSituationRecord(record, base = null) {
     status: record.status || statusFor(active),
     createdAt: record.createdAt || (base && base.createdAt) || nowIso(),
     updatedAt: record.updatedAt || (base && base.updatedAt) || nowIso(),
-    source: record.source || { type: "catalog-sqlite" },
-    edited: record.edited !== false,
+    source: record.source || { type: "v2-catalog-sqlite" },
+    v2Edited: record.v2Edited !== false,
   };
 }
 
@@ -795,7 +709,7 @@ function normalizeLabelRecord(record, base = null) {
     status: record.status || statusFor(active),
     createdAt: record.createdAt || (base && base.createdAt) || nowIso(),
     updatedAt: record.updatedAt || (base && base.updatedAt) || nowIso(),
-    source: record.source || { type: "catalog-sqlite" },
+    source: record.source || { type: "v2-catalog-sqlite" },
   };
 }
 
@@ -846,14 +760,13 @@ function validateEnvironmentInput(body) {
   return issues;
 }
 
-function validateSituationInput(body, readModel, existing = null) {
+function validateSituationInput(body, readModel) {
   const issues = [];
   const characterIds = normalizeIds(body.characterIds);
   const characterMap = mapById(readModel.characters || []);
   const environmentMap = mapById(readModel.environments || []);
-  const keepsRandomEnvironment = !body.environmentId && existing && existing.environmentMode === "random";
   if (!String(body.title || "").trim()) issues.push(issue("situation_title_required", "Title is required."));
-  if (!keepsRandomEnvironment && (!body.environmentId || !environmentMap.has(body.environmentId))) {
+  if (!body.environmentId || !environmentMap.has(body.environmentId)) {
     issues.push(issue("situation_environment_required", "A valid environment is required.", { environmentId: body.environmentId || null }));
   }
   if (characterIds.length < 1 || characterIds.length > 3) {
@@ -877,20 +790,14 @@ async function upsertPerformer(body, readModel, options = {}) {
   const issues = validatePerformerInput(body || {}, readModel);
   if (issues.length) throw new CatalogInputError("invalid_performer", issues);
   const store = await readCatalogStore(options);
-  const existing = store.performers.find((item) => item.id === body.id) || null;
+  const existing = store.performers.find((item) => item.id === body.id);
   const base = (readModel.performers || []).find((item) => item.id === body.id) || null;
   const at = nowIso();
-  const active = hasField(body, "active") ? body.active !== false : !existing || existing.active !== false;
   const record = {
-    ...(existing || {}),
-    ...entityIdentity(store, "performer", body, existing),
+    id: String(body.id || nextEntityId(store, "performer", body.name)),
     name: String(body.name || "").trim(),
-    performerSlot: hasField(body, "performerSlot") || !existing
-      ? Number(body.performerSlot || 0)
-      : Number(existing.performerSlot || 0),
-    sortOrder: existing ? Number(existing.sortOrder || 0) : nextSortOrder(store.performers),
-    active,
-    status: editedStatus(existing, active),
+    performerSlot: Number(body.performerSlot || 0),
+    active: body.active !== false,
     createdAt: existing ? existing.createdAt : base ? base.createdAt || at : at,
     updatedAt: at,
   };
@@ -903,29 +810,15 @@ async function upsertCharacter(body, readModel, options = {}) {
   const issues = validateCharacterInput(body || {}, readModel);
   if (issues.length) throw new CatalogInputError("invalid_character", issues);
   const store = await readCatalogStore(options);
-  const existing = store.characters.find((item) => item.id === body.id) || null;
+  const existing = store.characters.find((item) => item.id === body.id);
   const base = (readModel.characters || []).find((item) => item.id === body.id) || null;
   const at = nowIso();
-  const active = hasField(body, "active") ? body.active !== false : !existing || existing.active !== false;
-  const description = hasField(body, "description") || !existing
-    ? String(body.description || "").trim()
-    : existing.description || "";
-  const performerIds = hasField(body, "performerIds") || hasField(body, "performerId") || !existing
-    ? normalizeIds(body.performerIds || body.performerId)
-    : normalizeIds(existing.performerIds);
-  const performerMap = mapById(readModel.performers || []);
   const record = {
-    ...(existing || {}),
-    ...entityIdentity(store, "character", body, existing),
+    id: String(body.id || nextEntityId(store, "character", body.name)),
     name: String(body.name || "").trim(),
-    description,
-    promptText: editedPromptText(existing, description),
-    performerIds,
-    legacyPerformerId: existing && sameIds(performerIds, normalizeIds(existing.performerIds))
-      ? existing.legacyPerformerId || null
-      : performerIds.length ? legacyNumberFor(performerMap.get(performerIds[0]), performerIds[0], "performer") : null,
-    active,
-    status: editedStatus(existing, active),
+    description: String(body.description || "").trim(),
+    performerIds: normalizeIds(body.performerIds || body.performerId),
+    active: body.active !== false,
     createdAt: existing ? existing.createdAt : base ? base.createdAt || at : at,
     updatedAt: at,
   };
@@ -938,24 +831,24 @@ async function upsertEnvironment(body, readModel, options = {}) {
   const issues = validateEnvironmentInput(body || {});
   if (issues.length) throw new CatalogInputError("invalid_environment", issues);
   const store = await readCatalogStore(options);
-  const existing = store.environments.find((item) => item.id === body.id) || null;
+  const existing = store.environments.find((item) => item.id === body.id);
   const base = (readModel.environments || []).find((item) => item.id === body.id) || null;
   const at = nowIso();
-  const active = hasField(body, "active") ? body.active !== false : !existing || existing.active !== false;
-  const description = hasField(body, "description") || !existing
-    ? String(body.description || "").trim()
-    : existing.description || "";
+  const description = String(body.description || "").trim();
+  // Bestaande velden (labelScores, legacyId, externalId, source, ...) blijven staan.
+  const keptPromptText = existing && existing.promptText && existing.promptText !== existing.description
+    ? existing.promptText
+    : description;
   const record = {
     ...(existing || {}),
-    ...entityIdentity(store, "environment", body, existing),
+    id: String(body.id || nextEntityId(store, "environment", body.name)),
     name: String(body.name || "").trim(),
     description,
-    promptText: editedPromptText(existing, description),
-    extras: normalizeEnvironmentExtras(hasField(body, "extras")
+    promptText: keptPromptText,
+    extras: normalizeEnvironmentExtras(Object.prototype.hasOwnProperty.call(body, "extras")
       ? body.extras
       : (existing && existing.extras) || (base && base.extras) || null),
-    active,
-    status: editedStatus(existing, active),
+    active: body.active !== false,
     createdAt: existing ? existing.createdAt : base ? base.createdAt || at : at,
     updatedAt: at,
   };
@@ -965,40 +858,19 @@ async function upsertEnvironment(body, readModel, options = {}) {
 }
 
 async function upsertSituation(body, readModel, options = {}) {
-  const store = await readCatalogStore(options);
-  const existing = (body && body.id && store.situations.find((item) => item.id === body.id)) || null;
-  const issues = validateSituationInput(body || {}, readModel, existing);
+  const issues = validateSituationInput(body || {}, readModel);
   if (issues.length) throw new CatalogInputError("invalid_situation", issues);
+  const store = await readCatalogStore(options);
+  const existing = store.situations.find((item) => item.id === body.id);
   const base = (readModel.situations || []).find((item) => item.id === body.id) || null;
   const at = nowIso();
-  const active = hasField(body, "active") ? body.active !== false : !existing || existing.active !== false;
-  const description = hasField(body, "description") || !existing
-    ? String(body.description || "").trim()
-    : existing.description || "";
-  const characterIds = normalizeIds(body.characterIds);
-  const characterMap = mapById(readModel.characters || []);
-  const environmentId = String(body.environmentId || "").trim();
-  const environment = mapById(readModel.environments || []).get(environmentId);
   const record = {
-    ...(existing || {}),
-    ...entityIdentity(store, "situation", body, existing),
+    id: String(body.id || nextEntityId(store, "situation", body.title)),
     title: String(body.title || "").trim(),
-    description,
-    promptText: editedPromptText(existing, description),
-    sortOrder: existing ? Number(existing.sortOrder || 0) : nextSortOrder(store.situations),
-    characterIds,
-    legacyCharacterIds: characterIds
-      .map((characterId) => legacyNumberFor(characterMap.get(characterId), characterId, "character"))
-      .filter(Boolean),
-    characterSlots: mergeCharacterSlots(existing && existing.characterSlots, characterIds, characterMap),
-    environmentMode: environmentId ? "selected" : "random",
-    environmentId: environmentId || null,
-    legacyEnvironmentId: environmentId ? legacyNumberFor(environment, environmentId, "environment") : null,
-    blindRanking: normalizeBlindRanking(hasField(body, "blindRanking")
-      ? body.blindRanking
-      : (existing && existing.blindRanking) || (base && base.blindRanking) || null),
-    active,
-    status: editedStatus(existing, active),
+    description: String(body.description || "").trim(),
+    environmentId: String(body.environmentId || "").trim(),
+    characterIds: normalizeIds(body.characterIds),
+    active: body.active !== false,
     createdAt: existing ? existing.createdAt : base ? base.createdAt || at : at,
     updatedAt: at,
   };
@@ -1068,11 +940,11 @@ function pathInside(parent, child) {
 
 function resolveMediaAssetPath(record, mediaRoot) {
   const relativePath = String(record && record.relativePath || "").trim();
-  if (relativePath) return assertPathUnderApp(path.join(mediaRoot, relativePath));
+  if (relativePath) return assertPathUnderV2(path.join(mediaRoot, relativePath));
   const storedPath = String(record && record.filePath || "").trim();
   if (!storedPath) return "";
   try {
-    const resolved = assertPathUnderApp(storedPath);
+    const resolved = assertPathUnderV2(storedPath);
     return pathInside(mediaRoot, resolved) ? resolved : "";
   } catch (_err) {
     return "";
@@ -1101,7 +973,7 @@ function normalizeMediaAssetRecord(record) {
     metadata: record.metadata && typeof record.metadata === "object" ? record.metadata : {},
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
-    source: { type: "media-store" },
+    source: { type: "v2-media-store" },
   };
 }
 
@@ -1139,71 +1011,11 @@ function normalizeCompositionLayer(layer, role, index = 0) {
     rotationDeg: numericValue(layer.rotationDeg, 0, { min: -360, max: 360 }),
     opacity: numericValue(layer.opacity, 1, { min: 0, max: 1 }),
     zIndex: numericValue(layer.zIndex, index + 1, { min: 0, max: 9999, integer: true }),
-    ...normalizeLayerVal(layer.val, role),
-    ...normalizeLayerFases(layer.fases, role),
   };
-}
-
-// Een PNG-laag kan bij bepaalde fases horen (posities in composition.fases, 0 = fase 1).
-// Geen lijst = de laag is in elke fase te zien.
-function normalizeLayerFases(fases, role) {
-  if (role !== "fxImage" || !Array.isArray(fases)) return {};
-  const posities = [...new Set(fases
-    .map((item) => Number(item))
-    .filter((item) => Number.isInteger(item) && item >= 0 && item < 12))].sort((a, b) => a - b);
-  return posities.length ? { fases: posities } : {};
-}
-
-// Effect "omvallen": een PNG-laag kan bij een stap omvallen, naar links of naar rechts.
-// stap 0 (of geen val) = de laag valt niet.
-function normalizeLayerVal(val, role) {
-  if (role !== "fxImage" || !val || typeof val !== "object" || Array.isArray(val)) return {};
-  const stap = numericValue(val.stap, 0, { min: 0, max: 20, integer: true });
-  if (!stap) return {};
-  return { val: { stap, richting: val.richting === "links" ? "links" : "rechts" } };
-}
-
-// Fases: een omgeving kan na elkaar meerdere beelden hebben (Rijden, Aanrijding, ...).
-// Een fase zonder beeld toont de achtergrond. schok = het beeld schudt bij het ingaan van de
-// fase, schokNa = seconden tussen het begin van het geluid en de klap.
-// situationId = de fase hoort bij die situatie: start de situatie, dan staat deze fase aan.
-// overlayAssetId = de gerenderde voorgrond (PNG-lagen) van deze fase.
-function normalizeCompositionFases(fases) {
-  if (!Array.isArray(fases)) return [];
-  return fases.slice(0, 12).map((fase) => {
-    if (!fase || typeof fase !== "object" || Array.isArray(fase)) return null;
-    const schok = fase.schok === true;
-    return {
-      naam: String(fase.naam || "").trim().slice(0, 60),
-      assetId: String(fase.assetId || "").trim(),
-      schok,
-      schokNa: schok ? numericValue(fase.schokNa, 0, { min: 0, max: 10 }) : 0,
-      ...(String(fase.situationId || "").trim() ? { situationId: String(fase.situationId).trim().slice(0, 80) } : {}),
-      ...(String(fase.overlayAssetId || "").trim() ? { overlayAssetId: String(fase.overlayAssetId).trim() } : {}),
-      // sfeerAssetId = het sfeergeluid van deze fase (leeg = het sfeergeluid van de omgeving).
-      ...(String(fase.sfeerAssetId || "").trim() ? { sfeerAssetId: String(fase.sfeerAssetId).trim() } : {}),
-      // sfeerOver = het sfeergeluid van deze fase klinkt over het sfeergeluid van de omgeving heen
-      // in plaats van het te vervangen (de hartmonitor over het geroezemoes van het ziekenhuis).
-      ...(fase.sfeerOver === true && String(fase.sfeerAssetId || "").trim() ? { sfeerOver: true } : {}),
-      // geluidAssetId = het eigen geluid bij het ingaan van deze fase (leeg = het extra geluid van de omgeving).
-      ...(String(fase.geluidAssetId || "").trim() ? { geluidAssetId: String(fase.geluidAssetId).trim() } : {}),
-    };
-  }).filter(Boolean);
-}
-
-// Effect "omvallen": per druk op de knop een eigen geluid (index 0 = eerste druk). Leeg = het
-// extra geluid van de omgeving.
-function normalizeCompositionValGeluiden(list) {
-  if (!Array.isArray(list)) return [];
-  const result = list.slice(0, 22).map((item) => String(item || "").trim());
-  while (result.length && !result[result.length - 1]) result.pop();
-  return result;
 }
 
 function normalizeEnvironmentCompositionRecord(record, lightingPresets = DEFAULT_LIGHTING_PRESETS) {
   const at = nowIso();
-  const valGeluiden = normalizeCompositionValGeluiden(record && record.valGeluiden);
-  const fases = normalizeCompositionFases(record && record.fases);
   const backgroundLayer = normalizeCompositionLayer(record && record.backgroundLayer, "background", 0);
   const fxVideoLayer = normalizeCompositionLayer(record && record.fxVideoLayer, "fxVideo", 0);
   const imageLayers = Array.isArray(record && record.imageLayers)
@@ -1219,12 +1031,10 @@ function normalizeEnvironmentCompositionRecord(record, lightingPresets = DEFAULT
     backgroundLayer,
     fxVideoLayer,
     imageLayers,
-    ...(fases.length ? { fases } : {}),
-    ...(valGeluiden.length ? { valGeluiden } : {}),
     lighting,
     createdAt: record && record.createdAt || at,
     updatedAt: record && record.updatedAt || record && record.createdAt || at,
-    source: { type: "composition-store" },
+    source: { type: "v2-composition-store" },
   };
 }
 
@@ -1247,12 +1057,12 @@ function applyCatalogStore(readModel, store, options = {}) {
     ...readModel,
     source: {
       ...readModel.source,
-      catalogDb: {
+      v2CatalogDb: {
         path: catalogDbPath(options),
         readOnly: false,
         schemaVersion: STORE_SCHEMA_VERSION,
       },
-      mediaRoot: {
+      v2MediaRoot: {
         path: catalogMediaRoot(options),
         readOnly: false,
       },
@@ -1273,12 +1083,12 @@ function applyCatalogStore(readModel, store, options = {}) {
       presentMediaAssets: mediaAssets.filter((asset) => asset.status === "present").length,
       environmentCompositions: environmentCompositions.length,
       lightingPresets: lightingPresets.length,
-      storedPerformers: store.performers.length,
-      storedCharacters: store.characters.length,
-      storedEnvironments: store.environments.length,
-      storedSituations: store.situations.length,
-      storedMediaAssets: store.mediaAssets.length,
-      storedLightingPresets: store.lightingPresets.length,
+      v2Performers: store.performers.length,
+      v2Characters: store.characters.length,
+      v2Environments: store.environments.length,
+      v2Situations: store.situations.length,
+      v2MediaAssets: store.mediaAssets.length,
+      v2LightingPresets: store.lightingPresets.length,
     },
     performers,
     characters,
@@ -1322,7 +1132,7 @@ function parseTags(value) {
 
 function loadBusboy() {
   const candidates = [
-    process.env.CATALOG_BUSBOY_MODULE,
+    process.env.V2_CATALOG_BUSBOY_MODULE,
     "busboy",
   ].filter(Boolean);
   for (const candidate of candidates) {
@@ -1456,7 +1266,7 @@ function parseMediaAssetUpload(req, options = {}) {
   return new Promise((resolve, reject) => {
     const Busboy = loadBusboy();
     const mediaRoot = catalogMediaRoot(options);
-    const tempDir = assertPathUnderApp(path.join(mediaRoot, "_asset-upload-tmp"));
+    const tempDir = assertPathUnderV2(path.join(mediaRoot, "_asset-upload-tmp"));
     const fields = {};
     const writeJobs = [];
     let upload = null;
@@ -1503,7 +1313,7 @@ function parseMediaAssetUpload(req, options = {}) {
       }
       try {
         ensureDirSync(tempDir);
-        tempPath = assertPathUnderApp(path.join(tempDir, `${Date.now()}-${crypto.randomBytes(8).toString("hex")}.upload`));
+        tempPath = assertPathUnderV2(path.join(tempDir, `${Date.now()}-${crypto.randomBytes(8).toString("hex")}.upload`));
       } catch (err) {
         file.resume();
         fail(err);
@@ -1571,9 +1381,9 @@ function backupExistingMediaAssets(store, { environmentId, type, role, mediaRoot
     }
     const sourcePath = resolveMediaAssetPath(record, mediaRoot);
     if (!sourcePath || !fsSync.existsSync(sourcePath)) continue;
-    const backupDir = assertPathUnderApp(path.join(mediaRoot, "_asset-backups", stamp, safeSegment(environmentId), type));
+    const backupDir = assertPathUnderV2(path.join(mediaRoot, "_asset-backups", stamp, safeSegment(environmentId), type));
     ensureDirSync(backupDir);
-    const targetPath = assertPathUnderApp(path.join(backupDir, path.basename(sourcePath)));
+    const targetPath = assertPathUnderV2(path.join(backupDir, path.basename(sourcePath)));
     fsSync.renameSync(sourcePath, targetPath);
     record.status = "replaced";
     record.replacedAt = nowIso();
@@ -1589,7 +1399,7 @@ function backupExistingMediaAssets(store, { environmentId, type, role, mediaRoot
 }
 
 async function saveMediaAssetFile(input, readModel, options = {}) {
-  let tempPath = input && input.tempPath ? assertPathUnderApp(input.tempPath) : "";
+  let tempPath = input && input.tempPath ? assertPathUnderV2(input.tempPath) : "";
   const environmentId = String(input && input.environmentId || "").trim();
   const originalFilename = String(input && input.originalFilename || input && input.filename || "");
   const extension = extensionFromFilename(originalFilename);
@@ -1621,8 +1431,8 @@ async function saveMediaAssetFile(input, readModel, options = {}) {
   const base = slugify(path.basename(originalFilename, path.extname(originalFilename)), "asset");
   const filename = `${base}-${hash}.${extension}`;
   const mediaRoot = catalogMediaRoot(options);
-  const targetDir = assertPathUnderApp(path.join(mediaRoot, "environments", safeSegment(environmentId), type));
-  const filePath = assertPathUnderApp(path.join(targetDir, filename));
+  const targetDir = assertPathUnderV2(path.join(mediaRoot, "environments", safeSegment(environmentId), type));
+  const filePath = assertPathUnderV2(path.join(targetDir, filename));
   const store = await readCatalogStore(options);
   const assetId = `media-asset:${environmentId}:${role || type}:${base}-${hash}`;
   const backups = backupExistingMediaAssets(store, {
@@ -1744,15 +1554,6 @@ async function deleteMediaAsset(assetId, options = {}) {
     if (composition.backgroundLayer && composition.backgroundLayer.assetId === id) composition.backgroundLayer = null;
     if (composition.fxVideoLayer && composition.fxVideoLayer.assetId === id) composition.fxVideoLayer = null;
     composition.imageLayers = (composition.imageLayers || []).filter((layer) => layer.assetId !== id);
-    if (Array.isArray(composition.valGeluiden)) {
-      composition.valGeluiden = composition.valGeluiden.map((item) => (item === id ? "" : item));
-    }
-    if (Array.isArray(composition.fases)) {
-      composition.fases = composition.fases.map((fase) => (fase && fase.assetId === id ? { ...fase, assetId: "" } : fase));
-      composition.fases = composition.fases.map((fase) => (fase && fase.overlayAssetId === id ? { ...fase, overlayAssetId: "" } : fase));
-      composition.fases = composition.fases.map((fase) => (fase && fase.sfeerAssetId === id ? { ...fase, sfeerAssetId: "" } : fase));
-      composition.fases = composition.fases.map((fase) => (fase && fase.geluidAssetId === id ? { ...fase, geluidAssetId: "" } : fase));
-    }
     composition.updatedAt = at;
   }
   await writeCatalogStore(store, options);
@@ -1788,7 +1589,7 @@ function validateCompositionLayer(layer, { expectedRole, environmentId, assetMap
   }
   const asset = assetMap.get(normalized.assetId);
   if (!asset) {
-    issues.push(issue("composition_asset_missing", `${pathLabel} references an unknown asset.`, {
+    issues.push(issue("composition_asset_missing", `${pathLabel} references an unknown V2 asset.`, {
       path: pathLabel,
       assetId: normalized.assetId,
     }));
@@ -1817,7 +1618,7 @@ function validateCompositionLayer(layer, { expectedRole, environmentId, assetMap
     if (asset.relativePath || asset.filePath) {
       const assetPath = resolveMediaAssetPath(asset, mediaRoot);
       if (!assetPath) {
-        issues.push(issue("composition_asset_outside_media_root", `${pathLabel} asset is outside the media root.`, {
+        issues.push(issue("composition_asset_outside_media_root", `${pathLabel} asset is outside the V2 media root.`, {
           path: pathLabel,
           assetId: normalized.assetId,
         }));
@@ -1873,29 +1674,9 @@ async function upsertEnvironmentComposition(environmentId, body, readModel, opti
     issues.push(issue("composition_too_many_layers", "A composition can contain at most 100 image layers."));
   }
   const lighting = normalizeEnvironmentLighting(body && body.lighting, lightingPresets);
-  const existing = (store.environmentCompositions || []).find((item) => item.environmentId === id);
-  // Een editor die de geluiden per valstap niet kent, stuurt ze niet mee: dan blijven ze staan.
-  const valGeluiden = normalizeCompositionValGeluiden(
-    body && Array.isArray(body.valGeluiden) ? body.valGeluiden : existing && existing.valGeluiden
-  );
-  for (const [index, assetId] of valGeluiden.entries()) {
-    if (!assetId) continue;
-    const asset = assetMap.get(assetId);
-    if (!asset || asset.status !== "present" || asset.environmentId !== id || asset.type !== "extra") {
-      issues.push(issue("composition_valgeluid_asset_invalid", "Het geluid van een stap hoort bij deze omgeving te staan.", { path: `valGeluiden.${index}` }));
-    }
-  }
-  // Net zo voor de fases: een editor die ze niet kent, laat ze staan.
-  const fases = normalizeCompositionFases(body && Array.isArray(body.fases) ? body.fases : existing && existing.fases);
-  for (const [index, fase] of fases.entries()) {
-    if (!fase.assetId) continue;
-    const asset = assetMap.get(fase.assetId);
-    if (!asset || asset.status !== "present" || asset.environmentId !== id || asset.type !== "extra") {
-      issues.push(issue("composition_fase_asset_invalid", "Het beeld van een fase hoort bij deze omgeving te staan.", { path: `fases.${index}` }));
-    }
-  }
   if (issues.length) throw new CatalogInputError("invalid_environment_composition", issues);
 
+  const existing = (store.environmentCompositions || []).find((item) => item.environmentId === id);
   const at = nowIso();
   const record = normalizeEnvironmentCompositionRecord({
     environmentId: id,
@@ -1904,8 +1685,6 @@ async function upsertEnvironmentComposition(environmentId, body, readModel, opti
     backgroundLayer,
     fxVideoLayer,
     imageLayers,
-    fases,
-    valGeluiden,
     lighting,
     createdAt: existing ? existing.createdAt : at,
     updatedAt: at,
